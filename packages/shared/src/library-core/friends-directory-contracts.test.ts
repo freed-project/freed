@@ -3,6 +3,8 @@ import {
   decodeLibraryCoreFriendsDirectoryCursorV1,
   encodeLibraryCoreFriendsDirectoryCursorV1,
   libraryCoreFriendsDirectoryBindingDigestV1,
+  parseLibraryCoreAccountLinkCandidatesRequestV1,
+  parseLibraryCoreAccountLinkCandidatesResponseV1,
   parseLibraryCoreAccountPickerPageRequestV1,
   parseLibraryCoreAccountPickerPageResponseV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
@@ -357,5 +359,78 @@ describe("Account picker contract", () => {
         search: "猫犬鳥",
       }).ok,
     ).toBe(true);
+  });
+});
+
+describe("Account link candidates contract", () => {
+  const accountLinkRequest = {
+    cancellationId: "cancel-account-links",
+    entityId: "account-1",
+    entityKind: "account" as const,
+    limit: 5,
+    queryId: "account_link_candidates_v1" as const,
+    readerSessionId: "reader-account-links",
+    schemaVersion: 1 as const,
+  };
+
+  it("accepts one closed selected-identity request and bounded response", () => {
+    const parsedRequest =
+      parseLibraryCoreAccountLinkCandidatesRequestV1(accountLinkRequest);
+    expect(parsedRequest.ok).toBe(true);
+    if (!parsedRequest.ok) return;
+    expect(
+      parseLibraryCoreAccountLinkCandidatesResponseV1(
+        {
+          queryId: "account_link_candidates_v1",
+          rows: [
+            {
+              accountId: "account-1",
+              confidence: "high",
+              personId: "person-1",
+              reason: "Same handle as an account already linked to this friend.",
+              score: 95,
+            },
+          ],
+          schemaVersion: 1,
+          source,
+        },
+        parsedRequest.value,
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("rejects unknown fields, identity kinds, and excess rows", () => {
+    expect(
+      parseLibraryCoreAccountLinkCandidatesRequestV1({
+        ...accountLinkRequest,
+        extra: true,
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCoreAccountLinkCandidatesRequestV1({
+        ...accountLinkRequest,
+        entityKind: "all",
+      }).ok,
+    ).toBe(false);
+    const parsedRequest =
+      parseLibraryCoreAccountLinkCandidatesRequestV1(accountLinkRequest);
+    if (!parsedRequest.ok) throw new Error(parsedRequest.error);
+    expect(
+      parseLibraryCoreAccountLinkCandidatesResponseV1(
+        {
+          queryId: "account_link_candidates_v1",
+          rows: Array.from({ length: 6 }, (_, index) => ({
+            accountId: `account-${index.toLocaleString()}`,
+            confidence: "medium",
+            personId: "person-1",
+            reason: "Display name matches this friend.",
+            score: 84,
+          })),
+          schemaVersion: 1,
+          source,
+        },
+        parsedRequest.value,
+      ).ok,
+    ).toBe(false);
   });
 });

@@ -377,6 +377,17 @@ pub struct NormalizedAccountPickerPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountLinkCandidatesRequestV1 {
+    pub cancellation_id: String,
+    pub entity_id: String,
+    pub entity_kind: String,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -409,6 +420,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 pub enum NormalizedQueryRequestV1 {
     AccountDetail(NormalizedAccountDetailRequestV1),
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
+    AccountLinkCandidates(NormalizedAccountLinkCandidatesRequestV1),
     AccountPickerPage(NormalizedAccountPickerPageRequestV1),
     AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
@@ -1235,10 +1247,30 @@ pub struct NormalizedAccountPickerPageResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountLinkCandidateRowV1 {
+    pub account_id: String,
+    pub confidence: String,
+    pub person_id: String,
+    pub reason: String,
+    pub score: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountLinkCandidatesResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedAccountLinkCandidateRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
+    AccountLinkCandidates(NormalizedAccountLinkCandidatesResponseV1),
     AccountPickerPage(NormalizedAccountPickerPageResponseV1),
     AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
@@ -4003,6 +4035,81 @@ fn query_person_picker_page(
     Ok(response)
 }
 
+fn query_account_link_candidates(
+    connection: &mut Connection,
+    request: NormalizedAccountLinkCandidatesRequestV1,
+) -> Result<NormalizedAccountLinkCandidatesResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=5).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !matches!(request.entity_kind.as_str(), "account" | "person")
+        || request.entity_id.is_empty()
+        || request.entity_id.len() > 2_048
+    {
+        return Err(invalid(
+            "normalized Account link candidates request is invalid",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "account_link_candidates_v1")
+        .ok_or(invalid(
+            "normalized Account link candidates program is missing",
+        ))?;
+    let variant = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == request.entity_kind)
+        .ok_or(invalid(
+            "normalized Account link candidates variant is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let limit = i64::try_from(request.limit + 1).expect("bounded Account link candidates limit");
+    let mut statement = transaction.prepare(variant.sql)?;
+    let mapped = statement.query_map(params![request.entity_id, limit], |row| {
+        decode_generated_query_row(row, "account_link_candidates_v1")
+    })?;
+    let generated_rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if generated_rows.len() > program.maximum_scan_rows {
+        return Err(invalid(
+            "normalized Account link candidates exceeded its row bound",
+        ));
+    }
+    let mut rows = generated_rows
+        .into_iter()
+        .take(request.limit)
+        .map(|value| {
+            serde_json::from_value::<NormalizedAccountLinkCandidateRowV1>(value)
+                .map_err(|_| invalid("normalized Account link candidate row is invalid"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.truncate(request.limit);
+    let response = NormalizedAccountLinkCandidatesResponseV1 {
+        query_id: "account_link_candidates_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Account link candidates response is invalid"))?
+        .len()
+        > 64 * 1_024
+    {
+        return Err(invalid(
+            "normalized Account link candidates response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_account_picker_page(
     connection: &mut Connection,
     request: NormalizedAccountPickerPageRequestV1,
@@ -5870,6 +5977,11 @@ pub fn query_normalized_v1(
                 query_person_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::AccountLinkCandidates(request) => {
+            Ok(NormalizedQueryResponseV1::AccountLinkCandidates(
+                query_account_link_candidates(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::AccountPickerPage(request) => {
             Ok(NormalizedQueryResponseV1::AccountPickerPage(
                 query_account_picker_page(connection, request)?,
@@ -5951,6 +6063,10 @@ pub fn query_normalized_json_v1(
         "account_graph_page_v1" => {
             decode_request!(NormalizedAccountGraphPageRequestV1, AccountGraphPage)
         }
+        "account_link_candidates_v1" => decode_request!(
+            NormalizedAccountLinkCandidatesRequestV1,
+            AccountLinkCandidates
+        ),
         "account_picker_page_v1" => {
             decode_request!(NormalizedAccountPickerPageRequestV1, AccountPickerPage)
         }
@@ -6042,6 +6158,7 @@ pub fn query_normalized_json_v1(
     match response {
         NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AccountLinkCandidates(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
@@ -8322,7 +8439,8 @@ mod tests {
                     last_seen_at, discovered_from, display_name, created_at, updated_at)
                    VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50, 200, 'capture', 'Ada', 50, 200),
                           ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 'Grace', 60, 210),
-                          ('account-3', NULL, 'social', 'youtube', 'ada-video', 70, 220, 'capture', 'Lovelace Video', 70, 220);
+                          ('account-3', NULL, 'social', 'youtube', 'ada-video', 70, 220, 'capture', 'Lovelace Video', 70, 220),
+                          ('account-4', NULL, 'social', 'instagram', 'ada', 80, 230, 'capture', 'Ada', 80, 230);
                  INSERT INTO library_rss_feeds
                    (url, title, image_url, enabled, track_unread, updated_at)
                    VALUES ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
@@ -8483,6 +8601,28 @@ mod tests {
                 }));
             }
         }
+        let account_link_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "account_link_candidates_v1")
+            .expect("Account link candidates program");
+        for variant in account_link_program.variants {
+            let details = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", variant.sql))
+                .expect("Account link candidates plan")
+                .query_map(params!["person-1", 6], |row| row.get::<_, String>(3))
+                .expect("Account link candidates plan rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("Account link candidates plan");
+            if variant.variant_id == "person" {
+                assert!(details
+                    .iter()
+                    .any(|detail| { detail.contains("library_person_contact_match_keys_person") }));
+            } else {
+                assert!(details
+                    .iter()
+                    .any(|detail| detail.contains("SEARCH library_accounts")));
+            }
+        }
         let NormalizedQueryResponseV1::AccountPickerPage(account_picker) = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::AccountPickerPage(NormalizedAccountPickerPageRequestV1 {
@@ -8499,6 +8639,48 @@ mod tests {
         assert_eq!(account_picker.rows.len(), 1);
         assert_eq!(account_picker.rows[0].account_id, "account-3");
         assert_eq!(account_picker.rows[0].display_name, "Lovelace Video");
+
+        let NormalizedQueryResponseV1::AccountLinkCandidates(account_links) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountLinkCandidates(
+                NormalizedAccountLinkCandidatesRequestV1 {
+                    cancellation_id: "cancel-account-links".to_owned(),
+                    entity_id: "account-4".to_owned(),
+                    entity_kind: "account".to_owned(),
+                    limit: 5,
+                    reader_session_id: "reader-account-links".to_owned(),
+                    schema_version: 1,
+                },
+            ),
+        )
+        .expect("Account link candidates") else {
+            panic!("Account link candidates response");
+        };
+        assert_eq!(account_links.rows.len(), 1);
+        assert_eq!(account_links.rows[0].account_id, "account-4");
+        assert_eq!(account_links.rows[0].person_id, "person-1");
+        assert_eq!(account_links.rows[0].score, 84);
+
+        let NormalizedQueryResponseV1::AccountLinkCandidates(person_links) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountLinkCandidates(
+                NormalizedAccountLinkCandidatesRequestV1 {
+                    cancellation_id: "cancel-person-links".to_owned(),
+                    entity_id: "person-1".to_owned(),
+                    entity_kind: "person".to_owned(),
+                    limit: 5,
+                    reader_session_id: "reader-person-links".to_owned(),
+                    schema_version: 1,
+                },
+            ),
+        )
+        .expect("Person link candidates") else {
+            panic!("Person link candidates response");
+        };
+        assert!(person_links
+            .rows
+            .iter()
+            .any(|row| row.account_id == "account-4"));
 
         let request = NormalizedPersonGraphPageRequestV1 {
             cancellation_id: "cancel-person-graph".to_owned(),

@@ -723,6 +723,9 @@ CREATE TABLE IF NOT EXISTS library_person_contact_match_keys (
   PRIMARY KEY (match_value, match_rank, person_id, source_id)
 ) STRICT, WITHOUT ROWID;
 
+CREATE INDEX IF NOT EXISTS library_person_contact_match_keys_person
+  ON library_person_contact_match_keys(person_id, match_value, match_rank);
+
 CREATE TABLE IF NOT EXISTS library_account_contact_match_keys (
   match_value TEXT NOT NULL,
   account_id TEXT NOT NULL REFERENCES library_accounts(id) ON DELETE CASCADE,

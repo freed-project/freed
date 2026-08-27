@@ -8,7 +8,7 @@ import type {
 } from "@freed/shared";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
-import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
+import type { AccountLinkSuggestion } from "../../lib/account-link-suggestion.js";
 import {
   accountSubtitle,
   accountTitle,
@@ -18,7 +18,7 @@ import {
 interface AccountDetailPanelProps {
   account: Account;
   linkedPerson?: Person | null;
-  suggestions: AccountLinkSuggestion[];
+  suggestions: readonly AccountLinkSuggestion[];
   friendSuggestion?: FriendCandidateSuggestion | null;
   persons: Person[];
   feedItems: readonly FeedItem[];

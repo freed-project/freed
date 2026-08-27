@@ -43,6 +43,7 @@ import {
 } from "../../hooks/useLibraryIdentityDetail.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
+import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -63,10 +64,6 @@ import {
   type FriendOverviewSort,
 } from "../../lib/friends-workspace.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
-import {
-  buildAccountLinkSuggestionGroups,
-  type AccountLinkSuggestion,
-} from "../../lib/account-link-suggestions.js";
 import {
   accountSubtitle,
   accountTitle,
@@ -111,9 +108,10 @@ const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 const MAP_SURFACE_COMMIT_RETRY_MS = 150;
 
-const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor = async () => {
-  throw new Error("The bounded SQLite Library query boundary is unavailable");
-};
+const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor =
+  async () => {
+    throw new Error("The bounded SQLite Library query boundary is unavailable");
+  };
 const NEED_OUTREACH_DIRECTORY_FILTERS = ["need_outreach"] as const;
 
 type RelationshipTierLevel = 1 | 3 | 5;
@@ -805,18 +803,16 @@ export function FriendsView({
 
   const reconnectCount = reconnectDirectory.totalCount;
 
-  const accountLinkSuggestionGroups = useMemo(
-    () => buildAccountLinkSuggestionGroups(persons, accounts),
-    [accounts, persons],
-  );
-  const suggestionsByAccount = useMemo(
-    () => accountLinkSuggestionGroups.byAccount,
-    [accountLinkSuggestionGroups],
-  );
-  const suggestionsByPerson = useMemo(
-    () => accountLinkSuggestionGroups.byPerson,
-    [accountLinkSuggestionGroups],
-  );
+  const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
+    entityId: selectedAccountId,
+    entityKind: "account",
+    sourceVersion: searchCorpusVersion,
+  });
+  const selectedPersonSuggestions = useLibraryAccountLinkCandidates({
+    entityId: selectedPersonId,
+    entityKind: "person",
+    sourceVersion: searchCorpusVersion,
+  });
   const friendCandidateSuggestions = useMemo(() => {
     const common = {
       persons: allPersons,
@@ -881,18 +877,6 @@ export function FriendsView({
         activityBySourceKey: nativeActivity?.socialActivityBySourceKey ?? {},
       }),
     [accounts, nativeActivity],
-  );
-  const selectedAccountSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () =>
-      selectedAccount
-        ? (suggestionsByAccount.get(selectedAccount.id) ?? [])
-        : [],
-    [selectedAccount, suggestionsByAccount],
-  );
-  const selectedPersonSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () =>
-      selectedPerson ? (suggestionsByPerson.get(selectedPerson.id) ?? []) : [],
-    [selectedPerson, suggestionsByPerson],
   );
   const selectedPersonFriendSuggestion = selectedPerson
     ? (friendCandidateByPerson.get(selectedPerson.id) ?? null)
@@ -2150,10 +2134,12 @@ export function FriendsView({
   const showMobileSidebar = isMobile && mobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
-  const graphIsEmpty = graphSourceCounts?.mode === effectiveMode &&
+  const graphIsEmpty =
+    graphSourceCounts?.mode === effectiveMode &&
     (effectiveMode === "friends"
       ? graphSourceCounts.personCount === 0
-      : graphSourceCounts.channelCount === 0 && graphSourceCounts.personCount === 0);
+      : graphSourceCounts.channelCount === 0 &&
+        graphSourceCounts.personCount === 0);
   const renderGraphLoadingState = (overlay = false) => (
     <div
       className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}
@@ -2223,9 +2209,10 @@ export function FriendsView({
                   graphPinned: person.graphPinned,
                   id: target.nodeId,
                   initials: "",
-                  kind: person.relationshipStatus === "friend"
-                    ? "friend_person"
-                    : "connection_person",
+                  kind:
+                    person.relationshipStatus === "friend"
+                      ? "friend_person"
+                      : "connection_person",
                   label: personName(person),
                   personId,
                   priority: 1,
@@ -2264,9 +2251,7 @@ export function FriendsView({
             onLinkAccountToPerson={handleLinkAccountToPerson}
             onPinPersonPosition={handlePinPersonPosition}
             onPinAccountPosition={handlePinAccountPosition}
-            onDropNodeToRelationshipTier={
-              handleDropGraphNodeToRelationshipTier
-            }
+            onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
             themeId={themeId}
             presentationVisible={showGraphSurface}
             controlsAdjacentToSidebar={showDesktopSidebar}
@@ -2275,7 +2260,9 @@ export function FriendsView({
             <div className="absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]">
               {renderGraphEmptyState()}
             </div>
-          ) : friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
+          ) : friendsRows.graphLoading ? (
+            renderGraphLoadingState(true)
+          ) : null}
         </div>
 
         {showDesktopSidebar && (

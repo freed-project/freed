@@ -248,6 +248,11 @@
         model now generates the PWA SQLite coercer, strict wire parser,
         TypeScript row type, and native Rust field descriptor from one contract
         definition, so browser and native result transforms cannot drift.
+  - [x] `account_link_candidates_v1` runs the same generated selected-identity
+        query in OPFS SQLite and native Rust. It returns at most five exact
+        name or handle matches under 64 KiB. Friends retains only those visible
+        recommendations and no longer builds a complete Person-to-Account
+        candidate index in JavaScript.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

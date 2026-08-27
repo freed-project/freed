@@ -82,6 +82,8 @@ import {
   useLibraryFriendsDirectory,
   type LibraryFriendsDirectoryState,
 } from "./useLibraryFriendsDirectory.js";
+import { useLibraryAccountLinkCandidates } from "./useLibraryAccountLinkCandidates.js";
+import type { AccountLinkSuggestion } from "../lib/account-link-suggestion.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -145,6 +147,23 @@ function IdentityDetailHarness({
 }) {
   onAccount(useLibraryAccountDetail(accountId, 12));
   onPerson(useLibraryPersonDetail(personId, 12));
+  return null;
+}
+
+function AccountLinkCandidatesHarness({
+  entityId,
+  entityKind,
+  onRows,
+  sourceVersion,
+}: {
+  entityId: string | null;
+  entityKind: "account" | "person";
+  onRows: (rows: readonly AccountLinkSuggestion[]) => void;
+  sourceVersion: number;
+}) {
+  onRows(
+    useLibraryAccountLinkCandidates({ entityId, entityKind, sourceVersion }),
+  );
   return null;
 }
 
@@ -540,6 +559,59 @@ describe("Library row query hooks", () => {
     expect(accountState).toEqual({ status: "ready", value: account });
     expect(readLibraryPersonDetail).toHaveBeenCalledOnce();
     expect(readLibraryAccountDetail).toHaveBeenCalledOnce();
+  });
+
+  it("retains only selected Account link candidates from SQLite", async () => {
+    const queryLibraryCore = vi.fn(async () => ({
+      queryId: "account_link_candidates_v1",
+      rows: [
+        {
+          accountId: "account-ada",
+          confidence: "high",
+          personId: "person-ada",
+          reason: "Same handle as an account already linked to this friend.",
+          score: 95,
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let rows: readonly AccountLinkSuggestion[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <AccountLinkCandidatesHarness
+          entityId="account-ada"
+          entityKind="account"
+          onRows={(next) => {
+            rows = next;
+          }}
+          sourceVersion={12}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: "account-ada",
+        entityKind: "account",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        schemaVersion: 1,
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        accountId: "account-ada",
+        personId: "person-ada",
+        score: 95,
+      }),
+    ]);
   });
 
   let container: HTMLDivElement | null = null;

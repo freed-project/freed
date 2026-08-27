@@ -140,6 +140,8 @@ import {
   libraryCoreFriendsDirectoryBindingDigestV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCoreAccountLinkCandidatesRequestV1,
+  parseLibraryCoreAccountLinkCandidatesResponseV1,
   parseLibraryCoreAccountPickerPageRequestV1,
   parseLibraryCoreAccountPickerPageResponseV1,
   parseLibraryCorePersonPickerPageRequestV1,
@@ -266,6 +268,8 @@ import {
   type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCoreAccountLinkCandidatesRequestV1,
+  type LibraryCoreAccountLinkCandidatesResponseV1,
   type LibraryCoreAccountPickerPageRequestV1,
   type LibraryCoreAccountPickerPageResponseV1,
   type LibraryCorePersonPickerPageRequestV1,
@@ -5141,6 +5145,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "account_link_candidates_v1":
+        return this.#queryAccountLinkCandidates(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "account_picker_page_v1":
         return this.#queryAccountPickerPage(
           input,
@@ -6424,6 +6432,56 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreAccountPickerPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryAccountLinkCandidates(
+    input: LibraryCoreAccountLinkCandidatesRequestV1,
+  ): LibraryCoreAccountLinkCandidatesResponseV1 {
+    const request = parseLibraryCoreAccountLinkCandidatesRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program =
+      LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_link_candidates_v1;
+    const variant = program.variants[request.value.entityKind];
+    const rawRows = this.#database.exec({
+      sql: variant.sql,
+      bind: [request.value.entityId, request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Account link candidates exceeded its row bound",
+      );
+    }
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "account_link_candidates_v1",
+        row,
+      );
+      if (!parsed) {
+        throw new Error(
+          "PWA Library SQLite Account link candidate row is invalid",
+        );
+      }
+      return parsed;
+    });
+    const response = {
+      queryId: "account_link_candidates_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreAccountLinkCandidatesResponseV1(
       response,
       request.value,
     );

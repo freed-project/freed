@@ -191,6 +191,12 @@
         activity. One or two scalar searches filter only that resident window.
         React never pages or scans the Account catalog. Selected Accounts are
         revalidated through `account_detail_v1` before the Person mutation.
+  - [x] Selected Friend and Account detail panels resolve identity-link
+        recommendations through `account_link_candidates_v1`. The native core
+        reads trigger-maintained exact name and handle keys, returns at most
+        five closed rows under 64 KiB, and never exposes Person or Account
+        dictionaries to React. The former corpus-wide JavaScript candidate
+        index and its compatibility tests are deleted.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

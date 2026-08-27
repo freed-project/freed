@@ -39,6 +39,12 @@ export const LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT = 50;
 export const LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_RESPONSE_BYTES = 1_024 * 1_024;
 export const LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS = 3;
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID =
+  "account_link_candidates_v1" as const;
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION = 1 as const;
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_LIMIT = 5;
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_RESPONSE_BYTES =
+  64 * 1_024;
 
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_FILTERS = Object.freeze([
   "close_friends",
@@ -98,6 +104,73 @@ const PERSON_PICKER_RESPONSE_KEYS = [
 ] as const;
 const ACCOUNT_PICKER_REQUEST_KEYS = PERSON_PICKER_REQUEST_KEYS;
 const ACCOUNT_PICKER_RESPONSE_KEYS = PERSON_PICKER_RESPONSE_KEYS;
+const ACCOUNT_LINK_CANDIDATES_REQUEST_KEYS = [
+  "cancellationId",
+  "entityId",
+  "entityKind",
+  "limit",
+  "queryId",
+  "readerSessionId",
+  "schemaVersion",
+] as const;
+const ACCOUNT_LINK_CANDIDATES_RESPONSE_KEYS = PERSON_PICKER_RESPONSE_KEYS;
+
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_REQUEST_SCHEMA =
+  Object.freeze({
+    schemaId: "library_core_account_link_candidates_request_v1",
+    schemaVersion: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION,
+    queryId: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID,
+    canonicalKeys: ACCOUNT_LINK_CANDIDATES_REQUEST_KEYS,
+    entityKinds: Object.freeze(["account", "person"] as const),
+    maximumLimit: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_LIMIT,
+  });
+
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_RESPONSE_SCHEMA =
+  Object.freeze({
+    schemaId: "library_core_account_link_candidates_response_v1",
+    schemaVersion: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION,
+    queryId: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID,
+    canonicalKeys: ACCOUNT_LINK_CANDIDATES_RESPONSE_KEYS,
+    maximumRows: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_LIMIT,
+    maximumResponseBytes:
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_RESPONSE_BYTES,
+  });
+
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_PROJECTION = Object.freeze({
+  projectionId: "library_core_account_link_candidate_v1",
+  sourceTable: "library_account_contact_match_keys",
+  supportingTables: Object.freeze([
+    "library_accounts",
+    "library_person_contact_match_keys",
+    "library_persons",
+  ]),
+  fullContentAllowed: false,
+  orderedColumns: Object.freeze(["score", "account_id", "person_id"]),
+});
+
+export const LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_NESTED_BOUNDS = Object.freeze(
+  { nestedValuesAllowed: false },
+);
+
+export interface LibraryCoreAccountLinkCandidatesRequestV1 {
+  readonly cancellationId: string;
+  readonly entityId: string;
+  readonly entityKind: "account" | "person";
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID;
+  readonly readerSessionId: string;
+  readonly schemaVersion: typeof LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION;
+}
+
+export type LibraryCoreAccountLinkCandidateRowV1 =
+  LibraryCoreGeneratedSqliteQueryRow<"account_link_candidates_v1">;
+
+export interface LibraryCoreAccountLinkCandidatesResponseV1 {
+  readonly queryId: typeof LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID;
+  readonly rows: readonly LibraryCoreAccountLinkCandidateRowV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION;
+  readonly source: LibraryCoreFeedPageSourceV1;
+}
 
 export const LIBRARY_CORE_ACCOUNT_PICKER_REQUEST_SCHEMA = Object.freeze({
   schemaId: "library_core_account_picker_request_v1",
@@ -630,6 +703,83 @@ export function parseLibraryCoreAccountPickerPageResponseV1(
       queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
       rows: Object.freeze(rows as LibraryCoreAccountPickerRowV1[]),
       schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
+      source: source.value,
+    }),
+  };
+}
+
+export function parseLibraryCoreAccountLinkCandidatesRequestV1(
+  input: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreAccountLinkCandidatesRequestV1> {
+  const record = recordValue(input);
+  if (
+    !record ||
+    !exactKeys(record, ACCOUNT_LINK_CANDIDATES_REQUEST_KEYS) ||
+    record.queryId !== LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID ||
+    record.schemaVersion !==
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION ||
+    !isLibraryCoreOperationInstanceId(record.cancellationId) ||
+    !isLibraryCoreOperationInstanceId(record.readerSessionId) ||
+    (record.entityKind !== "account" && record.entityKind !== "person") ||
+    typeof record.entityId !== "string" ||
+    record.entityId.length === 0 ||
+    textEncoder.encode(record.entityId).byteLength > 2_048 ||
+    !Number.isInteger(record.limit) ||
+    (record.limit as number) < 1 ||
+    (record.limit as number) >
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_LIMIT
+  ) {
+    return { ok: false, error: "Account link candidates request is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      cancellationId: record.cancellationId,
+      entityId: record.entityId,
+      entityKind: record.entityKind,
+      limit: record.limit,
+      queryId: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID,
+      readerSessionId: record.readerSessionId,
+      schemaVersion: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION,
+    }) as LibraryCoreAccountLinkCandidatesRequestV1,
+  };
+}
+
+export function parseLibraryCoreAccountLinkCandidatesResponseV1(
+  input: unknown,
+  request: LibraryCoreAccountLinkCandidatesRequestV1,
+): LibraryCoreFeedPageParseResult<LibraryCoreAccountLinkCandidatesResponseV1> {
+  const record = recordValue(input);
+  const source = parseLibraryCoreFeedPageSourceV1(record?.source);
+  if (
+    !record ||
+    !exactKeys(record, ACCOUNT_LINK_CANDIDATES_RESPONSE_KEYS) ||
+    record.queryId !== LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID ||
+    record.schemaVersion !==
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION ||
+    !source.ok ||
+    !Array.isArray(record.rows) ||
+    record.rows.length > request.limit ||
+    textEncoder.encode(JSON.stringify(record)).byteLength >
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return { ok: false, error: "Account link candidates response is invalid" };
+  }
+  const rows = record.rows.map((row) =>
+    parseLibraryCoreGeneratedSqliteQueryRow(
+      LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID,
+      row,
+    ),
+  );
+  if (rows.some((row) => row === null)) {
+    return { ok: false, error: "Account link candidate row is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      queryId: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_QUERY_ID,
+      rows: Object.freeze(rows as LibraryCoreAccountLinkCandidateRowV1[]),
+      schemaVersion: LIBRARY_CORE_ACCOUNT_LINK_CANDIDATES_SCHEMA_VERSION,
       source: source.value,
     }),
   };

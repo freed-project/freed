@@ -2363,7 +2363,7 @@ describe("PWA Library Core SQLite engine", () => {
         ('account-3', 'person-1', 'rss', 'rss', 'alpha', 'alpha', 'Alpha',
          70, 220, 'capture', NULL, NULL, 70, 220),
         ('account-4', NULL, 'social', 'instagram', 'ada-instagram',
-         'ada.lovelace', 'Ada Lovelace', 80, 230, 'capture', NULL, NULL, 80, 230);
+         'ada', 'Ada Lovelace', 80, 230, 'capture', NULL, NULL, 80, 230);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
     `);
@@ -2850,6 +2850,41 @@ describe("PWA Library Core SQLite engine", () => {
         },
       ],
       source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        cancellationId: operationId("cancel-account-link-1"),
+        entityId: "account-4",
+        entityKind: "account",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        readerSessionId: operationId("reader-account-link-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "account_link_candidates_v1",
+      rows: [
+        {
+          accountId: "account-4",
+          confidence: "high",
+          personId: "person-1",
+          score: 95,
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        cancellationId: operationId("cancel-person-link-1"),
+        entityId: "person-1",
+        entityKind: "person",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        readerSessionId: operationId("reader-person-link-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      rows: [{ accountId: "account-4", personId: "person-1" }],
     });
     expect(
       engine.query({

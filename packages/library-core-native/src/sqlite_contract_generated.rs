@@ -24,7 +24,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "a0bf08a0186948125163d6ed235548f39a64e3af779263429a92cde2a8be48c2";
+    "145968c78bc12eb4ec16430bd152e249b6d7292d1456a3467815567a6c37e8e6";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -658,6 +658,7 @@ pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[
 pub const QUERY_IDS: &[&str] = &[
     "account_detail_v1",
     "account_graph_page_v1",
+    "account_link_candidates_v1",
     "account_picker_page_v1",
     "account_timeline_v1",
     "background_item_page_v1",
@@ -716,6 +717,10 @@ pub struct SqliteQueryProgram {
 }
 
 pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
+    SqliteQueryProgram { query_id: "account_link_candidates_v1", maximum_scan_rows: 6, sql: "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score DESC, personId COLLATE BINARY ASC LIMIT ?2;", reverse_sql: Some("WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score ASC, personId COLLATE BINARY DESC LIMIT ?2;"), count_sql: "SELECT 1;", variants: &[
+        SqliteQueryVariant { variant_id: "account", sql: "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score DESC, personId COLLATE BINARY ASC LIMIT ?2;", reverse_sql: "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score ASC, personId COLLATE BINARY DESC LIMIT ?2;" },
+        SqliteQueryVariant { variant_id: "person", sql: "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score DESC, accountId COLLATE BINARY ASC LIMIT ?2;", reverse_sql: "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score ASC, accountId COLLATE BINARY DESC LIMIT ?2;" },
+    ] },
     SqliteQueryProgram { query_id: "account_picker_page_v1", maximum_scan_rows: 51, sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE ASC, COALESCE(account.handle, account.external_id) COLLATE NOCASE ASC, account.provider COLLATE BINARY ASC, account.external_id COLLATE BINARY ASC, account.id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: Some("SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE DESC, COALESCE(account.handle, account.external_id) COLLATE NOCASE DESC, account.provider COLLATE BINARY DESC, account.external_id COLLATE BINARY DESC, account.id COLLATE BINARY DESC LIMIT ?1;"), count_sql: "SELECT count(*) FROM library_accounts AS account JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0;", variants: &[
         SqliteQueryVariant { variant_id: "empty", sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE ASC, COALESCE(account.handle, account.external_id) COLLATE NOCASE ASC, account.provider COLLATE BINARY ASC, account.external_id COLLATE BINARY ASC, account.id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE DESC, COALESCE(account.handle, account.external_id) COLLATE NOCASE DESC, account.provider COLLATE BINARY DESC, account.external_id COLLATE BINARY DESC, account.id COLLATE BINARY DESC LIMIT ?1;" },
         SqliteQueryVariant { variant_id: "search", sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank ASC LIMIT ?2;", reverse_sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank DESC LIMIT ?2;" },
@@ -837,6 +842,66 @@ pub struct SqliteQueryRowModel {
 
 #[rustfmt::skip]
 pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
+    SqliteQueryRowModel {
+        query_id: "account_link_candidates_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "accountId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "confidence",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(4),
+            maximum_utf8_bytes: Some(16),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["high", "medium"],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "personId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "reason",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(256),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "score",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(100),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
     SqliteQueryRowModel {
         query_id: "account_picker_page_v1",
         fields: &[

@@ -256,8 +256,10 @@ logical paths, missing containers, malformed JSON paths, and prototype-bearing
 object creation. The PWA hydrates synchronized preferences from these bounded
 SQLite nodes. Explicit archive and toggle commands also resolve their current
 item state through normalized SQLite detail before creating signed follower
-intents. The remaining shell read supplies only identity catalogs and the
-temporary initial item window until their typed page cuts land.
+intents. Startup reads only the facet summary and preference snapshot. Views
+open their own bounded typed queries and retain only visible windows, selected
+detail rows, and ephemeral interface state. No shell read or identity catalog
+hydration participates.
 
 Exit proof:
 
