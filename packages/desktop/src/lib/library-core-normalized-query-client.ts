@@ -3,6 +3,12 @@ import {
   createLibraryCoreOperationInstanceId,
   createLibraryCoreSqliteQueryWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
+  parseLibraryCoreDeviceContactMutationReceiptV1,
+  parseLibraryCoreDeviceContactQueryRequestV1,
+  parseLibraryCoreDeviceContactQueryResponseV1,
+  parseLibraryCoreDeviceContactSyncMutationV1,
+  type LibraryCoreDeviceContactMutationExecutor,
+  type LibraryCoreDeviceContactQueryExecutor,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreOperationInstanceId,
@@ -30,3 +36,38 @@ export async function queryNormalizedLibrary<
   });
   return parseLibraryCoreSqliteQueryResponse(response, validated.query as T);
 }
+
+export const mutateNormalizedDeviceContacts: LibraryCoreDeviceContactMutationExecutor =
+  async (mutation) => {
+    const parsedMutation = parseLibraryCoreDeviceContactSyncMutationV1(mutation);
+    if (!parsedMutation.ok) throw new TypeError(parsedMutation.error);
+    const response = await invoke<unknown>("mutate_normalized_device_contacts", {
+      mutation: parsedMutation.value,
+    });
+    const parsedResponse = parseLibraryCoreDeviceContactMutationReceiptV1(response);
+    if (!parsedResponse.ok) throw new TypeError(parsedResponse.error);
+    return parsedResponse.value;
+  };
+
+export const queryNormalizedDeviceContacts: LibraryCoreDeviceContactQueryExecutor =
+  async (query) => {
+    const parsedQuery = parseLibraryCoreDeviceContactQueryRequestV1(query);
+    if (!parsedQuery.ok) throw new TypeError(parsedQuery.error);
+    const command =
+      parsedQuery.value.queryId === "device_contact_status_v1"
+        ? "query_normalized_device_contact_status"
+        : parsedQuery.value.queryId === "device_contact_match_page_v1"
+          ? "query_normalized_device_contact_match_page"
+          : parsedQuery.value.queryId === "device_contact_suggestion_page_v1"
+            ? "query_normalized_device_contact_suggestion_page"
+            : "query_normalized_device_contact_unmatched_page";
+    const response = await invoke<unknown>(command, {
+      request: parsedQuery.value,
+    });
+    const parsedResponse = parseLibraryCoreDeviceContactQueryResponseV1(
+      response,
+      parsedQuery.value,
+    );
+    if (!parsedResponse.ok) throw new TypeError(parsedResponse.error);
+    return parsedResponse.value as never;
+  };

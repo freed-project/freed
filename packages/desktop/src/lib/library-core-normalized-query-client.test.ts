@@ -12,9 +12,11 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
-const { queryNormalizedLibrary } = await import(
-  "./library-core-normalized-query-client"
-);
+const {
+  mutateNormalizedDeviceContacts,
+  queryNormalizedDeviceContacts,
+  queryNormalizedLibrary,
+} = await import("./library-core-normalized-query-client");
 
 const request = {
   cancellationId: "desktop-query-test",
@@ -73,6 +75,87 @@ describe("Freed Desktop normalized query client", () => {
 
     await expect(queryNormalizedLibrary(request)).rejects.toThrow(
       "response fields do not match schema version 3",
+    );
+  });
+
+  it("runs closed device contact mutations through the native core", async () => {
+    const mutation = {
+      generationId: "contacts:1",
+      mutationKind: "device_contact_generation_begin_v1" as const,
+      schemaVersion: 1 as const,
+      startedAt: 42,
+    };
+    const receipt = {
+      activeGenerationId: null,
+      changed: true,
+      generationId: mutation.generationId,
+      matchedContactCount: 0,
+      revision: 1,
+      schemaVersion: 1,
+      stagedContactCount: 0,
+    };
+    mocks.invoke.mockResolvedValue(receipt);
+
+    await expect(mutateNormalizedDeviceContacts(mutation)).resolves.toEqual(
+      receipt,
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "mutate_normalized_device_contacts",
+      { mutation },
+    );
+  });
+
+  it("dispatches bounded device contact queries without a generic SQL lane", async () => {
+    const contactRequest = {
+      cursor: null,
+      limit: 50,
+      queryId: "device_contact_unmatched_page_v1" as const,
+      schemaVersion: 1 as const,
+    };
+    const contactResponse = {
+      nextCursor: null,
+      queryId: contactRequest.queryId,
+      revision: 2,
+      rows: [],
+      schemaVersion: 1,
+    };
+    mocks.invoke.mockResolvedValue(contactResponse);
+
+    await expect(
+      queryNormalizedDeviceContacts(contactRequest),
+    ).resolves.toEqual(contactResponse);
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "query_normalized_device_contact_unmatched_page",
+      { request: contactRequest },
+    );
+  });
+
+  it("rejects compatibility fields in a device contact response", async () => {
+    const statusRequest = {
+      queryId: "device_contact_status_v1" as const,
+      schemaVersion: 1 as const,
+    };
+    mocks.invoke.mockResolvedValue({
+      activeContactCount: 0,
+      activeGenerationId: null,
+      authStatus: "reconnect_required",
+      createdFriendCount: 0,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      lastSyncedAt: null,
+      pendingSuggestionCount: 0,
+      queryId: statusRequest.queryId,
+      revision: 0,
+      schemaVersion: 1,
+      shellJson: "{}",
+      syncStartedAt: null,
+      syncStatus: "idle",
+      syncToken: null,
+      updatedAt: 0,
+    });
+
+    await expect(queryNormalizedDeviceContacts(statusRequest)).rejects.toThrow(
+      "device contact status response is invalid",
     );
   });
 });

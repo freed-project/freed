@@ -102,7 +102,11 @@ import {
   upsertPwaLibraryCorePerson,
   upsertPwaLibraryCoreAccount,
 } from "./lib/library-core-runtime";
-import { queryPwaNormalizedLibrary } from "./lib/library-core-sqlite-runtime";
+import {
+  mutatePwaDeviceContactSync,
+  queryPwaDeviceContacts,
+  queryPwaNormalizedLibrary,
+} from "./lib/library-core-sqlite-runtime";
 import {
   refreshSampleLibraryData,
   summarizeSampleData,
@@ -494,6 +498,8 @@ function App() {
       upsertLibraryAccount: upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
+      mutateDeviceContacts: mutatePwaDeviceContactSync,
+      queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
       readLibraryStoryWallCandidates: readPwaLibraryCoreStoryWallCandidates,

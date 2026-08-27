@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   backups: vi.fn(),
+  contactStatus: vi.fn(),
   facetSummary: vi.fn(),
 }));
 
@@ -24,11 +25,8 @@ vi.mock("./sqlite-library", () => ({
   listSqliteLibraryBackups: mocks.backups,
   restoreSqliteLibraryBackup: vi.fn(),
 }));
-vi.mock("./contact-sync-storage.js", () => ({
-  readContactSyncState: () => ({
-    cachedContacts: [{ id: "contact-1" }, { id: "contact-2" }],
-    pendingSuggestions: [{ id: "suggestion-1" }],
-  }),
+vi.mock("./library-core-normalized-query-client.js", () => ({
+  queryNormalizedDeviceContacts: mocks.contactStatus,
 }));
 vi.mock("./background-runtime-coordinator.js", () => ({
   isBackgroundRuntimeDeferredError: () => false,
@@ -42,6 +40,10 @@ import { listSnapshots } from "./snapshots";
 
 describe("SQLite snapshot summaries", () => {
   beforeEach(() => {
+    mocks.contactStatus.mockReset().mockResolvedValue({
+      activeContactCount: 2,
+      pendingSuggestionCount: 1,
+    });
     mocks.facetSummary.mockReset().mockResolvedValue({
       friendPersonCount: 7,
     });
@@ -70,5 +72,9 @@ describe("SQLite snapshot summaries", () => {
       },
     ]);
     expect(mocks.facetSummary).toHaveBeenCalledOnce();
+    expect(mocks.contactStatus).toHaveBeenCalledWith({
+      queryId: "device_contact_status_v1",
+      schemaVersion: 1,
+    });
   });
 });

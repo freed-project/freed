@@ -28,7 +28,7 @@ import type {
   LibraryCoreStoreFollowerActorRequestV2,
   LibraryCoreDeviceContactMutationReceiptV1,
   LibraryCoreDeviceContactQueryRequestV1,
-  LibraryCoreDeviceContactQueryResponseV1,
+  LibraryCoreDeviceContactQueryResponseFor,
   LibraryCoreDeviceContactSyncMutationV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
@@ -72,11 +72,13 @@ export async function mutatePwaDeviceContactSync(
   return active.mutateDeviceContactSync(mutation);
 }
 
-export async function queryPwaDeviceContacts(
-  query: LibraryCoreDeviceContactQueryRequestV1,
-): Promise<LibraryCoreDeviceContactQueryResponseV1> {
+export async function queryPwaDeviceContacts<
+  T extends LibraryCoreDeviceContactQueryRequestV1,
+>(query: T): Promise<LibraryCoreDeviceContactQueryResponseFor<T>> {
   const active = await openClient();
-  return active.queryDeviceContacts(query);
+  return active.queryDeviceContacts(query) as Promise<
+    LibraryCoreDeviceContactQueryResponseFor<T>
+  >;
 }
 
 export async function beginPwaScopeActionStage(

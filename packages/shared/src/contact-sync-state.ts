@@ -1,33 +1,51 @@
-import type { ContactSyncState } from "./types.js";
+import type { GoogleContact, IdentitySuggestion } from "./types.js";
 
-export const CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync";
-export const CONTACT_SYNC_STATE_VERSION = 1;
+interface LegacyContactSyncMigrationState {
+  authStatus: "connected" | "reconnect_required";
+  syncStatus: "idle" | "syncing" | "error";
+  syncStartedAt?: number | null;
+  syncToken: string | null;
+  lastSyncedAt: number | null;
+  lastErrorCode?: "missing_token" | "auth" | "network" | "unknown";
+  lastErrorMessage?: string;
+  cachedContacts: GoogleContact[];
+  pendingSuggestions: IdentitySuggestion[];
+  dismissedSuggestionIds: string[];
+  createdFriendCount: number;
+  pendingMatches?: IdentitySuggestion[];
+  dismissedMatches?: string[];
+  autoLinkedCount?: number;
+  autoCreatedCount?: number;
+}
 
-export type ContactSyncStateParseResult =
+export const LEGACY_CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync";
+export const LEGACY_CONTACT_SYNC_STATE_VERSION = 1;
+
+export type LegacyContactSyncMigrationParseResult =
   | {
       readonly status: "missing";
-      readonly state: ContactSyncState;
+      readonly state: LegacyContactSyncMigrationState;
     }
   | {
       readonly status: "valid";
       readonly format: "current" | "legacy";
       readonly raw: string;
-      readonly state: ContactSyncState;
+      readonly state: LegacyContactSyncMigrationState;
     }
   | {
       readonly status: "corrupt";
       readonly raw: string;
-      readonly state: ContactSyncState;
+      readonly state: LegacyContactSyncMigrationState;
     }
   | {
       readonly status: "unsupported";
       readonly raw: string;
       readonly version: unknown;
-      readonly state: ContactSyncState;
+      readonly state: LegacyContactSyncMigrationState;
     };
 
-export function createEmptyContactSyncState(): ContactSyncState {
-  const pendingSuggestions: ContactSyncState["pendingSuggestions"] = [];
+function emptyLegacyContactSyncState(): LegacyContactSyncMigrationState {
+  const pendingSuggestions: LegacyContactSyncMigrationState["pendingSuggestions"] = [];
   const dismissedSuggestionIds: string[] = [];
   return {
     authStatus: "reconnect_required",
@@ -48,16 +66,16 @@ export function createEmptyContactSyncState(): ContactSyncState {
   };
 }
 
-export function createContactSyncStateForManualRepair(
+function failedLegacyContactSyncState(
   reason: "corrupt" | "unsupported" | "unavailable",
-): ContactSyncState {
+): LegacyContactSyncMigrationState {
   const message = reason === "unsupported"
     ? "Stored Google Contacts sync state is from a newer version. Use Sync Now or reconnect Google to replace it."
     : reason === "unavailable"
       ? "Google Contacts sync state could not be read or saved. Use Sync Now or reconnect Google to retry."
       : "Stored Google Contacts sync state is damaged. Use Sync Now or reconnect Google to repair it.";
   return {
-    ...createEmptyContactSyncState(),
+    ...emptyLegacyContactSyncState(),
     syncStatus: "error",
     lastErrorCode: "unknown",
     lastErrorMessage: message,
@@ -177,10 +195,10 @@ function isSupportedContactSyncRecord(value: Record<string, unknown>): boolean {
   );
 }
 
-function normalizeContactSyncState(parsed: Record<string, unknown>): ContactSyncState {
+function normalizeLegacyContactSyncState(parsed: Record<string, unknown>): LegacyContactSyncMigrationState {
   const pendingSource = parsed.pendingSuggestions ?? parsed.pendingMatches ?? [];
   const pendingSuggestions = (pendingSource as unknown[])
-    .filter(isIdentitySuggestion) as ContactSyncState["pendingSuggestions"];
+    .filter(isIdentitySuggestion) as LegacyContactSyncMigrationState["pendingSuggestions"];
   const dismissedSource = parsed.dismissedSuggestionIds ?? parsed.dismissedMatches ?? [];
   const dismissedSuggestionIds = (dismissedSource as unknown[])
     .filter((value): value is string => typeof value === "string");
@@ -197,11 +215,11 @@ function normalizeContactSyncState(parsed: Record<string, unknown>): ContactSync
     syncStartedAt: typeof parsed.syncStartedAt === "number" ? parsed.syncStartedAt : null,
     syncToken: typeof parsed.syncToken === "string" ? parsed.syncToken : null,
     lastSyncedAt: typeof parsed.lastSyncedAt === "number" ? parsed.lastSyncedAt : null,
-    lastErrorCode: parsed.lastErrorCode as ContactSyncState["lastErrorCode"],
+    lastErrorCode: parsed.lastErrorCode as LegacyContactSyncMigrationState["lastErrorCode"],
     lastErrorMessage: typeof parsed.lastErrorMessage === "string"
       ? parsed.lastErrorMessage
       : undefined,
-    cachedContacts: (parsed.cachedContacts ?? []) as ContactSyncState["cachedContacts"],
+    cachedContacts: (parsed.cachedContacts ?? []) as LegacyContactSyncMigrationState["cachedContacts"],
     pendingSuggestions,
     dismissedSuggestionIds,
     createdFriendCount,
@@ -212,15 +230,11 @@ function normalizeContactSyncState(parsed: Record<string, unknown>): ContactSync
   };
 }
 
-export function serializeContactSyncState(state: ContactSyncState): string {
-  return JSON.stringify({ version: CONTACT_SYNC_STATE_VERSION, ...state });
-}
-
-export function parseContactSyncState(
+export function parseLegacyContactSyncStateForMigration(
   raw: string | null | undefined,
-): ContactSyncStateParseResult {
+): LegacyContactSyncMigrationParseResult {
   if (raw === null || raw === undefined) {
-    return { status: "missing", state: createEmptyContactSyncState() };
+    return { status: "missing", state: emptyLegacyContactSyncState() };
   }
 
   try {
@@ -229,35 +243,35 @@ export function parseContactSyncState(
       return {
         status: "corrupt",
         raw,
-        state: createContactSyncStateForManualRepair("corrupt"),
+        state: failedLegacyContactSyncState("corrupt"),
       };
     }
-    if ("version" in parsed && parsed.version !== CONTACT_SYNC_STATE_VERSION) {
+    if ("version" in parsed && parsed.version !== LEGACY_CONTACT_SYNC_STATE_VERSION) {
       return {
         status: "unsupported",
         raw,
         version: parsed.version,
-        state: createContactSyncStateForManualRepair("unsupported"),
+        state: failedLegacyContactSyncState("unsupported"),
       };
     }
     if (!isSupportedContactSyncRecord(parsed)) {
       return {
         status: "corrupt",
         raw,
-        state: createContactSyncStateForManualRepair("corrupt"),
+        state: failedLegacyContactSyncState("corrupt"),
       };
     }
     return {
       status: "valid",
       format: "version" in parsed ? "current" : "legacy",
       raw,
-      state: normalizeContactSyncState(parsed),
+      state: normalizeLegacyContactSyncState(parsed),
     };
   } catch {
     return {
       status: "corrupt",
       raw,
-      state: createContactSyncStateForManualRepair("corrupt"),
+      state: failedLegacyContactSyncState("corrupt"),
     };
   }
 }

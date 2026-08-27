@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
 import { reloadSqliteLibraryState, subscribe } from "./library-client";
 import { readLibraryCoreFacetSummary } from "./library-core-item-detail-runtime";
+import { queryNormalizedDeviceContacts } from "./library-core-normalized-query-client.js";
 import {
   clearSqliteLibraryBackups,
   createSqliteLibraryBackup,
@@ -9,7 +10,6 @@ import {
   listSqliteLibraryBackups,
   restoreSqliteLibraryBackup,
 } from "./sqlite-library";
-import { readContactSyncState } from "./contact-sync-storage.js";
 import { isBackgroundRuntimeDeferredError, runBackgroundJob } from "./background-runtime-coordinator.js";
 import { log } from "./logger.js";
 
@@ -53,16 +53,22 @@ function notifySnapshotListeners(): void {
 }
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
-  const contacts = readContactSyncState();
-  const friendCount = (await readLibraryCoreFacetSummary()).friendPersonCount;
-  return (await listSqliteLibraryBackups()).map((backup) => ({
+  const [contacts, facet, backups] = await Promise.all([
+    queryNormalizedDeviceContacts({
+      queryId: "device_contact_status_v1",
+      schemaVersion: 1,
+    }),
+    readLibraryCoreFacetSummary(),
+    listSqliteLibraryBackups(),
+  ]);
+  return backups.map((backup) => ({
     id: backup.backupId,
     createdAt: backup.createdAtMs,
     byteSize: backup.byteLength,
     itemCount: backup.itemCount,
-    friendCount,
-    contactCount: contacts.cachedContacts.length,
-    pendingMatchCount: contacts.pendingSuggestions.length,
+    friendCount: facet.friendPersonCount,
+    contactCount: contacts.activeContactCount,
+    pendingMatchCount: contacts.pendingSuggestionCount,
     reason: backup.reason,
   }));
 }
@@ -75,16 +81,21 @@ async function createSnapshotInternal(reason: SnapshotReason): Promise<SnapshotS
   }
 
   const backup = await createSqliteLibraryBackup(reason);
-  const contacts = readContactSyncState();
-  const friendCount = (await readLibraryCoreFacetSummary()).friendPersonCount;
+  const [contacts, facet] = await Promise.all([
+    queryNormalizedDeviceContacts({
+      queryId: "device_contact_status_v1",
+      schemaVersion: 1,
+    }),
+    readLibraryCoreFacetSummary(),
+  ]);
   const summary: SnapshotSummary = {
     id: backup.backupId,
     createdAt: backup.createdAtMs,
     byteSize: backup.byteLength,
     itemCount: backup.itemCount,
-    friendCount,
-    contactCount: contacts.cachedContacts.length,
-    pendingMatchCount: contacts.pendingSuggestions.length,
+    friendCount: facet.friendPersonCount,
+    contactCount: contacts.activeContactCount,
+    pendingMatchCount: contacts.pendingSuggestionCount,
     reason,
   };
   lastSnapshotAt = summary.createdAt;

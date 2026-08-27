@@ -5,865 +5,333 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  CONTACT_SYNC_STORAGE_KEY,
-  parseContactSyncState,
-  type ContactSyncState,
+  LEGACY_CONTACT_SYNC_STORAGE_KEY,
+  type GoogleContact,
+  type IdentitySuggestion,
 } from "@freed/shared";
+import type {
+  LibraryCoreDeviceContactMutationExecutor,
+  LibraryCoreDeviceContactMutationReceiptV1,
+  LibraryCoreDeviceContactQueryExecutor,
+  LibraryCoreDeviceContactStatusResponseV1,
+} from "@freed/shared/library-core";
 import { PlatformProvider, type PlatformConfig } from "../context/PlatformContext";
 import { useBackgroundActivityStore } from "../lib/background-activity-store";
-import {
-  resetFactoryResetStateForTests,
-  runFactoryResetOperations,
-} from "../lib/factory-reset";
+import { resetFactoryResetStateForTests } from "../lib/factory-reset";
 import { useContactSync } from "./useContactSync";
 
 type ContactSyncActions = ReturnType<typeof useContactSync>;
 
 function ContactSyncHarness({ onReady }: { onReady: (actions: ContactSyncActions) => void }) {
   const actions = useContactSync();
-
-  useEffect(() => {
-    onReady(actions);
-  }, [actions, onReady]);
-
+  useEffect(() => onReady(actions), [actions, onReady]);
   return null;
+}
+
+function status(): LibraryCoreDeviceContactStatusResponseV1 {
+  return {
+    activeContactCount: 0,
+    activeGenerationId: null,
+    authStatus: "reconnect_required",
+    createdFriendCount: 0,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    lastSyncedAt: null,
+    pendingSuggestionCount: 0,
+    queryId: "device_contact_status_v1",
+    revision: 0,
+    schemaVersion: 1,
+    syncStartedAt: null,
+    syncStatus: "idle",
+    syncToken: null,
+    updatedAt: 0,
+  };
+}
+
+function createContactRuntime() {
+  let current = status();
+  let buildingGenerationId: string | null = null;
+  let contacts: GoogleContact[] = [];
+  let suggestions: IdentitySuggestion[] = [];
+  const receipt = (changed: boolean): LibraryCoreDeviceContactMutationReceiptV1 => ({
+    activeGenerationId: current.activeGenerationId,
+    changed,
+    generationId: buildingGenerationId ?? current.activeGenerationId,
+    matchedContactCount: suggestions.length,
+    revision: current.revision,
+    schemaVersion: 1,
+    stagedContactCount: contacts.length,
+  });
+  const mutate = vi.fn(async (mutation) => {
+    current = { ...current, revision: current.revision + 1 };
+    switch (mutation.mutationKind) {
+      case "device_contact_status_set_v1":
+        current = {
+          ...current,
+          authStatus: mutation.authStatus,
+          lastErrorCode: mutation.errorCode,
+          lastErrorMessage: mutation.errorMessage,
+          syncStartedAt: mutation.syncStartedAt,
+          syncStatus: mutation.syncStatus,
+          updatedAt: mutation.updatedAt,
+        };
+        break;
+      case "device_contact_generation_begin_v1":
+        buildingGenerationId = mutation.generationId;
+        contacts = [];
+        suggestions = [];
+        current = {
+          ...current,
+          authStatus: "connected",
+          syncStartedAt: mutation.startedAt,
+          syncStatus: "syncing",
+        };
+        break;
+      case "device_contact_delta_append_v1":
+        contacts = [...contacts, ...mutation.contacts];
+        break;
+      case "device_contact_match_append_v1":
+        suggestions = mutation.matches.flatMap((match) =>
+          match.suggestion ? [match.suggestion] : [],
+        );
+        break;
+      case "device_contact_generation_activate_v1":
+        current = {
+          ...current,
+          activeContactCount: contacts.length,
+          activeGenerationId: mutation.generationId,
+          lastSyncedAt: mutation.activatedAt,
+          pendingSuggestionCount: suggestions.length,
+          syncStartedAt: null,
+          syncStatus: "idle",
+          syncToken: mutation.nextSyncToken,
+          updatedAt: mutation.activatedAt,
+        };
+        buildingGenerationId = null;
+        break;
+      case "device_contact_suggestion_dismiss_v1":
+        suggestions = suggestions.filter((suggestion) => suggestion.id !== mutation.suggestionId);
+        current = { ...current, pendingSuggestionCount: suggestions.length };
+        break;
+    }
+    return receipt(true);
+  }) as LibraryCoreDeviceContactMutationExecutor & ReturnType<typeof vi.fn>;
+  const query = vi.fn(async (request) => {
+    switch (request.queryId) {
+      case "device_contact_status_v1":
+        return current;
+      case "device_contact_match_page_v1":
+        return {
+          generationId: request.generationId,
+          nextCursor: null,
+          queryId: request.queryId,
+          revision: current.revision,
+          rows: request.generationId === buildingGenerationId ? contacts : [],
+          schemaVersion: 1,
+        };
+      case "device_contact_suggestion_page_v1":
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          revision: current.revision,
+          rows: suggestions.map((suggestion) => ({
+            contact: contacts.find((contact) => suggestion.id.includes(contact.resourceName))!,
+            suggestion,
+          })),
+          schemaVersion: 1,
+        };
+      case "device_contact_unmatched_page_v1":
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          revision: current.revision,
+          rows: contacts.filter((contact) =>
+            !suggestions.some((suggestion) => suggestion.id.includes(contact.resourceName))),
+          schemaVersion: 1,
+        };
+    }
+  }) as LibraryCoreDeviceContactQueryExecutor & ReturnType<typeof vi.fn>;
+  return { mutate, query, readStatus: () => current };
+}
+
+function platform(runtime: ReturnType<typeof createContactRuntime>, overrides: Partial<PlatformConfig> = {}): PlatformConfig {
+  const store = <T,>(selector: (state: unknown) => T): T => selector({
+    accounts: { "renderer-account": { id: "renderer-account" } },
+    items: [{ globalId: "renderer-item" }],
+    persons: { "renderer-person": { id: "renderer-person" } },
+    setPendingMatchCount: vi.fn(),
+  });
+  return {
+    store,
+    mutateDeviceContacts: runtime.mutate,
+    queryDeviceContacts: runtime.query,
+    googleContacts: {
+      connect: vi.fn(async () => {}),
+      getToken: vi.fn(async () => "google-access-token"),
+      fetchContacts: vi.fn(async () => ({ contacts: [], deleted: [], nextSyncToken: "next-token" })),
+    },
+    ...overrides,
+  } as unknown as PlatformConfig;
 }
 
 describe("useContactSync", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
-
   afterAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
-
   afterEach(async () => {
-    await act(async () => {
-      root?.unmount();
-    });
+    await act(async () => root?.unmount());
     container?.remove();
-    root = null;
     container = null;
+    root = null;
     localStorage.clear();
     resetFactoryResetStateForTests();
     useBackgroundActivityStore.getState().clearBackgroundActivity();
     vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
-  it("coalesces overlapping Google Contacts sync requests", async () => {
+  async function mount(value: PlatformConfig): Promise<() => ContactSyncActions> {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-
-    let resolveFetch: ((value: { contacts: []; nextSyncToken: string; deleted: [] }) => void) | null = null;
-    const getToken = vi.fn(async () => "google-access-token");
-    const fetchContacts = vi.fn(() => new Promise<{ contacts: []; nextSyncToken: string; deleted: [] }>((resolve) => {
-      resolveFetch = resolve;
-    }));
-    const setPendingMatchCount = vi.fn();
-    const store = <T,>(selector: (state: unknown) => T): T => selector({
-      persons: {},
-      accounts: {},
-      items: [],
-      setPendingMatchCount,
-    });
-    const platformValue = {
-      store,
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
     let actions: ContactSyncActions | null = null;
-
     await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
+      root?.render(
+        <PlatformProvider value={value}>
+          <ContactSyncHarness onReady={(next) => { actions = next; }} />
         </PlatformProvider>,
       );
-    });
-
-    let firstSync: Promise<ContactSyncState> | null = null;
-    let secondSync: Promise<ContactSyncState> | null = null;
-    await act(async () => {
-      firstSync = actions!.syncNow();
-      secondSync = actions!.syncNow();
       await Promise.resolve();
     });
+    await vi.waitFor(() => expect(actions).not.toBeNull());
+    return () => actions!;
+  }
 
-    expect(firstSync).toBe(secondSync);
-    expect(getToken).toHaveBeenCalledTimes(1);
-    expect(fetchContacts).toHaveBeenCalledTimes(1);
-    expect(fetchContacts).toHaveBeenCalledWith("google-access-token", null);
-    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(1);
-    expect(useBackgroundActivityStore.getState().active["channel:googleContacts"]).toMatchObject({
-      channelId: "googleContacts",
-      label: "Google Contacts",
-      message: "Fetching Google Contacts.",
-    });
-
-    await act(async () => {
-      resolveFetch?.({ contacts: [], nextSyncToken: "next-token", deleted: [] });
-      await firstSync;
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncToken: "next-token",
-    });
-    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
-    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
-      level: "success",
-      channelId: "googleContacts",
-    });
-  });
-
-  it("fails closed when the SQLite Library reader is unavailable", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [{ globalId: "legacy-renderer-item" }],
-        setPendingMatchCount: vi.fn(),
-      }),
+  it("coalesces one provider fetch into one normalized generation", async () => {
+    const runtime = createContactRuntime();
+    let resolveFetch!: (value: { contacts: GoogleContact[]; deleted: string[]; nextSyncToken: string }) => void;
+    const fetchContacts = vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }));
+    const getActions = await mount(platform(runtime, {
       googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
         connect: vi.fn(async () => {}),
-        fetchContacts: vi.fn(async () => ({
-          contacts: [{
-            resourceName: "people/unmatched",
-            etag: "etag-unmatched",
-            name: { displayName: "Unmatched Person" },
-            emails: [],
-            phones: [],
-            photos: [],
-            organizations: [],
-          }],
-          nextSyncToken: "unaccepted-token",
-          deleted: [],
-        })),
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    await act(async () => {
-      await actions!.syncNow({ force: true });
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      syncStatus: "error",
-      syncToken: null,
-      lastErrorMessage: "The SQLite Library query boundary is unavailable.",
-    });
-  });
-
-  it("uses only the bounded SQLite match response and ignores renderer corpora", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    const queryLibraryCore = vi.fn(async () => ({
-      accountIds: ["account-sqlite"],
-      confidence: "high" as const,
-      personId: "person-sqlite",
-      queryId: "contact_match_v1" as const,
-      schemaVersion: 1 as const,
-      source: {
-        generationId: "a".repeat(64),
-        projectionRevision: 9,
-        transitionSequence: 9,
+        getToken: vi.fn(async () => "google-access-token"),
+        fetchContacts,
       },
     }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: { "legacy-person": { id: "legacy-person", name: "Ada Lovelace" } },
-        accounts: { "legacy-account": { id: "legacy-account", displayName: "Ada Lovelace" } },
-        items: [{ globalId: "legacy-item", author: { id: "legacy-author", displayName: "Ada Lovelace" } }],
-        setPendingMatchCount: vi.fn(),
-      }),
-      queryLibraryCore,
-      googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
-        connect: vi.fn(async () => {}),
-        fetchContacts: vi.fn(async () => ({
-          contacts: [{
-            resourceName: "people/ada",
-            etag: "etag-ada",
-            name: { displayName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" },
-            emails: [{ value: "ada@example.com" }],
-            phones: [],
-            photos: [],
-            organizations: [],
-          }],
-          nextSyncToken: "next-token",
-          deleted: [],
-        })),
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
+    let first!: Promise<LibraryCoreDeviceContactStatusResponseV1>;
+    let second!: Promise<LibraryCoreDeviceContactStatusResponseV1>;
     await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
+      first = getActions().syncNow({ force: true });
+      second = getActions().syncNow({ force: true });
+      await Promise.resolve();
     });
+    expect(first).toBe(second);
+    await vi.waitFor(() => expect(fetchContacts).toHaveBeenCalledOnce());
     await act(async () => {
-      await actions!.syncNow({ force: true });
+      resolveFetch({ contacts: [], deleted: [], nextSyncToken: "next-token" });
+      await first;
     });
-
-    expect(queryLibraryCore).toHaveBeenCalledOnce();
-    expect(queryLibraryCore).toHaveBeenCalledWith({
-      emails: ["ada@example.com"],
-      names: ["ada", "ada lovelace", "lovelace ada"],
-      queryId: "contact_match_v1",
-      schemaVersion: 1,
-    });
-    expect(actions?.getSyncState().pendingSuggestions).toEqual([
-      expect.objectContaining({
-        accountIds: ["account-sqlite"],
-        personId: "person-sqlite",
-      }),
+    expect(runtime.readStatus()).toMatchObject({ syncStatus: "idle", syncToken: "next-token" });
+    expect(runtime.mutate.mock.calls.map(([request]) => request.mutationKind)).toEqual([
+      "device_contact_status_set_v1",
+      "device_contact_generation_begin_v1",
+      "device_contact_generation_activate_v1",
     ]);
   });
 
-  it("drains an issued Contacts request without restoring state after reset", async () => {
-    const corruptRaw = "{damaged-contact-sync-state";
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    let resolveFetch!: (value: { contacts: []; nextSyncToken: string; deleted: [] }) => void;
-    const fetchContacts = vi.fn(() =>
-      new Promise<{ contacts: []; nextSyncToken: string; deleted: [] }>((resolve) => {
-        resolveFetch = resolve;
-      }),
-    );
-    const getToken = vi.fn(async () => "google-access-token");
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    await act(async () => {
-      await actions!.syncNow();
-    });
-    expect(getToken).not.toHaveBeenCalled();
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(corruptRaw);
-
-    let sync!: Promise<ContactSyncState>;
-    await act(async () => {
-      sync = actions!.syncNow({ force: true });
-      await Promise.resolve();
-    });
-    await vi.waitFor(() => expect(fetchContacts).toHaveBeenCalledOnce());
-    expect(getToken).toHaveBeenCalledOnce();
-    const clearContactState = vi.fn(() => {
-      localStorage.removeItem(CONTACT_SYNC_STORAGE_KEY);
-    });
-    const reset = runFactoryResetOperations({
-      quiesceLocalWriters: [],
-      clearDeviceStores: () => [],
-      clearLocalSettings: [clearContactState],
-      clearLocalData: [],
-      clearProviderDataAndConnections: async () => undefined,
-      clearDocument: async () => undefined,
-    });
-    await Promise.resolve();
-    expect(clearContactState).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveFetch({ contacts: [], nextSyncToken: "late-token", deleted: [] });
-      await sync;
-      await reset;
-    });
-
-    expect(clearContactState).toHaveBeenCalledOnce();
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBeNull();
-    await actions!.syncNow({ force: true });
-    expect(fetchContacts).toHaveBeenCalledOnce();
-  });
-
-  it.each([
-    ["corrupt JSON", "{not-json"],
-    ["structurally malformed state", JSON.stringify({ version: 1, cachedContacts: "not-an-array" })],
-    ["an unsupported version", JSON.stringify({ version: 99, syncToken: "future-token" })],
-  ])("blocks automatic interval and focus sync for %s", async (_label, raw) => {
-    vi.useFakeTimers();
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, raw);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const getToken = vi.fn(async () => "google-access-token");
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      syncStatus: "error",
-      lastErrorCode: "unknown",
-    });
-    expect(actions?.getSyncState().lastErrorMessage).toContain("Sync Now");
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
-      window.dispatchEvent(new Event("focus"));
-      await Promise.resolve();
-    });
-
-    expect(getToken).not.toHaveBeenCalled();
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(raw);
-  });
-
-  it("rechecks the persisted ledger before automatic provider work", async () => {
-    vi.useFakeTimers();
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncToken: "stale-token",
-      lastSyncedAt: Date.now() - 60 * 60 * 1000,
-      cachedContacts: [],
-      pendingSuggestions: [],
-      dismissedSuggestionIds: [],
-      createdFriendCount: 0,
+  it("matches only the bounded SQLite contact page", async () => {
+    const runtime = createContactRuntime();
+    const contact: GoogleContact = {
+      emails: [{ value: "ada@example.com" }],
+      name: { displayName: "Ada Lovelace", givenName: "Ada" },
+      organizations: [],
+      phones: [],
+      photos: [],
+      resourceName: "people/ada",
+    };
+    const queryLibraryCore = vi.fn(async () => ({
+      accountIds: ["account:sqlite"],
+      confidence: "high" as const,
+      personId: "person:sqlite",
+      queryId: "contact_match_v1" as const,
+      schemaVersion: 1 as const,
+      source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 },
     }));
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const getToken = vi.fn(async () => "google-access-token");
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
+    const getActions = await mount(platform(runtime, {
+      queryLibraryCore,
       googleContacts: {
-        getToken,
         connect: vi.fn(async () => {}),
-        fetchContacts,
+        getToken: vi.fn(async () => "google-access-token"),
+        fetchContacts: vi.fn(async () => ({ contacts: [contact], deleted: [], nextSyncToken: "next-token" })),
       },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    const corruptRaw = "{corrupted-after-mount";
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
-      window.dispatchEvent(new Event("focus"));
-      await Promise.resolve();
-    });
-
-    expect(getToken).not.toHaveBeenCalled();
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(actions?.getSyncState()).toMatchObject({
-      syncStatus: "error",
-      lastErrorCode: "unknown",
-    });
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(corruptRaw);
-  });
-
-  it("repairs malformed state only during an explicit sync", async () => {
-    const malformedRaw = JSON.stringify({ version: 1, cachedContacts: "not-an-array" });
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, malformedRaw);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const getToken = vi.fn(async () => "google-access-token");
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "repaired-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      scanLibraryItems: async (visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0]) => {
-        await visit([]);
-      },
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(malformedRaw);
-
-    await act(async () => {
-      await actions!.syncNow({ force: true });
-    });
-
-    expect(getToken).toHaveBeenCalledOnce();
-    expect(fetchContacts).toHaveBeenCalledWith("google-access-token", null);
-    expect(actions?.getSyncState()).toMatchObject({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncToken: "repaired-token",
-    });
-    const repaired = parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
-    expect(repaired).toMatchObject({
-      status: "valid",
-      format: "current",
-      state: { syncToken: "repaired-token" },
-    });
-    const recoveryKey = Array.from({ length: localStorage.length }, (_unused, index) =>
-      localStorage.key(index),
-    ).find((key) => key?.startsWith(`${CONTACT_SYNC_STORAGE_KEY}.recovery.`));
-    expect(recoveryKey).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem(recoveryKey ?? "") ?? "{}")).toMatchObject({
-      reason: "corrupt",
-      raw: malformedRaw,
-    });
-  });
-
-  it("keeps the repair latch closed when explicit repair cannot be persisted", async () => {
-    const corruptRaw = "{contact-sync-write-failure";
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const getToken = vi.fn(async () => "google-access-token");
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("local storage write failed");
-    });
-    await act(async () => {
-      await actions!.syncNow({ force: true });
-    });
-
-    expect(getToken).toHaveBeenCalledOnce();
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(actions?.getSyncState()).toMatchObject({
-      syncStatus: "error",
-      lastErrorCode: "unknown",
-    });
-    expect(actions?.getSyncState().lastErrorMessage).toContain("could not be read or saved");
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(corruptRaw);
-
-    setItem.mockRestore();
-    await act(async () => {
-      await actions!.syncNow();
-    });
-
-    expect(getToken).toHaveBeenCalledOnce();
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(corruptRaw);
-  });
-
-  it("keeps Google token lookup failures recoverable in sync state", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const getToken = vi.fn(async () => {
-      throw new Error("Google token refresh failed (400): client_secret is missing.");
-    });
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const setPendingMatchCount = vi.fn();
-    const store = <T,>(selector: (state: unknown) => T): T => selector({
-      persons: {},
-      accounts: {},
-      items: [],
-      setPendingMatchCount,
-    });
-    const platformValue = {
-      store,
-      googleContacts: {
-        getToken,
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-    let result: ContactSyncState | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    await act(async () => {
-      result = await actions!.syncNow({ force: true });
-    });
-
-    expect(getToken).toHaveBeenCalledTimes(1);
-    expect(fetchContacts).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      authStatus: "reconnect_required",
-      syncStatus: "error",
-      syncStartedAt: null,
-      lastErrorCode: "auth",
-    });
-    expect(result?.lastErrorMessage).toContain("client_secret is missing");
-    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
-    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
-      level: "error",
-      channelId: "googleContacts",
-    });
-  });
-
-  it("recovers a stale persisted syncing state after a successful sync", async () => {
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
-      authStatus: "connected",
-      syncStatus: "syncing",
-      syncStartedAt: Date.now() - 180_000,
-      syncToken: "old-token",
-      lastSyncedAt: 1_700_000_000_000,
-      cachedContacts: [],
-      pendingSuggestions: [],
-      dismissedSuggestionIds: [],
-      createdFriendCount: 0,
     }));
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
+    await act(async () => { await getActions().syncNow({ force: true }); });
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    expect(getActions().suggestionPage.rows).toEqual([
+      expect.objectContaining({
+        contact: expect.objectContaining({ resourceName: "people/ada" }),
+        suggestion: expect.objectContaining({ accountIds: ["account:sqlite"], personId: "person:sqlite" }),
       }),
-      scanLibraryItems: async (visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0]) => {
-        await visit([]);
-      },
-      googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
-        connect: vi.fn(async () => {}),
-        fetchContacts: vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] })),
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      syncStatus: "idle",
-      syncStartedAt: null,
-      lastSyncedAt: 1_700_000_000_000,
-    });
-
-    await act(async () => {
-      await actions!.syncNow({ force: true });
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncStartedAt: null,
-      syncToken: "next-token",
-    });
+    ]);
+    expect(runtime.query.mock.calls
+      .filter(([request]) => request.queryId === "device_contact_match_page_v1")
+      .every(([request]) => request.limit <= 64)).toBe(true);
   });
 
-  it("times out stalled People API requests instead of leaving the UI syncing", async () => {
-    vi.useFakeTimers();
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
+  it("fails closed in SQLite status when identity matching is unavailable", async () => {
+    const runtime = createContactRuntime();
+    const getActions = await mount(platform(runtime, {
+      queryLibraryCore: undefined,
       googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
         connect: vi.fn(async () => {}),
-        fetchContacts: vi.fn(() => new Promise(() => undefined)),
+        getToken: vi.fn(async () => "google-access-token"),
+        fetchContacts: vi.fn(async () => ({
+          contacts: [{
+            emails: [],
+            name: { displayName: "Unmatched" },
+            organizations: [],
+            phones: [],
+            photos: [],
+            resourceName: "people/unmatched",
+          }],
+          deleted: [],
+          nextSyncToken: "unaccepted-token",
+        })),
       },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    let syncPromise: Promise<ContactSyncState> | null = null;
-    await act(async () => {
-      syncPromise = actions!.syncNow({ force: true });
-      await Promise.resolve();
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      authStatus: "connected",
-      syncStatus: "syncing",
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
-      await syncPromise;
-    });
-
-    expect(actions?.getSyncState()).toMatchObject({
-      authStatus: "connected",
+    }));
+    await act(async () => { await getActions().syncNow({ force: true }); });
+    expect(runtime.readStatus()).toMatchObject({
+      lastErrorMessage: "The SQLite Library query boundary is unavailable.",
       syncStatus: "error",
-      syncStartedAt: null,
-      lastErrorCode: "network",
-    });
-    expect(actions?.getSyncState().lastErrorMessage).toContain("Google Contacts sync timed out");
-    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
-    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
-      level: "error",
-      channelId: "googleContacts",
+      syncToken: null,
     });
   });
 
-  it("skips automatic focus syncs when Contacts synced recently", async () => {
-    const lastSyncedAt = Date.now();
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncStartedAt: null,
-      syncToken: "recent-token",
-      lastSyncedAt,
-      cachedContacts: [],
-      pendingSuggestions: [],
-      dismissedSuggestionIds: [],
-      createdFriendCount: 0,
-    }));
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-    let actions: ContactSyncActions | null = null;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={(nextActions) => {
-            actions = nextActions;
-          }} />
-        </PlatformProvider>,
-      );
-    });
-
-    await act(async () => {
-      await actions!.syncNow();
-    });
-
-    expect(fetchContacts).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await actions!.syncNow({ force: true });
-    });
-
-    expect(fetchContacts).toHaveBeenCalledOnce();
-  });
-
-  it("skips automatic focus syncs during the launch grace period", async () => {
-    vi.useFakeTimers();
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
-      authStatus: "connected",
-      syncStatus: "idle",
-      syncStartedAt: null,
-      syncToken: "stale-token",
-      lastSyncedAt: Date.now() - 60 * 60 * 1000,
-      cachedContacts: [],
-      pendingSuggestions: [],
-      dismissedSuggestionIds: [],
-      createdFriendCount: 0,
-    }));
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
-    const platformValue = {
-      store: <T,>(selector: (state: unknown) => T): T => selector({
-        persons: {},
-        accounts: {},
-        items: [],
-        setPendingMatchCount: vi.fn(),
-      }),
-      googleContacts: {
-        getToken: vi.fn(async () => "google-access-token"),
-        connect: vi.fn(async () => {}),
-        fetchContacts,
-      },
-    } as unknown as PlatformConfig;
-
-    await act(async () => {
-      root.render(
-        <PlatformProvider value={platformValue}>
-          <ContactSyncHarness onReady={() => {}} />
-        </PlatformProvider>,
-      );
-    });
-
-    await act(async () => {
-      window.dispatchEvent(new Event("focus"));
-      await Promise.resolve();
-    });
-
-    expect(fetchContacts).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
-      window.dispatchEvent(new Event("focus"));
-    });
-
-    expect(fetchContacts).toHaveBeenCalledOnce();
+  it("imports the legacy ledger once and removes its localStorage authority", async () => {
+    const legacy = {
+      version: 1,
+      authStatus: "connected" as const,
+      cachedContacts: [{
+        emails: [],
+        name: { displayName: "Legacy Contact" },
+        organizations: [],
+        phones: [],
+        photos: [],
+        resourceName: "people/legacy",
+      }],
+      syncToken: "legacy-token",
+    };
+    localStorage.setItem(LEGACY_CONTACT_SYNC_STORAGE_KEY, JSON.stringify(legacy));
+    const runtime = createContactRuntime();
+    await mount(platform(runtime));
+    await vi.waitFor(() => expect(localStorage.getItem(LEGACY_CONTACT_SYNC_STORAGE_KEY)).toBeNull());
+    expect(runtime.readStatus()).toMatchObject({ activeContactCount: 1, syncToken: "legacy-token" });
+    expect(runtime.mutate.mock.calls.filter(
+      ([request]) => request.mutationKind === "device_contact_generation_begin_v1",
+    )).toHaveLength(1);
   });
 });

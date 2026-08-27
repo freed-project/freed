@@ -16,7 +16,6 @@ import {
 import type {
   Account,
   BaseAppState,
-  ContactSyncState,
   ContentSignal,
   BugReportDraft,
   BugReportIssueType,
@@ -44,6 +43,9 @@ import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
 import type {
   LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreDeviceContactMutationExecutor,
+  LibraryCoreDeviceContactQueryExecutor,
+  LibraryCoreDeviceContactStatusResponseV1,
   LibraryCoreScopeActionReceiptV1,
   LibraryCoreScopeActionRequestV1,
 } from "@freed/shared/library-core";
@@ -748,6 +750,12 @@ export interface PlatformConfig {
   /** Execute one registered, bounded, typed query against local SQLite. */
   queryLibraryCore?: LibraryCoreNormalizedQueryExecutor;
 
+  /** Apply one closed device-local Google Contacts mutation in local SQLite. */
+  mutateDeviceContacts?: LibraryCoreDeviceContactMutationExecutor;
+
+  /** Run one bounded device-local Google Contacts query in local SQLite. */
+  queryDeviceContacts?: LibraryCoreDeviceContactQueryExecutor;
+
   /** One bounded source-keyed Friends timeline page from the local row store. */
   readLibraryPersonTimeline?: (
     request: LibraryPersonTimelineRequest,
@@ -907,8 +915,8 @@ export interface PlatformConfig {
 }
 
 export interface ContactSyncActions {
-  syncNow: () => Promise<ContactSyncState>;
-  dismissSuggestion: (suggestionId: string) => void;
+  syncNow: () => Promise<LibraryCoreDeviceContactStatusResponseV1>;
+  dismissSuggestion: (suggestionId: string) => Promise<void>;
   openReview: () => Promise<void>;
 }
 

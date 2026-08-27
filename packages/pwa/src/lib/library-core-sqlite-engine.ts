@@ -1567,7 +1567,11 @@ export class PwaLibraryCoreSqliteEngine {
         sql: `SELECT state.revision, state.active_generation_id, state.auth_status,
                      state.sync_status, state.sync_started_at, state.sync_token,
                      state.last_synced_at, state.last_error_code, state.last_error_message,
-                     state.created_friend_count, state.updated_at,
+                     (SELECT count(*) FROM library_accounts AS account
+                      WHERE account.kind = 'contact' COLLATE BINARY
+                        AND account.provider = 'google_contacts' COLLATE BINARY
+                        AND account.person_id IS NOT NULL),
+                     state.updated_at,
                      CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
                        (SELECT count(*) FROM library_device_contacts WHERE generation_id = state.active_generation_id AND deleted = 0) END,
                      CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
@@ -1799,6 +1803,7 @@ export class PwaLibraryCoreSqliteEngine {
             WHERE contact.generation_id = ?1 COLLATE BINARY AND contact.deleted = 0
               AND EXISTS (SELECT 1 FROM library_device_contact_match_receipts AS receipt WHERE receipt.generation_id = contact.generation_id AND receipt.resource_name = contact.resource_name)
               AND NOT EXISTS (SELECT 1 FROM library_device_contact_suggestions AS suggestion WHERE suggestion.generation_id = contact.generation_id AND suggestion.resource_name = contact.resource_name)
+              AND NOT EXISTS (SELECT 1 FROM library_accounts AS account WHERE account.provider = 'google_contacts' COLLATE BINARY AND account.external_id = contact.resource_name COLLATE BINARY)
               AND (?2 IS NULL OR COALESCE(contact.display_name, '') > ?2 COLLATE BINARY OR (COALESCE(contact.display_name, '') = ?2 COLLATE BINARY AND contact.resource_name > ?3 COLLATE BINARY))
             ORDER BY COALESCE(contact.display_name, '') COLLATE BINARY, contact.resource_name COLLATE BINARY LIMIT ?4;`,
       bind: [
@@ -1869,9 +1874,32 @@ export class PwaLibraryCoreSqliteEngine {
             text(buildingRows[0]![0], "building device contact generation") !==
             mutation.generationId
           ) {
-            throw new Error("another device contact generation is building");
+            const syncStatus = text(
+              this.#database.exec({
+                sql: `SELECT sync_status FROM library_device_contact_sync_state
+                      WHERE singleton_id = 1;`,
+                rowMode: 0,
+                returnValue: "resultRows",
+              })[0],
+              "device contact sync status",
+            );
+            if (syncStatus === "syncing") {
+              throw new Error("another device contact generation is building");
+            }
+            this.#database.exec({
+              sql: `DELETE FROM library_device_contact_generations
+                    WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
+              bind: [
+                text(
+                  buildingRows[0]![0],
+                  "building device contact generation",
+                ),
+              ],
+            });
+            buildingRows.length = 0;
           }
-        } else {
+        }
+        if (buildingRows.length === 0) {
           const activeGeneration = nullableText(
             this.#database.exec({
               sql: `SELECT active_generation_id

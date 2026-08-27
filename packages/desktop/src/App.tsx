@@ -89,7 +89,11 @@ import {
   readDesktopFeedSignalCounts,
 } from "./lib/library-core-feed-browse-reader-runtime";
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
-import { queryNormalizedLibrary } from "./lib/library-core-normalized-query-client";
+import {
+  mutateNormalizedDeviceContacts,
+  queryNormalizedDeviceContacts,
+  queryNormalizedLibrary,
+} from "./lib/library-core-normalized-query-client";
 import {
   readLibraryCoreFacetSummary,
   readLibraryCoreFriendsGraph,
@@ -202,7 +206,6 @@ import {
   initProviderHealth,
 } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
-import { setContactSyncError } from "./lib/contact-sync-storage";
 
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import {
@@ -1252,12 +1255,30 @@ function App() {
     await restartCloudSync(provider);
   }, []);
 
+  const recordGoogleContactSyncError = useCallback((message: string) => {
+    if (!tauriRuntimeAvailable || !isInitialized) return;
+    void mutateNormalizedDeviceContacts({
+      authStatus: "reconnect_required",
+      errorCode: "auth",
+      errorMessage: message,
+      mutationKind: "device_contact_status_set_v1",
+      schemaVersion: 1,
+      syncStartedAt: null,
+      syncStatus: "error",
+      updatedAt: Date.now(),
+    }).catch((error) => {
+      log.warn(
+        `[contacts] SQLite contact status update failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }, [isInitialized, tauriRuntimeAvailable]);
+
   const recordGoogleContactsConnectError = useCallback((error: unknown) => {
     if (isOAuthCanceledError(error)) return;
     const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
-    setContactSyncError(message, "auth");
+    recordGoogleContactSyncError(message);
     log.warn(`[contacts] Google reconnect failed: ${message}`);
-  }, []);
+  }, [recordGoogleContactSyncError]);
 
   const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
     clearCloudProvider(provider);
@@ -1325,7 +1346,7 @@ function App() {
             const message = refreshError instanceof Error
               ? refreshError.message
               : "Google token refresh failed.";
-            setContactSyncError(message, "auth");
+            recordGoogleContactSyncError(message);
             log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
             throw refreshError;
           }
@@ -1344,7 +1365,7 @@ function App() {
         log.warn(`[contacts] Google sync failed: ${message}`);
         throw error;
       }
-    }), []);
+    }), [recordGoogleContactSyncError]);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -1686,6 +1707,14 @@ function App() {
       queryLibraryCore:
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
+          : undefined,
+      mutateDeviceContacts:
+        tauriRuntimeAvailable && isInitialized
+          ? mutateNormalizedDeviceContacts
+          : undefined,
+      queryDeviceContacts:
+        tauriRuntimeAvailable && isInitialized
+          ? queryNormalizedDeviceContacts
           : undefined,
       readLibraryPersonTimeline:
         tauriRuntimeAvailable && isInitialized

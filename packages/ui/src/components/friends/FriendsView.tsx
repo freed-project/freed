@@ -770,7 +770,9 @@ export function FriendsView({
     sourceVersion: friendsReadVersion,
   });
   const friendCandidateSuggestions = useLibraryFriendCandidateReview({
-    contactSuggestions: contactSync.syncState.pendingSuggestions,
+    contactSuggestions: contactSync.suggestionPage.rows.map(
+      (row) => row.suggestion,
+    ),
     dismissedSuggestionIds:
       friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
     sourceVersion: friendsReadVersion,

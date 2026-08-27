@@ -1332,31 +1332,6 @@ export interface IdentitySuggestion {
 }
 
 /**
- * Persisted state for the Google Contacts sync cycle.
- */
-export interface ContactSyncState {
-  authStatus: "connected" | "reconnect_required";
-  syncStatus: "idle" | "syncing" | "error";
-  syncStartedAt?: number | null;
-  syncToken: string | null;
-  lastSyncedAt: number | null;
-  lastErrorCode?: "missing_token" | "auth" | "network" | "unknown";
-  lastErrorMessage?: string;
-  cachedContacts: GoogleContact[];
-  pendingSuggestions: IdentitySuggestion[];
-  dismissedSuggestionIds: string[];
-  createdFriendCount: number;
-  /** @deprecated Use pendingSuggestions. */
-  pendingMatches?: IdentitySuggestion[];
-  /** @deprecated Use dismissedSuggestionIds. */
-  dismissedMatches?: string[];
-  /** @deprecated Suggestion auto-linking was removed. */
-  autoLinkedCount?: number;
-  /** @deprecated Use createdFriendCount. */
-  autoCreatedCount?: number;
-}
-
-/**
  * Create default document metadata
  */
 export function createDefaultMeta(): DocumentMeta {

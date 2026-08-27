@@ -28,9 +28,11 @@ import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   type Account,
   type GoogleContact,
-  type IdentitySuggestion,
   type SidebarMode,
 } from "@freed/shared";
+import type {
+  LibraryCoreDeviceContactSuggestionReviewRowV1,
+} from "@freed/shared/library-core";
 import {
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
@@ -395,9 +397,10 @@ export function AppShell({ children }: AppShellProps) {
     setFriendsMobileSurface("graph");
   }, [activeView, isMobileViewport]);
 
-  const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
-    const match = contactSync.getMatchForSuggestion(suggestion.id);
-    if (!match) return;
+  const handleLinkSuggestion = useCallback(async (
+    row: LibraryCoreDeviceContactSuggestionReviewRowV1,
+  ) => {
+    const { contact, suggestion } = row;
     if (
       !queryLibraryCore ||
       !readLibraryAccountDetail ||
@@ -408,30 +411,31 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     const now = Date.now();
-    const personId = match.personId ?? crypto.randomUUID();
-    const currentPerson = match.personId
+    const matchedPersonId = suggestion.personId ?? null;
+    const personId = matchedPersonId ?? crypto.randomUUID();
+    const currentPerson = matchedPersonId
       ? readLibraryPersonDetail
-        ? await readLibraryPersonDetail(match.personId)
+        ? await readLibraryPersonDetail(matchedPersonId)
         : null
       : null;
-    if (match.personId && !currentPerson) {
+    if (matchedPersonId && !currentPerson) {
       throw new Error("The matched Person is unavailable.");
     }
     const person = currentPerson ?? {
       id: personId,
       name:
-        match.contact.name.displayName ??
-        match.contact.name.givenName ??
+        contact.name.displayName ??
+        contact.name.givenName ??
         "Unknown",
       relationshipStatus: "friend" as const,
       careLevel: 3 as const,
       createdAt: now,
       updatedAt: now,
     };
-    const linkedAccountIds = new Set(match.accountIds);
-    if (match.personId) {
+    const linkedAccountIds = new Set(suggestion.accountIds);
+    if (matchedPersonId) {
       const detail = await queryLibraryCore({
-        personId: match.personId,
+        personId: matchedPersonId,
         queryId: "person_detail_v1",
         schemaVersion: 1,
       });
@@ -452,7 +456,7 @@ export function AppShell({ children }: AppShellProps) {
       }),
     );
     const contactAccount = createContactAccountFromGoogleContact(
-      match.contact,
+      contact,
       now,
       personId,
     );
@@ -462,7 +466,7 @@ export function AppShell({ children }: AppShellProps) {
     desiredById.set(contactAccount.id, contactAccount);
     await replaceLibraryFriend(person, [...desiredById.values()]);
 
-    contactSync.dismissSuggestion(suggestion.id);
+    await contactSync.dismissSuggestion(suggestion.id);
   }, [
     contactSync,
     queryLibraryCore,
@@ -488,14 +492,16 @@ export function AppShell({ children }: AppShellProps) {
     await replaceLibraryFriend(person, [
       createContactAccountFromGoogleContact(contact, now, personId),
     ]);
-  }, [replaceLibraryFriend]);
+    await contactSync.refreshReview();
+  }, [contactSync, replaceLibraryFriend]);
 
   const openReview = useCallback(async () => {
     const result = await contactSync.syncNow();
+    await contactSync.refreshReview();
     const shouldOpen =
       result.authStatus === "connected" ||
-      result.pendingSuggestions.length > 0 ||
-      result.cachedContacts.length > 0;
+      result.pendingSuggestionCount > 0 ||
+      result.activeContactCount > 0;
     setShowContactReview(shouldOpen);
   }, [contactSync]);
 
@@ -620,9 +626,15 @@ export function AppShell({ children }: AppShellProps) {
           <ContactSyncModal
             onClose={() => setShowContactReview(false)}
             syncState={contactSync.syncState}
+            suggestionPage={contactSync.suggestionPage}
+            unmatchedPage={contactSync.unmatchedPage}
             onLinkSuggestion={handleLinkSuggestion}
             onSkipSuggestion={contactSync.dismissSuggestion}
             onCreateFriend={handleCreateFriend}
+            onNextSuggestionPage={contactSync.loadNextSuggestionPage}
+            onNextUnmatchedPage={contactSync.loadNextUnmatchedPage}
+            onResetSuggestionPage={contactSync.resetSuggestionPage}
+            onResetUnmatchedPage={contactSync.resetUnmatchedPage}
           />
         )}
       </div>

@@ -239,6 +239,128 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
+  it("excludes contact Accounts from the bounded unmatched page", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_generation_begin_v1",
+      schemaVersion: 1,
+      startedAt: 10,
+    });
+    engine.mutateDeviceContactSync({
+      batchOrdinal: 0,
+      contacts: [
+        {
+          emails: [],
+          name: { displayName: "Grace Hopper" },
+          organizations: [],
+          phones: [],
+          photos: [],
+          resourceName: "people/grace",
+        },
+      ],
+      deletedResourceNames: [],
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_delta_append_v1",
+      schemaVersion: 1,
+      updatedAt: 20,
+    });
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:unmatched",
+      matchedAt: 30,
+      matches: [{ resourceName: "people/grace", suggestion: null }],
+      mutationKind: "device_contact_match_append_v1",
+      schemaVersion: 1,
+    });
+    engine.mutateDeviceContactSync({
+      activatedAt: 40,
+      expectedContactCount: 1,
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_generation_activate_v1",
+      nextSyncToken: "sync-token",
+      schemaVersion: 1,
+    });
+    const query = () =>
+      engine.queryDeviceContacts({
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_unmatched_page_v1",
+        schemaVersion: 1,
+      });
+    expect(query()).toMatchObject({
+      rows: [{ resourceName: "people/grace" }],
+    });
+    database.exec(`
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:grace', 'Grace Hopper', 'friend', 3, 50, 50);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, first_seen_at, last_seen_at,
+         discovered_from, created_at, updated_at)
+      VALUES
+        ('contact:google:people/grace', 'person:grace', 'contact', 'google_contacts',
+         'people/grace', 50, 50, 'contact_import', 50, 50);
+    `);
+    expect(query()).toMatchObject({ rows: [] });
+    expect(
+      engine.queryDeviceContacts({
+        queryId: "device_contact_status_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ createdFriendCount: 1 });
+  });
+
+  it("replaces an interrupted building contact generation but rejects concurrency", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:stale",
+      mutationKind: "device_contact_generation_begin_v1",
+      schemaVersion: 1,
+      startedAt: 10,
+    });
+    expect(() =>
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:concurrent",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 20,
+      }),
+    ).toThrow("another device contact generation is building");
+    engine.mutateDeviceContactSync({
+      authStatus: "connected",
+      errorCode: "network",
+      errorMessage: "interrupted",
+      mutationKind: "device_contact_status_set_v1",
+      schemaVersion: 1,
+      syncStartedAt: null,
+      syncStatus: "error",
+      updatedAt: 30,
+    });
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:recovered",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 40,
+      }),
+    ).toMatchObject({ changed: true });
+    expect(
+      database.exec({
+        sql: "SELECT generation_id FROM library_device_contact_generations WHERE state = 'building';",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["contacts:recovered"]);
+  });
+
   function coreDigest(domain: string, value: unknown): string {
     return createHash("sha256")
       .update(

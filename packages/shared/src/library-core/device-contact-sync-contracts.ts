@@ -801,6 +801,21 @@ export type LibraryCoreDeviceContactQueryResponseV1 =
   | LibraryCoreDeviceContactSuggestionPageResponseV1
   | LibraryCoreDeviceContactUnmatchedPageResponseV1;
 
+export type LibraryCoreDeviceContactQueryResponseFor<
+  T extends LibraryCoreDeviceContactQueryRequestV1,
+> = Extract<
+  LibraryCoreDeviceContactQueryResponseV1,
+  { readonly queryId: T["queryId"] }
+>;
+
+export type LibraryCoreDeviceContactQueryExecutor = <
+  T extends LibraryCoreDeviceContactQueryRequestV1,
+>(query: T) => Promise<LibraryCoreDeviceContactQueryResponseFor<T>>;
+
+export type LibraryCoreDeviceContactMutationExecutor = (
+  mutation: LibraryCoreDeviceContactSyncMutationV1,
+) => Promise<LibraryCoreDeviceContactMutationReceiptV1>;
+
 export function parseLibraryCoreDeviceContactStatusRequestV1(
   value: unknown,
 ): LibraryCoreDeviceContactParseResult<LibraryCoreDeviceContactStatusRequestV1> {

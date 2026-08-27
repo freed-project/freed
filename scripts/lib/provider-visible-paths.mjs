@@ -276,7 +276,6 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     "packages/desktop/src/lib/capture.ts",
     ALL_PROVIDER_SCOPES,
   ],
-  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
   ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
   [
     "packages/desktop/src/lib/dev-sync-triggers.ts",

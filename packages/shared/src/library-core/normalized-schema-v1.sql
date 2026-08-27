@@ -1093,7 +1093,6 @@ CREATE TABLE IF NOT EXISTS library_device_contact_sync_state (
   last_synced_at INTEGER CHECK (last_synced_at IS NULL OR last_synced_at >= 0),
   last_error_code TEXT CHECK (last_error_code IS NULL OR last_error_code IN ('missing_token', 'auth', 'network', 'unknown')),
   last_error_message TEXT CHECK (last_error_message IS NULL OR length(CAST(last_error_message AS BLOB)) <= 4096),
-  created_friend_count INTEGER NOT NULL CHECK (created_friend_count >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   CHECK ((sync_status = 'syncing') = (sync_started_at IS NOT NULL)),
   CHECK ((last_error_code IS NULL) = (last_error_message IS NULL))
@@ -1110,9 +1109,8 @@ INSERT OR IGNORE INTO library_device_contact_sync_state (
   last_synced_at,
   last_error_code,
   last_error_message,
-  created_friend_count,
   updated_at
-) VALUES (1, 0, NULL, 'connected', 'idle', NULL, NULL, NULL, NULL, NULL, 0, 0);
+) VALUES (1, 0, NULL, 'connected', 'idle', NULL, NULL, NULL, NULL, NULL, 0);
 
 CREATE TABLE IF NOT EXISTS library_device_contacts (
   generation_id TEXT NOT NULL REFERENCES library_device_contact_generations(generation_id) ON DELETE CASCADE,

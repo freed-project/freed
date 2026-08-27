@@ -894,7 +894,11 @@ pub fn query_device_contact_status_v1(
         "SELECT state.revision, state.active_generation_id, state.auth_status,
                 state.sync_status, state.sync_started_at, state.sync_token,
                 state.last_synced_at, state.last_error_code,
-                state.last_error_message, state.created_friend_count,
+                state.last_error_message,
+                (SELECT count(*) FROM library_accounts AS account
+                 WHERE account.kind = 'contact' COLLATE BINARY
+                   AND account.provider = 'google_contacts' COLLATE BINARY
+                   AND account.person_id IS NOT NULL),
                 state.updated_at,
                 CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
                   (SELECT count(*) FROM library_device_contacts AS contact
@@ -1335,6 +1339,9 @@ pub fn query_device_contact_unmatched_page_v1(
                        WHERE receipt.generation_id = contact.generation_id AND receipt.resource_name = contact.resource_name)
            AND NOT EXISTS (SELECT 1 FROM library_device_contact_suggestions AS suggestion
                            WHERE suggestion.generation_id = contact.generation_id AND suggestion.resource_name = contact.resource_name)
+           AND NOT EXISTS (SELECT 1 FROM library_accounts AS account
+                           WHERE account.provider = 'google_contacts' COLLATE BINARY
+                             AND account.external_id = contact.resource_name COLLATE BINARY)
            AND (?2 IS NULL OR COALESCE(contact.display_name, '') > ?2 COLLATE BINARY
              OR (COALESCE(contact.display_name, '') = ?2 COLLATE BINARY AND contact.resource_name > ?3 COLLATE BINARY))
          ORDER BY COALESCE(contact.display_name, '') COLLATE BINARY, contact.resource_name COLLATE BINARY LIMIT ?4;",
@@ -1394,13 +1401,28 @@ pub fn mutate_device_contact_sync_v1(
                     |row| row.get::<_, String>(0),
                 )
                 .optional()?;
-            if let Some(building) = building {
-                if building != *generation_id {
-                    return Err(DeviceContactSyncError::Invalid(
-                        "another device contact generation is building",
-                    ));
+            let mut building = building;
+            if let Some(existing) = building.as_ref() {
+                if existing != generation_id {
+                    let sync_status = transaction.query_row(
+                        "SELECT sync_status FROM library_device_contact_sync_state WHERE singleton_id = 1;",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )?;
+                    if sync_status == "syncing" {
+                        return Err(DeviceContactSyncError::Invalid(
+                            "another device contact generation is building",
+                        ));
+                    }
+                    transaction.execute(
+                        "DELETE FROM library_device_contact_generations
+                         WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';",
+                        params![existing],
+                    )?;
+                    building = None;
                 }
-            } else {
+            }
+            if building.is_none() {
                 let active = transaction.query_row(
                     "SELECT active_generation_id FROM library_device_contact_sync_state WHERE singleton_id = 1;",
                     [],
@@ -1995,6 +2017,107 @@ mod tests {
         )
         .expect("unmatched");
         assert_eq!(unmatched.rows, vec![unmatched_contact]);
+        connection
+            .execute(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES ('person:grace', 'Grace Hopper', 'friend', 3, 140, 140);",
+                [],
+            )
+            .expect("created friend");
+        connection
+            .execute(
+                "INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at, last_seen_at,
+                    discovered_from, created_at, updated_at)
+                 VALUES ('contact:google:people/grace', 'person:grace', 'contact',
+                         'google_contacts', 'people/grace', 140, 140,
+                         'contact_import', 140, 140);",
+                [],
+            )
+            .expect("linked contact account");
+        assert!(query_device_contact_unmatched_page_v1(
+            &connection,
+            &DeviceContactUnmatchedPageRequestV1 {
+                cursor: None,
+                limit: 50,
+                query_id: "device_contact_unmatched_page_v1".to_owned(),
+                schema_version: 1,
+            },
+        )
+        .expect("linked contact excluded")
+        .rows
+        .is_empty());
+        assert_eq!(
+            query_device_contact_status_v1(
+                &connection,
+                &DeviceContactStatusRequestV1 {
+                    query_id: "device_contact_status_v1".to_owned(),
+                    schema_version: 1,
+                },
+            )
+            .expect("derived friend count")
+            .created_friend_count,
+            1
+        );
+    }
+
+    #[test]
+    fn native_contact_generation_recovers_only_after_sync_is_marked_interrupted() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        mutate_device_contact_sync_v1(
+            &mut connection,
+            &DeviceContactSyncMutationV1::DeviceContactGenerationBeginV1 {
+                generation_id: "contacts-stale".to_owned(),
+                schema_version: 1,
+                started_at: 100,
+            },
+        )
+        .expect("stale begin");
+        let concurrent = mutate_device_contact_sync_v1(
+            &mut connection,
+            &DeviceContactSyncMutationV1::DeviceContactGenerationBeginV1 {
+                generation_id: "contacts-concurrent".to_owned(),
+                schema_version: 1,
+                started_at: 110,
+            },
+        );
+        assert!(matches!(
+            concurrent,
+            Err(DeviceContactSyncError::Invalid(_))
+        ));
+        mutate_device_contact_sync_v1(
+            &mut connection,
+            &DeviceContactSyncMutationV1::DeviceContactStatusSetV1 {
+                auth_status: DeviceContactAuthStatusV1::Connected,
+                error_code: Some(DeviceContactErrorCodeV1::Network),
+                error_message: Some("interrupted".to_owned()),
+                schema_version: 1,
+                sync_started_at: None,
+                sync_status: DeviceContactSyncStatusV1::Error,
+                updated_at: 120,
+            },
+        )
+        .expect("mark interrupted");
+        let recovered = mutate_device_contact_sync_v1(
+            &mut connection,
+            &DeviceContactSyncMutationV1::DeviceContactGenerationBeginV1 {
+                generation_id: "contacts-recovered".to_owned(),
+                schema_version: 1,
+                started_at: 130,
+            },
+        )
+        .expect("recover begin");
+        assert!(recovered.changed);
+        let building = connection
+            .query_row(
+                "SELECT generation_id FROM library_device_contact_generations WHERE state = 'building';",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("building generation");
+        assert_eq!(building, "contacts-recovered");
     }
 
     #[test]

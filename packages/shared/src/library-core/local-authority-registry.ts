@@ -25,6 +25,7 @@ export type LibraryCoreLocalStoreKind =
   | "native-json"
   | "platform-credential"
   | "session-storage"
+  | "sqlite"
   | "unprovisioned"
   | "webkit-data-store"
   | "webkitgtk-data-store"
@@ -360,33 +361,41 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
   },
   {
     registryKey: "contact-sync-state",
-    soleOwner: "packages/desktop/src/lib/contact-sync-storage.ts",
+    soleOwner: "Library Core SQLite device-contact generation tables",
     locality: "device-local",
     role: "active-authority",
     authoritative: true,
     physicalStores: [{
-      kind: "local-storage",
-      platforms: ["desktop"],
-      locator: "origin:localStorage",
-      keys: ["freed_contact_sync"],
+      kind: "sqlite",
+      platforms: ["desktop", "pwa"],
+      locator: "Library Core SQLite",
+      keys: [
+        "library_device_contact_sync_state",
+        "library_device_contact_generations",
+        "library_device_contacts",
+        "library_device_contact_suggestions",
+      ],
     }],
     retention: {
-      kind: "unbounded-current",
-      reason: "The current schema places no entry or byte ceiling on cached contacts, pending suggestions, or dismissed IDs.",
+      kind: "bounded-count",
+      limit: 1,
+      unit: "active generation",
     },
     backup: "exclude-device-local",
     export: "include-redacted-metadata",
     redaction: "redact-sensitive-fields",
     resetSemantics: "Factory reset clears cached contacts, sync token, errors, suggestions, and match decisions.",
     snapshot: "excluded",
-    migration: "retain-current-device-owner",
+    migration: "migrate-to-library-core",
     cutover: {
-      blocksCutover: true,
-      reason: "Normalized generation-fenced SQLite tables now define the destination, but the shipping runtime still reads and writes the unbounded localStorage ledger. Cutover requires the typed native and OPFS mutation and page-query boundary, one atomic import, and deletion of this key.",
+      blocksCutover: false,
+      reason: "The product reads and writes only generation-fenced SQLite rows through bounded typed commands. Startup imports the historical localStorage ledger once and deletes it before normal contact use.",
     },
     sourceReferences: [
       "packages/shared/src/contact-sync-state.ts",
-      "packages/desktop/src/lib/contact-sync-storage.ts",
+      "packages/library-core-native/src/device_contact_sync.rs",
+      "packages/pwa/src/lib/library-core-sqlite-engine.ts",
+      "packages/ui/src/hooks/useContactSync.ts",
       "packages/shared/src/library-core/normalized-schema-v1.sql",
     ],
   },
@@ -2293,7 +2302,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "contact-sync-state",
     sourcePath: "packages/shared/src/contact-sync-state.ts",
     sourceTokens: [
-      'export const CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync"',
+      'export const LEGACY_CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync"',
     ],
     registeredKeys: ["freed_contact_sync"],
   },

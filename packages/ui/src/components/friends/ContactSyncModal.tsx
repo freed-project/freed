@@ -1,13 +1,26 @@
-import { useMemo, useState } from "react";
-import type { ContactSyncState, GoogleContact, IdentitySuggestion } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useState } from "react";
+import type { GoogleContact, IdentitySuggestion } from "@freed/shared";
+import type {
+  LibraryCoreDeviceContactStatusResponseV1,
+  LibraryCoreDeviceContactSuggestionPageResponseV1,
+  LibraryCoreDeviceContactSuggestionReviewRowV1,
+  LibraryCoreDeviceContactUnmatchedPageResponseV1,
+} from "@freed/shared/library-core";
 
 interface ContactSyncModalProps {
   onClose: () => void;
-  syncState: ContactSyncState;
-  onLinkSuggestion: (suggestion: IdentitySuggestion) => Promise<void>;
-  onSkipSuggestion: (suggestionId: string) => void;
+  syncState: LibraryCoreDeviceContactStatusResponseV1;
+  suggestionPage: LibraryCoreDeviceContactSuggestionPageResponseV1;
+  unmatchedPage: LibraryCoreDeviceContactUnmatchedPageResponseV1;
+  onLinkSuggestion: (
+    row: LibraryCoreDeviceContactSuggestionReviewRowV1,
+  ) => Promise<void>;
+  onSkipSuggestion: (suggestionId: string) => Promise<void>;
   onCreateFriend: (contact: GoogleContact) => Promise<void>;
+  onNextSuggestionPage: () => Promise<LibraryCoreDeviceContactSuggestionPageResponseV1>;
+  onNextUnmatchedPage: () => Promise<LibraryCoreDeviceContactUnmatchedPageResponseV1>;
+  onResetSuggestionPage: () => Promise<LibraryCoreDeviceContactSuggestionPageResponseV1>;
+  onResetUnmatchedPage: () => Promise<LibraryCoreDeviceContactUnmatchedPageResponseV1>;
 }
 
 function ContactAvatar({ contact }: { contact: GoogleContact }) {
@@ -119,40 +132,19 @@ function UnmatchedRow({
 export function ContactSyncModal({
   onClose,
   syncState,
+  suggestionPage,
+  unmatchedPage,
   onLinkSuggestion,
   onSkipSuggestion,
   onCreateFriend,
+  onNextSuggestionPage,
+  onNextUnmatchedPage,
+  onResetSuggestionPage,
+  onResetUnmatchedPage,
 }: ContactSyncModalProps) {
-  const accounts = useAppStore((state) => state.accounts);
-
-  const contactAccounts = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "contact" && account.provider === "google_contacts"),
-    [accounts]
-  );
-
-  const linkedContactIds = new Set(contactAccounts.map((account) => account.externalId));
-  const suggestedContactIds = new Set(
-    syncState.pendingSuggestions.map((suggestion) =>
-      suggestion.id.split(":").slice(1, 2)[0] ?? ""
-    )
-  );
-
-  const contactByResourceName = new Map(
-    syncState.cachedContacts.map((contact) => [contact.resourceName, contact])
-  );
-
-  const suggestions = syncState.pendingSuggestions.filter((suggestion) =>
-    contactByResourceName.has(suggestion.id.split(":").slice(1, 2)[0] ?? "")
-  );
-
-  const unmatchedContacts = syncState.cachedContacts.filter((contact) =>
-    !linkedContactIds.has(contact.resourceName) &&
-    !suggestedContactIds.has(contact.resourceName)
-  );
-
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
-      <div className="theme-dialog-shell w-full max-w-3xl overflow-hidden rounded-3xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-surface)] shadow-[var(--theme-glow-lg)]">
+      <div className="theme-dialog-shell flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-surface)] shadow-[var(--theme-glow-lg)]">
         <div className="theme-dialog-divider flex items-center justify-between border-b px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">Google Contacts</h2>
@@ -169,49 +161,80 @@ export function ContactSyncModal({
           </button>
         </div>
 
-        <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
+        <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-5 py-5 md:grid-cols-2">
           <section>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
-              Suggestions ({suggestions.length.toLocaleString()})
+              Suggestions ({syncState.pendingSuggestionCount.toLocaleString()})
             </p>
             <div className="space-y-2">
-              {suggestions.length === 0 ? (
+              {suggestionPage.rows.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-[color:var(--theme-border-subtle)] px-3 py-4 text-sm text-[color:var(--theme-text-muted)]">
                   No pending identity suggestions.
                 </p>
-              ) : suggestions.map((suggestion) => {
-                const resourceName = suggestion.id.split(":").slice(1, 2)[0] ?? "";
-                const contact = contactByResourceName.get(resourceName);
-                if (!contact) return null;
-                return (
+              ) : suggestionPage.rows.map((row) => (
                   <SuggestionRow
-                    key={suggestion.id}
-                    contact={contact}
-                    suggestion={suggestion}
-                    onLink={() => onLinkSuggestion(suggestion)}
-                    onSkip={() => onSkipSuggestion(suggestion.id)}
+                    key={row.suggestion.id}
+                    contact={row.contact}
+                    suggestion={row.suggestion}
+                    onLink={() => onLinkSuggestion(row)}
+                    onSkip={() => void onSkipSuggestion(row.suggestion.id)}
                   />
-                );
-              })}
+                ))}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
+                disabled={suggestionPage.rows.length === 0}
+                onClick={() => void onResetSuggestionPage()}
+              >
+                First page
+              </button>
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
+                disabled={suggestionPage.nextCursor === null}
+                onClick={() => void onNextSuggestionPage()}
+              >
+                Next
+              </button>
             </div>
           </section>
 
           <section>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
-              Unmatched contacts ({unmatchedContacts.length.toLocaleString()})
+              Imported contacts ({syncState.activeContactCount.toLocaleString()})
             </p>
             <div className="space-y-2">
-              {unmatchedContacts.length === 0 ? (
+              {unmatchedPage.rows.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-[color:var(--theme-border-subtle)] px-3 py-4 text-sm text-[color:var(--theme-text-muted)]">
                   Everything imported is either linked already or waiting for review.
                 </p>
-              ) : unmatchedContacts.map((contact) => (
+              ) : unmatchedPage.rows.map((contact) => (
                 <UnmatchedRow
                   key={contact.resourceName}
                   contact={contact}
                   onCreateFriend={() => onCreateFriend(contact)}
                 />
               ))}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
+                disabled={unmatchedPage.rows.length === 0}
+                onClick={() => void onResetUnmatchedPage()}
+              >
+                First page
+              </button>
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
+                disabled={unmatchedPage.nextCursor === null}
+                onClick={() => void onNextUnmatchedPage()}
+              >
+                Next
+              </button>
             </div>
           </section>
         </div>

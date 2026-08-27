@@ -258,6 +258,16 @@ export function tauriInitScript(): string {
         projectionRevision: Math.max(0, state.revision || 0),
         transitionSequence: Math.max(0, state.sourceGeneration || 0),
       };
+      if (request.queryId === 'contact_match_v1') {
+        return {
+          accountIds: [],
+          confidence: 'medium',
+          personId: null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'friends_directory_page_v1') {
         var directoryQuery = String(request.search || '').toLowerCase();
         var directoryRows = Object.values(state.persons || {})
@@ -757,6 +767,103 @@ export function tauriInitScript(): string {
         totalCount: candidates.length,
       };
     }
+    function deviceContactState() {
+      if (!window.__TAURI_MOCK_DEVICE_CONTACT_STATE__) {
+        window.__TAURI_MOCK_DEVICE_CONTACT_STATE__ = {
+          activeContactCount: 0,
+          activeGenerationId: null,
+          authStatus: 'reconnect_required',
+          buildingContacts: [],
+          buildingGenerationId: null,
+          createdFriendCount: 0,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          lastSyncedAt: null,
+          matchedResourceNames: [],
+          pendingSuggestionCount: 0,
+          revision: 0,
+          suggestions: [],
+          syncStartedAt: null,
+          syncStatus: 'idle',
+          syncToken: null,
+          updatedAt: 0,
+        };
+      }
+      return window.__TAURI_MOCK_DEVICE_CONTACT_STATE__;
+    }
+    function deviceContactStatus() {
+      var state = deviceContactState();
+      return {
+        activeContactCount: state.activeContactCount,
+        activeGenerationId: state.activeGenerationId,
+        authStatus: state.authStatus,
+        createdFriendCount: state.createdFriendCount,
+        lastErrorCode: state.lastErrorCode,
+        lastErrorMessage: state.lastErrorMessage,
+        lastSyncedAt: state.lastSyncedAt,
+        pendingSuggestionCount: state.pendingSuggestionCount,
+        queryId: 'device_contact_status_v1',
+        revision: state.revision,
+        schemaVersion: 1,
+        syncStartedAt: state.syncStartedAt,
+        syncStatus: state.syncStatus,
+        syncToken: state.syncToken,
+        updatedAt: state.updatedAt,
+      };
+    }
+    function mutateDeviceContacts(args) {
+      var mutation = args.mutation;
+      var state = deviceContactState();
+      state.revision += 1;
+      if (mutation.mutationKind === 'device_contact_status_set_v1') {
+        state.authStatus = mutation.authStatus;
+        state.lastErrorCode = mutation.errorCode;
+        state.lastErrorMessage = mutation.errorMessage;
+        state.syncStartedAt = mutation.syncStartedAt;
+        state.syncStatus = mutation.syncStatus;
+        state.updatedAt = mutation.updatedAt;
+      } else if (mutation.mutationKind === 'device_contact_generation_begin_v1') {
+        state.authStatus = 'connected';
+        state.buildingContacts = [];
+        state.buildingGenerationId = mutation.generationId;
+        state.matchedResourceNames = [];
+        state.suggestions = [];
+        state.syncStartedAt = mutation.startedAt;
+        state.syncStatus = 'syncing';
+      } else if (mutation.mutationKind === 'device_contact_delta_append_v1') {
+        state.buildingContacts = state.buildingContacts.concat(mutation.contacts);
+      } else if (mutation.mutationKind === 'device_contact_match_append_v1') {
+        mutation.matches.forEach(function(match) {
+          if (!state.matchedResourceNames.includes(match.resourceName)) {
+            state.matchedResourceNames.push(match.resourceName);
+          }
+          if (match.suggestion) state.suggestions.push(match.suggestion);
+        });
+      } else if (mutation.mutationKind === 'device_contact_generation_activate_v1') {
+        state.activeContactCount = state.buildingContacts.length;
+        state.activeGenerationId = mutation.generationId;
+        state.lastSyncedAt = mutation.activatedAt;
+        state.pendingSuggestionCount = state.suggestions.length;
+        state.syncStartedAt = null;
+        state.syncStatus = 'idle';
+        state.syncToken = mutation.nextSyncToken;
+        state.updatedAt = mutation.activatedAt;
+      } else if (mutation.mutationKind === 'device_contact_suggestion_dismiss_v1') {
+        state.suggestions = state.suggestions.filter(function(suggestion) {
+          return suggestion.id !== mutation.suggestionId;
+        });
+        state.pendingSuggestionCount = state.suggestions.length;
+      }
+      return {
+        activeGenerationId: state.activeGenerationId,
+        changed: true,
+        generationId: state.buildingGenerationId || state.activeGenerationId,
+        matchedContactCount: state.matchedResourceNames.length,
+        revision: state.revision,
+        schemaVersion: 1,
+        stagedContactCount: state.buildingContacts.length,
+      };
+    }
     window.__TAURI_MOCK_HANDLERS__ = {
       ensure_fresh_normalized_desktop_library: () => {
         sqliteState().active = true;
@@ -778,6 +885,57 @@ export function tauriInitScript(): string {
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
+      mutate_normalized_device_contacts: mutateDeviceContacts,
+      query_normalized_device_contact_status: deviceContactStatus,
+      query_normalized_device_contact_match_page: (args) => {
+        var state = deviceContactState();
+        var request = args.request;
+        var rows = request.generationId === state.buildingGenerationId
+          ? state.buildingContacts.filter(function(contact) {
+              return !state.matchedResourceNames.includes(contact.resourceName);
+            }).slice(0, request.limit)
+          : [];
+        return {
+          generationId: request.generationId,
+          nextCursor: null,
+          queryId: request.queryId,
+          revision: state.revision,
+          rows: rows,
+          schemaVersion: 1,
+        };
+      },
+      query_normalized_device_contact_suggestion_page: (args) => {
+        var state = deviceContactState();
+        return {
+          nextCursor: null,
+          queryId: args.request.queryId,
+          revision: state.revision,
+          rows: state.suggestions.slice(0, args.request.limit).map(function(suggestion) {
+            return {
+              contact: state.buildingContacts.find(function(contact) {
+                return suggestion.id.includes(contact.resourceName);
+              }),
+              suggestion: suggestion,
+            };
+          }),
+          schemaVersion: 1,
+        };
+      },
+      query_normalized_device_contact_unmatched_page: (args) => {
+        var state = deviceContactState();
+        return {
+          nextCursor: null,
+          queryId: args.request.queryId,
+          revision: state.revision,
+          rows: state.buildingContacts.filter(function(contact) {
+            return state.matchedResourceNames.includes(contact.resourceName) &&
+              !state.suggestions.some(function(suggestion) {
+                return suggestion.id.includes(contact.resourceName);
+              });
+          }).slice(0, args.request.limit),
+          schemaVersion: 1,
+        };
+      },
       set_sqlite_library_cloud_writer_admission: (args) => {
         var request = args.request;
         var admission = {

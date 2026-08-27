@@ -1,7 +1,5 @@
 import { test, expect } from "./fixtures/app";
 
-const CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync";
-
 async function seedGoogleToken(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("freed_cloud_token_gdrive", "google-test-token");
@@ -98,16 +96,29 @@ async function mockSlowGoogleContacts(
 }
 
 async function readContactSyncState(page: import("@playwright/test").Page) {
-  return page.evaluate((storageKey) => {
-    const raw = window.localStorage.getItem(storageKey);
-    return raw ? JSON.parse(raw) as {
-      authStatus?: string;
-      syncStatus?: string;
-      syncToken?: string | null;
-      lastErrorMessage?: string;
-      cachedContacts?: Array<{ resourceName?: string; name?: { displayName?: string } }>;
-    } : null;
-  }, CONTACT_SYNC_STORAGE_KEY);
+  return page.evaluate(() => {
+    const handlers = (window as Window & {
+      __TAURI_MOCK_HANDLERS__?: Record<string, (args: unknown) => unknown>;
+    }).__TAURI_MOCK_HANDLERS__;
+    if (!handlers) throw new Error("Tauri mock handlers are unavailable");
+    const status = handlers.query_normalized_device_contact_status({}) as {
+      activeContactCount: number;
+      authStatus: string;
+      syncStatus: string;
+      syncToken: string | null;
+    };
+    const unmatched = handlers.query_normalized_device_contact_unmatched_page({
+      request: {
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_unmatched_page_v1",
+        schemaVersion: 1,
+      },
+    }) as {
+      rows: Array<{ resourceName: string; name: { displayName?: string } }>;
+    };
+    return { status, unmatched };
+  });
 }
 
 async function injectAuthor(page: import("@playwright/test").Page, displayName: string, handle = "author-handle") {
@@ -188,18 +199,13 @@ test("syncs Google Contacts through the desktop native API path", async ({ app }
   await section.getByRole("button", { name: "Sync Now" }).click();
 
   await expect(section.getByText("Connected")).toBeVisible({ timeout: 5_000 });
-  await app.page.waitForFunction((storageKey) => {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return false;
-    const state = JSON.parse(raw) as { cachedContacts?: Array<{ resourceName?: string }> };
-    return state.cachedContacts?.some((contact) => contact.resourceName === "people/ada");
-  }, CONTACT_SYNC_STORAGE_KEY);
+  await expect(section.getByText("1", { exact: true }).first()).toBeVisible();
 
   const state = await readContactSyncState(app.page);
-  expect(state?.authStatus).toBe("connected");
-  expect(state?.syncToken).toBe("sync-token-1");
-  expect(state?.cachedContacts).toHaveLength(1);
-  expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Ada Lovelace");
+  expect(state.status.authStatus).toBe("connected");
+  expect(state.status.syncToken).toBe("sync-token-1");
+  expect(state.status.activeContactCount).toBe(1);
+  expect(state.unmatched.rows[0]?.name.displayName).toBe("Ada Lovelace");
 });
 
 test("slow Google Contacts sync appears in the global background activity popover", async ({ app }) => {
@@ -239,8 +245,8 @@ test("slow Google Contacts sync appears in the global background activity popove
   await expect(popover).toContainText("0 active", { timeout: 5_000 });
   await expect(trigger).toBeVisible();
   const state = await readContactSyncState(app.page);
-  expect(state?.syncStatus).toBe("idle");
-  expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Grace Hopper");
+  expect(state.status.syncStatus).toBe("idle");
+  expect(state.unmatched.rows[0]?.name.displayName).toBe("Grace Hopper");
 
   await popover.getByRole("button", { name: "Close" }).click();
   await expect(popover).toHaveCount(0);
