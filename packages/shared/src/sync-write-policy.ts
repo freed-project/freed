@@ -712,6 +712,23 @@ export function sanitizePersonWrite(
   );
 }
 
+/**
+ * Sanitize only the synchronized Person root.
+ *
+ * Reach-out history has its own normalized relation and may enter authority
+ * only through `person_reach_out_append`.
+ */
+export function sanitizePersonRootWrite(
+  updates: Partial<Person>,
+  options: { preserveUndefined?: boolean } = {},
+): Omit<Partial<Person>, "reachOutLog"> {
+  const { reachOutLog: _reachOutLog, ...root } = sanitizePersonWrite(
+    updates,
+    options,
+  );
+  return root;
+}
+
 export function sanitizeAccountWrite(
   updates: Partial<Account>,
   options: { preserveUndefined?: boolean } = {},

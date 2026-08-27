@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  buildConnectionPersonDraftFromAccounts,
   type FilterOptions,
   type Platform,
 } from "@freed/shared";
@@ -326,6 +327,10 @@ export function SearchJumpField({
     googleContacts,
     secureStorage,
     localAIModels,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+    replaceLibraryFriend,
+    upsertLibraryPerson,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -342,8 +347,6 @@ export function SearchJumpField({
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
-  const updatePerson = useAppStore((s) => s.updatePerson);
-  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
@@ -500,10 +503,30 @@ export function SearchJumpField({
     setSearchQuery("");
     setInputValue("");
   }, [setSearchQuery]);
-  const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
-    if (personId) return personId;
-    return await createConnectionPersonFromAccounts([accountId]);
-  }, [createConnectionPersonFromAccounts]);
+  const ensurePersonForAccount = useCallback(
+    async (accountId: string, personId: string | null) => {
+      if (personId) return personId;
+      if (!readLibraryAccountDetail || !replaceLibraryFriend) {
+        throw new Error("The Friend SQLite mutation is unavailable.");
+      }
+      const account = await readLibraryAccountDetail(accountId);
+      if (!account) throw new Error("The selected Account is unavailable.");
+      const now = Date.now();
+      const person = buildConnectionPersonDraftFromAccounts(
+        { [account.id]: account },
+        [account.id],
+        now,
+      );
+      if (!person) {
+        throw new Error("The selected Account has no usable Person identity.");
+      }
+      await replaceLibraryFriend(person, [
+        { ...account, personId: person.id, updatedAt: now },
+      ]);
+      return person.id;
+    },
+    [readLibraryAccountDetail, replaceLibraryFriend],
+  );
 
   const actions = useMemo(
     () =>
@@ -568,7 +591,13 @@ export function SearchJumpField({
         },
         promoteSocialProfile: async (account, level) => {
           const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
-          await updatePerson(resolvedPersonId, {
+          if (!readLibraryPersonDetail || !upsertLibraryPerson) {
+            throw new Error("The Person SQLite mutation is unavailable.");
+          }
+          const person = await readLibraryPersonDetail(resolvedPersonId);
+          if (!person) throw new Error("The selected Person is unavailable.");
+          await upsertLibraryPerson({
+            ...person,
             relationshipStatus: "friend",
             careLevel: level,
             updatedAt: Date.now(),
@@ -651,7 +680,6 @@ export function SearchJumpField({
       factoryReset,
       archiveScopeRead,
       clearQueryForNavigation,
-      createConnectionPersonFromAccounts,
       inputValue,
       ensurePersonForAccount,
       markScopeRead,
@@ -680,7 +708,8 @@ export function SearchJumpField({
       toggleSaved,
       unreadScopeCount,
       unarchiveSavedItems,
-      updatePerson,
+      readLibraryPersonDetail,
+      upsertLibraryPerson,
       openLibraryDialog,
     ],
   );

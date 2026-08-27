@@ -76,6 +76,8 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
+  appendPwaLibraryCorePersonReachOut,
+  assignPwaLibraryCoreAccountToPerson,
   ensurePwaLibraryCoreLocalSampleState,
   executePwaLibraryCoreScopeAction,
   openPwaLibraryCoreFeedReader,
@@ -93,9 +95,11 @@ import {
   readPwaLibraryCorePersonDetail,
   readPwaLibraryCoreSavedAnalytics,
   readPwaLibraryCoreStoryWallCandidates,
+  removePwaLibraryCorePerson,
   replacePwaLibraryCoreFriend,
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
+  upsertPwaLibraryCorePerson,
 } from "./lib/library-core-runtime";
 import { queryPwaNormalizedLibrary } from "./lib/library-core-sqlite-runtime";
 import {
@@ -482,6 +486,10 @@ function App() {
       readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
       readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
       replaceLibraryFriend: replacePwaLibraryCoreFriend,
+      upsertLibraryPerson: upsertPwaLibraryCorePerson,
+      removeLibraryPerson: removePwaLibraryCorePerson,
+      assignLibraryAccountToPerson: assignPwaLibraryCoreAccountToPerson,
+      appendLibraryPersonReachOut: appendPwaLibraryCorePersonReachOut,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,

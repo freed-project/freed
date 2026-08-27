@@ -14,8 +14,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import {
+  appendSqliteLibraryPersonReachOut,
+  assignSqliteLibraryAccountToPerson,
   dispatchSqliteMutation,
+  removeSqliteLibraryPerson,
   replaceSqliteLibraryFriend,
+  upsertSqliteLibraryPerson,
 } from "./sqlite-library";
 
 const ITEM_ID = "rss:follower-item";
@@ -651,6 +655,7 @@ describe("SQLite Primary mutations", () => {
         name: "Ada Updated",
         relationshipStatus: "friend",
         careLevel: 5,
+        reachOutLog: [{ channel: "text", loggedAt: 39 }],
         createdAt: 10,
         updatedAt: 30,
       },
@@ -675,6 +680,56 @@ describe("SQLite Primary mutations", () => {
         },
       },
       transaction_member_count: 1,
+    });
+  });
+
+  it("submits closed Person and Account mutations without a renderer store", async () => {
+    await upsertSqliteLibraryPerson(
+      {
+        id: "person-2",
+        name: "Grace",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: 40,
+        updatedAt: 40,
+      },
+      40,
+    );
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "person-2",
+      operation_type: "person_upsert",
+    });
+    expect(
+      JSON.parse(mocks.enqueuedEnvelopes[0]!).payload.person,
+    ).not.toHaveProperty("reachOutLog");
+
+    await appendSqliteLibraryPersonReachOut(
+      "person-2",
+      { channel: "text", loggedAt: 41, notes: "Hello" },
+      42,
+    );
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "person-2",
+      operation_type: "person_reach_out_append",
+      payload: {
+        channel: "text",
+        logged_at_ms: 41,
+        notes: "Hello",
+      },
+    });
+
+    await assignSqliteLibraryAccountToPerson("account-2", "person-2", 43);
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "account-2",
+      operation_type: "account_person_assignment",
+      payload: { assigned_at_ms: 43, person_id: "person-2" },
+    });
+
+    await removeSqliteLibraryPerson("person-2", 44);
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "person-2",
+      operation_type: "person_remove_and_accounts",
+      payload: { removed_at_ms: 44 },
     });
   });
 

@@ -1,4 +1,5 @@
 import {
+  ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
@@ -14,6 +15,7 @@ import {
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
@@ -24,6 +26,7 @@ import {
   finalizeLibraryCoreTransactionV1,
   sha256LowerHex,
   type FeedItemCaptureUpsertTransactionMemberInputV1,
+  type AccountPersonAssignmentTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
@@ -35,11 +38,13 @@ import {
   type LibraryCoreFollowerMutationContextV1,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
+  type PersonReachOutAppendTransactionMemberInputV1,
 } from "@freed/shared/library-core";
 import type {
   Account,
   FeedItem,
   Person,
+  ReachOutLog,
   RssFeed,
   UserPreferences,
 } from "@freed/shared";
@@ -483,6 +488,33 @@ export async function commitPwaLibraryCorePersonUpserts(
   await commitFollowerTransaction(context, members);
 }
 
+export async function commitPwaLibraryCorePersonReachOutAppend(
+  personId: string,
+  entry: ReachOutLog,
+  createdAtMs: number,
+): Promise<void> {
+  if (!personId) throw new TypeError("Person ID is required");
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-person-reach-out");
+  const member = PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(
+    transactionMemberInput(
+      context,
+      transactionId,
+      0,
+      1,
+      personId,
+      createdAtMs,
+      {
+        channel: entry.channel ?? null,
+        logged_at_ms: entry.loggedAt,
+        notes: entry.notes ?? null,
+      },
+    ) satisfies PersonReachOutAppendTransactionMemberInputV1,
+    { digest },
+  );
+  await commitFollowerTransaction(context, [member]);
+}
+
 export async function commitPwaLibraryCoreFriendReplace(
   person: Person,
   accounts: readonly Account[],
@@ -540,6 +572,32 @@ export async function commitPwaLibraryCorePersonRemove(
       removedAtMs,
       { removed_at_ms: removedAtMs },
     ),
+    { digest },
+  );
+  await commitFollowerTransaction(context, [member]);
+}
+
+export async function commitPwaLibraryCoreAccountPersonAssignment(
+  accountId: string,
+  personId: string | null,
+  assignedAtMs: number,
+): Promise<void> {
+  if (!accountId) throw new TypeError("Account ID is required");
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-account-person");
+  const member = ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+    transactionMemberInput(
+      context,
+      transactionId,
+      0,
+      1,
+      accountId,
+      assignedAtMs,
+      {
+        assigned_at_ms: assignedAtMs,
+        person_id: personId,
+      },
+    ) satisfies AccountPersonAssignmentTransactionMemberInputV1,
     { digest },
   );
   await commitFollowerTransaction(context, [member]);

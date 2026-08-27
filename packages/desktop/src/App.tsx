@@ -206,8 +206,12 @@ import { setContactSyncError } from "./lib/contact-sync-storage";
 
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import {
+  appendSqliteLibraryPersonReachOut,
+  assignSqliteLibraryAccountToPerson,
   isSqliteLibraryActive,
+  removeSqliteLibraryPerson,
   replaceSqliteLibraryFriend,
+  upsertSqliteLibraryPerson,
 } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
@@ -1653,6 +1657,22 @@ function App() {
       replaceLibraryFriend:
         tauriRuntimeAvailable && isInitialized
           ? replaceSqliteLibraryFriend
+          : undefined,
+      upsertLibraryPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? upsertSqliteLibraryPerson
+          : undefined,
+      removeLibraryPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? removeSqliteLibraryPerson
+          : undefined,
+      assignLibraryAccountToPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? assignSqliteLibraryAccountToPerson
+          : undefined,
+      appendLibraryPersonReachOut:
+        tauriRuntimeAvailable && isInitialized
+          ? appendSqliteLibraryPersonReachOut
           : undefined,
       readLibraryAccountDetail:
         tauriRuntimeAvailable && isInitialized

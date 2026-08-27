@@ -8,7 +8,8 @@ import {
   createDefaultPreferences,
   hasSampleDataFingerprint,
   sanitizeAccountWrite,
-  sanitizePersonWrite,
+  sanitizePersonRootWrite,
+  sanitizeReachOutLogWrite,
   sanitizeRssFeedWrite,
   stripDeviceLocalPreferenceUpdates,
   type Account,
@@ -19,6 +20,7 @@ import {
   type UserPreferences,
 } from "@freed/shared";
 import {
+  ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
@@ -49,6 +51,7 @@ import {
   LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
   parseLibraryCoreNormalizedCheckpointExportPageV2,
@@ -71,6 +74,7 @@ import {
   readLibraryCoreNormalizedItemDetailV1,
   sha256LowerHex,
   type AccountRemoveTransactionMemberInputV1,
+  type AccountPersonAssignmentTransactionMemberInputV1,
   type AccountUpsertTransactionMemberInputV1,
   type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
@@ -100,6 +104,7 @@ import {
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionStagePageV1,
   type PersonRemoveTransactionMemberInputV1,
+  type PersonReachOutAppendTransactionMemberInputV1,
   type PersonUpsertTransactionMemberInputV1,
   type PreferencesLeafAssignmentTransactionMemberInputV1,
   type RssFeedRemoveTransactionMemberInputV1,
@@ -1231,7 +1236,7 @@ async function maybeSubmitPersonUpserts(
           transaction_member_count: batch.length,
           entity_id: person.id,
           payload: {
-            person: sanitizePersonWrite(person) as unknown as Record<
+            person: sanitizePersonRootWrite(person) as unknown as Record<
               string,
               LibraryCoreCanonicalValue
             >,
@@ -1253,6 +1258,93 @@ async function maybeSubmitPersonUpserts(
   return true;
 }
 
+export async function upsertSqliteLibraryPerson(
+  person: Person,
+  createdAtMs = Date.now(),
+): Promise<void> {
+  if (!(await maybeSubmitPersonUpserts([person], createdAtMs))) {
+    throw new Error("Library mutation context is unavailable");
+  }
+}
+
+export async function appendSqliteLibraryPersonReachOut(
+  personId: string,
+  entry: ReachOutLog,
+  createdAtMs = Date.now(),
+): Promise<void> {
+  const context = await mutationContext();
+  if (!context) {
+    throw new Error("Library mutation context is unavailable");
+  }
+  const synchronized = sanitizeReachOutLogWrite(entry);
+  const transactionId =
+    `desktop-library-person-reach-out:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const member = PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(
+    {
+      operation_id: `${transactionId}:0`,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
+      actor_id: context.actorId,
+      actor_sequence: context.nextSequence,
+      previous_actor_operation_id: context.previousOperationId,
+      causal_frontier: context.observedFrontier,
+      hlc_wall_ms: createdAtMs,
+      hlc_counter: 0,
+      transaction_id: transactionId,
+      transaction_member_index: 0,
+      transaction_member_count: 1,
+      entity_id: personId,
+      payload: {
+        channel: synchronized.channel ?? null,
+        logged_at_ms: synchronized.loggedAt ?? entry.loggedAt,
+        notes: synchronized.notes ?? null,
+      },
+      created_at_ms: createdAtMs,
+    } satisfies PersonReachOutAppendTransactionMemberInputV1,
+    { digest: operationDigest },
+  );
+  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
+}
+
+export async function assignSqliteLibraryAccountToPerson(
+  accountId: string,
+  personId: string | null,
+  assignedAtMs = Date.now(),
+): Promise<void> {
+  const context = await mutationContext();
+  if (!context) {
+    throw new Error("Library mutation context is unavailable");
+  }
+  const transactionId =
+    `desktop-library-account-person:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const member = ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+    {
+      operation_id: `${transactionId}:0`,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
+      actor_id: context.actorId,
+      actor_sequence: context.nextSequence,
+      previous_actor_operation_id: context.previousOperationId,
+      causal_frontier: context.observedFrontier,
+      hlc_wall_ms: assignedAtMs,
+      hlc_counter: 0,
+      transaction_id: transactionId,
+      transaction_member_index: 0,
+      transaction_member_count: 1,
+      entity_id: accountId,
+      payload: {
+        assigned_at_ms: assignedAtMs,
+        person_id: personId,
+      },
+      created_at_ms: assignedAtMs,
+    } satisfies AccountPersonAssignmentTransactionMemberInputV1,
+    { digest: operationDigest },
+  );
+  await finalizeAndSubmitTransaction(context, [member], assignedAtMs);
+}
+
 export async function replaceSqliteLibraryFriend(
   person: Person,
   desiredAccounts: readonly Account[],
@@ -1269,7 +1361,7 @@ export async function replaceSqliteLibraryFriend(
     throw new Error("Library mutation context is unavailable");
   }
   const currentPerson = await readNormalizedPerson(person.id);
-  const resolvedPerson = sanitizePersonWrite({
+  const resolvedPerson = sanitizePersonRootWrite({
     ...currentPerson,
     ...person,
     createdAt: currentPerson?.createdAt ?? person.createdAt,
@@ -1364,6 +1456,15 @@ async function maybeSubmitPersonRemove(
   );
   await finalizeAndSubmitTransaction(context, [member], removedAtMs);
   return true;
+}
+
+export async function removeSqliteLibraryPerson(
+  personId: string,
+  removedAtMs = Date.now(),
+): Promise<void> {
+  if (!(await maybeSubmitPersonRemove(personId, removedAtMs))) {
+    throw new Error("Library mutation context is unavailable");
+  }
 }
 
 async function maybeSubmitAccountUpserts(

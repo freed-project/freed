@@ -34,6 +34,7 @@ import type {
   LocalAIModelManifestEntry,
   LibraryMapLocationCandidate,
   Person,
+  ReachOutLog,
   ReportPrivacyTier,
   SavedContentSortMode,
   StoryWallManifest,
@@ -718,6 +719,24 @@ export interface PlatformConfig {
   replaceLibraryFriend?: (
     person: Person,
     accounts: readonly Account[],
+  ) => Promise<void>;
+
+  /** Upsert one complete synchronized Person through the registered mutation. */
+  upsertLibraryPerson?: (person: Person) => Promise<void>;
+
+  /** Remove one Person and its linked Accounts through one registered mutation. */
+  removeLibraryPerson?: (personId: string) => Promise<void>;
+
+  /** Assign one Account relationship through the registered scalar mutation. */
+  assignLibraryAccountToPerson?: (
+    accountId: string,
+    personId: string | null,
+  ) => Promise<void>;
+
+  /** Append one bounded reach-out event without rewriting the Person root. */
+  appendLibraryPersonReachOut?: (
+    personId: string,
+    entry: ReachOutLog,
   ) => Promise<void>;
 
   /** One exact Account selected from the current SQLite generation. */

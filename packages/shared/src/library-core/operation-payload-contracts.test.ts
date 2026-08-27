@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sanitizePersonRootWrite } from "../sync-write-policy.js";
 
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -360,8 +361,8 @@ describe("Library Core operation payload contracts", () => {
     const person = {
       id: "person:one",
       name: "One Person",
-      relationshipStatus: "friend",
-      careLevel: 3,
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
       tags: ["local"],
       createdAt: 1,
       updatedAt: 2,
@@ -387,6 +388,14 @@ describe("Library Core operation payload contracts", () => {
         },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+    const personRoot = sanitizePersonRootWrite({
+      ...person,
+      reachOutLog: [{ loggedAt: 3, channel: "text" }],
+    });
+    expect(personRoot).not.toHaveProperty("reachOutLog");
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({ person: personRoot }),
+    ).toMatchObject({ ok: true });
   });
 
   it("accepts one closed reach-out event and rejects ambiguous absence", () => {

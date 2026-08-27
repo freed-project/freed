@@ -6,11 +6,16 @@ import {
   type Account,
   type FeedItem,
   type Person,
+  type ReachOutLog,
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
 } from "@freed/shared";
-import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
+import {
+  sanitizeAccountWrite,
+  sanitizePersonRootWrite,
+  sanitizeReachOutLogWrite,
+} from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
   readLibraryCoreNormalizedAccountDetailV1,
@@ -74,11 +79,13 @@ import {
 } from "./library-core-pwa-follower-sync";
 import {
   commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemRemove,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonReachOutAppend,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
@@ -582,12 +589,41 @@ export async function enqueuePwaLibraryCorePersonUpsert(
   await enqueuePwaLibraryCorePersonUpserts([person]);
 }
 
+export async function upsertPwaLibraryCorePerson(
+  person: Person,
+): Promise<void> {
+  await enqueuePwaLibraryCorePersonUpsert(person);
+}
+
+export async function appendPwaLibraryCorePersonReachOut(
+  personId: string,
+  entry: ReachOutLog,
+): Promise<void> {
+  const synchronized = sanitizeReachOutLogWrite(entry) as ReachOutLog;
+  await commitPwaLibraryCorePersonReachOutAppend(
+    personId,
+    synchronized,
+    Date.now(),
+  );
+}
+
+export async function assignPwaLibraryCoreAccountToPerson(
+  accountId: string,
+  personId: string | null,
+): Promise<void> {
+  await commitPwaLibraryCoreAccountPersonAssignment(
+    accountId,
+    personId,
+    Date.now(),
+  );
+}
+
 /** Commit bounded whole sanitized Persons to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonUpserts(
   persons: readonly Person[],
 ): Promise<void> {
   const synchronized = persons.map(
-    (person) => sanitizePersonWrite(person) as Person,
+    (person) => sanitizePersonRootWrite(person) as Person,
   );
   for (
     let offset = 0;
@@ -613,7 +649,7 @@ export async function replacePwaLibraryCoreFriend(
     NORMALIZED_READER_RUNTIME,
     person.id,
   );
-  const resolvedPerson = sanitizePersonWrite({
+  const resolvedPerson = sanitizePersonRootWrite({
     ...currentPerson,
     ...person,
     createdAt: currentPerson?.createdAt ?? person.createdAt,
@@ -652,6 +688,12 @@ export async function enqueuePwaLibraryCorePersonRemove(
   personId: string,
 ): Promise<void> {
   await commitPwaLibraryCorePersonRemove(personId, Date.now());
+}
+
+export async function removePwaLibraryCorePerson(
+  personId: string,
+): Promise<void> {
+  await enqueuePwaLibraryCorePersonRemove(personId);
 }
 
 /** Commit one whole sanitized Account to OPFS SQLite. */

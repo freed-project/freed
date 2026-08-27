@@ -21,12 +21,14 @@ vi.mock("./library-core-sqlite-runtime", () => ({
 }));
 
 import {
+  commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemRemove,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonReachOutAppend,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
@@ -348,6 +350,40 @@ describe("PWA SQLite follower mutations", () => {
       operation_type: "friend_replace",
       payload: { accounts: [account], person },
       transaction_member_count: 1,
+    });
+  });
+
+  it("commits closed Person relationship mutations without rewriting a shell", async () => {
+    await commitPwaLibraryCorePersonReachOutAppend(
+      "person:friend",
+      { channel: "email", loggedAt: 8_100, notes: "Follow up" },
+      8_101,
+    );
+    let [envelope] = decodeCommit(mocks.commitFollowerIntent.mock.calls[0]![0]);
+    expect(envelope).toMatchObject({
+      entity_id: "person:friend",
+      operation_type: "person_reach_out_append",
+      payload: {
+        channel: "email",
+        logged_at_ms: 8_100,
+        notes: "Follow up",
+      },
+    });
+
+    mocks.commitFollowerIntent.mockClear();
+    await commitPwaLibraryCoreAccountPersonAssignment(
+      "account:friend",
+      "person:friend",
+      8_102,
+    );
+    [envelope] = decodeCommit(mocks.commitFollowerIntent.mock.calls[0]![0]);
+    expect(envelope).toMatchObject({
+      entity_id: "account:friend",
+      operation_type: "account_person_assignment",
+      payload: {
+        assigned_at_ms: 8_102,
+        person_id: "person:friend",
+      },
     });
   });
 });

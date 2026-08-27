@@ -276,6 +276,23 @@ or Account state is visible, durable, or transportable. The mutation is
 admitted only to the current Primary-writer capability and creates no provider
 request.
 
+All other Friends controls call their exact registered mutation directly.
+Relationship-tier changes use `person_upsert` with the complete Person root.
+The shared Person-root transform always removes `reachOutLog`, because child
+history may enter authority only through `person_reach_out_append`. Deletion
+uses `person_remove_and_accounts`, and linking uses
+`account_person_assignment`. Freed Desktop signs these through the native
+Primary boundary. The PWA signs the equivalent follower intent. The Friends
+view never calls a durable Zustand action or reconstructs a Person or Account
+catalog for these writes.
+
+Command-palette identity promotion follows the same boundary. It resolves one
+exact Account and, when necessary, derives one connection Person through the
+shared deterministic identity transform. Creating that relationship uses one
+`friend_replace`. Promoting an existing Person reads that exact Person row and
+uses one root-only `person_upsert`. The palette never reads a renderer Account
+map or calls the historical connection-person store action.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

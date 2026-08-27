@@ -608,10 +608,6 @@ export function FriendsView({
   mobileSurface,
 }: FriendsViewProps) {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const updatePerson = useAppStore((s) => s.updatePerson);
-  const removePerson = useAppStore((s) => s.removePerson);
-  const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
-  const logReachOut = useAppStore((s) => s.logReachOut);
   const selectedPersonId = useAppStore((s) => s.selectedPersonId);
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
@@ -675,12 +671,16 @@ export function FriendsView({
   const libraryFacets = useLibraryFacetSummary(friendsReadVersion);
 
   const {
+    appendLibraryPersonReachOut,
+    assignLibraryAccountToPerson,
     googleContacts,
     queryLibraryCore,
     readLibraryAccountDetail,
     readLibraryFriendDetail,
     readLibraryPersonDetail,
+    removeLibraryPerson,
     replaceLibraryFriend,
+    upsertLibraryPerson,
   } = usePlatform();
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
@@ -903,9 +903,13 @@ export function FriendsView({
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
       if (!selectedPerson) return;
-      await logReachOut(selectedPerson.id, entry);
+      if (!appendLibraryPersonReachOut) {
+        throw new Error("The Person reach-out SQLite mutation is unavailable.");
+      }
+      await appendLibraryPersonReachOut(selectedPerson.id, entry);
+      setLibraryMutationNonce((value) => value + 1);
     },
-    [logReachOut, selectedPerson],
+    [appendLibraryPersonReachOut, selectedPerson],
   );
 
   const persistFriend = useCallback(
@@ -996,21 +1000,29 @@ export function FriendsView({
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await removePerson(id);
+      if (!removeLibraryPerson) {
+        throw new Error("The Person removal SQLite mutation is unavailable.");
+      }
+      await removeLibraryPerson(id);
+      setLibraryMutationNonce((value) => value + 1);
       if (selectedPersonId === id) {
         handleClearSelection();
       }
       setEditorState(null);
     },
-    [handleClearSelection, removePerson, selectedPersonId],
+    [handleClearSelection, removeLibraryPerson, selectedPersonId],
   );
 
   const handleLinkAccountToPerson = useCallback(
     async (accountId: string, personId: string) => {
-      await linkAccountToPerson(accountId, personId);
+      if (!assignLibraryAccountToPerson) {
+        throw new Error("The Account assignment SQLite mutation is unavailable.");
+      }
+      await assignLibraryAccountToPerson(accountId, personId);
+      setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(personId);
     },
-    [linkAccountToPerson, setSelectedPerson],
+    [assignLibraryAccountToPerson, setSelectedPerson],
   );
 
   const handlePinPersonPosition = useCallback(
@@ -1037,13 +1049,18 @@ export function FriendsView({
 
   const handleSetPersonRelationshipLevel = useCallback(
     async (person: Person, level: RelationshipTierLevel) => {
-      await updatePerson(person.id, {
+      if (!upsertLibraryPerson) {
+        throw new Error("The Person SQLite mutation is unavailable.");
+      }
+      await upsertLibraryPerson({
+        ...person,
         ...relationshipPatchForLevel(level),
         updatedAt: Date.now(),
       });
+      setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(person.id);
     },
-    [setSelectedPerson, updatePerson],
+    [setSelectedPerson, upsertLibraryPerson],
   );
 
   const handlePromoteSelectedAccount = useCallback(
