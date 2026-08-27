@@ -2361,7 +2361,9 @@ describe("PWA Library Core SQLite engine", () => {
         ('account-2', 'person-2', 'social', 'x', 'grace-remote', 'grace', 'Grace',
          60, 210, 'capture', NULL, NULL, 60, 210),
         ('account-3', 'person-1', 'rss', 'rss', 'alpha', 'alpha', 'Alpha',
-         70, 220, 'capture', NULL, NULL, 70, 220);
+         70, 220, 'capture', NULL, NULL, 70, 220),
+        ('account-4', NULL, 'social', 'instagram', 'ada-instagram',
+         'ada.lovelace', 'Ada Lovelace', 80, 230, 'capture', NULL, NULL, 80, 230);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
     `);
@@ -2735,6 +2737,20 @@ describe("PWA Library Core SQLite engine", () => {
     ).toBeNull();
     expect(
       engine.query({
+        emails: [],
+        names: ["ada", "ada lovelace"],
+        queryId: "contact_match_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      accountIds: ["account-4"],
+      confidence: "high",
+      personId: "person-1",
+      queryId: "contact_match_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
         queryId: "rss_feed_detail_v1",
         schemaVersion: 1,
         url: "https://alpha.example/feed",
@@ -2894,7 +2910,7 @@ describe("PWA Library Core SQLite engine", () => {
       maximumAccountRows.push(...page.rows);
       maximumAccountCursor = page.nextCursor;
     }
-    expect(maximumAccountRows).toHaveLength(133);
+    expect(maximumAccountRows).toHaveLength(134);
     expect(
       maximumAccountRows.find((row) => row.id.startsWith("000-large-account-")),
     ).toMatchObject({
@@ -3114,7 +3130,7 @@ describe("PWA Library Core SQLite engine", () => {
         savedArchivedCount: 0,
         savedCount: 1,
         savedPlatformCount: 1,
-        socialAccountCount: 132,
+        socialAccountCount: 133,
         tags: ["favorite"],
         totalCount: 3,
         unreadCount: 3,

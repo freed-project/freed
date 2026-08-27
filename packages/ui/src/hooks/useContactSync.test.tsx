@@ -66,11 +66,6 @@ describe("useContactSync", () => {
       resolveFetch = resolve;
     }));
     const setPendingMatchCount = vi.fn();
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit([]);
-      },
-    );
     const store = <T,>(selector: (state: unknown) => T): T => selector({
       persons: {},
       accounts: {},
@@ -79,7 +74,6 @@ describe("useContactSync", () => {
     });
     const platformValue = {
       store,
-      scanLibraryItems,
       googleContacts: {
         getToken,
         connect: vi.fn(async () => {}),
@@ -122,7 +116,6 @@ describe("useContactSync", () => {
       await firstSync;
     });
 
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
     expect(actions?.getSyncState()).toMatchObject({
       authStatus: "connected",
       syncStatus: "idle",
@@ -151,7 +144,15 @@ describe("useContactSync", () => {
         getToken: vi.fn(async () => "google-access-token"),
         connect: vi.fn(async () => {}),
         fetchContacts: vi.fn(async () => ({
-          contacts: [],
+          contacts: [{
+            resourceName: "people/unmatched",
+            etag: "etag-unmatched",
+            name: { displayName: "Unmatched Person" },
+            emails: [],
+            phones: [],
+            photos: [],
+            organizations: [],
+          }],
           nextSyncToken: "unaccepted-token",
           deleted: [],
         })),
@@ -176,8 +177,80 @@ describe("useContactSync", () => {
     expect(actions?.getSyncState()).toMatchObject({
       syncStatus: "error",
       syncToken: null,
-      lastErrorMessage: "The SQLite Library scan is unavailable.",
+      lastErrorMessage: "The SQLite Library query boundary is unavailable.",
     });
+  });
+
+  it("uses only the bounded SQLite match response and ignores renderer corpora", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const queryLibraryCore = vi.fn(async () => ({
+      accountIds: ["account-sqlite"],
+      confidence: "high" as const,
+      personId: "person-sqlite",
+      queryId: "contact_match_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 9,
+        transitionSequence: 9,
+      },
+    }));
+    const platformValue = {
+      store: <T,>(selector: (state: unknown) => T): T => selector({
+        persons: { "legacy-person": { id: "legacy-person", name: "Ada Lovelace" } },
+        accounts: { "legacy-account": { id: "legacy-account", displayName: "Ada Lovelace" } },
+        items: [{ globalId: "legacy-item", author: { id: "legacy-author", displayName: "Ada Lovelace" } }],
+        setPendingMatchCount: vi.fn(),
+      }),
+      queryLibraryCore,
+      googleContacts: {
+        getToken: vi.fn(async () => "google-access-token"),
+        connect: vi.fn(async () => {}),
+        fetchContacts: vi.fn(async () => ({
+          contacts: [{
+            resourceName: "people/ada",
+            etag: "etag-ada",
+            name: { displayName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace" },
+            emails: [{ value: "ada@example.com" }],
+            phones: [],
+            photos: [],
+            organizations: [],
+          }],
+          nextSyncToken: "next-token",
+          deleted: [],
+        })),
+      },
+    } as unknown as PlatformConfig;
+    let actions: ContactSyncActions | null = null;
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platformValue}>
+          <ContactSyncHarness onReady={(nextActions) => {
+            actions = nextActions;
+          }} />
+        </PlatformProvider>,
+      );
+    });
+    await act(async () => {
+      await actions!.syncNow({ force: true });
+    });
+
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    expect(queryLibraryCore).toHaveBeenCalledWith({
+      emails: ["ada@example.com"],
+      names: ["ada", "ada lovelace", "lovelace ada"],
+      queryId: "contact_match_v1",
+      schemaVersion: 1,
+    });
+    expect(actions?.getSyncState().pendingSuggestions).toEqual([
+      expect.objectContaining({
+        accountIds: ["account-sqlite"],
+        personId: "person-sqlite",
+      }),
+    ]);
   });
 
   it("drains an issued Contacts request without restoring state after reset", async () => {

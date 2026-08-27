@@ -170,20 +170,20 @@ describe("google contacts helpers", () => {
 
     const friendMatch: ContactMatch = {
       ...baseMatch,
-      friend: { id: "friend-1" } as Friend,
-      authorIds: [],
+      personId: "person-1",
+      accountIds: [],
       confidence: "high",
     };
     const createMatch: ContactMatch = {
       ...baseMatch,
-      friend: null,
-      authorIds: ["author-1"],
+      personId: null,
+      accountIds: ["account-1"],
       confidence: "high",
     };
     const manualMatch: ContactMatch = {
       ...baseMatch,
-      friend: null,
-      authorIds: ["author-1"],
+      personId: null,
+      accountIds: ["account-1"],
       confidence: "medium",
     };
 

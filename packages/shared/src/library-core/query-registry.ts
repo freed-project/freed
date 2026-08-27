@@ -92,6 +92,14 @@ import {
   LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY,
 } from "./account-detail-contracts.js";
 import {
+  LIBRARY_CORE_CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_CONTACT_MATCH_NESTED_BOUNDS,
+  LIBRARY_CORE_CONTACT_MATCH_PROJECTION,
+  LIBRARY_CORE_CONTACT_MATCH_REQUEST_SCHEMA,
+  LIBRARY_CORE_CONTACT_MATCH_RESPONSE_SCHEMA,
+  LIBRARY_CORE_CONTACT_MATCH_SOURCE_IDENTITY,
+} from "./contact-match-contracts.js";
+import {
   LIBRARY_CORE_RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_RSS_FEED_DETAIL_NESTED_BOUNDS,
   LIBRARY_CORE_RSS_FEED_DETAIL_PROJECTION,
@@ -330,6 +338,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   };
   readonly requestSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_CONTACT_MATCH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
@@ -363,6 +372,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_CONTACT_MATCH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
@@ -396,6 +406,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_CONTACT_MATCH_PROJECTION
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_RSS_FEED_DETAIL_PROJECTION
@@ -536,6 +547,7 @@ interface PlannedQueryInput {
   readonly currentKinds?: readonly string[];
   readonly requestSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_CONTACT_MATCH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
@@ -567,6 +579,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PROVIDER_MEDIA_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_CONTACT_MATCH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
@@ -598,6 +611,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PROVIDER_MEDIA_PAGE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_CONTACT_MATCH_PROJECTION
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_RSS_FEED_DETAIL_PROJECTION
@@ -625,6 +639,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PROVIDER_MEDIA_PAGE_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_CONTACT_MATCH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
@@ -643,6 +658,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PROVIDER_MEDIA_PAGE_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_CONTACT_MATCH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
@@ -910,6 +926,27 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       nullOrdering: "all_sort_columns_not_null",
     },
     tieBreakKey: "ordinal",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  contact_match_v1: plannedQuery({
+    defaultLimit: 1,
+    maximumLimit: 1,
+    maximumRows: 1,
+    maximumResponseBytes: LIBRARY_CORE_CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("single_page"),
+    totalCountIntent: "none",
+    rendererCache: false,
+    invalidationKeyIntent: ["persons", "accounts"],
+    currentKinds: [
+      "query_normalized_v1::contact_match_v1",
+      "PwaLibraryCoreSqliteEngine.query::contact_match_v1",
+    ],
+    requestSchema: LIBRARY_CORE_CONTACT_MATCH_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_CONTACT_MATCH_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_CONTACT_MATCH_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_CONTACT_MATCH_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_CONTACT_MATCH_NESTED_BOUNDS,
+    sortNotApplicable: true,
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   content_fetch_claim_v1: plannedQuery({

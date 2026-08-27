@@ -1325,6 +1325,11 @@
       "countSql": "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
       "sql": "SELECT revision, ordinal, topic, entity_id AS entityId, reset_required AS resetRequired FROM library_invalidations WHERE (revision, ordinal) > (?2, ?3) AND revision <= ?1 ORDER BY revision ASC, ordinal ASC LIMIT ?4;"
     },
+    "contact_match_v1": {
+      "maximumScanRows": 1,
+      "countSql": "SELECT 1;",
+      "sql": "WITH contact_names(value) AS (SELECT value FROM json_each(?1)), contact_values(value) AS (SELECT value FROM contact_names UNION SELECT value FROM json_each(?2)), person_matches AS (SELECT key.person_id, key.confidence, key.match_rank FROM contact_values AS input JOIN library_person_contact_match_keys AS key ON key.match_value = input.value ORDER BY key.match_rank, key.person_id COLLATE BINARY LIMIT 65), account_matches AS (SELECT key.account_id, key.confidence, key.match_rank FROM contact_names AS input JOIN library_account_contact_match_keys AS key ON key.match_value = input.value ORDER BY key.match_rank, key.account_id COLLATE BINARY LIMIT 33), selected_person AS (SELECT person_id, confidence FROM person_matches ORDER BY match_rank, person_id COLLATE BINARY LIMIT 1), selected_accounts AS (SELECT account_id, min(match_rank) AS match_rank FROM account_matches GROUP BY account_id ORDER BY account_id COLLATE BINARY LIMIT 32) SELECT (SELECT person_id FROM selected_person) AS personId, COALESCE((SELECT json_group_array(account_id) FROM selected_accounts), '[]') AS accountIdsJson, CASE WHEN EXISTS (SELECT 1 FROM selected_person WHERE confidence = 'high') OR EXISTS (SELECT 1 FROM selected_accounts WHERE match_rank = 0) THEN 'high' ELSE 'medium' END AS confidence;"
+    },
     "feed_browse_page_v3": {
       "maximumScanRows": 129,
       "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (?10 = 'all_content' OR EXISTS (SELECT 1 FROM library_accounts AS friend_account JOIN library_persons AS friend_person ON friend_person.id = friend_account.person_id WHERE friend_account.provider = item.platform AND friend_account.external_id = item.author_id AND friend_person.relationship_status = 'friend'));",
@@ -1449,6 +1454,7 @@
     "account_timeline_v1",
     "background_item_page_v1",
     "change_feed_v1",
+    "contact_match_v1",
     "content_fetch_claim_v1",
     "export_enumeration_v1",
     "feed_browse_page_v1",

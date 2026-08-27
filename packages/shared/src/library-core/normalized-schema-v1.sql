@@ -572,6 +572,104 @@ CREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id
 CREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external
   ON library_accounts(provider, external_id);
 
+CREATE TABLE IF NOT EXISTS library_person_contact_match_keys (
+  match_value TEXT NOT NULL,
+  person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,
+  confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium')),
+  match_rank INTEGER NOT NULL CHECK (match_rank BETWEEN 0 AND 3),
+  source_id TEXT NOT NULL,
+  PRIMARY KEY (match_value, match_rank, person_id, source_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_account_contact_match_keys (
+  match_value TEXT NOT NULL,
+  account_id TEXT NOT NULL REFERENCES library_accounts(id) ON DELETE CASCADE,
+  confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium')),
+  match_rank INTEGER NOT NULL CHECK (match_rank BETWEEN 0 AND 1),
+  PRIMARY KEY (match_value, match_rank, account_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS library_person_contact_match_insert
+AFTER INSERT ON library_persons
+BEGIN
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  VALUES (lower(trim(NEW.name)), NEW.id, 'high', 1, 'person:' || NEW.id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_contact_match_update
+AFTER UPDATE OF name ON library_persons
+BEGIN
+  DELETE FROM library_person_contact_match_keys WHERE source_id = 'person:' || NEW.id;
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  VALUES (lower(trim(NEW.name)), NEW.id, 'high', 1, 'person:' || NEW.id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_contact_match_insert
+AFTER INSERT ON library_accounts
+BEGIN
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(NEW.email)), NEW.person_id, 'high', 0, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.email IS NOT NULL AND trim(NEW.email) <> '';
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(NEW.display_name)), NEW.person_id, 'high', 2, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.kind = 'social'
+    AND NEW.display_name IS NOT NULL AND trim(NEW.display_name) <> '';
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(replace(replace(replace(NEW.handle, '.', ' '), '_', ' '), '-', ' '))),
+         NEW.person_id, 'medium', 3, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.kind = 'social'
+    AND NEW.handle IS NOT NULL AND trim(NEW.handle) <> '';
+  INSERT OR IGNORE INTO library_account_contact_match_keys
+    (match_value, account_id, confidence, match_rank)
+  SELECT lower(trim(NEW.display_name)), NEW.id, 'high', 0
+  WHERE NEW.person_id IS NULL AND NEW.kind = 'social'
+    AND NEW.display_name IS NOT NULL AND trim(NEW.display_name) <> '';
+  INSERT OR IGNORE INTO library_account_contact_match_keys
+    (match_value, account_id, confidence, match_rank)
+  SELECT lower(trim(replace(replace(replace(NEW.handle, '.', ' '), '_', ' '), '-', ' '))),
+         NEW.id, 'medium', 1
+  WHERE NEW.person_id IS NULL AND NEW.kind = 'social'
+    AND NEW.handle IS NOT NULL AND trim(NEW.handle) <> '';
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_contact_match_update
+AFTER UPDATE OF person_id, kind, email, display_name, handle ON library_accounts
+BEGIN
+  DELETE FROM library_person_contact_match_keys WHERE source_id = 'account:' || NEW.id;
+  DELETE FROM library_account_contact_match_keys WHERE account_id = NEW.id;
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(NEW.email)), NEW.person_id, 'high', 0, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.email IS NOT NULL AND trim(NEW.email) <> '';
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(NEW.display_name)), NEW.person_id, 'high', 2, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.kind = 'social'
+    AND NEW.display_name IS NOT NULL AND trim(NEW.display_name) <> '';
+  INSERT OR IGNORE INTO library_person_contact_match_keys
+    (match_value, person_id, confidence, match_rank, source_id)
+  SELECT lower(trim(replace(replace(replace(NEW.handle, '.', ' '), '_', ' '), '-', ' '))),
+         NEW.person_id, 'medium', 3, 'account:' || NEW.id
+  WHERE NEW.person_id IS NOT NULL AND NEW.kind = 'social'
+    AND NEW.handle IS NOT NULL AND trim(NEW.handle) <> '';
+  INSERT OR IGNORE INTO library_account_contact_match_keys
+    (match_value, account_id, confidence, match_rank)
+  SELECT lower(trim(NEW.display_name)), NEW.id, 'high', 0
+  WHERE NEW.person_id IS NULL AND NEW.kind = 'social'
+    AND NEW.display_name IS NOT NULL AND trim(NEW.display_name) <> '';
+  INSERT OR IGNORE INTO library_account_contact_match_keys
+    (match_value, account_id, confidence, match_rank)
+  SELECT lower(trim(replace(replace(replace(NEW.handle, '.', ' '), '_', ' '), '-', ' '))),
+         NEW.id, 'medium', 1
+  WHERE NEW.person_id IS NULL AND NEW.kind = 'social'
+    AND NEW.handle IS NOT NULL AND trim(NEW.handle) <> '';
+END;
+
 CREATE TRIGGER IF NOT EXISTS library_rss_feed_sample_insert
 AFTER INSERT ON library_rss_feeds
 WHEN NEW.sample_batch_id IS NOT NULL

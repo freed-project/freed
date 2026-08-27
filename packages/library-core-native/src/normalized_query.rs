@@ -34,6 +34,7 @@ const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
 const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES: usize = 128 * 1_024;
 const RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 64 * 1_024;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
@@ -301,6 +302,14 @@ pub struct NormalizedAccountDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedContactMatchRequestV1 {
+    pub emails: Vec<String>,
+    pub names: Vec<String>,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedRssFeedDetailRequestV1 {
     pub schema_version: u32,
     pub url: String,
@@ -361,6 +370,7 @@ pub enum NormalizedQueryRequestV1 {
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
     AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
+    ContactMatch(NormalizedContactMatchRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
     FeedPage(NormalizedFeedPageRequestV1),
@@ -943,6 +953,17 @@ pub struct NormalizedAccountDetailResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedContactMatchResponseV1 {
+    pub account_ids: Vec<String>,
+    pub confidence: String,
+    pub person_id: Option<String>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedRssFeedDetailV1 {
     pub enabled: bool,
     pub folder: Option<String>,
@@ -1100,6 +1121,7 @@ pub enum NormalizedQueryResponseV1 {
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
     AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
+    ContactMatch(NormalizedContactMatchResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
     FeedPage(NormalizedFeedPageResponseV1),
@@ -4409,6 +4431,74 @@ fn query_account_detail(
     Ok(response)
 }
 
+fn query_contact_match(
+    connection: &mut Connection,
+    request: NormalizedContactMatchRequestV1,
+) -> Result<NormalizedContactMatchResponseV1, NormalizedSqliteError> {
+    let valid_values = |values: &[String], maximum_items: usize, maximum_bytes: usize| {
+        values.len() <= maximum_items
+            && values
+                .iter()
+                .all(|value| !value.is_empty() && value.len() <= maximum_bytes)
+            && !values.windows(2).any(|pair| pair[0] >= pair[1])
+    };
+    if request.schema_version != 1
+        || request.names.len() + request.emails.len() == 0
+        || !valid_values(&request.names, 8, 512)
+        || !valid_values(&request.emails, 16, 4_096)
+    {
+        return Err(invalid("normalized contact match request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "contact_match_v1")
+        .ok_or(invalid("normalized contact match program is missing"))?;
+    let names_json = serde_json::to_string(&request.names)
+        .map_err(|_| invalid("normalized contact match names are invalid"))?;
+    let emails_json = serde_json::to_string(&request.emails)
+        .map_err(|_| invalid("normalized contact match emails are invalid"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut rows = statement.query(params![names_json, emails_json])?;
+    let row = rows
+        .next()?
+        .ok_or(invalid("normalized contact match row is missing"))?;
+    let response = NormalizedContactMatchResponseV1 {
+        account_ids: string_array(row, "accountIdsJson", 32, 2_048)?,
+        confidence: row.get("confidence")?,
+        person_id: row.get("personId")?,
+        query_id: "contact_match_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if rows.next()?.is_some()
+        || response
+            .account_ids
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+        || response
+            .person_id
+            .as_ref()
+            .is_some_and(|person_id| person_id.is_empty() || person_id.len() > 2_048)
+        || !matches!(response.confidence.as_str(), "high" | "medium")
+        || serde_json::to_vec(&response)
+            .map_err(|_| invalid("normalized contact match response is invalid"))?
+            .len()
+            > CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("normalized contact match response is invalid"));
+    }
+    drop(rows);
+    drop(statement);
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_rss_feed_detail(
     connection: &mut Connection,
     request: NormalizedRssFeedDetailRequestV1,
@@ -5214,6 +5304,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
             query_change_feed(connection, request)?,
         )),
+        NormalizedQueryRequestV1::ContactMatch(request) => Ok(
+            NormalizedQueryResponseV1::ContactMatch(query_contact_match(connection, request)?),
+        ),
         NormalizedQueryRequestV1::FacetSummary(request) => Ok(
             NormalizedQueryResponseV1::FacetSummary(query_facet_summary(connection, request)?),
         ),
@@ -5337,6 +5430,7 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedAccountTimelineRequestV1, AccountTimeline)
         }
         "change_feed_v1" => decode_request!(NormalizedChangeFeedRequestV1, ChangeFeed),
+        "contact_match_v1" => decode_request!(NormalizedContactMatchRequestV1, ContactMatch),
         "library_facet_summary_v1" => {
             decode_request!(NormalizedFacetSummaryRequestV1, FacetSummary)
         }
@@ -5413,6 +5507,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ContactMatch(response) => encode_response!(response),
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedPage(response) => encode_response!(response),
@@ -5744,10 +5839,16 @@ mod tests {
         };
         assert!(map.has_more);
         assert_eq!(map.rows[0].global_id, "visible");
-        assert_eq!(map.rows[0].linked_account_id.as_deref(), Some("account-ada"));
+        assert_eq!(
+            map.rows[0].linked_account_id.as_deref(),
+            Some("account-ada")
+        );
         assert_eq!(map.rows[0].friend_person_id.as_deref(), Some("person-ada"));
         assert_eq!(map.rows[0].friend_name.as_deref(), Some("Ada Friend"));
-        assert_eq!(map.rows[0].friend_relationship_status.as_deref(), Some("friend"));
+        assert_eq!(
+            map.rows[0].friend_relationship_status.as_deref(),
+            Some("friend")
+        );
         let story = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::StoryWallCandidates(NormalizedStoryWallCandidatesRequestV1 {
@@ -7416,6 +7517,81 @@ mod tests {
             panic!("account detail response");
         };
         assert!(missing.account.is_none());
+    }
+
+    #[test]
+    fn native_contact_match_returns_bounded_normalized_identities() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 14, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 14 WHERE singleton_id = 1;
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-ada', 'Ada Byron', 'friend', 5, 50, 200);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, handle, display_name,
+                    email, first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES
+                     ('contact-ada', 'person-ada', 'contact', 'google_contacts',
+                      'people/ada', NULL, 'Ada Byron', 'ada@example.com',
+                      50, 200, 'import', 50, 200),
+                     ('account-ada-x', NULL, 'social', 'x', 'ada-x',
+                      'ada_lovelace', 'Ada Lovelace', NULL,
+                      50, 200, 'capture', 50, 200),
+                     ('account-ada-instagram', NULL, 'social', 'instagram', 'ada-ig',
+                      'ada.lovelace', NULL, NULL,
+                      50, 200, 'capture', 50, 200);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "contact_match_v1")
+            .expect("contact match program");
+        let plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+            .expect("contact match plan")
+            .query_map(
+                params!["[\"ada lovelace\"]", "[\"ada@example.com\"]"],
+                |row| row.get::<_, String>(3),
+            )
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(
+            plan.iter()
+                .filter(|detail| detail.contains("SEARCH key USING PRIMARY KEY"))
+                .count()
+                >= 2,
+            "contact match plan did not use both match-key primary indexes: {plan:?}"
+        );
+
+        let NormalizedQueryResponseV1::ContactMatch(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ContactMatch(NormalizedContactMatchRequestV1 {
+                emails: vec!["ada@example.com".to_owned()],
+                names: vec!["ada lovelace".to_owned()],
+                schema_version: 1,
+            }),
+        )
+        .expect("contact match") else {
+            panic!("contact match response");
+        };
+        assert_eq!(response.person_id.as_deref(), Some("person-ada"));
+        assert_eq!(
+            response.account_ids,
+            ["account-ada-instagram", "account-ada-x"]
+        );
+        assert_eq!(response.confidence, "high");
+        assert_eq!(response.source.projection_revision, 14);
     }
 
     #[test]

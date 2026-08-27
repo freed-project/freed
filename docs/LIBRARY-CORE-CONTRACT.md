@@ -668,6 +668,19 @@ roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.
 The source-fenced response is capped at 512 KiB. Missing Accounts return a
 typed null result rather than causing a whole-library fallback.
 
+`contact_match_v1` resolves one Google Contact against trigger-maintained
+normalized identity keys in SQLite. The closed request accepts at most eight
+sorted normalized names and 16 sorted normalized email addresses. The
+source-fenced response returns at most one Person ID and 32 unlinked social
+Account IDs under a 128 KiB ceiling. Person names, contact Account emails,
+social display names, and normalized social handles enter indexed match-key
+tables in the same SQLite transaction as their Person or Account write.
+Native Rust and browser SQLite execute the same generated SQL. React never
+subscribes to Person or Account dictionaries, scans FeedItems, reconstructs
+Accounts from authors, or sorts a candidate corpus. Linking a suggestion
+creates only the typed Google contact Account and applies registered Account
+to Person assignments to the returned existing Account IDs.
+
 `rss_feed_detail_v1` is the matching normalized point query for one RSS Feed.
 It returns every synchronized feed field, including polling and unread policy,
 folder, site and image URLs, last successful fetch time, and sample provenance,

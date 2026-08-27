@@ -11,6 +11,12 @@ import {
   type LibraryCoreAccountTimelineResponseV1,
 } from "./account-timeline-contracts.js";
 import {
+  parseLibraryCoreContactMatchRequestV1,
+  parseLibraryCoreContactMatchResponseV1,
+  type LibraryCoreContactMatchRequestV1,
+  type LibraryCoreContactMatchResponseV1,
+} from "./contact-match-contracts.js";
+import {
   parseLibraryCoreAccountGraphPageRequestV1,
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
@@ -260,6 +266,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreAccountGraphPageRequestV1
   | LibraryCoreAccountTimelineRequestV1
   | LibraryCoreChangeFeedRequestV1
+  | LibraryCoreContactMatchRequestV1
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedBrowsePageRequestV3
   | LibraryCoreFeedPageRequestV1
@@ -288,6 +295,8 @@ export type LibraryCoreSqliteQueryResponseFor<
   ? LibraryCoreFacetSummaryResponseV1
   : T extends LibraryCoreAccountDetailRequestV1
     ? LibraryCoreAccountDetailResponseV1
+    : T extends LibraryCoreContactMatchRequestV1
+      ? LibraryCoreContactMatchResponseV1
     : T extends LibraryCoreAccountGraphPageRequestV1
       ? LibraryCoreAccountGraphPageResponseV1
       : T extends LibraryCoreAccountTimelineRequestV1
@@ -346,6 +355,8 @@ export function parseLibraryCoreSqliteQueryResponse<
   const parsed =
     request.queryId === "account_detail_v1"
       ? parseLibraryCoreAccountDetailResponseV1(value, request)
+      : request.queryId === "contact_match_v1"
+        ? parseLibraryCoreContactMatchResponseV1(value, request)
       : request.queryId === "account_graph_page_v1"
         ? parseLibraryCoreAccountGraphPageResponseV1(value, request)
         : request.queryId === "account_timeline_v1"
@@ -936,6 +947,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
     const query = isClosedRecord(value.query)
       ? value.query.queryId === "account_detail_v1"
         ? parseLibraryCoreAccountDetailRequestV1(value.query)
+        : value.query.queryId === "contact_match_v1"
+          ? parseLibraryCoreContactMatchRequestV1(value.query)
         : value.query.queryId === "account_graph_page_v1"
           ? parseLibraryCoreAccountGraphPageRequestV1(value.query)
           : value.query.queryId === "account_timeline_v1"

@@ -1315,10 +1315,8 @@ export interface GoogleContact {
  */
 export interface ContactMatch {
   contact: GoogleContact;
-  person?: Person | null;
-  /** @deprecated Use person. */
-  friend?: Friend | null;
-  authorIds: string[];
+  personId: string | null;
+  accountIds: string[];
   confidence: "high" | "medium";
 }
 

@@ -130,6 +130,8 @@ import {
   parseLibraryCoreStoryWallCandidatesResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
+  parseLibraryCoreContactMatchRequestV1,
+  parseLibraryCoreContactMatchResponseV1,
   parseLibraryCoreFilterScopeSummaryRequestV1,
   parseLibraryCoreFilterScopeSummaryResponseV1,
   parseLibraryCoreRssFeedDetailRequestV1,
@@ -246,6 +248,8 @@ import {
   type LibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
+  type LibraryCoreContactMatchRequestV1,
+  type LibraryCoreContactMatchResponseV1,
   type LibraryCoreFilterScopeSummaryRequestV1,
   type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreRssFeedDetailRequestV1,
@@ -5063,6 +5067,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryChangeFeed(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "contact_match_v1":
+        return this.#queryContactMatch(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "library_facet_summary_v1":
         return this.#queryFacetSummary(
           input,
@@ -5503,6 +5511,43 @@ export class PwaLibraryCoreSqliteEngine {
       response,
       request.value,
     );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryContactMatch(
+    input: LibraryCoreContactMatchRequestV1,
+  ): LibraryCoreContactMatchResponseV1 {
+    const request = parseLibraryCoreContactMatchRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.contact_match_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        JSON.stringify(request.value.names),
+        JSON.stringify(request.value.emails),
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1 || rows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite contact match exceeded its row bound");
+    }
+    const row = rows[0]!;
+    const response = {
+      accountIds: stringArray(row.accountIdsJson, "Contact match Account identities"),
+      confidence: text(row.confidence, "Contact match confidence"),
+      personId: nullableText(row.personId, "Contact match Person identity"),
+      queryId: "contact_match_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreContactMatchResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

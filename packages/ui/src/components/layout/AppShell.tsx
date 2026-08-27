@@ -26,14 +26,11 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
-  type Account,
-  type FeedItem,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
 } from "@freed/shared";
 import {
-  buildSocialAccountsFromAuthorIds,
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
 import {
@@ -106,11 +103,11 @@ export function AppShell({ children }: AppShellProps) {
   const {
     queryLibraryCore,
     releaseMapRendererMemory,
-    scanLibraryItems,
   } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
+  const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
@@ -400,18 +397,14 @@ export function AppShell({ children }: AppShellProps) {
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
     if (!match) return;
-    if (!scanLibraryItems) {
-      toast.error("Freed could not read the local Library.");
-      return;
-    }
     if (!queryLibraryCore) {
       toast.error("Freed could not query the local Library.");
       return;
     }
 
     const now = Date.now();
-    const personId = match.person?.id ?? crypto.randomUUID();
-    const person = match.person ?? {
+    const personId = match.personId ?? crypto.randomUUID();
+    const person = {
       id: personId,
       name: match.contact.name.displayName ?? match.contact.name.givenName ?? "Unknown",
       relationshipStatus: "friend" as const,
@@ -420,42 +413,22 @@ export function AppShell({ children }: AppShellProps) {
       updatedAt: now,
     };
 
-    const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
-    const authorIds = new Set(match.authorIds);
-    const matches = new Map<string, FeedItem>();
-    await scanLibraryItems((page) => {
-      for (const item of page) {
-        if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
-        matches.set(item.author.id, item);
-      }
-      return matches.size >= authorIds.size ? "stop" : "continue";
-    });
-    const socialAccounts = buildSocialAccountsFromAuthorIds(
-      [...matches.values()],
-      match.authorIds,
-      now,
-      personId,
-    );
-    const missingSocialAccounts: Account[] = [];
-    for (const account of socialAccounts) {
+    if (!match.personId) {
+      await addPerson(person);
+    }
+    await addAccounts([
+      createContactAccountFromGoogleContact(match.contact, now, personId),
+    ]);
+    for (const accountId of match.accountIds) {
       const existing = await queryLibraryCore({
-        accountId: account.id,
+        accountId,
         queryId: "account_detail_v1",
         schemaVersion: 1,
       });
-      if (!existing.account) missingSocialAccounts.push(account);
-    }
-
-    if (!match.person) {
-      await addPerson(person);
-    }
-
-    const mergedAccounts = [
-      contactAccount,
-      ...missingSocialAccounts,
-    ];
-    if (mergedAccounts.length > 0) {
-      await addAccounts(mergedAccounts);
+      if (!existing.account) {
+        throw new Error("A matched social Account no longer exists.");
+      }
+      await linkAccountToPerson(accountId, personId);
     }
 
     contactSync.dismissSuggestion(suggestion.id);
@@ -463,8 +436,8 @@ export function AppShell({ children }: AppShellProps) {
     addAccounts,
     addPerson,
     contactSync,
+    linkAccountToPerson,
     queryLibraryCore,
-    scanLibraryItems,
   ]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {

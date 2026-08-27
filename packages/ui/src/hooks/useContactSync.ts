@@ -7,7 +7,6 @@ import {
   serializeContactSyncState,
   type ContactMatch,
   type ContactSyncState,
-  type FeedItem,
   type IdentitySuggestion,
 } from "@freed/shared";
 import {
@@ -15,8 +14,7 @@ import {
   mergeContactChanges,
   type GoogleContactsResult,
 } from "@freed/shared/google-contacts";
-import { buildSocialAccountsFromAuthorIds } from "@freed/shared/google-contacts-automation";
-import { matchContacts } from "@freed/shared/contact-matching";
+import { matchContactsWithLibraryCore } from "@freed/shared/contact-matching";
 import { usePlatform } from "../context/PlatformContext.js";
 import {
   finishBackgroundActivity,
@@ -131,23 +129,22 @@ function saveSyncState(
 }
 
 function suggestionIdForMatch(match: ContactMatch): string {
-  const authorKey = [...match.authorIds].sort().join(",");
-  return `google:${match.contact.resourceName}:person:${match.person?.id ?? "none"}:authors:${authorKey}`;
+  const accountKey = [...match.accountIds].sort().join(",");
+  return `google:${match.contact.resourceName}:person:${match.personId ?? "none"}:accounts:${accountKey}`;
 }
 
-function buildSuggestion(match: ContactMatch, items: FeedItem[]): IdentitySuggestion | null {
-  if (!match.person && match.authorIds.length === 0) return null;
+function buildSuggestion(match: ContactMatch): IdentitySuggestion | null {
+  if (!match.personId && match.accountIds.length === 0) return null;
   const suggestionId = suggestionIdForMatch(match);
   const label = match.contact.name.displayName ?? match.contact.name.givenName ?? "Unknown";
-  const accountIds = buildSocialAccountsFromAuthorIds(items, match.authorIds).map((account) => account.id);
   return {
     id: suggestionId,
-    kind: match.person ? "attach_accounts_to_person" : "merge_accounts",
+    kind: match.personId ? "attach_accounts_to_person" : "merge_accounts",
     confidence: match.confidence,
-    accountIds,
-    personId: match.person?.id,
+    accountIds: match.accountIds,
+    personId: match.personId ?? undefined,
     label,
-    reason: match.person
+    reason: match.personId
       ? "Contact may belong to an existing person."
       : "Contact may match one or more captured social accounts.",
     createdAt: Date.now(),
@@ -186,16 +183,9 @@ function isAuthSyncError(error: unknown): boolean {
 }
 
 export function useContactSync() {
-  const { store, googleContacts, scanLibraryItems } = usePlatform();
+  const { store, googleContacts, queryLibraryCore } = usePlatform();
 
-  const persons = store((state) => state.persons);
-  const accounts = store((state) => state.accounts);
   const setPendingMatchCount = store((state) => state.setPendingMatchCount);
-
-  const personsRef = useRef(persons);
-  const accountsRef = useRef(accounts);
-  personsRef.current = persons;
-  accountsRef.current = accounts;
 
   const [loadedSyncState] = useState<LoadedContactSyncState>(() => loadSyncState());
   const [syncState, setSyncState] = useState<ContactSyncState>(loadedSyncState.state);
@@ -359,31 +349,18 @@ export function useContactSync() {
         );
         if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
-        if (!scanLibraryItems) {
-          throw new Error("The SQLite Library scan is unavailable.");
+        if (merged.length > 0 && !queryLibraryCore) {
+          throw new Error("The SQLite Library query boundary is unavailable.");
         }
-        const representativeByAuthor = new Map<string, FeedItem>();
-        await scanLibraryItems((page) => {
-          for (const item of page) {
-            if (!representativeByAuthor.has(item.author.id)) {
-              representativeByAuthor.set(item.author.id, item);
-            }
-          }
-          return "continue";
-        });
-        const matchingItems = [...representativeByAuthor.values()];
-        const allMatches = matchContacts(
-          merged,
-          personsRef.current,
-          accountsRef.current,
-          matchingItems,
-        );
+        const allMatches = queryLibraryCore
+          ? await matchContactsWithLibraryCore(merged, queryLibraryCore)
+          : [];
         matchesRef.current = new Map(
           allMatches.map((match) => [suggestionIdForMatch(match), match])
         );
 
         const pendingSuggestions = allMatches
-          .map((match) => buildSuggestion(match, matchingItems))
+          .map((match) => buildSuggestion(match))
           .filter((suggestion): suggestion is IdentitySuggestion => suggestion !== null)
           .filter((suggestion) => !current.dismissedSuggestionIds.includes(suggestion.id));
 
@@ -435,7 +412,7 @@ export function useContactSync() {
       syncPromiseRef.current = syncPromise;
       return syncPromise;
     },
-    [commitSyncState, googleContacts, scanLibraryItems],
+    [commitSyncState, googleContacts, queryLibraryCore],
   );
 
   useEffect(() => {
