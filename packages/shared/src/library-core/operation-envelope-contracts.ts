@@ -44,6 +44,7 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import type { LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS } from "./sqlite-contract.generated.js";
 
 export const LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS = 4_096;
 
@@ -1263,7 +1264,7 @@ function constructAccountRemoveTransactionMember(
 }
 
 /**
- * Closed construction schema for the first dormant Library Core operation.
+ * Closed construction schema for a synchronized SQLite mutation.
  *
  * This creates only the transaction-member body and its digest. It does not
  * validate received bytes, derive a transaction or actor chain, sign an
@@ -1531,4 +1532,51 @@ export const ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreTransactionMemberSchema<
   AccountRemoveTransactionMemberInputV1,
   AccountRemoveTransactionMemberBodyV1
+>;
+
+type LibraryCoreExecutableMutationId =
+  keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
+
+/**
+ * Closed transaction schemas for every executable synchronized SQLite
+ * mutation. The generated mutation program catalog supplies the exact key set,
+ * so adding or removing a program cannot leave this boundary partially wired.
+ */
+export const LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS = Object.freeze({
+  account_person_assignment:
+    ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  account_remove: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  account_upsert: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_archive_assignment:
+    FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_capture_upsert: FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_like_assignment: FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_like_sync_receipt:
+    FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_read_assignment: FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_remove: FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_saved_assignment:
+    FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_seen_sync_receipt:
+    FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  friend_replace: FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  person_reach_out_append: PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
+  person_remove_and_accounts:
+    PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  person_remove_detach_accounts:
+    PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  person_upsert: PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  preferences_leaf_assignment:
+    PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_remove_keep_items:
+    RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_remove_with_items:
+    RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_title_assignment: RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_upsert: RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+}) satisfies Readonly<
+  Record<
+    LibraryCoreExecutableMutationId,
+    LibraryCoreTransactionMemberSchemaDescriptor
+  >
 >;

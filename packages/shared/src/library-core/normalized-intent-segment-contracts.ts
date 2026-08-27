@@ -8,7 +8,7 @@ import {
   type LibraryCoreImmutableObjectReferenceV1,
 } from "./immutable-transport-contracts.js";
 import { LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES } from "./operation-envelope-finalization.js";
-import { LIBRARY_CORE_OPERATION_REGISTRY } from "./operation-registry.js";
+import { isLibraryCoreExecutableMutationId } from "./operation-id-contracts.js";
 import {
   isLibraryCoreEd25519SignatureHex,
   isLibraryCoreLowercaseHex64,
@@ -243,8 +243,7 @@ export function parseLibraryCoreNormalizedIntentEnvelopeRecordV2(
     input.transaction_member_index >= memberCount ||
     memberCount > 1_000 ||
     (actorSequence === 1) !== (previousOperation === null) ||
-    typeof input.operation_type !== "string" ||
-    !Object.hasOwn(LIBRARY_CORE_OPERATION_REGISTRY, input.operation_type)
+    !isLibraryCoreExecutableMutationId(input.operation_type)
   ) {
     throw new TypeError("normalized intent envelope scalar is invalid");
   }

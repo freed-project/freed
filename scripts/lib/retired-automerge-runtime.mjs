@@ -9,6 +9,10 @@ export const RETIRED_LIBRARY_CORE_PUBLIC_MODULES = Object.freeze([
   "census",
   "field-registry",
   "local-authority-registry",
+  "operation-field-algebra-contracts",
+  "operation-materializer-contracts",
+  "operation-registry",
+  "operation-touched-fields",
   "protocol-registry",
   "query-registry",
   "store-surface-registry",
@@ -100,6 +104,10 @@ const RETIRED_ARTIFACT_TOKENS = Object.freeze([
   {
     id: "retired-library-core-store-registry",
     needle: "current method writes legacy Automerge and its successor payload is unresolved",
+  },
+  {
+    id: "retired-library-core-operation-registry",
+    needle: "runtime_authority_inactive",
   },
 ]);
 

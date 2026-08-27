@@ -151,4 +151,22 @@ describe("normalized intent segment v2 contracts", () => {
       parseLibraryCoreNormalizedIntentSegmentBodyV2(body([first, second])),
     ).toThrow(/actor chain/);
   });
+
+  it("rejects a known operation without an executable SQLite mutation", () => {
+    const value = envelope({
+      actorChainDigest: "1".repeat(64),
+      actorSequence: 10,
+      memberCount: 1,
+      memberIndex: 0,
+      operationId: "operation-10",
+      previousActorChainDigest: "0".repeat(64),
+      previousOperationId: "operation-9",
+    });
+
+    expect(() =>
+      parseLibraryCoreNormalizedIntentSegmentBodyV2(
+        body([{ ...value, operation_type: "account_restore" }]),
+      ),
+    ).toThrow(/scalar/);
+  });
 });

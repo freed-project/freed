@@ -5,16 +5,13 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
+  LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
   type LibraryCoreOperationDigestDependencies,
   type LibraryCoreTransactionMemberBodyV1,
   type LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
-import {
-  LIBRARY_CORE_OPERATION_REGISTRY,
-  type LibraryCoreOperationId,
-} from "./operation-registry.js";
 import {
   LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES,
   type LibraryCoreOperationEnvelopeV1,
@@ -412,23 +409,22 @@ export async function verifyLibraryCoreOperationTransactionV1(
     ),
   );
   const memberConstructions = decodedEnvelopes.map((envelope) => {
-    const definition =
-      typeof envelope.operation_type === "string" &&
-      Object.hasOwn(LIBRARY_CORE_OPERATION_REGISTRY, envelope.operation_type)
-        ? LIBRARY_CORE_OPERATION_REGISTRY[
-            envelope.operation_type as LibraryCoreOperationId
-          ]
-        : null;
     const schema =
-      definition !== null && "transactionMemberSchema" in definition
-        ? (definition.transactionMemberSchema as unknown as ClosedTransactionMemberSchema)
+      typeof envelope.operation_type === "string" &&
+      Object.hasOwn(
+        LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS,
+        envelope.operation_type,
+      )
+        ? LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS[
+            envelope.operation_type as keyof typeof LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS
+          ]
         : null;
     if (schema === null) {
       throw new TypeError(
         "operation envelope has an unsupported operation_type",
       );
     }
-    return schema.construct(
+    return (schema as unknown as ClosedTransactionMemberSchema).construct(
       memberInputFromEnvelope(envelope),
       digestDependencies,
     );
