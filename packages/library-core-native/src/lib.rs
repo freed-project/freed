@@ -5,6 +5,7 @@
 //! explicit database path, key stores, and signed timestamps. It has no Tauri,
 //! Google Drive, provider, or Automerge dependency.
 
+mod device_contact_sync;
 mod device_graph_layout;
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
@@ -41,6 +42,14 @@ mod product_projection;
 mod selective_content;
 pub mod sqlite_contract_generated;
 
+pub use device_contact_sync::{
+    digest_device_contact_sync_mutation_v1, mutate_device_contact_sync_v1,
+    DeviceContactAuthStatusV1, DeviceContactErrorCodeV1, DeviceContactMatchResultV1,
+    DeviceContactMetadataV1, DeviceContactMutationReceiptV1, DeviceContactNameV1,
+    DeviceContactOrganizationV1, DeviceContactPhotoV1, DeviceContactSuggestionConfidenceV1,
+    DeviceContactSuggestionKindV1, DeviceContactSuggestionV1, DeviceContactSyncError,
+    DeviceContactSyncMutationV1, DeviceContactSyncStatusV1, DeviceContactV1, DeviceContactValueV1,
+};
 pub use device_graph_layout::{
     mutate_device_graph_layout_v1, DeviceGraphLayoutError, DeviceGraphLayoutMutationResultV1,
     DeviceGraphLayoutMutationV1,

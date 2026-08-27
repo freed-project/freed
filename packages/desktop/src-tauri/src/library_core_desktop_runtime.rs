@@ -641,6 +641,16 @@ pub(super) fn query_normalized_library(
 }
 
 #[tauri::command]
+pub(super) fn mutate_normalized_device_contacts(
+    app: tauri::AppHandle,
+    mutation: freed_library_core::DeviceContactSyncMutationV1,
+) -> Result<freed_library_core::DeviceContactMutationReceiptV1, String> {
+    let mut connection = open_normalized_database(&app)?;
+    freed_library_core::mutate_device_contact_sync_v1(&mut connection, &mutation)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn describe_normalized_library_checkpoint(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {

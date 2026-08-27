@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS,
+  digestLibraryCoreDeviceContactSyncMutationV1,
   parseLibraryCoreDeviceContactMutationReceiptV1,
   parseLibraryCoreDeviceContactSyncMutationV1,
 } from "./device-contact-sync-contracts.js";
@@ -34,6 +35,22 @@ describe("device contact sync contracts", () => {
         generationId: "contacts:1",
       });
     }
+  });
+
+  it("shares one canonical mutation digest with the native core", () => {
+    expect(
+      digestLibraryCoreDeviceContactSyncMutationV1({
+        batchOrdinal: 0,
+        contacts: [],
+        deletedResourceNames: ["people/deleted"],
+        generationId: "contacts-1",
+        mutationKind: "device_contact_delta_append_v1",
+        schemaVersion: 1,
+        updatedAt: 110,
+      }),
+    ).toBe(
+      "966cf9a2505a7ddcae8260bacab9aaa4aaa109a609f668a9359d962c4be6fccd",
+    );
   });
 
   it("accepts the largest legal child windows and rejects one oversized field", () => {
@@ -76,6 +93,18 @@ describe("device contact sync contracts", () => {
             emails: [{ value: "e".repeat(2_049) }],
           },
         ],
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCoreDeviceContactSyncMutationV1({
+        authStatus: "connected",
+        errorCode: null,
+        errorMessage: null,
+        mutationKind: "device_contact_status_set_v1",
+        schemaVersion: 1,
+        syncStartedAt: -1,
+        syncStatus: "idle",
+        updatedAt: 10,
       }).ok,
     ).toBe(false);
   });

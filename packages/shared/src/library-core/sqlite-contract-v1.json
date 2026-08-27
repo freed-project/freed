@@ -13,6 +13,21 @@
     "prefix": "range-",
     "suffix": ".bin"
   },
+  "deviceContactSync": {
+    "deltaMaximumMembers": 64,
+    "digestDomain": "freed.library-core.v1/digest-records/device-contact-mutation\u0000",
+    "matchMaximumMembers": 64,
+    "maximumCanonicalBytes": 131072,
+    "maximumEmails": 16,
+    "maximumMutationCanonicalBytes": 4194304,
+    "maximumOrganizations": 4,
+    "maximumPhones": 16,
+    "maximumPhotos": 4,
+    "maximumSuggestionAccounts": 64,
+    "pageMaximumRows": 64,
+    "reviewMaximumRows": 50,
+    "schemaVersion": 1
+  },
   "preferenceWritePolicies": {
     "ai": {
       "provider": "device-local",

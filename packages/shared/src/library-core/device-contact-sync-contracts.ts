@@ -5,18 +5,36 @@ import {
 } from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 import { LibraryCoreSha256 } from "./sha256.js";
+import {
+  LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS,
+  LIBRARY_CORE_DEVICE_CONTACT_MATCH_MAXIMUM_MEMBERS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_EMAILS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS,
+  LIBRARY_CORE_DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN,
+  LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS,
+  LIBRARY_CORE_DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS,
+  LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION,
+} from "./sqlite-contract.generated.js";
 
-export const LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION = 1 as const;
-export const LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS = 64;
-export const LIBRARY_CORE_DEVICE_CONTACT_MATCH_MAXIMUM_MEMBERS = 64;
-export const LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS = 64;
-export const LIBRARY_CORE_DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS = 50;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES = 131_072;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_EMAILS = 16;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES = 16;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS = 4;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS = 4;
-export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS = 64;
+export {
+  LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS,
+  LIBRARY_CORE_DEVICE_CONTACT_MATCH_MAXIMUM_MEMBERS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_EMAILS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS,
+  LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS,
+  LIBRARY_CORE_DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS,
+  LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION,
+};
 
 export type LibraryCoreDeviceContactSyncMutationV1 =
   | LibraryCoreDeviceContactGenerationBeginV1
@@ -98,7 +116,7 @@ export type LibraryCoreDeviceContactParseResult<T> =
 
 const textEncoder = new TextEncoder();
 const mutationDigestPrefix = textEncoder.encode(
-  "freed.library-core.v1/digest-records/device-contact-mutation\u0000",
+  LIBRARY_CORE_DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN,
 );
 
 function failure<T>(error: string): LibraryCoreDeviceContactParseResult<T> {
@@ -571,8 +589,9 @@ export function parseLibraryCoreDeviceContactSyncMutationV1(
       ) ||
       errorMessage === undefined ||
       (record.errorCode === null) !== (errorMessage === null) ||
-      (record.syncStatus === "syncing") !==
-        isLibraryCoreNonnegativeSafeInteger(record.syncStartedAt) ||
+      (record.syncStatus === "syncing"
+        ? !isLibraryCoreNonnegativeSafeInteger(record.syncStartedAt)
+        : record.syncStartedAt !== null) ||
       !isLibraryCoreNonnegativeSafeInteger(record.updatedAt)
     ) {
       return failure("device contact status mutation is invalid");
@@ -666,6 +685,10 @@ export function digestLibraryCoreDeviceContactSyncMutationV1(
     .update(
       encodeLibraryCoreCanonicalValue(
         parsed.value as unknown as LibraryCoreCanonicalValue,
+        {
+          maximumBytes:
+            LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES,
+        },
       ),
     )
     .digestLowerHex();

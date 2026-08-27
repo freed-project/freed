@@ -76,6 +76,7 @@ function assertContract(contract) {
     "contentRangeStorageKey",
     "contentWorkPrograms",
     "contractVersion",
+    "deviceContactSync",
     "fractionalFields",
     "limits",
     "localMutationPrograms",
@@ -113,6 +114,36 @@ function assertContract(contract) {
     contract.contentRangeStorageKey.suffix !== ".bin"
   ) {
     throw new TypeError("SQLite content range storage key contract is invalid");
+  }
+  const deviceContactSync = contract.deviceContactSync;
+  const expectedDeviceContactSync = Object.freeze({
+    deltaMaximumMembers: 64,
+    digestDomain:
+      "freed.library-core.v1/digest-records/device-contact-mutation\0",
+    matchMaximumMembers: 64,
+    maximumCanonicalBytes: 131_072,
+    maximumEmails: 16,
+    maximumMutationCanonicalBytes: 4_194_304,
+    maximumOrganizations: 4,
+    maximumPhones: 16,
+    maximumPhotos: 4,
+    maximumSuggestionAccounts: 64,
+    pageMaximumRows: 64,
+    reviewMaximumRows: 50,
+    schemaVersion: 1,
+  });
+  if (
+    deviceContactSync === null ||
+    typeof deviceContactSync !== "object" ||
+    Object.keys(deviceContactSync).sort().join(",") !==
+      Object.keys(expectedDeviceContactSync).sort().join(",") ||
+    Object.entries(expectedDeviceContactSync).some(
+      ([key, value]) => deviceContactSync[key] !== value,
+    )
+  ) {
+    throw new TypeError(
+      "SQLite device contact sync contract changed without a version boundary",
+    );
   }
   if (
     contract.applicationId !== 1_179_796_804 ||
@@ -701,6 +732,19 @@ export const LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN = ${JSON.stringify(con
 export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_PREFIX = ${JSON.stringify(contract.contentRangeStorageKey.prefix)} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_SUFFIX = ${JSON.stringify(contract.contentRangeStorageKey.suffix)} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES = ${contract.contentRangeStorageKey.maximumUtf8Bytes} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION = ${contract.deviceContactSync.schemaVersion} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS = ${contract.deviceContactSync.deltaMaximumMembers} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MATCH_MAXIMUM_MEMBERS = ${contract.deviceContactSync.matchMaximumMembers} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS = ${contract.deviceContactSync.pageMaximumRows} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS = ${contract.deviceContactSync.reviewMaximumRows} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES = ${contract.deviceContactSync.maximumCanonicalBytes} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES = ${contract.deviceContactSync.maximumMutationCanonicalBytes} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_EMAILS = ${contract.deviceContactSync.maximumEmails} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES = ${contract.deviceContactSync.maximumPhones} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS = ${contract.deviceContactSync.maximumPhotos} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS = ${contract.deviceContactSync.maximumOrganizations} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS = ${contract.deviceContactSync.maximumSuggestionAccounts} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN = ${JSON.stringify(contract.deviceContactSync.digestDomain)} as const;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract.limits.checkpointRecordCanonicalBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.limits.checkpointPageDecodedBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
@@ -1056,6 +1100,20 @@ pub const CONTENT_RANGE_MAP_DIGEST_DOMAIN: &str =
 pub const CONTENT_RANGE_STORAGE_KEY_PREFIX: &str = ${JSON.stringify(contract.contentRangeStorageKey.prefix)};
 pub const CONTENT_RANGE_STORAGE_KEY_SUFFIX: &str = ${JSON.stringify(contract.contentRangeStorageKey.suffix)};
 pub const CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES: usize = ${contract.contentRangeStorageKey.maximumUtf8Bytes};
+pub const DEVICE_CONTACT_SYNC_SCHEMA_VERSION: u32 = ${contract.deviceContactSync.schemaVersion};
+pub const DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS: usize = ${contract.deviceContactSync.deltaMaximumMembers};
+pub const DEVICE_CONTACT_MATCH_MAXIMUM_MEMBERS: usize = ${contract.deviceContactSync.matchMaximumMembers};
+pub const DEVICE_CONTACT_PAGE_MAXIMUM_ROWS: usize = ${contract.deviceContactSync.pageMaximumRows};
+pub const DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS: usize = ${contract.deviceContactSync.reviewMaximumRows};
+pub const DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES: usize = ${contract.deviceContactSync.maximumCanonicalBytes};
+pub const DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES: usize = ${contract.deviceContactSync.maximumMutationCanonicalBytes};
+pub const DEVICE_CONTACT_MAXIMUM_EMAILS: usize = ${contract.deviceContactSync.maximumEmails};
+pub const DEVICE_CONTACT_MAXIMUM_PHONES: usize = ${contract.deviceContactSync.maximumPhones};
+pub const DEVICE_CONTACT_MAXIMUM_PHOTOS: usize = ${contract.deviceContactSync.maximumPhotos};
+pub const DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS: usize = ${contract.deviceContactSync.maximumOrganizations};
+pub const DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS: usize = ${contract.deviceContactSync.maximumSuggestionAccounts};
+pub const DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN: &str =
+    ${rustString(contract.deviceContactSync.digestDomain)};
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = ${contract.limits.checkpointRecordCanonicalBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.checkpointPageDecodedBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};

@@ -326,6 +326,12 @@ bounded query. React retains only the visible review window and ephemeral
 interaction state.
 
 Device contact generation mutation is a closed schema-versioned protocol.
+Its schema identity, digest domain, row bounds, child bounds, and canonical
+byte ceilings live in the executable SQLite contract source and generate the
+TypeScript and Rust constants. Freed Desktop executes the protocol inside the
+runtime-neutral native core. The PWA executes the same protocol inside its
+OPFS SQLite worker. Both implementations share a canonical digest vector and
+the same changed-replay rejection semantics.
 Delta batches contain at most 64 unique contact or deletion identities, carry a
 contiguous ordinal, and receive a canonical digest receipt. A changed replay is
 rejected. Match batches contain at most 64 exact results, including explicit
