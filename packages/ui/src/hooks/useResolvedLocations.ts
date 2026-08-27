@@ -5,7 +5,6 @@ import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
-  type Account,
   type FeedItem,
   type LibraryMapLocationCandidate,
   type LocationPersonIdentity,
@@ -206,50 +205,24 @@ export function useResolvedLocationCandidates(
   };
 }
 
-/** Compatibility adapter for already bounded callers that still hold identity rows. */
-export function useResolvedLocations(
-  feedItems: FeedItem[],
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  options: {
-    timeMode?: MapTimeMode;
-    now?: number;
-  } = {},
-): ResolvedLocationsState {
-  const identityBySourceKey = useMemo(() => {
-    const next = new Map<string, { accountId: string; friend: Person }>();
-    for (const account of Object.values(accounts)) {
-      if (account.kind !== "social" || !account.personId) continue;
-      const person = persons[account.personId];
-      if (!person) continue;
-      next.set(`${account.provider}:${account.externalId}`, {
-        accountId: account.id,
-        friend: person,
-      });
-    }
-    return next;
-  }, [accounts, persons]);
-  const candidates = useMemo<LibraryMapLocationCandidate[]>(
-    () => feedItems.map((item) => ({
-      accountId: identityBySourceKey.get(`${item.platform}:${item.author.id}`)?.accountId ?? null,
-      item,
-      friend: identityBySourceKey.get(`${item.platform}:${item.author.id}`)?.friend ?? null,
-    })),
-    [feedItems, identityBySourceKey],
-  );
-  return useResolvedLocationCandidates(candidates, options);
-}
-
 export function useFriendLastSeenLocation(
   friend: Person,
-  accounts: Record<string, Account>,
-  feedItems: FeedItem[]
+  feedItems: FeedItem[],
 ): {
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
 } {
-  const friendMap = useMemo(() => ({ [friend.id]: friend }), [friend]);
-  const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap, accounts);
+  const candidates = useMemo<LibraryMapLocationCandidate[]>(
+    () => feedItems.map((item) => ({
+      accountId: null,
+      item,
+      friend,
+    })),
+    [feedItems, friend],
+  );
+  const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(
+    candidates,
+  );
   return {
     lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id, { timeMode: "current" }),
     resolvingCount,

@@ -26,9 +26,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
-  buildProvisionalPersonCandidates,
-  isPrunableInvalidDiscoveredSocialAccount,
-  provisionalPersonRepairSignature,
+  type Account,
   type FeedItem,
   type GoogleContact,
   type IdentitySuggestion,
@@ -105,14 +103,14 @@ export function AppShell({ children }: AppShellProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
+  const {
+    queryLibraryCore,
+    releaseMapRendererMemory,
+    scanLibraryItems,
+  } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
-  const accounts = useAppStore((s) => s.accounts);
-  const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
-  const removeAccount = useAppStore((s) => s.removeAccount);
-  const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
@@ -170,8 +168,6 @@ export function AppShell({ children }: AppShellProps) {
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
-  const provisionalPersonScanRef = useRef("");
-  const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
     settingsOpen ||
     addFeedOpen ||
@@ -401,46 +397,15 @@ export function AppShell({ children }: AppShellProps) {
     setFriendsMobileSurface("graph");
   }, [activeView, isMobileViewport]);
 
-  useEffect(() => {
-    if (!isInitialized) return;
-    const prunableAccounts = Object.values(accounts).filter(isPrunableInvalidDiscoveredSocialAccount);
-    if (prunableAccounts.length === 0) return;
-    const cleanupSignature = prunableAccounts.map((account) => account.id).sort().join("|");
-    if (cleanupSignature === invalidAccountCleanupRef.current) return;
-    invalidAccountCleanupRef.current = cleanupSignature;
-    void Promise.all(prunableAccounts.map((account) => removeAccount(account.id)))
-      .then(() => {
-        invalidAccountCleanupRef.current = "";
-        addDebugEvent(
-          "change",
-          `[Identity] removed ${prunableAccounts.length.toLocaleString()} invalid Facebook account${prunableAccounts.length === 1 ? "" : "s"}`,
-        );
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        addDebugEvent("error", `[Identity] invalid Facebook account cleanup failed: ${message}`);
-        invalidAccountCleanupRef.current = "";
-      });
-  }, [accounts, isInitialized, removeAccount]);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    const signature = provisionalPersonRepairSignature(persons, accounts);
-    if (signature === provisionalPersonScanRef.current) return;
-    provisionalPersonScanRef.current = signature;
-    const candidates = buildProvisionalPersonCandidates(persons, accounts);
-    if (candidates.length === 0) return;
-    void createConnectionPersonsFromCandidates(candidates).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      addDebugEvent("error", `[Identity] provisional person repair failed: ${message}`);
-    });
-  }, [accounts, createConnectionPersonsFromCandidates, isInitialized, persons]);
-
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
     if (!match) return;
     if (!scanLibraryItems) {
       toast.error("Freed could not read the local Library.");
+      return;
+    }
+    if (!queryLibraryCore) {
+      toast.error("Freed could not query the local Library.");
       return;
     }
 
@@ -454,10 +419,6 @@ export function AppShell({ children }: AppShellProps) {
       createdAt: now,
       updatedAt: now,
     };
-
-    if (!match.person) {
-      await addPerson(person);
-    }
 
     const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
     const authorIds = new Set(match.authorIds);
@@ -475,16 +436,36 @@ export function AppShell({ children }: AppShellProps) {
       now,
       personId,
     );
+    const missingSocialAccounts: Account[] = [];
+    for (const account of socialAccounts) {
+      const existing = await queryLibraryCore({
+        accountId: account.id,
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      });
+      if (!existing.account) missingSocialAccounts.push(account);
+    }
+
+    if (!match.person) {
+      await addPerson(person);
+    }
+
     const mergedAccounts = [
       contactAccount,
-      ...socialAccounts.filter((account) => !accounts[account.id]),
+      ...missingSocialAccounts,
     ];
     if (mergedAccounts.length > 0) {
       await addAccounts(mergedAccounts);
     }
 
     contactSync.dismissSuggestion(suggestion.id);
-  }, [accounts, addAccounts, addPerson, contactSync, scanLibraryItems]);
+  }, [
+    addAccounts,
+    addPerson,
+    contactSync,
+    queryLibraryCore,
+    scanLibraryItems,
+  ]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
     const now = Date.now();
