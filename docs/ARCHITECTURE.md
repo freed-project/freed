@@ -107,7 +107,10 @@ The schema includes:
 
 Device-local state such as window geometry, graph pin coordinates, temporary
 filters, provider session cookies, retry timers, machine endpoints, and cache
-residency remains outside synchronized Library state.
+residency remains outside synchronized Library state. The last verified cloud
+writer lease is also device-local, but it lives in the selected normalized
+SQLite catalog so provider workers never reopen historical storage to decide
+whether this installation may act. Checkpoints exclude that lease.
 
 Cloud coordination reads Library identity, accepted authority epoch, admitted
 writer, source revision, causal frontier, and bounded record counts directly

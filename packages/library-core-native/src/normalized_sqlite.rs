@@ -923,6 +923,7 @@ mod tests {
             )
         );
         for table in [
+            "library_local_cloud_writer_admission",
             "library_authority_epochs",
             "library_active_authority",
             "library_actor_capabilities",
@@ -949,6 +950,15 @@ mod tests {
                 .expect("operation table");
             assert_eq!(exists, 1, "missing {table}");
         }
+        let checkpoint_view: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_schema
+                 WHERE type = 'view' AND name = 'library_checkpoint_export';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("checkpoint export view");
+        assert!(!checkpoint_view.contains("library_local_cloud_writer_admission"));
     }
 
     #[test]

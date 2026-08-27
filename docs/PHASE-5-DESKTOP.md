@@ -591,6 +591,7 @@ export async function captureDomFeed(
 | 5.101 | Delete the native and browser-harness generic item mutation command. Route like and seen delivery acknowledgements through Primary-only signed normalized operations, and leave ordinary browser mutation simulation behind an explicit test-only bridge with no native command identity | High       | ✓ Complete |
 | 5.102 | Delete the native portable import begin, whole-item append, finalize, and offset-page commands. Desktop cloud restore now appends bounded normalized records into native SQLite staging and activates them atomically | High       | ✓ Complete |
 | 5.103 | Delete the native whole-item sync descriptor, renderer authority bootstrap, legacy protocol parser, commands, and browser mocks. Desktop now reads the normalized checkpoint identity and its installation-local actor identity through one closed native call | High       | ✓ Complete |
+| 5.104 | Store the provider-safety cloud writer lease in device-local normalized SQLite instead of the historical Library database. Keep it outside checkpoint export and delete the dead local-only admission helper and compatibility tests | High       | ✓ Complete |
 
 ---
 

@@ -862,6 +862,12 @@ writer and lets normalized SQLite verify and enroll it while signing the next
 authority epoch. No renderer authority bootstrap or historical journal is part
 of this path.
 
+The last provider-confirmed writer lease is a device-local row in the selected
+normalized SQLite catalog. Capture and provider-delivery workers read that row
+before external work. It is never a source of Library authority and is excluded
+from checkpoint export. A remote writer mismatch pauses local provider work
+until cloud coordination verifies a later control revision.
+
 Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which
 leaves deterministic room for base64 and record metadata below the canonical

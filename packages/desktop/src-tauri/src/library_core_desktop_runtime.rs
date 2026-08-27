@@ -8,9 +8,8 @@
 #[cfg(test)]
 use freed_library_core::upsert_item;
 use freed_library_core::{
-    accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
-    load_or_create_normalized_actor_id_v2,
-    LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
+    accept_normalized_operation_transaction_v1, load_or_create_normalized_actor_id_v2,
+    normalized_primary_mutation_context_v1, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
     LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
     LibraryCoreStore, LibraryCoreStoreStatus, NormalizedMutationContextV1,
     NormalizedMutationReceiptV1,
@@ -32,11 +31,11 @@ use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{
-    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
-    FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
-    FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
-    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt,
+    FollowerOverlayReplayReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
+    FollowerRuntimeStatus, IntentResultOutboxEntry, LibraryCoreJournal,
+    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerIntentPublication,
+    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 const BACKUP_DIRECTORY: &str = "library-backups";
 const JOURNAL_DIRECTORY: &str = "library-core";
@@ -187,7 +186,6 @@ pub(super) struct DesktopLibraryActorCheckpointState {
     retirement_certificate_digest: Option<String>,
     canonical_enrollment_certificate_json: String,
 }
-
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2067,9 +2065,9 @@ pub(super) fn append_sqlite_library_follower_result_segment(
 fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissionStatus, String> {
     let stored = connection
         .query_row(
-            "SELECT localWriterId, activeWriterId, storageEpoch,
-                    controlRevision, verifiedAtMs
-             FROM library_core_cloud_writer_admission WHERE singletonId = 1;",
+            "SELECT local_writer_id, active_writer_id, authority_epoch_id,
+                    control_revision, verified_at
+             FROM library_local_cloud_writer_admission WHERE singleton_id = 1;",
             [],
             |row| {
                 Ok((
@@ -2105,113 +2103,6 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
     })
 }
 
-#[cfg(test)]
-fn require_writer_admission(connection: &Connection) -> Result<(), String> {
-    let status = writer_admission_status(connection)?;
-    if status.allowed {
-        Ok(())
-    } else if status.configured {
-        Err("Another Freed Desktop currently owns writes for this Library".into())
-    } else {
-        Err(
-            "Freed Desktop has not established write authority for this Library. Restart Freed Desktop or reconnect its Library sync provider."
-                .into(),
-        )
-    }
-}
-
-#[cfg(test)]
-const LOCAL_ONLY_CONTROL_REVISION_PREFIX: &str = "local-only-primary-v1:";
-
-#[cfg(test)]
-fn establish_local_only_writer_admission(
-    connection: &mut Connection,
-    library_id: &str,
-    epoch: i64,
-    epoch_id: &str,
-    actor_id: &str,
-    transition_certificate_digest: &str,
-    verified_at_ms: i64,
-) -> Result<CloudWriterAdmissionStatus, String> {
-    if !validate_hex_digest(library_id)
-        || epoch != 1
-        || !validate_hex_digest(epoch_id)
-        || !validate_hex_digest(actor_id)
-        || !validate_hex_digest(transition_certificate_digest)
-        || verified_at_ms < 0
-    {
-        return Err("SQLite Library local-only writer admission is invalid".into());
-    }
-    let control_revision =
-        format!("{LOCAL_ONLY_CONTROL_REVISION_PREFIX}{transition_certificate_digest}");
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let existing = writer_admission_status(&transaction)?;
-    if existing.configured {
-        if existing.allowed
-            && existing.local_writer_id.as_deref() == Some(actor_id)
-            && existing.active_writer_id.as_deref() == Some(actor_id)
-            && existing.storage_epoch.as_deref() == Some(epoch_id)
-            && existing.control_revision.as_deref() == Some(control_revision.as_str())
-        {
-            transaction.commit().map_err(|error| error.to_string())?;
-            return Ok(existing);
-        }
-        return Err("SQLite Library already has a different durable writer admission".into());
-    }
-    let authority_and_actor_match = transaction
-        .query_row(
-            "SELECT EXISTS (
-               SELECT 1
-               FROM library_core_active_authority AS active
-               JOIN library_core_actors AS actor
-                 ON actor.libraryId = active.libraryId
-                AND actor.epoch = active.epoch
-                AND actor.epochId = active.epochId
-               WHERE active.libraryId = ?1
-                 AND active.epoch = ?2
-                 AND active.epochId = ?3
-                 AND active.transitionCertificateDigest = ?4
-                 AND actor.actorId = ?5
-             );",
-            params![
-                library_id,
-                epoch,
-                epoch_id,
-                transition_certificate_digest,
-                actor_id,
-            ],
-            |row| row.get::<_, bool>(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if !authority_and_actor_match {
-        return Err("SQLite Library local-only writer does not match accepted authority".into());
-    }
-    let has_follower_anchor = transaction
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM library_core_follower_anchor LIMIT 1);",
-            [],
-            |row| row.get::<_, bool>(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if has_follower_anchor {
-        return Err("SQLite Library follower cannot become a local-only writer".into());
-    }
-    transaction
-        .execute(
-            "INSERT INTO library_core_cloud_writer_admission (
-               singletonId, localWriterId, activeWriterId, storageEpoch,
-               controlRevision, verifiedAtMs
-             ) VALUES (1, ?1, ?1, ?2, ?3, ?4);",
-            params![actor_id, epoch_id, control_revision, verified_at_ms],
-        )
-        .map_err(|error| error.to_string())?;
-    let status = writer_admission_status(&transaction)?;
-    transaction.commit().map_err(|error| error.to_string())?;
-    Ok(status)
-}
-
 #[tauri::command]
 pub(super) fn set_sqlite_library_cloud_writer_admission(
     app: tauri::AppHandle,
@@ -2226,23 +2117,22 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
     {
         return Err("SQLite Library cloud writer admission is invalid".into());
     }
-    let mut connection = open_database(&app)?;
-    require_active(&connection)?;
+    let mut connection = open_selected_normalized_database(&app)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
     transaction
         .execute(
-            "INSERT INTO library_core_cloud_writer_admission (
-               singletonId, localWriterId, activeWriterId, storageEpoch,
-               controlRevision, verifiedAtMs
+            "INSERT INTO library_local_cloud_writer_admission (
+               singleton_id, local_writer_id, active_writer_id,
+               authority_epoch_id, control_revision, verified_at
              ) VALUES (1, ?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(singletonId) DO UPDATE SET
-               localWriterId = excluded.localWriterId,
-               activeWriterId = excluded.activeWriterId,
-               storageEpoch = excluded.storageEpoch,
-               controlRevision = excluded.controlRevision,
-               verifiedAtMs = excluded.verifiedAtMs;",
+             ON CONFLICT(singleton_id) DO UPDATE SET
+               local_writer_id = excluded.local_writer_id,
+               active_writer_id = excluded.active_writer_id,
+               authority_epoch_id = excluded.authority_epoch_id,
+               control_revision = excluded.control_revision,
+               verified_at = excluded.verified_at;",
             params![
                 request.local_writer_id,
                 request.active_writer_id,
@@ -2261,8 +2151,7 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
 pub(super) fn sqlite_library_cloud_writer_admission_status(
     app: tauri::AppHandle,
 ) -> Result<CloudWriterAdmissionStatus, String> {
-    let connection = open_database(&app)?;
-    require_active(&connection)?;
+    let connection = open_selected_normalized_database(&app)?;
     writer_admission_status(&connection)
 }
 
@@ -2860,53 +2749,6 @@ mod tests {
         std::env::temp_dir().join(format!("freed-{label}-{}-{nonce}", std::process::id()))
     }
 
-    fn install_test_active_authority_and_actor(connection: &Connection) {
-        connection
-            .execute(
-                "INSERT INTO library_core_authority_epochs (
-                   libraryId, epoch, epochId, transitionCertificateDigest,
-                   canonicalTransitionCertificateJson, authorityKeyId,
-                   authorityPublicKey, acceptedAtMs
-                 ) VALUES (?1, 1, ?2, ?3, '{}', ?4, ?5, 100);",
-                params![
-                    "1".repeat(64),
-                    "2".repeat(64),
-                    "3".repeat(64),
-                    "4".repeat(64),
-                    "5".repeat(64),
-                ],
-            )
-            .expect("insert authority epoch");
-        connection
-            .execute(
-                "INSERT INTO library_core_active_authority (
-                   libraryId, epoch, epochId, transitionCertificateDigest
-                 ) VALUES (?1, 1, ?2, ?3);",
-                params!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
-            )
-            .expect("activate authority epoch");
-        connection
-            .execute(
-                "INSERT INTO library_core_actors (
-                   libraryId, epoch, epochId, actorId, actorPublicKey,
-                   enrollmentOperationId, enrollmentCertificateDigest,
-                   canonicalEnrollmentCertificateJson, actorChainGenesis,
-                   nextSequence, previousOperationId, previousChainDigest,
-                   enrolledAtMs
-                 ) VALUES (?1, 1, ?2, ?3, ?4, 'enroll:test', ?5, '{}',
-                           ?6, 1, NULL, ?6, 100);",
-                params![
-                    "1".repeat(64),
-                    "2".repeat(64),
-                    "6".repeat(64),
-                    "7".repeat(64),
-                    "8".repeat(64),
-                    "9".repeat(64),
-                ],
-            )
-            .expect("insert enrolled actor");
-    }
-
     #[test]
     fn database_path_stays_under_the_private_library_directory() {
         let root = temporary_root("sqlite-library-private-root");
@@ -2985,201 +2827,31 @@ mod tests {
     }
 
     #[test]
-    fn missing_cloud_writer_admission_is_not_write_authority() {
-        let root = temporary_root("sqlite-writer-admission-absent");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let connection = open_database_at(&root).expect("open Library database");
+    fn cloud_writer_admission_is_device_local_normalized_sqlite_state() {
+        let connection = Connection::open_in_memory().expect("open normalized SQLite");
+        freed_library_core::install_normalized_schema_v1(&connection)
+            .expect("install normalized schema");
 
         let status = writer_admission_status(&connection).expect("read missing admission");
-
         assert!(!status.configured);
         assert!(!status.allowed);
-        drop(connection);
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[test]
-    fn explicit_local_only_admission_is_writable_and_exactly_replayable() {
-        let root = temporary_root("sqlite-local-only-writer");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let mut connection = open_database_at(&root).expect("open Library database");
-        install_test_active_authority_and_actor(&connection);
-
-        let first = establish_local_only_writer_admission(
-            &mut connection,
-            &"1".repeat(64),
-            1,
-            &"2".repeat(64),
-            &"6".repeat(64),
-            &"3".repeat(64),
-            200,
-        )
-        .expect("establish local-only writer");
-        assert!(first.configured);
-        assert!(first.allowed);
-        assert_eq!(
-            first.control_revision,
-            Some(format!(
-                "{LOCAL_ONLY_CONTROL_REVISION_PREFIX}{}",
-                "3".repeat(64)
-            ))
-        );
-        require_writer_admission(&connection).expect("local-only writer is admitted");
-
-        let replay = establish_local_only_writer_admission(
-            &mut connection,
-            &"1".repeat(64),
-            1,
-            &"2".repeat(64),
-            &"6".repeat(64),
-            &"3".repeat(64),
-            300,
-        )
-        .expect("replay local-only writer");
-        assert_eq!(replay.verified_at_ms, Some(200));
-
-        drop(connection);
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[test]
-    fn local_only_admission_never_overwrites_cloud_writer_authority() {
-        let root = temporary_root("sqlite-local-only-cloud-conflict");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let mut connection = open_database_at(&root).expect("open Library database");
-        install_test_active_authority_and_actor(&connection);
         connection
             .execute(
-                "INSERT INTO library_core_cloud_writer_admission (
-                   singletonId, localWriterId, activeWriterId, storageEpoch,
-                   controlRevision, verifiedAtMs
-                 ) VALUES (1, ?1, ?2, ?3, 'etag-cloud', 150);",
-                params!["6".repeat(64), "a".repeat(64), "2".repeat(64)],
-            )
-            .expect("insert cloud writer admission");
-
-        let error = establish_local_only_writer_admission(
-            &mut connection,
-            &"1".repeat(64),
-            1,
-            &"2".repeat(64),
-            &"6".repeat(64),
-            &"3".repeat(64),
-            200,
-        )
-        .expect_err("cloud writer authority stays intact");
-        assert!(
-            error.contains("different durable writer admission"),
-            "{error}"
-        );
-        let status = writer_admission_status(&connection).expect("read cloud admission");
-        assert_eq!(status.active_writer_id, Some("a".repeat(64)));
-        assert_eq!(status.control_revision.as_deref(), Some("etag-cloud"));
-
-        drop(connection);
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[test]
-    fn follower_anchor_blocks_local_only_writer_admission() {
-        let root = temporary_root("sqlite-local-only-follower-conflict");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let mut connection = open_database_at(&root).expect("open Library database");
-        install_test_active_authority_and_actor(&connection);
-        connection
-            .execute(
-                "INSERT INTO library_core_follower_anchor (
-                   singletonId, libraryId, epoch, epochId, authorityKeyId,
-                   authorityPublicKey, observedFrontierJson, manifestObjectKey,
-                   manifestContentDigest, generation, remoteIngestSequence,
-                   remoteMaterializedDigest, writerId, controlRevision,
-                   installedAtMs
-                 ) VALUES (1, ?1, 1, ?2, ?3, ?4, '[]', 'checkpoint:test',
-                           ?5, 0, 0, ?6, ?7, 'etag-follower', 150);",
-                params![
-                    "1".repeat(64),
-                    "2".repeat(64),
-                    "4".repeat(64),
-                    "5".repeat(64),
-                    "a".repeat(64),
-                    "b".repeat(64),
-                    "c".repeat(64),
-                ],
-            )
-            .expect("insert follower anchor");
-
-        let error = establish_local_only_writer_admission(
-            &mut connection,
-            &"1".repeat(64),
-            1,
-            &"2".repeat(64),
-            &"6".repeat(64),
-            &"3".repeat(64),
-            200,
-        )
-        .expect_err("follower cannot become local-only writer");
-        assert!(error.contains("follower cannot become"), "{error}");
-        assert!(
-            !writer_admission_status(&connection)
-                .expect("read absent writer admission")
-                .configured
-        );
-
-        drop(connection);
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[test]
-    fn retired_cloud_writer_is_rejected_before_row_or_revision_changes() {
-        let root = temporary_root("sqlite-retired-writer");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let mut connection = open_database_at(&root).expect("open Library database");
-        connection
-            .execute(
-                "INSERT INTO library_core_desktop_state (
-                   singletonId, active, revision, sourceGeneration, sourceRevision,
-                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
-                   startedAtMs, activatedAtMs
-                 ) VALUES (1, 1, 7, 1, 1, ?1, 1, 1, '{}', 100, 200);",
-                ["a".repeat(64)],
-            )
-            .expect("insert active Desktop state");
-        let transaction = connection.transaction().expect("begin item insert");
-        upsert_item(
-            &transaction,
-            r#"{"globalId":"rss:test","userState":{"saved":false}}"#,
-            300,
-        )
-        .expect("insert item");
-        transaction.commit().expect("commit item");
-        connection
-            .execute(
-                "INSERT INTO library_core_cloud_writer_admission (
-                   singletonId, localWriterId, activeWriterId, storageEpoch,
-                   controlRevision, verifiedAtMs
+                "INSERT INTO library_local_cloud_writer_admission (
+                   singleton_id, local_writer_id, active_writer_id,
+                   authority_epoch_id, control_revision, verified_at
                  ) VALUES (1, ?1, ?2, ?3, 'etag-2', 400);",
                 params!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
             )
-            .expect("record retired writer");
-
-        let transaction = connection.transaction().expect("begin rejected mutation");
-        let error = require_writer_admission(&transaction).expect_err("retired writer rejected");
-        assert!(error.contains("Another Freed Desktop"), "{error}");
-        drop(transaction);
-
-        let (saved, revision): (i64, i64) = connection
-            .query_row(
-                "SELECT item.saved, state.revision
-                 FROM library_core_feed_items AS item
-                 CROSS JOIN library_core_desktop_state AS state
-                 WHERE item.globalId = 'rss:test' AND state.singletonId = 1;",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("read unchanged state");
-        assert_eq!((saved, revision), (0, 7));
-        drop(connection);
-        fs::remove_dir_all(root).expect("remove temporary root");
+            .expect("record normalized cloud writer admission");
+        let status = writer_admission_status(&connection).expect("read admission");
+        assert!(status.configured);
+        assert!(!status.allowed);
+        assert_eq!(
+            status.storage_epoch.as_deref(),
+            Some("3333333333333333333333333333333333333333333333333333333333333333")
+        );
+        assert_eq!(status.control_revision.as_deref(), Some("etag-2"));
     }
 
     fn seed_active_import_test_library(root: &Path) {

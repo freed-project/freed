@@ -18,6 +18,17 @@ CREATE TABLE IF NOT EXISTS library_meta (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_local_cloud_writer_admission (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  local_writer_id TEXT NOT NULL CHECK (length(local_writer_id) = 64),
+  active_writer_id TEXT NOT NULL CHECK (length(active_writer_id) = 64),
+  authority_epoch_id TEXT NOT NULL CHECK (length(authority_epoch_id) = 64),
+  control_revision TEXT NOT NULL CHECK (
+    length(control_revision) BETWEEN 1 AND 512
+  ),
+  verified_at INTEGER NOT NULL CHECK (verified_at >= 0)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_materialization_generation (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   generation_id TEXT NOT NULL CHECK (length(generation_id) = 64 AND generation_id NOT GLOB '*[^0-9a-f]*')
