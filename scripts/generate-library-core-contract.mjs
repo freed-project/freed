@@ -127,6 +127,7 @@ function assertContract(contract) {
     maximumOrganizations: 4,
     maximumPhones: 16,
     maximumPhotos: 4,
+    maximumResponseBytes: 1_048_576,
     maximumSuggestionAccounts: 64,
     pageMaximumRows: 64,
     reviewMaximumRows: 50,
@@ -743,6 +744,7 @@ export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_EMAILS = ${contract.deviceConta
 export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES = ${contract.deviceContactSync.maximumPhones} as const;
 export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS = ${contract.deviceContactSync.maximumPhotos} as const;
 export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS = ${contract.deviceContactSync.maximumOrganizations} as const;
+export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES = ${contract.deviceContactSync.maximumResponseBytes} as const;
 export const LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS = ${contract.deviceContactSync.maximumSuggestionAccounts} as const;
 export const LIBRARY_CORE_DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN = ${JSON.stringify(contract.deviceContactSync.digestDomain)} as const;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract.limits.checkpointRecordCanonicalBytes} as const;
@@ -1111,6 +1113,7 @@ pub const DEVICE_CONTACT_MAXIMUM_EMAILS: usize = ${contract.deviceContactSync.ma
 pub const DEVICE_CONTACT_MAXIMUM_PHONES: usize = ${contract.deviceContactSync.maximumPhones};
 pub const DEVICE_CONTACT_MAXIMUM_PHOTOS: usize = ${contract.deviceContactSync.maximumPhotos};
 pub const DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS: usize = ${contract.deviceContactSync.maximumOrganizations};
+pub const DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.deviceContactSync.maximumResponseBytes};
 pub const DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS: usize = ${contract.deviceContactSync.maximumSuggestionAccounts};
 pub const DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN: &str =
     ${rustString(contract.deviceContactSync.digestDomain)};

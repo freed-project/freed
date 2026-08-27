@@ -24,6 +24,7 @@ pub const DEVICE_CONTACT_MAXIMUM_EMAILS: usize = 16;
 pub const DEVICE_CONTACT_MAXIMUM_PHONES: usize = 16;
 pub const DEVICE_CONTACT_MAXIMUM_PHOTOS: usize = 4;
 pub const DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS: usize = 4;
+pub const DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS: usize = 64;
 pub const DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN: &str =
     "freed.library-core.v1/digest-records/device-contact-mutation\0";

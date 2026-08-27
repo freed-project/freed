@@ -651,6 +651,26 @@ pub(super) fn mutate_normalized_device_contacts(
 }
 
 #[tauri::command]
+pub(super) fn query_normalized_device_contact_status(
+    app: tauri::AppHandle,
+    request: freed_library_core::DeviceContactStatusRequestV1,
+) -> Result<freed_library_core::DeviceContactStatusResponseV1, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::query_device_contact_status_v1(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn query_normalized_device_contact_match_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::DeviceContactMatchPageRequestV1,
+) -> Result<freed_library_core::DeviceContactMatchPageResponseV1, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::query_device_contact_match_page_v1(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn describe_normalized_library_checkpoint(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {

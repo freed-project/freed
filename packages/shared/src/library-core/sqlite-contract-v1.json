@@ -23,6 +23,7 @@
     "maximumOrganizations": 4,
     "maximumPhones": 16,
     "maximumPhotos": 4,
+    "maximumResponseBytes": 1048576,
     "maximumSuggestionAccounts": 64,
     "pageMaximumRows": 64,
     "reviewMaximumRows": 50,

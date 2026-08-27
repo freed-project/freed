@@ -14,6 +14,7 @@ import {
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS,
   LIBRARY_CORE_DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN,
   LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS,
@@ -30,6 +31,7 @@ export {
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHONES,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_PHOTOS,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS,
   LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS,
   LIBRARY_CORE_DEVICE_CONTACT_REVIEW_MAXIMUM_ROWS,
@@ -206,7 +208,9 @@ function optionalText(
   return boundedText(value, maximumBytes, { allowEmpty: true }) ?? false;
 }
 
-function parseContact(value: unknown): GoogleContact | null {
+export function parseLibraryCoreDeviceContactV1(
+  value: unknown,
+): GoogleContact | null {
   const record = closedRecordWithOptional(
     value,
     ["emails", "name", "organizations", "phones", "photos", "resourceName"],
@@ -342,7 +346,9 @@ function parseContact(value: unknown): GoogleContact | null {
   return contact;
 }
 
-function parseSuggestion(value: unknown): IdentitySuggestion | null {
+export function parseLibraryCoreDeviceContactSuggestionV1(
+  value: unknown,
+): IdentitySuggestion | null {
   const record = closedRecordWithOptional(
     value,
     ["accountIds", "confidence", "createdAt", "id", "kind", "label"],
@@ -452,7 +458,7 @@ export function parseLibraryCoreDeviceContactSyncMutationV1(
     ) {
       return failure("device contact delta mutation is invalid");
     }
-    const contacts = record.contacts.map(parseContact);
+    const contacts = record.contacts.map(parseLibraryCoreDeviceContactV1);
     const deletedResourceNames = record.deletedResourceNames.map((entry) =>
       boundedText(entry, 1_024),
     );
@@ -507,7 +513,9 @@ export function parseLibraryCoreDeviceContactSyncMutationV1(
       if (match.suggestion === null) {
         return Object.freeze({ resourceName, suggestion: null });
       }
-      const suggestion = parseSuggestion(match.suggestion);
+      const suggestion = parseLibraryCoreDeviceContactSuggestionV1(
+        match.suggestion,
+      );
       return suggestion ? Object.freeze({ resourceName, suggestion }) : null;
     });
     if (
@@ -692,4 +700,147 @@ export function digestLibraryCoreDeviceContactSyncMutationV1(
       ),
     )
     .digestLowerHex();
+}
+
+export interface LibraryCoreDeviceContactStatusRequestV1 {
+  readonly queryId: "device_contact_status_v1";
+  readonly schemaVersion: typeof LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION;
+}
+
+export interface LibraryCoreDeviceContactStatusResponseV1 {
+  readonly activeContactCount: number;
+  readonly activeGenerationId: string | null;
+  readonly authStatus: "connected" | "reconnect_required";
+  readonly createdFriendCount: number;
+  readonly lastErrorCode: "missing_token" | "auth" | "network" | "unknown" | null;
+  readonly lastErrorMessage: string | null;
+  readonly lastSyncedAt: number | null;
+  readonly pendingSuggestionCount: number;
+  readonly queryId: "device_contact_status_v1";
+  readonly revision: number;
+  readonly schemaVersion: typeof LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION;
+  readonly syncStartedAt: number | null;
+  readonly syncStatus: "idle" | "syncing" | "error";
+  readonly syncToken: string | null;
+  readonly updatedAt: number;
+}
+
+export interface LibraryCoreDeviceContactMatchPageRequestV1 {
+  readonly afterResourceName: string | null;
+  readonly generationId: string;
+  readonly limit: number;
+  readonly queryId: "device_contact_match_page_v1";
+  readonly schemaVersion: typeof LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION;
+}
+
+export interface LibraryCoreDeviceContactMatchPageResponseV1 {
+  readonly generationId: string;
+  readonly nextCursor: string | null;
+  readonly queryId: "device_contact_match_page_v1";
+  readonly revision: number;
+  readonly rows: readonly GoogleContact[];
+  readonly schemaVersion: typeof LIBRARY_CORE_DEVICE_CONTACT_SYNC_SCHEMA_VERSION;
+}
+
+export function parseLibraryCoreDeviceContactStatusRequestV1(
+  value: unknown,
+): LibraryCoreDeviceContactParseResult<LibraryCoreDeviceContactStatusRequestV1> {
+  const record = closedRecord(value, ["queryId", "schemaVersion"]);
+  return record?.queryId === "device_contact_status_v1" && record.schemaVersion === 1
+    ? Object.freeze({ ok: true, value: Object.freeze({ queryId: record.queryId, schemaVersion: 1 }) })
+    : failure("device contact status request is invalid");
+}
+
+export function parseLibraryCoreDeviceContactMatchPageRequestV1(
+  value: unknown,
+): LibraryCoreDeviceContactParseResult<LibraryCoreDeviceContactMatchPageRequestV1> {
+  const record = closedRecord(value, [
+    "afterResourceName",
+    "generationId",
+    "limit",
+    "queryId",
+    "schemaVersion",
+  ]);
+  const afterResourceName = boundedText(record?.afterResourceName, 1_024, {
+    nullable: true,
+  });
+  const generationId = boundedText(record?.generationId, 255);
+  if (
+    !record ||
+    afterResourceName === undefined ||
+    !generationId ||
+    record.queryId !== "device_contact_match_page_v1" ||
+    record.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(record.limit) ||
+    record.limit < 1 ||
+    record.limit > LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS
+  ) {
+    return failure("device contact match page request is invalid");
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      afterResourceName,
+      generationId,
+      limit: record.limit,
+      queryId: "device_contact_match_page_v1",
+      schemaVersion: 1,
+    }),
+  });
+}
+
+export function parseLibraryCoreDeviceContactStatusResponseV1(
+  value: unknown,
+): LibraryCoreDeviceContactParseResult<LibraryCoreDeviceContactStatusResponseV1> {
+  const keys = [
+    "activeContactCount", "activeGenerationId", "authStatus", "createdFriendCount",
+    "lastErrorCode", "lastErrorMessage", "lastSyncedAt", "pendingSuggestionCount",
+    "queryId", "revision", "schemaVersion", "syncStartedAt", "syncStatus",
+    "syncToken", "updatedAt",
+  ] as const;
+  const record = closedRecord(value, keys);
+  const activeGenerationId = boundedText(record?.activeGenerationId, 255, { nullable: true });
+  const lastErrorMessage = boundedText(record?.lastErrorMessage, 4_096, { allowEmpty: true, nullable: true });
+  const syncToken = boundedText(record?.syncToken, 65_536, { allowEmpty: true, nullable: true });
+  const nullableTime = (entry: unknown) =>
+    entry === null || isLibraryCoreNonnegativeSafeInteger(entry);
+  if (
+    !record || activeGenerationId === undefined || lastErrorMessage === undefined ||
+    syncToken === undefined || record.queryId !== "device_contact_status_v1" ||
+    record.schemaVersion !== 1 || !["connected", "reconnect_required"].includes(String(record.authStatus)) ||
+    !["idle", "syncing", "error"].includes(String(record.syncStatus)) ||
+    ![null, "missing_token", "auth", "network", "unknown"].includes(record.lastErrorCode as never) ||
+    (record.lastErrorCode === null) !== (lastErrorMessage === null) ||
+    !nullableTime(record.lastSyncedAt) || !nullableTime(record.syncStartedAt) ||
+    ![record.activeContactCount, record.createdFriendCount, record.pendingSuggestionCount,
+      record.revision, record.updatedAt].every(isLibraryCoreNonnegativeSafeInteger)
+  ) {
+    return failure("device contact status response is invalid");
+  }
+  return Object.freeze({ ok: true, value: Object.freeze({ ...record, activeGenerationId, lastErrorMessage, syncToken }) as unknown as LibraryCoreDeviceContactStatusResponseV1 });
+}
+
+export function parseLibraryCoreDeviceContactMatchPageResponseV1(
+  value: unknown,
+): LibraryCoreDeviceContactParseResult<LibraryCoreDeviceContactMatchPageResponseV1> {
+  const record = closedRecord(value, ["generationId", "nextCursor", "queryId", "revision", "rows", "schemaVersion"]);
+  const generationId = boundedText(record?.generationId, 255);
+  const nextCursor = boundedText(record?.nextCursor, 1_024, { nullable: true });
+  if (!record || !generationId || nextCursor === undefined || record.queryId !== "device_contact_match_page_v1" ||
+      record.schemaVersion !== 1 || !isLibraryCoreNonnegativeSafeInteger(record.revision) ||
+      !Array.isArray(record.rows) || record.rows.length > LIBRARY_CORE_DEVICE_CONTACT_PAGE_MAXIMUM_ROWS) {
+    return failure("device contact match page response is invalid");
+  }
+  const rows = record.rows.map(parseLibraryCoreDeviceContactV1);
+  if (rows.includes(null) || new Set(rows.map((row) => row?.resourceName)).size !== rows.length) {
+    return failure("device contact match page rows are invalid");
+  }
+  const parsed = Object.freeze({ generationId, nextCursor, queryId: "device_contact_match_page_v1" as const,
+    revision: record.revision as number, rows: Object.freeze(rows) as GoogleContact[], schemaVersion: 1 as const });
+  try {
+    encodeLibraryCoreCanonicalValue(parsed as unknown as LibraryCoreCanonicalValue, { maximumBytes: LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES });
+  } catch {
+    return failure("device contact match page response exceeds its canonical bound");
+  }
+  return Object.freeze({ ok: true, value: parsed });
 }

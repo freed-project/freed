@@ -340,6 +340,13 @@ Activation requires staged and matched counts to equal the caller's exact
 expected contact count. Every normalized contact is canonically bounded to
 131,072 bytes before it crosses the SQLite boundary.
 
+Contact synchronization reads use separate closed contracts. Status is one
+singleton response. Matching reads one building generation in binary
+`resourceName` keyset order and excludes contacts that already have a digest
+receipt. A page admits at most 64 contacts and at most 1,048,576 response
+bytes. The byte ceiling can shorten a page before its row ceiling without
+dropping the cursor for any admitted contact.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

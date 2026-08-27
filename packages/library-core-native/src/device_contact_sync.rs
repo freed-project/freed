@@ -5,7 +5,8 @@ use crate::sqlite_contract_generated::{
     DEVICE_CONTACT_MAXIMUM_CANONICAL_BYTES, DEVICE_CONTACT_MAXIMUM_EMAILS,
     DEVICE_CONTACT_MAXIMUM_MUTATION_CANONICAL_BYTES, DEVICE_CONTACT_MAXIMUM_ORGANIZATIONS,
     DEVICE_CONTACT_MAXIMUM_PHONES, DEVICE_CONTACT_MAXIMUM_PHOTOS,
-    DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS, DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN,
+    DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES, DEVICE_CONTACT_MAXIMUM_SUGGESTION_ACCOUNTS,
+    DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN, DEVICE_CONTACT_PAGE_MAXIMUM_ROWS,
     DEVICE_CONTACT_SYNC_SCHEMA_VERSION,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -144,6 +145,16 @@ impl DeviceContactAuthStatusV1 {
             Self::ReconnectRequired => "reconnect_required",
         }
     }
+
+    fn parse(value: &str) -> Result<Self, DeviceContactSyncError> {
+        match value {
+            "connected" => Ok(Self::Connected),
+            "reconnect_required" => Ok(Self::ReconnectRequired),
+            _ => Err(DeviceContactSyncError::Invalid(
+                "device contact auth status is invalid",
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,6 +171,17 @@ impl DeviceContactSyncStatusV1 {
             Self::Error => "error",
             Self::Idle => "idle",
             Self::Syncing => "syncing",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, DeviceContactSyncError> {
+        match value {
+            "error" => Ok(Self::Error),
+            "idle" => Ok(Self::Idle),
+            "syncing" => Ok(Self::Syncing),
+            _ => Err(DeviceContactSyncError::Invalid(
+                "device contact sync status is invalid",
+            )),
         }
     }
 }
@@ -180,6 +202,18 @@ impl DeviceContactErrorCodeV1 {
             Self::MissingToken => "missing_token",
             Self::Network => "network",
             Self::Unknown => "unknown",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, DeviceContactSyncError> {
+        match value {
+            "auth" => Ok(Self::Auth),
+            "missing_token" => Ok(Self::MissingToken),
+            "network" => Ok(Self::Network),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(DeviceContactSyncError::Invalid(
+                "device contact error code is invalid",
+            )),
         }
     }
 }
@@ -267,6 +301,54 @@ pub struct DeviceContactMutationReceiptV1 {
     pub revision: i64,
     pub schema_version: u32,
     pub staged_contact_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceContactStatusRequestV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceContactStatusResponseV1 {
+    pub active_contact_count: i64,
+    pub active_generation_id: Option<String>,
+    pub auth_status: DeviceContactAuthStatusV1,
+    pub created_friend_count: i64,
+    pub last_error_code: Option<DeviceContactErrorCodeV1>,
+    pub last_error_message: Option<String>,
+    pub last_synced_at: Option<i64>,
+    pub pending_suggestion_count: i64,
+    pub query_id: String,
+    pub revision: i64,
+    pub schema_version: u32,
+    pub sync_started_at: Option<i64>,
+    pub sync_status: DeviceContactSyncStatusV1,
+    pub sync_token: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceContactMatchPageRequestV1 {
+    pub after_resource_name: Option<String>,
+    pub generation_id: String,
+    pub limit: usize,
+    pub query_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceContactMatchPageResponseV1 {
+    pub generation_id: String,
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub revision: i64,
+    pub rows: Vec<DeviceContactV1>,
+    pub schema_version: u32,
 }
 
 #[derive(Debug)]
@@ -504,9 +586,7 @@ fn validate_mutation(mutation: &DeviceContactSyncMutationV1) -> Result<(), Devic
                     .as_deref()
                     .is_some_and(|value| !valid_text(value, 0, 4_096))
                 || match sync_status {
-                    DeviceContactSyncStatusV1::Syncing => {
-                        !sync_started_at.is_some_and(valid_time)
-                    }
+                    DeviceContactSyncStatusV1::Syncing => !sync_started_at.is_some_and(valid_time),
                     _ => sync_started_at.is_some(),
                 }
                 || !valid_time(*updated_at)
@@ -737,6 +817,217 @@ fn insert_contact(
         )?;
     }
     Ok(())
+}
+
+pub fn query_device_contact_status_v1(
+    connection: &Connection,
+    request: &DeviceContactStatusRequestV1,
+) -> Result<DeviceContactStatusResponseV1, DeviceContactSyncError> {
+    if request.schema_version != DEVICE_CONTACT_SYNC_SCHEMA_VERSION
+        || request.query_id != "device_contact_status_v1"
+    {
+        return Err(DeviceContactSyncError::Invalid(
+            "device contact status request is invalid",
+        ));
+    }
+    let row = connection.query_row(
+        "SELECT state.revision, state.active_generation_id, state.auth_status,
+                state.sync_status, state.sync_started_at, state.sync_token,
+                state.last_synced_at, state.last_error_code,
+                state.last_error_message, state.created_friend_count,
+                state.updated_at,
+                CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
+                  (SELECT count(*) FROM library_device_contacts AS contact
+                   WHERE contact.generation_id = state.active_generation_id
+                     AND contact.deleted = 0) END,
+                CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
+                  (SELECT count(*) FROM library_device_contact_suggestions AS suggestion
+                   WHERE suggestion.generation_id = state.active_generation_id
+                     AND suggestion.dismissed_at IS NULL) END
+         FROM library_device_contact_sync_state AS state WHERE state.singleton_id = 1;",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
+                row.get::<_, i64>(11)?,
+                row.get::<_, i64>(12)?,
+            ))
+        },
+    )?;
+    let response = DeviceContactStatusResponseV1 {
+        active_contact_count: row.11,
+        active_generation_id: row.1,
+        auth_status: DeviceContactAuthStatusV1::parse(&row.2)?,
+        created_friend_count: row.9,
+        last_error_code: row
+            .7
+            .as_deref()
+            .map(DeviceContactErrorCodeV1::parse)
+            .transpose()?,
+        last_error_message: row.8,
+        last_synced_at: row.6,
+        pending_suggestion_count: row.12,
+        query_id: "device_contact_status_v1".to_owned(),
+        revision: row.0,
+        schema_version: DEVICE_CONTACT_SYNC_SCHEMA_VERSION,
+        sync_started_at: row.4,
+        sync_status: DeviceContactSyncStatusV1::parse(&row.3)?,
+        sync_token: row.5,
+        updated_at: row.10,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| DeviceContactSyncError::Invalid("device contact status response is invalid"))?
+        .len()
+        > DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(DeviceContactSyncError::Invalid(
+            "device contact status response exceeds its byte bound",
+        ));
+    }
+    Ok(response)
+}
+
+pub fn query_device_contact_match_page_v1(
+    connection: &Connection,
+    request: &DeviceContactMatchPageRequestV1,
+) -> Result<DeviceContactMatchPageResponseV1, DeviceContactSyncError> {
+    if request.schema_version != DEVICE_CONTACT_SYNC_SCHEMA_VERSION
+        || !valid_text(&request.generation_id, 1, 255)
+        || request.limit == 0
+        || request.limit > DEVICE_CONTACT_PAGE_MAXIMUM_ROWS
+        || request.query_id != "device_contact_match_page_v1"
+        || request
+            .after_resource_name
+            .as_deref()
+            .is_some_and(|value| !valid_text(value, 1, 1_024))
+    {
+        return Err(DeviceContactSyncError::Invalid(
+            "device contact match page request is invalid",
+        ));
+    }
+    let (state, revision) = connection
+        .query_row(
+            "SELECT generation.state, sync.revision
+             FROM library_device_contact_generations AS generation
+             JOIN library_device_contact_sync_state AS sync ON sync.singleton_id = 1
+             WHERE generation.generation_id = ?1 COLLATE BINARY;",
+            params![request.generation_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()?
+        .ok_or(DeviceContactSyncError::Invalid(
+            "device contact generation is unavailable",
+        ))?;
+    if state != "building" {
+        return Err(DeviceContactSyncError::Invalid(
+            "device contact generation is not building",
+        ));
+    }
+    let mut statement = connection.prepare(
+        "SELECT contact.resource_name, contact.etag, contact.display_name,
+                contact.given_name, contact.family_name, contact.middle_name,
+                contact.deleted,
+                COALESCE((SELECT json_group_array(json_object('type', child.type_value, 'value', child.value)) FROM (SELECT type_value, value FROM library_device_contact_emails WHERE generation_id = contact.generation_id AND resource_name = contact.resource_name ORDER BY ordinal) AS child), '[]'),
+                COALESCE((SELECT json_group_array(json_object('type', child.type_value, 'value', child.value)) FROM (SELECT type_value, value FROM library_device_contact_phones WHERE generation_id = contact.generation_id AND resource_name = contact.resource_name ORDER BY ordinal) AS child), '[]'),
+                COALESCE((SELECT json_group_array(json_object('default', json(CASE child.is_default WHEN 1 THEN 'true' ELSE 'false' END), 'url', child.url)) FROM (SELECT is_default, url FROM library_device_contact_photos WHERE generation_id = contact.generation_id AND resource_name = contact.resource_name ORDER BY ordinal) AS child), '[]'),
+                COALESCE((SELECT json_group_array(json_object('name', child.name, 'title', child.title)) FROM (SELECT name, title FROM library_device_contact_organizations WHERE generation_id = contact.generation_id AND resource_name = contact.resource_name ORDER BY ordinal) AS child), '[]')
+         FROM library_device_contacts AS contact
+         WHERE contact.generation_id = ?1 COLLATE BINARY AND contact.deleted = 0
+           AND (?2 IS NULL OR contact.resource_name > ?2 COLLATE BINARY)
+           AND NOT EXISTS (SELECT 1 FROM library_device_contact_match_receipts AS receipt
+                           WHERE receipt.generation_id = contact.generation_id
+                             AND receipt.resource_name = contact.resource_name)
+         ORDER BY contact.resource_name COLLATE BINARY ASC LIMIT ?3;",
+    )?;
+    let mut query = statement.query(params![
+        request.generation_id,
+        request.after_resource_name,
+        i64::try_from(request.limit + 1)
+            .map_err(|_| DeviceContactSyncError::Invalid("device contact page limit is invalid"))?
+    ])?;
+    let mut rows = Vec::new();
+    let mut has_more = false;
+    let mut canonical_bytes = 4_096usize;
+    while let Some(row) = query.next()? {
+        if rows.len() == request.limit {
+            has_more = true;
+            break;
+        }
+        let contact = DeviceContactV1 {
+            resource_name: row.get(0)?,
+            etag: row.get(1)?,
+            name: DeviceContactNameV1 {
+                display_name: row.get(2)?,
+                given_name: row.get(3)?,
+                family_name: row.get(4)?,
+                middle_name: row.get(5)?,
+            },
+            metadata: if row.get::<_, i64>(6)? == 1 {
+                Some(DeviceContactMetadataV1 {
+                    deleted: Some(true),
+                })
+            } else {
+                None
+            },
+            emails: serde_json::from_str(&row.get::<_, String>(7)?).map_err(|_| {
+                DeviceContactSyncError::Invalid("device contact email page is invalid")
+            })?,
+            phones: serde_json::from_str(&row.get::<_, String>(8)?).map_err(|_| {
+                DeviceContactSyncError::Invalid("device contact phone page is invalid")
+            })?,
+            photos: serde_json::from_str(&row.get::<_, String>(9)?).map_err(|_| {
+                DeviceContactSyncError::Invalid("device contact photo page is invalid")
+            })?,
+            organizations: serde_json::from_str(&row.get::<_, String>(10)?).map_err(|_| {
+                DeviceContactSyncError::Invalid("device contact organization page is invalid")
+            })?,
+        };
+        validate_contact(&contact)?;
+        let row_bytes = serde_json::to_vec(&contact)
+            .map_err(|_| DeviceContactSyncError::Invalid("device contact page row is invalid"))?
+            .len()
+            + 1;
+        if canonical_bytes + row_bytes > DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES {
+            has_more = true;
+            break;
+        }
+        canonical_bytes += row_bytes;
+        rows.push(contact);
+    }
+    let response = DeviceContactMatchPageResponseV1 {
+        generation_id: request.generation_id.clone(),
+        next_cursor: if has_more {
+            rows.last().map(|row| row.resource_name.clone())
+        } else {
+            None
+        },
+        query_id: "device_contact_match_page_v1".to_owned(),
+        revision,
+        rows,
+        schema_version: DEVICE_CONTACT_SYNC_SCHEMA_VERSION,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| {
+            DeviceContactSyncError::Invalid("device contact match page response is invalid")
+        })?
+        .len()
+        > DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(DeviceContactSyncError::Invalid(
+            "device contact match page response exceeds its byte bound",
+        ));
+    }
+    Ok(response)
 }
 
 pub fn mutate_device_contact_sync_v1(
@@ -1252,6 +1543,19 @@ mod tests {
                 .expect("delta retry")
                 .changed
         );
+        let page = query_device_contact_match_page_v1(
+            &connection,
+            &DeviceContactMatchPageRequestV1 {
+                after_resource_name: None,
+                generation_id: "contacts-1".to_owned(),
+                limit: 64,
+                query_id: "device_contact_match_page_v1".to_owned(),
+                schema_version: 1,
+            },
+        )
+        .expect("match page");
+        assert_eq!(page.rows, vec![contact()]);
+        assert_eq!(page.next_cursor, None);
         let matches = DeviceContactSyncMutationV1::DeviceContactMatchAppendV1 {
             generation_id: "contacts-1".to_owned(),
             matched_at: 120,
@@ -1266,6 +1570,19 @@ mod tests {
                 .expect("match")
                 .changed
         );
+        assert!(query_device_contact_match_page_v1(
+            &connection,
+            &DeviceContactMatchPageRequestV1 {
+                after_resource_name: None,
+                generation_id: "contacts-1".to_owned(),
+                limit: 64,
+                query_id: "device_contact_match_page_v1".to_owned(),
+                schema_version: 1,
+            },
+        )
+        .expect("matched page")
+        .rows
+        .is_empty());
         let activate = DeviceContactSyncMutationV1::DeviceContactGenerationActivateV1 {
             activated_at: 130,
             expected_contact_count: 1,
@@ -1282,6 +1599,17 @@ mod tests {
                 .changed
         );
         assert_eq!(connection.query_row("SELECT count(*) FROM library_device_contacts WHERE generation_id = 'contacts-1';", [], |row| row.get::<_, i64>(0)).expect("count"), 1);
+        let status = query_device_contact_status_v1(
+            &connection,
+            &DeviceContactStatusRequestV1 {
+                query_id: "device_contact_status_v1".to_owned(),
+                schema_version: 1,
+            },
+        )
+        .expect("status");
+        assert_eq!(status.active_contact_count, 1);
+        assert_eq!(status.pending_suggestion_count, 0);
+        assert_eq!(status.sync_token.as_deref(), Some("token-1"));
     }
 
     #[test]
