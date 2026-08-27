@@ -101,6 +101,7 @@ const mocks = vi.hoisted(() => ({
   pageFollowerTransport: vi.fn(),
   recordNormalizedIntentPublication: vi.fn(),
   importNormalizedResultTransport: vi.fn(),
+  createNormalizedFollowerTransport: vi.fn(),
   createNormalizedIntentAdapter: vi.fn(),
   provisionNormalizedIntentHead: vi.fn(),
 }));
@@ -220,6 +221,8 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
     })),
     createGoogleDriveLibraryCoreNormalizedIntentAdapterV2:
       mocks.createNormalizedIntentAdapter,
+    createGoogleDriveLibraryCoreNormalizedFollowerTransportV2:
+      mocks.createNormalizedFollowerTransport,
     publishLibraryCoreIntentCandidateV1: mocks.publishFollowerIntent,
     prepareLibraryCoreIntentSegmentV1: mocks.prepareFollowerIntent,
     discoverGoogleDriveLibraryCoreResultHeadV1: mocks.discoverResultHead,
@@ -435,6 +438,91 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.pageFollowerTransport.mockReset();
     mocks.recordNormalizedIntentPublication.mockReset();
     mocks.importNormalizedResultTransport.mockReset();
+    mocks.createNormalizedFollowerTransport.mockReset().mockImplementation(
+      () => ({
+        async publishEnrollmentRequest(candidate: {
+          descriptor: unknown;
+        }) {
+          return {
+            descriptor: candidate.descriptor,
+            transportObjectId: "immutable-1",
+          };
+        },
+        async readEnrollmentCertificate(request: {
+          actorId: string;
+          libraryId: string;
+          storageEpochId: string;
+        }) {
+          const discoverActorEnrollments =
+            mocks.discoverActorEnrollments as unknown as (
+              input: Record<string, unknown>,
+            ) => Promise<Array<{ bytes: Uint8Array }>>;
+          const enrollments = await discoverActorEnrollments({
+            actorId: request.actorId,
+            epochId: request.storageEpochId,
+            libraryId: request.libraryId,
+          });
+          return enrollments[0]?.bytes ?? null;
+        },
+        async openIntentAdapter(context: {
+          actorId: string;
+          libraryId: string;
+          storageEpochId: string;
+        }) {
+          const discoverIntentHead = mocks.discoverIntentHead as unknown as (
+            input: Record<string, unknown>,
+          ) => Promise<{ intentHeadFileId: string } | null>;
+          const locator = await discoverIntentHead({
+            actorId: context.actorId,
+            epochId: context.storageEpochId,
+            libraryId: context.libraryId,
+          });
+          const createNormalizedIntentAdapter =
+            mocks.createNormalizedIntentAdapter as unknown as (
+              input: Record<string, unknown>,
+            ) => unknown;
+          return createNormalizedIntentAdapter({
+            actorId: context.actorId,
+            epochId: context.storageEpochId,
+            intentHeadFileId: locator?.intentHeadFileId,
+            libraryId: context.libraryId,
+          });
+        },
+        async pageResultReferences(request: {
+          actorId: string;
+          firstResultSequence: number;
+          libraryId: string;
+          limit: number;
+          storageEpochId: string;
+        }) {
+          const discoverResultSegments =
+            mocks.discoverResultSegments as unknown as (
+              input: Record<string, unknown>,
+            ) => Promise<
+              Array<{
+                lastResultSequence: number;
+                reference: unknown;
+              }>
+            >;
+          const segments = await discoverResultSegments({
+            actorId: request.actorId,
+            epochId: request.storageEpochId,
+            libraryId: request.libraryId,
+          });
+          const remaining = segments.filter(
+            (segment) =>
+              segment.lastResultSequence >= request.firstResultSequence,
+          );
+          return {
+            done: remaining.length <= request.limit,
+            references: remaining
+              .slice(0, request.limit)
+              .map((segment) => segment.reference),
+          };
+        },
+        resultReader: { readImmutable: vi.fn() },
+      }),
+    );
     mocks.createNormalizedIntentAdapter.mockReset();
     mocks.provisionNormalizedIntentHead.mockReset();
     mocks.describeCloudIdentity.mockReset().mockResolvedValue({

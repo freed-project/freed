@@ -724,6 +724,14 @@ Freed Desktop obtains its transport frontier and actor-counter pages directly
 from the native core. The PWA obtains the identical contract from its OPFS
 SQLite worker. Neither host implements a second protocol state machine.
 
+The shared sync package also owns the one Google Drive normalized follower
+transport factory. It publishes and verifies enrollment objects, selects the
+certificate bound to the exact actor and request digest, opens the normalized
+intent head, and pages result references under closed bounds. A host may supply
+an authority fence that runs before every provider operation. Desktop uses that
+fence to recheck its Follower role. The factory does not refresh credentials,
+schedule work, retry a sync cycle, or own local SQLite authority.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 

@@ -3,10 +3,8 @@ import {
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
   parseLibraryCoreImmutableObjectDescriptorV1,
-  parseLibraryCoreImmutableObjectReferenceV1,
   parseLibraryCoreFollowerActorRequestReceiptV2,
   parseLibraryCoreControlPointerV1,
-  parseLibraryCoreNormalizedIntentHeadV2,
   parseLibraryCoreResultHeadV1,
   sha256LowerHex,
   type LibraryCoreCanonicalValue,
@@ -18,12 +16,11 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   createLibraryCorePrimaryCoordinatorV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
-  createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
   createGoogleDriveLibraryCoreResultAdapterV1,
   createLibraryCoreNormalizedCheckpointWriterV2,
-  discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
@@ -34,7 +31,6 @@ import {
   importLibraryCoreResultSegmentV1,
   importLibraryCoreNormalizedCheckpointV2,
   provisionGoogleDriveLibraryCoreControlV1,
-  provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2,
   provisionGoogleDriveLibraryCoreResultHeadV1,
   publishLibraryCoreNormalizedCheckpointV2,
   publishLibraryCoreResultEntriesV1,
@@ -44,7 +40,6 @@ import {
   type LibraryCoreImmutableReadAdapterV1,
   type LibraryCorePreparedImmutableObjectV1,
   type LibraryCoreNormalizedFollowerSyncRuntimeV2,
-  type LibraryCoreNormalizedFollowerTransportV2,
 } from "@freed/sync/cloud/library-core";
 import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
 import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
@@ -1347,37 +1342,6 @@ export function publishCurrentSqliteLibraryToGoogleDrive(input: {
   return runBoundedPublication(input);
 }
 
-function actorIdFromEnrollmentCertificate(bytes: Uint8Array): string | null {
-  const value = decodeLibraryCoreCanonicalValue(bytes);
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const certificateBody = (
-    value as Readonly<Record<string, LibraryCoreCanonicalValue>>
-  ).certificate_body;
-  if (
-    certificateBody === null ||
-    typeof certificateBody !== "object" ||
-    Array.isArray(certificateBody)
-  ) {
-    return null;
-  }
-  const enrollmentBody = (
-    certificateBody as Readonly<Record<string, LibraryCoreCanonicalValue>>
-  ).actor_enrollment_body;
-  if (
-    enrollmentBody === null ||
-    typeof enrollmentBody !== "object" ||
-    Array.isArray(enrollmentBody)
-  ) {
-    return null;
-  }
-  const actorId = (
-    enrollmentBody as Readonly<Record<string, LibraryCoreCanonicalValue>>
-  ).actor_id;
-  return typeof actorId === "string" ? actorId : null;
-}
-
 async function prepareDesktopNormalizedFollowerEnrollment() {
   const status = await readNormalizedLibraryFollowerRuntimeStatus();
   if (status.state === "active") return null;
@@ -1412,120 +1376,6 @@ async function prepareDesktopNormalizedFollowerEnrollment() {
     storageEpochId: request.authorityEpochId as LibraryCoreLowercaseHex64,
   };
   return Object.freeze(candidate);
-}
-
-function createDesktopNormalizedFollowerTransport(input: {
-  readonly accessToken: string;
-  readonly controlFileId: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly libraryId: string;
-  readonly signal?: AbortSignal;
-}): LibraryCoreNormalizedFollowerTransportV2 {
-  const immutable = createGoogleDriveLibraryCoreAdapterV1({
-    accessToken: input.accessToken,
-    controlFileId: input.controlFileId,
-    googleFetch: input.googleFetch,
-    libraryId: input.libraryId,
-    signal: input.signal,
-  });
-  const transport: LibraryCoreNormalizedFollowerTransportV2 = {
-    async publishEnrollmentRequest(candidate) {
-      requireFollowerLibraryCoreDesktopRole();
-      const uploaded = await immutable.putImmutable({
-        descriptor: candidate.descriptor,
-        source: candidate.source,
-      });
-      requireFollowerLibraryCoreDesktopRole();
-      const descriptor = await immutable.verifyImmutable({
-        descriptor: candidate.descriptor,
-        transportObjectId: uploaded.transportObjectId,
-      });
-      return parseLibraryCoreImmutableObjectReferenceV1({
-        descriptor,
-        transportObjectId: uploaded.transportObjectId,
-      });
-    },
-    async readEnrollmentCertificate(request) {
-      requireFollowerLibraryCoreDesktopRole();
-      const enrollments =
-        await discoverGoogleDriveLibraryCoreActorEnrollmentsV1({
-          accessToken: input.accessToken,
-          epochId: request.storageEpochId,
-          googleFetch: input.googleFetch,
-          libraryId: request.libraryId,
-          signal: input.signal,
-        });
-      return (
-        enrollments.find(
-          (candidate) =>
-            actorIdFromEnrollmentCertificate(candidate.bytes) ===
-            request.actorId,
-        )?.bytes ?? null
-      );
-    },
-    async openIntentAdapter(context) {
-      requireFollowerLibraryCoreDesktopRole();
-      let locator = await discoverGoogleDriveLibraryCoreIntentHeadV1({
-        accessToken: input.accessToken,
-        actorId: context.actorId,
-        epochId: context.storageEpochId,
-        googleFetch: input.googleFetch,
-        libraryId: context.libraryId,
-        signal: input.signal,
-      });
-      if (locator === null) {
-        const provisioned =
-          await provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2({
-            accessToken: input.accessToken,
-            googleFetch: input.googleFetch,
-            head: parseLibraryCoreNormalizedIntentHeadV2({
-              actor_id: context.actorId,
-              latest_segment: null,
-              latest_segment_digest: null,
-              library_id: context.libraryId,
-              next_actor_counter: 1,
-              protocol: "normalized_intent_head_v2",
-              protocol_version: 2,
-              storage_epoch_id: context.storageEpochId,
-            }),
-            signal: input.signal,
-          });
-        locator = provisioned;
-      }
-      return createGoogleDriveLibraryCoreNormalizedIntentAdapterV2({
-        accessToken: input.accessToken,
-        actorId: context.actorId,
-        controlFileId: input.controlFileId,
-        epochId: context.storageEpochId,
-        googleFetch: input.googleFetch,
-        intentHeadFileId: locator.intentHeadFileId,
-        libraryId: context.libraryId,
-        signal: input.signal,
-      });
-    },
-    async pageResultReferences(request) {
-      requireFollowerLibraryCoreDesktopRole();
-      const discovered = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
-        accessToken: input.accessToken,
-        actorId: request.actorId,
-        epochId: request.storageEpochId,
-        googleFetch: input.googleFetch,
-        libraryId: request.libraryId,
-        signal: input.signal,
-      });
-      const remaining = discovered.filter(
-        (segment) => segment.lastResultSequence >= request.firstResultSequence,
-      );
-      return Object.freeze({
-        done: remaining.length <= request.limit,
-        references: Object.freeze(
-          remaining.slice(0, request.limit).map((segment) => segment.reference),
-        ),
-      });
-    },
-    resultReader: immutable,
-  };
-  return Object.freeze(transport);
 }
 
 function createDesktopNormalizedFollowerRuntime(): LibraryCoreNormalizedFollowerSyncRuntimeV2 {
@@ -1592,8 +1442,9 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
     });
   }
   await syncLibraryCoreNormalizedFollowerV2(
-    createDesktopNormalizedFollowerTransport({
+    createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       accessToken: input.accessToken,
+      beforeProviderOperation: requireFollowerLibraryCoreDesktopRole,
       controlFileId: discovered.controlFileId,
       googleFetch: input.googleFetch,
       libraryId: pointer.libraryId,
