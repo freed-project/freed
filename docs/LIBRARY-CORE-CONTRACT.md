@@ -23,8 +23,8 @@ The contract has independent monotonically increasing versions for:
 - logical wire protocol
 - canonical codec
 - closed operation field manifests
-- mutation registry
-- query registry
+- mutation program catalog
+- query program catalog
 - checkpoint registry
 - content descriptor and range-index formats
 
@@ -601,7 +601,7 @@ signature, ordering, or identity.
 
 ## 8. Query contract
 
-The generated query registry contains bounded SQLite queries only. Whole
+The generated query program catalog contains bounded SQLite queries only. Whole
 document reads and IndexedDB adapters cannot appear in it.
 
 Every query declares:

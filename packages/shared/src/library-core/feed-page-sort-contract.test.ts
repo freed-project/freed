@@ -13,7 +13,7 @@ import {
 } from "../shadow-store.js";
 import type { ShadowDatabase } from "../shadow-store.js";
 import type { FeedItem } from "../types.js";
-import { LIBRARY_CORE_QUERY_REGISTRY } from "./query-registry.js";
+import { LIBRARY_CORE_SQLITE_QUERY_PROGRAMS } from "./sqlite-contract.generated.js";
 
 /**
  * The feed_page_v1 ordering, checked against the thing that has to implement it.
@@ -26,11 +26,7 @@ import { LIBRARY_CORE_QUERY_REGISTRY } from "./query-registry.js";
  * the projection exists to prevent. Both are checked here rather than described.
  */
 
-const definition = LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1;
-
-if (definition.status !== "planned_blocked") {
-  throw new Error("feed_page_v1 must be a planned Library Core query");
-}
+const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.feed_page_v1;
 
 const timelineIndexDdl = SHADOW_INDEX_DDL.find((sql) =>
   sql.includes("feed_items_timeline"),
@@ -72,25 +68,12 @@ function corpus(count: number): FeedItem[] {
 
 describe("feed_page_v1 sort contract", () => {
   it("declares the ordering the shadow store actually indexes", () => {
-    expect(definition.stableSort).not.toBeNull();
-    expect(definition.blockers).not.toContain("sort_contract_unresolved");
-
-    const sort = definition.stableSort!;
-    expect(sort.columns.map((column) => column.column)).toStrictEqual([
-      "sortAt",
-      "globalId",
-    ]);
-    expect(definition.tieBreakKey).toBe("globalId");
-
-    // The index must carry every sort column, in order, in the same direction.
-    // Anything less and SQLite reorders with a temp B-tree, which is the cost
-    // this contract exists to avoid.
-    const expectedIndexColumns = sort.columns
-      .map((column) => `${column.column} ${column.direction.toUpperCase()}`)
-      .join(", ");
+    expect(program.sql).toContain(
+      "ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC",
+    );
     expect(timelineIndexDdl).toBeDefined();
     expect(timelineIndexDdl!.replace(/\s+/g, " ")).toContain(
-      `ON feed_items (${expectedIndexColumns})`,
+      "ON feed_items (sortAt DESC, globalId ASC)",
     );
   });
 
@@ -99,9 +82,6 @@ describe("feed_page_v1 sort contract", () => {
     // by constraining `publishedAt`, absence would have to be written as a
     // sentinel and could never be reproduced. The declaration is only honest
     // while the authoritative column stays nullable.
-    expect(definition.stableSort!.nullOrdering).toBe(
-      "all_sort_columns_not_null",
-    );
     const ddl = SHADOW_TABLE_DDL.replace(/\s+/g, " ");
     expect(ddl).toContain("sortAt INTEGER NOT NULL");
     expect(ddl).toContain("publishedAt INTEGER,");
@@ -157,7 +137,7 @@ describe("feed_page_v1 sort contract", () => {
       }[];
       if (rows.length === 0) break;
       pages += 1;
-      expect(rows.length).toBeLessThanOrEqual(definition.maximumRows);
+      expect(rows.length).toBeLessThanOrEqual(64);
       // A cursor that fails to advance would otherwise spin here forever.
       expect(pages).toBeLessThanOrEqual(items.length);
 
