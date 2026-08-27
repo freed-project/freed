@@ -309,6 +309,11 @@ are deleted. Identity writes exist only as closed registered SQLite operations
 through the platform boundary. Development fixtures call the same PWA SQLite
 runtime directly instead of reviving a store mutation path.
 
+PWA empty-feed status reads one selected RSS Feed through
+`rss_feed_detail_v1`. PWA sync status reads the latest successful RSS refresh
+from `library_facet_summary_v1`. Neither surface reads or retains the complete
+RSS subscription map.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

@@ -27,6 +27,29 @@ const mocks = vi.hoisted(() => ({
     sourceRevision: 7,
     writerActorId: "69".repeat(32),
   })),
+  readFacetSummary: vi.fn(async () => ({
+    archivedCount: 0,
+    archivableCount: 0,
+    contactAccountCount: 0,
+    contactLinkedPersonCount: 0,
+    enabledRssFeedCount: 1,
+    friendPersonCount: 0,
+    latestContactImportedAt: null,
+    latestRssFeedFetchedAt: Date.now() - 90_000,
+    platformCounts: [],
+    rssFeedCount: 1,
+    sampleAccountCount: 0,
+    sampleFeedCount: 0,
+    savedArchivedCount: 0,
+    savedCount: 0,
+    savedPlatformCount: 0,
+    socialAccountCount: 0,
+    sampleItemCount: 0,
+    samplePersonCount: 0,
+    tags: [],
+    totalCount: 0,
+    unreadCount: 0,
+  })),
 }));
 
 vi.mock("../lib/sync", () => ({
@@ -57,6 +80,7 @@ function createPlatform(): PlatformConfig {
     SubstackSettingsContent: null,
     MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
+    readLibraryFacetSummary: mocks.readFacetSummary,
     releaseChannel: "production",
   };
 }
@@ -148,6 +172,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     );
     await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     const diagnostics = container.querySelector(
@@ -161,6 +186,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     );
 
     expect(diagnostics?.textContent).toContain("Sync diagnostics");
+    expect(container.textContent).toContain("Last synced 1m ago");
     expect(diagnostics?.textContent).toContain("Local items");
     expect(diagnostics?.textContent).toContain("1");
     expect(diagnostics?.textContent).toContain("No remote changes found.");

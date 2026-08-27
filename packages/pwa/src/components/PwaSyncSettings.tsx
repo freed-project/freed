@@ -9,10 +9,11 @@
  *   last-synced time, and a Disconnect action.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import type { LibraryCoreSelectedNormalizedCheckpointReceiptV2 } from "@freed/shared/library-core";
 import { usePlatform } from "@freed/ui/context";
+import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
   useDebugStore,
   type CloudProviderDebugState,
@@ -197,7 +198,8 @@ export function PwaSyncSettings() {
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
-  const feeds = useAppStore((s) => s.feeds);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const docSnapshot = useDebugStore((s) => s.docSnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<
@@ -216,12 +218,7 @@ export function PwaSyncSettings() {
     useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
-  const lastSyncTime = useMemo(() => {
-    const times = Object.values(feeds)
-      .map((f) => f.lastFetched)
-      .filter((t): t is number => !!t);
-    return times.length > 0 ? Math.max(...times) : null;
-  }, [feeds]);
+  const lastSyncTime = libraryFacets.latestRssFeedFetchedAt;
 
   const { label, provider } = getProviderInfo(
     syncConnected,

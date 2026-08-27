@@ -6,7 +6,7 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
 import { PwaFeedEmptyState } from "./PwaFeedEmptyState";
 
-function createPlatform(): PlatformConfig {
+function createPlatform(overrides: Partial<PlatformConfig> = {}): PlatformConfig {
   return {
     store: useAppStore,
     SourceIndicator: null,
@@ -22,15 +22,22 @@ function createPlatform(): PlatformConfig {
     MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
     releaseChannel: "production",
+    ...overrides,
   };
 }
 
-function renderWithPlatform(node: ReactNode): { container: HTMLDivElement; root: Root } {
+function renderWithPlatform(
+  node: ReactNode,
+  overrides: Partial<PlatformConfig> = {},
+): { container: HTMLDivElement; root: Root } {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(createElement(PlatformProvider, { value: createPlatform(), children: node }));
+    root.render(createElement(PlatformProvider, {
+      value: createPlatform(overrides),
+      children: node,
+    }));
   });
   return { container, root };
 }
@@ -148,5 +155,69 @@ describe("PwaFeedEmptyState", () => {
     act(() => {
       root.unmount();
     });
+  });
+
+  it("reads only the selected RSS Feed from SQLite", async () => {
+    const feedUrl = "https://example.com/feed.xml";
+    useAppStore.setState({
+      activeFilter: { feedUrl },
+      feeds: {
+        [feedUrl]: {
+          enabled: true,
+          lastFetched: Date.now(),
+          title: "Stale renderer Feed",
+          trackUnread: true,
+          url: feedUrl,
+        },
+      },
+      searchCorpusVersion: 7,
+    });
+    const queryLibraryCore = vi.fn(async () => ({
+      feed: {
+        enabled: true,
+        folder: null,
+        imageUrl: null,
+        lastFetched: null,
+        pollInterval: null,
+        sampleBatchId: null,
+        sampleGeneratedAt: null,
+        sampleGeneratorVersion: null,
+        siteUrl: null,
+        title: "SQLite Feed",
+        trackUnread: true,
+        updatedAt: 1,
+        url: feedUrl,
+      },
+      queryId: "rss_feed_detail_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId: "ab".repeat(32),
+        projectionRevision: 7,
+        transitionSequence: 1,
+      },
+    }));
+
+    const { container, root } = renderWithPlatform(
+      createElement(PwaFeedEmptyState),
+      {
+        queryLibraryCore:
+          queryLibraryCore as unknown as PlatformConfig["queryLibraryCore"],
+      },
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(queryLibraryCore).toHaveBeenCalledWith({
+      queryId: "rss_feed_detail_v1",
+      schemaVersion: 1,
+      url: feedUrl,
+    });
+    expect(container.textContent).toContain("Waiting for Freed Desktop");
+    expect(container.textContent).toContain("SQLite Feed");
+    expect(container.textContent).not.toContain("Stale renderer Feed");
+
+    act(() => root.unmount());
   });
 });
