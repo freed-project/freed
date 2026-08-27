@@ -44,14 +44,18 @@ pub mod sqlite_contract_generated;
 
 pub use device_contact_sync::{
     digest_device_contact_sync_mutation_v1, mutate_device_contact_sync_v1,
-    query_device_contact_match_page_v1, query_device_contact_status_v1, DeviceContactAuthStatusV1,
-    DeviceContactErrorCodeV1, DeviceContactMatchPageRequestV1, DeviceContactMatchPageResponseV1,
-    DeviceContactMatchResultV1, DeviceContactMetadataV1, DeviceContactMutationReceiptV1,
-    DeviceContactNameV1, DeviceContactOrganizationV1, DeviceContactPhotoV1,
-    DeviceContactStatusRequestV1, DeviceContactStatusResponseV1,
-    DeviceContactSuggestionConfidenceV1, DeviceContactSuggestionKindV1, DeviceContactSuggestionV1,
-    DeviceContactSyncError, DeviceContactSyncMutationV1, DeviceContactSyncStatusV1,
-    DeviceContactV1, DeviceContactValueV1,
+    query_device_contact_match_page_v1, query_device_contact_status_v1,
+    query_device_contact_suggestion_page_v1, query_device_contact_unmatched_page_v1,
+    DeviceContactAuthStatusV1, DeviceContactErrorCodeV1, DeviceContactMatchPageRequestV1,
+    DeviceContactMatchPageResponseV1, DeviceContactMatchResultV1, DeviceContactMetadataV1,
+    DeviceContactMutationReceiptV1, DeviceContactNameV1, DeviceContactOrganizationV1,
+    DeviceContactPhotoV1, DeviceContactStatusRequestV1, DeviceContactStatusResponseV1,
+    DeviceContactSuggestionConfidenceV1, DeviceContactSuggestionCursorV1,
+    DeviceContactSuggestionKindV1, DeviceContactSuggestionPageRequestV1,
+    DeviceContactSuggestionPageResponseV1, DeviceContactSuggestionReviewRowV1,
+    DeviceContactSuggestionV1, DeviceContactSyncError, DeviceContactSyncMutationV1,
+    DeviceContactSyncStatusV1, DeviceContactUnmatchedCursorV1, DeviceContactUnmatchedPageRequestV1,
+    DeviceContactUnmatchedPageResponseV1, DeviceContactV1, DeviceContactValueV1,
 };
 pub use device_graph_layout::{
     mutate_device_graph_layout_v1, DeviceGraphLayoutError, DeviceGraphLayoutMutationResultV1,

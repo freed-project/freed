@@ -347,6 +347,13 @@ receipt. A page admits at most 64 contacts and at most 1,048,576 response
 bytes. The byte ceiling can shorten a page before its row ceiling without
 dropping the cursor for any admitted contact.
 
+Active review uses two independent keysets. Suggestions order high confidence
+before medium confidence, then newest creation time and stable suggestion
+identity. Unmatched contacts order by binary display name and resource name.
+Both responses reassemble only their admitted contact rows, cap visible rows at
+50, stop before the same 1,048,576-byte ceiling, and expose no full-generation
+array.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted
