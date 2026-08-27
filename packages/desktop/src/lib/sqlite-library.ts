@@ -54,6 +54,11 @@ import {
   parseLibraryCoreNormalizedCheckpointActivationReceiptV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
   parseLibraryCoreNormalizedCheckpointStageStatusV2,
+  parseLibraryCoreFollowerTransportContextV2,
+  parseLibraryCoreFollowerTransportPageRequestV2,
+  parseLibraryCoreFollowerTransportPageResponseV2,
+  parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -73,6 +78,9 @@ import {
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreEd25519SignatureHex,
+  type LibraryCoreFollowerTransportContextV2,
+  type LibraryCoreFollowerTransportPageRequestV2,
+  type LibraryCoreFollowerTransportPageResponseV2,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreNormalizedCheckpointCursorV2,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
@@ -81,6 +89,10 @@ import {
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
+  type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
+  type LibraryCoreNormalizedIntentTransportPublicationV2,
+  type LibraryCoreNormalizedResultTransportImportReceiptV2,
+  type LibraryCoreNormalizedResultTransportImportV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionStagePageV1,
@@ -124,8 +136,7 @@ export interface SqliteLibraryPersistedCloudIdentity {
   readonly writerId: string;
 }
 
-export interface NormalizedLibraryCloudIdentity
-  extends LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+export interface NormalizedLibraryCloudIdentity extends LibraryCoreNormalizedCheckpointExportDescriptorV2 {
   readonly localActorId: string;
 }
 
@@ -181,7 +192,6 @@ export interface NormalizedLibraryFollowerRuntimeStatus {
   readonly publishedIntentCount: number;
   readonly importedResultCount: number;
 }
-
 
 export interface SqliteLibraryFollowerOperationSignature {
   readonly actorId: string;
@@ -260,44 +270,6 @@ export interface NormalizedLibraryFollowerActorEnrollment {
   readonly enrolledAt: number;
 }
 
-export interface SqliteLibraryFollowerIntentOutboxCandidate {
-  readonly libraryId: string;
-  readonly epochId: string;
-  readonly actorId: string;
-  readonly schemaVersion: number;
-  readonly firstIntentSequence: number;
-  readonly lastIntentSequence: number;
-  readonly previousSegmentDigest: string | null;
-  readonly canonicalEnvelopeBytes: number;
-  readonly transactionCount: number;
-  readonly entries: readonly Readonly<{
-    operationId: string;
-    intentSequence: number;
-    canonicalEnvelopeJson: string;
-  }>[];
-}
-
-export interface SqliteLibraryFollowerIntentPublicationReceipt {
-  readonly firstIntentSequence: number;
-  readonly lastIntentSequence: number;
-  readonly operationCount: number;
-  readonly publishedSegmentDigest: string;
-  readonly status: "recorded" | "already_recorded";
-}
-
-export interface SqliteLibraryFollowerResultImportCursor {
-  readonly nextResultSequence: number;
-  readonly latestSegmentDigest: string | null;
-}
-
-export interface SqliteLibraryFollowerResultImportReceipt {
-  readonly firstResultSequence: number;
-  readonly lastResultSequence: number;
-  readonly resultCount: number;
-  readonly segmentDigest: string;
-  readonly status: "imported" | "already_imported";
-}
-
 export async function prepareNormalizedLibraryFollowerActorRequest(): Promise<NormalizedLibraryFollowerActorRequest> {
   return invoke<NormalizedLibraryFollowerActorRequest>(
     "prepare_normalized_library_follower_actor_request",
@@ -314,76 +286,100 @@ export async function installNormalizedLibraryFollowerActorEnrollment(
   );
 }
 
-export async function readSqliteLibraryFollowerIntentOutboxCandidate(): Promise<SqliteLibraryFollowerIntentOutboxCandidate | null> {
-  return invoke<SqliteLibraryFollowerIntentOutboxCandidate | null>(
-    "read_sqlite_library_follower_intent_outbox_candidate",
-    {
-      request: {
-        maximumOperations: 1_000,
-        maximumCanonicalEnvelopeBytes: 4_194_304,
-      },
-    },
-  );
-}
-
-export async function recordSqliteLibraryFollowerIntentPublication(input: {
-  readonly libraryId: string;
-  readonly epochId: string;
-  readonly actorId: string;
-  readonly firstIntentSequence: number;
-  readonly lastIntentSequence: number;
-  readonly previousSegmentDigest: string | null;
-  readonly publishedSegmentDigest: string;
-}): Promise<SqliteLibraryFollowerIntentPublicationReceipt> {
-  return invoke<SqliteLibraryFollowerIntentPublicationReceipt>(
-    "record_sqlite_library_follower_intent_publication",
-    { request: input },
-  );
-}
-
-export async function readSqliteLibraryFollowerResultImportCursor(input: {
-  readonly libraryId: string;
-  readonly epochId: string;
-  readonly actorId: string;
-}): Promise<SqliteLibraryFollowerResultImportCursor | null> {
-  return invoke<SqliteLibraryFollowerResultImportCursor | null>(
-    "read_sqlite_library_follower_result_import_cursor",
-    { request: input },
-  );
-}
-
-export async function appendSqliteLibraryFollowerResultSegment(input: {
-  readonly libraryId: string;
-  readonly epochId: string;
-  readonly actorId: string;
-  readonly firstResultSequence: number;
-  readonly lastResultSequence: number;
-  readonly previousSegmentDigest: string | null;
-  readonly segmentDigest: string;
-  readonly entries: readonly Readonly<{
-    readonly resultOperationId: string;
-    readonly resultSequence: number;
-    readonly intentOperationId: string;
-    readonly intentSequence: number;
-    readonly status: "accepted" | "provider_completed" | "provider_failed";
-    readonly providerReceiptDigest: string | null;
-  }>[];
-}): Promise<SqliteLibraryFollowerResultImportReceipt> {
-  return invoke<SqliteLibraryFollowerResultImportReceipt>(
-    "append_sqlite_library_follower_result_segment",
-    {
-      request: {
-        ...input,
-        entries: [...input.entries],
-        importedAtMs: Date.now(),
-      },
-    },
-  );
-}
-
 export async function readNormalizedLibraryFollowerRuntimeStatus(): Promise<NormalizedLibraryFollowerRuntimeStatus> {
   return invoke<NormalizedLibraryFollowerRuntimeStatus>(
     "normalized_library_follower_runtime_status",
+  );
+}
+
+export async function readNormalizedLibraryFollowerTransportContext(): Promise<LibraryCoreFollowerTransportContextV2> {
+  return parseLibraryCoreFollowerTransportContextV2(
+    await invoke<LibraryCoreFollowerTransportContextV2>(
+      "normalized_library_follower_transport_context",
+    ),
+  );
+}
+
+export async function pageNormalizedLibraryFollowerTransport(
+  input: LibraryCoreFollowerTransportPageRequestV2,
+): Promise<LibraryCoreFollowerTransportPageResponseV2> {
+  const page = parseLibraryCoreFollowerTransportPageRequestV2(input);
+  const response = await invoke<
+    Omit<LibraryCoreFollowerTransportPageResponseV2, "canonicalEnvelopes"> &
+      Readonly<{ canonicalEnvelopes: readonly (readonly number[])[] }>
+  >("page_normalized_library_follower_transport", { page });
+  return parseLibraryCoreFollowerTransportPageResponseV2({
+    ...response,
+    canonicalEnvelopes: response.canonicalEnvelopes.map((bytes) =>
+      Uint8Array.from(bytes),
+    ),
+  });
+}
+
+export async function recordNormalizedLibraryFollowerIntentTransportPublication(
+  input: LibraryCoreNormalizedIntentTransportPublicationV2,
+): Promise<LibraryCoreNormalizedIntentTransportPublicationReceiptV2> {
+  const publication =
+    parseLibraryCoreNormalizedIntentTransportPublicationV2(input);
+  return invoke<LibraryCoreNormalizedIntentTransportPublicationReceiptV2>(
+    "record_normalized_library_follower_intent_transport_publication",
+    {
+      publication: {
+        actorId: publication.header.actor_id,
+        firstActorCounter: publication.header.first_actor_counter,
+        lastActorCounter: publication.header.last_actor_counter,
+        libraryId: publication.header.library_id,
+        objectKey: publication.reference.descriptor.objectKey,
+        previousSegmentDigest: publication.header.previous_segment_digest,
+        publishedAt: publication.publishedAt,
+        semanticSegmentDigest: publication.header.segment_digest,
+        storageEpochId: publication.header.storage_epoch_id,
+        storedSegmentDigest: publication.reference.descriptor.contentDigest,
+        transportObjectId: publication.reference.transportObjectId,
+      },
+    },
+  );
+}
+
+export async function importNormalizedLibraryFollowerResultTransport(
+  input: LibraryCoreNormalizedResultTransportImportV2,
+): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+  const publication = parseLibraryCoreNormalizedResultTransportImportV2(input);
+  return invoke<LibraryCoreNormalizedResultTransportImportReceiptV2>(
+    "import_normalized_library_follower_result_transport_segment",
+    {
+      publication: {
+        actorId: publication.header.actor_id,
+        libraryId: publication.header.library_id,
+        objectKey: publication.reference.descriptor.objectKey,
+        previousSegmentDigest: publication.header.previous_segment_digest,
+        receivedAt: publication.receivedAt,
+        records: publication.results.map((result) => ({
+          actorId: result.actor_id,
+          authoritativeSourceRevision: result.authoritative_source_revision,
+          authorityEpochId: result.epoch_id,
+          canonicalResultJson: new TextDecoder("utf-8", { fatal: true }).decode(
+            encodeLibraryCoreCanonicalValue(
+              result as unknown as LibraryCoreCanonicalValue,
+            ),
+          ),
+          enqueuedAt: result.resolved_at_ms,
+          intentEpochId: result.intent_epoch_id,
+          originalResultDigest: result.original_result_digest,
+          previousResultDigest: result.previous_result_digest,
+          rejectionReason: result.rejection_reason,
+          resultDigest: result.result_body_digest,
+          resultSequence: result.result_sequence,
+          status: result.status,
+          transactionDigest: result.transaction_digest,
+          transactionId: result.transaction_id,
+        })),
+        semanticSegmentDigest: publication.header.segment_digest,
+        storageEpochId: publication.header.storage_epoch_id,
+        storedSegmentDigest: publication.reference.descriptor.contentDigest,
+        transportObjectId: publication.reference.transportObjectId,
+      },
+    },
   );
 }
 
@@ -753,9 +749,7 @@ async function maybeSubmitUserStateAssignments(
 }
 
 async function submitProviderSyncReceipt(
-  operationType:
-    | "feed_item_like_sync_receipt"
-    | "feed_item_seen_sync_receipt",
+  operationType: "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt",
   entityId: string,
   syncedAtMs: number,
 ): Promise<void> {
@@ -1043,7 +1037,10 @@ async function maybeSubmitRssFeedRemoves(
 }
 
 async function maybeSubmitRssFeedTitleAssignments(
-  assignments: readonly Readonly<{ readonly title: string; readonly url: string }>[],
+  assignments: readonly Readonly<{
+    readonly title: string;
+    readonly url: string;
+  }>[],
   assignedAtMs: number,
 ): Promise<boolean> {
   let context = await mutationContext();
@@ -1483,9 +1480,7 @@ export async function ensureFreshNormalizedDesktopLibrary(
   });
 }
 
-export async function describeNormalizedLibraryCheckpoint(): Promise<
-  LibraryCoreNormalizedCheckpointExportDescriptorV2
-> {
+export async function describeNormalizedLibraryCheckpoint(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
   return parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
     await invoke<unknown>("describe_normalized_library_checkpoint"),
   );
@@ -1553,10 +1548,9 @@ export async function appendNormalizedLibraryCheckpointImportPage(input: {
 }): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
   const request = parseLibraryCoreNormalizedCheckpointStagePageV2(input);
   return parseLibraryCoreNormalizedCheckpointStageStatusV2(
-    await invoke<unknown>(
-      "append_normalized_library_checkpoint_import_page",
-      { request },
-    ),
+    await invoke<unknown>("append_normalized_library_checkpoint_import_page", {
+      request,
+    }),
   );
 }
 
@@ -1856,7 +1850,7 @@ async function mutateItems(
     window as unknown as {
       __FREED_E2E_NORMALIZED_MUTATE_ITEMS__?: (request: {
         mutation: string;
-        ids: readonly string[],
+        ids: readonly string[];
         platform: string | null;
         feedUrl: string | null;
         timestampMs: number;
@@ -2010,7 +2004,9 @@ async function readNormalizedPerson(personId: string): Promise<Person | null> {
   };
 }
 
-async function readNormalizedAccount(accountId: string): Promise<Account | null> {
+async function readNormalizedAccount(
+  accountId: string,
+): Promise<Account | null> {
   const response = await queryNormalizedLibrary({
     accountId,
     queryId: LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
@@ -2039,9 +2035,7 @@ async function readNormalizedAccount(accountId: string): Promise<Account | null>
       ? {}
       : { displayName: account.displayName }),
     ...(account.avatarUrl === null ? {} : { avatarUrl: account.avatarUrl }),
-    ...(account.profileUrl === null
-      ? {}
-      : { profileUrl: account.profileUrl }),
+    ...(account.profileUrl === null ? {} : { profileUrl: account.profileUrl }),
     ...(account.email === null ? {} : { email: account.email }),
     ...(account.phone === null ? {} : { phone: account.phone }),
     ...(account.address === null ? {} : { address: account.address }),

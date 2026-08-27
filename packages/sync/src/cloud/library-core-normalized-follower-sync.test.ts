@@ -15,17 +15,38 @@ const mocks = vi.hoisted(() => ({
   publishIntentSegment: vi.fn(),
 }));
 
-vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@freed/sync/cloud/library-core")>()),
-  importLibraryCoreNormalizedIntentSegmentV2: mocks.importIntent,
-  importLibraryCoreNormalizedResultSegmentV2: mocks.importResultSegment,
-  publishLibraryCoreNormalizedIntentSegmentV2: mocks.publishIntentSegment,
-}));
+vi.mock(
+  "./library-core-normalized-intent-segments.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("./library-core-normalized-intent-segments.js")
+    >()),
+    importLibraryCoreNormalizedIntentSegmentV2: mocks.importIntent,
+  }),
+);
+vi.mock(
+  "./library-core-normalized-result-segments.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("./library-core-normalized-result-segments.js")
+    >()),
+    importLibraryCoreNormalizedResultSegmentV2: mocks.importResultSegment,
+  }),
+);
+vi.mock(
+  "./library-core-normalized-segment-publication.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("./library-core-normalized-segment-publication.js")
+    >()),
+    publishLibraryCoreNormalizedIntentSegmentV2: mocks.publishIntentSegment,
+  }),
+);
 
 import {
-  syncPwaLibraryCoreFollowerV2,
-  type PwaLibraryCoreFollowerTransportV2,
-} from "./library-core-pwa-follower-sync";
+  syncLibraryCoreNormalizedFollowerV2,
+  type LibraryCoreNormalizedFollowerTransportV2,
+} from "./library-core-normalized-follower-sync.js";
 
 const ACTOR_ID = "1".repeat(64) as LibraryCoreLowercaseHex64;
 const LIBRARY_ID = "2".repeat(64) as LibraryCoreLowercaseHex64;
@@ -138,7 +159,7 @@ function transport(remoteHead = head()) {
     publishEnrollmentRequest: vi.fn(),
     readEnrollmentCertificate: vi.fn(),
     resultReader: { readImmutable: vi.fn() },
-  } satisfies PwaLibraryCoreFollowerTransportV2;
+  } satisfies LibraryCoreNormalizedFollowerTransportV2;
 }
 
 function runtime(overrides: Readonly<Record<string, unknown>> = {}) {
@@ -171,7 +192,7 @@ function runtime(overrides: Readonly<Record<string, unknown>> = {}) {
   };
 }
 
-describe("PWA normalized follower sync", () => {
+describe("normalized follower sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.publishIntentSegment.mockResolvedValue({
@@ -204,10 +225,10 @@ describe("PWA normalized follower sync", () => {
       })),
     });
 
-    const receipt = await syncPwaLibraryCoreFollowerV2(
+    const receipt = await syncLibraryCoreNormalizedFollowerV2(
       activeTransport,
-      {},
       activeRuntime,
+      {},
     );
 
     expect(receipt.enrollmentState).toBe("pending");
@@ -222,10 +243,10 @@ describe("PWA normalized follower sync", () => {
 
   it("publishes one bounded SQLite intent page and records its exact receipt", async () => {
     const activeRuntime = runtime();
-    const receipt = await syncPwaLibraryCoreFollowerV2(
+    const receipt = await syncLibraryCoreNormalizedFollowerV2(
       transport(),
-      {},
       activeRuntime,
+      {},
     );
 
     expect(receipt).toEqual({
@@ -257,10 +278,10 @@ describe("PWA normalized follower sync", () => {
       });
     });
     const activeRuntime = runtime();
-    const receipt = await syncPwaLibraryCoreFollowerV2(
+    const receipt = await syncLibraryCoreNormalizedFollowerV2(
       transport(head(2)),
-      {},
       activeRuntime,
+      {},
     );
 
     expect(receipt.recoveredIntentPublication).toBe(true);
@@ -312,10 +333,10 @@ describe("PWA normalized follower sync", () => {
       })),
     });
 
-    const receipt = await syncPwaLibraryCoreFollowerV2(
+    const receipt = await syncLibraryCoreNormalizedFollowerV2(
       activeTransport,
-      {},
       activeRuntime,
+      {},
     );
 
     expect(receipt.importedResultCount).toBe(1);

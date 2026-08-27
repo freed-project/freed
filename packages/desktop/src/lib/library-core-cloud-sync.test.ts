@@ -87,10 +87,6 @@ const mocks = vi.hoisted(() => ({
   followerRuntimeStatus: vi.fn(),
   prepareFollowerActorRequest: vi.fn(),
   installFollowerActorEnrollment: vi.fn(),
-  readFollowerIntentCandidate: vi.fn(async (): Promise<unknown> => null),
-  recordFollowerIntentPublication: vi.fn(),
-  readFollowerResultCursor: vi.fn(async (): Promise<unknown> => null),
-  appendFollowerResultSegment: vi.fn(),
   discoverIntentHead: vi.fn(),
   provisionIntentHead: vi.fn(),
   readIntentHead: vi.fn(),
@@ -100,6 +96,13 @@ const mocks = vi.hoisted(() => ({
   importFollowerResult: vi.fn(),
   prepareFollowerIntent: vi.fn(),
   readResultHead: vi.fn(),
+  normalizedFollowerSync: vi.fn(),
+  readFollowerTransportContext: vi.fn(),
+  pageFollowerTransport: vi.fn(),
+  recordNormalizedIntentPublication: vi.fn(),
+  importNormalizedResultTransport: vi.fn(),
+  createNormalizedIntentAdapter: vi.fn(),
+  provisionNormalizedIntentHead: vi.fn(),
 }));
 
 vi.mock("./native-json-store", () => ({
@@ -118,7 +121,6 @@ vi.mock("./sqlite-library", () => ({
   acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
-  appendSqliteLibraryFollowerResultSegment: mocks.appendFollowerResultSegment,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
@@ -142,12 +144,14 @@ vi.mock("./sqlite-library", () => ({
   readPwaIntentResultOutbox: mocks.readIntentResults,
   prepareNormalizedLibraryFollowerActorRequest:
     mocks.prepareFollowerActorRequest,
-  readSqliteLibraryFollowerIntentOutboxCandidate:
-    mocks.readFollowerIntentCandidate,
-  readSqliteLibraryFollowerResultImportCursor: mocks.readFollowerResultCursor,
+  pageNormalizedLibraryFollowerTransport: mocks.pageFollowerTransport,
   readNormalizedLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
-  recordSqliteLibraryFollowerIntentPublication:
-    mocks.recordFollowerIntentPublication,
+  readNormalizedLibraryFollowerTransportContext:
+    mocks.readFollowerTransportContext,
+  recordNormalizedLibraryFollowerIntentTransportPublication:
+    mocks.recordNormalizedIntentPublication,
+  importNormalizedLibraryFollowerResultTransport:
+    mocks.importNormalizedResultTransport,
   reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
@@ -209,9 +213,13 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
       mocks.discoverPublishedControl,
     discoverGoogleDriveLibraryCoreIntentHeadV1: mocks.discoverIntentHead,
     provisionGoogleDriveLibraryCoreIntentHeadV1: mocks.provisionIntentHead,
+    provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2:
+      mocks.provisionNormalizedIntentHead,
     createGoogleDriveLibraryCoreIntentAdapterV1: vi.fn(() => ({
       readIntentHead: mocks.readIntentHead,
     })),
+    createGoogleDriveLibraryCoreNormalizedIntentAdapterV2:
+      mocks.createNormalizedIntentAdapter,
     publishLibraryCoreIntentCandidateV1: mocks.publishFollowerIntent,
     prepareLibraryCoreIntentSegmentV1: mocks.prepareFollowerIntent,
     discoverGoogleDriveLibraryCoreResultHeadV1: mocks.discoverResultHead,
@@ -314,17 +322,19 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
           };
         },
       ),
-    reassignLibraryCoreNormalizedCheckpointV2: mocks.reassign.mockImplementation(
-      async (request: Record<string, unknown>) => {
-        mocks.reassignRequest = request;
-        const records: unknown[] = [];
-        for await (const record of request.records as AsyncIterable<unknown>) {
-          records.push(record);
-        }
-        mocks.publishedRecords = records;
-        return normalizedPublicationResult(request, records);
-      },
-    ),
+    reassignLibraryCoreNormalizedCheckpointV2:
+      mocks.reassign.mockImplementation(
+        async (request: Record<string, unknown>) => {
+          mocks.reassignRequest = request;
+          const records: unknown[] = [];
+          for await (const record of request.records as AsyncIterable<unknown>) {
+            records.push(record);
+          }
+          mocks.publishedRecords = records;
+          return normalizedPublicationResult(request, records);
+        },
+      ),
+    syncLibraryCoreNormalizedFollowerV2: mocks.normalizedFollowerSync,
   };
 });
 
@@ -402,10 +412,6 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.followerRuntimeStatus.mockReset();
     mocks.prepareFollowerActorRequest.mockReset();
     mocks.installFollowerActorEnrollment.mockReset();
-    mocks.readFollowerIntentCandidate.mockReset().mockResolvedValue(null);
-    mocks.recordFollowerIntentPublication.mockReset();
-    mocks.readFollowerResultCursor.mockReset().mockResolvedValue(null);
-    mocks.appendFollowerResultSegment.mockReset();
     mocks.discoverIntentHead.mockReset();
     mocks.provisionIntentHead.mockReset();
     mocks.readIntentHead.mockReset();
@@ -419,6 +425,18 @@ describe("SQLite Library Google Drive production wiring", () => {
         body: request,
       }));
     mocks.readResultHead.mockReset();
+    mocks.normalizedFollowerSync.mockReset().mockResolvedValue({
+      enrollmentState: "enrolled",
+      importedResultCount: 0,
+      publishedIntentCount: 0,
+      recoveredIntentPublication: false,
+    });
+    mocks.readFollowerTransportContext.mockReset();
+    mocks.pageFollowerTransport.mockReset();
+    mocks.recordNormalizedIntentPublication.mockReset();
+    mocks.importNormalizedResultTransport.mockReset();
+    mocks.createNormalizedIntentAdapter.mockReset();
+    mocks.provisionNormalizedIntentHead.mockReset();
     mocks.describeCloudIdentity.mockReset().mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
       protocolVersion: 2,
@@ -575,6 +593,52 @@ describe("SQLite Library Google Drive production wiring", () => {
       canonicalEnrollmentRequestJson: "{}",
       createdAt: 1,
     });
+    mocks.normalizedFollowerSync.mockImplementation(
+      async (transport, runtime) => {
+        expect(runtime.prepareEnrollment).toEqual(expect.any(Function));
+        const source = Uint8Array.of(1, 2, 3);
+        const contentDigest = "90".repeat(32);
+        const candidate = {
+          descriptor: {
+            byteLength: source.byteLength,
+            contentDigest,
+            objectKey: createLibraryCoreImmutableObjectKey({
+              actorId: "78".repeat(32),
+              digest: contentDigest,
+              epochId,
+              kind: "actor_enrollment_request",
+              libraryId,
+            }),
+          },
+          libraryId,
+          receipt: {
+            actorId: "78".repeat(32),
+            actorPublicKey: "89".repeat(32),
+            canonicalRequestBytes: source,
+            createdAt: 1,
+            enrollmentRequestDigest: contentDigest,
+            state: "pending",
+          },
+          source,
+          storageEpochId: epochId,
+        };
+        const published = await transport.publishEnrollmentRequest(candidate);
+        const certificate = await transport.readEnrollmentCertificate({
+          actorId: candidate.receipt.actorId,
+          enrollmentRequestDigest: candidate.receipt.enrollmentRequestDigest,
+          libraryId: candidate.libraryId,
+          storageEpochId: candidate.storageEpochId,
+        });
+        expect(published.descriptor).toEqual(candidate.descriptor);
+        expect(certificate).toBeNull();
+        return {
+          enrollmentState: "pending",
+          importedResultCount: 0,
+          publishedIntentCount: 0,
+          recoveredIntentPublication: false,
+        };
+      },
+    );
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
@@ -591,7 +655,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       }),
       stageId: manifestDigest,
     });
-    expect(mocks.prepareFollowerActorRequest).toHaveBeenCalledTimes(1);
+    expect(mocks.normalizedFollowerSync).toHaveBeenCalledTimes(1);
     expect(mocks.discoverActorEnrollments).toHaveBeenCalledWith(
       expect.objectContaining({ epochId, libraryId }),
     );
@@ -650,64 +714,86 @@ describe("SQLite Library Google Drive production wiring", () => {
       importedResultCount: 0,
     };
     mocks.followerRuntimeStatus.mockResolvedValue(activeStatus);
-    mocks.readFollowerIntentCandidate
-      .mockResolvedValueOnce({
-        libraryId,
-        epochId,
-        actorId,
-        schemaVersion: 1,
-        firstIntentSequence: 1,
-        lastIntentSequence: 1,
-        previousSegmentDigest: null,
-        canonicalEnvelopeBytes: 2,
-        transactionCount: 1,
-        entries: [
-          {
-            operationId: "follower-operation-1",
-            intentSequence: 1,
-            canonicalEnvelopeJson: "{}",
-          },
-        ],
-      })
-      .mockResolvedValueOnce(null);
+    const context = {
+      actorId,
+      libraryId,
+      nextIntentActorCounter: 1,
+      nextResultSequence: 1,
+      previousIntentSegmentDigest: null,
+      previousResultSegmentDigest: null,
+      schemaVersion: 2,
+      storageEpochId: epochId,
+    };
+    mocks.readFollowerTransportContext.mockResolvedValue(context);
+    mocks.pageFollowerTransport.mockResolvedValue({
+      actorId,
+      canonicalEnvelopes: [Uint8Array.of(1, 2)],
+      done: true,
+      firstActorCounter: 1,
+      lastActorCounter: 1,
+      schemaVersion: 2,
+    });
     mocks.discoverIntentHead.mockResolvedValue({
       intentHeadFileId: "intent-head-1",
     });
-    mocks.readIntentHead.mockResolvedValue({
-      bytes: new Uint8Array(),
-      revision: '"intent-etag-1"',
-      head: {
+    const intentAdapter = { readHead: vi.fn() };
+    mocks.createNormalizedIntentAdapter.mockReturnValue(intentAdapter);
+    const publication = {
+      header: {
         actor_id: actorId,
-        epoch_id: epochId,
-        latest_segment: null,
+        first_actor_counter: 1,
+        last_actor_counter: 1,
         library_id: libraryId,
-        next_intent_sequence: 1,
-        protocol: "intent_head_v1",
-        protocol_version: 1,
-        schema_version: 1,
+        previous_segment_digest: null,
+        segment_digest: "91".repeat(32),
+        storage_epoch_id: epochId,
       },
-    });
-    mocks.publishFollowerIntent.mockResolvedValue({
-      status: "committed",
-      segmentReference: {
-        descriptor: { contentDigest: segmentDigest },
+      publishedAt: 1_000,
+      reference: {
+        descriptor: {
+          byteLength: 2,
+          contentDigest: segmentDigest,
+          objectKey: "intent-segment-1",
+        },
+        transportObjectId: "intent-segment-1",
       },
-    });
+    };
+    mocks.normalizedFollowerSync.mockImplementation(
+      async (transport, runtime) => {
+        const activeContext = await runtime.readContext();
+        await runtime.pageIntents({
+          actorId,
+          firstActorCounter: 1,
+          limit: 128,
+          schemaVersion: 2,
+        });
+        await transport.openIntentAdapter(activeContext);
+        await runtime.publishIntent(publication);
+        return {
+          enrollmentState: "enrolled",
+          importedResultCount: 0,
+          publishedIntentCount: 1,
+          recoveredIntentPublication: false,
+        };
+      },
+    );
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
     ).resolves.toEqual({ status: "follower_synced", revision: 7 });
 
-    expect(mocks.publishFollowerIntent).toHaveBeenCalledTimes(1);
-    expect(mocks.recordFollowerIntentPublication).toHaveBeenCalledWith({
+    expect(mocks.pageFollowerTransport).toHaveBeenCalledWith({
       actorId,
-      epochId,
-      firstIntentSequence: 1,
-      lastIntentSequence: 1,
-      libraryId,
-      previousSegmentDigest: null,
-      publishedSegmentDigest: segmentDigest,
+      firstActorCounter: 1,
+      limit: 128,
+      schemaVersion: 2,
     });
+    expect(mocks.createNormalizedIntentAdapter).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId, epochId, libraryId }),
+    );
+    expect(mocks.recordNormalizedIntentPublication).toHaveBeenCalledWith(
+      publication,
+    );
     expect(mocks.importCheckpoint).not.toHaveBeenCalled();
   });
 
@@ -771,10 +857,6 @@ describe("SQLite Library Google Drive production wiring", () => {
         latest_segment_digest: segmentDigest,
       },
     });
-    mocks.readFollowerResultCursor.mockResolvedValue({
-      nextResultSequence: 1,
-      latestSegmentDigest: null,
-    });
     const reference = {
       descriptor: { contentDigest: segmentDigest },
       transportObjectId: "result-segment-1",
@@ -786,29 +868,30 @@ describe("SQLite Library Google Drive production wiring", () => {
         reference,
       },
     ]);
-    mocks.importFollowerResult.mockImplementation(
-      async (request: Record<string, unknown>) => {
-        const writer = request.writer as {
-          appendResultSegment(input: Record<string, unknown>): Promise<void>;
-        };
-        await writer.appendResultSegment({
-          entries: [
-            {
-              intent_operation_id: "follower-operation-1",
-              intent_sequence: 1,
-              provider_receipt_digest: null,
-              result_operation_id: "result-operation-1",
-              result_sequence: 1,
-              status: "accepted",
-            },
-          ],
-          header: {
-            first_result_sequence: 1,
-            last_result_sequence: 1,
-            previous_segment_digest: null,
-          },
-          reference,
+    const resultPublication = {
+      header: { first_result_sequence: 1, last_result_sequence: 1 },
+      receivedAt: 1_000,
+      reference,
+      results: [{ result_sequence: 1 }],
+    };
+    mocks.normalizedFollowerSync.mockImplementation(
+      async (transport, runtime) => {
+        const page = await transport.pageResultReferences({
+          actorId,
+          firstResultSequence: 1,
+          libraryId,
+          limit: 16,
+          previousSegmentDigest: null,
+          storageEpochId: epochId,
         });
+        expect(page.references).toEqual([reference]);
+        await runtime.importResult(resultPublication);
+        return {
+          enrollmentState: "enrolled",
+          importedResultCount: 1,
+          publishedIntentCount: 0,
+          recoveredIntentPublication: false,
+        };
       },
     );
 
@@ -816,25 +899,9 @@ describe("SQLite Library Google Drive production wiring", () => {
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
     ).resolves.toEqual({ status: "follower_synced", revision: 7 });
 
-    expect(mocks.appendFollowerResultSegment).toHaveBeenCalledWith({
-      actorId,
-      entries: [
-        {
-          intentOperationId: "follower-operation-1",
-          intentSequence: 1,
-          providerReceiptDigest: null,
-          resultOperationId: "result-operation-1",
-          resultSequence: 1,
-          status: "accepted",
-        },
-      ],
-      epochId,
-      firstResultSequence: 1,
-      lastResultSequence: 1,
-      libraryId,
-      previousSegmentDigest: null,
-      segmentDigest,
-    });
+    expect(mocks.importNormalizedResultTransport).toHaveBeenCalledWith(
+      resultPublication,
+    );
   });
 
   it("streams the exact SQLite revision into one immutable checkpoint publication", async () => {

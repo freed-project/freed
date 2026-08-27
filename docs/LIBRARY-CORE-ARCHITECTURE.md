@@ -716,6 +716,14 @@ the immutable-object receipt, and transport-head progress in one immediate
 transaction. A late receipt failure rolls back the product rows and both
 cursors. IndexedDB is not part of this result authority path.
 
+One coordinator in the shared sync package owns enrollment publication,
+normalized intent-head reconciliation, bounded intent publication,
+response-loss recovery, and verified result import ordering. Freed Desktop and
+the PWA supply only typed SQLite runtime callbacks and a provider transport.
+Freed Desktop obtains its transport frontier and actor-counter pages directly
+from the native core. The PWA obtains the identical contract from its OPFS
+SQLite worker. Neither host implements a second protocol state machine.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 

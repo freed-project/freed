@@ -7,6 +7,14 @@ export type {
   LibraryCorePreparedMediaBlobV1,
 } from "./library-core-media-blob.js";
 export {
+  syncLibraryCoreNormalizedFollowerV2,
+  type LibraryCoreNormalizedFollowerEnrollmentCandidateV2,
+  type LibraryCoreNormalizedFollowerResultReferencePageV2,
+  type LibraryCoreNormalizedFollowerSyncReceiptV2,
+  type LibraryCoreNormalizedFollowerSyncRuntimeV2,
+  type LibraryCoreNormalizedFollowerTransportV2,
+} from "./library-core-normalized-follower-sync.js";
+export {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,

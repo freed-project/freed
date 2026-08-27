@@ -51,6 +51,39 @@ pub struct NormalizedFollowerRuntimeStatusV2 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerTransportContextV2 {
+    pub actor_id: String,
+    pub library_id: String,
+    pub next_intent_actor_counter: i64,
+    pub next_result_sequence: i64,
+    pub previous_intent_segment_digest: Option<String>,
+    pub previous_result_segment_digest: Option<String>,
+    pub schema_version: u8,
+    pub storage_epoch_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerTransportPageRequestV2 {
+    pub actor_id: String,
+    pub first_actor_counter: i64,
+    pub limit: usize,
+    pub schema_version: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerTransportPageV2 {
+    pub actor_id: String,
+    pub canonical_envelopes: Vec<Vec<u8>>,
+    pub done: bool,
+    pub first_actor_counter: i64,
+    pub last_actor_counter: Option<i64>,
+    pub schema_version: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFollowerActorRequestV2 {
     pub library_id: String,
     pub authority_epoch_id: String,
@@ -643,6 +676,156 @@ pub fn normalized_follower_mutation_context_v1(
         previous_operation_id,
         previous_chain_digest,
         observed_frontier,
+    })
+}
+
+pub fn normalized_follower_transport_context_v2(
+    connection: &Connection,
+) -> Result<NormalizedFollowerTransportContextV2, NormalizedSqliteError> {
+    let context = connection
+        .query_row(
+            "SELECT request.actor_id, meta.library_id, epoch.epoch_id,
+                    COALESCE(intent_head.next_actor_counter, 1),
+                    intent_head.latest_segment_digest,
+                    COALESCE(result_head.next_result_sequence, 1),
+                    result_head.latest_segment_digest
+             FROM library_meta AS meta
+             JOIN library_authority_epochs AS epoch
+               ON epoch.epoch_id = meta.authority_epoch
+             JOIN library_active_authority AS active
+               ON active.library_id = meta.library_id
+              AND active.epoch_id = epoch.epoch_id
+             JOIN library_follower_actor_request AS request
+               ON request.singleton_id = 1
+              AND request.library_id = meta.library_id
+              AND request.authority_epoch_id = epoch.epoch_id
+              AND request.enrollment_certificate_digest IS NOT NULL
+             JOIN library_intent_actors AS actor
+               ON actor.actor_id = request.actor_id
+             LEFT JOIN library_intent_transport_heads AS intent_head
+               ON intent_head.actor_id = request.actor_id
+             LEFT JOIN library_result_transport_heads AS result_head
+               ON result_head.actor_id = request.actor_id
+             WHERE meta.singleton_id = 1;",
+            [],
+            |row| {
+                Ok(NormalizedFollowerTransportContextV2 {
+                    actor_id: row.get(0)?,
+                    library_id: row.get(1)?,
+                    storage_epoch_id: row.get(2)?,
+                    next_intent_actor_counter: row.get(3)?,
+                    previous_intent_segment_digest: row.get(4)?,
+                    next_result_sequence: row.get(5)?,
+                    previous_result_segment_digest: row.get(6)?,
+                    schema_version: 2,
+                })
+            },
+        )
+        .optional()?
+        .ok_or(invalid(
+            "normalized follower transport context is unavailable",
+        ))?;
+    if !(1..=MAX_SAFE_INTEGER).contains(&context.next_intent_actor_counter)
+        || !(1..=MAX_SAFE_INTEGER).contains(&context.next_result_sequence)
+        || (context.next_intent_actor_counter == 1)
+            != context.previous_intent_segment_digest.is_none()
+        || (context.next_result_sequence == 1) != context.previous_result_segment_digest.is_none()
+    {
+        return Err(invalid("normalized follower transport frontier is invalid"));
+    }
+    Ok(context)
+}
+
+pub fn page_normalized_follower_transport_v2(
+    connection: &Connection,
+    request: &NormalizedFollowerTransportPageRequestV2,
+) -> Result<NormalizedFollowerTransportPageV2, NormalizedSqliteError> {
+    if request.actor_id.len() != 64
+        || !(1..=MAX_SAFE_INTEGER).contains(&request.first_actor_counter)
+        || request.limit == 0
+        || request.limit > FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS
+        || request.schema_version != 2
+    {
+        return Err(invalid(
+            "normalized follower transport page request is invalid",
+        ));
+    }
+    let mut statement = connection.prepare(
+        "SELECT member.actor_counter, member.canonical_member
+         FROM library_intent_members AS member
+         JOIN library_intent_transactions AS intent
+           ON intent.transaction_id = member.transaction_id
+          AND intent.actor_id = member.actor_id
+         WHERE member.actor_id = ?1 AND member.actor_counter >= ?2
+           AND intent.state IN ('pending', 'published')
+         ORDER BY member.actor_counter
+         LIMIT ?3;",
+    )?;
+    let fetch_limit = request.limit.saturating_add(1);
+    let rows = statement
+        .query_map(
+            params![
+                request.actor_id,
+                request.first_actor_counter,
+                i64::try_from(fetch_limit)
+                    .map_err(|_| invalid("normalized follower transport limit is invalid"))?,
+            ],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut canonical_envelopes = Vec::with_capacity(request.limit.min(rows.len()));
+    let mut canonical_bytes = 0_usize;
+    let mut stopped_for_bytes = false;
+    for (index, (counter, canonical)) in rows.iter().take(request.limit).enumerate() {
+        let expected_counter = request
+            .first_actor_counter
+            .checked_add(
+                i64::try_from(index)
+                    .map_err(|_| invalid("normalized follower transport index is invalid"))?,
+            )
+            .ok_or(invalid(
+                "normalized follower transport counter is exhausted",
+            ))?;
+        if *counter != expected_counter {
+            return Err(invalid("normalized follower transport chain has a gap"));
+        }
+        let next_bytes = canonical_bytes.checked_add(canonical.len()).ok_or(invalid(
+            "normalized follower transport byte count overflowed",
+        ))?;
+        if next_bytes > FOLLOWER_INTENT_PAGE_MAXIMUM_RESPONSE_BYTES {
+            stopped_for_bytes = true;
+            break;
+        }
+        canonical_envelopes.push(canonical.clone());
+        canonical_bytes = next_bytes;
+    }
+    if canonical_envelopes.is_empty() && stopped_for_bytes {
+        return Err(invalid(
+            "normalized follower transport byte bound cannot fit one record",
+        ));
+    }
+    let last_actor_counter = if canonical_envelopes.is_empty() {
+        None
+    } else {
+        Some(
+            request
+                .first_actor_counter
+                .checked_add(
+                    i64::try_from(canonical_envelopes.len() - 1)
+                        .map_err(|_| invalid("normalized follower transport page is invalid"))?,
+                )
+                .ok_or(invalid(
+                    "normalized follower transport counter is exhausted",
+                ))?,
+        )
+    };
+    Ok(NormalizedFollowerTransportPageV2 {
+        actor_id: request.actor_id.clone(),
+        canonical_envelopes,
+        done: !stopped_for_bytes && rows.len() <= request.limit,
+        first_actor_counter: request.first_actor_counter,
+        last_actor_counter,
+        schema_version: 2,
     })
 }
 
@@ -2026,6 +2209,26 @@ mod tests {
             .expect("enqueue follower intent");
         assert_eq!(intent.first_counter, 1);
         assert_eq!(intent.last_counter, 2);
+        let transport_context = normalized_follower_transport_context_v2(&connection)
+            .expect("follower transport context");
+        assert_eq!(transport_context.actor_id, accepted.actor_id);
+        assert_eq!(transport_context.next_intent_actor_counter, 1);
+        assert_eq!(transport_context.next_result_sequence, 1);
+        assert_eq!(transport_context.previous_intent_segment_digest, None);
+        assert_eq!(transport_context.previous_result_segment_digest, None);
+        let transport_page = page_normalized_follower_transport_v2(
+            &connection,
+            &NormalizedFollowerTransportPageRequestV2 {
+                actor_id: accepted.actor_id.clone(),
+                first_actor_counter: 1,
+                limit: 128,
+                schema_version: 2,
+            },
+        )
+        .expect("page follower transport");
+        assert_eq!(transport_page.canonical_envelopes, envelopes);
+        assert_eq!(transport_page.last_actor_counter, Some(2));
+        assert!(transport_page.done);
         let page = export_normalized_follower_intent_page_v1(
             &connection,
             &NormalizedFollowerIntentPageRequestV1 {
@@ -2057,6 +2260,13 @@ mod tests {
         .expect("publish first follower intent page");
         assert_eq!(first_publication.newly_published_transaction_count, 0);
         assert_eq!(first_publication.next_actor_counter, 2);
+        let advanced_context = normalized_follower_transport_context_v2(&connection)
+            .expect("advanced follower transport context");
+        assert_eq!(advanced_context.next_intent_actor_counter, 2);
+        assert_eq!(
+            advanced_context.previous_intent_segment_digest,
+            Some("5".repeat(64))
+        );
         let still_pending: String = connection
             .query_row(
                 "SELECT state FROM library_intent_transactions WHERE transaction_id = ?1;",

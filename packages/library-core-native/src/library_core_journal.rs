@@ -34,11 +34,9 @@ pub(crate) mod operation_verifier;
 use actor_capability::ActorCapabilityState;
 
 pub use follower::{
-    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentOutboxEntry,
-    FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
-    FollowerResultImportReceipt, FollowerRuntimeStatus, StoredFollowerActorEnrollment,
-    StoredFollowerActorRequest, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
-    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
+    FollowerRuntimeStatus, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
 };
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 12;

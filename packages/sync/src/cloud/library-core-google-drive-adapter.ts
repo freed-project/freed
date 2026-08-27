@@ -11,6 +11,7 @@ import {
   parseLibraryCoreMediaBlobDescriptorV1,
   parseLibraryCoreMediaBlobReferenceV1,
   parseLibraryCoreIntentHeadV1,
+  parseLibraryCoreNormalizedIntentHeadV2,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
@@ -18,6 +19,7 @@ import {
   type LibraryCoreMediaBlobDescriptorV1,
   type LibraryCoreMediaBlobReferenceV1,
   type LibraryCoreIntentHeadV1,
+  type LibraryCoreNormalizedIntentHeadV2,
   type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
 import type {
@@ -37,6 +39,7 @@ import type {
   LibraryCoreIntentHeadReadV1,
   LibraryCoreIntentPublicationAdapterV1,
 } from "./library-core-intent-publication.js";
+import type { LibraryCoreNormalizedHeadPublicationAdapterV2 } from "./library-core-normalized-segment-publication.js";
 import type {
   LibraryCoreResultHeadReadV1,
   LibraryCoreResultPublicationAdapterV1,
@@ -97,13 +100,11 @@ export interface GoogleDriveLibraryCoreControlLocatorV1 {
   readonly controlFileId: string;
 }
 
-export interface ProvisionedGoogleDriveLibraryCoreControlV1
-  extends GoogleDriveLibraryCoreControlLocatorV1 {
+export interface ProvisionedGoogleDriveLibraryCoreControlV1 extends GoogleDriveLibraryCoreControlLocatorV1 {
   readonly created: boolean;
 }
 
-export interface PublishedGoogleDriveLibraryCoreControlV1
-  extends GoogleDriveLibraryCoreControlLocatorV1 {
+export interface PublishedGoogleDriveLibraryCoreControlV1 extends GoogleDriveLibraryCoreControlLocatorV1 {
   readonly control: {
     readonly bytes: Uint8Array;
   };
@@ -153,25 +154,25 @@ export interface GoogleDriveLibraryCoreResultHeadLocatorV1 {
   readonly resultHeadFileId: string;
 }
 
-export interface ProvisionedGoogleDriveLibraryCoreResultHeadV1
-  extends GoogleDriveLibraryCoreResultHeadLocatorV1 {
+export interface ProvisionedGoogleDriveLibraryCoreResultHeadV1 extends GoogleDriveLibraryCoreResultHeadLocatorV1 {
   readonly created: boolean;
 }
 
-export interface ProvisionedGoogleDriveLibraryCoreIntentHeadV1
-  extends GoogleDriveLibraryCoreIntentHeadLocatorV1 {
+export interface ProvisionedGoogleDriveLibraryCoreIntentHeadV1 extends GoogleDriveLibraryCoreIntentHeadLocatorV1 {
   readonly created: boolean;
 }
 
 export interface GoogleDriveLibraryCoreIntentAdapterOptionsV1
-  extends GoogleDriveLibraryCoreAdapterOptionsV1,
+  extends
+    GoogleDriveLibraryCoreAdapterOptionsV1,
     GoogleDriveLibraryCoreIntentHeadLocatorV1 {
   readonly actorId: string;
   readonly epochId: string;
 }
 
 export interface GoogleDriveLibraryCoreResultAdapterOptionsV1
-  extends GoogleDriveLibraryCoreAdapterOptionsV1,
+  extends
+    GoogleDriveLibraryCoreAdapterOptionsV1,
     GoogleDriveLibraryCoreResultHeadLocatorV1 {
   readonly actorId: string;
   readonly epochId: string;
@@ -496,13 +497,35 @@ function decodeIntentHead(bytes: Uint8Array): LibraryCoreIntentHeadV1 {
   );
 }
 
+function encodeNormalizedIntentHead(
+  head: LibraryCoreNormalizedIntentHeadV2,
+): Uint8Array {
+  return encodeLibraryCoreCanonicalValue(
+    head as unknown as LibraryCoreCanonicalValue,
+  );
+}
+
+function decodeNormalizedIntentHead(
+  bytes: Uint8Array,
+): LibraryCoreNormalizedIntentHeadV2 {
+  return parseLibraryCoreNormalizedIntentHeadV2(
+    decodeLibraryCoreCanonicalValue(bytes, {
+      maximumBytes: MAX_INTENT_HEAD_BYTES,
+    }),
+  );
+}
+
 function encodeResultHead(head: LibraryCoreResultHeadV1): Uint8Array {
-  return encodeLibraryCoreCanonicalValue(head as unknown as LibraryCoreCanonicalValue);
+  return encodeLibraryCoreCanonicalValue(
+    head as unknown as LibraryCoreCanonicalValue,
+  );
 }
 
 function decodeResultHead(bytes: Uint8Array): LibraryCoreResultHeadV1 {
   return parseLibraryCoreResultHeadV1(
-    decodeLibraryCoreCanonicalValue(bytes, { maximumBytes: MAX_RESULT_HEAD_BYTES }),
+    decodeLibraryCoreCanonicalValue(bytes, {
+      maximumBytes: MAX_RESULT_HEAD_BYTES,
+    }),
   );
 }
 
@@ -621,9 +644,7 @@ async function readDriveFileRevision(input: {
   readonly label: string;
 }): Promise<string> {
   const response = await input.googleFetch(
-    `${DRIVE_V2_FILES_URL}/${encodeURIComponent(
-      input.fileId,
-    )}?fields=id,etag`,
+    `${DRIVE_V2_FILES_URL}/${encodeURIComponent(input.fileId)}?fields=id,etag`,
     {
       headers: authorizationHeaders(input.accessToken),
       signal: input.signal,
@@ -639,14 +660,15 @@ async function readDriveFileRevision(input: {
     JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(responseBytes)),
     `${input.label} metadata`,
   );
-  assertBoundedText(metadata.id, `${input.label} file id`, MAX_DRIVE_FILE_ID_BYTES);
+  assertBoundedText(
+    metadata.id,
+    `${input.label} file id`,
+    MAX_DRIVE_FILE_ID_BYTES,
+  );
   if (metadata.id !== input.fileId) {
     throw new Error(`${input.label} returned the wrong file identity`);
   }
-  return parseStrongDriveEtag(
-    metadata.etag,
-    `${input.label} metadata ETag`,
-  );
+  return parseStrongDriveEtag(metadata.etag, `${input.label} metadata ETag`);
 }
 
 async function readDriveFileBytes(input: {
@@ -824,13 +846,18 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
  * File names are checked against authenticated app properties and exact bytes;
  * they are locators, never authority.
  */
-async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
-  readonly accessToken: string;
-  readonly epochId: string;
-  readonly libraryId: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly signal?: AbortSignal;
-}, kind: "enrollment" | "enrollment_request"): Promise<readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]> {
+async function discoverGoogleDriveLibraryCoreActorObjectsV1(
+  input: {
+    readonly accessToken: string;
+    readonly epochId: string;
+    readonly libraryId: string;
+    readonly googleFetch?: GoogleDriveFetch;
+    readonly signal?: AbortSignal;
+  },
+  kind: "enrollment" | "enrollment_request",
+): Promise<
+  readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]
+> {
   assertBoundedText(
     input.accessToken,
     "Google Drive access token",
@@ -853,15 +880,17 @@ async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
     signal: input.signal,
     maxFiles: MAX_ACTOR_ENROLLMENT_REQUESTS,
   });
-  const discovered: DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[] = [];
-  const epochPrefix = kind === "enrollment_request"
-    ? `freed-v2-enrollment-request~${input.libraryId}~${input.epochId}~`
-    : `freed-v2-enrollment~${input.libraryId}~${input.epochId}~`;
-  for (const file of [...files].filter((candidate) =>
-    candidate.name.startsWith(epochPrefix)
-  ).sort((left, right) =>
-    left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
-  )) {
+  const discovered: DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[] =
+    [];
+  const epochPrefix =
+    kind === "enrollment_request"
+      ? `freed-v2-enrollment-request~${input.libraryId}~${input.epochId}~`
+      : `freed-v2-enrollment~${input.libraryId}~${input.epochId}~`;
+  for (const file of [...files]
+    .filter((candidate) => candidate.name.startsWith(epochPrefix))
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    )) {
     const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
       byteLength: file.size,
       contentDigest: file.appProperties.freedContentDigest,
@@ -913,8 +942,13 @@ export function discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input: {
   readonly libraryId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
-}): Promise<readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]> {
-  return discoverGoogleDriveLibraryCoreActorObjectsV1(input, "enrollment_request");
+}): Promise<
+  readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]
+> {
+  return discoverGoogleDriveLibraryCoreActorObjectsV1(
+    input,
+    "enrollment_request",
+  );
 }
 
 export function discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input: {
@@ -978,17 +1012,18 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
   const discovered: DiscoveredGoogleDriveLibraryCoreIntentSegmentV1[] = [];
   for (const [objectKey, duplicates] of grouped) {
     const suffix = objectKey.slice(prefix.length);
-    const match = /^(0|[1-9][0-9]*)-(0|[1-9][0-9]*)~([0-9a-f]{64})\.fseg\.gz$/u.exec(
-      suffix,
-    );
+    const match =
+      /^(0|[1-9][0-9]*)-(0|[1-9][0-9]*)~([0-9a-f]{64})\.fseg\.gz$/u.exec(
+        suffix,
+      );
     if (match === null) throw new Error("intent segment object key is invalid");
     const firstIntentSequence = Number(match[1]);
     const lastIntentSequence = Number(match[2]);
     if (
-      !Number.isSafeInteger(firstIntentSequence)
-      || !Number.isSafeInteger(lastIntentSequence)
-      || firstIntentSequence < 1
-      || lastIntentSequence < firstIntentSequence
+      !Number.isSafeInteger(firstIntentSequence) ||
+      !Number.isSafeInteger(lastIntentSequence) ||
+      firstIntentSequence < 1 ||
+      lastIntentSequence < firstIntentSequence
     ) {
       throw new Error("intent segment sequence range is invalid");
     }
@@ -1026,22 +1061,25 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
     }
     const selected = ordered[0];
     if (selected === undefined) continue;
-    discovered.push(Object.freeze({
-      firstIntentSequence,
-      lastIntentSequence,
-      reference: Object.freeze({
-        descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
-          byteLength: selected.size,
-          contentDigest: selected.appProperties.freedContentDigest,
-          objectKey,
+    discovered.push(
+      Object.freeze({
+        firstIntentSequence,
+        lastIntentSequence,
+        reference: Object.freeze({
+          descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+            byteLength: selected.size,
+            contentDigest: selected.appProperties.freedContentDigest,
+            objectKey,
+          }),
+          transportObjectId: selected.id,
         }),
-        transportObjectId: selected.id,
       }),
-    }));
+    );
   }
-  discovered.sort((left, right) =>
-    left.firstIntentSequence - right.firstIntentSequence
-      || left.lastIntentSequence - right.lastIntentSequence,
+  discovered.sort(
+    (left, right) =>
+      left.firstIntentSequence - right.firstIntentSequence ||
+      left.lastIntentSequence - right.lastIntentSequence,
   );
   return Object.freeze(discovered);
 }
@@ -1055,7 +1093,11 @@ export async function discoverGoogleDriveLibraryCoreResultSegmentsV1(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<readonly DiscoveredGoogleDriveLibraryCoreResultSegmentV1[]> {
-  assertBoundedText(input.accessToken, "Google Drive access token", MAX_ACCESS_TOKEN_BYTES);
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
   assertLibraryId(input.libraryId);
   assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
@@ -1085,11 +1127,19 @@ export async function discoverGoogleDriveLibraryCoreResultSegmentsV1(input: {
   }
   const discovered: DiscoveredGoogleDriveLibraryCoreResultSegmentV1[] = [];
   for (const [objectKey, duplicates] of grouped) {
-    const match = /^(0|[1-9][0-9]*)-(0|[1-9][0-9]*)~([0-9a-f]{64})\.fseg\.gz$/u.exec(objectKey.slice(prefix.length));
+    const match =
+      /^(0|[1-9][0-9]*)-(0|[1-9][0-9]*)~([0-9a-f]{64})\.fseg\.gz$/u.exec(
+        objectKey.slice(prefix.length),
+      );
     if (!match) throw new Error("result segment object key is invalid");
     const firstResultSequence = Number(match[1]);
     const lastResultSequence = Number(match[2]);
-    if (!Number.isSafeInteger(firstResultSequence) || !Number.isSafeInteger(lastResultSequence) || firstResultSequence < 1 || lastResultSequence < firstResultSequence) {
+    if (
+      !Number.isSafeInteger(firstResultSequence) ||
+      !Number.isSafeInteger(lastResultSequence) ||
+      firstResultSequence < 1 ||
+      lastResultSequence < firstResultSequence
+    ) {
       throw new Error("result segment sequence range is invalid");
     }
     const expectedKey = createLibraryCoreImmutableObjectKey({
@@ -1101,32 +1151,49 @@ export async function discoverGoogleDriveLibraryCoreResultSegmentsV1(input: {
       lastSequence: lastResultSequence,
       libraryId: input.libraryId,
     });
-    if (expectedKey !== objectKey) throw new Error("result segment object key is not canonical");
-    const ordered = [...duplicates].sort((left, right) => left.id.localeCompare(right.id));
+    if (expectedKey !== objectKey)
+      throw new Error("result segment object key is not canonical");
+    const ordered = [...duplicates].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
     for (const file of ordered) {
       const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
         byteLength: file.size,
         contentDigest: file.appProperties.freedContentDigest,
         objectKey,
       });
-      assertExpectedProperties(file.appProperties, immutableAppProperties(libraryDigest, descriptor, await objectKeyDigest(objectKey)), `result segment ${objectKey}`);
+      assertExpectedProperties(
+        file.appProperties,
+        immutableAppProperties(
+          libraryDigest,
+          descriptor,
+          await objectKeyDigest(objectKey),
+        ),
+        `result segment ${objectKey}`,
+      );
     }
     const selected = ordered[0];
     if (!selected) continue;
-    discovered.push(Object.freeze({
-      firstResultSequence,
-      lastResultSequence,
-      reference: Object.freeze({
-        descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
-          byteLength: selected.size,
-          contentDigest: selected.appProperties.freedContentDigest,
-          objectKey,
+    discovered.push(
+      Object.freeze({
+        firstResultSequence,
+        lastResultSequence,
+        reference: Object.freeze({
+          descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+            byteLength: selected.size,
+            contentDigest: selected.appProperties.freedContentDigest,
+            objectKey,
+          }),
+          transportObjectId: selected.id,
         }),
-        transportObjectId: selected.id,
       }),
-    }));
+    );
   }
-  discovered.sort((left, right) => left.firstResultSequence - right.firstResultSequence || left.lastResultSequence - right.lastResultSequence);
+  discovered.sort(
+    (left, right) =>
+      left.firstResultSequence - right.firstResultSequence ||
+      left.lastResultSequence - right.lastResultSequence,
+  );
   return Object.freeze(discovered);
 }
 
@@ -1188,7 +1255,9 @@ export async function provisionGoogleDriveLibraryCoreControlV1(input: {
 
   const provisioned = await discoverGoogleDriveLibraryCoreControlV1(input);
   if (provisioned === null) {
-    throw new Error("Library Core Drive control bootstrap was not discoverable");
+    throw new Error(
+      "Library Core Drive control bootstrap was not discoverable",
+    );
   }
   return Object.freeze({ ...provisioned, created: true });
 }
@@ -1233,6 +1302,75 @@ export async function discoverGoogleDriveLibraryCoreIntentHeadV1(input: {
   return Object.freeze({ intentHeadFileId: file.id });
 }
 
+async function provisionGoogleDriveLibraryCoreIntentHead(input: {
+  readonly accessToken: string;
+  readonly actorId: string;
+  readonly bytes: Uint8Array;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly label: string;
+  readonly libraryId: string;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreIntentHeadV1> {
+  const discovery = {
+    accessToken: input.accessToken,
+    actorId: input.actorId,
+    epochId: input.epochId,
+    libraryId: input.libraryId,
+    googleFetch: input.googleFetch,
+    signal: input.signal,
+  };
+  const existing = await discoverGoogleDriveLibraryCoreIntentHeadV1(discovery);
+  if (existing !== null) {
+    return Object.freeze({ ...existing, created: false });
+  }
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
+  const actorDigest = await actorIdentityDigest(input.actorId);
+  const boundary = `freed-intent-head-${actorDigest.slice(0, 32)}`;
+  const response = await googleFetch(
+    `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
+    {
+      method: "POST",
+      headers: {
+        ...authorizationHeaders(input.accessToken),
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartUploadBody(
+        boundary,
+        {
+          name: createLibraryCoreIntentHeadObjectKey(
+            input.libraryId,
+            input.epochId,
+            input.actorId,
+          ),
+          parents: ["appDataFolder"],
+          appProperties: intentHeadAppProperties(
+            await libraryIdentityDigest(input.libraryId),
+            await libraryIdentityDigest(input.epochId),
+            actorDigest,
+          ),
+        },
+        input.bytes,
+      ),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(`${input.label} bootstrap failed`, response);
+  }
+  await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    `${input.label} bootstrap response`,
+  );
+  const provisioned =
+    await discoverGoogleDriveLibraryCoreIntentHeadV1(discovery);
+  if (provisioned === null) {
+    throw new Error(`${input.label} bootstrap was not discoverable`);
+  }
+  return Object.freeze({ ...provisioned, created: true });
+}
+
 /**
  * Provision an actor's empty intent head before its first publication.
  *
@@ -1251,83 +1389,57 @@ export async function provisionGoogleDriveLibraryCoreIntentHeadV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   const head = parseLibraryCoreIntentHeadV1(input.head);
-  const discovery = {
+  return provisionGoogleDriveLibraryCoreIntentHead({
     accessToken: input.accessToken,
     actorId: head.actor_id,
+    bytes: encodeIntentHead(head),
     epochId: head.epoch_id,
     libraryId: head.library_id,
     googleFetch: input.googleFetch,
+    label: "Library Core Drive intent-head",
     signal: input.signal,
-  };
-  const existing = await discoverGoogleDriveLibraryCoreIntentHeadV1(discovery);
-  if (existing !== null) {
-    return Object.freeze({ ...existing, created: false });
-  }
-
-  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
-  const bytes = encodeIntentHead(head);
-  const actorDigest = await actorIdentityDigest(head.actor_id);
-  const boundary = `freed-intent-head-${actorDigest.slice(0, 32)}`;
-  const response = await googleFetch(
-    `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
-    {
-      method: "POST",
-      headers: {
-        ...authorizationHeaders(input.accessToken),
-        "Content-Type": `multipart/related; boundary=${boundary}`,
-      },
-      body: multipartUploadBody(
-        boundary,
-        {
-          name: createLibraryCoreIntentHeadObjectKey(
-            head.library_id,
-            head.epoch_id,
-            head.actor_id,
-          ),
-          parents: ["appDataFolder"],
-          appProperties: intentHeadAppProperties(
-            await libraryIdentityDigest(head.library_id),
-            await libraryIdentityDigest(head.epoch_id),
-            actorDigest,
-          ),
-        },
-        bytes,
-      ),
-      signal: input.signal,
-    },
-  );
-  if (!response.ok) {
-    throw await responseError(
-      "Library Core Drive intent-head bootstrap failed",
-      response,
-    );
-  }
-  await readBoundedResponseBytes(
-    response,
-    MAX_DRIVE_JSON_BYTES,
-    "Library Core Drive intent-head bootstrap response",
-  );
-  const provisioned = await discoverGoogleDriveLibraryCoreIntentHeadV1(
-    discovery,
-  );
-  if (provisioned === null) {
-    throw new Error(
-      "Library Core Drive intent-head bootstrap was not discoverable",
-    );
-  }
-  return Object.freeze({ ...provisioned, created: true });
+  });
 }
 
-/** Create an exact actor-head CAS adapter atop the immutable Drive adapter. */
-export function createGoogleDriveLibraryCoreIntentAdapterV1(
+export async function provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2(input: {
+  readonly accessToken: string;
+  readonly head: LibraryCoreNormalizedIntentHeadV2;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreIntentHeadV1> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  const head = parseLibraryCoreNormalizedIntentHeadV2(input.head);
+  return provisionGoogleDriveLibraryCoreIntentHead({
+    accessToken: input.accessToken,
+    actorId: head.actor_id,
+    bytes: encodeNormalizedIntentHead(head),
+    epochId: head.storage_epoch_id,
+    libraryId: head.library_id,
+    googleFetch: input.googleFetch,
+    label: "Library Core Drive normalized intent-head",
+    signal: input.signal,
+  });
+}
+
+function createGoogleDriveLibraryCoreIntentHeadAdapter<Head>(
   options: GoogleDriveLibraryCoreIntentAdapterOptionsV1,
-): LibraryCoreIntentPublicationAdapterV1 {
+  config: Readonly<{
+    decode(bytes: Uint8Array): Head;
+    epochId(head: Head): string;
+    label: string;
+    proposedLabel: string;
+  }>,
+) {
   assertLibraryId(options.libraryId);
   assertLibraryId(options.epochId);
   assertLibraryId(options.actorId);
   assertBoundedText(
     options.intentHeadFileId,
-    "Google Drive intent-head file id",
+    `Google Drive ${config.label} file id`,
     MAX_DRIVE_FILE_ID_BYTES,
   );
   const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
@@ -1339,8 +1451,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
   ]).then(([libraryDigest, epochDigest, actorDigest]) =>
     intentHeadAppProperties(libraryDigest, epochDigest, actorDigest),
   );
-
-  const readIntentHead = async (): Promise<LibraryCoreIntentHeadReadV1> => {
+  const readHead = async () => {
     const metadata = await readDriveFileMetadata({
       accessToken: options.accessToken,
       fileId: options.intentHeadFileId,
@@ -1350,7 +1461,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
     assertExpectedProperties(
       metadata.appProperties,
       await expectedPropertiesPromise,
-      "Library Core Drive intent head",
+      `Library Core Drive ${config.label}`,
     );
     const stored = await readDriveFileWithRevision({
       accessToken: options.accessToken,
@@ -1358,29 +1469,34 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
       googleFetch,
       signal: options.signal,
       maxBytes: MAX_INTENT_HEAD_BYTES,
-      label: "Library Core Drive intent-head read failed",
+      label: `Library Core Drive ${config.label} read failed`,
     });
-    const head = decodeIntentHead(stored.bytes);
+    const head = config.decode(stored.bytes);
+    const identity = head as Readonly<{
+      actor_id: string;
+      library_id: string;
+    }>;
     if (
-      head.library_id !== options.libraryId ||
-      head.epoch_id !== options.epochId ||
-      head.actor_id !== options.actorId
+      identity.library_id !== options.libraryId ||
+      config.epochId(head) !== options.epochId ||
+      identity.actor_id !== options.actorId
     ) {
-      throw new Error("Library Core Drive intent-head identity is incorrect");
+      throw new Error(
+        `Library Core Drive ${config.label} identity is incorrect`,
+      );
     }
     return Object.freeze({ ...stored, head });
   };
-
   return Object.freeze({
     ...immutableAdapter,
-    readIntentHead,
-    async compareAndSwapIntentHead(input: {
+    readHead,
+    async compareAndSwapHead(input: {
       readonly bytes: Uint8Array;
       readonly expectedRevision: string;
     }) {
       const expectedRevision = parseStrongDriveEtag(
         input.expectedRevision,
-        "expected Drive intent-head revision",
+        `expected Drive ${config.label} revision`,
       );
       if (
         !(input.bytes instanceof Uint8Array) ||
@@ -1388,16 +1504,22 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
         input.bytes.byteLength > MAX_INTENT_HEAD_BYTES
       ) {
         throw new RangeError(
-          `intent-head bytes must contain 1 to ${MAX_INTENT_HEAD_BYTES.toLocaleString()} bytes`,
+          `${config.label} bytes must contain 1 to ${MAX_INTENT_HEAD_BYTES.toLocaleString()} bytes`,
         );
       }
-      const proposed = decodeIntentHead(input.bytes);
+      const proposed = config.decode(input.bytes);
+      const proposedIdentity = proposed as Readonly<{
+        actor_id: string;
+        library_id: string;
+      }>;
       if (
-        proposed.library_id !== options.libraryId ||
-        proposed.epoch_id !== options.epochId ||
-        proposed.actor_id !== options.actorId
+        proposedIdentity.library_id !== options.libraryId ||
+        config.epochId(proposed) !== options.epochId ||
+        proposedIdentity.actor_id !== options.actorId
       ) {
-        throw new TypeError("proposed intent head has the wrong identity");
+        throw new TypeError(
+          `proposed ${config.proposedLabel} has the wrong identity`,
+        );
       }
       const response = await googleFetch(
         `${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(
@@ -1417,23 +1539,53 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
       if (response.status === 412) {
         return Object.freeze({
           status: "conflict" as const,
-          current: await readIntentHead(),
+          current: await readHead(),
         });
       }
       if (!response.ok) {
         throw await responseError(
-          "Library Core Drive intent-head update failed",
+          `Library Core Drive ${config.label} update failed`,
           response,
         );
       }
-      const readBack = await readIntentHead();
+      const readBack = await readHead();
       if (!bytesEqual(readBack.bytes, input.bytes)) {
         throw new Error(
-          "Library Core Drive intent-head readback did not match committed bytes",
+          `Library Core Drive ${config.label} readback did not match committed bytes`,
         );
       }
       return Object.freeze({ status: "committed" as const });
     },
+  });
+}
+
+export function createGoogleDriveLibraryCoreNormalizedIntentAdapterV2(
+  options: GoogleDriveLibraryCoreIntentAdapterOptionsV1,
+): LibraryCoreNormalizedHeadPublicationAdapterV2<LibraryCoreNormalizedIntentHeadV2> &
+  LibraryCoreImmutableReadAdapterV1 {
+  return createGoogleDriveLibraryCoreIntentHeadAdapter(options, {
+    decode: decodeNormalizedIntentHead,
+    epochId: (head) => head.storage_epoch_id,
+    label: "normalized intent-head",
+    proposedLabel: "normalized intent head",
+  });
+}
+
+/** Create an exact actor-head CAS adapter atop the immutable Drive adapter. */
+export function createGoogleDriveLibraryCoreIntentAdapterV1(
+  options: GoogleDriveLibraryCoreIntentAdapterOptionsV1,
+): LibraryCoreIntentPublicationAdapterV1 {
+  const adapter = createGoogleDriveLibraryCoreIntentHeadAdapter(options, {
+    decode: decodeIntentHead,
+    epochId: (head) => head.epoch_id,
+    label: "intent-head",
+    proposedLabel: "intent head",
+  });
+  const { compareAndSwapHead, readHead, ...immutableAdapter } = adapter;
+  return Object.freeze({
+    ...immutableAdapter,
+    compareAndSwapIntentHead: compareAndSwapHead,
+    readIntentHead: readHead as () => Promise<LibraryCoreIntentHeadReadV1>,
   });
 }
 
@@ -1445,7 +1597,11 @@ export async function discoverGoogleDriveLibraryCoreResultHeadV1(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<GoogleDriveLibraryCoreResultHeadLocatorV1 | null> {
-  assertBoundedText(input.accessToken, "Google Drive access token", MAX_ACCESS_TOKEN_BYTES);
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
   assertLibraryId(input.libraryId);
   assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
@@ -1463,7 +1619,11 @@ export async function discoverGoogleDriveLibraryCoreResultHeadV1(input: {
   });
   const file = files[0];
   if (!file) return null;
-  assertExpectedProperties(file.appProperties, expectedProperties, "Library Core Drive result head");
+  assertExpectedProperties(
+    file.appProperties,
+    expectedProperties,
+    "Library Core Drive result head",
+  );
   return Object.freeze({ resultHeadFileId: file.id });
 }
 
@@ -1473,7 +1633,11 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<ProvisionedGoogleDriveLibraryCoreResultHeadV1> {
-  assertBoundedText(input.accessToken, "Google Drive access token", MAX_ACCESS_TOKEN_BYTES);
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
   const head = parseLibraryCoreResultHeadV1(input.head);
   const discovery = {
     accessToken: input.accessToken,
@@ -1489,31 +1653,50 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
   const actorDigest = await actorIdentityDigest(head.actor_id);
   const bytes = encodeResultHead(head);
   const boundary = `freed-result-head-${actorDigest.slice(0, 32)}`;
-  const response = await googleFetch(`${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`, {
-    method: "POST",
-    headers: {
-      ...authorizationHeaders(input.accessToken),
-      "Content-Type": `multipart/related; boundary=${boundary}`,
+  const response = await googleFetch(
+    `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
+    {
+      method: "POST",
+      headers: {
+        ...authorizationHeaders(input.accessToken),
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartUploadBody(
+        boundary,
+        {
+          name: createLibraryCoreResultHeadObjectKey(
+            head.library_id,
+            head.epoch_id,
+            head.actor_id,
+          ),
+          parents: ["appDataFolder"],
+          appProperties: resultHeadAppProperties(
+            await libraryIdentityDigest(head.library_id),
+            await libraryIdentityDigest(head.epoch_id),
+            actorDigest,
+          ),
+        },
+        bytes,
+      ),
+      signal: input.signal,
     },
-    body: multipartUploadBody(boundary, {
-      name: createLibraryCoreResultHeadObjectKey(
-        head.library_id,
-        head.epoch_id,
-        head.actor_id,
-      ),
-      parents: ["appDataFolder"],
-      appProperties: resultHeadAppProperties(
-        await libraryIdentityDigest(head.library_id),
-        await libraryIdentityDigest(head.epoch_id),
-        actorDigest,
-      ),
-    }, bytes),
-    signal: input.signal,
-  });
-  if (!response.ok) throw await responseError("Library Core Drive result-head bootstrap failed", response);
-  await readBoundedResponseBytes(response, MAX_DRIVE_JSON_BYTES, "Library Core Drive result-head bootstrap response");
-  const provisioned = await discoverGoogleDriveLibraryCoreResultHeadV1(discovery);
-  if (!provisioned) throw new Error("Library Core Drive result-head bootstrap was not discoverable");
+  );
+  if (!response.ok)
+    throw await responseError(
+      "Library Core Drive result-head bootstrap failed",
+      response,
+    );
+  await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    "Library Core Drive result-head bootstrap response",
+  );
+  const provisioned =
+    await discoverGoogleDriveLibraryCoreResultHeadV1(discovery);
+  if (!provisioned)
+    throw new Error(
+      "Library Core Drive result-head bootstrap was not discoverable",
+    );
   return Object.freeze({ ...provisioned, created: true });
 }
 
@@ -1523,7 +1706,11 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
   assertLibraryId(options.libraryId);
   assertLibraryId(options.epochId);
   assertLibraryId(options.actorId);
-  assertBoundedText(options.resultHeadFileId, "Google Drive result-head file id", MAX_DRIVE_FILE_ID_BYTES);
+  assertBoundedText(
+    options.resultHeadFileId,
+    "Google Drive result-head file id",
+    MAX_DRIVE_FILE_ID_BYTES,
+  );
   const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
   const immutableAdapter = createGoogleDriveLibraryCoreAdapterV1(options);
   const expectedPropertiesPromise = Promise.all([
@@ -1531,23 +1718,33 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
     libraryIdentityDigest(options.epochId),
     actorIdentityDigest(options.actorId),
   ]).then(([libraryDigest, epochDigest, actorDigest]) =>
-    resultHeadAppProperties(libraryDigest, epochDigest, actorDigest));
+    resultHeadAppProperties(libraryDigest, epochDigest, actorDigest),
+  );
   const readResultHead = async (): Promise<LibraryCoreResultHeadReadV1> => {
     const metadata = await readDriveFileMetadata({
-      accessToken: options.accessToken, fileId: options.resultHeadFileId,
-      googleFetch, signal: options.signal,
+      accessToken: options.accessToken,
+      fileId: options.resultHeadFileId,
+      googleFetch,
+      signal: options.signal,
     });
-    assertExpectedProperties(metadata.appProperties, await expectedPropertiesPromise, "Library Core Drive result head");
+    assertExpectedProperties(
+      metadata.appProperties,
+      await expectedPropertiesPromise,
+      "Library Core Drive result head",
+    );
     const stored = await readDriveFileWithRevision({
-      accessToken: options.accessToken, fileId: options.resultHeadFileId,
-      googleFetch, signal: options.signal, maxBytes: MAX_RESULT_HEAD_BYTES,
+      accessToken: options.accessToken,
+      fileId: options.resultHeadFileId,
+      googleFetch,
+      signal: options.signal,
+      maxBytes: MAX_RESULT_HEAD_BYTES,
       label: "Library Core Drive result-head read failed",
     });
     const head = decodeResultHead(stored.bytes);
     if (
-      head.library_id !== options.libraryId
-      || head.epoch_id !== options.epochId
-      || head.actor_id !== options.actorId
+      head.library_id !== options.libraryId ||
+      head.epoch_id !== options.epochId ||
+      head.actor_id !== options.actorId
     ) {
       throw new Error("Library Core Drive result-head identity is incorrect");
     }
@@ -1564,31 +1761,51 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
         input.expectedRevision,
         "expected Drive result-head revision",
       );
-      if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_RESULT_HEAD_BYTES) {
-        throw new RangeError(`result-head bytes must contain 1 to ${MAX_RESULT_HEAD_BYTES.toLocaleString()} bytes`);
+      if (
+        !(input.bytes instanceof Uint8Array) ||
+        input.bytes.byteLength < 1 ||
+        input.bytes.byteLength > MAX_RESULT_HEAD_BYTES
+      ) {
+        throw new RangeError(
+          `result-head bytes must contain 1 to ${MAX_RESULT_HEAD_BYTES.toLocaleString()} bytes`,
+        );
       }
       const proposed = decodeResultHead(input.bytes);
       if (
-        proposed.library_id !== options.libraryId
-        || proposed.epoch_id !== options.epochId
-        || proposed.actor_id !== options.actorId
+        proposed.library_id !== options.libraryId ||
+        proposed.epoch_id !== options.epochId ||
+        proposed.actor_id !== options.actorId
       ) {
         throw new TypeError("proposed result head has the wrong identity");
       }
-      const response = await googleFetch(`${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(options.resultHeadFileId)}?uploadType=media&fields=id,etag`, {
-        method: "PUT",
-        headers: {
-          ...authorizationHeaders(options.accessToken),
-          "Content-Type": "application/json; charset=UTF-8",
-          "If-Match": expectedRevision,
+      const response = await googleFetch(
+        `${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(options.resultHeadFileId)}?uploadType=media&fields=id,etag`,
+        {
+          method: "PUT",
+          headers: {
+            ...authorizationHeaders(options.accessToken),
+            "Content-Type": "application/json; charset=UTF-8",
+            "If-Match": expectedRevision,
+          },
+          body: exactArrayBuffer(input.bytes),
+          signal: options.signal,
         },
-        body: exactArrayBuffer(input.bytes),
-        signal: options.signal,
-      });
-      if (response.status === 412) return Object.freeze({ status: "conflict" as const, current: await readResultHead() });
-      if (!response.ok) throw await responseError("Library Core Drive result-head update failed", response);
+      );
+      if (response.status === 412)
+        return Object.freeze({
+          status: "conflict" as const,
+          current: await readResultHead(),
+        });
+      if (!response.ok)
+        throw await responseError(
+          "Library Core Drive result-head update failed",
+          response,
+        );
       const readBack = await readResultHead();
-      if (!bytesEqual(readBack.bytes, input.bytes)) throw new Error("Library Core Drive result-head readback did not match committed bytes");
+      if (!bytesEqual(readBack.bytes, input.bytes))
+        throw new Error(
+          "Library Core Drive result-head readback did not match committed bytes",
+        );
       return Object.freeze({ status: "committed" as const });
     },
   });
@@ -1667,9 +1884,7 @@ async function parseDriveUploadMetadata(
     label,
   );
   return parseDriveFileMetadata(
-    JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(responseBytes),
-    ),
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(responseBytes)),
   );
 }
 
@@ -1701,7 +1916,10 @@ async function readMediaBlobRange(input: {
     input.byteLength === input.totalByteLength;
   if (response.status !== 206 && !wholeBoundedObject) {
     if (!response.ok) {
-      throw await responseError("Library Core Drive media read failed", response);
+      throw await responseError(
+        "Library Core Drive media read failed",
+        response,
+      );
     }
     throw new Error("Google Drive ignored a bounded media range request");
   }
@@ -1751,7 +1969,7 @@ async function readMediaBlobDigest(input: {
     }
     return digest.digestLowerHex();
   }
-  for (let offset = 0; offset < input.byteLength; ) {
+  for (let offset = 0; offset < input.byteLength;) {
     const byteLength = Math.min(
       LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
       input.byteLength - offset,
@@ -1800,7 +2018,7 @@ async function verifyLocalMediaBlobSource(
     throw new Error("media blob source byte length is incorrect");
   }
   const digest = createLibraryCoreMediaBlobDigestStateV1();
-  for (let offset = 0; offset < descriptor.byteLength; ) {
+  for (let offset = 0; offset < descriptor.byteLength;) {
     const byteLength = Math.min(
       LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
       descriptor.byteLength - offset,
@@ -1965,18 +2183,13 @@ export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
     async putMediaBlob(
       blob: LibraryCorePreparedMediaBlobV1,
     ): Promise<{ readonly transportObjectId: string }> {
-      const descriptor = parseLibraryCoreMediaBlobDescriptorV1(
-        blob.descriptor,
-      );
+      const descriptor = parseLibraryCoreMediaBlobDescriptorV1(blob.descriptor);
       if (!objectKeyBelongsToLibrary(descriptor.objectKey, options.libraryId)) {
         throw new TypeError("media blob does not belong to this library");
       }
       await verifyLocalMediaBlobSource(descriptor, blob.source);
       const properties = await mediaBlobProperties(descriptor);
-      const existing = await discoverVerifiedMediaBlob(
-        descriptor,
-        properties,
-      );
+      const existing = await discoverVerifiedMediaBlob(descriptor, properties);
       if (existing !== null) {
         return Object.freeze({ transportObjectId: existing });
       }
@@ -2103,10 +2316,7 @@ export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
                 "Google Drive acknowledged the complete blob without a discoverable object",
               );
             }
-            if (
-              descriptor.byteLength === 0 ||
-              nextOffset < offset
-            ) {
+            if (descriptor.byteLength === 0 || nextOffset < offset) {
               throw new Error(
                 "Google Drive resumable upload did not make valid progress",
               );
@@ -2118,9 +2328,7 @@ export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
                 );
               }
               consecutiveChunkRecoveries += 1;
-              if (
-                consecutiveChunkRecoveries > MAX_RESUMABLE_CHUNK_RECOVERIES
-              ) {
+              if (consecutiveChunkRecoveries > MAX_RESUMABLE_CHUNK_RECOVERIES) {
                 throw new Error(
                   "Google Drive resumable upload exhausted chunk response recovery",
                 );
@@ -2165,10 +2373,7 @@ export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
       reference: LibraryCoreMediaBlobReferenceV1,
     ): Promise<LibraryCoreMediaBlobDescriptorV1> {
       const parsed = parseLibraryCoreMediaBlobReferenceV1(reference);
-      return verifyMediaBlobAtFile(
-        parsed.descriptor,
-        parsed.transportObjectId,
-      );
+      return verifyMediaBlobAtFile(parsed.descriptor, parsed.transportObjectId);
     },
   });
 }

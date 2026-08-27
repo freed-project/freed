@@ -10,7 +10,10 @@
 type Handler = (args: Record<string, unknown>) => unknown;
 
 type MockInternals = {
-  invoke?: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+  invoke?: <T = unknown>(
+    cmd: string,
+    args?: Record<string, unknown>,
+  ) => Promise<T>;
   transformCallback?: (callback: unknown, once?: boolean) => number;
   unregisterCallback?: (id: number) => void;
   callbacks?: Record<number, unknown>;
@@ -41,7 +44,9 @@ function mockArray<T>(name: string): T[] {
 }
 
 function setMockYouTubeWindowVisible(visible: boolean): null {
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
+  (
+    window as unknown as Record<string, unknown>
+  ).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
   return null;
 }
 
@@ -65,7 +70,9 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
   return resp.text();
 }
 
-async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]> {
+async function proxyFetchBinary(
+  args: Record<string, unknown>,
+): Promise<number[]> {
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -103,9 +110,10 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
   headers: Array<[string, string]>;
   bodyB64: string;
 }> {
-  const requestBody = typeof args.bodyB64 === "string"
-    ? Array.from(mockBase64ToBytes(args.bodyB64))
-    : [];
+  const requestBody =
+    typeof args.bodyB64 === "string"
+      ? Array.from(mockBase64ToBytes(args.bodyB64))
+      : [];
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -175,7 +183,9 @@ type MockSqliteLibrary = {
 };
 
 function sqliteLibrary(): MockSqliteLibrary {
-  const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
+  const w = window as unknown as {
+    __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary;
+  };
   w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
     active: false,
     revision: 0,
@@ -195,24 +205,32 @@ function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
 }
 
 function sqliteFacetSummary() {
-  const items = Object.values(sqliteLibrary().items).filter((item) => !item.__deleted);
+  const items = Object.values(sqliteLibrary().items).filter(
+    (item) => !item.__deleted,
+  );
   const tags = new Set<string>();
   for (const item of items) {
-    for (const tag of (sqliteItemUserState(item).tags as string[] | undefined) ?? []) {
+    for (const tag of (sqliteItemUserState(item).tags as
+      string[] | undefined) ?? []) {
       tags.add(tag);
     }
   }
   return {
-    archivedCount: items.filter((item) => Boolean(sqliteItemUserState(item).archived)).length,
+    archivedCount: items.filter((item) =>
+      Boolean(sqliteItemUserState(item).archived),
+    ).length,
     sampleItemCount: items.filter((item) => Boolean(item.sampleData)).length,
     savedArchivedCount: items.filter((item) => {
       const user = sqliteItemUserState(item);
       return Boolean(user.saved) && Boolean(user.archived);
     }).length,
-    savedCount: items.filter((item) => Boolean(sqliteItemUserState(item).saved)).length,
-    savedPlatformCount: new Set(items.filter((item) =>
-      Boolean(sqliteItemUserState(item).saved)
-    ).map((item) => item.platform)).size,
+    savedCount: items.filter((item) => Boolean(sqliteItemUserState(item).saved))
+      .length,
+    savedPlatformCount: new Set(
+      items
+        .filter((item) => Boolean(sqliteItemUserState(item).saved))
+        .map((item) => item.platform),
+    ).size,
     tags: [...tags].sort(),
     totalCount: items.length,
   };
@@ -256,7 +274,8 @@ function sqliteMutateItems(request: MockSqliteMutationRequest): number {
     ) {
       continue;
     }
-    if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
+    if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl)
+      continue;
     const user = sqliteItemUserState(item);
     switch (request.mutation) {
       case "mark_read":
@@ -340,8 +359,7 @@ function sqliteMutateItems(request: MockSqliteMutationRequest): number {
   return affected;
 }
 
-browserTestWindow.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ ??=
-  sqliteMutateItems;
+browserTestWindow.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ ??= sqliteMutateItems;
 
 function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
@@ -368,19 +386,23 @@ const handlers: Record<string, Handler> = {
   },
   sqlite_library_status: () => {
     const state = sqliteLibrary();
-    return state.active ? {
-      active: true,
-      revision: state.revision,
-      expectedItemCount: state.expectedItemCount,
-      importedItemCount: Object.keys(state.items).length,
-      sourceGeneration: state.sourceGeneration,
-      sourceRevision: state.sourceRevision,
-      sourceDigest: state.sourceDigest,
-    } : null;
+    return state.active
+      ? {
+          active: true,
+          revision: state.revision,
+          expectedItemCount: state.expectedItemCount,
+          importedItemCount: Object.keys(state.items).length,
+          sourceGeneration: state.sourceGeneration,
+          sourceRevision: state.sourceRevision,
+          sourceDigest: state.sourceDigest,
+        }
+      : null;
   },
   describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
-  set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
+  set_sqlite_library_cloud_writer_admission: (
+    args: Record<string, unknown>,
+  ) => {
     const request = args.request as {
       localWriterId: string;
       activeWriterId: string;
@@ -421,42 +443,85 @@ const handlers: Record<string, Handler> = {
     publishedIntentCount: 0,
     importedResultCount: 0,
   }),
-  read_sqlite_library_follower_intent_outbox_candidate: () => null,
-  record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as Record<string, unknown>;
+  normalized_library_follower_transport_context: () => ({
+    actorId: "11".repeat(32),
+    libraryId: "22".repeat(32),
+    nextIntentActorCounter: 1,
+    nextResultSequence: 1,
+    previousIntentSegmentDigest: null,
+    previousResultSegmentDigest: null,
+    schemaVersion: 2,
+    storageEpochId: "33".repeat(32),
+  }),
+  page_normalized_library_follower_transport: (
+    args: Record<string, unknown>,
+  ) => {
+    const page = (args.page ?? {}) as Record<string, unknown>;
     return {
-      firstIntentSequence: request.firstIntentSequence,
-      lastIntentSequence: request.lastIntentSequence,
-      operationCount: Number(request.lastIntentSequence) - Number(request.firstIntentSequence) + 1,
-      publishedSegmentDigest: request.publishedSegmentDigest,
-      status: "recorded",
+      actorId: page.actorId,
+      canonicalEnvelopes: [],
+      done: true,
+      firstActorCounter: page.firstActorCounter,
+      lastActorCounter: null,
+      schemaVersion: 2,
     };
   },
-  read_sqlite_library_follower_result_import_cursor: () => null,
-  append_sqlite_library_follower_result_segment: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as Record<string, unknown>;
+  record_normalized_library_follower_intent_transport_publication: (
+    args: Record<string, unknown>,
+  ) => {
+    const publication = (args.publication ?? {}) as Record<string, unknown>;
     return {
-      firstResultSequence: request.firstResultSequence,
-      lastResultSequence: request.lastResultSequence,
-      resultCount: Array.isArray(request.entries) ? request.entries.length : 0,
-      segmentDigest: request.segmentDigest,
-      status: "imported",
+      actorId: publication.actorId,
+      firstActorCounter: publication.firstActorCounter,
+      lastActorCounter: publication.lastActorCounter,
+      newlyPublishedTransactionCount: 1,
+      nextActorCounter: Number(publication.lastActorCounter) + 1,
+      publishedAt: publication.publishedAt,
+      semanticSegmentDigest: publication.semanticSegmentDigest,
+      storedSegmentDigest: publication.storedSegmentDigest,
     };
   },
-  fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
-  google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
-    url: args.url,
-    method: "GET",
-    headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
-  }),
-  google_oauth_proxy_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
-    url: args.url,
-    method: "POST",
-    headers: { "Content-Type": String(args.contentType ?? "application/json") },
-    body: args.body,
-  }),
-  google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
-  fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
+  import_normalized_library_follower_result_transport_segment: (
+    args: Record<string, unknown>,
+  ) => {
+    const publication = (args.publication ?? {}) as Record<string, unknown>;
+    const records = Array.isArray(publication.records)
+      ? publication.records
+      : [];
+    return {
+      acceptedTransactionCount: records.length,
+      actorId: publication.actorId,
+      firstResultSequence: 1,
+      lastResultSequence: records.length,
+      nextResultSequence: records.length + 1,
+      receivedAt: publication.receivedAt,
+      rejectedTransactionCount: 0,
+      resultCount: records.length,
+      semanticSegmentDigest: publication.semanticSegmentDigest,
+      storedSegmentDigest: publication.storedSegmentDigest,
+    };
+  },
+  fetch_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
+  google_api_request: (args: Record<string, unknown>) =>
+    proxyNativeHttpRequest({
+      url: args.url,
+      method: "GET",
+      headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+    }),
+  google_oauth_proxy_request: (args: Record<string, unknown>) =>
+    proxyNativeHttpRequest({
+      url: args.url,
+      method: "POST",
+      headers: {
+        "Content-Type": String(args.contentType ?? "application/json"),
+      },
+      body: args.body,
+    }),
+  google_drive_request: (args: Record<string, unknown>) =>
+    proxyGoogleDriveRequest(args),
+  fetch_binary_url: (args: Record<string, unknown>) =>
+    proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
@@ -465,13 +530,15 @@ const handlers: Record<string, Handler> = {
   },
   cancel_local_ai_model_download: () => null,
   get_desktop_session_state: () =>
-    (window as unknown as {
-      __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
-        available: boolean;
-        screenLocked: boolean;
-        error?: string | null;
-      };
-    }).__TAURI_MOCK_DESKTOP_SESSION_STATE__ ?? {
+    (
+      window as unknown as {
+        __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
+          available: boolean;
+          screenLocked: boolean;
+          error?: string | null;
+        };
+      }
+    ).__TAURI_MOCK_DESKTOP_SESSION_STATE__ ?? {
       available: true,
       screenLocked: false,
       error: null,
@@ -484,12 +551,14 @@ const handlers: Record<string, Handler> = {
     return {
       available: session.available,
       eligible: !session.available || !session.screenLocked,
-      reason: session.available && session.screenLocked ? "screen_locked" : null,
+      reason:
+        session.available && session.screenLocked ? "screen_locked" : null,
     };
   },
   replace_provider_schedule_wake: (args: Record<string, unknown>) => {
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ =
-      args.wake ?? null;
+    (
+      window as unknown as Record<string, unknown>
+    ).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ = args.wake ?? null;
     return null;
   },
   get_background_runtime_active_operation: () => ({
@@ -516,15 +585,17 @@ const handlers: Record<string, Handler> = {
     webkitLargestCpuUsage: 0,
     webkitLargestAgeSeconds: 10,
     webkitLargestRole: "freed-webcontent",
-    webkitProcesses: [{
-      processId: 12345,
-      residentBytes: 96 * 1024 * 1024,
-      footprintBytes: 96 * 1024 * 1024,
-      virtualBytes: 512 * 1024 * 1024,
-      cpuUsage: 0,
-      ageSeconds: 10,
-      role: "freed-webcontent",
-    }],
+    webkitProcesses: [
+      {
+        processId: 12345,
+        residentBytes: 96 * 1024 * 1024,
+        footprintBytes: 96 * 1024 * 1024,
+        virtualBytes: 512 * 1024 * 1024,
+        cpuUsage: 0,
+        ageSeconds: 10,
+        role: "freed-webcontent",
+      },
+    ],
     webkitTelemetryAvailable: true,
     webkitAttributionPrecise: true,
     indexedDbBytes: 8 * 1024 * 1024,
@@ -563,7 +634,8 @@ const handlers: Record<string, Handler> = {
   get_desktop_installation_witness: () => "a".repeat(64),
   get_updater_target: () => "darwin-aarch64",
   retry_startup_after_crash: () => null,
-  export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
+  export_startup_diagnostics: () =>
+    "/Users/test/Downloads/freed-diagnostics-test.json",
   clear_factory_reset_runtime_artifacts: () => null,
   get_recent_logs: () => [],
   show_window: () => null,
@@ -576,8 +648,12 @@ const handlers: Record<string, Handler> = {
   pick_contact: () => null,
   get_social_provider_cookie_state: (args?: { provider?: string }) => ({
     provider: args?.provider ?? "facebook",
-    ...(((window as unknown as { __TAURI_MOCK_SOCIAL_COOKIE_STATES__?: Record<string, unknown> })
-      .__TAURI_MOCK_SOCIAL_COOKIE_STATES__?.[args?.provider ?? "facebook"] as Record<string, unknown> | undefined) ?? {
+    ...(((
+      window as unknown as {
+        __TAURI_MOCK_SOCIAL_COOKIE_STATES__?: Record<string, unknown>;
+      }
+    ).__TAURI_MOCK_SOCIAL_COOKIE_STATES__?.[args?.provider ?? "facebook"] as
+      Record<string, unknown> | undefined) ?? {
       available: false,
       hasAuthCookie: false,
       cookieCount: 0,
@@ -590,7 +666,10 @@ const handlers: Record<string, Handler> = {
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
   fb_scrape_groups: () => [],
-  fb_check_group_membership: (args?: { groupId?: string; groupUrl?: string }) => ({
+  fb_check_group_membership: (args?: {
+    groupId?: string;
+    groupUrl?: string;
+  }) => ({
     id: args?.groupId ?? "",
     url: args?.groupUrl ?? "",
     name: null,
@@ -634,43 +713,52 @@ const handlers: Record<string, Handler> = {
   // The init script runs before the Vite module graph and owns persistent or
   // test-specific handlers. Keep those overrides last so this module's
   // convenient defaults cannot silently replace them.
-  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
+  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ??
+    {}) as Record<string, Handler>),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ = handlers;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ =
+  handlers;
 // Append-only log of every invoke() call for test assertions.
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ = [] as Array<{
-  cmd: string;
-  args: Record<string, unknown> | undefined;
-}>;
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ =
+  [] as Array<{
+    cmd: string;
+    args: Record<string, unknown> | undefined;
+  }>;
+(
+  window as unknown as Record<string, unknown>
+).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
 
-const callbackStore = (
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ = {})
-) as Record<number, unknown>;
-const pluginEventListeners = (
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {})
-) as Record<number, PluginEventRecord>;
+const callbackStore = ((window as unknown as Record<string, unknown>)
+  .__TAURI_MOCK_CALLBACKS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ =
+    {})) as Record<number, unknown>;
+const pluginEventListeners = ((window as unknown as Record<string, unknown>)
+  .__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ ??
+  ((
+    window as unknown as Record<string, unknown>
+  ).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {})) as Record<
+  number,
+  PluginEventRecord
+>;
 
-const tauriInternals = (
-  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {})
-) as MockInternals;
+const tauriInternals = ((window as unknown as Record<string, unknown>)
+  .__TAURI_INTERNALS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ =
+    {})) as MockInternals;
 
 export async function invoke<T = unknown>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  mockArray<{ cmd: string; args: typeof args }>("__TAURI_MOCK_INVOCATIONS__").push({ cmd, args });
+  mockArray<{ cmd: string; args: typeof args }>(
+    "__TAURI_MOCK_INVOCATIONS__",
+  ).push({ cmd, args });
   const handler =
     (
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
-        string,
-        Handler
-      >
+      (window as unknown as Record<string, unknown>)
+        .__TAURI_MOCK_HANDLERS__ as Record<string, Handler>
     )[cmd] ?? (() => null);
   return (await handler(args ?? {})) as T;
 }
@@ -701,7 +789,9 @@ tauriInternals.plugins = tauriInternals.plugins ?? {
   },
 };
 
-(window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+(
+  window as unknown as Record<string, unknown>
+).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener(event: string, eventId: number) {
     const record = pluginEventListeners[eventId];
     if (record?.event === event) {
@@ -736,7 +826,12 @@ tauriInternals.invoke = async <T = unknown>(
     for (const [eventId, record] of Object.entries(pluginEventListeners)) {
       if (record.event !== eventName) continue;
       const callback = callbackStore[record.callbackId] as
-        | ((event: { event: string; id: number; payload: unknown; windowLabel: string }) => void)
+        | ((event: {
+            event: string;
+            id: number;
+            payload: unknown;
+            windowLabel: string;
+          }) => void)
         | undefined;
       callback?.({
         event: eventName,

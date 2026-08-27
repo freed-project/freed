@@ -64,13 +64,11 @@ pub use library_core_desktop_binding::{
 };
 pub use library_core_hash::lower_hex;
 pub use library_core_journal::{
-    AcceptedAuthorityState, ActorState, FollowerIntentEnqueueReceipt,
-    FollowerIntentOutboxCandidate, FollowerIntentOutboxEntry, FollowerIntentPublicationReceipt,
-    FollowerOverlayReplayReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
-    FollowerRuntimeStatus, IntentResultOutboxEntry, JournalError, JournalRuntimeStatus,
-    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
-    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    AcceptedAuthorityState, ActorState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry,
+    FollowerOverlayReplayReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry, JournalError,
+    JournalRuntimeStatus, LibraryCoreJournal, StoredFollowerActorEnrollment,
+    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
+    VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
 };
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
@@ -92,7 +90,8 @@ pub use normalized_follower::{
     export_normalized_follower_intent_page_v1, import_normalized_follower_result_page_v1,
     import_normalized_follower_result_transport_segment_v2,
     install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
-    normalized_follower_runtime_status_v2, prepare_normalized_follower_actor_request_v2,
+    normalized_follower_runtime_status_v2, normalized_follower_transport_context_v2,
+    page_normalized_follower_transport_v2, prepare_normalized_follower_actor_request_v2,
     record_normalized_follower_intent_publication_v1,
     record_normalized_follower_intent_transport_publication_v2,
     NormalizedFollowerActorEnrollmentV2, NormalizedFollowerActorRequestV2,
@@ -102,7 +101,8 @@ pub use normalized_follower::{
     NormalizedFollowerIntentTransportPublicationReceiptV2,
     NormalizedFollowerIntentTransportPublicationV2, NormalizedFollowerResultImportReceiptV1,
     NormalizedFollowerResultTransportImportReceiptV2, NormalizedFollowerResultTransportImportV2,
-    NormalizedFollowerRuntimeStatusV2,
+    NormalizedFollowerRuntimeStatusV2, NormalizedFollowerTransportContextV2,
+    NormalizedFollowerTransportPageRequestV2, NormalizedFollowerTransportPageV2,
 };
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,

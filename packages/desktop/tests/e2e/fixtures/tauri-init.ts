@@ -510,26 +510,54 @@ export function tauriInitScript(): string {
         publishedIntentCount: 0,
         importedResultCount: 0,
       }),
-      read_sqlite_library_follower_intent_outbox_candidate: () => null,
-      record_sqlite_library_follower_intent_publication: (args) => {
-        var request = args.request || {};
+      normalized_library_follower_transport_context: () => ({
+        actorId: '11'.repeat(32),
+        libraryId: '22'.repeat(32),
+        nextIntentActorCounter: 1,
+        nextResultSequence: 1,
+        previousIntentSegmentDigest: null,
+        previousResultSegmentDigest: null,
+        schemaVersion: 2,
+        storageEpochId: '33'.repeat(32),
+      }),
+      page_normalized_library_follower_transport: (args) => {
+        var page = args.page || {};
         return {
-          firstIntentSequence: request.firstIntentSequence,
-          lastIntentSequence: request.lastIntentSequence,
-          operationCount: request.lastIntentSequence - request.firstIntentSequence + 1,
-          publishedSegmentDigest: request.publishedSegmentDigest,
-          status: 'recorded',
+          actorId: page.actorId,
+          canonicalEnvelopes: [],
+          done: true,
+          firstActorCounter: page.firstActorCounter,
+          lastActorCounter: null,
+          schemaVersion: 2,
         };
       },
-      read_sqlite_library_follower_result_import_cursor: () => null,
-      append_sqlite_library_follower_result_segment: (args) => {
-        var request = args.request || {};
+      record_normalized_library_follower_intent_transport_publication: (args) => {
+        var publication = args.publication || {};
         return {
-          firstResultSequence: request.firstResultSequence,
-          lastResultSequence: request.lastResultSequence,
-          resultCount: (request.entries || []).length,
-          segmentDigest: request.segmentDigest,
-          status: 'imported',
+          actorId: publication.actorId,
+          firstActorCounter: publication.firstActorCounter,
+          lastActorCounter: publication.lastActorCounter,
+          newlyPublishedTransactionCount: 1,
+          nextActorCounter: publication.lastActorCounter + 1,
+          publishedAt: publication.publishedAt,
+          semanticSegmentDigest: publication.semanticSegmentDigest,
+          storedSegmentDigest: publication.storedSegmentDigest,
+        };
+      },
+      import_normalized_library_follower_result_transport_segment: (args) => {
+        var publication = args.publication || {};
+        var records = publication.records || [];
+        return {
+          acceptedTransactionCount: records.length,
+          actorId: publication.actorId,
+          firstResultSequence: 1,
+          lastResultSequence: records.length,
+          nextResultSequence: records.length + 1,
+          receivedAt: publication.receivedAt,
+          rejectedTransactionCount: 0,
+          resultCount: records.length,
+          semanticSegmentDigest: publication.semanticSegmentDigest,
+          storedSegmentDigest: publication.storedSegmentDigest,
         };
       },
       fetch_url: () => '',

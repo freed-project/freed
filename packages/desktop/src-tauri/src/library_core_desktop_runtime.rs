@@ -31,9 +31,7 @@ use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{
-    FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt, FollowerResultImportCursor,
-    FollowerResultImportReceipt, IntentResultOutboxEntry, LibraryCoreJournal,
-    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    IntentResultOutboxEntry, LibraryCoreJournal,
 };
 const BACKUP_DIRECTORY: &str = "library-backups";
 const JOURNAL_DIRECTORY: &str = "library-core";
@@ -270,108 +268,6 @@ impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
             invalidations: receipt.invalidations,
         })
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReadFollowerIntentOutboxRequest {
-    maximum_operations: usize,
-    maximum_canonical_envelope_bytes: usize,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerIntentOutboxEntry {
-    operation_id: String,
-    intent_sequence: i64,
-    canonical_envelope_json: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerIntentOutboxCandidate {
-    library_id: String,
-    epoch_id: String,
-    actor_id: String,
-    schema_version: i64,
-    first_intent_sequence: i64,
-    last_intent_sequence: i64,
-    previous_segment_digest: Option<String>,
-    canonical_envelope_bytes: i64,
-    transaction_count: i64,
-    entries: Vec<DesktopLibraryFollowerIntentOutboxEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct RecordFollowerIntentPublicationRequest {
-    library_id: String,
-    epoch_id: String,
-    actor_id: String,
-    first_intent_sequence: i64,
-    last_intent_sequence: i64,
-    previous_segment_digest: Option<String>,
-    published_segment_digest: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerIntentPublicationReceipt {
-    first_intent_sequence: i64,
-    last_intent_sequence: i64,
-    operation_count: i64,
-    published_segment_digest: String,
-    status: &'static str,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReadFollowerResultImportCursorRequest {
-    library_id: String,
-    epoch_id: String,
-    actor_id: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerResultImportCursor {
-    next_result_sequence: i64,
-    latest_segment_digest: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AppendFollowerIntentResultRequest {
-    result_operation_id: String,
-    result_sequence: i64,
-    intent_operation_id: String,
-    intent_sequence: i64,
-    status: String,
-    provider_receipt_digest: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AppendFollowerResultSegmentRequest {
-    library_id: String,
-    epoch_id: String,
-    actor_id: String,
-    first_result_sequence: i64,
-    last_result_sequence: i64,
-    previous_segment_digest: Option<String>,
-    segment_digest: String,
-    entries: Vec<AppendFollowerIntentResultRequest>,
-    imported_at_ms: i64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerResultImportReceipt {
-    first_result_sequence: i64,
-    last_result_sequence: i64,
-    result_count: i64,
-    segment_digest: String,
-    status: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -839,6 +735,25 @@ pub(super) fn normalized_library_follower_runtime_status(
 ) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
     let connection = open_selected_normalized_database(&app)?;
     freed_library_core::normalized_follower_runtime_status_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn normalized_library_follower_transport_context(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedFollowerTransportContextV2, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::normalized_follower_transport_context_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn page_normalized_library_follower_transport(
+    app: tauri::AppHandle,
+    page: freed_library_core::NormalizedFollowerTransportPageRequestV2,
+) -> Result<freed_library_core::NormalizedFollowerTransportPageV2, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::page_normalized_follower_transport_v2(&connection, &page)
         .map_err(|error| error.to_string())
 }
 
@@ -1502,174 +1417,6 @@ pub(super) fn sqlite_library_status(
         );
     }
     Ok(status)
-}
-
-fn follower_intent_outbox_response(
-    candidate: FollowerIntentOutboxCandidate,
-) -> DesktopLibraryFollowerIntentOutboxCandidate {
-    DesktopLibraryFollowerIntentOutboxCandidate {
-        library_id: candidate.library_id,
-        epoch_id: candidate.epoch_id,
-        actor_id: candidate.actor_id,
-        schema_version: candidate.schema_version,
-        first_intent_sequence: candidate.first_intent_sequence,
-        last_intent_sequence: candidate.last_intent_sequence,
-        previous_segment_digest: candidate.previous_segment_digest,
-        canonical_envelope_bytes: candidate.canonical_envelope_bytes,
-        transaction_count: candidate.transaction_count,
-        entries: candidate
-            .entries
-            .into_iter()
-            .map(|entry| DesktopLibraryFollowerIntentOutboxEntry {
-                operation_id: entry.operation_id,
-                intent_sequence: entry.intent_sequence,
-                canonical_envelope_json: entry.canonical_envelope_json,
-            })
-            .collect(),
-    }
-}
-
-/// Read one bounded, transaction-complete follower intent publication candidate.
-#[tauri::command]
-pub(super) fn read_sqlite_library_follower_intent_outbox_candidate(
-    app: tauri::AppHandle,
-    request: ReadFollowerIntentOutboxRequest,
-) -> Result<Option<DesktopLibraryFollowerIntentOutboxCandidate>, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    journal
-        .follower_intent_outbox_candidate(
-            request.maximum_operations,
-            request.maximum_canonical_envelope_bytes,
-        )
-        .map(|candidate| candidate.map(follower_intent_outbox_response))
-        .map_err(|error| format!("SQLite Library refused follower outbox read: {error}"))
-}
-
-fn follower_intent_publication_response(
-    receipt: FollowerIntentPublicationReceipt,
-) -> DesktopLibraryFollowerIntentPublicationReceipt {
-    DesktopLibraryFollowerIntentPublicationReceipt {
-        first_intent_sequence: receipt.first_intent_sequence,
-        last_intent_sequence: receipt.last_intent_sequence,
-        operation_count: receipt.operation_count,
-        published_segment_digest: receipt.published_segment_digest,
-        status: receipt.status,
-    }
-}
-
-/// Record publication only after the immutable segment and exact actor head
-/// readback have been verified by the bounded cloud adapter.
-#[tauri::command]
-pub(super) fn record_sqlite_library_follower_intent_publication(
-    app: tauri::AppHandle,
-    request: RecordFollowerIntentPublicationRequest,
-) -> Result<DesktopLibraryFollowerIntentPublicationReceipt, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    journal
-        .record_follower_intent_publication(&VerifiedFollowerIntentPublication {
-            library_id: request.library_id,
-            epoch_id: request.epoch_id,
-            actor_id: request.actor_id,
-            first_intent_sequence: request.first_intent_sequence,
-            last_intent_sequence: request.last_intent_sequence,
-            previous_segment_digest: request.previous_segment_digest,
-            published_segment_digest: request.published_segment_digest,
-        })
-        .map(follower_intent_publication_response)
-        .map_err(|error| format!("SQLite Library refused follower publication: {error}"))
-}
-
-/// Read the exact durable cursor for one follower actor result chain.
-#[tauri::command]
-pub(super) fn read_sqlite_library_follower_result_import_cursor(
-    app: tauri::AppHandle,
-    request: ReadFollowerResultImportCursorRequest,
-) -> Result<Option<DesktopLibraryFollowerResultImportCursor>, String> {
-    if !validate_hex_digest(&request.library_id)
-        || !validate_hex_digest(&request.epoch_id)
-        || !validate_hex_digest(&request.actor_id)
-    {
-        return Err("SQLite Library follower result cursor identity is invalid".into());
-    }
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    journal
-        .follower_result_import_cursor(&request.library_id, &request.epoch_id, &request.actor_id)
-        .map(|cursor| {
-            cursor.map(
-                |FollowerResultImportCursor {
-                     next_result_sequence,
-                     latest_segment_digest,
-                 }| DesktopLibraryFollowerResultImportCursor {
-                    next_result_sequence,
-                    latest_segment_digest,
-                },
-            )
-        })
-        .map_err(|error| format!("SQLite Library refused follower result cursor: {error}"))
-}
-
-fn follower_result_import_response(
-    receipt: FollowerResultImportReceipt,
-) -> DesktopLibraryFollowerResultImportReceipt {
-    DesktopLibraryFollowerResultImportReceipt {
-        first_result_sequence: receipt.first_result_sequence,
-        last_result_sequence: receipt.last_result_sequence,
-        result_count: receipt.result_count,
-        segment_digest: receipt.segment_digest,
-        status: receipt.status,
-    }
-}
-
-/// Append one already verified immutable result segment to the durable follower
-/// receipt chain. The journal rechecks its actor, sequence, intent references,
-/// replay identity, and previous segment digest before advancing the cursor.
-#[tauri::command]
-pub(super) fn append_sqlite_library_follower_result_segment(
-    app: tauri::AppHandle,
-    request: AppendFollowerResultSegmentRequest,
-) -> Result<DesktopLibraryFollowerResultImportReceipt, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    journal
-        .append_follower_result_segment(&VerifiedFollowerResultSegment {
-            library_id: request.library_id,
-            epoch_id: request.epoch_id,
-            actor_id: request.actor_id,
-            first_result_sequence: request.first_result_sequence,
-            last_result_sequence: request.last_result_sequence,
-            previous_segment_digest: request.previous_segment_digest,
-            segment_digest: request.segment_digest,
-            entries: request
-                .entries
-                .into_iter()
-                .map(|entry| VerifiedFollowerIntentResult {
-                    result_operation_id: entry.result_operation_id,
-                    result_sequence: entry.result_sequence,
-                    intent_operation_id: entry.intent_operation_id,
-                    intent_sequence: entry.intent_sequence,
-                    status: entry.status,
-                    provider_receipt_digest: entry.provider_receipt_digest,
-                })
-                .collect(),
-            imported_at_ms: request.imported_at_ms,
-        })
-        .map(follower_result_import_response)
-        .map_err(|error| format!("SQLite Library refused follower result segment: {error}"))
 }
 
 fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissionStatus, String> {

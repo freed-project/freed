@@ -16,6 +16,7 @@ export * from "./library-core-intent-segments.js";
 export * from "./library-core-operation-segments.js";
 export * from "./library-core-normalized-checkpoint.js";
 export * from "./library-core-normalized-intent-segments.js";
+export * from "./library-core-normalized-follower-sync.js";
 export * from "./library-core-normalized-result-segments.js";
 export * from "./library-core-normalized-segment-publication.js";
 export * from "./library-core-primary-coordinator.js";
