@@ -22,6 +22,7 @@ import {
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedPersonDetailV1,
+  readLibraryCoreNormalizedFriendDetailV1,
   readLibraryCoreNormalizedPreferencesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
@@ -841,11 +842,20 @@ export const readPwaLibraryCorePersonDetail: NonNullable<
 > = (personId) =>
   readLibraryCoreNormalizedPersonDetailV1(NORMALIZED_READER_RUNTIME, personId);
 
+/** Read one selected Friend and linked Account window from OPFS SQLite. */
+export const readPwaLibraryCoreFriendDetail: NonNullable<
+  PlatformConfig["readLibraryFriendDetail"]
+> = (personId) =>
+  readLibraryCoreNormalizedFriendDetailV1(NORMALIZED_READER_RUNTIME, personId);
+
 /** Read one exact Account from OPFS SQLite. */
 export const readPwaLibraryCoreAccountDetail: NonNullable<
   PlatformConfig["readLibraryAccountDetail"]
 > = (accountId) =>
-  readLibraryCoreNormalizedAccountDetailV1(NORMALIZED_READER_RUNTIME, accountId);
+  readLibraryCoreNormalizedAccountDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    accountId,
+  );
 
 /** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<

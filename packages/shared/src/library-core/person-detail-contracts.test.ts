@@ -19,6 +19,28 @@ describe("person detail contracts", () => {
     };
     const parsed = parseLibraryCorePersonDetailResponseV1(
       {
+        linkedAccountCount: 1,
+        linkedAccounts: [
+          {
+            address: null,
+            avatarUrl: null,
+            createdAt: 11,
+            discoveredFrom: "captured_item",
+            displayName: "Ada",
+            email: null,
+            externalId: "ada",
+            firstSeenAt: 11,
+            handle: "@ada",
+            id: "account-1",
+            importedAt: null,
+            kind: "social",
+            lastSeenAt: 20,
+            phone: null,
+            profileUrl: null,
+            provider: "x",
+            updatedAt: 20,
+          },
+        ],
         person: {
           avatarUrl: null,
           bio: "Mathematician",
@@ -52,6 +74,8 @@ describe("person detail contracts", () => {
     expect(parsed).toMatchObject({
       ok: true,
       value: {
+        linkedAccountCount: 1,
+        linkedAccounts: [{ id: "account-1" }],
         person: { id: "person-1", reachOuts: [{ reachOutId: "operation-2" }] },
       },
     });
@@ -69,6 +93,8 @@ describe("person detail contracts", () => {
     expect(
       parseLibraryCorePersonDetailResponseV1(
         {
+          linkedAccountCount: 0,
+          linkedAccounts: [],
           person: null,
           queryId: "person_detail_v1",
           schemaVersion: 1,

@@ -23,6 +23,7 @@ import type {
   FeedItem,
   FeedSignalMode,
   FilterOptions,
+  Friend,
   GeneratedBugReportBundle,
   PrivateVulnerabilityReportPayload,
   PrivateVulnerabilityReportResult,
@@ -690,12 +691,12 @@ export interface PlatformConfig {
   readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
 
   /** One bounded Map candidate set with author identity joined inside SQLite. */
-  readLibraryMapCandidates?: () => Promise<readonly LibraryMapLocationCandidate[]>;
+  readLibraryMapCandidates?: () => Promise<
+    readonly LibraryMapLocationCandidate[]
+  >;
 
   /** One bounded Story Wall candidate set selected inside SQLite. */
-  readLibraryStoryWallCandidates?: () => Promise<
-    readonly StoryWallCandidate[]
-  >;
+  readLibraryStoryWallCandidates?: () => Promise<readonly StoryWallCandidate[]>;
 
   /** Exact Saved overview aggregates computed inside the local row store. */
   readLibrarySavedAnalytics?: (
@@ -709,6 +710,9 @@ export interface PlatformConfig {
 
   /** One exact Person selected from the current SQLite generation. */
   readLibraryPersonDetail?: (personId: string) => Promise<Person | null>;
+
+  /** One selected Friend plus its bounded linked Account window from SQLite. */
+  readLibraryFriendDetail?: (personId: string) => Promise<Friend | null>;
 
   /** One exact Account selected from the current SQLite generation. */
   readLibraryAccountDetail?: (accountId: string) => Promise<Account | null>;

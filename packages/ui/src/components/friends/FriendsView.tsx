@@ -36,6 +36,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useLibraryFriendsRows } from "../../hooks/useLibraryFriendsRows.js";
 import {
   useLibraryAccountDetail,
+  useLibraryFriendDetail,
   useLibraryPersonDetail,
 } from "../../hooks/useLibraryIdentityDetail.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
@@ -54,9 +55,7 @@ import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntriesFromActivity,
-  buildFriendsWorkspaceIndexes,
   friendActivitySourceKey,
-  friendFromPersonWithIndexes,
   type FriendOverviewFilter,
   type FriendOverviewSort,
 } from "../../lib/friends-workspace.js";
@@ -608,7 +607,6 @@ export function FriendsView({
   onFriendsSidebarOpenChange,
   mobileSurface,
 }: FriendsViewProps) {
-  const accounts = useAppStore((s) => s.accounts);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
@@ -682,19 +680,15 @@ export function FriendsView({
     googleContacts,
     queryLibraryCore,
     readLibraryAccountDetail,
+    readLibraryFriendDetail,
     readLibraryPersonDetail,
   } = usePlatform();
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
-  const friendsWorkspaceIndexes = useMemo(
-    () => buildFriendsWorkspaceIndexes(accounts, {}),
-    [accounts],
-  );
-
   const friendCount = libraryFacets.friendPersonCount;
   const socialAccountCount = libraryFacets.socialAccountCount;
 
-  const selectedPersonDetail = useLibraryPersonDetail(
+  const selectedFriendDetail = useLibraryFriendDetail(
     selectedPersonId,
     searchCorpusVersion,
   );
@@ -702,14 +696,8 @@ export function FriendsView({
     selectedAccountId,
     searchCorpusVersion,
   );
-  const selectedPerson = selectedPersonDetail.value;
-  const selectedFriend = useMemo(
-    () =>
-      selectedPerson
-        ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes)
-        : null,
-    [friendsWorkspaceIndexes, selectedPerson],
-  );
+  const selectedFriend = selectedFriendDetail.value;
+  const selectedPerson = selectedFriend;
   const selectedAccount = selectedAccountDetail.value;
   const selectedAccountLinkedPersonDetail = useLibraryPersonDetail(
     selectedAccount?.personId ?? null,
@@ -852,12 +840,12 @@ export function FriendsView({
   useEffect(() => {
     if (
       selectedPersonId &&
-      selectedPersonDetail.status === "ready" &&
-      selectedPersonDetail.value === null
+      selectedFriendDetail.status === "ready" &&
+      selectedFriendDetail.value === null
     ) {
       setSelectedPerson(null);
     }
-  }, [selectedPersonDetail, selectedPersonId, setSelectedPerson]);
+  }, [selectedFriendDetail, selectedPersonId, setSelectedPerson]);
 
   useEffect(() => {
     if (
@@ -928,16 +916,17 @@ export function FriendsView({
       editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
     ) => {
       const now = Date.now();
-      const existingPerson = personId
-        ? selectedPerson?.id === personId
-          ? selectedPerson
-          : readLibraryPersonDetail
-            ? await readLibraryPersonDetail(personId)
+      const existingFriend = personId
+        ? selectedFriend?.id === personId
+          ? selectedFriend
+          : readLibraryFriendDetail
+            ? await readLibraryFriendDetail(personId)
             : null
         : null;
-      if (personId && !existingPerson) {
-        throw new Error("The selected Person SQLite row is unavailable.");
+      if (personId && !existingFriend) {
+        throw new Error("The selected Friend SQLite detail is unavailable.");
       }
+      const existingPerson = existingFriend;
       const nextPersonId = existingPerson?.id ?? crypto.randomUUID();
 
       const nextPerson: Person = {
@@ -973,21 +962,24 @@ export function FriendsView({
       const desiredSocialIds = new Set(
         data.sources.map((source) => socialAccountId(source)),
       );
-      const existingSocialAccounts = Object.values(accounts).filter(
-        (account) =>
-          account.kind === "social" && account.personId === nextPersonId,
+      const existingSocialAccountIds = new Set(
+        existingFriend?.sources.map(socialAccountId) ?? [],
       );
 
       await Promise.all(
-        existingSocialAccounts
-          .filter((account) => !desiredSocialIds.has(account.id))
-          .map((account) => updateAccount(account.id, { personId: undefined })),
+        [...existingSocialAccountIds]
+          .filter((accountId) => !desiredSocialIds.has(accountId))
+          .map((accountId) =>
+            updateAccount(accountId, { personId: undefined }),
+          ),
       );
 
       await Promise.all(
         data.sources.map(async (source) => {
           const accountId = socialAccountId(source);
-          const existingAccount = accounts[accountId];
+          const existingAccount = readLibraryAccountDetail
+            ? await readLibraryAccountDetail(accountId)
+            : null;
           const activity =
             editorSourceActivity?.get(
               friendActivitySourceKey(source.platform, source.authorId),
@@ -1018,28 +1010,26 @@ export function FriendsView({
         }),
       );
 
-      const existingContactAccounts = Object.values(accounts).filter(
-        (account) =>
-          account.kind === "contact" && account.personId === nextPersonId,
-      );
+      const existingContactId = existingFriend?.contact
+        ? contactAccountId(nextPersonId, existingFriend.contact)
+        : null;
 
       if (!data.contact) {
-        await Promise.all(
-          existingContactAccounts.map((account) => removeAccount(account.id)),
-        );
+        if (existingContactId) await removeAccount(existingContactId);
       } else {
         const nextContact = contactAccountDraft(
           nextPersonId,
           data.contact,
           now,
         );
-        await Promise.all(
-          existingContactAccounts
-            .filter((account) => account.id !== nextContact.id)
-            .map((account) => removeAccount(account.id)),
-        );
+        if (existingContactId && existingContactId !== nextContact.id) {
+          await removeAccount(existingContactId);
+        }
 
-        if (accounts[nextContact.id]) {
+        const existingContact = readLibraryAccountDetail
+          ? await readLibraryAccountDetail(nextContact.id)
+          : null;
+        if (existingContact) {
           await updateAccount(nextContact.id, {
             personId: nextPersonId,
             provider: nextContact.provider,
@@ -1049,8 +1039,7 @@ export function FriendsView({
             phone: nextContact.phone,
             address: nextContact.address,
             importedAt: nextContact.importedAt,
-            firstSeenAt:
-              accounts[nextContact.id]?.firstSeenAt ?? nextContact.firstSeenAt,
+            firstSeenAt: existingContact.firstSeenAt ?? nextContact.firstSeenAt,
             lastSeenAt: nextContact.lastSeenAt,
           });
         } else {
@@ -1062,12 +1051,12 @@ export function FriendsView({
       setSelectedPerson(nextPersonId);
     },
     [
-      accounts,
       addAccount,
       addPerson,
-      readLibraryPersonDetail,
+      readLibraryAccountDetail,
+      readLibraryFriendDetail,
       removeAccount,
-      selectedPerson,
+      selectedFriend,
       setSelectedPerson,
       sourceActivityEvidence,
       updateAccount,

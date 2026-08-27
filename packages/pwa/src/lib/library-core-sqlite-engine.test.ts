@@ -2742,6 +2742,11 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }),
     ).toMatchObject({
+      linkedAccountCount: 2,
+      linkedAccounts: [
+        { id: "account-1", provider: "x" },
+        { id: "account-3", provider: "rss" },
+      ],
       person: {
         id: "person-1",
         name: "Ada",

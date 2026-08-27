@@ -11,6 +11,7 @@ import {
 } from "./normalized-feed-readers.js";
 import {
   readLibraryCoreNormalizedAccountDetailV1,
+  readLibraryCoreNormalizedFriendDetailV1,
   readLibraryCoreNormalizedPersonDetailV1,
   readLibraryCoreNormalizedPreferencesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
@@ -114,6 +115,47 @@ describe("cross-platform normalized feed readers", () => {
           sampleGeneratorVersion: null,
           updatedAt: 10,
         },
+      })
+      .mockResolvedValueOnce({
+        linkedAccountCount: 1,
+        linkedAccounts: [
+          {
+            address: null,
+            avatarUrl: null,
+            createdAt: 1,
+            discoveredFrom: "captured_item",
+            displayName: "Ada",
+            email: null,
+            externalId: "ada",
+            firstSeenAt: 2,
+            handle: "ada",
+            id: "account-ada",
+            importedAt: null,
+            kind: "social",
+            lastSeenAt: 9,
+            phone: null,
+            profileUrl: "https://example.test/ada",
+            provider: "x",
+            updatedAt: 10,
+          },
+        ],
+        person: {
+          avatarUrl: null,
+          bio: "Mathematician",
+          careLevel: 5,
+          createdAt: 1,
+          id: "person-ada",
+          name: "Ada",
+          notes: null,
+          reachOutIntervalDays: 7,
+          reachOuts: [],
+          relationshipStatus: "friend",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          tags: ["computing"],
+          updatedAt: 10,
+        },
       }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const runtime = { query, randomId: () => "test" };
 
@@ -132,6 +174,12 @@ describe("cross-platform normalized feed readers", () => {
       id: "account-ada",
       personId: "person-ada",
     });
+    await expect(
+      readLibraryCoreNormalizedFriendDetailV1(runtime, "person-ada"),
+    ).resolves.toMatchObject({
+      id: "person-ada",
+      sources: [{ authorId: "ada", platform: "x" }],
+    });
     expect(query).toHaveBeenNthCalledWith(1, {
       personId: "person-ada",
       queryId: "person_detail_v1",
@@ -140,6 +188,11 @@ describe("cross-platform normalized feed readers", () => {
     expect(query).toHaveBeenNthCalledWith(2, {
       accountId: "account-ada",
       queryId: "account_detail_v1",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(3, {
+      personId: "person-ada",
+      queryId: "person_detail_v1",
       schemaVersion: 1,
     });
   });
@@ -167,7 +220,10 @@ describe("cross-platform normalized feed readers", () => {
       .fn()
       .mockResolvedValueOnce({ feed: row })
       .mockResolvedValueOnce({ nextCursor: "opaque-rss-next", rows: [row] })
-      .mockResolvedValueOnce({ nextCursor: null, rows: [{ ...row, url: "https://example.org/feed" }] }) as unknown as LibraryCoreNormalizedQueryExecutor;
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [{ ...row, url: "https://example.org/feed" }],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
 
     await expect(
       readLibraryCoreRssFeedV1(query, row.url),

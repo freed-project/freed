@@ -5419,6 +5419,16 @@ export class PwaLibraryCoreSqliteEngine {
       );
     }
     const row = rows[0];
+    const linkedAccounts =
+      row === undefined
+        ? []
+        : (JSON.parse(
+            text(row.linkedAccountsJson, "Person linked Account rows"),
+          ) as unknown);
+    const linkedAccountCount =
+      row === undefined
+        ? 0
+        : safeInteger(row.linkedAccountCount, "Person linked Account count");
     const person =
       row === undefined
         ? null
@@ -5457,6 +5467,8 @@ export class PwaLibraryCoreSqliteEngine {
             updatedAt: safeInteger(row.updatedAt, "Person update time"),
           };
     const response = {
+      linkedAccountCount,
+      linkedAccounts,
       person,
       queryId: "person_detail_v1" as const,
       schemaVersion: 1 as const,

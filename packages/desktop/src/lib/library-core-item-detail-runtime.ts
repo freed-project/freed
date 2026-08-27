@@ -2,6 +2,7 @@ import {
   type Account,
   type ContentSignal,
   type FeedItem,
+  type Friend,
   type Person,
 } from "@freed/shared";
 import {
@@ -12,6 +13,7 @@ import {
   readLibraryCoreNormalizedMapCandidatesV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedPersonDetailV1,
+  readLibraryCoreNormalizedFriendDetailV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
@@ -168,6 +170,15 @@ export async function readLibraryCorePersonDetail(
   personId: string,
 ): Promise<Person | null> {
   return readLibraryCoreNormalizedPersonDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    personId,
+  );
+}
+
+export async function readLibraryCoreFriendDetail(
+  personId: string,
+): Promise<Friend | null> {
+  return readLibraryCoreNormalizedFriendDetailV1(
     NORMALIZED_READER_RUNTIME,
     personId,
   );

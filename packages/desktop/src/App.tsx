@@ -99,6 +99,7 @@ import {
   readLibraryCoreAccountDetail,
   readLibraryCorePersonTimeline,
   readLibraryCorePersonDetail,
+  readLibraryCoreFriendDetail,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreStoryWallCandidates,
   scanLibraryCoreBackgroundItems,
@@ -1641,6 +1642,10 @@ function App() {
       readLibraryPersonDetail:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCorePersonDetail
+          : undefined,
+      readLibraryFriendDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendDetail
           : undefined,
       readLibraryAccountDetail:
         tauriRuntimeAvailable && isInitialized

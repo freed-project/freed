@@ -488,6 +488,8 @@ describe("SQLite Primary mutations", () => {
         }
         if (request.queryId === "person_detail_v1") {
           return {
+            linkedAccountCount: 0,
+            linkedAccounts: [],
             person: {
               avatarUrl: null,
               bio: null,

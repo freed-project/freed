@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Account, Person } from "@freed/shared";
+import type { Account, Friend, Person } from "@freed/shared";
 
 import {
   usePlatform,
@@ -7,8 +7,15 @@ import {
 } from "../context/PlatformContext.js";
 
 type IdentityDetailStatus = "idle" | "loading" | "ready" | "failed";
-type PersonDetailReader = NonNullable<PlatformConfig["readLibraryPersonDetail"]>;
-type AccountDetailReader = NonNullable<PlatformConfig["readLibraryAccountDetail"]>;
+type PersonDetailReader = NonNullable<
+  PlatformConfig["readLibraryPersonDetail"]
+>;
+type AccountDetailReader = NonNullable<
+  PlatformConfig["readLibraryAccountDetail"]
+>;
+type FriendDetailReader = NonNullable<
+  PlatformConfig["readLibraryFriendDetail"]
+>;
 
 interface CachedIdentityDetail<Value> {
   readonly key: string;
@@ -35,8 +42,15 @@ const accountDetailCache = new WeakMap<
   AccountDetailReader,
   CachedIdentityDetail<Account>
 >();
+const friendDetailCache = new WeakMap<
+  FriendDetailReader,
+  CachedIdentityDetail<Friend>
+>();
 
-function prepareIdentityDetail<Value, Reader extends (id: string) => Promise<Value | null>>(
+function prepareIdentityDetail<
+  Value,
+  Reader extends (id: string) => Promise<Value | null>,
+>(
   cache: WeakMap<Reader, CachedIdentityDetail<Value>>,
   reader: Reader,
   id: string,
@@ -50,18 +64,23 @@ function prepareIdentityDetail<Value, Reader extends (id: string) => Promise<Val
     promise: Promise.resolve(null as never),
     result: undefined,
   };
-  entry.promise = reader(id).then((value) => {
-    entry.result = value;
-    return value;
-  }).catch((error: unknown) => {
-    if (cache.get(reader) === entry) cache.delete(reader);
-    throw error;
-  });
+  entry.promise = reader(id)
+    .then((value) => {
+      entry.result = value;
+      return value;
+    })
+    .catch((error: unknown) => {
+      if (cache.get(reader) === entry) cache.delete(reader);
+      throw error;
+    });
   cache.set(reader, entry);
   return entry;
 }
 
-function useIdentityDetail<Value, Reader extends (id: string) => Promise<Value | null>>(
+function useIdentityDetail<
+  Value,
+  Reader extends (id: string) => Promise<Value | null>,
+>(
   cache: WeakMap<Reader, CachedIdentityDetail<Value>>,
   reader: Reader | undefined,
   id: string | null,
@@ -85,9 +104,11 @@ function useIdentityDetail<Value, Reader extends (id: string) => Promise<Value |
     }
     let cancelled = false;
     const prepared = prepareIdentityDetail(cache, reader, id, sourceVersion);
-    setState(prepared.result === undefined
-      ? { key, status: "loading", value: null }
-      : { key, status: "ready", value: prepared.result });
+    setState(
+      prepared.result === undefined
+        ? { key, status: "loading", value: null }
+        : { key, status: "ready", value: prepared.result },
+    );
     void prepared.promise
       .then((value) => {
         if (!cancelled) setState({ key, status: "ready", value });
@@ -114,6 +135,20 @@ export function useLibraryPersonDetail(
   return useIdentityDetail(
     personDetailCache,
     readLibraryPersonDetail,
+    personId,
+    sourceVersion,
+  );
+}
+
+/** Retain one selected Friend and its bounded linked Account window. */
+export function useLibraryFriendDetail(
+  personId: string | null,
+  sourceVersion: number,
+): LibraryIdentityDetailResult<Friend> {
+  const { readLibraryFriendDetail } = usePlatform();
+  return useIdentityDetail(
+    friendDetailCache,
+    readLibraryFriendDetail,
     personId,
     sourceVersion,
   );

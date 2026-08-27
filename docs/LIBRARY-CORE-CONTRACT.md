@@ -640,13 +640,17 @@ must not read a projected item map, reconstruct a Library shell, or fall back
 to renderer state. This changes where candidates are discovered, not provider
 admission, request behavior, retry budgets, or confirmation semantics.
 
-`person_detail_v1` is the normalized point query for one visible Person
-header. It returns one closed Person row, no Accounts and no FeedItems. Tags
-are capped at 64 in SQLite binary order. Reach-out history is capped at the
-latest 20 events in descending time order with accepted operation IDs as the
-stable tie-break identity. The source-fenced response is capped at 512 KiB.
-Accounts and timeline cards use their own bounded page queries, so opening one
-Person never hydrates the Friends graph or a hidden Library shell.
+`person_detail_v1` is the normalized point query for one visible Person and
+the linked Account window needed to render that selected Friend. It returns
+one closed Person row, the total linked Account count, and at most 64 closed
+linked Account rows in SQLite binary ID order. Tags are capped at 64 in SQLite
+binary order. Reach-out history is capped at the latest 20 events in
+descending time order with accepted operation IDs as the stable tie-break
+identity. The source-fenced response is capped at 2 MiB. A total count larger
+than the returned Account window fails the complete Friend transform closed.
+Timeline cards use their own bounded page queries, so opening one Person never
+hydrates the Friends graph, a complete Account catalog, or a hidden Library
+shell.
 
 `person_timeline_v1` pages compact feed cards for one Person directly from the
 derived `library_person_feed_items` relation. FeedItem and Account mutations
@@ -684,9 +688,10 @@ typed null result rather than causing a whole-library fallback.
 The Friends selection boundary uses `person_detail_v1` and
 `account_detail_v1` directly. Freed Desktop supplies the native executor and
 the PWA supplies the OPFS SQLite worker executor to one shared typed reader.
-React retains only the selected Person and selected Account. A missing row
-clears that selection after a successful source-fenced read. A failed read
-does not consult a renderer identity dictionary.
+React retains only the selected Friend with its bounded linked Account window,
+or one selected unlinked Account. A missing row clears that selection after a
+successful source-fenced read. A failed or incomplete read does not consult a
+renderer identity dictionary.
 
 `contact_match_v1` resolves one Google Contact against trigger-maintained
 normalized identity keys in SQLite. The closed request accepts at most eight

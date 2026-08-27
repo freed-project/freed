@@ -1481,7 +1481,7 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     cursor: interactiveCursor("single_page"),
     totalCountIntent: "none",
     rendererCache: true,
-    invalidationKeyIntent: ["person:{person_id}"],
+    invalidationKeyIntent: ["person:{person_id}", "accounts:person:{person_id}"],
     currentKinds: [
       "query_normalized_v1::person_detail_v1",
       "PwaLibraryCoreSqliteEngine.query::person_detail_v1",

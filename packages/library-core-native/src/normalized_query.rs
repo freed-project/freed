@@ -35,7 +35,8 @@ const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
-const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PERSON_DETAIL_MAXIMUM_LINKED_ACCOUNTS: usize = 64;
 const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES: usize = 128 * 1_024;
 const RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 64 * 1_024;
@@ -984,7 +985,31 @@ pub struct NormalizedPersonDetailV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonLinkedAccountV1 {
+    pub address: Option<String>,
+    pub avatar_url: Option<String>,
+    pub created_at: i64,
+    pub discovered_from: String,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub external_id: String,
+    pub first_seen_at: i64,
+    pub handle: Option<String>,
+    pub id: String,
+    pub imported_at: Option<i64>,
+    pub kind: String,
+    pub last_seen_at: i64,
+    pub phone: Option<String>,
+    pub profile_url: Option<String>,
+    pub provider: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonDetailResponseV1 {
+    pub linked_account_count: i64,
+    pub linked_accounts: Vec<NormalizedPersonLinkedAccountV1>,
     pub person: Option<NormalizedPersonDetailV1>,
     pub query_id: String,
     pub schema_version: u32,
@@ -4966,30 +4991,37 @@ fn query_person_detail(
                     Box::new(error),
                 )
             })?;
-        Ok(NormalizedPersonDetailV1 {
-            avatar_url: row.get("avatarUrl")?,
-            bio: row.get("bio")?,
-            care_level: row.get("careLevel")?,
-            created_at: row.get("createdAt")?,
-            id: row.get("id")?,
-            name: row.get("name")?,
-            notes: row.get("notes")?,
-            reach_out_interval_days: row.get("reachOutIntervalDays")?,
-            reach_outs,
-            relationship_status: row.get("relationshipStatus")?,
-            sample_batch_id: row.get("sampleBatchId")?,
-            sample_generated_at: row.get("sampleGeneratedAt")?,
-            sample_generator_version: row.get("sampleGeneratorVersion")?,
-            tags: string_array(row, "tagsJson", 64, 1_024)?,
-            updated_at: row.get("updatedAt")?,
-        })
+        let linked_accounts_json: String = row.get("linkedAccountsJson")?;
+        let linked_accounts: Vec<NormalizedPersonLinkedAccountV1> =
+            decode_sqlite_json(&linked_accounts_json)?;
+        Ok((
+            NormalizedPersonDetailV1 {
+                avatar_url: row.get("avatarUrl")?,
+                bio: row.get("bio")?,
+                care_level: row.get("careLevel")?,
+                created_at: row.get("createdAt")?,
+                id: row.get("id")?,
+                name: row.get("name")?,
+                notes: row.get("notes")?,
+                reach_out_interval_days: row.get("reachOutIntervalDays")?,
+                reach_outs,
+                relationship_status: row.get("relationshipStatus")?,
+                sample_batch_id: row.get("sampleBatchId")?,
+                sample_generated_at: row.get("sampleGeneratedAt")?,
+                sample_generator_version: row.get("sampleGeneratorVersion")?,
+                tags: string_array(row, "tagsJson", 64, 1_024)?,
+                updated_at: row.get("updatedAt")?,
+            },
+            row.get::<_, i64>("linkedAccountCount")?,
+            linked_accounts,
+        ))
     })?;
-    let mut persons = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut details = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if persons.len() > program.maximum_scan_rows {
+    if details.len() > program.maximum_scan_rows {
         return Err(invalid("normalized person detail exceeded its row bound"));
     }
-    if let Some(person) = persons.first() {
+    if let Some((person, linked_account_count, linked_accounts)) = details.first() {
         let bounded_optional = |value: &Option<String>, maximum| {
             value.as_ref().is_none_or(|text| text.len() <= maximum)
         };
@@ -5034,12 +5066,52 @@ fn query_person_detail(
                     || (rows[0].logged_at == rows[1].logged_at
                         && rows[0].reach_out_id >= rows[1].reach_out_id)
             })
+            || !valid_safe_integer(*linked_account_count)
+            || usize::try_from(*linked_account_count)
+                .ok()
+                .is_none_or(|count| count < linked_accounts.len())
+            || linked_accounts.len() > PERSON_DETAIL_MAXIMUM_LINKED_ACCOUNTS
+            || linked_accounts
+                .windows(2)
+                .any(|rows| rows[0].id >= rows[1].id)
+            || linked_accounts.iter().any(|account| {
+                account.id.is_empty()
+                    || account.id.len() > 2_048
+                    || account.external_id.is_empty()
+                    || account.external_id.len() > 4_096
+                    || account.kind.is_empty()
+                    || account.kind.len() > 64
+                    || account.provider.is_empty()
+                    || account.provider.len() > 64
+                    || account.discovered_from.is_empty()
+                    || account.discovered_from.len() > 64
+                    || !bounded_optional(&account.address, 4_096)
+                    || !bounded_optional(&account.avatar_url, 8_192)
+                    || !bounded_optional(&account.display_name, 512)
+                    || !bounded_optional(&account.email, 4_096)
+                    || !bounded_optional(&account.handle, 512)
+                    || !bounded_optional(&account.phone, 512)
+                    || !bounded_optional(&account.profile_url, 8_192)
+                    || !valid_safe_integer(account.created_at)
+                    || !valid_safe_integer(account.first_seen_at)
+                    || !valid_safe_integer(account.last_seen_at)
+                    || !valid_safe_integer(account.updated_at)
+                    || account
+                        .imported_at
+                        .is_some_and(|value| !valid_safe_integer(value))
+            })
         {
             return Err(invalid("normalized person detail row is invalid"));
         }
     }
+    let (person, linked_account_count, linked_accounts) = details
+        .pop()
+        .map(|(person, count, accounts)| (Some(person), count, accounts))
+        .unwrap_or_else(|| (None, 0, Vec::new()));
     let response = NormalizedPersonDetailResponseV1 {
-        person: persons.pop(),
+        linked_account_count,
+        linked_accounts,
+        person,
         query_id: "person_detail_v1".to_owned(),
         schema_version: 1,
         source: NormalizedFeedPageSourceV1 {
@@ -8310,7 +8382,12 @@ mod tests {
                  INSERT INTO library_person_reach_outs
                    (person_id, reach_out_id, logged_at, channel, notes)
                    VALUES ('person-1', 'reach-1', 100, NULL, NULL),
-                          ('person-1', 'reach-2', 200, 'text', 'Latest');",
+                          ('person-1', 'reach-2', 200, 'text', 'Latest');
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50,
+                           200, 'captured_item', 50, 200);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -8324,6 +8401,9 @@ mod tests {
         .expect("person detail") else {
             panic!("person detail response");
         };
+        assert_eq!(response.linked_account_count, 1);
+        assert_eq!(response.linked_accounts.len(), 1);
+        assert_eq!(response.linked_accounts[0].id, "account-1");
         let person = response.person.expect("person");
         assert_eq!(person.id, "person-1");
         assert_eq!(person.tags, ["close", "science"]);
@@ -8342,6 +8422,8 @@ mod tests {
             panic!("person detail response");
         };
         assert!(missing.person.is_none());
+        assert_eq!(missing.linked_account_count, 0);
+        assert!(missing.linked_accounts.is_empty());
     }
 
     #[test]

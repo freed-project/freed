@@ -147,9 +147,10 @@
         longer alias the historical full-content detail projection.
   - [x] `person_detail_v1` now performs one primary-key SQLite lookup through
         the extracted native core. It returns one closed Person header, at most
-        64 binary-ordered tags, and the latest 20 stable reach-out events under
-        a 512 KiB ceiling. Accounts and timeline cards remain separate bounded
-        queries. Freed Desktop view wiring remains open.
+        64 binary-ordered tags, the latest 20 stable reach-out events, the total
+        linked Account count, and at most 64 linked Account rows under a 2 MiB
+        ceiling. A truncated linked-Account window fails Friend construction
+        closed. Timeline cards remain separate bounded queries.
   - [x] `account_detail_v1` now performs one primary-key SQLite lookup through
         the shared native and PWA dispatch, returns at most eight ordered
         follow-roster roles, and never hydrates a Person or FeedItem corpus.
@@ -648,6 +649,7 @@ export async function captureDomFeed(
 | 5.122 | Rank Friend candidate review rows through the shared generated `friend_candidate_review_v1` native SQLite query, retain at most ten typed rows in React, and delete the complete Person, Account, FeedItem, and compact-activity JavaScript scoring path plus its self-referential tests                                                                                                        | High       | ✓ Complete |
 | 5.123 | Remove the Friends view's complete Person subscription. Use exact native SQLite Person detail for selection, editing, linked-Account labels, and existing-Person write preparation, and derive only the selected overview entry in React                                                                                                                                                        | High       | ✓ Complete |
 | 5.124 | Stop rebuilding a complete renderer-side Account source list for Friends activity. Query activity only for the selected visible channels, and let the Galaxy consume activity counts from its existing bounded native SQLite Account and RSS source pages                                                                                                                                       | High       | ✓ Complete |
+| 5.125 | Remove the Friends view's complete Account subscription. Extend exact native SQLite Person detail with a 64-row linked-Account window and total count, transform the selected Friend from that closed response, and resolve edited Accounts through exact SQLite detail reads                                                                                                                     | High       | ✓ Complete |
 
 ---
 

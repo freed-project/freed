@@ -2,7 +2,9 @@ import {
   mergeDefaultPreferences,
   type Account,
   type FeedItem,
+  type Friend,
   type Person,
+  type Platform,
   type UserPreferences,
 } from "../types.js";
 import {
@@ -37,6 +39,7 @@ import {
   LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
   LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   type LibraryCorePersonDetailV1,
+  type LibraryCorePersonLinkedAccountV1,
 } from "./person-detail-contracts.js";
 import {
   LIBRARY_CORE_ACCOUNT_TIMELINE_DEFAULT_LIMIT,
@@ -187,8 +190,7 @@ export async function readLibraryCoreNormalizedPersonsGraphV1(
       sourceOffset + LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES,
     );
     const remaining =
-      LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES -
-      batchSources.length;
+      LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES - batchSources.length;
     const batchRss = input.rssFeedUrls.slice(rssOffset, rssOffset + remaining);
     const response = await runtime.query({
       queryId: LIBRARY_CORE_PERSONS_GRAPH_QUERY_ID,
@@ -317,7 +319,8 @@ export function libraryCorePersonDetailToPersonV1(
     name: value.name,
     ...(value.avatarUrl === null ? {} : { avatarUrl: value.avatarUrl }),
     ...(value.bio === null ? {} : { bio: value.bio }),
-    relationshipStatus: value.relationshipStatus as Person["relationshipStatus"],
+    relationshipStatus:
+      value.relationshipStatus as Person["relationshipStatus"],
     careLevel: value.careLevel as Person["careLevel"],
     ...(value.reachOutIntervalDays === null
       ? {}
@@ -326,7 +329,11 @@ export function libraryCorePersonDetailToPersonV1(
       loggedAt: reachOut.loggedAt,
       ...(reachOut.channel === null
         ? {}
-        : { channel: reachOut.channel as NonNullable<Person["reachOutLog"]>[number]["channel"] }),
+        : {
+            channel: reachOut.channel as NonNullable<
+              Person["reachOutLog"]
+            >[number]["channel"],
+          }),
       ...(reachOut.notes === null ? {} : { notes: reachOut.notes }),
     })),
     tags: [...value.tags],
@@ -337,6 +344,42 @@ export function libraryCorePersonDetailToPersonV1(
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
+}
+
+function libraryCorePersonLinkedAccountToAccountV1(
+  value: LibraryCorePersonLinkedAccountV1,
+  personId: string,
+): Account {
+  return {
+    id: value.id,
+    personId,
+    kind: value.kind as Account["kind"],
+    provider: value.provider as Account["provider"],
+    externalId: value.externalId,
+    ...(value.handle === null ? {} : { handle: value.handle }),
+    ...(value.displayName === null ? {} : { displayName: value.displayName }),
+    ...(value.avatarUrl === null ? {} : { avatarUrl: value.avatarUrl }),
+    ...(value.profileUrl === null ? {} : { profileUrl: value.profileUrl }),
+    ...(value.email === null ? {} : { email: value.email }),
+    ...(value.phone === null ? {} : { phone: value.phone }),
+    ...(value.address === null ? {} : { address: value.address }),
+    ...(value.importedAt === null ? {} : { importedAt: value.importedAt }),
+    firstSeenAt: value.firstSeenAt,
+    lastSeenAt: value.lastSeenAt,
+    discoveredFrom: value.discoveredFrom as Account["discoveredFrom"],
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function contactImportSource(
+  provider: string,
+): NonNullable<Friend["contact"]>["importedFrom"] {
+  if (provider === "google_contacts") return "google";
+  if (provider === "macos_contacts") return "macos";
+  if (provider === "ios_contacts") return "ios";
+  if (provider === "android_contacts") return "android";
+  return "web";
 }
 
 /** Convert one closed SQLite Account detail into the shared domain record. */
@@ -390,6 +433,55 @@ export async function readLibraryCoreNormalizedPersonDetailV1(
   return response.person === null
     ? null
     : libraryCorePersonDetailToPersonV1(response.person);
+}
+
+/** Read one selected Friend and its bounded linked Account window from SQLite. */
+export async function readLibraryCoreNormalizedFriendDetailV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  personId: string,
+): Promise<Friend | null> {
+  const response = await runtime.query({
+    personId,
+    queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
+  });
+  if (response.person === null) return null;
+  if (response.linkedAccountCount !== response.linkedAccounts.length) {
+    throw new Error(
+      "The selected Friend exceeds the bounded linked Account detail window",
+    );
+  }
+  const person = libraryCorePersonDetailToPersonV1(response.person);
+  const accounts = response.linkedAccounts.map((account) =>
+    libraryCorePersonLinkedAccountToAccountV1(account, person.id),
+  );
+  const contact = accounts.find((account) => account.kind === "contact");
+  return {
+    ...person,
+    sources: accounts
+      .filter((account) => account.kind === "social")
+      .map((account) => ({
+        platform: account.provider as Platform,
+        authorId: account.externalId,
+        handle: account.handle,
+        displayName: account.displayName,
+        avatarUrl: account.avatarUrl,
+        profileUrl: account.profileUrl,
+      })),
+    ...(contact
+      ? {
+          contact: {
+            importedFrom: contactImportSource(contact.provider),
+            name: contact.displayName ?? person.name,
+            phone: contact.phone,
+            email: contact.email,
+            address: contact.address,
+            nativeId: contact.externalId,
+            importedAt: contact.importedAt ?? contact.createdAt,
+          },
+        }
+      : {}),
+  };
 }
 
 /** Read one exact Account directly from the selected SQLite generation. */

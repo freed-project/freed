@@ -8,9 +8,10 @@ import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 export const LIBRARY_CORE_PERSON_DETAIL_QUERY_ID = "person_detail_v1" as const;
 export const LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_ENTITY_ID_UTF8_BYTES = 2_048;
-export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES = 512 * 1_024;
+export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES = 2 * 1_048_576;
 export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_TAGS = 64;
 export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_REACH_OUTS = 20;
+export const LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_LINKED_ACCOUNTS = 64;
 
 export const LIBRARY_CORE_PERSON_DETAIL_REQUEST_SCHEMA = Object.freeze({
   schemaId: "library_core_person_detail_request_v1",
@@ -26,6 +27,8 @@ export const LIBRARY_CORE_PERSON_DETAIL_RESPONSE_SCHEMA = Object.freeze({
   schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
   canonicalKeys: Object.freeze([
+    "linkedAccountCount",
+    "linkedAccounts",
     "person",
     "queryId",
     "schemaVersion",
@@ -38,7 +41,7 @@ export const LIBRARY_CORE_PERSON_DETAIL_RESPONSE_SCHEMA = Object.freeze({
 
 export const LIBRARY_CORE_PERSON_DETAIL_PROJECTION = Object.freeze({
   projectionId: "library_core_person_detail_v1",
-  sourceTable: "library_persons",
+  sourceTable: "library_persons_and_accounts",
   fullContentAllowed: false,
   orderedColumns: Object.freeze(["id"]),
 });
@@ -61,6 +64,9 @@ export const LIBRARY_CORE_PERSON_DETAIL_NESTED_BOUNDS = Object.freeze({
     maximumItems: LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_REACH_OUTS,
     maximumUnicodeScalarsPerItem: 65_536,
     maximumUtf8BytesPerItem: 65_536,
+  }),
+  linkedAccounts: Object.freeze({
+    maximumItems: LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_LINKED_ACCOUNTS,
   }),
 });
 
@@ -89,6 +95,26 @@ export interface LibraryCorePersonDetailV1 {
   readonly updatedAt: number;
 }
 
+export interface LibraryCorePersonLinkedAccountV1 {
+  readonly address: string | null;
+  readonly avatarUrl: string | null;
+  readonly createdAt: number;
+  readonly discoveredFrom: string;
+  readonly displayName: string | null;
+  readonly email: string | null;
+  readonly externalId: string;
+  readonly firstSeenAt: number;
+  readonly handle: string | null;
+  readonly id: string;
+  readonly importedAt: number | null;
+  readonly kind: string;
+  readonly lastSeenAt: number;
+  readonly phone: string | null;
+  readonly profileUrl: string | null;
+  readonly provider: string;
+  readonly updatedAt: number;
+}
+
 export interface LibraryCorePersonDetailRequestV1 {
   readonly personId: string;
   readonly queryId: typeof LIBRARY_CORE_PERSON_DETAIL_QUERY_ID;
@@ -96,6 +122,8 @@ export interface LibraryCorePersonDetailRequestV1 {
 }
 
 export interface LibraryCorePersonDetailResponseV1 {
+  readonly linkedAccountCount: number;
+  readonly linkedAccounts: readonly LibraryCorePersonLinkedAccountV1[];
   readonly person: LibraryCorePersonDetailV1 | null;
   readonly queryId: typeof LIBRARY_CORE_PERSON_DETAIL_QUERY_ID;
   readonly schemaVersion: typeof LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION;
@@ -103,7 +131,14 @@ export interface LibraryCorePersonDetailResponseV1 {
 }
 
 const REQUEST_KEYS = ["personId", "queryId", "schemaVersion"] as const;
-const RESPONSE_KEYS = ["person", "queryId", "schemaVersion", "source"] as const;
+const RESPONSE_KEYS = [
+  "linkedAccountCount",
+  "linkedAccounts",
+  "person",
+  "queryId",
+  "schemaVersion",
+  "source",
+] as const;
 const PERSON_KEYS = [
   "avatarUrl",
   "bio",
@@ -122,6 +157,25 @@ const PERSON_KEYS = [
   "updatedAt",
 ] as const;
 const REACH_OUT_KEYS = ["channel", "loggedAt", "notes", "reachOutId"] as const;
+const LINKED_ACCOUNT_KEYS = [
+  "address",
+  "avatarUrl",
+  "createdAt",
+  "discoveredFrom",
+  "displayName",
+  "email",
+  "externalId",
+  "firstSeenAt",
+  "handle",
+  "id",
+  "importedAt",
+  "kind",
+  "lastSeenAt",
+  "phone",
+  "profileUrl",
+  "provider",
+  "updatedAt",
+] as const;
 const textEncoder = new TextEncoder();
 
 function failure<T>(error: string): LibraryCoreFeedPageParseResult<T> {
@@ -306,6 +360,71 @@ function parsePerson(value: unknown): LibraryCorePersonDetailV1 | null {
   });
 }
 
+function parseLinkedAccount(
+  value: unknown,
+): LibraryCorePersonLinkedAccountV1 | null {
+  const record = closedRecord(value, LINKED_ACCOUNT_KEYS);
+  if (!record) return null;
+  const address = boundedText(record.address, 4_096, true);
+  const avatarUrl = boundedText(record.avatarUrl, 8_192, true);
+  const discoveredFrom = boundedText(record.discoveredFrom, 64);
+  const displayName = boundedText(record.displayName, 512, true);
+  const email = boundedText(record.email, 4_096, true);
+  const externalId = boundedText(record.externalId, 4_096);
+  const handle = boundedText(record.handle, 512, true);
+  const id = boundedText(record.id, 2_048);
+  const importedAt = nullableSafeInteger(record.importedAt);
+  const kind = boundedText(record.kind, 64);
+  const phone = boundedText(record.phone, 512, true);
+  const profileUrl = boundedText(record.profileUrl, 8_192, true);
+  const provider = boundedText(record.provider, 64);
+  if (
+    address === undefined ||
+    avatarUrl === undefined ||
+    discoveredFrom === undefined ||
+    !discoveredFrom ||
+    displayName === undefined ||
+    email === undefined ||
+    externalId === undefined ||
+    !externalId ||
+    handle === undefined ||
+    id === undefined ||
+    !id ||
+    importedAt === undefined ||
+    kind === undefined ||
+    !kind ||
+    phone === undefined ||
+    profileUrl === undefined ||
+    provider === undefined ||
+    !provider ||
+    !isLibraryCoreNonnegativeSafeInteger(record.createdAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.firstSeenAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.lastSeenAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.updatedAt)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    address,
+    avatarUrl,
+    createdAt: record.createdAt,
+    discoveredFrom,
+    displayName,
+    email,
+    externalId,
+    firstSeenAt: record.firstSeenAt,
+    handle,
+    id,
+    importedAt,
+    kind,
+    lastSeenAt: record.lastSeenAt,
+    phone,
+    profileUrl,
+    provider,
+    updatedAt: record.updatedAt,
+  });
+}
+
 export function parseLibraryCorePersonDetailResponseV1(
   value: unknown,
   requestValue?: unknown,
@@ -327,12 +446,35 @@ export function parseLibraryCorePersonDetailResponseV1(
   }
   const person = record.person === null ? null : parsePerson(record.person);
   if (
+    !Array.isArray(record.linkedAccounts) ||
+    record.linkedAccounts.length >
+      LIBRARY_CORE_PERSON_DETAIL_MAXIMUM_LINKED_ACCOUNTS ||
+    !isLibraryCoreNonnegativeSafeInteger(record.linkedAccountCount)
+  ) {
+    return failure("person detail linked accounts are invalid");
+  }
+  const linkedAccounts =
+    person === null ? [] : record.linkedAccounts.map(parseLinkedAccount);
+  if (
     (record.person !== null && person === null) ||
-    (person !== null && request?.ok && person.id !== request.value.personId)
+    (person !== null && request?.ok && person.id !== request.value.personId) ||
+    (person === null &&
+      (record.linkedAccountCount !== 0 ||
+        record.linkedAccounts.length !== 0)) ||
+    linkedAccounts.some((account) => account === null) ||
+    record.linkedAccountCount < linkedAccounts.length ||
+    linkedAccounts.some(
+      (account, index) =>
+        index > 0 && linkedAccounts[index - 1]!.id >= account!.id,
+    )
   ) {
     return failure("person detail row is invalid");
   }
   const response = Object.freeze({
+    linkedAccountCount: record.linkedAccountCount,
+    linkedAccounts: Object.freeze(
+      linkedAccounts as LibraryCorePersonLinkedAccountV1[],
+    ),
     person,
     queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
     schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
