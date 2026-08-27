@@ -64,6 +64,7 @@ export * from "./account-detail-contracts.js";
 export * from "./contact-match-contracts.js";
 export * from "./rss-feed-detail-contracts.js";
 export * from "./friends-identity-page-contracts.js";
+export * from "./friends-directory-contracts.js";
 export * from "./device-graph-layout-mutation-contracts.js";
 export * from "./selective-content-contracts.js";
 export * from "./item-detail-contracts.js";

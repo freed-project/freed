@@ -442,7 +442,7 @@ Typed social profile search results now expose the same person workflow from the
 
 Reader author names now route directly into the matching Friends channel detail panel, using the existing captured-account workflow so a post can move from reading to identity review in one click.
 
-The Friends overview, suggestions, selected Person and Account timelines, map locations, and Friend editor author picker now consume only bounded typed SQLite results on Freed Desktop and the PWA. Query failure returns an empty, non-loading view for that source generation. It never acquires or rebuilds a renderer FeedItem corpus. The editor retains at most 50 candidate Accounts, pages the normalized Account graph through one source fence, and revalidates every selected Account through an exact point query before saving provenance.
+The Friends overview queries `friends_directory_page_v1` on Freed Desktop and the PWA. SQLite owns search, relationship filters, outreach state, location presence, exact filtered totals, and all four sort modes. Each source-bound response contains at most 64 compact Person rows under 512 KiB. React retains only the visible page. Selected Person and Account details use exact primary-key queries. Suggestions, timelines, map locations, and the Friend editor author picker use bounded typed SQLite results. Query failure returns an empty, non-loading view for that source generation. No Friends surface acquires or rebuilds a renderer FeedItem corpus. The editor retains at most 50 candidate Accounts, pages the normalized Account graph through one source fence, and revalidates every selected Account through an exact point query before saving provenance.
 
 The product Friends view now fixes decorative dust to the 100,000-star Raw WebGPU vertex-generated path. The temporary buffered, procedural, and disabled comparison control and its local-storage override have been removed from the shipped interface. Build timing remains visible for diagnostics without exposing renderer experiments as product controls.
 
@@ -639,6 +639,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.184 | Add and activate the shared native and PWA `account_timeline_v1` query for selected unlinked Accounts, with a stable Account ID, indexed typed identity join, exact count, bounded compact cards, and Account-bound source-fenced cursors | High | Done |
 | 8.185 | Remove the renderer-corpus compatibility path from the Friends overview, suggestions, selected timelines, and map locations on Freed Desktop and PWA, with source-generation fencing and fail-closed query semantics | High | Done |
 | 8.186 | Replace the Friend editor whole-library scan and rollback flag with bounded normalized Account pages, a 50-candidate renderer window, and exact source-fenced Account detail validation before save on Freed Desktop and PWA | High | Done |
+| 8.187 | Query the Friends overview directly from SQLite with bounded search, filters, sorts, exact totals, and request-bound pagination | High | Done |
 
 ---
 

@@ -31,6 +31,12 @@ import {
   type LibraryCoreRssFeedPageResponseV1,
 } from "./friends-identity-page-contracts.js";
 import {
+  parseLibraryCoreFriendsDirectoryPageRequestV1,
+  parseLibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCoreFriendsDirectoryPageRequestV1,
+  type LibraryCoreFriendsDirectoryPageResponseV1,
+} from "./friends-directory-contracts.js";
+import {
   parseLibraryCoreChangeFeedRequestV1,
   parseLibraryCoreChangeFeedResponseV1,
   type LibraryCoreChangeFeedRequestV1,
@@ -271,6 +277,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreFeedBrowsePageRequestV3
   | LibraryCoreFeedPageRequestV1
   | LibraryCoreFilterScopeSummaryRequestV1
+  | LibraryCoreFriendsDirectoryPageRequestV1
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
@@ -309,6 +316,8 @@ export type LibraryCoreSqliteQueryResponseFor<
               ? LibraryCoreFeedPageResponseV1
               : T extends LibraryCoreFilterScopeSummaryRequestV1
                 ? LibraryCoreFilterScopeSummaryResponseV1
+                  : T extends LibraryCoreFriendsDirectoryPageRequestV1
+                    ? LibraryCoreFriendsDirectoryPageResponseV1
                 : T extends LibraryCoreItemDetailRequestV1
                   ? LibraryCoreItemDetailResponseV1
                   : T extends LibraryCoreItemReaderBodyRequestV1
@@ -374,6 +383,11 @@ export function parseLibraryCoreSqliteQueryResponse<
                         value,
                         request,
                       )
+                      : request.queryId === "friends_directory_page_v1"
+                        ? parseLibraryCoreFriendsDirectoryPageResponseV1(
+                            value,
+                            request,
+                          )
                     : request.queryId === "item_detail_v1"
                       ? parseLibraryCoreItemDetailResponseV1(value, request)
                       : request.queryId === "item_reader_body_v1"
@@ -382,7 +396,10 @@ export function parseLibraryCoreSqliteQueryResponse<
                             request,
                           )
                         : request.queryId === "background_item_page_v1"
-                          ? parseLibraryCoreItemScanResponseV1(value, request)
+                              ? parseLibraryCoreItemScanResponseV1(
+                                  value,
+                                  request,
+                                )
                           : request.queryId === "content_fetch_claim_v1"
                             ? parseLibraryCoreContentFetchPageResponseV1(
                                 value,
@@ -403,17 +420,20 @@ export function parseLibraryCoreSqliteQueryResponse<
                                       value,
                                       request,
                                     )
-                                  : request.queryId === "person_graph_page_v1"
+                                      : request.queryId ===
+                                          "person_graph_page_v1"
                                     ? parseLibraryCorePersonGraphPageResponseV1(
                                         value,
                                         request,
                                       )
-                                    : request.queryId === "person_timeline_v1"
+                                        : request.queryId ===
+                                            "person_timeline_v1"
                                       ? parseLibraryCorePersonTimelineResponseV1(
                                           value,
                                           request,
                                         )
-                                      : request.queryId === "persons_graph_v1"
+                                          : request.queryId ===
+                                              "persons_graph_v1"
                                         ? parseLibraryCorePersonsGraphResponseV1(
                                             value,
                                             request,
@@ -961,17 +981,24 @@ export function parseLibraryCoreSqliteWorkerRequest(
                   ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
                   : value.query.queryId === "filter_scope_summary_v1"
                     ? parseLibraryCoreFilterScopeSummaryRequestV1(value.query)
+                      : value.query.queryId === "friends_directory_page_v1"
+                        ? parseLibraryCoreFriendsDirectoryPageRequestV1(
+                            value.query,
+                          )
                     : value.query.queryId === "item_detail_v1"
                       ? parseLibraryCoreItemDetailRequestV1(value.query)
                       : value.query.queryId === "item_reader_body_v1"
-                        ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
+                            ? parseLibraryCoreItemReaderBodyRequestV1(
+                                value.query,
+                              )
                         : value.query.queryId === "background_item_page_v1"
                           ? parseLibraryCoreItemScanRequestV1(value.query)
                           : value.query.queryId === "content_fetch_claim_v1"
                             ? parseLibraryCoreContentFetchPageRequestV1(
                                 value.query,
                               )
-                            : value.query.queryId === "provider_media_page_v1"
+                                : value.query.queryId ===
+                                    "provider_media_page_v1"
                               ? parseLibraryCoreProviderMediaPageRequestV1(
                                   value.query,
                                 )
@@ -1028,7 +1055,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                                     ? parseLibraryCoreSearchPageRequestV1(
                                                         value.query,
                                                       )
-                                                    : value.query.queryId ===
+                                                        : value.query
+                                                              .queryId ===
                                                         "preferences_snapshot_v1"
                                                       ? parseLibraryCorePreferencesSnapshotRequestV1(
                                                           value.query,

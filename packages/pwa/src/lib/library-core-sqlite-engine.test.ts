@@ -2740,6 +2740,53 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }).account,
     ).toBeNull();
+    const friendsDirectoryRequest = {
+      cancellationId: operationId("cancel-friends-directory-1"),
+      cursor: null,
+      filters: [],
+      limit: 1,
+      nowMs: 1_800_000_000_000,
+      queryId: "friends_directory_page_v1" as const,
+      readerSessionId: operationId("reader-friends-directory-1"),
+      schemaVersion: 1 as const,
+      search: "",
+      sort: "name" as const,
+    };
+    const firstFriendsDirectoryPage = engine.query(friendsDirectoryRequest);
+    expect(firstFriendsDirectoryPage).toMatchObject({
+      rows: [{ id: "person-1", name: "Ada", needsOutreach: true }],
+      totalCount: 2,
+    });
+    expect(firstFriendsDirectoryPage.nextCursor).not.toBeNull();
+    expect(
+      engine
+        .query({
+          ...friendsDirectoryRequest,
+          cursor: firstFriendsDirectoryPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["person-2"]);
+    expect(
+      engine.query({
+        ...friendsDirectoryRequest,
+        filters: ["no_contact"],
+        limit: 32,
+      }),
+    ).toMatchObject({ rows: [{ id: "person-2" }], totalCount: 1 });
+    expect(
+      engine.query({
+        ...friendsDirectoryRequest,
+        limit: 32,
+        search: "grace-remote",
+      }),
+    ).toMatchObject({ rows: [{ id: "person-2" }], totalCount: 1 });
+    expect(() =>
+      engine.query({
+        ...friendsDirectoryRequest,
+        cursor: firstFriendsDirectoryPage.nextCursor,
+        search: "Grace",
+      }),
+    ).toThrow("cursor is invalid");
     expect(
       engine.query({
         emails: [],

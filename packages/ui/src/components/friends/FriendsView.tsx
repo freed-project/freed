@@ -22,8 +22,8 @@ import { formatDistanceToNow } from "date-fns";
 import {
   buildFriendCandidateSuggestionsFromActivity,
   compareUtf8Binary,
-  isInReconnectZone,
 } from "@freed/shared";
+import type { LibraryCoreFriendsDirectoryRowV1 } from "@freed/shared/library-core";
 import {
   useAppStore,
   usePlatform,
@@ -37,6 +37,8 @@ import {
   useLibraryAccountDetail,
   useLibraryPersonDetail,
 } from "../../hooks/useLibraryIdentityDetail.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -53,8 +55,6 @@ import {
   buildFriendsWorkspaceIndexes,
   friendActivitySourceKey,
   friendFromPersonWithIndexes,
-  filterAndSortFriendOverview,
-  type FriendOverviewEntry,
   type FriendOverviewFilter,
   type FriendOverviewSort,
 } from "../../lib/friends-workspace.js";
@@ -108,6 +108,7 @@ const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 const MAP_SURFACE_COMMIT_RETRY_MS = 150;
+const NEED_OUTREACH_DIRECTORY_FILTERS = ["need_outreach"] as const;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -252,24 +253,21 @@ function RelationshipTierControl({
 }
 
 function FriendListRow({
-  entry,
+  row,
   selected,
   onSelect,
 }: {
-  entry: FriendOverviewEntry;
+  row: LibraryCoreFriendsDirectoryRowV1;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const lastPost = entry.lastPostAt
-    ? formatDistanceToNow(entry.lastPostAt, { addSuffix: true })
+  const lastPost = row.latestActivityAt
+    ? formatDistanceToNow(row.latestActivityAt, { addSuffix: true })
     : "No posts yet";
-  const lastContact = entry.lastContactAt
-    ? formatDistanceToNow(entry.lastContactAt, { addSuffix: true })
+  const lastContact = row.lastContactAt
+    ? formatDistanceToNow(row.lastContactAt, { addSuffix: true })
     : "Never contacted";
-  const avatarUrl = resolveFriendAvatarUrl(
-    entry.friend,
-    entry.avatarUrlCandidates,
-  );
+  const avatarUrl = row.latestAvatarUrl ?? row.avatarUrl;
 
   return (
     <button
@@ -283,7 +281,7 @@ function FriendListRow({
     >
       <div className="flex items-start gap-3">
         <FriendAvatar
-          name={safeText(entry.friend.name, "Unnamed friend")}
+          name={safeText(row.name, "Unnamed friend")}
           avatarUrl={avatarUrl}
           size={40}
         />
@@ -291,23 +289,23 @@ function FriendListRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {safeText(entry.friend.name, "Unnamed friend")}
+              {safeText(row.name, "Unnamed friend")}
             </p>
             <div className="flex shrink-0 items-center gap-2">
-              <RelationshipTierBadge person={entry.friend} />
-              <CareDots level={entry.friend.careLevel} />
+              <RelationshipTierBadge person={row} />
+              <CareDots level={row.careLevel as 1 | 2 | 3 | 4 | 5} />
             </div>
           </div>
-          {entry.friend.bio && (
+          {row.bio && (
             <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
-              {entry.friend.bio}
+              {row.bio}
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
             <span>{lastPost}</span>
             <span className="text-[color:var(--theme-text-soft)]">•</span>
             <span>{lastContact}</span>
-            {entry.hasLocation && (
+            {row.hasLocation && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
                 <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
@@ -316,7 +314,7 @@ function FriendListRow({
                 </span>
               </>
             )}
-            {entry.needsOutreach && (
+            {row.needsOutreach && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
                 <span className="theme-feedback-text-warning">
@@ -656,6 +654,24 @@ export function FriendsView({
   const isDraggingSidebar = useRef(false);
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile();
+  const directoryFilters = useMemo(
+    () => [...activeFilters].sort(),
+    [activeFilters],
+  );
+  const friendsDirectory = useLibraryFriendsDirectory({
+    filters: directoryFilters,
+    search: searchQuery,
+    sort: sortBy,
+    sourceVersion: searchCorpusVersion,
+  });
+  const reconnectDirectory = useLibraryFriendsDirectory({
+    filters: NEED_OUTREACH_DIRECTORY_FILTERS,
+    limit: 1,
+    search: "",
+    sort: "last_contact",
+    sourceVersion: searchCorpusVersion,
+  });
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
 
   const { googleContacts, queryLibraryCore } = usePlatform();
   const contactSync = useContactSyncContext();
@@ -695,13 +711,8 @@ export function FriendsView({
     () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
     [friendPersons, friendsWorkspaceIndexes],
   );
-  const friendList = useMemo(() => Object.values(friendsById), [friendsById]);
-  const socialAccountCount = useMemo(
-    () =>
-      Object.values(accounts).filter((account) => account.kind === "social")
-        .length,
-    [accounts],
-  );
+  const friendCount = libraryFacets.friendPersonCount;
+  const socialAccountCount = libraryFacets.socialAccountCount;
 
   const selectedPersonDetail = useLibraryPersonDetail(
     selectedPersonId,
@@ -786,10 +797,7 @@ export function FriendsView({
     [nativeActivity],
   );
 
-  const reconnectCount = useMemo(
-    () => friendPersons.filter((person) => isInReconnectZone(person)).length,
-    [friendPersons],
-  );
+  const reconnectCount = reconnectDirectory.totalCount;
 
   const accountLinkSuggestionGroups = useMemo(
     () => buildAccountLinkSuggestionGroups(persons, accounts),
@@ -877,21 +885,7 @@ export function FriendsView({
       {},
       friendsGraphRequest.recentWindow.endMs,
     );
-  }, [
-    friendsById,
-    friendsGraphRequest.recentWindow.endMs,
-    nativeActivity,
-  ]);
-  const filteredOverviewEntries = useMemo(
-    () =>
-      filterAndSortFriendOverview(
-        overviewEntries,
-        searchQuery,
-        activeFilters,
-        sortBy,
-      ),
-    [activeFilters, overviewEntries, searchQuery, sortBy],
-  );
+  }, [friendsById, friendsGraphRequest.recentWindow.endMs, nativeActivity]);
   const sourceActivityEvidence = useMemo(
     () =>
       buildFriendSourceActivityEvidence({
@@ -928,17 +922,17 @@ export function FriendsView({
     [overviewEntries, selectedPerson],
   );
   const friendOverviewVirtualizer = useVirtualizer({
-    count: filteredOverviewEntries.length,
+    count: friendsDirectory.rows.length,
     getScrollElement: () => friendOverviewScrollRef.current,
     estimateSize: () => FRIEND_OVERVIEW_ROW_ESTIMATE,
     overscan: 8,
-    getItemKey: (index) => filteredOverviewEntries[index]?.friend.id ?? index,
+    getItemKey: (index) => friendsDirectory.rows[index]?.id ?? index,
   });
 
   useEffect(() => {
     friendOverviewVirtualizer.measure();
   }, [
-    filteredOverviewEntries.length,
+    friendsDirectory.rows.length,
     friendOverviewVirtualizer,
     searchQuery,
     sortBy,
@@ -1484,7 +1478,7 @@ export function FriendsView({
               Friends
             </h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {friendList.length.toLocaleString()} total,{" "}
+              {friendCount.toLocaleString()} total,{" "}
               {socialAccountCount.toLocaleString()} account
               {socialAccountCount === 1 ? "" : "s"},{" "}
               {reconnectCount.toLocaleString()} due to reconnect
@@ -1576,8 +1570,8 @@ export function FriendsView({
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-[color:var(--theme-text-muted)]">
-            Showing {filteredOverviewEntries.length.toLocaleString()} of{" "}
-            {friendList.length.toLocaleString()}
+            Showing {friendsDirectory.rows.length.toLocaleString()} of{" "}
+            {friendsDirectory.totalCount.toLocaleString()}
           </p>
           <select
             value={sortBy}
@@ -1600,7 +1594,7 @@ export function FriendsView({
         data-testid="friends-overview-scroll"
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        {friendsRows.graphLoading ? (
+        {friendsDirectory.loading ? (
           <div
             className="theme-panel-muted rounded-xl px-4 py-6 text-center"
             data-testid="friends-activity-loading"
@@ -1609,7 +1603,8 @@ export function FriendsView({
               Loading friend activity...
             </p>
           </div>
-        ) : friendCandidateSuggestions.length > 0 ? (
+        ) : !friendsRows.graphLoading &&
+          friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1643,7 +1638,7 @@ export function FriendsView({
           </div>
         ) : null}
 
-        {!friendsRows.graphLoading && filteredOverviewEntries.length === 0 ? (
+        {!friendsDirectory.loading && friendsDirectory.rows.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               No friends match those filters
@@ -1652,15 +1647,15 @@ export function FriendsView({
               Try clearing a filter or changing the search query.
             </p>
           </div>
-        ) : !friendsRows.graphLoading ? (
+        ) : !friendsDirectory.loading ? (
           <div
             data-testid="friends-overview-list"
             className="relative"
             style={{ height: friendOverviewVirtualizer.getTotalSize() }}
           >
             {friendOverviewVirtualizer.getVirtualItems().map((virtualItem) => {
-              const entry = filteredOverviewEntries[virtualItem.index];
-              if (!entry) return null;
+              const row = friendsDirectory.rows[virtualItem.index];
+              if (!row) return null;
               return (
                 <div
                   key={virtualItem.key}
@@ -1671,18 +1666,49 @@ export function FriendsView({
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
                   <FriendListRow
-                    entry={entry}
-                    selected={entry.friend.id === selectedPerson?.id}
-                    onSelect={() =>
-                      handleSelectPerson(
-                        persons[entry.friend.id] ?? friendPersons[0],
-                        true,
-                      )
-                    }
+                    row={row}
+                    selected={row.id === selectedPerson?.id}
+                    onSelect={() => {
+                      setSelectedPerson(row.id);
+                      focusGraphNode(row.id);
+                    }}
                   />
                 </div>
               );
             })}
+          </div>
+        ) : null}
+        {friendsDirectory.hasPrevious || friendsDirectory.hasNext ? (
+          <div className="flex items-center justify-between gap-3 py-3">
+            <button
+              type="button"
+              className={BUTTON_CHROME}
+              disabled={
+                !friendsDirectory.hasPrevious || friendsDirectory.loadingPage
+              }
+              onClick={() => {
+                friendsDirectory.previousPage();
+                friendOverviewScrollRef.current?.scrollTo({ top: 0 });
+              }}
+            >
+              Previous
+            </button>
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
+              Page {friendsDirectory.pageNumber.toLocaleString()}
+            </span>
+            <button
+              type="button"
+              className={BUTTON_CHROME}
+              disabled={
+                !friendsDirectory.hasNext || friendsDirectory.loadingPage
+              }
+              onClick={() => {
+                friendsDirectory.nextPage();
+                friendOverviewScrollRef.current?.scrollTo({ top: 0 });
+              }}
+            >
+              Next
+            </button>
           </div>
         ) : null}
       </div>
@@ -1882,12 +1908,12 @@ export function FriendsView({
           </div>
           <div>
             <p className="font-medium text-[color:var(--theme-text-primary)]">
-              {friendList.length === 0
+              {friendCount === 0
                 ? "No friends yet"
                 : "No friend graph nodes yet"}
             </p>
             <p className="mt-1 max-w-xs text-sm text-[color:var(--theme-text-muted)]">
-              {friendList.length === 0
+              {friendCount === 0
                 ? "Switch to All content to explore captured accounts, or add your first friend now."
                 : "Link more channels or switch to All content to explore captured accounts."}
             </p>
@@ -2137,10 +2163,10 @@ export function FriendsView({
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
   const graphIsEmpty =
-    (effectiveMode === "friends" && friendList.length === 0) ||
+    (effectiveMode === "friends" && friendCount === 0) ||
     (effectiveMode === "all_content" &&
       socialAccountCount === 0 &&
-      friendList.length === 0);
+      friendCount === 0);
   const renderGraphLoadingState = (overlay = false) => (
     <div
       className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}

@@ -238,6 +238,13 @@
         index supplies both directions without a temporary sort. Each request
         reads at most 129 rows, returns at most 128, and carries no historical
         renderer source sequence.
+  - [x] `friends_directory_page_v1` applies Friends search, relationship
+        filters, outreach state, location presence, and the selected ordering
+        inside browser SQLite. The same generated SQL and closed request run in
+        native Rust. Each response returns at most 64 compact Person rows under
+        512 KiB, carries an exact filtered total, and binds its opaque offset
+        cursor to the complete request and SQLite source generation. The
+        Friends overview retains only its visible page in React.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

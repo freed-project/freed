@@ -38,6 +38,10 @@ const CONTACT_MATCH_MAXIMUM_RESPONSE_BYTES: usize = 128 * 1_024;
 const RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 64 * 1_024;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const FRIENDS_DIRECTORY_MAXIMUM_LIMIT: usize = 64;
+const FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES: usize = 1_024;
+const FRIENDS_DIRECTORY_RECENT_WINDOW_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES: usize = 128;
 const PERSONS_GRAPH_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PERSONS_GRAPH_SIGNALS: [&str; 20] = [
@@ -326,6 +330,20 @@ pub struct NormalizedFilterScopeSummaryRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendsDirectoryPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub filters: Vec<String>,
+    pub limit: usize,
+    pub now_ms: i64,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+    pub search: String,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -375,6 +393,7 @@ pub enum NormalizedQueryRequestV1 {
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
     FeedPage(NormalizedFeedPageRequestV1),
     FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1),
+    FriendsDirectoryPage(NormalizedFriendsDirectoryPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
@@ -1124,6 +1143,35 @@ pub struct NormalizedFilterScopeSummaryResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendsDirectoryRowV1 {
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub care_level: i64,
+    pub has_location: bool,
+    pub id: String,
+    pub is_recently_active: bool,
+    pub last_contact_at: Option<i64>,
+    pub latest_activity_at: Option<i64>,
+    pub latest_avatar_url: Option<String>,
+    pub name: String,
+    pub needs_outreach: bool,
+    pub reach_out_interval_days: Option<i64>,
+    pub relationship_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendsDirectoryPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedFriendsDirectoryRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_count: i64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
@@ -1135,6 +1183,7 @@ pub enum NormalizedQueryResponseV1 {
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
     FeedPage(NormalizedFeedPageResponseV1),
     FilterScopeSummary(NormalizedFilterScopeSummaryResponseV1),
+    FriendsDirectoryPage(NormalizedFriendsDirectoryPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
@@ -3612,6 +3661,216 @@ fn query_filter_scope_summary(
     Ok(response)
 }
 
+fn query_friends_directory_page(
+    connection: &mut Connection,
+    request: NormalizedFriendsDirectoryPageRequestV1,
+) -> Result<NormalizedFriendsDirectoryPageResponseV1, NormalizedSqliteError> {
+    let valid_filter = |value: &str| {
+        matches!(
+            value,
+            "close_friends" | "has_location" | "need_outreach" | "no_contact" | "recently_active"
+        )
+    };
+    let valid_sort = matches!(
+        request.sort.as_str(),
+        "care_level" | "last_contact" | "name" | "recent_activity"
+    );
+    if request.schema_version != 1
+        || !(1..=FRIENDS_DIRECTORY_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !valid_safe_integer(request.now_ms)
+        || request.search.len() > FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES
+        || !valid_sort
+        || request.filters.len() > 5
+        || request.filters.iter().any(|value| !valid_filter(value))
+        || request.filters.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return Err(invalid(
+            "normalized Friends directory page request is invalid",
+        ));
+    }
+    let binding_bytes = serde_json::to_vec(&(
+        &request.filters,
+        request.now_ms,
+        &request.search,
+        &request.sort,
+    ))
+    .map_err(|_| invalid("normalized Friends directory binding is invalid"))?;
+    let binding_digest = lower_hex(&Sha256::digest(binding_bytes));
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "friends_directory_page_v1")
+        .ok_or(invalid(
+            "normalized Friends directory page program is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.global_id != binding_digest
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized Friends directory page cursor is stale"));
+    }
+    let offset = cursor.as_ref().map_or(0, |cursor| cursor.sort_at);
+    let need_outreach = i64::from(request.filters.iter().any(|value| value == "need_outreach"));
+    let no_contact = i64::from(request.filters.iter().any(|value| value == "no_contact"));
+    let close_friends = i64::from(request.filters.iter().any(|value| value == "close_friends"));
+    let recently_active = i64::from(
+        request
+            .filters
+            .iter()
+            .any(|value| value == "recently_active"),
+    );
+    let has_location = i64::from(request.filters.iter().any(|value| value == "has_location"));
+    let recent_cutoff = request
+        .now_ms
+        .saturating_sub(FRIENDS_DIRECTORY_RECENT_WINDOW_MS)
+        .max(0);
+    let total_count = transaction.query_row(
+        program.count_sql,
+        params![
+            request.search,
+            need_outreach,
+            no_contact,
+            close_friends,
+            recently_active,
+            has_location,
+            request.now_ms,
+            recent_cutoff,
+        ],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if !valid_safe_integer(total_count) {
+        return Err(invalid(
+            "normalized Friends directory total count is invalid",
+        ));
+    }
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(
+        params![
+            request.search,
+            need_outreach,
+            no_contact,
+            close_friends,
+            recently_active,
+            has_location,
+            request.now_ms,
+            recent_cutoff,
+            request.sort,
+            offset,
+            i64::try_from(request.limit + 1).expect("bounded Friends directory limit"),
+        ],
+        |row| {
+            let boolean = |name| -> rusqlite::Result<bool> {
+                match row.get::<_, i64>(name)? {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    _ => Err(rusqlite::Error::InvalidQuery),
+                }
+            };
+            Ok(NormalizedFriendsDirectoryRowV1 {
+                avatar_url: row.get("avatarUrl")?,
+                bio: row.get("bio")?,
+                care_level: row.get("careLevel")?,
+                has_location: boolean("hasLocation")?,
+                id: row.get("id")?,
+                is_recently_active: boolean("isRecentlyActive")?,
+                last_contact_at: row.get("lastContactAt")?,
+                latest_activity_at: row.get("latestActivityAt")?,
+                latest_avatar_url: row.get("latestAvatarUrl")?,
+                name: row.get("name")?,
+                needs_outreach: boolean("needsOutreach")?,
+                reach_out_interval_days: row.get("reachOutIntervalDays")?,
+                relationship_status: row.get("relationshipStatus")?,
+            })
+        },
+    )?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.maximum_scan_rows {
+        return Err(invalid(
+            "normalized Friends directory page exceeded its row bound",
+        ));
+    }
+    let mut has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    for row in &rows {
+        let bounded = |value: &Option<String>, maximum| {
+            value.as_ref().is_none_or(|text| text.len() <= maximum)
+        };
+        if row.id.is_empty()
+            || row.id.len() > 2_048
+            || row.name.len() > 4_096
+            || !bounded(&row.avatar_url, 8_192)
+            || !bounded(&row.bio, 8_192)
+            || !bounded(&row.latest_avatar_url, 8_192)
+            || row.relationship_status != "friend"
+            || !(1..=5).contains(&row.care_level)
+            || row
+                .reach_out_interval_days
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .last_contact_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .latest_activity_at
+                .is_some_and(|value| !valid_safe_integer(value))
+        {
+            return Err(invalid("normalized Friends directory row is invalid"));
+        }
+    }
+    let response = loop {
+        let next_cursor = if has_more {
+            if rows.is_empty() {
+                return Err(invalid(
+                    "normalized Friends directory cursor row is missing",
+                ));
+            }
+            Some(encode_cursor(&FeedPageCursorV1 {
+                generation_id: generation_id.clone(),
+                transition_sequence: source_revision,
+                projection_revision: source_revision,
+                sort_at: offset + i64::try_from(rows.len()).expect("bounded Friends page"),
+                global_id: binding_digest.clone(),
+            })?)
+        } else {
+            None
+        };
+        let candidate = NormalizedFriendsDirectoryPageResponseV1 {
+            next_cursor,
+            query_id: "friends_directory_page_v1".to_owned(),
+            rows: rows.clone(),
+            schema_version: 1,
+            source: NormalizedFeedPageSourceV1 {
+                generation_id: generation_id.clone(),
+                projection_revision: source_revision,
+                transition_sequence: source_revision,
+            },
+            total_count,
+        };
+        if serde_json::to_vec(&candidate)
+            .map_err(|_| invalid("normalized Friends directory response is invalid"))?
+            .len()
+            <= FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES
+        {
+            break candidate;
+        }
+        if rows.len() <= 1 {
+            return Err(invalid(
+                "normalized Friends directory page contains an oversized row",
+            ));
+        }
+        rows.pop();
+        has_more = true;
+    };
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_facet_summary(
     connection: &mut Connection,
     request: NormalizedFacetSummaryRequestV1,
@@ -5368,6 +5627,11 @@ pub fn query_normalized_v1(
                 query_filter_scope_summary(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::FriendsDirectoryPage(request) => {
+            Ok(NormalizedQueryResponseV1::FriendsDirectoryPage(
+                query_friends_directory_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
@@ -5486,6 +5750,12 @@ pub fn query_normalized_json_v1(
         "filter_scope_summary_v1" => {
             decode_request!(NormalizedFilterScopeSummaryRequestV1, FilterScopeSummary)
         }
+        "friends_directory_page_v1" => {
+            decode_request!(
+                NormalizedFriendsDirectoryPageRequestV1,
+                FriendsDirectoryPage
+            )
+        }
         "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
         "item_reader_body_v1" => {
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
@@ -5557,6 +5827,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FilterScopeSummary(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FriendsDirectoryPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
@@ -7831,6 +8102,57 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
+        let directory_request = NormalizedFriendsDirectoryPageRequestV1 {
+            cancellation_id: "cancel-friends-directory".to_owned(),
+            cursor: None,
+            filters: vec![],
+            limit: 1,
+            now_ms: 1_800_000_000_000,
+            reader_session_id: "reader-friends-directory".to_owned(),
+            schema_version: 1,
+            search: String::new(),
+            sort: "name".to_owned(),
+        };
+        let NormalizedQueryResponseV1::FriendsDirectoryPage(first_directory) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FriendsDirectoryPage(directory_request.clone()),
+        )
+        .expect("first Friends directory page") else {
+            panic!("Friends directory response");
+        };
+        assert_eq!(first_directory.total_count, 2);
+        assert_eq!(first_directory.rows[0].id, "person-1");
+        assert!(first_directory.rows[0].needs_outreach);
+        let NormalizedQueryResponseV1::FriendsDirectoryPage(second_directory) =
+            query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::FriendsDirectoryPage(
+                    NormalizedFriendsDirectoryPageRequestV1 {
+                        cursor: first_directory.next_cursor,
+                        ..directory_request.clone()
+                    },
+                ),
+            )
+            .expect("second Friends directory page")
+        else {
+            panic!("Friends directory response");
+        };
+        assert_eq!(second_directory.rows[0].id, "person-2");
+        let NormalizedQueryResponseV1::FriendsDirectoryPage(no_contact) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FriendsDirectoryPage(
+                NormalizedFriendsDirectoryPageRequestV1 {
+                    filters: vec!["no_contact".to_owned()],
+                    limit: 32,
+                    ..directory_request
+                },
+            ),
+        )
+        .expect("Friends without contact") else {
+            panic!("Friends directory response");
+        };
+        assert_eq!(no_contact.total_count, 1);
+        assert_eq!(no_contact.rows[0].id, "person-2");
         for query_id in [
             "person_graph_page_v1",
             "account_graph_page_v1",

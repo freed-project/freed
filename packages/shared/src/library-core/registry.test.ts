@@ -970,6 +970,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.map_markers_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.filter_scope_summary_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.friends_directory_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.item_reader_body_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||

@@ -24,8 +24,16 @@ import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreAccountGraphPageResponseV1,
   LibraryCoreAccountGraphRowV1,
+  LibraryCoreFriendsDirectoryPageResponseV1,
+  LibraryCoreFriendsDirectoryPageRequestV1,
+  LibraryCoreFriendsDirectoryRowV1,
   LibraryCoreRssFeedPageResponseV1,
   LibraryCoreRssFeedPageRowV1,
+} from "@freed/shared/library-core";
+import {
+  decodeLibraryCoreFriendsDirectoryCursorV1,
+  encodeLibraryCoreFriendsDirectoryCursorV1,
+  libraryCoreFriendsDirectoryBindingDigestV1,
 } from "@freed/shared/library-core";
 import {
   PlatformProvider,
@@ -70,6 +78,10 @@ import {
   useLibraryFilterScopeSummary,
   type LibraryFilterScopeSummaryState,
 } from "./useLibraryFilterScopeSummary.js";
+import {
+  useLibraryFriendsDirectory,
+  type LibraryFriendsDirectoryState,
+} from "./useLibraryFriendsDirectory.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -326,6 +338,24 @@ function SocialChannelPageHarness({
   return null;
 }
 
+function FriendsDirectoryHarness({
+  onState,
+  search = "",
+}: {
+  onState: (state: LibraryFriendsDirectoryState) => void;
+  search?: string;
+}) {
+  onState(
+    useLibraryFriendsDirectory({
+      filters: [],
+      search,
+      sort: "name",
+      sourceVersion: 1,
+    }),
+  );
+  return null;
+}
+
 function rssFeedRow(
   url: string,
   title: string,
@@ -412,6 +442,42 @@ function accountGraphResponse(
       projectionRevision: 1,
       transitionSequence: 1,
     },
+  };
+}
+
+function friendsDirectoryRow(id: string): LibraryCoreFriendsDirectoryRowV1 {
+  return {
+    avatarUrl: null,
+    bio: null,
+    careLevel: 3,
+    hasLocation: false,
+    id,
+    isRecentlyActive: false,
+    lastContactAt: null,
+    latestActivityAt: null,
+    latestAvatarUrl: null,
+    name: id,
+    needsOutreach: false,
+    reachOutIntervalDays: null,
+    relationshipStatus: "friend",
+  };
+}
+
+function friendsDirectoryResponse(
+  rows: readonly LibraryCoreFriendsDirectoryRowV1[],
+  nextCursor: string | null,
+): LibraryCoreFriendsDirectoryPageResponseV1 {
+  return {
+    nextCursor,
+    queryId: "friends_directory_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+    totalCount: 130,
   };
 }
 
@@ -542,7 +608,9 @@ describe("Library row query hooks", () => {
     const readLibraryStoryWallCandidates = vi.fn(async () => [candidate]);
     let current: readonly StoryWallCandidate[] = [];
     renderHarness(
-      <PlatformProvider value={platformConfig({ readLibraryStoryWallCandidates })}>
+      <PlatformProvider
+        value={platformConfig({ readLibraryStoryWallCandidates })}
+      >
         <SurfaceHarness
           onItems={(items) => {
             current = items;
@@ -1386,9 +1454,15 @@ describe("Library row query hooks", () => {
     await flush();
 
     expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
-    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(false);
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
-    expect((current as LibraryFriendsRowsState | null)?.timelineLoading).toBe(false);
+    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(
+      false,
+    );
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
+      [],
+    );
+    expect((current as LibraryFriendsRowsState | null)?.timelineLoading).toBe(
+      false,
+    );
     expect(readLibraryFriendsGraph).toHaveBeenCalledOnce();
     expect(readLibraryPersonTimeline).toHaveBeenCalledOnce();
   });
@@ -1444,7 +1518,110 @@ describe("Library row query hooks", () => {
     expect(secondGraphReader).toHaveBeenCalledOnce();
     expect(secondTimelineReader).toHaveBeenCalledOnce();
     expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
+      [],
+    );
+  });
+
+  it("retains only the visible SQLite page for the Friends directory", async () => {
+    vi.useFakeTimers();
+    const firstRows = Array.from({ length: 64 }, (_, index) =>
+      friendsDirectoryRow(
+        `friend-a-${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const secondRows = Array.from({ length: 64 }, (_, index) =>
+      friendsDirectoryRow(
+        `friend-b-${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const queryLibraryCoreMock = vi.fn(
+      async (request: LibraryCoreFriendsDirectoryPageRequestV1) => {
+        const source = {
+          generationId: "a".repeat(64) as never,
+          projectionRevision: 1,
+          transitionSequence: 1,
+        };
+        const cursor = request.cursor
+          ? decodeLibraryCoreFriendsDirectoryCursorV1(request.cursor)
+          : null;
+        const offset = cursor?.ok ? cursor.value.offset : 0;
+        return friendsDirectoryResponse(
+          offset === 0 ? firstRows : secondRows,
+          offset === 0
+            ? encodeLibraryCoreFriendsDirectoryCursorV1({
+                bindingDigest:
+                  libraryCoreFriendsDirectoryBindingDigestV1(request),
+                generationId: source.generationId,
+                offset: 64,
+                projectionRevision: 1,
+                transitionSequence: 1,
+              })
+            : null,
+        );
+      },
+    );
+    const queryLibraryCore =
+      queryLibraryCoreMock as unknown as LibraryCoreNormalizedQueryExecutor;
+    let current: LibraryFriendsDirectoryState | null = null;
+
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <FriendsDirectoryHarness
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    await expect(
+      queryLibraryCoreMock.mock.results[0]?.value,
+    ).resolves.toMatchObject({
+      rows: firstRows,
+    });
+    expect((current as LibraryFriendsDirectoryState | null)?.rows).toHaveLength(
+      64,
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.totalCount).toBe(
+      130,
+    );
+
+    act(() => (current as LibraryFriendsDirectoryState | null)?.nextPage());
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledTimes(2);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: expect.any(String),
+        limit: 64,
+        queryId: "friends_directory_page_v1",
+      }),
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows).toHaveLength(
+      64,
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows[0]?.id).toBe(
+      "friend-b-0",
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.pageNumber).toBe(
+      2,
+    );
+
+    act(() => (current as LibraryFriendsDirectoryState | null)?.previousPage());
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledTimes(3);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: null }),
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows[0]?.id).toBe(
+      "friend-a-0",
+    );
   });
 
   it("keeps RSS catalog search bounded to visible rows and opaque cursors", async () => {
@@ -1459,12 +1636,14 @@ describe("Library row query hooks", () => {
       rssFeedRow("https://beta.example/rss", "Target Beta"),
       rssFeedRow("https://gamma.example/rss", "Target Gamma"),
     ];
-    const queryLibraryCore = vi.fn(async (request: { cursor: string | null }) => {
+    const queryLibraryCore = vi.fn(
+      async (request: { cursor: string | null }) => {
       if (request.cursor === null) {
         return rssFeedResponse(firstRawPage, "second-raw-page");
       }
       return rssFeedResponse(matchingRows, null);
-    }) as unknown as LibraryCoreNormalizedQueryExecutor;
+      },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
     let current: LibraryRssFeedPageState | null = null;
 
     renderHarness(
@@ -1481,10 +1660,9 @@ describe("Library row query hooks", () => {
     await flush();
 
     expect(queryLibraryCore).toHaveBeenCalledTimes(2);
-    expect((current as LibraryRssFeedPageState | null)?.rows.map((row) => row.title)).toEqual([
-      "Target Alpha",
-      "Target Beta",
-    ]);
+    expect(
+      (current as LibraryRssFeedPageState | null)?.rows.map((row) => row.title),
+    ).toEqual(["Target Alpha", "Target Beta"]);
     expect((current as LibraryRssFeedPageState | null)?.hasNext).toBe(true);
     expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(1);
     expect((current as LibraryRssFeedPageState | null)?.rows).toHaveLength(2);
@@ -1506,10 +1684,15 @@ describe("Library row query hooks", () => {
   });
 
   it("queries social channels only while the palette is open and matches linked Person names", async () => {
-    const queryLibraryCore = vi.fn(async () => accountGraphResponse([
+    const queryLibraryCore = vi.fn(async () =>
+      accountGraphResponse(
+        [
       accountGraphRow("unrelated", null),
       accountGraphRow("target-account", "Ada Lovelace"),
-    ], null)) as unknown as LibraryCoreNormalizedQueryExecutor;
+        ],
+        null,
+      ),
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
     const config = platformConfig({ queryLibraryCore });
     let current: LibrarySocialChannelPageState | null = null;
     const renderChannels = (enabled: boolean) => (
@@ -1533,21 +1716,26 @@ describe("Library row query hooks", () => {
     await flush();
 
     expect(queryLibraryCore).toHaveBeenCalledOnce();
-    expect(queryLibraryCore).toHaveBeenCalledWith(expect.objectContaining({
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
       cursor: null,
       limit: 128,
       queryId: "account_graph_page_v1",
-    }));
-    expect((current as LibrarySocialChannelPageState | null)?.channels).toEqual([
+      }),
+    );
+    expect((current as LibrarySocialChannelPageState | null)?.channels).toEqual(
+      [
       expect.objectContaining({
         account: expect.objectContaining({ id: "target-account" }),
         personName: "Ada Lovelace",
       }),
-    ]);
+      ],
+    );
   });
 
   it("queries only exact Feed and provider-author filter identities", async () => {
-    const queryLibraryCore = vi.fn(async (request: { feedUrl: string | null }) => ({
+    const queryLibraryCore = vi.fn(
+      async (request: { feedUrl: string | null }) => ({
       accountId: request.feedUrl ? null : "account-ada",
       itemCount: request.feedUrl ? 4 : 7,
       label: request.feedUrl ? "Example Feed" : "Ada",
@@ -1558,7 +1746,8 @@ describe("Library row query hooks", () => {
         projectionRevision: 8,
         transitionSequence: 0,
       },
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+      }),
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
     const config = platformConfig({ queryLibraryCore });
     let current: LibraryFilterScopeSummaryState | null = null;
     const renderScope = (filter: FilterOptions) => (
@@ -1576,7 +1765,9 @@ describe("Library row query hooks", () => {
     await flush();
     expect(queryLibraryCore).not.toHaveBeenCalled();
 
-    act(() => root?.render(renderScope({ feedUrl: "https://example.com/feed" })));
+    act(() =>
+      root?.render(renderScope({ feedUrl: "https://example.com/feed" })),
+    );
     await flush();
     await flush();
     expect(queryLibraryCore).toHaveBeenCalledWith({
@@ -1586,7 +1777,9 @@ describe("Library row query hooks", () => {
       queryId: "filter_scope_summary_v1",
       schemaVersion: 1,
     });
-    expect((current as LibraryFilterScopeSummaryState | null)?.summary).toMatchObject({
+    expect(
+      (current as LibraryFilterScopeSummaryState | null)?.summary,
+    ).toMatchObject({
       itemCount: 4,
       label: "Example Feed",
     });
@@ -1601,7 +1794,9 @@ describe("Library row query hooks", () => {
       queryId: "filter_scope_summary_v1",
       schemaVersion: 1,
     });
-    expect((current as LibraryFilterScopeSummaryState | null)?.summary).toMatchObject({
+    expect(
+      (current as LibraryFilterScopeSummaryState | null)?.summary,
+    ).toMatchObject({
       itemCount: 7,
       label: "Ada",
     });

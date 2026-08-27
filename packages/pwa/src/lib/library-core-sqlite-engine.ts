@@ -134,6 +134,13 @@ import {
   parseLibraryCoreContactMatchResponseV1,
   parseLibraryCoreFilterScopeSummaryRequestV1,
   parseLibraryCoreFilterScopeSummaryResponseV1,
+  decodeLibraryCoreFriendsDirectoryCursorV1,
+  encodeLibraryCoreFriendsDirectoryCursorV1,
+  libraryCoreFriendsDirectoryBindingDigestV1,
+  parseLibraryCoreFriendsDirectoryPageRequestV1,
+  parseLibraryCoreFriendsDirectoryPageResponseV1,
+  LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_FRIENDS_DIRECTORY_RECENT_WINDOW_MS,
   parseLibraryCoreRssFeedDetailRequestV1,
   parseLibraryCoreRssFeedDetailResponseV1,
   decodeLibraryCoreAccountTimelineCursorV1,
@@ -252,6 +259,8 @@ import {
   type LibraryCoreContactMatchResponseV1,
   type LibraryCoreFilterScopeSummaryRequestV1,
   type LibraryCoreFilterScopeSummaryResponseV1,
+  type LibraryCoreFriendsDirectoryPageRequestV1,
+  type LibraryCoreFriendsDirectoryPageResponseV1,
   type LibraryCoreRssFeedDetailRequestV1,
   type LibraryCoreRssFeedDetailResponseV1,
   type LibraryCoreAccountTimelineRequestV1,
@@ -5087,6 +5096,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryFilterScopeSummary(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "friends_directory_page_v1":
+        return this.#queryFriendsDirectory(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "item_detail_v1":
         return this.#queryItemDetail(
           input,
@@ -5532,11 +5545,16 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (rows.length !== 1 || rows.length > program.maximumScanRows) {
-      throw new Error("PWA Library SQLite contact match exceeded its row bound");
+      throw new Error(
+        "PWA Library SQLite contact match exceeded its row bound",
+      );
     }
     const row = rows[0]!;
     const response = {
-      accountIds: stringArray(row.accountIdsJson, "Contact match Account identities"),
+      accountIds: stringArray(
+        row.accountIdsJson,
+        "Contact match Account identities",
+      ),
       confidence: text(row.confidence, "Contact match confidence"),
       personId: nullableText(row.personId, "Contact match Person identity"),
       queryId: "contact_match_v1" as const,
@@ -5547,7 +5565,10 @@ export class PwaLibraryCoreSqliteEngine {
         transitionSequence: sourceRevision,
       },
     };
-    const parsed = parseLibraryCoreContactMatchResponseV1(response, request.value);
+    const parsed = parseLibraryCoreContactMatchResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }
@@ -6164,6 +6185,153 @@ export class PwaLibraryCoreSqliteEngine {
     );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
+  }
+
+  #queryFriendsDirectory(
+    input: LibraryCoreFriendsDirectoryPageRequestV1,
+  ): LibraryCoreFriendsDirectoryPageResponseV1 {
+    const request = parseLibraryCoreFriendsDirectoryPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const bindingDigest = libraryCoreFriendsDirectoryBindingDigestV1(
+      request.value,
+    );
+    const cursor =
+      request.value.cursor === null
+        ? null
+        : decodeLibraryCoreFriendsDirectoryCursorV1(request.value.cursor);
+    if (
+      cursor !== null &&
+      (!cursor.ok ||
+        cursor.value.bindingDigest !== bindingDigest ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision)
+    ) {
+      throw new Error("PWA Library SQLite Friends directory cursor is stale");
+    }
+    const offset = cursor?.ok ? cursor.value.offset : 0;
+    const filters = new Set(request.value.filters);
+    const cutoff = Math.max(
+      0,
+      request.value.nowMs - LIBRARY_CORE_FRIENDS_DIRECTORY_RECENT_WINDOW_MS,
+    );
+    const filterBindings = [
+      request.value.search,
+      filters.has("need_outreach") ? 1 : 0,
+      filters.has("no_contact") ? 1 : 0,
+      filters.has("close_friends") ? 1 : 0,
+      filters.has("recently_active") ? 1 : 0,
+      filters.has("has_location") ? 1 : 0,
+      request.value.nowMs,
+      cutoff,
+    ] as const;
+    const program =
+      LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.friends_directory_page_v1;
+    const countRows = this.#database.exec({
+      sql: program.countSql,
+      bind: filterBindings,
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    if (countRows.length !== 1) {
+      throw new Error("PWA Library SQLite Friends directory count is invalid");
+    }
+    const totalCount = safeInteger(
+      countRows[0],
+      "Friends directory total count",
+    );
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        ...filterBindings,
+        request.value.sort,
+        offset,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Friends directory exceeded its row bound",
+      );
+    }
+    let hasMore = rawRows.length > request.value.limit;
+    const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      avatarUrl: nullableText(row.avatarUrl, "Friend avatar URL"),
+      bio: nullableText(row.bio, "Friend biography"),
+      careLevel: safeInteger(row.careLevel, "Friend care level"),
+      hasLocation: requiredBoolean(row.hasLocation, "Friend location state"),
+      id: text(row.id, "Friend identity"),
+      isRecentlyActive: requiredBoolean(
+        row.isRecentlyActive,
+        "Friend recent activity state",
+      ),
+      lastContactAt: nullableInteger(row.lastContactAt, "Friend last contact"),
+      latestActivityAt: nullableInteger(
+        row.latestActivityAt,
+        "Friend latest activity",
+      ),
+      latestAvatarUrl: nullableText(
+        row.latestAvatarUrl,
+        "Friend latest avatar URL",
+      ),
+      name: text(row.name, "Friend name"),
+      needsOutreach: requiredBoolean(
+        row.needsOutreach,
+        "Friend outreach state",
+      ),
+      reachOutIntervalDays: nullableInteger(
+        row.reachOutIntervalDays,
+        "Friend outreach interval",
+      ),
+      relationshipStatus: text(
+        row.relationshipStatus,
+        "Friend relationship status",
+      ) as "friend",
+    }));
+    for (;;) {
+      const response = {
+        nextCursor:
+          hasMore && rows.length > 0
+            ? encodeLibraryCoreFriendsDirectoryCursorV1({
+                bindingDigest,
+                generationId: generationId as never,
+                offset: offset + rows.length,
+                projectionRevision: sourceRevision,
+                transitionSequence: sourceRevision,
+              })
+            : null,
+        queryId: "friends_directory_page_v1" as const,
+        rows,
+        schemaVersion: 1 as const,
+        source: {
+          generationId,
+          projectionRevision: sourceRevision,
+          transitionSequence: sourceRevision,
+        },
+        totalCount,
+      };
+      if (
+        new TextEncoder().encode(JSON.stringify(response)).byteLength <=
+        LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES
+      ) {
+        const parsed = parseLibraryCoreFriendsDirectoryPageResponseV1(
+          response,
+          request.value,
+        );
+        if (!parsed.ok) throw new Error(parsed.error);
+        return parsed.value;
+      }
+      if (rows.length <= 1) {
+        throw new Error(
+          "PWA Library SQLite Friends directory contains an oversized row",
+        );
+      }
+      rows.pop();
+      hasMore = true;
+    }
   }
 
   #queryFacetSummary(
@@ -7396,15 +7564,9 @@ export class PwaLibraryCoreSqliteEngine {
         capturedAt: safeInteger(row.capturedAt, "map captured time"),
         contentText: nullableText(row.contentText, "map content text"),
         contentType: text(row.contentType, "map content type") as never,
-        friendAvatarUrl: nullableText(
-          row.friendAvatarUrl,
-          "map Friend avatar",
-        ),
+        friendAvatarUrl: nullableText(row.friendAvatarUrl, "map Friend avatar"),
         friendName: nullableText(row.friendName, "map Friend name"),
-        friendPersonId: nullableText(
-          row.friendPersonId,
-          "map Friend identity",
-        ),
+        friendPersonId: nullableText(row.friendPersonId, "map Friend identity"),
         friendRelationshipStatus: nullableText(
           row.friendRelationshipStatus,
           "map Friend relationship",
