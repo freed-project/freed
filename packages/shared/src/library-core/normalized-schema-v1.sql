@@ -1056,6 +1056,148 @@ CREATE TABLE IF NOT EXISTS library_device_graph_layout_state (
 INSERT OR IGNORE INTO library_device_graph_layout_state (singleton_id, revision)
 VALUES (1, 0);
 
+CREATE TABLE IF NOT EXISTS library_device_contact_generations (
+  generation_id TEXT PRIMARY KEY CHECK (length(CAST(generation_id AS BLOB)) BETWEEN 1 AND 255),
+  state TEXT NOT NULL CHECK (state IN ('building', 'active')),
+  expected_contact_count INTEGER NOT NULL CHECK (expected_contact_count >= 0),
+  staged_contact_count INTEGER NOT NULL DEFAULT 0 CHECK (staged_contact_count >= 0),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  activated_at INTEGER CHECK (activated_at IS NULL OR activated_at >= created_at),
+  CHECK ((state = 'active') = (activated_at IS NOT NULL))
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS library_device_contact_one_active_generation
+  ON library_device_contact_generations(state)
+  WHERE state = 'active';
+
+CREATE UNIQUE INDEX IF NOT EXISTS library_device_contact_one_building_generation
+  ON library_device_contact_generations(state)
+  WHERE state = 'building';
+
+CREATE TABLE IF NOT EXISTS library_device_contact_sync_state (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  revision INTEGER NOT NULL CHECK (revision >= 0),
+  active_generation_id TEXT REFERENCES library_device_contact_generations(generation_id),
+  auth_status TEXT NOT NULL CHECK (auth_status IN ('connected', 'reconnect_required')),
+  sync_status TEXT NOT NULL CHECK (sync_status IN ('idle', 'syncing', 'error')),
+  sync_started_at INTEGER CHECK (sync_started_at IS NULL OR sync_started_at >= 0),
+  sync_token TEXT CHECK (sync_token IS NULL OR length(CAST(sync_token AS BLOB)) <= 65536),
+  last_synced_at INTEGER CHECK (last_synced_at IS NULL OR last_synced_at >= 0),
+  last_error_code TEXT CHECK (last_error_code IS NULL OR last_error_code IN ('missing_token', 'auth', 'network', 'unknown')),
+  last_error_message TEXT CHECK (last_error_message IS NULL OR length(CAST(last_error_message AS BLOB)) <= 4096),
+  created_friend_count INTEGER NOT NULL CHECK (created_friend_count >= 0),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  CHECK ((sync_status = 'syncing') = (sync_started_at IS NOT NULL)),
+  CHECK ((last_error_code IS NULL) = (last_error_message IS NULL))
+) STRICT;
+
+INSERT OR IGNORE INTO library_device_contact_sync_state (
+  singleton_id,
+  revision,
+  active_generation_id,
+  auth_status,
+  sync_status,
+  sync_started_at,
+  sync_token,
+  last_synced_at,
+  last_error_code,
+  last_error_message,
+  created_friend_count,
+  updated_at
+) VALUES (1, 0, NULL, 'connected', 'idle', NULL, NULL, NULL, NULL, NULL, 0, 0);
+
+CREATE TABLE IF NOT EXISTS library_device_contacts (
+  generation_id TEXT NOT NULL REFERENCES library_device_contact_generations(generation_id) ON DELETE CASCADE,
+  resource_name TEXT NOT NULL CHECK (length(CAST(resource_name AS BLOB)) BETWEEN 1 AND 1024),
+  etag TEXT CHECK (etag IS NULL OR length(CAST(etag AS BLOB)) <= 2048),
+  display_name TEXT CHECK (display_name IS NULL OR length(CAST(display_name AS BLOB)) <= 2048),
+  given_name TEXT CHECK (given_name IS NULL OR length(CAST(given_name AS BLOB)) <= 2048),
+  family_name TEXT CHECK (family_name IS NULL OR length(CAST(family_name AS BLOB)) <= 2048),
+  middle_name TEXT CHECK (middle_name IS NULL OR length(CAST(middle_name AS BLOB)) <= 2048),
+  deleted INTEGER NOT NULL CHECK (deleted IN (0, 1)),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  PRIMARY KEY (generation_id, resource_name)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_device_contacts_review_order
+  ON library_device_contacts(generation_id, display_name, resource_name)
+  WHERE deleted = 0;
+
+CREATE TABLE IF NOT EXISTS library_device_contact_emails (
+  generation_id TEXT NOT NULL,
+  resource_name TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 63),
+  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 8192),
+  type_value TEXT CHECK (type_value IS NULL OR length(CAST(type_value AS BLOB)) <= 255),
+  PRIMARY KEY (generation_id, resource_name, ordinal),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_device_contact_phones (
+  generation_id TEXT NOT NULL,
+  resource_name TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 63),
+  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 8192),
+  type_value TEXT CHECK (type_value IS NULL OR length(CAST(type_value AS BLOB)) <= 255),
+  PRIMARY KEY (generation_id, resource_name, ordinal),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_device_contact_photos (
+  generation_id TEXT NOT NULL,
+  resource_name TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
+  url TEXT NOT NULL CHECK (length(CAST(url AS BLOB)) BETWEEN 1 AND 16384),
+  is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
+  PRIMARY KEY (generation_id, resource_name, ordinal),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_device_contact_organizations (
+  generation_id TEXT NOT NULL,
+  resource_name TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
+  name TEXT CHECK (name IS NULL OR length(CAST(name AS BLOB)) <= 2048),
+  title TEXT CHECK (title IS NULL OR length(CAST(title AS BLOB)) <= 2048),
+  PRIMARY KEY (generation_id, resource_name, ordinal),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE,
+  CHECK (name IS NOT NULL OR title IS NOT NULL)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_device_contact_suggestions (
+  generation_id TEXT NOT NULL REFERENCES library_device_contact_generations(generation_id) ON DELETE CASCADE,
+  suggestion_id TEXT NOT NULL CHECK (length(CAST(suggestion_id AS BLOB)) BETWEEN 1 AND 8192),
+  resource_name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('merge_accounts', 'attach_accounts_to_person')),
+  confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium')),
+  person_id TEXT REFERENCES library_persons(id) ON DELETE SET NULL,
+  label TEXT NOT NULL CHECK (length(CAST(label AS BLOB)) BETWEEN 1 AND 2048),
+  reason TEXT CHECK (reason IS NULL OR length(CAST(reason AS BLOB)) <= 4096),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  dismissed_at INTEGER CHECK (dismissed_at IS NULL OR dismissed_at >= created_at),
+  PRIMARY KEY (generation_id, suggestion_id),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_device_contact_suggestions_review_order
+  ON library_device_contact_suggestions(generation_id, dismissed_at, confidence, created_at, suggestion_id);
+
+CREATE TABLE IF NOT EXISTS library_device_contact_suggestion_accounts (
+  generation_id TEXT NOT NULL,
+  suggestion_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 63),
+  account_id TEXT NOT NULL CHECK (length(CAST(account_id AS BLOB)) BETWEEN 1 AND 1024),
+  PRIMARY KEY (generation_id, suggestion_id, ordinal),
+  UNIQUE (generation_id, suggestion_id, account_id),
+  FOREIGN KEY (generation_id, suggestion_id)
+    REFERENCES library_device_contact_suggestions(generation_id, suggestion_id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_device_content_state (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   revision INTEGER NOT NULL CHECK (revision >= 0)

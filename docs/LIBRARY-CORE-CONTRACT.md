@@ -314,6 +314,17 @@ PWA empty-feed status reads one selected RSS Feed through
 from `library_facet_summary_v1`. Neither surface reads or retains the complete
 RSS subscription map.
 
+Google Contacts provider data is device-local SQLite state. One singleton
+selects an active contact generation. A new sync builds normalized contact
+roots, email rows, phone rows, photo rows, organization rows, suggestions, and
+suggestion Account links under a separate generation identifier. Activation
+switches the singleton and deletes the superseded generation in one
+transaction, so readers observe either complete generation and never a partial
+import. These tables are excluded from checkpoint export and replication.
+Every interactive contact surface pages the active generation through a closed
+bounded query. React retains only the visible review window and ephemeral
+interaction state.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

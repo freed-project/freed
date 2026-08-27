@@ -346,6 +346,15 @@ describe("PWA Library Core SQLite engine", () => {
       "library_intent_results",
       "library_intent_result_cursors",
       "library_optimistic_fields",
+      "library_device_contact_generations",
+      "library_device_contact_sync_state",
+      "library_device_contacts",
+      "library_device_contact_emails",
+      "library_device_contact_phones",
+      "library_device_contact_photos",
+      "library_device_contact_organizations",
+      "library_device_contact_suggestions",
+      "library_device_contact_suggestion_accounts",
     ]) {
       expect(
         database.exec({

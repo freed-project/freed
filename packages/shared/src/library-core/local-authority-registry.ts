@@ -382,11 +382,12 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     migration: "retain-current-device-owner",
     cutover: {
       blocksCutover: true,
-      reason: "Cached contacts, pending suggestions, and dismissed IDs have no measured entry or byte limit. Gate A cannot retain this sole-copy authority without a bounded preservation policy.",
+      reason: "Normalized generation-fenced SQLite tables now define the destination, but the shipping runtime still reads and writes the unbounded localStorage ledger. Cutover requires the typed native and OPFS mutation and page-query boundary, one atomic import, and deletion of this key.",
     },
     sourceReferences: [
       "packages/shared/src/contact-sync-state.ts",
       "packages/desktop/src/lib/contact-sync-storage.ts",
+      "packages/shared/src/library-core/normalized-schema-v1.sql",
     ],
   },
   {

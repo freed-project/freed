@@ -940,6 +940,15 @@ mod tests {
             "library_result_transport_heads",
             "library_result_transport_segments",
             "library_optimistic_fields",
+            "library_device_contact_generations",
+            "library_device_contact_sync_state",
+            "library_device_contacts",
+            "library_device_contact_emails",
+            "library_device_contact_phones",
+            "library_device_contact_photos",
+            "library_device_contact_organizations",
+            "library_device_contact_suggestions",
+            "library_device_contact_suggestion_accounts",
         ] {
             let exists: i64 = connection
                 .query_row(
@@ -959,6 +968,99 @@ mod tests {
             )
             .expect("checkpoint export view");
         assert!(!checkpoint_view.contains("library_local_cloud_writer_admission"));
+        assert!(!checkpoint_view.contains("library_device_contact_"));
+    }
+
+    #[test]
+    fn device_contacts_switch_normalized_generations_atomically() {
+        let mut connection = fixture();
+        connection
+            .execute(
+                "INSERT INTO library_device_contact_generations
+                 (generation_id, state, expected_contact_count, staged_contact_count, created_at, activated_at)
+                 VALUES ('contacts-1', 'active', 1, 1, 1000, 1001);",
+                [],
+            )
+            .expect("first contact generation");
+        connection
+            .execute(
+                "INSERT INTO library_device_contacts
+                 (generation_id, resource_name, display_name, deleted, updated_at)
+                 VALUES ('contacts-1', 'people/old', 'Old Contact', 0, 1000);",
+                [],
+            )
+            .expect("first contact");
+        connection
+            .execute(
+                "UPDATE library_device_contact_sync_state
+                 SET active_generation_id = 'contacts-1', revision = 1, updated_at = 1001
+                 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("first active generation");
+
+        connection
+            .execute(
+                "INSERT INTO library_device_contact_generations
+                 (generation_id, state, expected_contact_count, staged_contact_count, created_at, activated_at)
+                 VALUES ('contacts-2', 'building', 1, 1, 2000, NULL);",
+                [],
+            )
+            .expect("building contact generation");
+        connection
+            .execute(
+                "INSERT INTO library_device_contacts
+                 (generation_id, resource_name, display_name, deleted, updated_at)
+                 VALUES ('contacts-2', 'people/new', 'New Contact', 0, 2000);",
+                [],
+            )
+            .expect("building contact");
+
+        let transaction = connection.transaction().expect("activation transaction");
+        transaction
+            .execute(
+                "UPDATE library_device_contact_sync_state
+                 SET active_generation_id = 'contacts-2', revision = revision + 1, updated_at = 2001
+                 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("select next generation");
+        transaction
+            .execute(
+                "DELETE FROM library_device_contact_generations WHERE generation_id = 'contacts-1';",
+                [],
+            )
+            .expect("delete superseded generation");
+        transaction
+            .execute(
+                "UPDATE library_device_contact_generations
+                 SET state = 'active', activated_at = 2001
+                 WHERE generation_id = 'contacts-2' AND state = 'building';",
+                [],
+            )
+            .expect("activate next generation");
+        transaction.commit().expect("commit activation");
+
+        let active: (String, String, i64) = connection
+            .query_row(
+                "SELECT state.active_generation_id, contact.resource_name, state.revision
+                 FROM library_device_contact_sync_state AS state
+                 JOIN library_device_contacts AS contact
+                   ON contact.generation_id = state.active_generation_id
+                 WHERE state.singleton_id = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("active contact generation");
+        assert_eq!(active, ("contacts-2".into(), "people/new".into(), 2));
+        let generations: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_device_contact_generations;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("generation count");
+        assert_eq!(generations, 1);
     }
 
     #[test]
