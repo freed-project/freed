@@ -135,6 +135,51 @@ describe("useContactSync", () => {
     });
   });
 
+  it("fails closed when the SQLite Library reader is unavailable", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const platformValue = {
+      store: <T,>(selector: (state: unknown) => T): T => selector({
+        persons: {},
+        accounts: {},
+        items: [{ globalId: "legacy-renderer-item" }],
+        setPendingMatchCount: vi.fn(),
+      }),
+      googleContacts: {
+        getToken: vi.fn(async () => "google-access-token"),
+        connect: vi.fn(async () => {}),
+        fetchContacts: vi.fn(async () => ({
+          contacts: [],
+          nextSyncToken: "unaccepted-token",
+          deleted: [],
+        })),
+      },
+    } as unknown as PlatformConfig;
+    let actions: ContactSyncActions | null = null;
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platformValue}>
+          <ContactSyncHarness onReady={(nextActions) => {
+            actions = nextActions;
+          }} />
+        </PlatformProvider>,
+      );
+    });
+
+    await act(async () => {
+      await actions!.syncNow({ force: true });
+    });
+
+    expect(actions?.getSyncState()).toMatchObject({
+      syncStatus: "error",
+      syncToken: null,
+      lastErrorMessage: "The SQLite Library scan is unavailable.",
+    });
+  });
+
   it("drains an issued Contacts request without restoring state after reset", async () => {
     const corruptRaw = "{damaged-contact-sync-state";
     localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
@@ -345,6 +390,9 @@ describe("useContactSync", () => {
         items: [],
         setPendingMatchCount: vi.fn(),
       }),
+      scanLibraryItems: async (visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0]) => {
+        await visit([]);
+      },
       googleContacts: {
         getToken,
         connect: vi.fn(async () => {}),
@@ -533,6 +581,9 @@ describe("useContactSync", () => {
         items: [],
         setPendingMatchCount: vi.fn(),
       }),
+      scanLibraryItems: async (visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0]) => {
+        await visit([]);
+      },
       googleContacts: {
         getToken: vi.fn(async () => "google-access-token"),
         connect: vi.fn(async () => {}),

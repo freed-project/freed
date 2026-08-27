@@ -27,9 +27,9 @@ import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   buildProvisionalPersonCandidates,
-  buildDiscoveredAccountsFromItems,
   isPrunableInvalidDiscoveredSocialAccount,
   provisionalPersonRepairSignature,
+  type FeedItem,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
@@ -105,7 +105,6 @@ export function AppShell({ children }: AppShellProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const items = useAppStore((s) => s.items);
   const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
   const accounts = useAppStore((s) => s.accounts);
@@ -425,18 +424,6 @@ export function AppShell({ children }: AppShellProps) {
   }, [accounts, isInitialized, removeAccount]);
 
   useEffect(() => {
-    if (!isInitialized || scanLibraryItems) return;
-    const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
-    if (missingAccounts.length > 0) void addAccounts(missingAccounts);
-  }, [
-    accounts,
-    addAccounts,
-    isInitialized,
-    items,
-    scanLibraryItems,
-  ]);
-
-  useEffect(() => {
     if (!isInitialized) return;
     const signature = provisionalPersonRepairSignature(persons, accounts);
     if (signature === provisionalPersonScanRef.current) return;
@@ -452,6 +439,10 @@ export function AppShell({ children }: AppShellProps) {
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
     if (!match) return;
+    if (!scanLibraryItems) {
+      toast.error("Freed could not read the local Library.");
+      return;
+    }
 
     const now = Date.now();
     const personId = match.person?.id ?? crypto.randomUUID();
@@ -469,20 +460,21 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
-    let sourceItems = items;
-    if (scanLibraryItems) {
-      const authorIds = new Set(match.authorIds);
-      const matches = new Map<string, typeof items[number]>();
-      await scanLibraryItems((page) => {
-        for (const item of page) {
-          if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
-          matches.set(item.author.id, item);
-        }
-        return matches.size >= authorIds.size ? "stop" : "continue";
-      });
-      sourceItems = [...matches.values()];
-    }
-    const socialAccounts = buildSocialAccountsFromAuthorIds(sourceItems, match.authorIds, now, personId);
+    const authorIds = new Set(match.authorIds);
+    const matches = new Map<string, FeedItem>();
+    await scanLibraryItems((page) => {
+      for (const item of page) {
+        if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
+        matches.set(item.author.id, item);
+      }
+      return matches.size >= authorIds.size ? "stop" : "continue";
+    });
+    const socialAccounts = buildSocialAccountsFromAuthorIds(
+      [...matches.values()],
+      match.authorIds,
+      now,
+      personId,
+    );
     const mergedAccounts = [
       contactAccount,
       ...socialAccounts.filter((account) => !accounts[account.id]),
@@ -492,7 +484,7 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     contactSync.dismissSuggestion(suggestion.id);
-  }, [accounts, addAccounts, addPerson, contactSync, items, scanLibraryItems]);
+  }, [accounts, addAccounts, addPerson, contactSync, scanLibraryItems]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
     const now = Date.now();

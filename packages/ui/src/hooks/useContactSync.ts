@@ -190,15 +190,12 @@ export function useContactSync() {
 
   const persons = store((state) => state.persons);
   const accounts = store((state) => state.accounts);
-  const items = store((state) => state.items);
   const setPendingMatchCount = store((state) => state.setPendingMatchCount);
 
   const personsRef = useRef(persons);
   const accountsRef = useRef(accounts);
-  const itemsRef = useRef(items);
   personsRef.current = persons;
   accountsRef.current = accounts;
-  itemsRef.current = items;
 
   const [loadedSyncState] = useState<LoadedContactSyncState>(() => loadSyncState());
   const [syncState, setSyncState] = useState<ContactSyncState>(loadedSyncState.state);
@@ -362,19 +359,19 @@ export function useContactSync() {
         );
         if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
-        let matchingItems = itemsRef.current;
-        if (scanLibraryItems) {
-          const representativeByAuthor = new Map<string, FeedItem>();
-          await scanLibraryItems((page) => {
-            for (const item of page) {
-              if (!representativeByAuthor.has(item.author.id)) {
-                representativeByAuthor.set(item.author.id, item);
-              }
-            }
-            return "continue";
-          });
-          matchingItems = [...representativeByAuthor.values()];
+        if (!scanLibraryItems) {
+          throw new Error("The SQLite Library scan is unavailable.");
         }
+        const representativeByAuthor = new Map<string, FeedItem>();
+        await scanLibraryItems((page) => {
+          for (const item of page) {
+            if (!representativeByAuthor.has(item.author.id)) {
+              representativeByAuthor.set(item.author.id, item);
+            }
+          }
+          return "continue";
+        });
+        const matchingItems = [...representativeByAuthor.values()];
         const allMatches = matchContacts(
           merged,
           personsRef.current,
