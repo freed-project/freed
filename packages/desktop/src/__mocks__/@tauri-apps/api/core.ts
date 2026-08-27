@@ -378,12 +378,6 @@ const handlers: Record<string, Handler> = {
       sourceDigest: state.sourceDigest,
     } : null;
   },
-  recover_sqlite_library_follower_overlay: () => ({
-    transactionCount: 0,
-    operationCount: 0,
-    materializedRowCount: 0,
-    revisionAdvanced: false,
-  }),
   describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
   set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
@@ -416,7 +410,6 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
-  sqlite_library_follower_intent_context: () => null,
   normalized_library_follower_runtime_status: () => ({
     state: "awaiting_checkpoint",
     libraryId: null,

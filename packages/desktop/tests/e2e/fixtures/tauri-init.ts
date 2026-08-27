@@ -472,12 +472,6 @@ export function tauriInitScript(): string {
           sourceDigest: state.sourceDigest,
         } : null;
       },
-      recover_sqlite_library_follower_overlay: () => ({
-        transactionCount: 0,
-        operationCount: 0,
-        materializedRowCount: 0,
-        revisionAdvanced: false,
-      }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
@@ -505,14 +499,13 @@ export function tauriInitScript(): string {
           controlRevision: null,
           verifiedAtMs: null,
         },
-      sqlite_library_follower_intent_context: () => null,
-      sqlite_library_follower_runtime_status: () => ({
+      normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,
-        epochId: null,
+        authorityEpochId: null,
         actorId: null,
         checkpointGeneration: null,
-        remoteIngestSequence: null,
+        sourceRevision: null,
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,

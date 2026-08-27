@@ -424,6 +424,12 @@ native calls against the selected normalized SQLite catalog. Their typed
 responses carry the authority epoch and source revision directly. No renderer
 translation layer or historical follower journal participates in enrollment.
 
+Normalized intent commit stores its sparse optimistic fields in the same
+transaction as the signed intent members and actor tip. Startup therefore does
+not replay an overlay or regenerate projected rows. The first bounded query
+reads the already durable projection. Historical follower context, signer,
+enqueue, and overlay recovery commands are not part of the native boundary.
+
 The Primary admits browser intent pages through dedicated SQLite staging
 tables that are excluded from checkpoints, materialized-state digests, and
 replication. One page carries at most 128 records. One transaction carries at

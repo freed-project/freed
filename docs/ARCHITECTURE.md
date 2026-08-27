@@ -125,6 +125,11 @@ enrollment certificates use the selected normalized SQLite catalog directly.
 The sync settings view reads that same bounded status contract. It never opens
 the retired journal database to reconstruct follower state.
 
+Follower mutations use the normalized mutation context, signer, and intent
+commit commands only. Sparse optimistic fields are durable SQLite rows, so an
+application restart reads them in place. There is no follower overlay replay
+command and no historical actor context to rebuild before queries begin.
+
 No `shellJson`, `DocState`, monolithic FeedItem record, generic JSON patch, or
 equivalent catch-all object is part of the runtime model.
 

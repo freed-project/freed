@@ -593,6 +593,7 @@ export async function captureDomFeed(
 | 5.103 | Delete the native whole-item sync descriptor, renderer authority bootstrap, legacy protocol parser, commands, and browser mocks. Desktop now reads the normalized checkpoint identity and its installation-local actor identity through one closed native call | High       | ✓ Complete |
 | 5.104 | Store the provider-safety cloud writer lease in device-local normalized SQLite instead of the historical Library database. Keep it outside checkpoint export and delete the dead local-only admission helper and compatibility tests | High       | ✓ Complete |
 | 5.105 | Read follower diagnostics, create stable actor enrollment requests, and install authority certificates through normalized native SQLite. Delete the equivalent historical journal commands and update the Mobile Sync view to display normalized source revision state | High       | ✓ Complete |
+| 5.106 | Remove the uncalled historical follower context, signer, enqueue, and overlay replay native surface. Load durable normalized optimistic fields directly on startup and delete the obsolete recovery fixture and test | High       | ✓ Complete |
 
 ---
 

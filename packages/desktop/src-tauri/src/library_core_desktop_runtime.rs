@@ -31,10 +31,9 @@ use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{
-    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt,
-    FollowerOverlayReplayReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
-    IntentResultOutboxEntry, LibraryCoreJournal, VerifiedFollowerIntentPublication,
-    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt, FollowerResultImportCursor,
+    FollowerResultImportReceipt, IntentResultOutboxEntry, LibraryCoreJournal,
+    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 const BACKUP_DIRECTORY: &str = "library-backups";
 const JOURNAL_DIRECTORY: &str = "library-core";
@@ -186,24 +185,6 @@ pub(super) struct DesktopLibraryActorCheckpointState {
     canonical_enrollment_certificate_json: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerOverlayReplayReceipt {
-    transaction_count: i64,
-    operation_count: i64,
-    materialized_row_count: i64,
-    revision_advanced: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct SignFollowerOperationRequest {
-    library_id: String,
-    epoch_id: String,
-    actor_id: String,
-    operation_signing_body_digest: String,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SignNormalizedOperationRequest {
@@ -236,14 +217,6 @@ pub(super) struct RecordNormalizedFollowerIntentPublicationRequest {
     transaction_digest: String,
     actor_id: String,
     published_at: i64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerOperationSignature {
-    actor_id: String,
-    operation_signing_body_digest: String,
-    signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,27 +270,6 @@ impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
             invalidations: receipt.invalidations,
         })
     }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerIntentReceipt {
-    transaction_id: String,
-    first_intent_sequence: i64,
-    last_intent_sequence: i64,
-    operation_count: i64,
-    status: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFollowerIntentContext {
-    authority: DesktopLibraryAcceptedAuthority,
-    actor_id: String,
-    actor_public_key: String,
-    next_intent_sequence: i64,
-    previous_operation_id: Option<String>,
-    previous_chain_digest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1550,152 +1502,6 @@ pub(super) fn sqlite_library_status(
         );
     }
     Ok(status)
-}
-
-#[tauri::command]
-pub(super) fn recover_sqlite_library_follower_overlay(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibraryFollowerOverlayReplayReceipt, String> {
-    let replay = replay_sqlite_library_follower_overlay_at(&app_root(&app)?)?;
-    Ok(DesktopLibraryFollowerOverlayReplayReceipt {
-        transaction_count: replay.transaction_count,
-        operation_count: replay.operation_count,
-        materialized_row_count: replay.materialized_row_count,
-        revision_advanced: replay.revision_advanced,
-    })
-}
-
-fn replay_sqlite_library_follower_overlay_at(
-    root: &Path,
-) -> Result<FollowerOverlayReplayReceipt, String> {
-    let mut journal = open_journal_at(root)?;
-    journal
-        .replay_pending_follower_overlay()
-        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))
-}
-
-/// Sign one finalized follower operation body digest with the native actor key.
-///
-/// The caller still has to submit the complete canonical transaction to the
-/// native outbox, where sequence, chain, schema, and operation semantics are
-/// reverified before anything becomes durable.
-#[tauri::command]
-pub(super) fn sign_sqlite_library_follower_operation(
-    app: tauri::AppHandle,
-    request: SignFollowerOperationRequest,
-) -> Result<DesktopLibraryFollowerOperationSignature, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    let enrollment = journal
-        .follower_actor_enrollment(&request.library_id, &request.epoch_id, &request.actor_id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "SQLite Library follower actor is not enrolled".to_string())?;
-    let signature = sign_library_core_operation_digest(
-        &PlatformActorKeyStore,
-        &request.library_id,
-        &enrollment.actor_public_key,
-        &request.operation_signing_body_digest,
-    )?;
-    Ok(DesktopLibraryFollowerOperationSignature {
-        actor_id: request.actor_id,
-        operation_signing_body_digest: request.operation_signing_body_digest,
-        signature,
-    })
-}
-
-fn follower_intent_receipt_response(
-    receipt: FollowerIntentEnqueueReceipt,
-) -> DesktopLibraryFollowerIntentReceipt {
-    DesktopLibraryFollowerIntentReceipt {
-        transaction_id: receipt.transaction_id,
-        first_intent_sequence: receipt.first_intent_sequence,
-        last_intent_sequence: receipt.last_intent_sequence,
-        operation_count: receipt.operation_count,
-        status: receipt.status,
-    }
-}
-
-/// Verify and atomically enqueue one complete signed follower transaction.
-///
-/// Canonical operation semantics, signatures, actor sequence, actor chain,
-/// transaction boundaries, and causal tips are checked again in native code.
-#[tauri::command]
-pub(super) fn enqueue_sqlite_library_follower_intent(
-    app: tauri::AppHandle,
-    request: EnqueueFollowerIntentRequest,
-) -> Result<DesktopLibraryFollowerIntentReceipt, String> {
-    if request.canonical_envelope_json.is_empty()
-        || request.canonical_envelope_json.len() > 1_000
-        || request.enqueued_at_ms < 0
-    {
-        return Err("SQLite Library follower intent request is invalid".into());
-    }
-    let canonical_envelopes = request
-        .canonical_envelope_json
-        .iter()
-        .map(|value| value.as_bytes().to_vec())
-        .collect::<Vec<_>>();
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    let receipt = journal
-        .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
-        .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
-    Ok(follower_intent_receipt_response(receipt))
-}
-
-/// Read the exact native actor tip used to assemble the next follower intent.
-#[tauri::command]
-pub(super) fn sqlite_library_follower_intent_context(
-    app: tauri::AppHandle,
-) -> Result<Option<DesktopLibraryFollowerIntentContext>, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    let Some(anchor) = journal
-        .follower_anchor()
-        .map_err(|error| error.to_string())?
-    else {
-        return Ok(None);
-    };
-    let Some(actor) = journal
-        .active_follower_actor_state()
-        .map_err(|error| error.to_string())?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(DesktopLibraryFollowerIntentContext {
-        authority: DesktopLibraryAcceptedAuthority {
-            library_id: anchor.authority.library_id,
-            epoch: anchor.authority.epoch,
-            epoch_id: anchor.authority.epoch_id,
-            authority_key_id: anchor.authority.authority_key_id,
-            authority_public_key: anchor.authority.authority_public_key,
-            observed_frontier: anchor
-                .authority
-                .observed_frontier
-                .into_iter()
-                .map(|tip| DesktopLibraryCausalTip {
-                    actor_id: tip.actor_id,
-                    sequence: tip.sequence,
-                    operation_id: tip.operation_id,
-                    chain_digest: tip.chain_digest,
-                })
-                .collect(),
-        },
-        actor_id: actor.actor_id,
-        actor_public_key: actor.actor_public_key,
-        next_intent_sequence: actor.next_sequence,
-        previous_operation_id: actor.previous_operation_id,
-        previous_chain_digest: actor.previous_chain_digest,
-    }))
 }
 
 fn follower_intent_outbox_response(

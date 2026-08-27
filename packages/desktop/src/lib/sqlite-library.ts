@@ -166,15 +166,6 @@ export interface SqliteLibraryCloudWriterAdmissionStatus {
   readonly verifiedAtMs: number | null;
 }
 
-export interface SqliteLibraryFollowerIntentContext {
-  readonly authority: SqliteLibraryAcceptedAuthority;
-  readonly actorId: string;
-  readonly actorPublicKey: string;
-  readonly nextIntentSequence: number;
-  readonly previousOperationId: string | null;
-  readonly previousChainDigest: string;
-}
-
 export interface NormalizedLibraryFollowerRuntimeStatus {
   readonly state:
     | "awaiting_checkpoint"
@@ -191,13 +182,6 @@ export interface NormalizedLibraryFollowerRuntimeStatus {
   readonly importedResultCount: number;
 }
 
-
-export interface SqliteLibraryFollowerOverlayReplayReceipt {
-  readonly transactionCount: number;
-  readonly operationCount: number;
-  readonly materializedRowCount: number;
-  readonly revisionAdvanced: boolean;
-}
 
 export interface SqliteLibraryFollowerOperationSignature {
   readonly actorId: string;
@@ -253,14 +237,6 @@ export interface SqliteLibraryNormalizedMutationReceipt {
     readonly entityId: string | null;
     readonly resetRequired: boolean;
   }>[];
-}
-
-export interface SqliteLibraryFollowerIntentReceipt {
-  readonly transactionId: string;
-  readonly firstIntentSequence: number;
-  readonly lastIntentSequence: number;
-  readonly operationCount: number;
-  readonly status: "enqueued" | "already_enqueued";
 }
 
 export interface NormalizedLibraryFollowerActorRequest {
@@ -405,55 +381,9 @@ export async function appendSqliteLibraryFollowerResultSegment(input: {
   );
 }
 
-export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibraryFollowerIntentContext | null> {
-  return invoke<SqliteLibraryFollowerIntentContext | null>(
-    "sqlite_library_follower_intent_context",
-  );
-}
-
 export async function readNormalizedLibraryFollowerRuntimeStatus(): Promise<NormalizedLibraryFollowerRuntimeStatus> {
   return invoke<NormalizedLibraryFollowerRuntimeStatus>(
     "normalized_library_follower_runtime_status",
-  );
-}
-
-export async function recoverSqliteLibraryFollowerOverlay(): Promise<SqliteLibraryFollowerOverlayReplayReceipt> {
-  return invoke<SqliteLibraryFollowerOverlayReplayReceipt>(
-    "recover_sqlite_library_follower_overlay",
-  );
-}
-
-export async function signSqliteLibraryFollowerOperation(input: {
-  readonly libraryId: string;
-  readonly epochId: string;
-  readonly actorId: string;
-  readonly operationSigningBodyDigest: string;
-}): Promise<SqliteLibraryFollowerOperationSignature> {
-  return invoke<SqliteLibraryFollowerOperationSignature>(
-    "sign_sqlite_library_follower_operation",
-    { request: input },
-  );
-}
-
-export async function enqueueSqliteLibraryFollowerIntent(
-  canonicalEnvelopeJson: readonly string[],
-): Promise<SqliteLibraryFollowerIntentReceipt> {
-  if (
-    canonicalEnvelopeJson.length === 0 ||
-    canonicalEnvelopeJson.length > 1_000
-  ) {
-    throw new RangeError(
-      "Follower intent transaction has an invalid member count",
-    );
-  }
-  return invoke<SqliteLibraryFollowerIntentReceipt>(
-    "enqueue_sqlite_library_follower_intent",
-    {
-      request: {
-        canonicalEnvelopeJson: [...canonicalEnvelopeJson],
-        enqueuedAtMs: Date.now(),
-      },
-    },
   );
 }
 

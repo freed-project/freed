@@ -34,11 +34,9 @@ import {
   ensureFreshNormalizedDesktopLibrary,
   loadSqliteLibraryState,
   readSqliteItems,
-  recoverSqliteLibraryFollowerOverlay,
 } from "./sqlite-library";
 import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
-import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
 
 export type { DocChangeEvent, DocState } from "./library-types";
 
@@ -93,9 +91,6 @@ async function ensureInitialized(): Promise<DocState> {
         ? "Freed Desktop could not complete the one-time SQLite Library transition. The historical source remains untouched."
         : "Freed Desktop could not establish SQLite Library authority.",
     );
-  }
-  if (readLibraryCoreDesktopRole() === "follower") {
-    await recoverSqliteLibraryFollowerOverlay();
   }
   const state = await loadSqliteLibraryState();
   lastState = state;
