@@ -1278,6 +1278,12 @@ corpus or construct a complete item-ID set. A missing row clears the selection,
 a failed query proves nothing, and a late response cannot clear a newer
 selection.
 
+Desktop background services follow the same rule. Snapshot summaries read the
+maintained Friend count from `facet_summary_v1`. Content fetching accepts exact
+changed rows for incremental work and uses `content_fetch_page_v1` for a full
+replacement scan. Neither service reads the renderer's item, Person, Account,
+or Friend maps.
+
 An active Feed or provider-author filter resolves through
 `filter_scope_summary_v1`. The request contains exactly one Feed URL or one
 provider plus external author ID. SQLite returns one nullable display label and

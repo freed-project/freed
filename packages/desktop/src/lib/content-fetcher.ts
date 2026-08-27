@@ -13,9 +13,9 @@
  *     so Library Core can publish it through the replacement sync outbox
  *  5. Optionally run AI summarization and update preservedContent.text again
  *
- * Subscribe behavior: call start() once at app init. The fetcher wires a
- * subscribe() callback so any stub item that arrives via relay sync is
- * automatically enqueued.
+ * Subscribe behavior: call start() once at app init. Exact changed rows are
+ * enqueued directly. A replacement event triggers the bounded SQLite candidate
+ * scan and never reads a renderer item corpus.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -269,7 +269,6 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
 }
 
 function maybeScanLibraryItems(
-  _items: FeedItem[],
   docItemCount: number,
   event: DocChangeEvent,
 ): void {
@@ -680,9 +679,7 @@ export function start(options: ContentFetcherOptions = {}): void {
   // arrive with their exact payload. A whole-corpus scan is reserved for an
   // explicit state replacement whose changed identities are unknowable.
   unsubscribeDoc = subscribe((state, event) => {
-    // SQLite is the bounded primary scan. The renderer array is only a rollback
-    // fallback and is usually empty in the compact Desktop shell.
-    maybeScanLibraryItems(state.items, state.docItemCount, event);
+    maybeScanLibraryItems(state.docItemCount, event);
   });
 
   log.info("[content-fetcher] started");

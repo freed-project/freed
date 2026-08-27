@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
-import { getDocState, reloadSqliteLibraryState, subscribe } from "./library-client";
+import { reloadSqliteLibraryState, subscribe } from "./library-client";
+import { readLibraryCoreFacetSummary } from "./library-core-item-detail-runtime";
 import {
   clearSqliteLibraryBackups,
   createSqliteLibraryBackup,
@@ -53,7 +54,7 @@ function notifySnapshotListeners(): void {
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
   const contacts = readContactSyncState();
-  const friendCount = Object.keys(getDocState()?.friends ?? {}).length;
+  const friendCount = (await readLibraryCoreFacetSummary()).friendPersonCount;
   return (await listSqliteLibraryBackups()).map((backup) => ({
     id: backup.backupId,
     createdAt: backup.createdAtMs,
@@ -75,12 +76,13 @@ async function createSnapshotInternal(reason: SnapshotReason): Promise<SnapshotS
 
   const backup = await createSqliteLibraryBackup(reason);
   const contacts = readContactSyncState();
+  const friendCount = (await readLibraryCoreFacetSummary()).friendPersonCount;
   const summary: SnapshotSummary = {
     id: backup.backupId,
     createdAt: backup.createdAtMs,
     byteSize: backup.byteLength,
     itemCount: backup.itemCount,
-    friendCount: Object.keys(getDocState()?.friends ?? {}).length,
+    friendCount,
     contactCount: contacts.cachedContacts.length,
     pendingMatchCount: contacts.pendingSuggestions.length,
     reason,
