@@ -257,6 +257,11 @@
         `person_picker_page_v1` hook backed by OPFS SQLite. It retains at most
         twelve compact Person rows and reads link-candidate labels from their
         five-row typed response instead of consulting identity dictionaries.
+  - [x] `friend_candidate_review_v1` runs the same generated ranking program
+        in OPFS SQLite and native Rust. It returns at most ten source-fenced
+        candidates under 512 KiB from normalized identity, activity,
+        content-signal, and bounded contact-overlap evidence. React retains no
+        Person, Account, FeedItem, or activity dictionary for candidate review.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
@@ -547,6 +552,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.70 | Remove Story Wall's complete Account subscription. Return nullable Account and Person IDs from the same bounded OPFS SQLite candidate query as Freed Desktop, apply account and person inclusion filters to those rows, and retain no identity catalog in React                                                                                                                                                                                              | High       | ✓ Complete                                                                                       |
 | 6.71 | Read the selected Friends Person and Account through exact `person_detail_v1` and `account_detail_v1` OPFS SQLite queries, retain only those active rows, and remove the Friends React shell's complete RSS Feed subscription because the graph worker pages RSS identity directly from SQLite                                                                                                                                                               | High       | ✓ Complete                                                                                       |
 | 6.72 | Run the Friend editor's `account_picker_page_v1` through SQLite WebAssembly in OPFS. Use the same trigger-maintained visible author activity, indexed unlinked Account ordering, FTS5 trigram substring search, 50-row response ceiling, shared request parser, and compact row transform as native Rust. Keep one or two scalar filtering inside the resident window and retain no Account catalog in React                                                 | High       | ✓ Complete                                                                                       |
+| 6.73 | Rank Friend candidate review rows through the shared generated `friend_candidate_review_v1` OPFS SQLite query, retain at most ten typed rows in React, and delete the complete Person, Account, FeedItem, and compact-activity JavaScript scoring path plus its self-referential tests                                                                                                                                                                       | High       | ✓ Complete                                                                                       |
 
 ---
 

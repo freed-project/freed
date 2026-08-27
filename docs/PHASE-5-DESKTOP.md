@@ -153,6 +153,12 @@
   - [x] `account_detail_v1` now performs one primary-key SQLite lookup through
         the shared native and PWA dispatch, returns at most eight ordered
         follow-roster roles, and never hydrates a Person or FeedItem corpus.
+  - [x] `friend_candidate_review_v1` ranks connection Persons and unlinked
+        social Accounts inside native SQLite from normalized identity,
+        activity, content-signal, and bounded contact-overlap evidence. The
+        generated query reads at most eleven result rows, returns ten rows
+        under 512 KiB, and filters exact evidence-bound dismissals before the
+        renderer receives them. Friends retains only that visible window.
         Freed Desktop view wiring remains open.
   - [x] `rss_feed_detail_v1` now performs one primary-key SQLite lookup through
         the shared native and PWA dispatch and returns every synchronized RSS
@@ -639,6 +645,7 @@ export async function captureDomFeed(
 | 5.119 | Remove Story Wall's complete Account subscription. Join each bounded media candidate to its nullable Account and Person IDs through `library_accounts_provider_external`, apply identity filters to those rows, and prove the native plan performs no Account scan                                                                                                                              | High       | ✓ Complete |
 | 5.120 | Read the selected Friends Person and Account through exact `person_detail_v1` and `account_detail_v1` native SQLite queries, retain only those active rows, and remove the Friends React shell's complete RSS Feed subscription because the graph worker pages RSS identity directly from SQLite                                                                                                | High       | ✓ Complete |
 | 5.121 | Replace the Friend editor's 100,000-row Account graph paging scan with `account_picker_page_v1`. Use trigger-maintained visible author activity plus indexed unlinked Account ordering and FTS5 trigram search, retain at most 50 compact rows in React, and revalidate selected Accounts through `account_detail_v1` before save                                                               | High       | ✓ Complete |
+| 5.122 | Rank Friend candidate review rows through the shared generated `friend_candidate_review_v1` native SQLite query, retain at most ten typed rows in React, and delete the complete Person, Account, FeedItem, and compact-activity JavaScript scoring path plus its self-referential tests                                                                                                        | High       | ✓ Complete |
 
 ---
 

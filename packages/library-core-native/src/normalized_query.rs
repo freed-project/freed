@@ -388,6 +388,19 @@ pub struct NormalizedAccountLinkCandidatesRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendCandidateReviewRequestV1 {
+    pub cancellation_id: String,
+    pub contact_account_ids: Vec<String>,
+    pub contact_person_ids: Vec<String>,
+    pub dismissed_suggestion_ids: Vec<String>,
+    pub limit: usize,
+    pub now_ms: i64,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -429,6 +442,7 @@ pub enum NormalizedQueryRequestV1 {
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
     FeedPage(NormalizedFeedPageRequestV1),
     FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1),
+    FriendCandidateReview(NormalizedFriendCandidateReviewRequestV1),
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
@@ -1274,6 +1288,37 @@ pub struct NormalizedAccountLinkCandidatesResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendCandidateReviewRowV1 {
+    pub account_ids_json: String,
+    pub confidence: String,
+    pub contact_overlap_score: i64,
+    pub direct_requests_score: i64,
+    pub display_name: String,
+    pub id: String,
+    pub kind: String,
+    pub last_activity_at: Option<i64>,
+    pub life_events_score: i64,
+    pub multi_channel_score: i64,
+    pub person_id: Option<String>,
+    pub personal_updates_score: i64,
+    pub places_moments_score: i64,
+    pub recent_activity_score: i64,
+    pub sample_item_ids_json: String,
+    pub score: i64,
+    pub signal_counts_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFriendCandidateReviewResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedFriendCandidateReviewRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
@@ -1287,6 +1332,7 @@ pub enum NormalizedQueryResponseV1 {
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
     FeedPage(NormalizedFeedPageResponseV1),
     FilterScopeSummary(NormalizedFilterScopeSummaryResponseV1),
+    FriendCandidateReview(NormalizedFriendCandidateReviewResponseV1),
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
@@ -4118,6 +4164,94 @@ fn query_account_link_candidates(
     Ok(response)
 }
 
+fn query_friend_candidate_review(
+    connection: &mut Connection,
+    request: NormalizedFriendCandidateReviewRequestV1,
+) -> Result<NormalizedFriendCandidateReviewResponseV1, NormalizedSqliteError> {
+    let valid_ids = |values: &[String], maximum_items: usize, maximum_bytes: usize| {
+        values.len() <= maximum_items
+            && values
+                .iter()
+                .all(|value| !value.is_empty() && value.len() <= maximum_bytes)
+            && !values.windows(2).any(|pair| pair[0] >= pair[1])
+    };
+    if request.schema_version != 1
+        || !(1..=10).contains(&request.limit)
+        || request.now_ms < 0
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !valid_ids(&request.contact_account_ids, 512, 2_048)
+        || !valid_ids(&request.contact_person_ids, 512, 2_048)
+        || !valid_ids(&request.dismissed_suggestion_ids, 256, 8_192)
+    {
+        return Err(invalid(
+            "normalized Friend candidate review request is invalid",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "friend_candidate_review_v1")
+        .ok_or(invalid(
+            "normalized Friend candidate review program is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let contact_person_ids = serde_json::to_string(&request.contact_person_ids)
+        .map_err(|_| invalid("normalized Friend contact Person IDs are invalid"))?;
+    let contact_account_ids = serde_json::to_string(&request.contact_account_ids)
+        .map_err(|_| invalid("normalized Friend contact Account IDs are invalid"))?;
+    let dismissed_suggestion_ids = serde_json::to_string(&request.dismissed_suggestion_ids)
+        .map_err(|_| invalid("normalized dismissed Friend suggestion IDs are invalid"))?;
+    let limit = i64::try_from(request.limit + 1).expect("bounded Friend candidate review limit");
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(
+        params![
+            contact_person_ids,
+            contact_account_ids,
+            dismissed_suggestion_ids,
+            request.now_ms,
+            limit
+        ],
+        |row| decode_generated_query_row(row, "friend_candidate_review_v1"),
+    )?;
+    let generated_rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if generated_rows.len() > program.maximum_scan_rows {
+        return Err(invalid(
+            "normalized Friend candidate review exceeded its row bound",
+        ));
+    }
+    let rows = generated_rows
+        .into_iter()
+        .take(request.limit)
+        .map(|value| {
+            serde_json::from_value::<NormalizedFriendCandidateReviewRowV1>(value)
+                .map_err(|_| invalid("normalized Friend candidate review row is invalid"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let response = NormalizedFriendCandidateReviewResponseV1 {
+        query_id: "friend_candidate_review_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Friend candidate review response is invalid"))?
+        .len()
+        > 512 * 1_024
+    {
+        return Err(invalid(
+            "normalized Friend candidate review response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_account_picker_page(
     connection: &mut Connection,
     request: NormalizedAccountPickerPageRequestV1,
@@ -5948,6 +6082,11 @@ pub fn query_normalized_v1(
                 query_filter_scope_summary(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::FriendCandidateReview(request) => {
+            Ok(NormalizedQueryResponseV1::FriendCandidateReview(
+                query_friend_candidate_review(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::FriendsDirectoryPage(request) => {
             Ok(NormalizedQueryResponseV1::FriendsDirectoryPage(
                 query_friends_directory_page(connection, request)?,
@@ -6093,6 +6232,10 @@ pub fn query_normalized_json_v1(
         "filter_scope_summary_v1" => {
             decode_request!(NormalizedFilterScopeSummaryRequestV1, FilterScopeSummary)
         }
+        "friend_candidate_review_v1" => decode_request!(
+            NormalizedFriendCandidateReviewRequestV1,
+            FriendCandidateReview
+        ),
         "friends_directory_page_v1" => {
             decode_request!(
                 NormalizedFriendsDirectoryPageRequestV1,
@@ -6175,6 +6318,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FilterScopeSummary(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FriendCandidateReview(response) => encode_response!(response),
         NormalizedQueryResponseV1::FriendsDirectoryPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
@@ -8271,6 +8415,79 @@ mod tests {
             panic!("account detail response");
         };
         assert!(missing.account.is_none());
+    }
+
+    #[test]
+    fn native_friend_candidate_review_scores_and_dismisses_bounded_rows() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 12, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, handle, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-ada', NULL, 'social', 'instagram', 'ada-instagram',
+                           'ada', 'Ada Lovelace', 50, 1799999999000, 'capture',
+                           50, 1799999999000);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, hidden, saved,
+                    archived, updated_at)
+                   VALUES ('item-ada', 'instagram', 'post', 1799999999000,
+                           1799999999000, 'ada-instagram', 'ada', 'Ada Lovelace',
+                           0, 0, 0, 1799999999000);
+                 INSERT INTO library_feed_item_signal_scores
+                   (global_id, signal, score, tagged)
+                   VALUES ('item-ada', 'life_update', 0.95, 1),
+                          ('item-ada', 'event', 0.9, 1),
+                          ('item-ada', 'request', 0.9, 1),
+                          ('item-ada', 'place', 0.85, 1);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedFriendCandidateReviewRequestV1 {
+            cancellation_id: "cancel-friend-review".to_owned(),
+            contact_account_ids: Vec::new(),
+            contact_person_ids: Vec::new(),
+            dismissed_suggestion_ids: Vec::new(),
+            limit: 10,
+            now_ms: 1_800_000_000_000,
+            reader_session_id: "reader-friend-review".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::FriendCandidateReview(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FriendCandidateReview(request.clone()),
+        )
+        .expect("Friend candidate review") else {
+            panic!("Friend candidate review response");
+        };
+        assert_eq!(response.rows.len(), 1);
+        assert_eq!(response.rows[0].account_ids_json, "[\"account-ada\"]");
+        assert_eq!(response.rows[0].display_name, "Ada Lovelace");
+        assert_eq!(response.rows[0].kind, "unlinked_account");
+        assert!(response.rows[0].score >= 60);
+
+        let NormalizedQueryResponseV1::FriendCandidateReview(dismissed) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FriendCandidateReview(
+                NormalizedFriendCandidateReviewRequestV1 {
+                    dismissed_suggestion_ids: vec![response.rows[0].id.clone()],
+                    ..request
+                },
+            ),
+        )
+        .expect("dismissed Friend candidate review") else {
+            panic!("Friend candidate review response");
+        };
+        assert!(dismissed.rows.is_empty());
     }
 
     #[test]

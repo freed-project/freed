@@ -16,6 +16,8 @@ import type {
   Account,
   FeedItem,
   FilterOptions,
+  FriendCandidateSuggestion,
+  IdentitySuggestion,
   LibraryMapLocationCandidate,
   Person,
   StoryWallCandidate,
@@ -84,6 +86,7 @@ import {
   type LibraryFriendsDirectoryState,
 } from "./useLibraryFriendsDirectory.js";
 import { useLibraryAccountLinkCandidates } from "./useLibraryAccountLinkCandidates.js";
+import { useLibraryFriendCandidateReview } from "./useLibraryFriendCandidateReview.js";
 import { useLibraryPersonPicker } from "./useLibraryPersonPicker.js";
 import type { AccountLinkSuggestion } from "../lib/account-link-suggestion.js";
 
@@ -165,6 +168,27 @@ function AccountLinkCandidatesHarness({
 }) {
   onRows(
     useLibraryAccountLinkCandidates({ entityId, entityKind, sourceVersion }),
+  );
+  return null;
+}
+
+function FriendCandidateReviewHarness({
+  contactSuggestions,
+  dismissedSuggestionIds,
+  onRows,
+  sourceVersion,
+}: {
+  contactSuggestions: readonly IdentitySuggestion[];
+  dismissedSuggestionIds: readonly string[];
+  onRows: (rows: readonly FriendCandidateSuggestion[]) => void;
+  sourceVersion: number;
+}) {
+  onRows(
+    useLibraryFriendCandidateReview({
+      contactSuggestions,
+      dismissedSuggestionIds,
+      sourceVersion,
+    }),
   );
   return null;
 }
@@ -639,6 +663,84 @@ describe("Library row query hooks", () => {
         accountId: "account-ada",
         personId: "person-ada",
         score: 95,
+      }),
+    ]);
+  });
+
+  it("retains only the bounded SQLite Friend candidate review", async () => {
+    const queryLibraryCore = vi.fn(async () => ({
+      queryId: "friend_candidate_review_v1",
+      rows: [
+        {
+          accountIdsJson: '["account-ada"]',
+          confidence: "high",
+          contactOverlapScore: 14,
+          directRequestsScore: 9,
+          displayName: "Ada Lovelace",
+          id: "friend-suggestion:unlinked_account:account-ada:12:1:1:0:1:0:0",
+          kind: "unlinked_account",
+          lastActivityAt: 12,
+          lifeEventsScore: 0,
+          multiChannelScore: 0,
+          personId: null,
+          personalUpdatesScore: 13,
+          placesMomentsScore: 0,
+          recentActivityScore: 10,
+          sampleItemIdsJson: '["item-ada"]',
+          score: 80,
+          signalCountsJson: '{"life_update":1,"request":1}',
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const contactSuggestions: IdentitySuggestion[] = [
+      {
+        accountIds: ["account-zed", "account-ada", "account-ada"],
+        confidence: "high",
+        createdAt: 1,
+        id: "contact-1",
+        kind: "attach_accounts_to_person",
+        label: "Ada",
+        personId: "person-ada",
+      },
+    ];
+    let rows: readonly FriendCandidateSuggestion[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <FriendCandidateReviewHarness
+          contactSuggestions={contactSuggestions}
+          dismissedSuggestionIds={["suggestion-zed", "suggestion-ada"]}
+          onRows={(next) => {
+            rows = next;
+          }}
+          sourceVersion={12}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactAccountIds: ["account-ada", "account-zed"],
+        contactPersonIds: ["person-ada"],
+        dismissedSuggestionIds: ["suggestion-ada", "suggestion-zed"],
+        limit: 10,
+        queryId: "friend_candidate_review_v1",
+        schemaVersion: 1,
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        accountIds: ["account-ada"],
+        displayName: "Ada Lovelace",
+        sampleItemIds: ["item-ada"],
+        score: 80,
       }),
     ]);
   });

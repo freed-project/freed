@@ -1248,6 +1248,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "feed_page_v1",
   "feed_subscription_page_v1",
   "filter_scope_summary_v1",
+  "friend_candidate_review_v1",
   "friends_directory_page_v1",
   "item_detail_v1",
   "item_reader_body_v1",
@@ -1364,6 +1365,11 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "maximumScanRows": 1,
     "countSql": "SELECT 1;",
     "sql": "SELECT CASE WHEN ?1 IS NOT NULL THEN NULL ELSE (SELECT account.id FROM library_accounts AS account WHERE account.provider = ?2 COLLATE BINARY AND account.external_id = ?3 COLLATE BINARY LIMIT 1) END AS accountId, CASE WHEN ?1 IS NOT NULL THEN (SELECT feed.title FROM library_rss_feeds AS feed WHERE feed.url = ?1 COLLATE BINARY LIMIT 1) ELSE (SELECT COALESCE(NULLIF(trim(account.display_name), ''), NULLIF(trim(account.handle), ''), NULLIF(trim(account.external_id), '')) FROM library_accounts AS account WHERE account.provider = ?2 COLLATE BINARY AND account.external_id = ?3 COLLATE BINARY LIMIT 1) END AS label, CASE WHEN ?1 IS NOT NULL THEN (SELECT count(*) FROM library_feed_items AS item WHERE item.rss_feed_url = ?1 COLLATE BINARY AND item.hidden = 0) ELSE (SELECT count(*) FROM library_feed_items AS item WHERE item.platform = ?2 COLLATE BINARY AND item.author_id = ?3 COLLATE BINARY AND item.hidden = 0) END AS itemCount;"
+  },
+  "friend_candidate_review_v1": {
+    "maximumScanRows": 11,
+    "countSql": "SELECT 1;",
+    "sql": "WITH candidate_accounts AS MATERIALIZED (SELECT CASE WHEN person.relationship_status = 'connection' THEN 'connection_person' ELSE 'unlinked_account' END AS kind, CASE WHEN person.relationship_status = 'connection' THEN person.id ELSE account.id END AS target_id, CASE WHEN person.relationship_status = 'connection' THEN person.name ELSE COALESCE(account.display_name, account.handle, account.external_id) END AS display_name, account.id AS account_id, account.provider, account.external_id, account.last_seen_at FROM library_accounts AS account LEFT JOIN library_persons AS person ON person.id = account.person_id WHERE account.kind = 'social' AND account.provider IN ('x', 'facebook', 'instagram', 'linkedin', 'substack', 'medium') AND (account.person_id IS NULL OR person.relationship_status = 'connection')), targets AS MATERIALIZED (SELECT kind, target_id, display_name, count(*) AS account_count, max(last_seen_at) AS latest_seen_at, CASE WHEN kind = 'connection_person' THEN EXISTS(SELECT 1 FROM json_each(?1) AS contact_person WHERE contact_person.value = target_id) OR EXISTS(SELECT 1 FROM candidate_accounts AS contact_account JOIN json_each(?2) AS requested_account ON requested_account.value = contact_account.account_id WHERE contact_account.kind = candidate_accounts.kind AND contact_account.target_id = candidate_accounts.target_id) ELSE EXISTS(SELECT 1 FROM json_each(?2) AS contact_account WHERE contact_account.value = target_id) END AS contact_overlap FROM candidate_accounts GROUP BY kind, target_id, display_name), activity AS MATERIALIZED (SELECT candidate.kind, candidate.target_id, count(item.global_id) AS item_count, max(item.published_at) AS latest_activity_at, sum(CASE WHEN item.published_at <= ?4 AND item.published_at >= ?4 - 3888000000 THEN 1 ELSE 0 END) AS recent_count FROM candidate_accounts AS candidate LEFT JOIN library_feed_items AS item INDEXED BY library_feed_items_provider_author ON item.platform = candidate.provider AND item.author_id = candidate.external_id AND item.hidden = 0 GROUP BY candidate.kind, candidate.target_id), signal_counts AS MATERIALIZED (SELECT candidate.kind, candidate.target_id, signal.signal, count(*) AS signal_count FROM candidate_accounts AS candidate JOIN library_feed_items AS item INDEXED BY library_feed_items_provider_author ON item.platform = candidate.provider AND item.author_id = candidate.external_id AND item.hidden = 0 JOIN library_feed_item_signal_scores AS signal ON signal.global_id = item.global_id AND signal.tagged = 1 WHERE signal.signal IN ('life_update', 'moment', 'event', 'opportunity', 'request', 'recommendation', 'discussion', 'place', 'news', 'promotion', 'product_update', 'deal', 'transaction') GROUP BY candidate.kind, candidate.target_id, signal.signal), metrics AS MATERIALIZED (SELECT target.kind, target.target_id, target.display_name, target.account_count, target.contact_overlap, max(target.latest_seen_at, COALESCE(activity.latest_activity_at, 0)) AS last_activity_at, COALESCE(activity.item_count, 0) AS item_count, COALESCE(activity.recent_count, 0) AS recent_count, COALESCE(sum(CASE WHEN signal.signal IN ('life_update', 'moment') THEN signal.signal_count ELSE 0 END), 0) AS personal_count, COALESCE(sum(CASE WHEN signal.signal IN ('event', 'opportunity') THEN signal.signal_count ELSE 0 END), 0) AS life_event_count, COALESCE(sum(CASE WHEN signal.signal IN ('request', 'recommendation', 'discussion') THEN signal.signal_count ELSE 0 END), 0) AS direct_request_count, COALESCE(sum(CASE WHEN signal.signal IN ('place', 'moment') THEN signal.signal_count ELSE 0 END), 0) AS place_moment_count, COALESCE(sum(CASE WHEN signal.signal = 'news' THEN signal.signal_count * 16 WHEN signal.signal = 'promotion' THEN signal.signal_count * 14 WHEN signal.signal = 'product_update' THEN signal.signal_count * 12 WHEN signal.signal = 'deal' THEN signal.signal_count * 12 WHEN signal.signal = 'transaction' THEN signal.signal_count * 16 ELSE 0 END), 0) AS negative_score, lower(' ' || replace(replace(replace(replace(replace(target.display_name, '.', ' '), '_', ' '), '-', ' '), '/', ' '), '@', ' ') || ' ') AS normalized_name FROM targets AS target LEFT JOIN activity ON activity.kind = target.kind AND activity.target_id = target.target_id LEFT JOIN signal_counts AS signal ON signal.kind = target.kind AND signal.target_id = target.target_id GROUP BY target.kind, target.target_id, target.display_name, target.account_count, target.contact_overlap, target.latest_seen_at, activity.latest_activity_at, activity.item_count, activity.recent_count), components AS MATERIALIZED (SELECT metrics.*, min(36, personal_count * 13) AS personal_score, min(24, life_event_count * 12) AS life_event_score, min(22, direct_request_count * 9) AS direct_request_score, min(22, place_moment_count * 8) AS place_moment_score, CASE WHEN account_count > 1 THEN 18 ELSE 0 END AS multi_channel_score, min(18, CASE WHEN recent_count > 0 THEN 10 ELSE 0 END + min(8, CAST(item_count / 2 AS INTEGER) * 4)) AS recent_score, CASE WHEN contact_overlap THEN 14 ELSE 0 END AS contact_score, CASE WHEN normalized_name LIKE '% agency %' OR normalized_name LIKE '% company %' OR normalized_name LIKE '% corp %' OR normalized_name LIKE '% daily %' OR normalized_name LIKE '% deals %' OR normalized_name LIKE '% foundation %' OR normalized_name LIKE '% journal %' OR normalized_name LIKE '% labs %' OR normalized_name LIKE '% media %' OR normalized_name LIKE '% network %' OR normalized_name LIKE '% news %' OR normalized_name LIKE '% official %' OR normalized_name LIKE '% press %' OR normalized_name LIKE '% product %' OR normalized_name LIKE '% shop %' OR normalized_name LIKE '% store %' OR normalized_name LIKE '% studio %' OR normalized_name LIKE '% team %' OR normalized_name LIKE '% updates %' THEN 1 ELSE 0 END AS organization_like FROM metrics), scored AS MATERIALIZED (SELECT components.*, max(0, min(100, personal_score + life_event_score + direct_request_score + place_moment_score + multi_channel_score + recent_score + contact_score + CASE WHEN organization_like = 1 THEN 0 WHEN instr(trim(display_name), ' ') > 0 THEN 10 ELSE 5 END - negative_score - CASE WHEN organization_like = 1 THEN 34 ELSE 0 END)) AS final_score FROM components), visible AS MATERIALIZED (SELECT 'friend-suggestion:' || kind || ':' || target_id || ':' || last_activity_at || ':' || item_count || ':' || personal_count || ':' || life_event_count || ':' || direct_request_count || ':' || place_moment_count || ':' || negative_score AS suggestion_id, * FROM scored WHERE final_score >= 60 AND personal_score + life_event_score + direct_request_score + place_moment_score + multi_channel_score + recent_score + contact_score > 0) SELECT COALESCE((SELECT json_group_array(account_id) FROM (SELECT account_id FROM candidate_accounts AS listed_account WHERE listed_account.kind = visible.kind AND listed_account.target_id = visible.target_id ORDER BY account_id COLLATE BINARY LIMIT 16)), '[]') AS accountIdsJson, CASE WHEN final_score >= 80 THEN 'high' ELSE 'medium' END AS confidence, contact_score AS contactOverlapScore, direct_request_score AS directRequestsScore, substr(display_name, 1, 4096) AS displayName, substr(suggestion_id, 1, 8192) AS id, kind, CASE WHEN last_activity_at > 0 THEN last_activity_at ELSE NULL END AS lastActivityAt, life_event_score AS lifeEventsScore, multi_channel_score AS multiChannelScore, CASE WHEN kind = 'connection_person' THEN target_id ELSE NULL END AS personId, personal_score AS personalUpdatesScore, place_moment_score AS placesMomentsScore, recent_score AS recentActivityScore, COALESCE((SELECT json_group_array(global_id) FROM (SELECT DISTINCT item.global_id, item.published_at FROM candidate_accounts AS sample_account JOIN library_feed_items AS item INDEXED BY library_feed_items_provider_author ON item.platform = sample_account.provider AND item.author_id = sample_account.external_id AND item.hidden = 0 WHERE sample_account.kind = visible.kind AND sample_account.target_id = visible.target_id ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT 5)), '[]') AS sampleItemIdsJson, final_score AS score, COALESCE((SELECT json_group_object(signal, signal_count) FROM (SELECT signal, signal_count FROM signal_counts AS listed_signal WHERE listed_signal.kind = visible.kind AND listed_signal.target_id = visible.target_id ORDER BY signal COLLATE BINARY LIMIT 32)), '{}') AS signalCountsJson FROM visible WHERE NOT EXISTS(SELECT 1 FROM json_each(?3) AS dismissed WHERE dismissed.value = visible.suggestion_id) ORDER BY final_score DESC, last_activity_at DESC, display_name COLLATE NOCASE ASC, kind COLLATE BINARY ASC, target_id COLLATE BINARY ASC LIMIT ?5;"
   },
   "item_detail_v1": {
     "maximumScanRows": 1,
@@ -1668,6 +1674,201 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "minimumInteger": null,
       "minimumUtf8Bytes": 1,
       "name": "platform",
+      "nullable": false
+    }
+  ],
+  "friend_candidate_review_v1": [
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 32768,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 2,
+      "name": "accountIdsJson",
+      "nullable": false
+    },
+    {
+      "enumValues": [
+        "high",
+        "medium"
+      ],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 16,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 4,
+      "name": "confidence",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 14,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "contactOverlapScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 22,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "directRequestsScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 4096,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "displayName",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "id",
+      "nullable": false
+    },
+    {
+      "enumValues": [
+        "connection_person",
+        "unlinked_account"
+      ],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 32,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "kind",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "lastActivityAt",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 24,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "lifeEventsScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 18,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "multiChannelScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 2048,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "personId",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 36,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "personalUpdatesScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 22,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "placesMomentsScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 18,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "recentActivityScore",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 16384,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 2,
+      "name": "sampleItemIdsJson",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 100,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "score",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 2,
+      "name": "signalCountsJson",
       "nullable": false
     }
   ],

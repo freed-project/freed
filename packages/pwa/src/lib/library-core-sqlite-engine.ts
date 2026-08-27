@@ -140,6 +140,8 @@ import {
   libraryCoreFriendsDirectoryBindingDigestV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCoreFriendCandidateReviewRequestV1,
+  parseLibraryCoreFriendCandidateReviewResponseV1,
   parseLibraryCoreAccountLinkCandidatesRequestV1,
   parseLibraryCoreAccountLinkCandidatesResponseV1,
   parseLibraryCoreAccountPickerPageRequestV1,
@@ -268,6 +270,8 @@ import {
   type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCoreFriendCandidateReviewRequestV1,
+  type LibraryCoreFriendCandidateReviewResponseV1,
   type LibraryCoreAccountLinkCandidatesRequestV1,
   type LibraryCoreAccountLinkCandidatesResponseV1,
   type LibraryCoreAccountPickerPageRequestV1,
@@ -5109,6 +5113,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryFilterScopeSummary(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "friend_candidate_review_v1":
+        return this.#queryFriendCandidateReview(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "friends_directory_page_v1":
         return this.#queryFriendsDirectory(
           input,
@@ -6482,6 +6490,61 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreAccountLinkCandidatesResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryFriendCandidateReview(
+    input: LibraryCoreFriendCandidateReviewRequestV1,
+  ): LibraryCoreFriendCandidateReviewResponseV1 {
+    const request = parseLibraryCoreFriendCandidateReviewRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program =
+      LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.friend_candidate_review_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        JSON.stringify(request.value.contactPersonIds),
+        JSON.stringify(request.value.contactAccountIds),
+        JSON.stringify(request.value.dismissedSuggestionIds),
+        request.value.nowMs,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Friend candidate review exceeded its row bound",
+      );
+    }
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friend_candidate_review_v1",
+        row,
+      );
+      if (!parsed) {
+        throw new Error(
+          "PWA Library SQLite Friend candidate review row is invalid",
+        );
+      }
+      return parsed;
+    });
+    const response = {
+      queryId: "friend_candidate_review_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreFriendCandidateReviewResponseV1(
       response,
       request.value,
     );

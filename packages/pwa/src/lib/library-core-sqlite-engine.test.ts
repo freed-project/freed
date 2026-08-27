@@ -2905,6 +2905,58 @@ describe("PWA Library Core SQLite engine", () => {
       queryId: "contact_match_v1",
       source: { projectionRevision: 7 },
     });
+    database.exec(`
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, hidden, saved,
+         archived, updated_at)
+      VALUES
+        ('friend-candidate-item', 'instagram', 'post', 1799999999000,
+         1799999999000, 'ada-instagram', 'ada', 'Ada Lovelace', 0, 0, 0,
+         1799999999000);
+      INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+      VALUES
+        ('friend-candidate-item', 'life_update', 0.95, 1),
+        ('friend-candidate-item', 'event', 0.9, 1),
+        ('friend-candidate-item', 'request', 0.9, 1),
+        ('friend-candidate-item', 'place', 0.85, 1);
+    `);
+    const friendCandidateReviewRequest = {
+      cancellationId: operationId("cancel-friend-candidate-review-1"),
+      contactAccountIds: [] as string[],
+      contactPersonIds: [] as string[],
+      dismissedSuggestionIds: [] as string[],
+      limit: 10,
+      nowMs: 1_800_000_000_000,
+      queryId: "friend_candidate_review_v1" as const,
+      readerSessionId: operationId("reader-friend-candidate-review-1"),
+      schemaVersion: 1 as const,
+    };
+    const friendCandidateReview = engine.query(friendCandidateReviewRequest);
+    expect(friendCandidateReview).toMatchObject({
+      queryId: "friend_candidate_review_v1",
+      rows: [
+        {
+          accountIdsJson: '["account-4"]',
+          confidence: "medium",
+          displayName: "Ada Lovelace",
+          kind: "unlinked_account",
+          personId: null,
+          sampleItemIdsJson: '["friend-candidate-item"]',
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(friendCandidateReview.rows[0]?.score).toBeGreaterThanOrEqual(60);
+    expect(
+      engine.query({
+        ...friendCandidateReviewRequest,
+        dismissedSuggestionIds: [friendCandidateReview.rows[0]!.id],
+      }).rows,
+    ).toEqual([]);
+    database.exec(
+      "DELETE FROM library_feed_items WHERE global_id = 'friend-candidate-item';",
+    );
     expect(
       engine.query({
         queryId: "rss_feed_detail_v1",

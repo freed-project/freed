@@ -1,7 +1,4 @@
-import type {
-  Account,
-  FriendCandidateActivityAggregate,
-} from "@freed/shared";
+import type { Account } from "@freed/shared";
 import { compareUtf8Binary } from "@freed/shared";
 import type {
   LibraryFriendsGraph,
@@ -16,9 +13,6 @@ import {
 
 const FRIEND_SUGGESTION_WINDOW_MS = 45 * 24 * 60 * 60 * 1_000;
 export interface FriendsActivityReadModel {
-  readonly candidateActivityBySourceKey: Readonly<
-    Record<string, FriendCandidateActivityAggregate>
-  >;
   readonly graphActivitySummaries: IdentityGraphActivitySummaries;
   readonly socialActivityBySourceKey: Readonly<
     Record<string, LibraryFriendsGraphSocialActivity>
@@ -114,31 +108,15 @@ export function createLibraryFriendsGraphRequest(
 export function buildFriendsActivityReadModel(
   graph: LibraryFriendsGraph,
 ): FriendsActivityReadModel {
-  const candidateActivityBySourceKey: Record<
-    string,
-    FriendCandidateActivityAggregate
-  > = {};
   const socialActivityBySourceKey: Record<
     string,
     LibraryFriendsGraphSocialActivity
   > = {};
   for (const activity of graph.social) {
     const key = socialActivitySummaryKey(activity.platform, activity.authorId);
-    const signalCounts: FriendCandidateActivityAggregate["signalCounts"] = {};
-    for (const signal of activity.signalCounts) {
-      signalCounts[signal.label] = signal.count;
-    }
-    candidateActivityBySourceKey[key] = {
-      itemCount: activity.itemCount,
-      latestActivityAt: activity.latestActivityAt,
-      recentCount: activity.recentCount,
-      sampleItemIds: activity.sampleItems.map((sample) => sample.globalId),
-      signalCounts,
-    };
     socialActivityBySourceKey[key] = activity;
   }
   return {
-    candidateActivityBySourceKey,
     graphActivitySummaries:
       buildIdentityGraphActivitySummariesFromCompact(graph),
     socialActivityBySourceKey,

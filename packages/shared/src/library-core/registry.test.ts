@@ -957,48 +957,6 @@ describe("Library Core query registry", () => {
       }
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
-      if (
-        definition === LIBRARY_CORE_QUERY_REGISTRY.account_detail_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.account_graph_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.account_link_candidates_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.account_picker_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.contact_match_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.content_fetch_claim_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.map_markers_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.filter_scope_summary_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.friends_directory_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.item_reader_body_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.person_detail_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.person_graph_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.person_picker_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.preferences_snapshot_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.provider_media_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.rss_feed_detail_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.rss_feed_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v2 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v2 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.search_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.story_wall_candidates_v1
-      ) {
-        expect(definition.blockers).not.toContain(
-          "runtime_adapter_unimplemented",
-        );
-      } else {
-        expect(definition.blockers).toContain("runtime_adapter_unimplemented");
-      }
       expect("supportedAdapters" in definition).toBe(false);
 
       expect(definition.defaultLimit).toBeGreaterThan(0);

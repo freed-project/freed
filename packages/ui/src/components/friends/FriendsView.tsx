@@ -19,10 +19,7 @@ import type {
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import {
-  buildFriendCandidateSuggestionsFromActivity,
-  compareUtf8Binary,
-} from "@freed/shared";
+import { compareUtf8Binary } from "@freed/shared";
 import {
   readLibraryCoreRssFeedV1,
   type LibraryCoreFriendsDirectoryRowV1,
@@ -44,6 +41,7 @@ import {
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
 import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
+import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -704,13 +702,6 @@ export function FriendsView({
         ),
     [persons],
   );
-  const allPersons = useMemo(
-    () =>
-      Object.values(persons).sort((left, right) =>
-        personName(left).localeCompare(personName(right)),
-      ),
-    [persons],
-  );
   const friendsById = useMemo<Record<string, Friend>>(
     () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
     [friendPersons, friendsWorkspaceIndexes],
@@ -817,28 +808,12 @@ export function FriendsView({
     entityKind: "person",
     sourceVersion: searchCorpusVersion,
   });
-  const friendCandidateSuggestions = useMemo(() => {
-    const common = {
-      persons: allPersons,
-      accounts,
-      contactSuggestions: contactSync.syncState.pendingSuggestions,
-      preferences: friendSuggestionPreferences,
-      limit: 10,
-    } as const;
-    if (nativeActivity) {
-      return buildFriendCandidateSuggestionsFromActivity({
-        ...common,
-        activityBySourceKey: nativeActivity.candidateActivityBySourceKey,
-      });
-    }
-    return [];
-  }, [
-    accounts,
-    allPersons,
-    contactSync.syncState.pendingSuggestions,
-    friendSuggestionPreferences,
-    nativeActivity,
-  ]);
+  const friendCandidateSuggestions = useLibraryFriendCandidateReview({
+    contactSuggestions: contactSync.syncState.pendingSuggestions,
+    dismissedSuggestionIds:
+      friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
+    sourceVersion: searchCorpusVersion,
+  });
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
     for (const suggestion of friendCandidateSuggestions) {
@@ -952,16 +927,6 @@ export function FriendsView({
       }
     },
     [focusGraphNode, setSelectedPerson],
-  );
-
-  const handleSelectAccount = useCallback(
-    (account: Account, focusGraph: boolean = false) => {
-      setSelectedAccount(account.id);
-      if (focusGraph) {
-        focusGraphNode(`account:${account.id}`);
-      }
-    },
-    [focusGraphNode, setSelectedAccount],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -1209,10 +1174,17 @@ export function FriendsView({
     async (level: 3 | 5 = 3) => {
       if (!selectedAccount) return;
       const linkedPerson = selectedAccount.personId
-        ? (persons[selectedAccount.personId] ?? null)
+        ? (selectedAccountLinkedPersonDetail.value ??
+          (readLibraryPersonDetail
+            ? await readLibraryPersonDetail(selectedAccount.personId)
+            : null))
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
+        return;
+      }
+      if (selectedAccount.personId) {
+        toast.error("Freed could not load that person's SQLite record.");
         return;
       }
       setEditorState({
@@ -1220,7 +1192,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(selectedAccount, level),
       });
     },
-    [handleSetPersonRelationshipLevel, persons, selectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryPersonDetail,
+      selectedAccount,
+      selectedAccountLinkedPersonDetail.value,
+    ],
   );
 
   const handlePromoteSelectedPerson = useCallback(
@@ -1234,18 +1211,24 @@ export function FriendsView({
   const handlePromoteFriendSuggestion = useCallback(
     async (suggestion: FriendCandidateSuggestion, level: 3 | 5) => {
       if (suggestion.personId) {
-        const person = persons[suggestion.personId];
+        const person = readLibraryPersonDetail
+          ? await readLibraryPersonDetail(suggestion.personId)
+          : null;
         if (person) {
           await handleSetPersonRelationshipLevel(person, level);
           return;
         }
       }
-      const account = suggestion.accountIds
-        .map((accountId) => accounts[accountId])
-        .find(Boolean);
+      const accountId = suggestion.accountIds[0];
+      const account =
+        accountId && readLibraryAccountDetail
+          ? await readLibraryAccountDetail(accountId)
+          : null;
       if (!account) return;
       const linkedPerson = account.personId
-        ? (persons[account.personId] ?? null)
+        ? readLibraryPersonDetail
+          ? await readLibraryPersonDetail(account.personId)
+          : null
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
@@ -1257,7 +1240,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(account, level),
       });
     },
-    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+      setSelectedAccount,
+    ],
   );
 
   const handleDropGraphNodeToRelationshipTier = useCallback(
@@ -1271,7 +1259,9 @@ export function FriendsView({
       level: RelationshipTierLevel;
     }) => {
       if (personId) {
-        const person = persons[personId];
+        const person = readLibraryPersonDetail
+          ? await readLibraryPersonDetail(personId)
+          : null;
         if (person) {
           await handleSetPersonRelationshipLevel(person, level);
         }
@@ -1279,10 +1269,14 @@ export function FriendsView({
       }
 
       if (!accountId || level === 1) return;
-      const account = accounts[accountId];
+      const account = readLibraryAccountDetail
+        ? await readLibraryAccountDetail(accountId)
+        : null;
       if (!account) return;
       const linkedPerson = account.personId
-        ? (persons[account.personId] ?? null)
+        ? readLibraryPersonDetail
+          ? await readLibraryPersonDetail(account.personId)
+          : null
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
@@ -1294,7 +1288,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(account, level),
       });
     },
-    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+      setSelectedAccount,
+    ],
   );
 
   const handleDismissFriendSuggestion = useCallback(
@@ -1315,20 +1314,17 @@ export function FriendsView({
   const handleSelectFriendCandidate = useCallback(
     (suggestion: FriendCandidateSuggestion) => {
       if (suggestion.personId) {
-        const person = persons[suggestion.personId];
-        if (person) {
-          handleSelectPerson(person, true);
-          return;
-        }
+        setSelectedPerson(suggestion.personId);
+        focusGraphNode(`person:${suggestion.personId}`);
+        return;
       }
-      const account = suggestion.accountIds
-        .map((accountId) => accounts[accountId])
-        .find(Boolean);
-      if (account) {
-        handleSelectAccount(account, true);
+      const accountId = suggestion.accountIds[0];
+      if (accountId) {
+        setSelectedAccount(accountId);
+        focusGraphNode(`account:${accountId}`);
       }
     },
-    [accounts, handleSelectAccount, handleSelectPerson, persons],
+    [focusGraphNode, setSelectedAccount, setSelectedPerson],
   );
 
   const handleOpenSyncModal = useCallback(async () => {
