@@ -11,7 +11,6 @@ import type {
   FeedItem,
   Friend,
   Person,
-  ReachOutLog,
   SampleDataClearSummary,
   UserPreferences,
   RssFeed,
@@ -181,30 +180,6 @@ export interface BaseAppState {
   renameFeed: (url: string, title: string) => Promise<void>;
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
-
-  // Person actions
-  addPerson: (person: Person) => Promise<void>;
-  addPersons: (persons: Person[]) => Promise<void>;
-  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
-  removePerson: (id: string) => Promise<void>;
-  /** @deprecated Use addPerson. */
-  addFriend: (friend: Friend) => Promise<void>;
-  /** @deprecated Use addPersons. */
-  addFriends: (friends: Friend[]) => Promise<void>;
-  /** @deprecated Use updatePerson. */
-  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
-  /** @deprecated Use removePerson. */
-  removeFriend: (id: string) => Promise<void>;
-  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
-  addAccount: (account: Account) => Promise<void>;
-  addAccounts: (accounts: Account[]) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  removeAccount: (id: string) => Promise<void>;
-  linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
-  createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
-  createConnectionPersonsFromCandidates: (
-    candidates: Array<{ person: Person; accountIds: string[] }>,
-  ) => Promise<number>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;

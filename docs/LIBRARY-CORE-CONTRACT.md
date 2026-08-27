@@ -301,6 +301,14 @@ Account. Feed author navigation creates a missing normalized Account through
 one direct `account_upsert`. No shared UI component calls Person or Account
 Zustand mutations.
 
+The shared Zustand contract exposes no Person or Account authority methods.
+Freed Desktop and the PWA do not provide add, batch-add, partial-update,
+remove, relink, reach-out, connection-builder, or deprecated Friend aliases
+through renderer state. Those methods and their store-surface registry entries
+are deleted. Identity writes exist only as closed registered SQLite operations
+through the platform boundary. Development fixtures call the same PWA SQLite
+runtime directly instead of reviving a store mutation path.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

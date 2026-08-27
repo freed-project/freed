@@ -273,12 +273,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
-    candidateStoreSurfaces: [
-      "createConnectionPersonFromAccounts",
-      "createConnectionPersonsFromCandidates",
-      "linkAccountToPerson",
-      "updateAccount",
-    ],
     legacyWorkerRequests: ["UPSERT_CONNECTION_PERSONS", "UPDATE_ACCOUNT"],
   }),
   account_remove: localUserOperation({
@@ -286,7 +280,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     payloadSchema: ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
     transactionMemberSchema: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
-    candidateStoreSurfaces: ["removeAccount", "updateFriend"],
     legacyWorkerRequests: ["REMOVE_ACCOUNT"],
   }),
   account_restore: localUserOperation({
@@ -298,14 +291,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     payloadSchema: ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
     transactionMemberSchema: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys: ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
-    candidateStoreSurfaces: [
-      "addAccount",
-      "addAccounts",
-      "addFriend",
-      "addFriends",
-      "updateAccount",
-      "updateFriend",
-    ],
     legacyWorkerRequests: [
       "ADD_ACCOUNT",
       "ADD_ACCOUNTS",
@@ -485,7 +470,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       "delete_accounts_linked_to_person",
       "detach_accounts_from_person",
     ],
-    candidateStoreSurfaces: ["addFriend", "updateFriend"],
   }),
   person_reach_out_append: localUserOperation({
     entityType: "Person",
@@ -494,7 +478,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     transactionMemberSchema: PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
-    candidateStoreSurfaces: ["logReachOut"],
     legacyWorkerRequests: ["LOG_REACH_OUT"],
   }),
   person_remove_and_accounts: localUserOperation({
@@ -504,7 +487,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     transactionMemberSchema:
       PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
     relationshipEffects: ["delete_accounts_linked_to_person"],
-    candidateStoreSurfaces: ["removeFriend", "removePerson"],
     legacyWorkerRequests: ["REMOVE_PERSON"],
   }),
   person_remove_detach_accounts: localUserOperation({
@@ -514,7 +496,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     transactionMemberSchema:
       PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
     relationshipEffects: ["detach_accounts_from_person"],
-    candidateStoreSurfaces: ["removeFriend", "removePerson"],
     legacyWorkerRequests: ["REMOVE_PERSON"],
   }),
   person_restore: localUserOperation({
@@ -526,16 +507,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     payloadSchema: PERSON_UPSERT_PAYLOAD_SCHEMA,
     transactionMemberSchema: PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys: PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
-    candidateStoreSurfaces: [
-      "addFriend",
-      "addFriends",
-      "addPerson",
-      "addPersons",
-      "createConnectionPersonFromAccounts",
-      "createConnectionPersonsFromCandidates",
-      "updateFriend",
-      "updatePerson",
-    ],
     legacyWorkerRequests: [
       "ADD_PERSON",
       "ADD_PERSONS",

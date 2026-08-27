@@ -14,7 +14,6 @@ import type {
   FilterOptions,
   Friend,
   Person,
-  ReachOutLog,
   RemoveFeedOptions,
   RssFeed,
   SampleDataClearSummary,
@@ -25,15 +24,10 @@ import type {
 } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
-  accountsFromLegacyFriend,
-  buildConnectionPersonDraftFromAccounts,
   createDefaultPreferences,
-  getDeviceLocalGraphPositionUpdates,
   getDeviceLocalPreferenceUpdates,
-  isPrunableConnectionPerson,
   personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
-  stripDeviceLocalGraphPositionUpdates,
 } from "@freed/shared";
 import {
   migrateLegacyDeviceAIPreferences,
@@ -45,12 +39,8 @@ import {
 } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import {
-  applyDeviceAccountGraphPositionUpdate,
-  applyDevicePersonGraphPositionUpdate,
-  getDeviceGraphLayout,
   migrateLegacyDeviceGraphLayout,
   pruneDeviceGraphLayout,
-  restoreReplacedDeviceAccountGraphPositions,
 } from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
 import {
@@ -63,9 +53,7 @@ import {
   projectToggleArchived,
   projectToggleLiked,
   projectToggleSaved,
-  projectUpdateAccount,
   projectUpdateItem,
-  projectUpdatePerson,
   rollbackOptimisticPatch,
   type OptimisticPatch,
 } from "@freed/shared/optimistic-state";
@@ -94,16 +82,6 @@ import {
   docBackfillContentSignals,
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
-  docAddAccount,
-  docAddAccounts,
-  docAddPerson,
-  docAddPersons,
-  docUpdateAccount,
-  docUpdatePerson,
-  docUpsertConnectionPersons,
-  docRemoveAccount,
-  docRemovePerson,
-  docLogReachOut,
   docToggleLiked,
   docConfirmLikedSynced,
   docConfirmSeenSynced,
@@ -398,26 +376,6 @@ interface AppState {
   renameFeed: (url: string, title: string) => Promise<void>;
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
-  // Friend actions (persisted to Automerge)
-  addPerson: (person: Person) => Promise<void>;
-  addPersons: (persons: Person[]) => Promise<void>;
-  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
-  removePerson: (id: string) => Promise<void>;
-  addFriend: (friend: Friend) => Promise<void>;
-  addFriends: (friends: Friend[]) => Promise<void>;
-  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
-  removeFriend: (id: string) => Promise<void>;
-  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
-  addAccount: (account: Account) => Promise<void>;
-  addAccounts: (accounts: Account[]) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  removeAccount: (id: string) => Promise<void>;
-  linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
-  createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
-  createConnectionPersonsFromCandidates: (
-    candidates: Array<{ person: Person; accountIds: string[] }>,
-  ) => Promise<number>;
-
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
 
@@ -581,18 +539,6 @@ async function runOptimisticMutation(
     return;
   }
   await persist();
-}
-
-async function pruneConnectionPersonIfNeeded(
-  getState: () => AppState,
-  personId: string | null | undefined,
-  ignoredAccountIds: string[] = [],
-): Promise<void> {
-  const state = getState();
-  if (!isPrunableConnectionPerson(state.persons, state.accounts, personId, ignoredAccountIds)) {
-    return;
-  }
-  await docRemovePerson(personId!);
 }
 
 /**
@@ -1210,165 +1156,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       (state) => projectRenameFeed(state, url, title),
       () => docUpdateRssFeed(url, { title }),
     );
-  },
-
-  // Person actions
-  addPerson: async (person: Person) => {
-    await docAddPerson(person);
-  },
-
-  addPersons: async (persons: Person[]) => {
-    await docAddPersons(persons);
-  },
-
-  updatePerson: async (id: string, updates: Partial<Person>) => {
-    assertDesktopStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error("Freed could not save this graph position on this device.");
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "desktop:updatePerson",
-      (state) => projectUpdatePerson(state, id, syncedUpdates),
-      () => docUpdatePerson(id, syncedUpdates),
-    );
-  },
-
-  removePerson: async (id: string) => {
-    await docRemovePerson(id);
-  },
-
-  logReachOut: async (id: string, entry: ReachOutLog) => {
-    await docLogReachOut(id, entry);
-  },
-
-  linkAccountToPerson: async (accountId: string, personId: string | null) => {
-    const account = get().accounts[accountId];
-    if (!account) return;
-    const previousPersonId = account.personId ?? null;
-    if (previousPersonId === personId) return;
-    const updates = {
-      personId: personId ?? undefined,
-      updatedAt: Date.now(),
-    };
-    await docUpdateAccount(accountId, updates);
-    await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
-  },
-
-  createConnectionPersonFromAccounts: async (accountIds: string[], personOverride?: Person) => {
-    const person = buildConnectionPersonDraftFromAccounts(get().accounts, accountIds, Date.now(), personOverride);
-    if (!person) {
-      throw new Error("Connection person requires at least one social account with a likely human name.");
-    }
-    if (get().persons[person.id]) {
-      await docUpdatePerson(person.id, person);
-    } else {
-      await docAddPerson(person);
-    }
-    for (const accountId of accountIds) {
-      await get().linkAccountToPerson(accountId, person.id);
-    }
-    return person.id;
-  },
-
-  createConnectionPersonsFromCandidates: async (candidates) => {
-    if (candidates.length === 0) return 0;
-    await docUpsertConnectionPersons(candidates);
-    return candidates.length;
-  },
-
-  // Deprecated friend aliases
-  addFriend: async (friend: Friend) => {
-    await docAddPerson(personFromLegacyFriend(friend));
-    const accounts = accountsFromLegacyFriend(friend);
-    if (accounts.length > 0) {
-      await docAddAccounts(accounts);
-    }
-  },
-
-  addFriends: async (friends: Friend[]) => {
-    const persons = friends.map((friend) => personFromLegacyFriend(friend as Friend));
-    await docAddPersons(persons);
-    const accounts = friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend));
-    if (accounts.length > 0) {
-      await docAddAccounts(accounts);
-    }
-  },
-
-  updateFriend: async (id: string, updates: Partial<Friend>) => {
-    assertDesktopStoreWritable();
-    const current = get().friends[id];
-    if (!current) {
-      await docUpdatePerson(id, updates);
-      return;
-    }
-    const nextFriend = {
-      ...current,
-      ...updates,
-      sources: "sources" in updates ? ((updates as Partial<Friend>).sources ?? []) : current.sources,
-      contact: "contact" in updates ? (updates as Partial<Friend>).contact : current.contact,
-    } as Friend;
-    await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
-    const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
-    const existingAccountIds = new Set(existingAccounts.map((account) => account.id));
-    const graphLayoutBeforeReplacement = getDeviceGraphLayout();
-    await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
-    const nextAccounts = accountsFromLegacyFriend(nextFriend);
-    if (nextAccounts.length > 0) {
-      assertDesktopStoreWritable();
-      await docAddAccounts(nextAccounts);
-      restoreReplacedDeviceAccountGraphPositions(
-        nextAccounts
-          .map((account) => account.id)
-          .filter((accountId) => existingAccountIds.has(accountId)),
-        graphLayoutBeforeReplacement,
-      );
-    }
-  },
-
-  removeFriend: async (id: string) => {
-    await docRemovePerson(id);
-  },
-
-  addAccount: async (account: Account) => {
-    await docAddAccount(account);
-  },
-
-  addAccounts: async (accounts: Account[]) => {
-    await docAddAccounts(accounts);
-  },
-
-  updateAccount: async (id: string, updates: Partial<Account>) => {
-    assertDesktopStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error("Freed could not save this graph position on this device.");
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "desktop:updateAccount",
-      (state) => projectUpdateAccount(state, id, syncedUpdates),
-      () => docUpdateAccount(id, syncedUpdates),
-    );
-  },
-
-  removeAccount: async (id: string) => {
-    const previousPersonId = get().accounts[id]?.personId ?? null;
-    await docRemoveAccount(id);
-    await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 
   // Preference actions

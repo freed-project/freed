@@ -1,6 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { bootstrapDocumentTheme } from '@freed/ui/lib/theme'
+import {
+  accountsFromLegacyFriend,
+  personFromLegacyFriend,
+  type Account,
+  type Friend,
+} from '@freed/shared'
 import './index.css'
 import App from './App.tsx'
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
@@ -26,9 +32,12 @@ if (import.meta.env.DEV) {
     }
     w.__FREED_LIBRARY_CORE__ = {
       addFriend: (friend: unknown) =>
-        run(() => store.useAppStore.getState().addFriend(friend as never)),
+        run(() => libraryCore.replacePwaLibraryCoreFriend(
+          personFromLegacyFriend(friend as Friend),
+          accountsFromLegacyFriend(friend as Friend),
+        )),
       addAccount: (account: unknown) =>
-        run(() => store.useAppStore.getState().addAccount(account as never)),
+        run(() => libraryCore.upsertPwaLibraryCoreAccount(account as Account)),
       addItems: (items: unknown) =>
         run(() => store.useAppStore.getState().addItems(items as never)),
       addFeed: (feed: unknown) =>

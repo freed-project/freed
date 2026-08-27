@@ -7,16 +7,10 @@
 import { create } from "zustand";
 import {
   applyFeedSignalModesToFilter,
-  accountsFromLegacyFriend,
-  buildConnectionPersonDraftFromAccounts,
   createDefaultPreferences,
-  getDeviceLocalGraphPositionUpdates,
   getDeviceLocalPreferenceUpdates,
-  isPrunableConnectionPerson,
   personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
-  stripDeviceLocalGraphPositionUpdates,
-  sanitizeReachOutLogWrite,
 } from "@freed/shared";
 import {
   projectArchiveAllReadUnsaved,
@@ -28,19 +22,14 @@ import {
   projectToggleArchived,
   projectToggleLiked,
   projectToggleSaved,
-  projectUpdateAccount,
   projectUpdateItem,
-  projectUpdatePerson,
   projectUpdatePreferences,
   rollbackOptimisticPatch,
   type OptimisticPatch,
 } from "@freed/shared/optimistic-state";
 import type {
-  Account,
   BaseAppState,
   Friend,
-  Person,
-  ReachOutLog,
   RemoveFeedOptions,
   SampleLibraryData,
 } from "@freed/shared";
@@ -62,13 +51,7 @@ import {
   migrateLegacyDeviceAIPreferences,
   setDeviceAIPreferences,
 } from "@freed/ui/lib/device-ai-preferences";
-import {
-  applyDeviceAccountGraphPositionUpdate,
-  applyDevicePersonGraphPositionUpdate,
-  getDeviceGraphLayout,
-  migrateLegacyDeviceGraphLayout,
-  restoreReplacedDeviceAccountGraphPositions,
-} from "@freed/ui/lib/device-graph-layout";
+import { migrateLegacyDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   clearPwaLibraryCoreSampleData,
@@ -83,12 +66,8 @@ import {
   enqueuePwaLibraryCoreRssFeedUpsert,
   removeAllPwaLibraryCoreRssFeeds,
   enqueuePwaLibraryCorePreferencesPatch,
-  enqueuePwaLibraryCorePersonUpsert,
   enqueuePwaLibraryCorePersonUpserts,
-  enqueuePwaLibraryCorePersonRemove,
-  enqueuePwaLibraryCoreAccountUpsert,
   enqueuePwaLibraryCoreAccountUpserts,
-  enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -243,25 +222,6 @@ async function runOptimisticMutation(
     return;
   }
   await persist();
-}
-
-async function pruneConnectionPersonIfNeeded(
-  getState: () => AppState,
-  personId: string | null | undefined,
-  ignoredAccountIds: string[] = [],
-): Promise<void> {
-  const state = getState();
-  if (
-    !isPrunableConnectionPerson(
-      state.persons,
-      state.accounts,
-      personId,
-      ignoredAccountIds,
-    )
-  ) {
-    return;
-  }
-  await enqueuePwaLibraryCorePersonRemove(personId!);
 }
 
 /** Stop new startup maintenance and drain work already touching the local document. */
@@ -590,251 +550,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       () => enqueuePwaLibraryCoreRssFeedTitleAssignment(url, title),
       { allowLibraryCoreIntent: true },
     );
-  },
-
-  // Person actions
-  addPerson: async (person: Person) => {
-    await enqueuePwaLibraryCorePersonUpsert(person);
-  },
-
-  addPersons: async (persons: Person[]) => {
-    await enqueuePwaLibraryCorePersonUpserts(persons);
-  },
-
-  updatePerson: async (id: string, updates: Partial<Person>) => {
-    assertPwaStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0 &&
-      !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error(
-        "Freed could not save this graph position on this device.",
-      );
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "pwa:updatePerson",
-      (state) => projectUpdatePerson(state, id, syncedUpdates),
-      () => {
-        const current = get().persons[id];
-        if (!current) throw new Error("Person is unavailable");
-        return enqueuePwaLibraryCorePersonUpsert({
-          ...current,
-          ...syncedUpdates,
-        });
-      },
-      { allowLibraryCoreIntent: true },
-    );
-  },
-
-  removePerson: async (id: string) => {
-    await enqueuePwaLibraryCorePersonRemove(id);
-  },
-
-  logReachOut: async (id: string, entry: ReachOutLog) => {
-    const current = get().persons[id];
-    if (!current) return;
-    const synchronizedEntry = sanitizeReachOutLogWrite(entry) as ReachOutLog;
-    const updates: Partial<Person> = {
-      reachOutLog: [synchronizedEntry, ...(current.reachOutLog ?? [])].slice(
-        0,
-        20,
-      ),
-      updatedAt: Date.now(),
-    };
-    await runOptimisticMutation(
-      get,
-      set,
-      "pwa:logReachOut",
-      (state) => projectUpdatePerson(state, id, updates),
-      () => {
-        const person = get().persons[id];
-        if (!person) throw new Error("Person is unavailable");
-        return enqueuePwaLibraryCorePersonUpsert(person);
-      },
-      { allowLibraryCoreIntent: true },
-    );
-  },
-
-  linkAccountToPerson: async (accountId: string, personId: string | null) => {
-    const account = get().accounts[accountId];
-    if (!account) return;
-    const previousPersonId = account.personId ?? null;
-    if (previousPersonId === personId) return;
-    const updates = {
-      personId: personId ?? undefined,
-      updatedAt: Date.now(),
-    };
-    await runOptimisticMutation(
-      get,
-      set,
-      "pwa:linkAccountToPerson",
-      (state) => projectUpdateAccount(state, accountId, updates),
-      () => {
-        const current = get().accounts[accountId];
-        if (!current) throw new Error("Account is unavailable");
-        return enqueuePwaLibraryCoreAccountUpsert(current);
-      },
-      { allowLibraryCoreIntent: true },
-    );
-    await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
-  },
-
-  createConnectionPersonFromAccounts: async (
-    accountIds: string[],
-    personOverride?: Person,
-  ) => {
-    const person = buildConnectionPersonDraftFromAccounts(
-      get().accounts,
-      accountIds,
-      Date.now(),
-      personOverride,
-    );
-    if (!person) {
-      throw new Error(
-        "Connection person requires at least one social account with a likely human name.",
-      );
-    }
-    if (get().persons[person.id]) {
-      await get().updatePerson(person.id, person);
-    } else {
-      await get().addPerson(person);
-    }
-    for (const accountId of accountIds) {
-      await get().linkAccountToPerson(accountId, person.id);
-    }
-    return person.id;
-  },
-
-  createConnectionPersonsFromCandidates: async (candidates) => {
-    if (candidates.length === 0) return 0;
-    for (const { person, accountIds } of candidates) {
-      if (get().persons[person.id]) {
-        await get().updatePerson(person.id, person);
-      } else {
-        await get().addPerson(person);
-      }
-      for (const accountId of accountIds) {
-        await get().linkAccountToPerson(accountId, person.id);
-      }
-    }
-    return candidates.length;
-  },
-
-  // Deprecated friend aliases
-  addFriend: async (friend: Friend) => {
-    await get().addPerson(personFromLegacyFriend(friend));
-    const accounts = accountsFromLegacyFriend(friend);
-    if (accounts.length > 0) {
-      await get().addAccounts(accounts);
-    }
-  },
-
-  addFriends: async (friends: Friend[]) => {
-    const persons = friends.map((friend) =>
-      personFromLegacyFriend(friend as Friend),
-    );
-    await get().addPersons(persons);
-    const accounts = friends.flatMap((friend) =>
-      accountsFromLegacyFriend(friend as Friend),
-    );
-    if (accounts.length > 0) {
-      await get().addAccounts(accounts);
-    }
-  },
-
-  updateFriend: async (id: string, updates: Partial<Friend>) => {
-    assertPwaStoreWritable();
-    const current = get().friends[id];
-    if (!current) {
-      await get().updatePerson(id, updates);
-      return;
-    }
-    const nextFriend = {
-      ...current,
-      ...updates,
-      sources:
-        "sources" in updates
-          ? ((updates as Partial<Friend>).sources ?? [])
-          : current.sources,
-      contact:
-        "contact" in updates
-          ? (updates as Partial<Friend>).contact
-          : current.contact,
-    } as Friend;
-    await get().updatePerson(id, personFromLegacyFriend(nextFriend));
-    const existingAccounts = Object.values(get().accounts).filter(
-      (account) => account.personId === id,
-    );
-    const existingAccountIds = new Set(
-      existingAccounts.map((account) => account.id),
-    );
-    const graphLayoutBeforeReplacement = getDeviceGraphLayout();
-    await Promise.all(
-      existingAccounts.map((account) =>
-        enqueuePwaLibraryCoreAccountRemove(account.id),
-      ),
-    );
-    const nextAccounts = accountsFromLegacyFriend(nextFriend);
-    if (nextAccounts.length > 0) {
-      await get().addAccounts(nextAccounts);
-      assertPwaStoreWritable();
-      restoreReplacedDeviceAccountGraphPositions(
-        nextAccounts
-          .map((account) => account.id)
-          .filter((accountId) => existingAccountIds.has(accountId)),
-        graphLayoutBeforeReplacement,
-      );
-    }
-  },
-
-  removeFriend: async (id: string) => {
-    await get().removePerson(id);
-  },
-
-  addAccount: async (account: Account) => {
-    await enqueuePwaLibraryCoreAccountUpsert(account);
-  },
-
-  addAccounts: async (accounts: Account[]) => {
-    await enqueuePwaLibraryCoreAccountUpserts(accounts);
-  },
-
-  updateAccount: async (id: string, updates: Partial<Account>) => {
-    assertPwaStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0 &&
-      !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error(
-        "Freed could not save this graph position on this device.",
-      );
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "pwa:updateAccount",
-      (state) => projectUpdateAccount(state, id, syncedUpdates),
-      () => {
-        const current = get().accounts[id];
-        if (!current) throw new Error("Account is unavailable");
-        return enqueuePwaLibraryCoreAccountUpsert(current);
-      },
-      { allowLibraryCoreIntent: true },
-    );
-  },
-
-  removeAccount: async (id: string) => {
-    const previousPersonId = get().accounts[id]?.personId ?? null;
-    await enqueuePwaLibraryCoreAccountRemove(id);
-    await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 
   // Preference actions

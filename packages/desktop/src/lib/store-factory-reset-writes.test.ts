@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences, type Account, type Friend } from "@freed/shared";
+import { createDefaultPreferences } from "@freed/shared";
 
 const automerge = vi.hoisted(() => {
   const resolved = () => vi.fn(() => Promise.resolve());
@@ -36,16 +36,6 @@ const automerge = vi.hoisted(() => {
     docBackfillContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
     docDeduplicateFeedItems: resolved(),
     docHealUntitledFeedTitles: resolved(),
-    docAddAccount: resolved(),
-    docAddAccounts: resolved(),
-    docAddPerson: resolved(),
-    docAddPersons: resolved(),
-    docUpdateAccount: resolved(),
-    docUpdatePerson: resolved(),
-    docUpsertConnectionPersons: resolved(),
-    docRemoveAccount: resolved(),
-    docRemovePerson: resolved(),
-    docLogReachOut: resolved(),
     docToggleLiked: resolved(),
     docConfirmLikedSynced: resolved(),
     docConfirmSeenSynced: resolved(),
@@ -70,38 +60,6 @@ vi.mock("@freed/ui/lib/bug-report", () => ({
   recordBugReportEvent: vi.fn(),
   recordRuntimeError: vi.fn(),
 }));
-
-function makeFriend(id: string): Friend {
-  return {
-    id,
-    name: "Reset Friend",
-    relationshipStatus: "friend",
-    careLevel: 3,
-    sources: [{
-      platform: "x",
-      authorId: "reset-friend",
-      handle: "reset-friend",
-    }],
-    createdAt: 1,
-    updatedAt: 1,
-  };
-}
-
-function makeAccount(friendId: string): Account {
-  return {
-    id: "social:x:reset-friend",
-    personId: friendId,
-    kind: "social",
-    provider: "x",
-    externalId: "reset-friend",
-    handle: "reset-friend",
-    firstSeenAt: 1,
-    lastSeenAt: 1,
-    discoveredFrom: "captured_item",
-    createdAt: 1,
-    updatedAt: 1,
-  };
-}
 
 function makeDocState() {
   const preferences = createDefaultPreferences();
@@ -156,28 +114,17 @@ describe("Desktop store factory reset write boundary", () => {
     automerge.docBackfillContentSignals.mockResolvedValue({ updated: 0, remaining: 0 });
   });
 
-  it("rejects graph and preference writes after local writers quiesce", async () => {
+  it("rejects preference writes after local writers quiesce", async () => {
     const { quiesceDesktopStoreForFactoryReset, useAppStore } = await import("./store");
     await quiesceDesktopStoreForFactoryReset();
 
-    await expect(useAppStore.getState().updatePerson("person", {
-      graphX: 10,
-      graphY: 20,
-    })).rejects.toThrow("Desktop store is quiesced for factory reset");
-    await expect(useAppStore.getState().updateAccount("account", {
-      graphX: 30,
-      graphY: 40,
-    })).rejects.toThrow("Desktop store is quiesced for factory reset");
     await expect(useAppStore.getState().updatePreferences({
       display: { sidebarMode: "closed" },
       ai: { provider: "integrated" },
     } as never)).rejects.toThrow("Desktop store is quiesced for factory reset");
 
-    expect(localStorage.getItem("freed-device-graph-layout-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-display-preferences-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-ai-preferences-v1")).toBeNull();
-    expect(automerge.docUpdatePerson).not.toHaveBeenCalled();
-    expect(automerge.docUpdateAccount).not.toHaveBeenCalled();
     expect(automerge.docUpdatePreferences).not.toHaveBeenCalled();
   });
 
@@ -198,40 +145,6 @@ describe("Desktop store factory reset write boundary", () => {
 
     expect(useAppStore.getState().feeds[feed.url]?.title).toBe("Before reset");
     expect(automerge.docUpdateRssFeed).not.toHaveBeenCalled();
-  });
-
-  it("cannot restore replaced account graph state after reset clears it", async () => {
-    let finishAccountRemoval!: () => void;
-    automerge.docRemoveAccount.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        finishAccountRemoval = resolve;
-      }),
-    );
-    const { quiesceDesktopStoreForFactoryReset, useAppStore } = await import("./store");
-    const {
-      clearDeviceGraphLayout,
-      getDeviceAccountGraphLayout,
-      setDeviceAccountGraphPosition,
-    } = await import("@freed/ui/lib/device-graph-layout");
-    const friend = makeFriend("friend-reset");
-    const account = makeAccount(friend.id);
-    useAppStore.setState({
-      friends: { [friend.id]: friend },
-      persons: { [friend.id]: friend },
-      accounts: { [account.id]: account },
-    });
-    setDeviceAccountGraphPosition(account.id, 50, 60, 100);
-
-    const replacing = useAppStore.getState().updateFriend(friend.id, { name: "Updated" });
-    await vi.waitFor(() => expect(automerge.docRemoveAccount).toHaveBeenCalledWith(account.id));
-
-    await quiesceDesktopStoreForFactoryReset();
-    expect(clearDeviceGraphLayout()).toBe(true);
-    finishAccountRemoval();
-
-    await expect(replacing).rejects.toThrow("Desktop store is quiesced for factory reset");
-    expect(automerge.docAddAccounts).not.toHaveBeenCalled();
-    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
   });
 
   it("does not migrate device state when startup finishes during quiescence", async () => {

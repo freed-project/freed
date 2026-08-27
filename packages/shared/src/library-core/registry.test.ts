@@ -1519,28 +1519,26 @@ describe("Library Core query registry", () => {
 });
 
 describe("BaseAppState surface registry", () => {
-  it("maps every deprecated Friend surface to its canonical Person successor", () => {
+  it("retains only UI-local Friend selection aliases", () => {
     expect(BASE_APP_STORE_SURFACE_REGISTRY.friends.deprecatedAliasFor).toBe(
       "persons",
     );
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.selectedFriendId.deprecatedAliasFor,
     ).toBe("selectedPersonId");
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.addFriend.deprecatedAliasFor).toBe(
-      "addPerson",
-    );
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.addFriends.deprecatedAliasFor).toBe(
-      "addPersons",
-    );
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.updateFriend.deprecatedAliasFor,
-    ).toBe("updatePerson");
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.removeFriend.deprecatedAliasFor,
-    ).toBe("removePerson");
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.setSelectedFriend.deprecatedAliasFor,
     ).toBe("setSelectedPerson");
+    for (const removedAuthoritySurface of [
+      "addFriend",
+      "addFriends",
+      "removeFriend",
+      "updateFriend",
+    ]) {
+      expect(removedAuthoritySurface in BASE_APP_STORE_SURFACE_REGISTRY).toBe(
+        false,
+      );
+    }
   });
 
   it("marks current full-corpus renderer state and generic authority methods as blockers", () => {
@@ -1568,9 +1566,7 @@ describe("BaseAppState surface registry", () => {
       "toggleArchived",
       "toggleLiked",
       "toggleSaved",
-      "updateAccount",
       "updateItem",
-      "updatePerson",
       "updatePreferences",
     ] as const) {
       expect(BASE_APP_STORE_SURFACE_REGISTRY[key].classification).toBe(
@@ -1630,16 +1626,19 @@ describe("BaseAppState surface registry", () => {
       "feed_item_capture_upsert",
       "feed_items_deduplicate_frozen",
     ]);
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.updateFriend.successorOperationIds,
-    ).toStrictEqual([
+    for (const operationId of [
+      "account_person_assignment",
       "account_remove",
       "account_upsert",
       "friend_replace",
+      "person_reach_out_append",
+      "person_remove_and_accounts",
+      "person_remove_detach_accounts",
       "person_upsert",
-    ]);
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.updateAccount.successorOperationIds,
-    ).toStrictEqual(["account_person_assignment", "account_upsert"]);
+    ] as const) {
+      expect(
+        LIBRARY_CORE_OPERATION_REGISTRY[operationId].candidateStoreSurfaces,
+      ).toStrictEqual([]);
+    }
   });
 });

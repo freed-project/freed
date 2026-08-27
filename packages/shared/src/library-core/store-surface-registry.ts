@@ -74,40 +74,11 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
   acknowledgeSavedFeedPresentationPatch: functionSurface("ui_local"),
   activeFilter: stateSurface("ui_local"),
   activeView: stateSurface("ui_local"),
-  addAccount: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and its successor payload is unresolved",
-  }),
-  addAccounts: functionSurface("legacy_unbounded", {
-    successorOperationIds: ["account_upsert"],
-    successorQueryIds: [],
-    activationBlocker: "caller-supplied account array has no hard member bound",
-  }),
   addFeed: functionSurface("legacy_compatibility", {
     successorOperationIds: ["rss_feed_upsert"],
     successorQueryIds: [],
     activationBlocker:
       "current method writes legacy Automerge and its successor payload is unresolved",
-  }),
-  addFriend: functionSurface("legacy_compatibility", {
-    successorOperationIds: [
-      "account_upsert",
-      "friend_replace",
-      "person_upsert",
-    ],
-    successorQueryIds: [],
-    activationBlocker:
-      "deprecated Friend write aliases Person without an explicit migration boundary",
-    deprecatedAliasFor: "addPerson",
-  }),
-  addFriends: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_upsert", "person_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "deprecated Friend batch is unbounded and aliases Person",
-    deprecatedAliasFor: "addPersons",
   }),
   addItems: functionSurface("legacy_unbounded", {
     successorOperationIds: [
@@ -117,17 +88,6 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorQueryIds: [],
     activationBlocker:
       "caller-supplied capture array has no hard member or byte bound, provider, import, and user-capture authority are not separated, and the conditional legacy duplicate-removal contract is frozen",
-  }),
-  addPerson: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["person_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and its successor payload is unresolved",
-  }),
-  addPersons: functionSurface("legacy_unbounded", {
-    successorOperationIds: ["person_upsert"],
-    successorQueryIds: [],
-    activationBlocker: "caller-supplied person array has no hard member bound",
   }),
   addSampleLibraryData: functionSurface("legacy_unbounded", {
     successorOperationIds: ["sample_library_import"],
@@ -152,18 +112,6 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorOperationIds: ["sample_library_remove"],
     successorQueryIds: [],
     activationBlocker: "current implementation scans every synchronized root",
-  }),
-  createConnectionPersonFromAccounts: functionSurface("legacy_unbounded", {
-    successorOperationIds: ["account_person_assignment", "person_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "caller-supplied account-id set has no hard member bound",
-  }),
-  createConnectionPersonsFromCandidates: functionSurface("legacy_unbounded", {
-    successorOperationIds: ["account_person_assignment", "person_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "candidate and nested account-id arrays have no hard member bound",
   }),
   deleteAllArchived: functionSurface("legacy_unbounded", {
     successorOperationIds: ["feed_items_delete_archived_frozen"],
@@ -212,18 +160,6 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     activationBlocker:
       "ranked feed array retains a corpus-sized renderer projection",
   }),
-  linkAccountToPerson: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_person_assignment"],
-    successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and its successor payload is unresolved",
-  }),
-  logReachOut: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["person_reach_out_append"],
-    successorQueryIds: [],
-    activationBlocker:
-      "legacy ReachOutLog has no closed stable-element payload yet",
-  }),
   mapAllContentLocationCount: stateSurface("derived"),
   mapFriendLocationCount: stateSurface("derived"),
   markAllAsRead: functionSurface("legacy_unbounded", {
@@ -257,12 +193,6 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     activationBlocker:
       "complete preferences include dynamic maps without closed nested bounds",
   }),
-  removeAccount: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_remove"],
-    successorQueryIds: [],
-    activationBlocker:
-      "current method physically deletes from legacy Automerge without a tombstone receipt",
-  }),
   removeAllFeeds: functionSurface("legacy_unbounded", {
     successorOperationIds: [
       "rss_feeds_remove_keep_items",
@@ -279,30 +209,11 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorQueryIds: [],
     activationBlocker: "includeItems boolean conceals a relationship cascade",
   }),
-  removeFriend: functionSurface("legacy_compatibility", {
-    successorOperationIds: [
-      "person_remove_and_accounts",
-      "person_remove_detach_accounts",
-    ],
-    successorQueryIds: [],
-    activationBlocker:
-      "deprecated alias inherits an implicit account-deletion cascade",
-    deprecatedAliasFor: "removePerson",
-  }),
   removeItem: functionSurface("legacy_compatibility", {
     successorOperationIds: ["feed_item_remove"],
     successorQueryIds: [],
     activationBlocker:
       "current method physically deletes from legacy Automerge without a tombstone receipt",
-  }),
-  removePerson: functionSurface("legacy_compatibility", {
-    successorOperationIds: [
-      "person_remove_and_accounts",
-      "person_remove_detach_accounts",
-    ],
-    successorQueryIds: [],
-    activationBlocker:
-      "current removePerson always deletes linked accounts instead of naming the cascade",
   }),
   renameFeed: functionSurface("legacy_compatibility", {
     successorOperationIds: ["rss_feed_title_assignment"],
@@ -365,35 +276,11 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     activationBlocker: "current repair scans mutable corpus membership",
   }),
   unreadCountByPlatform: stateSurface("derived"),
-  updateAccount: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_person_assignment", "account_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "generic Partial<Account> merge has no closed authoritative payload",
-  }),
-  updateFriend: functionSurface("legacy_compatibility", {
-    successorOperationIds: [
-      "account_remove",
-      "account_upsert",
-      "friend_replace",
-      "person_upsert",
-    ],
-    successorQueryIds: [],
-    activationBlocker:
-      "deprecated Friend replacement deletes every linked Account, then re-adds caller-supplied Accounts without a closed bounded replacement transaction",
-    deprecatedAliasFor: "updatePerson",
-  }),
   updateItem: functionSurface("legacy_compatibility", {
     successorOperationIds: ["feed_item_capture_upsert"],
     successorQueryIds: [],
     activationBlocker:
       "generic Partial<FeedItem> merge has no closed authoritative payload or separated capture-source authority",
-  }),
-  updatePerson: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["person_upsert"],
-    successorQueryIds: [],
-    activationBlocker:
-      "generic Partial<Person> merge has no closed authoritative payload",
   }),
   updatePreferences: functionSurface("legacy_compatibility", {
     successorOperationIds: ["preferences_leaf_assignment"],

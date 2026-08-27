@@ -221,26 +221,6 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     removeFeed: overrides.removeFeed ?? noopAsync,
     renameFeed: overrides.renameFeed ?? noopAsync,
     removeAllFeeds: overrides.removeAllFeeds ?? noopAsync,
-    addPerson: overrides.addPerson ?? noopAsync,
-    addPersons: overrides.addPersons ?? noopAsync,
-    updatePerson: overrides.updatePerson ?? noopAsync,
-    removePerson: overrides.removePerson ?? noopAsync,
-    addFriend: overrides.addFriend ?? noopAsync,
-    addFriends: overrides.addFriends ?? noopAsync,
-    updateFriend: overrides.updateFriend ?? noopAsync,
-    removeFriend: overrides.removeFriend ?? noopAsync,
-    logReachOut: overrides.logReachOut ?? noopAsync,
-    addAccount: overrides.addAccount ?? noopAsync,
-    addAccounts: overrides.addAccounts ?? noopAsync,
-    updateAccount: overrides.updateAccount ?? noopAsync,
-    removeAccount: overrides.removeAccount ?? noopAsync,
-    linkAccountToPerson: overrides.linkAccountToPerson ?? noopAsync,
-    createConnectionPersonFromAccounts:
-      overrides.createConnectionPersonFromAccounts
-      ?? (async () => "connection-person-id"),
-    createConnectionPersonsFromCandidates:
-      overrides.createConnectionPersonsFromCandidates
-      ?? (async () => 0),
     updatePreferences: overrides.updatePreferences ?? noopAsync,
     setFilter: overrides.setFilter ?? ((filter: FilterOptions) => set({ activeFilter: filter })),
     setSelectedItem: overrides.setSelectedItem ?? ((id: string | null) => set({ selectedItemId: id })),
