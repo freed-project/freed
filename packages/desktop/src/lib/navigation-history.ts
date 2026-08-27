@@ -6,6 +6,7 @@ import {
   serializeNavigationState,
   type NavigationState,
 } from "@freed/shared";
+import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
 import { useAppStore } from "./store";
 
 function snapshotNavigationState(): NavigationState {
@@ -33,9 +34,7 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
   const activeFilter = useAppStore((state) => state.activeFilter);
   const selectedItemId = useAppStore((state) => state.selectedItemId);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  const items = useAppStore((state) => state.items);
-  const docItemCount = useAppStore((state) => state.docItemCount);
-  const itemMembershipIsComplete = items.length === docItemCount;
+  useSelectedLibraryItemValidity(enabled);
 
   const historyStackRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
@@ -81,19 +80,6 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
   }, [enabled]);
 
   useEffect(() => {
-    if (
-      !enabled ||
-      !isInitialized ||
-      !itemMembershipIsComplete ||
-      !selectedItemId
-    )
-      return;
-    if (items.some((item) => item.globalId === selectedItemId)) return;
-
-    useAppStore.setState({ selectedItemId: null });
-  }, [enabled, isInitialized, itemMembershipIsComplete, items, selectedItemId]);
-
-  useEffect(() => {
     if (!enabled) return;
 
     if (recordTimerRef.current !== null) {
@@ -104,13 +90,7 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
       recordTimerRef.current = null;
 
       const rawState = snapshotNavigationState();
-      const knownItemIds =
-        isInitialized && itemMembershipIsComplete
-          ? new Set(items.map((item) => item.globalId))
-          : null;
-      const canonicalState = canonicalizeNavigationState(rawState, {
-        knownItemIds,
-      });
+      const canonicalState = canonicalizeNavigationState(rawState);
       const serialized = serializeNavigationState(canonicalState);
       const currentSerialized = historyStackRef.current[historyIndexRef.current];
 
@@ -151,8 +131,6 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
     activeView,
     enabled,
     isInitialized,
-    itemMembershipIsComplete,
-    items,
     selectedItemId,
   ]);
 }

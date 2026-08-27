@@ -6,6 +6,7 @@ import {
   serializeNavigationState,
   type NavigationState,
 } from "@freed/shared";
+import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
 import { useAppStore } from "./store";
 
 function currentPathWithSearch(): string {
@@ -26,7 +27,7 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
   const activeFilter = useAppStore((state) => state.activeFilter);
   const selectedItemId = useAppStore((state) => state.selectedItemId);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  const items = useAppStore((state) => state.items);
+  useSelectedLibraryItemValidity(enabled);
 
   const bootstrappedRef = useRef(false);
   const skipWriteRef = useRef(false);
@@ -65,13 +66,6 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled || !bootstrappedRef.current || !isInitialized || !selectedItemId) return;
-    if (items.some((item) => item.globalId === selectedItemId)) return;
-
-    useAppStore.setState({ selectedItemId: null });
-  }, [enabled, isInitialized, items, selectedItemId]);
-
-  useEffect(() => {
     if (!enabled || !bootstrappedRef.current) return;
 
     if (writeTimerRef.current !== null) {
@@ -81,9 +75,8 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
     writeTimerRef.current = window.setTimeout(() => {
       writeTimerRef.current = null;
 
-      const knownItemIds = isInitialized ? new Set(items.map((item) => item.globalId)) : null;
       const rawState = snapshotNavigationState();
-      const canonicalState = canonicalizeNavigationState(rawState, { knownItemIds });
+      const canonicalState = canonicalizeNavigationState(rawState);
       const nextUrl = serializeNavigationState(canonicalState);
       const currentUrl = currentPathWithSearch();
 
@@ -107,5 +100,5 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
         writeTimerRef.current = null;
       }
     };
-  }, [activeFilter, activeView, enabled, isInitialized, items, selectedItemId]);
+  }, [activeFilter, activeView, enabled, isInitialized, selectedItemId]);
 }

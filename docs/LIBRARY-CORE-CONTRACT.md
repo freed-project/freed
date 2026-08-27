@@ -1272,6 +1272,12 @@ Those collections enter React only through the bounded query window owned by
 the view that requested them. Browser-only UI fixtures may retain a synthetic
 projection, but that fixture is not a production storage or transport path.
 
+Desktop and PWA navigation validate only the currently selected item through
+one exact `item_detail_v1` point query. Navigation does not subscribe to a
+corpus or construct a complete item-ID set. A missing row clears the selection,
+a failed query proves nothing, and a late response cannot clear a newer
+selection.
+
 An active Feed or provider-author filter resolves through
 `filter_scope_summary_v1`. The request contains exactly one Feed URL or one
 provider plus external author ID. SQLite returns one nullable display label and
