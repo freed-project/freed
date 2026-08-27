@@ -14,11 +14,17 @@ const source = {
 const summary = {
   archivedCount: 2,
   archivableCount: 1,
+  contactAccountCount: 2,
+  contactLinkedPersonCount: 1,
   enabledRssFeedCount: 2,
   friendPersonCount: 3,
+  latestContactImportedAt: 500,
+  latestRssFeedFetchedAt: 400,
   platformCounts: [
     {
       archivableCount: 1,
+      latestCapturedAt: 300,
+      latestPublishedAt: 200,
       platform: "rss",
       totalCount: 5,
       unreadCount: 2,

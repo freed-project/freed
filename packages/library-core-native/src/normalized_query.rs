@@ -708,8 +708,12 @@ pub struct NormalizedChangeFeedResponseV1 {
 pub struct NormalizedFacetSummaryV1 {
     pub archived_count: i64,
     pub archivable_count: i64,
+    pub contact_account_count: i64,
+    pub contact_linked_person_count: i64,
     pub enabled_rss_feed_count: i64,
     pub friend_person_count: i64,
+    pub latest_contact_imported_at: Option<i64>,
+    pub latest_rss_feed_fetched_at: Option<i64>,
     pub platform_counts: Vec<NormalizedFacetPlatformCountV1>,
     pub rss_feed_count: i64,
     pub sample_account_count: i64,
@@ -729,6 +733,8 @@ pub struct NormalizedFacetSummaryV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFacetPlatformCountV1 {
     pub archivable_count: i64,
+    pub latest_captured_at: Option<i64>,
+    pub latest_published_at: Option<i64>,
     pub platform: String,
     pub total_count: i64,
     pub unread_count: i64,
@@ -3603,8 +3609,12 @@ fn query_facet_summary(
         Ok(NormalizedFacetSummaryV1 {
             archived_count: row.get("archivedCount")?,
             archivable_count: row.get("archivableCount")?,
+            contact_account_count: row.get("contactAccountCount")?,
+            contact_linked_person_count: row.get("contactLinkedPersonCount")?,
             enabled_rss_feed_count: row.get("enabledRssFeedCount")?,
             friend_person_count: row.get("friendPersonCount")?,
+            latest_contact_imported_at: row.get("latestContactImportedAt")?,
+            latest_rss_feed_fetched_at: row.get("latestRssFeedFetchedAt")?,
             platform_counts: decode_sqlite_json(&row.get::<_, String>("platformCountsJson")?)?,
             rss_feed_count: row.get("rssFeedCount")?,
             sample_account_count: row.get("sampleAccountCount")?,
@@ -3633,6 +3643,8 @@ fn query_facet_summary(
     if [
         summary.archived_count,
         summary.archivable_count,
+        summary.contact_account_count,
+        summary.contact_linked_person_count,
         summary.enabled_rss_feed_count,
         summary.friend_person_count,
         summary.rss_feed_count,
@@ -3652,6 +3664,13 @@ fn query_facet_summary(
         || summary.archived_count > summary.total_count
         || summary.archivable_count > summary.total_count
         || summary.enabled_rss_feed_count > summary.rss_feed_count
+        || summary.contact_linked_person_count > summary.contact_account_count
+        || summary
+            .latest_contact_imported_at
+            .is_some_and(|value| !valid_safe_integer(value))
+        || summary
+            .latest_rss_feed_fetched_at
+            .is_some_and(|value| !valid_safe_integer(value))
         || summary.sample_item_count > summary.total_count
         || summary.saved_count > summary.total_count
         || summary.saved_archived_count > summary.saved_count.min(summary.archived_count)
@@ -3667,6 +3686,12 @@ fn query_facet_summary(
                 || !valid_safe_integer(counts.total_count)
                 || !valid_safe_integer(counts.unread_count)
                 || !valid_safe_integer(counts.archivable_count)
+                || counts
+                    .latest_captured_at
+                    .is_some_and(|value| !valid_safe_integer(value))
+                || counts
+                    .latest_published_at
+                    .is_some_and(|value| !valid_safe_integer(value))
                 || counts.unread_count > counts.total_count
                 || counts.archivable_count > counts.total_count
         })
@@ -6282,9 +6307,14 @@ mod tests {
             .expect("facet plan rows")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("facet plan");
-        assert!(plan.iter().all(|detail| {
-            !detail.contains("library_feed_items") && !detail.contains("library_feed_item_tags")
-        }));
+        assert!(
+            plan.iter().all(|detail| {
+                !detail.contains("SCAN item")
+                    && !detail.contains("SCAN library_feed_items")
+                    && !detail.contains("USE TEMP B-TREE")
+            }),
+            "facet query must stay on maintained summaries and bounded indexes: {plan:?}"
+        );
         drop(plan_statement);
         connection
             .execute_batch(&format!(
@@ -6306,8 +6336,8 @@ mod tests {
                  INSERT INTO library_feed_item_tags (global_id, tag)
                    VALUES ('item-1', '😀'), ('item-1', 'alpha'), ('item-2', '');
                  INSERT INTO library_rss_feeds
-                   (url, title, enabled, track_unread, sample_batch_id, updated_at)
-                   VALUES ('https://sample.test/feed', 'Sample', 1, 0, 'sample-1', 100);
+                   (url, title, last_fetched, enabled, track_unread, sample_batch_id, updated_at)
+                   VALUES ('https://sample.test/feed', 'Sample', 150, 1, 0, 'sample-1', 100);
                  INSERT INTO library_persons
                    (id, name, relationship_status, care_level, sample_batch_id,
                     created_at, updated_at)
@@ -6316,7 +6346,12 @@ mod tests {
                    (id, kind, provider, external_id, first_seen_at, last_seen_at,
                     discovered_from, sample_batch_id, created_at, updated_at)
                    VALUES ('account-1', 'social', 'x', 'sample', 100, 100,
-                           'sample', 'sample-1', 100, 100);",
+                           'sample', 'sample-1', 100, 100);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, imported_at,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('contact-1', 'person-1', 'contact', 'google_contacts',
+                           'people/1', 250, 100, 250, 'contact_import', 100, 250);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -6345,11 +6380,31 @@ mod tests {
         assert_eq!(response.summary.enabled_rss_feed_count, 1);
         assert_eq!(response.summary.friend_person_count, 1);
         assert_eq!(response.summary.social_account_count, 1);
+        assert_eq!(response.summary.contact_account_count, 1);
+        assert_eq!(response.summary.contact_linked_person_count, 1);
+        assert_eq!(response.summary.latest_contact_imported_at, Some(250));
+        assert_eq!(response.summary.latest_rss_feed_fetched_at, Some(150));
         assert_eq!(response.summary.platform_counts.len(), 2);
         assert_eq!(response.summary.platform_counts[0].platform, "rss");
         assert_eq!(response.summary.platform_counts[0].total_count, 1);
+        assert_eq!(
+            response.summary.platform_counts[0].latest_captured_at,
+            Some(200)
+        );
+        assert_eq!(
+            response.summary.platform_counts[0].latest_published_at,
+            Some(200)
+        );
         assert_eq!(response.summary.platform_counts[1].platform, "saved");
         assert_eq!(response.summary.platform_counts[1].total_count, 2);
+        assert_eq!(
+            response.summary.platform_counts[1].latest_captured_at,
+            Some(300)
+        );
+        assert_eq!(
+            response.summary.platform_counts[1].latest_published_at,
+            Some(300)
+        );
         assert_eq!(response.summary.tags, ["alpha", "\u{e000}", "😀"]);
 
         connection

@@ -368,8 +368,12 @@ describe("Library Core SQLite worker protocol", () => {
       summary: {
         archivedCount: 0,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [],
         rssFeedCount: 0,
         sampleAccountCount: 0,

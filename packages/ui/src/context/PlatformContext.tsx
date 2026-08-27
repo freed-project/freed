@@ -160,10 +160,16 @@ export type ReadFeedSignalCounts = (
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
   readonly archivableCount: number;
+  readonly contactAccountCount: number;
+  readonly contactLinkedPersonCount: number;
   readonly enabledRssFeedCount: number;
   readonly friendPersonCount: number;
+  readonly latestContactImportedAt: number | null;
+  readonly latestRssFeedFetchedAt: number | null;
   readonly platformCounts: readonly Readonly<{
     archivableCount: number;
+    latestCapturedAt: number | null;
+    latestPublishedAt: number | null;
     platform: string;
     totalCount: number;
     unreadCount: number;

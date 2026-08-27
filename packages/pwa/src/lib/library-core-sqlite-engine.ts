@@ -6194,6 +6194,14 @@ export class PwaLibraryCoreSqliteEngine {
       summary: {
         archivedCount: safeInteger(row.archivedCount, "archived count"),
         archivableCount: safeInteger(row.archivableCount, "archivable count"),
+        contactAccountCount: safeInteger(
+          row.contactAccountCount,
+          "contact Account count",
+        ),
+        contactLinkedPersonCount: safeInteger(
+          row.contactLinkedPersonCount,
+          "linked contact Person count",
+        ),
         enabledRssFeedCount: safeInteger(
           row.enabledRssFeedCount,
           "enabled RSS Feed count",
@@ -6201,6 +6209,14 @@ export class PwaLibraryCoreSqliteEngine {
         friendPersonCount: safeInteger(
           row.friendPersonCount,
           "friend Person count",
+        ),
+        latestContactImportedAt: nullableInteger(
+          row.latestContactImportedAt,
+          "latest contact import",
+        ),
+        latestRssFeedFetchedAt: nullableInteger(
+          row.latestRssFeedFetchedAt,
+          "latest RSS Feed fetch",
         ),
         platformCounts: JSON.parse(
           text(row.platformCountsJson, "platform counts"),

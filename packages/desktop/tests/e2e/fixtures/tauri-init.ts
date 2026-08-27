@@ -247,11 +247,15 @@ export function tauriInitScript(): string {
           var platform = item.platform || 'unknown';
           var counts = platformCounts[platform] || {
             archivableCount: 0,
+            latestCapturedAt: null,
+            latestPublishedAt: null,
             platform: platform,
             totalCount: 0,
             unreadCount: 0,
           };
           counts.totalCount += 1;
+          counts.latestCapturedAt = Math.max(counts.latestCapturedAt || 0, item.capturedAt || 0) || null;
+          counts.latestPublishedAt = Math.max(counts.latestPublishedAt || 0, item.publishedAt || 0) || null;
           if (user.readAt == null) counts.unreadCount += 1;
           if (user.readAt != null && !user.saved && !user.archived && !user.hidden) {
             counts.archivableCount += 1;
@@ -263,6 +267,10 @@ export function tauriInitScript(): string {
         var feeds = Object.values(shell.feeds || {});
         var persons = Object.values(shell.persons || {});
         var accounts = Object.values(shell.accounts || {});
+        var contactAccounts = accounts.filter(function(account) {
+          return account.kind === 'contact' && account.provider === 'google_contacts';
+        });
+        var personIds = new Set(persons.map(function(person) { return person.id; }));
         return {
           queryId: request.queryId,
           schemaVersion: request.schemaVersion,
@@ -273,8 +281,20 @@ export function tauriInitScript(): string {
               var user = sqliteItemState(item);
               return user.readAt != null && !user.saved && !user.archived && !user.hidden;
             }).length,
+            contactAccountCount: contactAccounts.length,
+            contactLinkedPersonCount: new Set(contactAccounts.filter(function(account) {
+              return account.personId && personIds.has(account.personId);
+            }).map(function(account) { return account.personId; })).size,
             enabledRssFeedCount: feeds.filter(function(feed) { return feed.enabled !== false; }).length,
             friendPersonCount: persons.filter(function(person) { return person.relationshipStatus === 'friend'; }).length,
+            latestContactImportedAt: contactAccounts.reduce(function(latest, account) {
+              return Math.max(latest, account.importedAt || account.lastSeenAt || account.createdAt || 0);
+            }, 0) || null,
+            latestRssFeedFetchedAt: feeds.filter(function(feed) {
+              return feed.enabled !== false;
+            }).reduce(function(latest, feed) {
+              return Math.max(latest, feed.lastFetched || 0);
+            }, 0) || null,
             platformCounts: Object.values(platformCounts).sort(function(left, right) {
               return left.platform.localeCompare(right.platform);
             }),

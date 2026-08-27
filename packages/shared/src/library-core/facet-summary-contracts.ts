@@ -40,8 +40,12 @@ export const LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA = Object.freeze({
   summaryKeys: Object.freeze([
     "archivedCount",
     "archivableCount",
+    "contactAccountCount",
+    "contactLinkedPersonCount",
     "enabledRssFeedCount",
     "friendPersonCount",
+    "latestContactImportedAt",
+    "latestRssFeedFetchedAt",
     "platformCounts",
     "rssFeedCount",
     "sampleAccountCount",
@@ -107,8 +111,12 @@ export interface LibraryCoreFacetSummaryRequestV1 {
 export interface LibraryCoreFacetSummaryV1 {
   readonly archivedCount: number;
   readonly archivableCount: number;
+  readonly contactAccountCount: number;
+  readonly contactLinkedPersonCount: number;
   readonly enabledRssFeedCount: number;
   readonly friendPersonCount: number;
+  readonly latestContactImportedAt: number | null;
+  readonly latestRssFeedFetchedAt: number | null;
   readonly platformCounts: readonly LibraryCoreFacetPlatformCountV1[];
   readonly rssFeedCount: number;
   readonly sampleAccountCount: number;
@@ -126,6 +134,8 @@ export interface LibraryCoreFacetSummaryV1 {
 
 export interface LibraryCoreFacetPlatformCountV1 {
   readonly archivableCount: number;
+  readonly latestCapturedAt: number | null;
+  readonly latestPublishedAt: number | null;
   readonly platform: string;
   readonly totalCount: number;
   readonly unreadCount: number;
@@ -199,6 +209,8 @@ function parsePlatformCounts(
   const counts: LibraryCoreFacetPlatformCountV1[] = [];
   const keys = [
     "archivableCount",
+    "latestCapturedAt",
+    "latestPublishedAt",
     "platform",
     "totalCount",
     "unreadCount",
@@ -219,6 +231,12 @@ function parsePlatformCounts(
       (record.unreadCount as number) < 0 ||
       !Number.isSafeInteger(record.archivableCount) ||
       (record.archivableCount as number) < 0 ||
+      (record.latestCapturedAt !== null &&
+        (!Number.isSafeInteger(record.latestCapturedAt) ||
+          (record.latestCapturedAt as number) < 0)) ||
+      (record.latestPublishedAt !== null &&
+        (!Number.isSafeInteger(record.latestPublishedAt) ||
+          (record.latestPublishedAt as number) < 0)) ||
       (record.unreadCount as number) > (record.totalCount as number) ||
       (record.archivableCount as number) > (record.totalCount as number)
     ) {
@@ -227,6 +245,8 @@ function parsePlatformCounts(
     counts.push(
       Object.freeze({
         archivableCount: record.archivableCount as number,
+        latestCapturedAt: record.latestCapturedAt as number | null,
+        latestPublishedAt: record.latestPublishedAt as number | null,
         platform: record.platform,
         totalCount: record.totalCount as number,
         unreadCount: record.unreadCount as number,
@@ -283,14 +303,28 @@ export function parseLibraryCoreFacetSummaryResponseV1(
   ) {
     return failure("facet summary response is invalid");
   }
+  const nullableTimestampKeys = [
+    "latestContactImportedAt",
+    "latestRssFeedFetchedAt",
+  ] as const;
   const countKeys = SUMMARY_KEYS.filter(
-    (key) => key !== "tags" && key !== "platformCounts",
+    (key) =>
+      key !== "tags" &&
+      key !== "platformCounts" &&
+      !nullableTimestampKeys.includes(
+        key as (typeof nullableTimestampKeys)[number],
+      ),
   );
   const platformCounts = parsePlatformCounts(summary.platformCounts);
   if (
     countKeys.some(
       (key) =>
         !Number.isSafeInteger(summary[key]) || (summary[key] as number) < 0,
+    ) ||
+    nullableTimestampKeys.some(
+      (key) =>
+        summary[key] !== null &&
+        (!Number.isSafeInteger(summary[key]) || (summary[key] as number) < 0),
     ) ||
     platformCounts === null ||
     !Array.isArray(summary.tags) ||
@@ -327,6 +361,8 @@ export function parseLibraryCoreFacetSummaryResponseV1(
     (summary.archivableCount as number) > (summary.totalCount as number) ||
     (summary.enabledRssFeedCount as number) >
       (summary.rssFeedCount as number) ||
+    (summary.contactLinkedPersonCount as number) >
+      (summary.contactAccountCount as number) ||
     (summary.sampleItemCount as number) > (summary.totalCount as number) ||
     (summary.savedCount as number) > (summary.totalCount as number) ||
     (summary.savedArchivedCount as number) >
@@ -348,8 +384,12 @@ export function parseLibraryCoreFacetSummaryResponseV1(
     summary: Object.freeze({
       archivedCount: summary.archivedCount as number,
       archivableCount: summary.archivableCount as number,
+      contactAccountCount: summary.contactAccountCount as number,
+      contactLinkedPersonCount: summary.contactLinkedPersonCount as number,
       enabledRssFeedCount: summary.enabledRssFeedCount as number,
       friendPersonCount: summary.friendPersonCount as number,
+      latestContactImportedAt: summary.latestContactImportedAt as number | null,
+      latestRssFeedFetchedAt: summary.latestRssFeedFetchedAt as number | null,
       platformCounts: Object.freeze(platformCounts),
       rssFeedCount: summary.rssFeedCount as number,
       sampleAccountCount: summary.sampleAccountCount as number,

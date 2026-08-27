@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { YoutubeIcon } from "@freed/ui/components/icons";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
+import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import { useAppStore } from "../lib/store";
 
 type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
@@ -123,26 +124,19 @@ function PwaSocialProviderSettings({
   platform: SocialPlatform;
 } & SyncProviderSectionProps) {
   const content = PROVIDER_CONTENT[platform];
-  const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const facets = useLibraryFacetSummary(searchCorpusVersion);
   const stats = useMemo(() => {
-    let total = 0;
-    let unread = 0;
-    let latestCaptured = 0;
-    let latestPublished = 0;
-    for (const item of items) {
-      if (item.platform !== platform) continue;
-      total += 1;
-      if (!item.userState.readAt) unread += 1;
-      if (item.capturedAt > latestCaptured) latestCaptured = item.capturedAt;
-      if (item.publishedAt > latestPublished) latestPublished = item.publishedAt;
-    }
+    const platformCounts = facets.platformCounts.find(
+      (entry) => entry.platform === platform,
+    );
     return {
-      total,
-      unread,
-      latestCaptured: latestCaptured > 0 ? latestCaptured : null,
-      latestPublished: latestPublished > 0 ? latestPublished : null,
+      total: platformCounts?.totalCount ?? 0,
+      unread: platformCounts?.unreadCount ?? 0,
+      latestCaptured: platformCounts?.latestCapturedAt ?? null,
+      latestPublished: platformCounts?.latestPublishedAt ?? null,
     };
-  }, [items, platform]);
+  }, [facets.platformCounts, platform]);
 
   return (
     <div className="space-y-4 py-2" data-testid={`pwa-source-status-${platform}`}>
@@ -192,35 +186,25 @@ function RssIcon() {
 }
 
 export function PwaFeedsSettings() {
-  const feeds = useAppStore((s) => s.feeds);
-  const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const facets = useLibraryFacetSummary(searchCorpusVersion);
   const stats = useMemo(() => {
-    const feedList = Object.values(feeds).filter((feed) => feed.enabled !== false);
-    let syncedItems = 0;
-    let unread = 0;
-    let latestSync = 0;
-    let latestPublished = 0;
-
-    for (const feed of feedList) {
-      if (feed.lastFetched && feed.lastFetched > latestSync) latestSync = feed.lastFetched;
-    }
-
-    for (const item of items) {
-      if (item.platform !== "rss") continue;
-      syncedItems += 1;
-      if (!item.userState.readAt) unread += 1;
-      if (item.capturedAt > latestSync) latestSync = item.capturedAt;
-      if (item.publishedAt > latestPublished) latestPublished = item.publishedAt;
-    }
+    const rssCounts = facets.platformCounts.find(
+      (entry) => entry.platform === "rss",
+    );
 
     return {
-      syncedFeeds: feedList.length,
-      syncedItems,
-      unread,
-      latestSync: latestSync > 0 ? latestSync : null,
-      latestPublished: latestPublished > 0 ? latestPublished : null,
+      syncedFeeds: facets.enabledRssFeedCount,
+      syncedItems: rssCounts?.totalCount ?? 0,
+      unread: rssCounts?.unreadCount ?? 0,
+      latestSync:
+        Math.max(
+          facets.latestRssFeedFetchedAt ?? 0,
+          rssCounts?.latestCapturedAt ?? 0,
+        ) || null,
+      latestPublished: rssCounts?.latestPublishedAt ?? null,
     };
-  }, [feeds, items]);
+  }, [facets]);
 
   return (
     <div className="space-y-4 py-2" data-testid="pwa-source-status-feeds">
@@ -253,28 +237,8 @@ export function PwaFeedsSettings() {
 
 export function PwaGoogleContactsSettings() {
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const accounts = useAppStore((s) => s.accounts);
-  const persons = useAppStore((s) => s.persons);
-  const stats = useMemo(() => {
-    const contactAccounts = Object.values(accounts).filter(
-      (account) => account.kind === "contact" && account.provider === "google_contacts",
-    );
-    const linkedPersonIds = new Set<string>();
-    let latestImported = 0;
-    for (const account of contactAccounts) {
-      if (account.personId && persons[account.personId]) {
-        linkedPersonIds.add(account.personId);
-      }
-      const importedAt = account.importedAt ?? account.lastSeenAt ?? account.createdAt ?? 0;
-      if (importedAt > latestImported) latestImported = importedAt;
-    }
-
-    return {
-      imported: contactAccounts.length,
-      linkedPeople: linkedPersonIds.size,
-      latestImported: latestImported > 0 ? latestImported : null,
-    };
-  }, [accounts, persons]);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const facets = useLibraryFacetSummary(searchCorpusVersion);
 
   return (
     <div className="space-y-4 py-2" data-testid="pwa-source-status-google-contacts">
@@ -291,9 +255,9 @@ export function PwaGoogleContactsSettings() {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Imported contacts" value={stats.imported.toLocaleString()} />
-        <StatCard label="Linked people" value={stats.linkedPeople.toLocaleString()} />
-        <StatCard label="Latest import" value={formatTimestamp(stats.latestImported)} />
+        <StatCard label="Imported contacts" value={facets.contactAccountCount.toLocaleString()} />
+        <StatCard label="Linked people" value={facets.contactLinkedPersonCount.toLocaleString()} />
+        <StatCard label="Latest import" value={formatTimestamp(facets.latestContactImportedAt)} />
         {pendingMatchCount > 0 ? (
           <StatCard label="Pending review" value={pendingMatchCount.toLocaleString()} />
         ) : null}

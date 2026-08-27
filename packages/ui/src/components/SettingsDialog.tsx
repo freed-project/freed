@@ -35,7 +35,6 @@ import { useSettingsStore } from "../lib/settings-store.js";
 import {
   formatSampleDataSummary,
   refreshSampleLibraryData,
-  summarizeSampleData,
 } from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
@@ -863,27 +862,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [seedDone, setSeedDone] = useState(false);
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.friends);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
   const [clearingSampleData, setClearingSampleData] = useState(false);
-  const existingFeedCount = Object.keys(feeds).length;
-  const existingFriendCount = Object.keys(friends).length;
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const existingFeedCount = libraryFacets.rssFeedCount;
+  const existingFriendCount = libraryFacets.friendPersonCount;
   const existingItemCount = libraryFacets.totalCount;
-  const sampleDataSummary = useMemo(
-    () =>
-      summarizeSampleData(
-        { items, feeds, persons, accounts },
-        libraryFacets.sampleItemCount,
-      ),
-    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
-  );
+  const sampleDataSummary = {
+    accounts: libraryFacets.sampleAccountCount,
+    feeds: libraryFacets.sampleFeedCount,
+    items: libraryFacets.sampleItemCount,
+    persons: libraryFacets.samplePersonCount,
+    total:
+      libraryFacets.sampleAccountCount +
+      libraryFacets.sampleFeedCount +
+      libraryFacets.sampleItemCount +
+      libraryFacets.samplePersonCount,
+  };
   const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
     existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;

@@ -60,11 +60,17 @@ describe("useLibraryCommandPaletteReader", () => {
     const readLibraryFacetSummary = vi.fn(async () => ({
       archivedCount: 8,
       archivableCount: 0,
+      contactAccountCount: 0,
+      contactLinkedPersonCount: 0,
       enabledRssFeedCount: 0,
       friendPersonCount: 0,
+      latestContactImportedAt: null,
+      latestRssFeedFetchedAt: null,
       platformCounts: [
         {
           archivableCount: 0,
+          latestCapturedAt: 1,
+          latestPublishedAt: 1,
           platform: "rss",
           totalCount: 20_000,
           unreadCount: 0,
@@ -160,8 +166,12 @@ describe("useLibraryCommandPaletteReader", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [],
         rssFeedCount: 0,
         sampleAccountCount: 0,

@@ -156,11 +156,17 @@ describe("SQLite editable follower mutations", () => {
             summary: {
               archivedCount: 0,
               archivableCount: 1,
+              contactAccountCount: 0,
+              contactLinkedPersonCount: 0,
               enabledRssFeedCount: 0,
               friendPersonCount: 0,
+              latestContactImportedAt: null,
+              latestRssFeedFetchedAt: null,
               platformCounts: [
                 {
                   archivableCount: 1,
+                  latestCapturedAt: 1,
+                  latestPublishedAt: 1,
                   platform: "rss",
                   totalCount: 1,
                   unreadCount: 0,
@@ -441,11 +447,17 @@ describe("SQLite Primary mutations", () => {
             summary: {
               archivedCount: 0,
               archivableCount: 0,
+              contactAccountCount: 0,
+              contactLinkedPersonCount: 0,
               enabledRssFeedCount: 0,
               friendPersonCount: 0,
+              latestContactImportedAt: null,
+              latestRssFeedFetchedAt: null,
               platformCounts: [
                 {
                   archivableCount: 0,
+                  latestCapturedAt: 1,
+                  latestPublishedAt: 1,
                   platform: "rss",
                   totalCount: 1,
                   unreadCount: 0,

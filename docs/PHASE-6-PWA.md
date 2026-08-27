@@ -170,7 +170,9 @@
   - [x] `library_facet_summary_v1` reads trigger-maintained SQLite counters,
         saved-platform counts, and tag refcounts without scanning FeedItem
         rows. The worker returns one source-fenced bounded summary with exact
-        binary UTF-8 tag order through the same typed query request.
+        binary UTF-8 tag order through the same typed query request. Covering
+        indexes also provide per-platform latest activity, the latest enabled
+        RSS fetch, and Google Contact import and linked-Person totals.
   - [x] `saved_analytics_v2` executes the same generated one-row aggregate as
         native Rust. Browser SQLite returns exact Saved totals, latest time,
         seven day buckets, 24 hour buckets, and bounded source and content
@@ -521,6 +523,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.65 | Remove the always-mounted AppShell and Google Contacts sync subscriptions to the renderer item corpus. Contact matching and suggestion linking read authoritative OPFS SQLite source pages only, and fail closed when that reader is unavailable instead of consulting historical renderer state                                                                                                                                                           | High       | ✓ Complete                                                                                       |
 | 6.66 | Remove AppShell's historical invalid-Account and provisional-Person repair scans, including their complete renderer map subscriptions. Make the selected Friend mini-map consume its already bounded Person timeline directly, and delete the compatibility identity adapter that rebuilt candidates from Account and Person dictionaries                                                                                                                   | High       | ✓ Complete                                                                                       |
 | 6.67 | Match Google Contacts through the same registered `contact_match_v1` OPFS SQLite query and trigger-maintained normalized identity keys as Freed Desktop. Return at most one Person ID and 32 Account IDs, retain no renderer identity corpus, and link existing Accounts through typed SQLite mutations                                                                                         | High       | ✓ Complete                                                                                       |
+| 6.68 | Drive every PWA source-status card and shared sample-data Settings summary from `library_facet_summary_v1`. Keep exact counts and latest activity dates while deleting complete item, Feed, Person, Friend, and Account subscriptions from those views. PWA SQLite WebAssembly executes the same generated SQL and closed response contract as native Rust                                                                 | High       | ✓ Complete                                                                                       |
 
 ---
 

@@ -274,6 +274,8 @@ CREATE INDEX IF NOT EXISTS library_feed_items_provider_author
   ON library_feed_items(platform, author_id, hidden, published_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_platform
   ON library_feed_items(platform, published_at DESC, global_id);
+CREATE INDEX IF NOT EXISTS library_feed_items_platform_captured
+  ON library_feed_items(platform, captured_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_rss_feed
   ON library_feed_items(rss_feed_url, hidden, published_at DESC, global_id)
   WHERE rss_feed_url IS NOT NULL;
@@ -508,6 +510,9 @@ CREATE TABLE IF NOT EXISTS library_rss_feeds (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 ) STRICT;
 
+CREATE INDEX IF NOT EXISTS library_rss_feeds_enabled_latest
+  ON library_rss_feeds(enabled, last_fetched DESC, url);
+
 CREATE TABLE IF NOT EXISTS library_persons (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -571,6 +576,15 @@ CREATE TABLE IF NOT EXISTS library_accounts (
 CREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external
   ON library_accounts(provider, external_id);
+CREATE INDEX IF NOT EXISTS library_accounts_contact_provider_person
+  ON library_accounts(provider, kind, person_id, id);
+CREATE INDEX IF NOT EXISTS library_accounts_contact_provider_imported
+  ON library_accounts(
+    provider,
+    kind,
+    COALESCE(imported_at, last_seen_at, created_at) DESC,
+    id
+  );
 
 CREATE TABLE IF NOT EXISTS library_person_contact_match_keys (
   match_value TEXT NOT NULL,

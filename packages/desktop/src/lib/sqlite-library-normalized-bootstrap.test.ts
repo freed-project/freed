@@ -81,11 +81,17 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           summary: {
             archivedCount: 3,
             archivableCount: 16,
+            contactAccountCount: 0,
+            contactLinkedPersonCount: 0,
             enabledRssFeedCount: 0,
             friendPersonCount: 0,
+            latestContactImportedAt: null,
+            latestRssFeedFetchedAt: null,
             platformCounts: [
               {
                 archivableCount: 0,
+                latestCapturedAt: 1,
+                latestPublishedAt: 1,
                 platform: "rss",
                 totalCount: 19,
                 unreadCount: 0,

@@ -65,11 +65,17 @@ describe("Freed Desktop normalized surface readers", () => {
           summary: {
             archivedCount: 1,
             archivableCount: 0,
+            contactAccountCount: 0,
+            contactLinkedPersonCount: 0,
             enabledRssFeedCount: 0,
             friendPersonCount: 0,
+            latestContactImportedAt: null,
+            latestRssFeedFetchedAt: null,
             platformCounts: [
               {
                 archivableCount: 0,
+                latestCapturedAt: 1,
+                latestPublishedAt: 1,
                 platform: "rss",
                 totalCount: 6,
                 unreadCount: 0,

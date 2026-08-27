@@ -525,11 +525,17 @@ describe("Library row query hooks", () => {
     const summary: LibraryFacetSummary = {
       archivedCount: 2,
       archivableCount: 1,
+      contactAccountCount: 1,
+      contactLinkedPersonCount: 1,
       enabledRssFeedCount: 1,
       friendPersonCount: 2,
+      latestContactImportedAt: 3,
+      latestRssFeedFetchedAt: 2,
       platformCounts: [
         {
           archivableCount: 1,
+          latestCapturedAt: 2,
+          latestPublishedAt: 1,
           platform: "rss",
           totalCount: 10,
           unreadCount: 4,

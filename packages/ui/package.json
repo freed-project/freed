@@ -57,6 +57,7 @@
     "./lib/settings-store": "./src/lib/settings-store.ts",
     "./lib/theme": "./src/lib/theme.ts",
     "./hooks/useSelectedLibraryItemValidity": "./src/hooks/useSelectedLibraryItemValidity.ts",
+    "./hooks/useLibraryFacetSummary": "./src/hooks/useLibraryFacetSummary.ts",
     "./context": "./src/context/index.ts",
     "./components/friends": "./src/components/friends/index.ts"
   },

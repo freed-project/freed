@@ -116,7 +116,9 @@
         from SQLite trigger-maintained counters and refcounts through the same
         browser and native dispatch. It returns one source-fenced typed
         aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
-        FeedItem rows, and never sends item rows to React.
+        the FeedItem table, and never sends item rows to React. The same closed
+        row now carries indexed latest activity times, Google Contact totals,
+        linked Contact Person totals, and the latest enabled RSS fetch time.
   - [x] `saved_analytics_v2` now computes the Saved overview through one
         generated native SQLite aggregate. It returns exact totals, latest
         time, fixed day and hour buckets, and bounded binary-ordered source and
@@ -605,6 +607,7 @@ export async function captureDomFeed(
 | 5.114 | Remove the always-mounted AppShell and Google Contacts sync subscriptions to the renderer item corpus. Contact matching and suggestion linking read authoritative SQLite source pages only, and fail closed when that reader is unavailable instead of consulting historical renderer state                                                                                                                                                                | High       | ✓ Complete |
 | 5.115 | Remove AppShell's historical invalid-Account and provisional-Person repair scans, including their complete renderer map subscriptions. Make the selected Friend mini-map consume its already bounded Person timeline directly, and delete the compatibility identity adapter that rebuilt candidates from Account and Person dictionaries                                                                                                                        | High       | ✓ Complete |
 | 5.116 | Match Google Contacts through the registered `contact_match_v1` native SQLite query and trigger-maintained normalized identity keys. Return at most one Person ID and 32 Account IDs, remove renderer Person, Account, and FeedItem matching scans, and link existing Accounts through typed SQLite mutations                                                                                                  | High       | ✓ Complete |
+| 5.117 | Replace shared Settings sample and existing-library counts with `library_facet_summary_v1`. Extend the same generated query with indexed per-platform latest activity, enabled RSS fetch time, and Google Contact import and linked-Person totals, so Settings retains one summary and subscribes to no complete item, Feed, Person, Friend, or Account collection                                                                 | High       | ✓ Complete |
 
 ---
 

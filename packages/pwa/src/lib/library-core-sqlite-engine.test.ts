@@ -3100,23 +3100,33 @@ describe("PWA Library Core SQLite engine", () => {
       summary: {
         archivedCount: 0,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 131,
         friendPersonCount: 3,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: 150,
         platformCounts: [
           {
             archivableCount: 0,
+            latestCapturedAt: 100,
+            latestPublishedAt: 100,
             platform: "rss",
             totalCount: 1,
             unreadCount: 1,
           },
           {
             archivableCount: 0,
+            latestCapturedAt: 300,
+            latestPublishedAt: 300,
             platform: "saved",
             totalCount: 1,
             unreadCount: 1,
           },
           {
             archivableCount: 0,
+            latestCapturedAt: 200,
+            latestPublishedAt: 200,
             platform: "x",
             totalCount: 1,
             unreadCount: 1,

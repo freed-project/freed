@@ -1089,11 +1089,17 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 3,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [
           {
             archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
             platform: "rss",
             totalCount: 3,
             unreadCount: 0,
@@ -1251,8 +1257,12 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [],
         rssFeedCount: 0,
         sampleAccountCount: 0,
@@ -1325,11 +1335,17 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [
           {
             archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
             platform: "rss",
             totalCount: 17_000,
             unreadCount: 0,
@@ -1496,11 +1512,17 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 1,
         archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
         friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
         platformCounts: [
           {
             archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
             platform: "rss",
             totalCount: 1,
             unreadCount: 0,

@@ -721,10 +721,16 @@ hydrates Person, Account, or RSS Feed dictionaries to label search results.
 Native and browser Account executors shorten a page by exact serialized bytes
 when legal maximum-sized identity rows approach the 2 MiB response ceiling.
 The constant-time facet row also owns exact RSS Feed, enabled RSS Feed, Friend
-Person, and social Account counts. SQLite triggers maintain those counters in
-the same transaction as each row insert, delete, or classification change.
-Always-mounted navigation reads the counters only. It never subscribes to a
-Person or Account dictionary to count identities in React.
+Person, social Account, sample-record, and per-platform item counts. Its closed
+response includes the latest captured and published time for each of at most 64
+platforms, the latest enabled RSS fetch time, and Google Contact import and
+linked-Person totals. Trigger-maintained counters answer the cardinalities.
+Covering platform, feed, and contact indexes answer the latest-time and linked
+identity fields without a table scan or temporary sort. Always-mounted
+navigation and Settings read this one source-fenced summary. They never
+subscribe to item, Feed, Person, or Account collections to derive status in
+React. Desktop native Rust and PWA SQLite WebAssembly execute the same generated
+SQL and validate the same closed response.
 Person and Account rows left-join their installation-local graph position from
 `library_device_person_graph_layout` and
 `library_device_account_graph_layout`. A missing local row is an explicit

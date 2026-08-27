@@ -115,14 +115,20 @@ function facetSummary(totalCount = 0) {
   return {
     archivedCount: 0,
     archivableCount: 0,
+    contactAccountCount: 0,
+    contactLinkedPersonCount: 0,
     enabledRssFeedCount: 0,
     friendPersonCount: 0,
+    latestContactImportedAt: null,
+    latestRssFeedFetchedAt: null,
     platformCounts:
       totalCount === 0
         ? []
         : [
             {
               archivableCount: 0,
+              latestCapturedAt: 1,
+              latestPublishedAt: 1,
               platform: "rss",
               totalCount,
               unreadCount: 0,
