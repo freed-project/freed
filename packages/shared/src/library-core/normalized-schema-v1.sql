@@ -1061,9 +1061,17 @@ CREATE TABLE IF NOT EXISTS library_device_contact_generations (
   state TEXT NOT NULL CHECK (state IN ('building', 'active')),
   expected_contact_count INTEGER NOT NULL CHECK (expected_contact_count >= 0),
   staged_contact_count INTEGER NOT NULL DEFAULT 0 CHECK (staged_contact_count >= 0),
+  matched_contact_count INTEGER NOT NULL DEFAULT 0 CHECK (matched_contact_count >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   activated_at INTEGER CHECK (activated_at IS NULL OR activated_at >= created_at),
-  CHECK ((state = 'active') = (activated_at IS NOT NULL))
+  CHECK ((state = 'active') = (activated_at IS NOT NULL)),
+  CHECK (
+    state <> 'active'
+    OR (
+      expected_contact_count = staged_contact_count
+      AND staged_contact_count = matched_contact_count
+    )
+  )
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS library_device_contact_one_active_generation
@@ -1123,11 +1131,19 @@ CREATE INDEX IF NOT EXISTS library_device_contacts_review_order
   ON library_device_contacts(generation_id, display_name, resource_name)
   WHERE deleted = 0;
 
+CREATE TABLE IF NOT EXISTS library_device_contact_delta_receipts (
+  generation_id TEXT NOT NULL REFERENCES library_device_contact_generations(generation_id) ON DELETE CASCADE,
+  batch_ordinal INTEGER NOT NULL CHECK (batch_ordinal >= 0),
+  batch_digest TEXT NOT NULL CHECK (length(batch_digest) = 64 AND batch_digest NOT GLOB '*[^0-9a-f]*'),
+  applied_at INTEGER NOT NULL CHECK (applied_at >= 0),
+  PRIMARY KEY (generation_id, batch_ordinal)
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_device_contact_emails (
   generation_id TEXT NOT NULL,
   resource_name TEXT NOT NULL,
-  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 63),
-  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 8192),
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
+  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 2048),
   type_value TEXT CHECK (type_value IS NULL OR length(CAST(type_value AS BLOB)) <= 255),
   PRIMARY KEY (generation_id, resource_name, ordinal),
   FOREIGN KEY (generation_id, resource_name)
@@ -1137,8 +1153,8 @@ CREATE TABLE IF NOT EXISTS library_device_contact_emails (
 CREATE TABLE IF NOT EXISTS library_device_contact_phones (
   generation_id TEXT NOT NULL,
   resource_name TEXT NOT NULL,
-  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 63),
-  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 8192),
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
+  value TEXT NOT NULL CHECK (length(CAST(value AS BLOB)) BETWEEN 1 AND 2048),
   type_value TEXT CHECK (type_value IS NULL OR length(CAST(type_value AS BLOB)) <= 255),
   PRIMARY KEY (generation_id, resource_name, ordinal),
   FOREIGN KEY (generation_id, resource_name)
@@ -1148,8 +1164,8 @@ CREATE TABLE IF NOT EXISTS library_device_contact_phones (
 CREATE TABLE IF NOT EXISTS library_device_contact_photos (
   generation_id TEXT NOT NULL,
   resource_name TEXT NOT NULL,
-  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
-  url TEXT NOT NULL CHECK (length(CAST(url AS BLOB)) BETWEEN 1 AND 16384),
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 3),
+  url TEXT NOT NULL CHECK (length(CAST(url AS BLOB)) BETWEEN 1 AND 8192),
   is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)),
   PRIMARY KEY (generation_id, resource_name, ordinal),
   FOREIGN KEY (generation_id, resource_name)
@@ -1159,9 +1175,9 @@ CREATE TABLE IF NOT EXISTS library_device_contact_photos (
 CREATE TABLE IF NOT EXISTS library_device_contact_organizations (
   generation_id TEXT NOT NULL,
   resource_name TEXT NOT NULL,
-  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 15),
-  name TEXT CHECK (name IS NULL OR length(CAST(name AS BLOB)) <= 2048),
-  title TEXT CHECK (title IS NULL OR length(CAST(title AS BLOB)) <= 2048),
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 3),
+  name TEXT CHECK (name IS NULL OR length(CAST(name AS BLOB)) <= 1024),
+  title TEXT CHECK (title IS NULL OR length(CAST(title AS BLOB)) <= 1024),
   PRIMARY KEY (generation_id, resource_name, ordinal),
   FOREIGN KEY (generation_id, resource_name)
     REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE,
@@ -1186,6 +1202,16 @@ CREATE TABLE IF NOT EXISTS library_device_contact_suggestions (
 
 CREATE INDEX IF NOT EXISTS library_device_contact_suggestions_review_order
   ON library_device_contact_suggestions(generation_id, dismissed_at, confidence, created_at, suggestion_id);
+
+CREATE TABLE IF NOT EXISTS library_device_contact_match_receipts (
+  generation_id TEXT NOT NULL,
+  resource_name TEXT NOT NULL,
+  result_digest TEXT NOT NULL CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
+  matched_at INTEGER NOT NULL CHECK (matched_at >= 0),
+  PRIMARY KEY (generation_id, resource_name),
+  FOREIGN KEY (generation_id, resource_name)
+    REFERENCES library_device_contacts(generation_id, resource_name) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_device_contact_suggestion_accounts (
   generation_id TEXT NOT NULL,

@@ -19,6 +19,7 @@ import {
   createLibraryCoreSqliteCloseScopeActionWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteDeviceContactMutationWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
   createLibraryCoreSqliteContentStateWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest,
@@ -445,6 +446,28 @@ describe("Library Core SQLite worker protocol", () => {
         mutation: { ...request.mutation, canonicalRevision: 8 },
       }),
     ).toThrow(/device graph layout mutation is invalid/);
+  });
+
+  it("carries only closed bounded device contact mutations", () => {
+    const request = createLibraryCoreSqliteDeviceContactMutationWorkerRequest(
+      "request-contacts",
+      {
+        generationId: "contacts:1",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 42,
+      },
+    );
+    expect(request.kind).toBe("mutate_device_contacts");
+    if (request.kind !== "mutate_device_contacts") {
+      throw new Error("device contact request lane is invalid");
+    }
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...request,
+        mutation: { ...request.mutation, sql: "DELETE FROM contacts" },
+      }),
+    ).toThrow(/device contact generation begin mutation is invalid/);
   });
 
   it("carries closed device-local selective content requests", () => {

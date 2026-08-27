@@ -79,6 +79,128 @@ describe("PWA Library Core SQLite engine", () => {
     return value;
   }
 
+  it("builds and activates a replay-safe normalized contact generation", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:1",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 10,
+      }),
+    ).toMatchObject({ changed: true, stagedContactCount: 0 });
+    const delta = {
+      batchOrdinal: 0,
+      contacts: [
+        {
+          emails: [{ type: "home", value: "person@example.com" }],
+          name: { displayName: "Example Person" },
+          organizations: [{ name: "Example" }],
+          phones: [{ value: "+1 555 0100" }],
+          photos: [{ default: true, url: "https://example.com/person.jpg" }],
+          resourceName: "people/1",
+        },
+      ],
+      deletedResourceNames: [],
+      generationId: "contacts:1",
+      mutationKind: "device_contact_delta_append_v1" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 20,
+    };
+    expect(engine.mutateDeviceContactSync(delta)).toMatchObject({
+      changed: true,
+      stagedContactCount: 1,
+    });
+    expect(engine.mutateDeviceContactSync(delta)).toMatchObject({
+      changed: false,
+      stagedContactCount: 1,
+    });
+    expect(() =>
+      engine.mutateDeviceContactSync({
+        ...delta,
+        contacts: [{ ...delta.contacts[0]!, name: { displayName: "Changed" } }],
+      }),
+    ).toThrow("delta replay changed");
+    database.exec(`
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:1', 'Example Person', 'friend', 3, 1, 1);
+    `);
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:1",
+        matchedAt: 30,
+        matches: [
+          {
+            resourceName: "people/1",
+            suggestion: {
+              accountIds: [],
+              confidence: "high",
+              createdAt: 30,
+              id: "google:people/1:person:person:1:accounts:",
+              kind: "attach_accounts_to_person",
+              label: "Example Person",
+              personId: "person:1",
+            },
+          },
+        ],
+        mutationKind: "device_contact_match_append_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ changed: true, matchedContactCount: 1 });
+    expect(
+      engine.mutateDeviceContactSync({
+        activatedAt: 40,
+        expectedContactCount: 1,
+        generationId: "contacts:1",
+        mutationKind: "device_contact_generation_activate_v1",
+        nextSyncToken: "sync-token-1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      activeGenerationId: "contacts:1",
+      changed: true,
+      stagedContactCount: 1,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT contact.resource_name, email.value, phone.value,
+                     photo.url, organization.name, state.sync_token
+              FROM library_device_contact_sync_state AS state
+              JOIN library_device_contacts AS contact
+                ON contact.generation_id = state.active_generation_id
+              JOIN library_device_contact_emails AS email
+                ON email.generation_id = contact.generation_id
+               AND email.resource_name = contact.resource_name
+              JOIN library_device_contact_phones AS phone
+                ON phone.generation_id = contact.generation_id
+               AND phone.resource_name = contact.resource_name
+              JOIN library_device_contact_photos AS photo
+                ON photo.generation_id = contact.generation_id
+               AND photo.resource_name = contact.resource_name
+              JOIN library_device_contact_organizations AS organization
+                ON organization.generation_id = contact.generation_id
+               AND organization.resource_name = contact.resource_name
+              WHERE state.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        "people/1",
+        "person@example.com",
+        "+1 555 0100",
+        "https://example.com/person.jpg",
+        "Example",
+        "sync-token-1",
+      ],
+    ]);
+  });
+
   function coreDigest(domain: string, value: unknown): string {
     return createHash("sha256")
       .update(
@@ -349,11 +471,13 @@ describe("PWA Library Core SQLite engine", () => {
       "library_device_contact_generations",
       "library_device_contact_sync_state",
       "library_device_contacts",
+      "library_device_contact_delta_receipts",
       "library_device_contact_emails",
       "library_device_contact_phones",
       "library_device_contact_photos",
       "library_device_contact_organizations",
       "library_device_contact_suggestions",
+      "library_device_contact_match_receipts",
       "library_device_contact_suggestion_accounts",
     ]) {
       expect(

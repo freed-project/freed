@@ -6,6 +6,7 @@ import {
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteDeviceContactMutationWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
   createLibraryCoreSqliteContentStateWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest,
@@ -51,6 +52,8 @@ import {
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
+  type LibraryCoreDeviceContactMutationReceiptV1,
+  type LibraryCoreDeviceContactSyncMutationV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
@@ -155,6 +158,17 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreDeviceGraphLayoutMutationResultV1> {
     return this.#send((requestId) =>
       createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
+        requestId,
+        mutation,
+      ),
+    );
+  }
+
+  mutateDeviceContactSync(
+    mutation: LibraryCoreDeviceContactSyncMutationV1,
+  ): Promise<LibraryCoreDeviceContactMutationReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteDeviceContactMutationWorkerRequest(
         requestId,
         mutation,
       ),

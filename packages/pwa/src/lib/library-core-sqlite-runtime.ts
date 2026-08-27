@@ -26,6 +26,8 @@ import type {
   LibraryCoreFollowerActorRequestReceiptV2,
   LibraryCoreInstallFollowerActorEnrollmentV2,
   LibraryCoreStoreFollowerActorRequestV2,
+  LibraryCoreDeviceContactMutationReceiptV1,
+  LibraryCoreDeviceContactSyncMutationV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -60,6 +62,13 @@ export const queryPwaNormalizedLibrary: LibraryCoreNormalizedQueryExecutor =
     const active = await openClient();
     return active.query(request);
   };
+
+export async function mutatePwaDeviceContactSync(
+  mutation: LibraryCoreDeviceContactSyncMutationV1,
+): Promise<LibraryCoreDeviceContactMutationReceiptV1> {
+  const active = await openClient();
+  return active.mutateDeviceContactSync(mutation);
+}
 
 export async function beginPwaScopeActionStage(
   stageId: string,

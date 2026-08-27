@@ -232,6 +232,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "mutate_device_contacts") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.mutateDeviceContactSync(request.mutation),
+        });
+        return;
+      }
       if (request.kind === "mutate_content_policy") {
         const receipt = active.mutateContentPolicy(request.mutation);
         let contentRevision = receipt.contentRevision;

@@ -325,6 +325,15 @@ Every interactive contact surface pages the active generation through a closed
 bounded query. React retains only the visible review window and ephemeral
 interaction state.
 
+Device contact generation mutation is a closed schema-versioned protocol.
+Delta batches contain at most 64 unique contact or deletion identities, carry a
+contiguous ordinal, and receive a canonical digest receipt. A changed replay is
+rejected. Match batches contain at most 64 exact results, including explicit
+unmatched results, and each contact receives its own canonical digest receipt.
+Activation requires staged and matched counts to equal the caller's exact
+expected contact count. Every normalized contact is canonically bounded to
+131,072 bytes before it crosses the SQLite boundary.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

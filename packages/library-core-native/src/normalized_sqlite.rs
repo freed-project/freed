@@ -943,11 +943,13 @@ mod tests {
             "library_device_contact_generations",
             "library_device_contact_sync_state",
             "library_device_contacts",
+            "library_device_contact_delta_receipts",
             "library_device_contact_emails",
             "library_device_contact_phones",
             "library_device_contact_photos",
             "library_device_contact_organizations",
             "library_device_contact_suggestions",
+            "library_device_contact_match_receipts",
             "library_device_contact_suggestion_accounts",
         ] {
             let exists: i64 = connection
@@ -977,8 +979,9 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_device_contact_generations
-                 (generation_id, state, expected_contact_count, staged_contact_count, created_at, activated_at)
-                 VALUES ('contacts-1', 'active', 1, 1, 1000, 1001);",
+                 (generation_id, state, expected_contact_count, staged_contact_count,
+                  matched_contact_count, created_at, activated_at)
+                 VALUES ('contacts-1', 'active', 1, 1, 1, 1000, 1001);",
                 [],
             )
             .expect("first contact generation");
@@ -1034,7 +1037,7 @@ mod tests {
         transaction
             .execute(
                 "UPDATE library_device_contact_generations
-                 SET state = 'active', activated_at = 2001
+                 SET state = 'active', matched_contact_count = 1, activated_at = 2001
                  WHERE generation_id = 'contacts-2' AND state = 'building';",
                 [],
             )

@@ -177,6 +177,9 @@ import {
   parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
+  digestLibraryCoreDeviceContactSyncMutationV1,
+  parseLibraryCoreDeviceContactMutationReceiptV1,
+  parseLibraryCoreDeviceContactSyncMutationV1,
   parseLibraryCoreContentPolicyMutationReceiptV1,
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentCompletionReceiptV1,
@@ -295,6 +298,8 @@ import {
   type LibraryCorePersonsGraphResponseV1,
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
+  type LibraryCoreDeviceContactMutationReceiptV1,
+  type LibraryCoreDeviceContactSyncMutationV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -421,6 +426,61 @@ function nullableInteger(
     throw new Error(`${label} is negative`);
   }
   return integer;
+}
+
+function deviceContactMutationReceipt(
+  database: Database,
+  generationId: string | null,
+  changed: boolean,
+): LibraryCoreDeviceContactMutationReceiptV1 {
+  const stateRows = database.exec({
+    sql: `SELECT active_generation_id, revision
+          FROM library_device_contact_sync_state
+          WHERE singleton_id = 1;`,
+    rowMode: "array",
+    returnValue: "resultRows",
+  });
+  if (stateRows.length !== 1) {
+    throw new Error("device contact sync state is unavailable");
+  }
+  let stagedContactCount = 0;
+  let matchedContactCount = 0;
+  if (generationId !== null) {
+    const generationRows = database.exec({
+      sql: `SELECT staged_contact_count, matched_contact_count
+            FROM library_device_contact_generations
+            WHERE generation_id = ?1 COLLATE BINARY;`,
+      bind: [generationId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (generationRows.length === 1) {
+      stagedContactCount = safeInteger(
+        generationRows[0]![0],
+        "device contact staged count",
+      );
+      matchedContactCount = safeInteger(
+        generationRows[0]![1],
+        "device contact matched count",
+      );
+    } else if (generationRows.length > 1) {
+      throw new Error("device contact generation is ambiguous");
+    }
+  }
+  const parsed = parseLibraryCoreDeviceContactMutationReceiptV1({
+    activeGenerationId: nullableText(
+      stateRows[0]![0],
+      "active device contact generation",
+    ),
+    changed,
+    generationId,
+    matchedContactCount,
+    revision: safeInteger(stateRows[0]![1], "device contact revision"),
+    schemaVersion: 1,
+    stagedContactCount,
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.value;
 }
 
 function nullableFiniteNumber(
@@ -1395,6 +1455,640 @@ export class PwaLibraryCoreSqliteEngine {
       if (!result.ok) throw new Error(result.error);
       this.#database.exec("COMMIT;");
       return result.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  mutateDeviceContactSync(
+    input: LibraryCoreDeviceContactSyncMutationV1,
+  ): LibraryCoreDeviceContactMutationReceiptV1 {
+    const parsed = parseLibraryCoreDeviceContactSyncMutationV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const mutation = parsed.value;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      let changed = false;
+      if (mutation.mutationKind === "device_contact_generation_begin_v1") {
+        const buildingRows = this.#database.exec({
+          sql: `SELECT generation_id
+                FROM library_device_contact_generations
+                WHERE state = 'building';`,
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (buildingRows.length > 1) {
+          throw new Error("device contact building generation is ambiguous");
+        }
+        if (buildingRows.length === 1) {
+          if (
+            text(buildingRows[0]![0], "building device contact generation") !==
+            mutation.generationId
+          ) {
+            throw new Error("another device contact generation is building");
+          }
+        } else {
+          const activeGeneration = nullableText(
+            this.#database.exec({
+              sql: `SELECT active_generation_id
+                    FROM library_device_contact_sync_state
+                    WHERE singleton_id = 1;`,
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "active device contact generation",
+          );
+          this.#database.exec({
+            sql: `INSERT INTO library_device_contact_generations
+                    (generation_id, state, expected_contact_count,
+                     staged_contact_count, matched_contact_count, created_at,
+                     activated_at)
+                  VALUES (?1, 'building', 0, 0, 0, ?2, NULL);`,
+            bind: [mutation.generationId, mutation.startedAt],
+          });
+          if (activeGeneration !== null) {
+            this.#database.exec({
+              sql: `INSERT INTO library_device_contacts
+                      (generation_id, resource_name, etag, display_name,
+                       given_name, family_name, middle_name, deleted, updated_at)
+                    SELECT ?1, resource_name, etag, display_name, given_name,
+                           family_name, middle_name, deleted, updated_at
+                    FROM library_device_contacts
+                    WHERE generation_id = ?2 COLLATE BINARY;`,
+              bind: [mutation.generationId, activeGeneration],
+            });
+            for (const table of [
+              "library_device_contact_emails",
+              "library_device_contact_phones",
+            ]) {
+              this.#database.exec({
+                sql: `INSERT INTO ${table}
+                        (generation_id, resource_name, ordinal, value, type_value)
+                      SELECT ?1, resource_name, ordinal, value, type_value
+                      FROM ${table}
+                      WHERE generation_id = ?2 COLLATE BINARY;`,
+                bind: [mutation.generationId, activeGeneration],
+              });
+            }
+            this.#database.exec({
+              sql: `INSERT INTO library_device_contact_photos
+                      (generation_id, resource_name, ordinal, url, is_default)
+                    SELECT ?1, resource_name, ordinal, url, is_default
+                    FROM library_device_contact_photos
+                    WHERE generation_id = ?2 COLLATE BINARY;`,
+              bind: [mutation.generationId, activeGeneration],
+            });
+            this.#database.exec({
+              sql: `INSERT INTO library_device_contact_organizations
+                      (generation_id, resource_name, ordinal, name, title)
+                    SELECT ?1, resource_name, ordinal, name, title
+                    FROM library_device_contact_organizations
+                    WHERE generation_id = ?2 COLLATE BINARY;`,
+              bind: [mutation.generationId, activeGeneration],
+            });
+          }
+          const contactCount = safeInteger(
+            this.#database.exec({
+              sql: `SELECT count(*) FROM library_device_contacts
+                    WHERE generation_id = ?1 COLLATE BINARY;`,
+              bind: [mutation.generationId],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "building device contact count",
+          );
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_generations
+                  SET expected_contact_count = ?2, staged_contact_count = ?2
+                  WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
+            bind: [mutation.generationId, contactCount],
+          });
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET auth_status = 'connected', sync_status = 'syncing',
+                      sync_started_at = ?1, last_error_code = NULL,
+                      last_error_message = NULL, revision = revision + 1,
+                      updated_at = ?1
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [mutation.startedAt],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+          changed = true;
+        }
+      } else if (mutation.mutationKind === "device_contact_delta_append_v1") {
+        const batchDigest =
+          digestLibraryCoreDeviceContactSyncMutationV1(mutation);
+        const receiptRows = this.#database.exec({
+          sql: `SELECT batch_digest
+                FROM library_device_contact_delta_receipts
+                WHERE generation_id = ?1 COLLATE BINARY AND batch_ordinal = ?2;`,
+          bind: [mutation.generationId, mutation.batchOrdinal],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (receiptRows.length === 1) {
+          if (
+            text(receiptRows[0]![0], "device contact batch digest") !==
+            batchDigest
+          ) {
+            throw new Error("device contact delta replay changed");
+          }
+        } else {
+          const expectedOrdinal = safeInteger(
+            this.#database.exec({
+              sql: `SELECT count(*) FROM library_device_contact_delta_receipts
+                    WHERE generation_id = ?1 COLLATE BINARY;`,
+              bind: [mutation.generationId],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "device contact next batch ordinal",
+          );
+          if (mutation.batchOrdinal !== expectedOrdinal) {
+            throw new Error(
+              "device contact delta batch ordinal is not contiguous",
+            );
+          }
+          const generationState = this.#database.exec({
+            sql: `SELECT state FROM library_device_contact_generations
+                  WHERE generation_id = ?1 COLLATE BINARY;`,
+            bind: [mutation.generationId],
+            rowMode: 0,
+            returnValue: "resultRows",
+          });
+          if (
+            generationState.length !== 1 ||
+            generationState[0] !== "building"
+          ) {
+            throw new Error("device contact generation is not building");
+          }
+          for (const resourceName of mutation.deletedResourceNames) {
+            this.#database.exec({
+              sql: `DELETE FROM library_device_contacts
+                    WHERE generation_id = ?1 COLLATE BINARY
+                      AND resource_name = ?2 COLLATE BINARY;`,
+              bind: [mutation.generationId, resourceName],
+            });
+          }
+          for (const contact of mutation.contacts) {
+            this.#database.exec({
+              sql: `DELETE FROM library_device_contacts
+                    WHERE generation_id = ?1 COLLATE BINARY
+                      AND resource_name = ?2 COLLATE BINARY;`,
+              bind: [mutation.generationId, contact.resourceName],
+            });
+            this.#database.exec({
+              sql: `INSERT INTO library_device_contacts
+                      (generation_id, resource_name, etag, display_name,
+                       given_name, family_name, middle_name, deleted, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);`,
+              bind: [
+                mutation.generationId,
+                contact.resourceName,
+                contact.etag ?? null,
+                contact.name.displayName ?? null,
+                contact.name.givenName ?? null,
+                contact.name.familyName ?? null,
+                contact.name.middleName ?? null,
+                contact.metadata?.deleted === true ? 1 : 0,
+                mutation.updatedAt,
+              ],
+            });
+            contact.emails.forEach((entry, ordinal) => {
+              this.#database.exec({
+                sql: `INSERT INTO library_device_contact_emails
+                        (generation_id, resource_name, ordinal, value, type_value)
+                      VALUES (?1, ?2, ?3, ?4, ?5);`,
+                bind: [
+                  mutation.generationId,
+                  contact.resourceName,
+                  ordinal,
+                  entry.value,
+                  entry.type ?? null,
+                ],
+              });
+            });
+            contact.phones.forEach((entry, ordinal) => {
+              this.#database.exec({
+                sql: `INSERT INTO library_device_contact_phones
+                        (generation_id, resource_name, ordinal, value, type_value)
+                      VALUES (?1, ?2, ?3, ?4, ?5);`,
+                bind: [
+                  mutation.generationId,
+                  contact.resourceName,
+                  ordinal,
+                  entry.value,
+                  entry.type ?? null,
+                ],
+              });
+            });
+            contact.photos.forEach((entry, ordinal) => {
+              this.#database.exec({
+                sql: `INSERT INTO library_device_contact_photos
+                        (generation_id, resource_name, ordinal, url, is_default)
+                      VALUES (?1, ?2, ?3, ?4, ?5);`,
+                bind: [
+                  mutation.generationId,
+                  contact.resourceName,
+                  ordinal,
+                  entry.url,
+                  entry.default === true ? 1 : 0,
+                ],
+              });
+            });
+            contact.organizations.forEach((entry, ordinal) => {
+              this.#database.exec({
+                sql: `INSERT INTO library_device_contact_organizations
+                        (generation_id, resource_name, ordinal, name, title)
+                      VALUES (?1, ?2, ?3, ?4, ?5);`,
+                bind: [
+                  mutation.generationId,
+                  contact.resourceName,
+                  ordinal,
+                  entry.name ?? null,
+                  entry.title ?? null,
+                ],
+              });
+            });
+          }
+          this.#database.exec({
+            sql: `INSERT INTO library_device_contact_delta_receipts
+                    (generation_id, batch_ordinal, batch_digest, applied_at)
+                  VALUES (?1, ?2, ?3, ?4);`,
+            bind: [
+              mutation.generationId,
+              mutation.batchOrdinal,
+              batchDigest,
+              mutation.updatedAt,
+            ],
+          });
+          const stagedContactCount = safeInteger(
+            this.#database.exec({
+              sql: `SELECT count(*) FROM library_device_contacts
+                    WHERE generation_id = ?1 COLLATE BINARY AND deleted = 0;`,
+              bind: [mutation.generationId],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "staged device contact count",
+          );
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_generations
+                  SET expected_contact_count = ?2, staged_contact_count = ?2
+                  WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
+            bind: [mutation.generationId, stagedContactCount],
+          });
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET revision = revision + 1, updated_at = ?1
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [mutation.updatedAt],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+          changed = true;
+        }
+      } else if (mutation.mutationKind === "device_contact_match_append_v1") {
+        for (const match of mutation.matches) {
+          const resultDigest = digestLibraryCoreDeviceContactSyncMutationV1({
+            ...mutation,
+            matches: [match],
+          });
+          const receiptRows = this.#database.exec({
+            sql: `SELECT result_digest
+                  FROM library_device_contact_match_receipts
+                  WHERE generation_id = ?1 COLLATE BINARY
+                    AND resource_name = ?2 COLLATE BINARY;`,
+            bind: [mutation.generationId, match.resourceName],
+            rowMode: 0,
+            returnValue: "resultRows",
+          });
+          if (receiptRows.length === 1) {
+            if (receiptRows[0] !== resultDigest) {
+              throw new Error("device contact match replay changed");
+            }
+            continue;
+          }
+          const contactExists = safeInteger(
+            this.#database.exec({
+              sql: `SELECT EXISTS(
+                      SELECT 1 FROM library_device_contacts AS contact
+                      JOIN library_device_contact_generations AS generation
+                        ON generation.generation_id = contact.generation_id
+                      WHERE contact.generation_id = ?1 COLLATE BINARY
+                        AND contact.resource_name = ?2 COLLATE BINARY
+                        AND contact.deleted = 0 AND generation.state = 'building'
+                    );`,
+              bind: [mutation.generationId, match.resourceName],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "device contact match target existence",
+          );
+          if (contactExists !== 1) {
+            throw new Error("device contact match target is unavailable");
+          }
+          if (match.suggestion !== null) {
+            const activeGeneration = nullableText(
+              this.#database.exec({
+                sql: `SELECT active_generation_id
+                      FROM library_device_contact_sync_state
+                      WHERE singleton_id = 1;`,
+                rowMode: 0,
+                returnValue: "resultRows",
+              })[0],
+              "active device contact generation",
+            );
+            const dismissedAt =
+              activeGeneration === null
+                ? null
+                : nullableInteger(
+                    this.#database.exec({
+                      sql: `SELECT dismissed_at
+                          FROM library_device_contact_suggestions
+                          WHERE generation_id = ?1 COLLATE BINARY
+                            AND suggestion_id = ?2 COLLATE BINARY;`,
+                      bind: [activeGeneration, match.suggestion.id],
+                      rowMode: 0,
+                      returnValue: "resultRows",
+                    })[0] ?? null,
+                    "device contact suggestion dismissal",
+                  );
+            this.#database.exec({
+              sql: `INSERT INTO library_device_contact_suggestions
+                      (generation_id, suggestion_id, resource_name, kind,
+                       confidence, person_id, label, reason, created_at,
+                       dismissed_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
+              bind: [
+                mutation.generationId,
+                match.suggestion.id,
+                match.resourceName,
+                match.suggestion.kind,
+                match.suggestion.confidence,
+                match.suggestion.personId ?? null,
+                match.suggestion.label,
+                match.suggestion.reason ?? null,
+                match.suggestion.createdAt,
+                dismissedAt,
+              ],
+            });
+            match.suggestion.accountIds.forEach((accountId, ordinal) => {
+              this.#database.exec({
+                sql: `INSERT INTO library_device_contact_suggestion_accounts
+                        (generation_id, suggestion_id, ordinal, account_id)
+                      VALUES (?1, ?2, ?3, ?4);`,
+                bind: [
+                  mutation.generationId,
+                  match.suggestion!.id,
+                  ordinal,
+                  accountId,
+                ],
+              });
+            });
+          }
+          this.#database.exec({
+            sql: `INSERT INTO library_device_contact_match_receipts
+                    (generation_id, resource_name, result_digest, matched_at)
+                  VALUES (?1, ?2, ?3, ?4);`,
+            bind: [
+              mutation.generationId,
+              match.resourceName,
+              resultDigest,
+              mutation.matchedAt,
+            ],
+          });
+          changed = true;
+        }
+        if (changed) {
+          const matchedContactCount = safeInteger(
+            this.#database.exec({
+              sql: `SELECT count(*) FROM library_device_contact_match_receipts
+                    WHERE generation_id = ?1 COLLATE BINARY;`,
+              bind: [mutation.generationId],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "matched device contact count",
+          );
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_generations
+                  SET matched_contact_count = ?2
+                  WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
+            bind: [mutation.generationId, matchedContactCount],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact generation is not building");
+          }
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET revision = revision + 1, updated_at = ?1
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [mutation.matchedAt],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+        }
+      } else if (
+        mutation.mutationKind === "device_contact_generation_activate_v1"
+      ) {
+        const activeRows = this.#database.exec({
+          sql: `SELECT active_generation_id, sync_token, last_synced_at
+                FROM library_device_contact_sync_state
+                WHERE singleton_id = 1;`,
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (activeRows.length !== 1) {
+          throw new Error("device contact sync state is unavailable");
+        }
+        const priorActiveGeneration = nullableText(
+          activeRows[0]![0],
+          "active device contact generation",
+        );
+        if (priorActiveGeneration === mutation.generationId) {
+          if (
+            nullableText(activeRows[0]![1], "device contact sync token") !==
+              mutation.nextSyncToken ||
+            nullableInteger(activeRows[0]![2], "device contact sync time") !==
+              mutation.activatedAt
+          ) {
+            throw new Error("device contact activation replay changed");
+          }
+        } else {
+          const generationRows = this.#database.exec({
+            sql: `SELECT state, staged_contact_count, matched_contact_count
+                  FROM library_device_contact_generations
+                  WHERE generation_id = ?1 COLLATE BINARY;`,
+            bind: [mutation.generationId],
+            rowMode: "array",
+            returnValue: "resultRows",
+          });
+          if (
+            generationRows.length !== 1 ||
+            generationRows[0]![0] !== "building" ||
+            safeInteger(
+              generationRows[0]![1],
+              "staged device contact count",
+            ) !== mutation.expectedContactCount ||
+            safeInteger(
+              generationRows[0]![2],
+              "matched device contact count",
+            ) !== mutation.expectedContactCount
+          ) {
+            throw new Error("device contact generation is incomplete");
+          }
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET active_generation_id = ?1, auth_status = 'connected',
+                      sync_status = 'idle', sync_started_at = NULL,
+                      sync_token = ?2, last_synced_at = ?3,
+                      last_error_code = NULL, last_error_message = NULL,
+                      revision = revision + 1, updated_at = ?3
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [
+              mutation.generationId,
+              mutation.nextSyncToken,
+              mutation.activatedAt,
+            ],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+          if (priorActiveGeneration !== null) {
+            this.#database.exec({
+              sql: `DELETE FROM library_device_contact_generations
+                    WHERE generation_id = ?1 COLLATE BINARY;`,
+              bind: [priorActiveGeneration],
+            });
+          }
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_generations
+                  SET state = 'active', activated_at = ?2
+                  WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
+            bind: [mutation.generationId, mutation.activatedAt],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact generation activation failed");
+          }
+          changed = true;
+        }
+      } else if (mutation.mutationKind === "device_contact_status_set_v1") {
+        const stateRows = this.#database.exec({
+          sql: `SELECT auth_status, sync_status, sync_started_at,
+                       last_error_code, last_error_message
+                FROM library_device_contact_sync_state
+                WHERE singleton_id = 1;`,
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (stateRows.length !== 1) {
+          throw new Error("device contact sync state is unavailable");
+        }
+        const current = stateRows[0]!;
+        changed =
+          current[0] !== mutation.authStatus ||
+          current[1] !== mutation.syncStatus ||
+          current[2] !== mutation.syncStartedAt ||
+          current[3] !== mutation.errorCode ||
+          current[4] !== mutation.errorMessage;
+        if (changed) {
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET auth_status = ?1, sync_status = ?2, sync_started_at = ?3,
+                      last_error_code = ?4, last_error_message = ?5,
+                      revision = revision + 1, updated_at = ?6
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [
+              mutation.authStatus,
+              mutation.syncStatus,
+              mutation.syncStartedAt,
+              mutation.errorCode,
+              mutation.errorMessage,
+              mutation.updatedAt,
+            ],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+        }
+      } else {
+        const activeGeneration = nullableText(
+          this.#database.exec({
+            sql: `SELECT active_generation_id
+                  FROM library_device_contact_sync_state
+                  WHERE singleton_id = 1;`,
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "active device contact generation",
+        );
+        if (activeGeneration === null) {
+          throw new Error("device contact generation is unavailable");
+        }
+        const rows = this.#database.exec({
+          sql: `SELECT dismissed_at
+                FROM library_device_contact_suggestions
+                WHERE generation_id = ?1 COLLATE BINARY
+                  AND suggestion_id = ?2 COLLATE BINARY;`,
+          bind: [activeGeneration, mutation.suggestionId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        });
+        if (rows.length !== 1) {
+          throw new Error("device contact suggestion is unavailable");
+        }
+        const dismissedAt = nullableInteger(
+          rows[0],
+          "device contact suggestion dismissal",
+        );
+        if (dismissedAt === null) {
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_suggestions
+                  SET dismissed_at = ?3
+                  WHERE generation_id = ?1 COLLATE BINARY
+                    AND suggestion_id = ?2 COLLATE BINARY
+                    AND dismissed_at IS NULL;`,
+            bind: [
+              activeGeneration,
+              mutation.suggestionId,
+              mutation.dismissedAt,
+            ],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact suggestion dismissal raced");
+          }
+          this.#database.exec({
+            sql: `UPDATE library_device_contact_sync_state
+                  SET revision = revision + 1, updated_at = ?1
+                  WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+            bind: [mutation.dismissedAt],
+          });
+          if (this.#database.changes() !== 1) {
+            throw new Error("device contact revision cannot advance");
+          }
+          changed = true;
+        } else if (dismissedAt !== mutation.dismissedAt) {
+          throw new Error("device contact dismissal replay changed");
+        }
+      }
+      const generationId =
+        mutation.mutationKind === "device_contact_status_set_v1" ||
+        mutation.mutationKind === "device_contact_suggestion_dismiss_v1"
+          ? null
+          : mutation.generationId;
+      const receipt = deviceContactMutationReceipt(
+        this.#database,
+        generationId,
+        changed,
+      );
+      this.#database.exec("COMMIT;");
+      return receipt;
     } catch (error) {
       this.#database.exec("ROLLBACK;");
       throw error;
