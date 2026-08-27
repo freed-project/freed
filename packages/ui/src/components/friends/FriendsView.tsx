@@ -716,10 +716,6 @@ export function FriendsView({
     searchCorpusVersion,
   );
 
-  const friendsGraphRequest = useMemo(
-    () => createLibraryFriendsGraphRequest(accounts),
-    [accounts, searchCorpusVersion],
-  );
   const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
     const sources = selectedFriend
       ? selectedFriend.sources.map((source) => ({
@@ -745,6 +741,10 @@ export function FriendsView({
         compareUtf8Binary(left.authorId, right.authorId),
     );
   }, [selectedAccount?.id, selectedAccount?.personId, selectedFriend?.id]);
+  const friendsGraphRequest = useMemo(
+    () => createLibraryFriendsGraphRequest(timelineSources),
+    [timelineSources],
+  );
   const locationSources = useMemo<LibraryFriendsSource[]>(
     () => (selectedFriend ? timelineSources : []),
     [selectedFriend, timelineSources],
@@ -770,17 +770,6 @@ export function FriendsView({
         : null,
     [friendsRows.graph],
   );
-  const graphActivitySummaries = useMemo(
-    () =>
-      nativeActivity?.graphActivitySummaries ?? {
-        social: {},
-        rss: {},
-        buildMs: 0,
-        itemCount: 0,
-      },
-    [nativeActivity],
-  );
-
   const reconnectCount = reconnectDirectory.totalCount;
 
   const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
@@ -823,10 +812,9 @@ export function FriendsView({
   const sourceActivityEvidence = useMemo(
     () =>
       buildFriendSourceActivityEvidence({
-        accounts,
         activityBySourceKey: nativeActivity?.socialActivityBySourceKey ?? {},
       }),
-    [accounts, nativeActivity],
+    [nativeActivity],
   );
   const selectedPersonFriendSuggestion = selectedPerson
     ? (friendCandidateByPerson.get(selectedPerson.id) ?? null)
@@ -834,22 +822,16 @@ export function FriendsView({
   const selectedAccountFriendSuggestion = selectedAccount
     ? (friendCandidateByAccount.get(selectedAccount.id) ?? null)
     : null;
-  const selectedOverviewEntry = useMemo(
-    () => {
-      if (!selectedFriend) return null;
-      return (
-        buildFriendOverviewEntriesFromActivity(
-          { [selectedFriend.id]: selectedFriend },
-          nativeActivity?.socialActivityBySourceKey ?? {},
-          friendsGraphRequest.recentWindow.endMs,
-        )[0] ?? null
-      );
-    }, [
-      friendsGraphRequest.recentWindow.endMs,
-      nativeActivity,
-      selectedFriend,
-    ],
-  );
+  const selectedOverviewEntry = useMemo(() => {
+    if (!selectedFriend) return null;
+    return (
+      buildFriendOverviewEntriesFromActivity(
+        { [selectedFriend.id]: selectedFriend },
+        nativeActivity?.socialActivityBySourceKey ?? {},
+        friendsGraphRequest.recentWindow.endMs,
+      )[0] ?? null
+    );
+  }, [friendsGraphRequest.recentWindow.endMs, nativeActivity, selectedFriend]);
   const friendOverviewVirtualizer = useVirtualizer({
     count: friendsDirectory.rows.length,
     getScrollElement: () => friendOverviewScrollRef.current,
@@ -2148,7 +2130,6 @@ export function FriendsView({
         >
           <FriendGraph
             ref={graphRef}
-            activitySummaries={graphActivitySummaries}
             sqliteGraphQuery={graphSqliteQuery}
             sourceVersion={searchCorpusVersion}
             mode={effectiveMode}

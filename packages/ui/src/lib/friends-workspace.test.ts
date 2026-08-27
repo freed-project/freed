@@ -8,9 +8,7 @@ import {
   friendActivitySourceKey,
   friendFromPersonWithIndexes,
 } from "./friends-workspace";
-import {
-  createLibraryFriendsGraphRequest,
-} from "./friends-library-read-model";
+import { createLibraryFriendsGraphRequest } from "./friends-library-read-model";
 
 function feedItem(id: string, authorId: string, publishedAt: number): FeedItem {
   return {
@@ -254,31 +252,13 @@ describe("Friends workspace indexes", () => {
 
   it("pins the 45-day graph window", () => {
     const now = 1_785_000_000_000;
-    const accounts: Record<string, Account> = {
-      second: {
-        id: "second",
-        kind: "social",
-        provider: "x",
-        externalId: "z",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-      first: {
-        id: "first",
-        kind: "social",
-        provider: "instagram",
-        externalId: "é ",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-    };
-    const request = createLibraryFriendsGraphRequest(accounts, now);
+    const request = createLibraryFriendsGraphRequest(
+      [
+        { platform: "x", authorId: "z" },
+        { platform: "instagram", authorId: "é " },
+      ],
+      now,
+    );
     expect(request.sources).toEqual([
       { platform: "instagram", authorId: "é " },
       { platform: "x", authorId: "z" },
