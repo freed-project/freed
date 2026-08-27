@@ -1,10 +1,6 @@
 /**
- * Closed synchronized field-key manifests consumed by active SQLite and
- * IndexedDB operation verification.
- *
- * These keys are runtime protocol data. The retired Automerge field registry
- * remains only as historical migration evidence and tests compare it with
- * these manifests so a schema change cannot drift silently.
+ * Closed synchronized field-key manifests consumed by SQLite operation
+ * verification in every runtime.
  */
 
 const prefixedFieldKeys = (

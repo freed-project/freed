@@ -17,15 +17,12 @@ import {
  * write have different replication consequences and collapsing them would hide
  * that difference.
  *
- * Every key below is traced from the legacy mutator the operation is a
- * candidate successor for. Nothing here declares merge algebra, payload syntax,
- * or write authority.
+ * Every key below is part of the executable SQLite operation contract. Nothing
+ * here independently declares merge algebra, payload syntax, or authority.
  */
 
 /**
- * The active operation manifests are closed runtime protocol data. Historical
- * field-registry tests compare them against the frozen legacy census, but
- * production verification does not import that retired authority model.
+ * The active operation manifests are closed runtime protocol data.
  */
 
 export const LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY =

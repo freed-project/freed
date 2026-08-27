@@ -70,7 +70,6 @@ import {
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
-import type { LibraryCoreEntity } from "./protocol-registry.js";
 import {
   LIBRARY_CORE_ENTITY_ID_CODEC_V1,
   type LibraryCoreEntityIdCodec,
@@ -94,7 +93,11 @@ export const LIBRARY_CORE_MAX_TRANSACTION_MEMBERS = 1_000;
 export const LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES = 4_194_304;
 
 export type LibraryCoreOperationEntity =
-  | LibraryCoreEntity
+  | "FeedItem"
+  | "RssFeed"
+  | "Person"
+  | "Account"
+  | "UserPreferences"
   | "ProviderCaptureSnapshot"
   | "ProviderIntent"
   | "SampleLibrary";

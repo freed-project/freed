@@ -22,7 +22,7 @@ The contract has independent monotonically increasing versions for:
 - physical SQLite schema
 - logical wire protocol
 - canonical codec
-- field registry
+- closed operation field manifests
 - mutation registry
 - query registry
 - checkpoint registry

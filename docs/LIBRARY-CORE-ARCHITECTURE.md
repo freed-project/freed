@@ -452,7 +452,7 @@ Each mutation declares:
 - Entity type and typed primary key
 - Closed payload schema
 - Preconditions
-- Touched field-registry entries
+- Closed operation field manifest
 - Merge algebra
 - Relationship and cascade effects
 - Blob dependencies
