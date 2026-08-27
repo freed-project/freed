@@ -8,6 +8,7 @@ import path from "node:path";
 export const RETIRED_LIBRARY_CORE_PUBLIC_MODULES = Object.freeze([
   "census",
   "field-registry",
+  "feed-item-merge-idempotency",
   "local-authority-registry",
   "operation-field-algebra-contracts",
   "operation-materializer-contracts",
