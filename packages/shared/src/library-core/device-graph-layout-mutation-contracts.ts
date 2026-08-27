@@ -41,6 +41,10 @@ export interface LibraryCoreDeviceGraphLayoutMutationResultV1 {
   readonly schemaVersion: 1;
 }
 
+export type LibraryCoreDeviceGraphLayoutMutationExecutor = (
+  mutation: LibraryCoreDeviceGraphLayoutMutationV1,
+) => Promise<LibraryCoreDeviceGraphLayoutMutationResultV1>;
+
 export type LibraryCoreDeviceGraphLayoutParseResult<T> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ error: string; ok: false }>;

@@ -32,6 +32,7 @@ import {
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
+import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
 import {
   migrateLegacyDeviceAIPreferences,
   setDeviceAIPreferences,
@@ -66,6 +67,10 @@ import {
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
 } from "./factory-reset-coordinator";
+import {
+  mutatePwaDeviceGraphLayout,
+  queryPwaNormalizedLibrary,
+} from "./library-core-sqlite-runtime";
 
 let appInitializationPromise: Promise<void> | null = null;
 let documentSubscriptionTeardown: (() => void) | null = null;
@@ -281,6 +286,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         migrateLegacyDeviceDisplayPreferences(state.preferences.display);
         migrateLegacyThemePreference(state.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(state.preferences.ai);
+        await migrateLegacyDeviceGraphLayoutToSqlite({
+          mutate: mutatePwaDeviceGraphLayout,
+          query: queryPwaNormalizedLibrary,
+        });
+        runtimeLifecycle.assertCurrent();
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribePwaLibraryCoreState(
           (next) => {

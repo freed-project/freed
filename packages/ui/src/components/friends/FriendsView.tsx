@@ -74,10 +74,6 @@ import {
 } from "../../lib/friends-library-read-model.js";
 import { px } from "../layout/layoutConstants.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
-import {
-  setDeviceAccountGraphPosition,
-  setDevicePersonGraphPosition,
-} from "../../lib/device-graph-layout.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
@@ -674,6 +670,7 @@ export function FriendsView({
     appendLibraryPersonReachOut,
     assignLibraryAccountToPerson,
     googleContacts,
+    mutateDeviceGraphLayout,
     queryLibraryCore,
     readLibraryAccountDetail,
     readLibraryFriendDetail,
@@ -1028,25 +1025,49 @@ export function FriendsView({
   );
 
   const handlePinPersonPosition = useCallback(
-    (personId: string, x: number, y: number) => {
-      if (
-        !setDevicePersonGraphPosition(personId, Math.round(x), Math.round(y))
-      ) {
+    async (personId: string, x: number, y: number) => {
+      if (!mutateDeviceGraphLayout) {
+        toast.error("Freed could not save this graph position on this device.");
+        return;
+      }
+      try {
+        const result = await mutateDeviceGraphLayout({
+          entityId: personId,
+          graphX: Math.round(x),
+          graphY: Math.round(y),
+          mutationId: "person_graph_position_set_v1",
+          schemaVersion: 1,
+          updatedAt: Date.now(),
+        });
+        if (result.changed) setLibraryMutationNonce((value) => value + 1);
+      } catch {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
-    [],
+    [mutateDeviceGraphLayout],
   );
 
   const handlePinAccountPosition = useCallback(
-    (accountId: string, x: number, y: number) => {
-      if (
-        !setDeviceAccountGraphPosition(accountId, Math.round(x), Math.round(y))
-      ) {
+    async (accountId: string, x: number, y: number) => {
+      if (!mutateDeviceGraphLayout) {
+        toast.error("Freed could not save this graph position on this device.");
+        return;
+      }
+      try {
+        const result = await mutateDeviceGraphLayout({
+          entityId: accountId,
+          graphX: Math.round(x),
+          graphY: Math.round(y),
+          mutationId: "account_graph_position_set_v1",
+          schemaVersion: 1,
+          updatedAt: Date.now(),
+        });
+        if (result.changed) setLibraryMutationNonce((value) => value + 1);
+      } catch {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
-    [],
+    [mutateDeviceGraphLayout],
   );
 
   const handleSetPersonRelationshipLevel = useCallback(

@@ -14187,6 +14187,7 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             library_core_desktop_runtime::query_normalized_library,
+            library_core_desktop_runtime::mutate_normalized_device_graph_layout,
             library_core_desktop_runtime::mutate_normalized_device_contacts,
             library_core_desktop_runtime::query_normalized_device_contact_status,
             library_core_desktop_runtime::query_normalized_device_contact_match_page,

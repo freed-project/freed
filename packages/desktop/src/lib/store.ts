@@ -36,6 +36,7 @@ import {
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
+import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
 import {
   initDoc,
@@ -90,7 +91,10 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import { scanLibraryCoreRssFeedsV1 } from "@freed/shared/library-core";
-import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
+import {
+  mutateNormalizedDeviceGraphLayout,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
 import { log } from "./logger";
 import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
 import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
@@ -791,6 +795,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
         migrateLegacyThemePreference(docState.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);
+        await migrateLegacyDeviceGraphLayoutToSqlite({
+          mutate: mutateNormalizedDeviceGraphLayout,
+          query: queryNormalizedLibrary,
+        });
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on

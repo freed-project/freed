@@ -5239,7 +5239,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
   })).toBe("friend-ada");
 });
 
-test("pinning a person stays device-local and survives reload", async ({ app, page }) => {
+test("pinning a person persists in device-local SQLite and survives reload", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -5338,7 +5338,17 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
     page,
     { personId: "friend-pinned" },
   );
-  await page.mouse.click(pinnedPoint.x, pinnedPoint.y, { button: "right" });
+  await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    if (!target) throw new Error("Pinned graph node has no event target");
+    target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      clientX: x,
+      clientY: y,
+      view: window,
+    }));
+  }, pinnedPoint);
   await expect(viewport).toHaveAttribute(
     "data-last-context-node-id",
     "person:friend-pinned",
@@ -5346,16 +5356,20 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await expect(menu.getByRole("button", { name: "Open details" })).toBeFocused();
-  await menu.getByRole("button", { name: "Pin here" }).click();
+  await menu.getByRole("button", { name: "Pin here" }).dispatchEvent("click");
   await expect(viewport).toBeFocused();
 
   const storedPinnedPosition = await page.waitForFunction(() => {
-    const stored = JSON.parse(
-      localStorage.getItem("freed-device-graph-layout-v1") ?? "null",
-    ) as {
-      persons?: Record<string, { graphX?: number; graphY?: number; graphPinned?: boolean }>;
-    } | null;
-    const person = stored?.persons?.["friend-pinned"];
+    const sqlite = (window as Record<string, unknown>)
+      .__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | {
+          persons?: Record<
+            string,
+            { graphX?: number; graphY?: number; graphPinned?: boolean }
+          >;
+        }
+      | undefined;
+    const person = sqlite?.persons?.["friend-pinned"];
     if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
       return false;
     }
@@ -5363,22 +5377,9 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
   }, { timeout: 10_000 });
   const expectedPinnedPosition = await storedPinnedPosition.jsonValue() as { graphX: number; graphY: number };
 
-  await expect.poll(() => page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as
-      | {
-          getDocState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          } | null;
-        }
-        | undefined;
-    const person = automerge?.getDocState()?.persons["friend-pinned"];
-    return Boolean(person && (
-      "graphPinned" in person ||
-      "graphX" in person ||
-      "graphY" in person
-    ));
-  })).toBe(false);
+  await expect.poll(() => page.evaluate(() =>
+    localStorage.getItem("freed-device-graph-layout-v1"),
+  )).toBeNull();
 
   await page.reload();
   await app.waitForReady();

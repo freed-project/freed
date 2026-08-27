@@ -89,6 +89,7 @@ import {
 } from "./lib/library-core-feed-browse-reader-runtime";
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
 import {
+  mutateNormalizedDeviceGraphLayout,
   mutateNormalizedDeviceContacts,
   queryNormalizedDeviceContacts,
   queryNormalizedLibrary,
@@ -142,7 +143,7 @@ import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
-import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
 import {
@@ -1165,7 +1166,7 @@ function App() {
           clearDeviceStores: () => [
             clearDeviceDisplayPreferences(),
             clearDeviceAIPreferences(),
-            clearDeviceGraphLayout(),
+            clearLegacyDeviceGraphLayoutImport(),
           ],
           clearLocalSettings: [
             resetFeedCardDensity,
@@ -1671,6 +1672,10 @@ function App() {
       queryLibraryCore:
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
+          : undefined,
+      mutateDeviceGraphLayout:
+        tauriRuntimeAvailable && isInitialized
+          ? mutateNormalizedDeviceGraphLayout
           : undefined,
       mutateDeviceContacts:
         tauriRuntimeAvailable && isInitialized

@@ -874,6 +874,17 @@ advances a separate safe-integer layout revision. Graph responses expose it,
 and their opaque cursors bind it alongside canonical generation and source
 revision. A position change therefore invalidates an in-progress graph scan
 without pretending that canonical Library state changed.
+Freed Desktop submits these local set and clear mutations through the native
+Library Core command. The PWA submits the identical typed request through its
+single OPFS SQLite worker. React does not own a graph-position dictionary. A
+successful mutation advances only the device layout revision and reopens the
+bounded graph query. Startup may parse the retired
+`freed-device-graph-layout-v1` localStorage record once. It verifies every
+referenced entity through an exact SQLite query, applies only finite positions
+through the typed mutation, and deletes the source record only after all
+admitted rows succeed. Query or mutation failure preserves the source for a
+later attempt. Missing entities are discarded. No normal product path reads or
+writes graph layout in localStorage.
 All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the

@@ -641,6 +641,16 @@ pub(super) fn query_normalized_library(
 }
 
 #[tauri::command]
+pub(super) fn mutate_normalized_device_graph_layout(
+    app: tauri::AppHandle,
+    mutation: freed_library_core::DeviceGraphLayoutMutationV1,
+) -> Result<freed_library_core::DeviceGraphLayoutMutationResultV1, String> {
+    let mut connection = open_normalized_database(&app)?;
+    freed_library_core::mutate_device_graph_layout_v1(&mut connection, &mutation)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn mutate_normalized_device_contacts(
     app: tauri::AppHandle,
     mutation: freed_library_core::DeviceContactSyncMutationV1,

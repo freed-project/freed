@@ -30,6 +30,8 @@ import type {
   LibraryCoreDeviceContactQueryRequestV1,
   LibraryCoreDeviceContactQueryResponseFor,
   LibraryCoreDeviceContactSyncMutationV1,
+  LibraryCoreDeviceGraphLayoutMutationResultV1,
+  LibraryCoreDeviceGraphLayoutMutationV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -64,6 +66,13 @@ export const queryPwaNormalizedLibrary: LibraryCoreNormalizedQueryExecutor =
     const active = await openClient();
     return active.query(request);
   };
+
+export async function mutatePwaDeviceGraphLayout(
+  mutation: LibraryCoreDeviceGraphLayoutMutationV1,
+): Promise<LibraryCoreDeviceGraphLayoutMutationResultV1> {
+  const active = await openClient();
+  return active.mutateDeviceGraphLayout(mutation);
+}
 
 export async function mutatePwaDeviceContactSync(
   mutation: LibraryCoreDeviceContactSyncMutationV1,

@@ -46,6 +46,7 @@ import type {
   LibraryCoreDeviceContactMutationExecutor,
   LibraryCoreDeviceContactQueryExecutor,
   LibraryCoreDeviceContactStatusResponseV1,
+  LibraryCoreDeviceGraphLayoutMutationExecutor,
   LibraryCoreScopeActionReceiptV1,
   LibraryCoreScopeActionRequestV1,
 } from "@freed/shared/library-core";
@@ -749,6 +750,9 @@ export interface PlatformConfig {
 
   /** Execute one registered, bounded, typed query against local SQLite. */
   queryLibraryCore?: LibraryCoreNormalizedQueryExecutor;
+
+  /** Persist one device-local graph position directly in local SQLite. */
+  mutateDeviceGraphLayout?: LibraryCoreDeviceGraphLayoutMutationExecutor;
 
   /** Apply one closed device-local Google Contacts mutation in local SQLite. */
   mutateDeviceContacts?: LibraryCoreDeviceContactMutationExecutor;

@@ -864,6 +864,40 @@ export function tauriInitScript(): string {
         stagedContactCount: state.buildingContacts.length,
       };
     }
+    function mutateDeviceGraphLayout(args) {
+      var mutation = args.mutation;
+      var state = sqliteState();
+      var personMutation = mutation.mutationId.indexOf('person_') === 0;
+      var entities = personMutation ? state.persons : state.accounts;
+      var entity = entities && entities[mutation.entityId];
+      if (!entity) throw new Error('device graph layout target is unavailable');
+      var clear = mutation.mutationId.endsWith('_clear_v1');
+      var changed = clear
+        ? entity.graphPinned === true
+        : entity.graphPinned !== true ||
+          entity.graphX !== mutation.graphX ||
+          entity.graphY !== mutation.graphY ||
+          entity.graphUpdatedAt !== mutation.updatedAt;
+      if (changed && clear) {
+        delete entity.graphPinned;
+        delete entity.graphX;
+        delete entity.graphY;
+        delete entity.graphUpdatedAt;
+      } else if (changed) {
+        entity.graphPinned = true;
+        entity.graphX = mutation.graphX;
+        entity.graphY = mutation.graphY;
+        entity.graphUpdatedAt = mutation.updatedAt;
+      }
+      if (changed) state.revision += 1;
+      persistSqliteState();
+      return {
+        changed: changed,
+        layoutRevision: state.revision,
+        mutationId: mutation.mutationId,
+        schemaVersion: 1,
+      };
+    }
     window.__TAURI_MOCK_HANDLERS__ = {
       ensure_fresh_normalized_desktop_library: () => {
         sqliteState().active = true;
@@ -885,6 +919,7 @@ export function tauriInitScript(): string {
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
+      mutate_normalized_device_graph_layout: mutateDeviceGraphLayout,
       mutate_normalized_device_contacts: mutateDeviceContacts,
       query_normalized_device_contact_status: deviceContactStatus,
       query_normalized_device_contact_match_page: (args) => {

@@ -62,7 +62,7 @@ import {
 } from "@freed/ui/lib/article-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
-import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
 import {
@@ -103,6 +103,7 @@ import {
   upsertPwaLibraryCoreAccount,
 } from "./lib/library-core-runtime";
 import {
+  mutatePwaDeviceGraphLayout,
   mutatePwaDeviceContactSync,
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
@@ -349,7 +350,7 @@ function App() {
             clearDeviceStores: () => [
               clearDeviceDisplayPreferences(),
               clearDeviceAIPreferences(),
-              clearDeviceGraphLayout(),
+              clearLegacyDeviceGraphLayoutImport(),
             ],
             clearLocalSettings: [
               resetFeedCardDensity,
@@ -488,6 +489,7 @@ function App() {
       upsertLibraryAccount: upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
+      mutateDeviceGraphLayout: mutatePwaDeviceGraphLayout,
       mutateDeviceContacts: mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,

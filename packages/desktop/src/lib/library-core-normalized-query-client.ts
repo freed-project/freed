@@ -3,12 +3,15 @@ import {
   createLibraryCoreOperationInstanceId,
   createLibraryCoreSqliteQueryWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
+  parseLibraryCoreDeviceGraphLayoutMutationResultV1,
+  parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceContactMutationReceiptV1,
   parseLibraryCoreDeviceContactQueryRequestV1,
   parseLibraryCoreDeviceContactQueryResponseV1,
   parseLibraryCoreDeviceContactSyncMutationV1,
   type LibraryCoreDeviceContactMutationExecutor,
   type LibraryCoreDeviceContactQueryExecutor,
+  type LibraryCoreDeviceGraphLayoutMutationExecutor,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreOperationInstanceId,
@@ -36,6 +39,21 @@ export async function queryNormalizedLibrary<
   });
   return parseLibraryCoreSqliteQueryResponse(response, validated.query as T);
 }
+
+export const mutateNormalizedDeviceGraphLayout: LibraryCoreDeviceGraphLayoutMutationExecutor =
+  async (mutation) => {
+    const parsedMutation = parseLibraryCoreDeviceGraphLayoutMutationV1(mutation);
+    if (!parsedMutation.ok) throw new TypeError(parsedMutation.error);
+    const response = await invoke<unknown>(
+      "mutate_normalized_device_graph_layout",
+      { mutation: parsedMutation.value },
+    );
+    const parsedResponse = parseLibraryCoreDeviceGraphLayoutMutationResultV1(
+      response,
+    );
+    if (!parsedResponse.ok) throw new TypeError(parsedResponse.error);
+    return parsedResponse.value;
+  };
 
 export const mutateNormalizedDeviceContacts: LibraryCoreDeviceContactMutationExecutor =
   async (mutation) => {

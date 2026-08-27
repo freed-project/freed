@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 const {
+  mutateNormalizedDeviceGraphLayout,
   mutateNormalizedDeviceContacts,
   queryNormalizedDeviceContacts,
   queryNormalizedLibrary,
@@ -101,6 +102,32 @@ describe("Freed Desktop normalized query client", () => {
     );
     expect(mocks.invoke).toHaveBeenCalledWith(
       "mutate_normalized_device_contacts",
+      { mutation },
+    );
+  });
+
+  it("runs closed graph layout mutations through the native core", async () => {
+    const mutation = {
+      entityId: "person-1",
+      graphX: 12.5,
+      graphY: -8.25,
+      mutationId: "person_graph_position_set_v1" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 42,
+    };
+    const receipt = {
+      changed: true,
+      layoutRevision: 1,
+      mutationId: mutation.mutationId,
+      schemaVersion: 1,
+    };
+    mocks.invoke.mockResolvedValue(receipt);
+
+    await expect(mutateNormalizedDeviceGraphLayout(mutation)).resolves.toEqual(
+      receipt,
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "mutate_normalized_device_graph_layout",
       { mutation },
     );
   });
