@@ -125,6 +125,18 @@ describe("PWA Library Core SQLite engine", () => {
         contacts: [{ ...delta.contacts[0]!, name: { displayName: "Changed" } }],
       }),
     ).toThrow("delta replay changed");
+    expect(
+      engine.queryDeviceContacts({
+        afterResourceName: null,
+        generationId: "contacts:1",
+        limit: 64,
+        queryId: "device_contact_match_page_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [{ resourceName: "people/1" }],
+    });
     database.exec(`
       INSERT INTO library_persons
         (id, name, relationship_status, care_level, created_at, updated_at)
@@ -199,6 +211,32 @@ describe("PWA Library Core SQLite engine", () => {
         "sync-token-1",
       ],
     ]);
+    expect(
+      engine.queryDeviceContacts({
+        queryId: "device_contact_status_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      activeContactCount: 1,
+      pendingSuggestionCount: 1,
+      syncToken: "sync-token-1",
+    });
+    expect(
+      engine.queryDeviceContacts({
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_suggestion_page_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [
+        {
+          contact: { resourceName: "people/1" },
+          suggestion: { id: "google:people/1:person:person:1:accounts:" },
+        },
+      ],
+    });
   });
 
   function coreDigest(domain: string, value: unknown): string {

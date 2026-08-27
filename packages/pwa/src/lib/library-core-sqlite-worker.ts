@@ -232,6 +232,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "query_device_contacts") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.queryDeviceContacts(request.query),
+        });
+        return;
+      }
       if (request.kind === "mutate_device_contacts") {
         scope.postMessage({
           ok: true,

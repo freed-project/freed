@@ -7,6 +7,7 @@ import {
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteDeviceContactMutationWorkerRequest,
+  createLibraryCoreSqliteDeviceContactQueryWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
   createLibraryCoreSqliteContentStateWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest,
@@ -37,6 +38,7 @@ import {
   createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
+  parseLibraryCoreDeviceContactQueryResponseV1,
   parseLibraryCoreSqliteCheckpointSelectionResponse,
   parseLibraryCoreSqliteFollowerMutationContextResponse,
   parseLibraryCoreContentRangeReadResponseV1,
@@ -53,6 +55,8 @@ import {
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreDeviceContactMutationReceiptV1,
+  type LibraryCoreDeviceContactQueryRequestV1,
+  type LibraryCoreDeviceContactQueryResponseV1,
   type LibraryCoreDeviceContactSyncMutationV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
@@ -173,6 +177,21 @@ export class PwaLibraryCoreSqliteClient {
         mutation,
       ),
     );
+  }
+
+  queryDeviceContacts(
+    query: LibraryCoreDeviceContactQueryRequestV1,
+  ): Promise<LibraryCoreDeviceContactQueryResponseV1> {
+    return this.#send<LibraryCoreDeviceContactQueryResponseV1>((requestId) =>
+      createLibraryCoreSqliteDeviceContactQueryWorkerRequest(requestId, query),
+    ).then((response) => {
+      const parsed = parseLibraryCoreDeviceContactQueryResponseV1(
+        response,
+        query,
+      );
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
   }
 
   mutateContentPolicy(

@@ -179,6 +179,10 @@ import {
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
   digestLibraryCoreDeviceContactSyncMutationV1,
   parseLibraryCoreDeviceContactMutationReceiptV1,
+  parseLibraryCoreDeviceContactQueryRequestV1,
+  parseLibraryCoreDeviceContactQueryResponseV1,
+  parseLibraryCoreDeviceContactV1,
+  LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES,
   parseLibraryCoreDeviceContactSyncMutationV1,
   parseLibraryCoreContentPolicyMutationReceiptV1,
   parseLibraryCoreContentPolicyMutationV1,
@@ -299,6 +303,8 @@ import {
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreDeviceContactMutationReceiptV1,
+  type LibraryCoreDeviceContactQueryRequestV1,
+  type LibraryCoreDeviceContactQueryResponseV1,
   type LibraryCoreDeviceContactSyncMutationV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
@@ -481,6 +487,95 @@ function deviceContactMutationReceipt(
   });
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.value;
+}
+
+function deviceContactFromDatabase(
+  database: Database,
+  generationId: string,
+  resourceName: string,
+) {
+  const root = database.exec({
+    sql: `SELECT etag, display_name, given_name, family_name, middle_name, deleted
+          FROM library_device_contacts
+          WHERE generation_id = ?1 COLLATE BINARY AND resource_name = ?2 COLLATE BINARY;`,
+    bind: [generationId, resourceName],
+    rowMode: "array",
+    returnValue: "resultRows",
+  });
+  if (root.length !== 1) throw new Error("device contact row is unavailable");
+  const values = (table: string) =>
+    database
+      .exec({
+        sql: `SELECT value, type_value FROM ${table}
+            WHERE generation_id = ?1 COLLATE BINARY AND resource_name = ?2 COLLATE BINARY
+            ORDER BY ordinal;`,
+        bind: [generationId, resourceName],
+        rowMode: "array",
+        returnValue: "resultRows",
+      })
+      .map((row) => ({
+        ...(row[1] === null
+          ? {}
+          : { type: text(row[1], "device contact value type") }),
+        value: text(row[0], "device contact value"),
+      }));
+  const contact = parseLibraryCoreDeviceContactV1({
+    emails: values("library_device_contact_emails"),
+    ...(root[0]![0] === null
+      ? {}
+      : { etag: text(root[0]![0], "device contact etag") }),
+    ...(safeInteger(root[0]![5], "device contact deleted") === 1
+      ? { metadata: { deleted: true } }
+      : {}),
+    name: {
+      ...(root[0]![1] === null
+        ? {}
+        : { displayName: text(root[0]![1], "device contact display name") }),
+      ...(root[0]![2] === null
+        ? {}
+        : { givenName: text(root[0]![2], "device contact given name") }),
+      ...(root[0]![3] === null
+        ? {}
+        : { familyName: text(root[0]![3], "device contact family name") }),
+      ...(root[0]![4] === null
+        ? {}
+        : { middleName: text(root[0]![4], "device contact middle name") }),
+    },
+    organizations: database
+      .exec({
+        sql: `SELECT name, title FROM library_device_contact_organizations
+            WHERE generation_id = ?1 COLLATE BINARY AND resource_name = ?2 COLLATE BINARY ORDER BY ordinal;`,
+        bind: [generationId, resourceName],
+        rowMode: "array",
+        returnValue: "resultRows",
+      })
+      .map((row) => ({
+        ...(row[0] === null
+          ? {}
+          : { name: text(row[0], "device contact organization") }),
+        ...(row[1] === null
+          ? {}
+          : { title: text(row[1], "device contact organization title") }),
+      })),
+    phones: values("library_device_contact_phones"),
+    photos: database
+      .exec({
+        sql: `SELECT url, is_default FROM library_device_contact_photos
+            WHERE generation_id = ?1 COLLATE BINARY AND resource_name = ?2 COLLATE BINARY ORDER BY ordinal;`,
+        bind: [generationId, resourceName],
+        rowMode: "array",
+        returnValue: "resultRows",
+      })
+      .map((row) => ({
+        url: text(row[0], "device contact photo"),
+        ...(safeInteger(row[1], "device contact photo default") === 1
+          ? { default: true }
+          : {}),
+      })),
+    resourceName,
+  });
+  if (contact === null) throw new Error("device contact row is invalid");
+  return contact;
 }
 
 function nullableFiniteNumber(
@@ -1459,6 +1554,294 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  queryDeviceContacts(
+    input: LibraryCoreDeviceContactQueryRequestV1,
+  ): LibraryCoreDeviceContactQueryResponseV1 {
+    const parsed = parseLibraryCoreDeviceContactQueryRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    if (request.queryId === "device_contact_status_v1") {
+      const rows = this.#database.exec({
+        sql: `SELECT state.revision, state.active_generation_id, state.auth_status,
+                     state.sync_status, state.sync_started_at, state.sync_token,
+                     state.last_synced_at, state.last_error_code, state.last_error_message,
+                     state.created_friend_count, state.updated_at,
+                     CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
+                       (SELECT count(*) FROM library_device_contacts WHERE generation_id = state.active_generation_id AND deleted = 0) END,
+                     CASE WHEN state.active_generation_id IS NULL THEN 0 ELSE
+                       (SELECT count(*) FROM library_device_contact_suggestions WHERE generation_id = state.active_generation_id AND dismissed_at IS NULL) END
+              FROM library_device_contact_sync_state AS state WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (rows.length !== 1)
+        throw new Error("device contact status is unavailable");
+      const row = rows[0]!;
+      const response = parseLibraryCoreDeviceContactQueryResponseV1(
+        {
+          activeContactCount: safeInteger(
+            row[11],
+            "device contact active count",
+          ),
+          activeGenerationId: nullableText(
+            row[1],
+            "device contact active generation",
+          ),
+          authStatus: text(row[2], "device contact auth status"),
+          createdFriendCount: safeInteger(
+            row[9],
+            "device contact friend count",
+          ),
+          lastErrorCode: nullableText(row[7], "device contact error code"),
+          lastErrorMessage: nullableText(
+            row[8],
+            "device contact error message",
+          ),
+          lastSyncedAt: nullableInteger(row[6], "device contact last synced"),
+          pendingSuggestionCount: safeInteger(
+            row[12],
+            "device contact suggestion count",
+          ),
+          queryId: request.queryId,
+          revision: safeInteger(row[0], "device contact revision"),
+          schemaVersion: 1,
+          syncStartedAt: nullableInteger(row[4], "device contact sync started"),
+          syncStatus: text(row[3], "device contact sync status"),
+          syncToken: nullableText(row[5], "device contact sync token"),
+          updatedAt: safeInteger(row[10], "device contact updated time"),
+        },
+        request,
+      );
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    }
+    const state = this.#database.exec({
+      sql: `SELECT active_generation_id, revision FROM library_device_contact_sync_state WHERE singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (state.length !== 1)
+      throw new Error("device contact state is unavailable");
+    const revision = safeInteger(state[0]![1], "device contact revision");
+    const maximumBytes = LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES;
+    const encodedBytes = (value: unknown) =>
+      encodeLibraryCoreCanonicalValue(
+        value as LibraryCoreCanonicalValue,
+        { maximumBytes },
+      ).byteLength + 1;
+    if (request.queryId === "device_contact_match_page_v1") {
+      const generationState = this.#database.exec({
+        sql: `SELECT state FROM library_device_contact_generations WHERE generation_id = ?1 COLLATE BINARY;`,
+        bind: [request.generationId],
+        rowMode: 0,
+        returnValue: "resultRows",
+      });
+      if (generationState[0] !== "building")
+        throw new Error("device contact generation is not building");
+      const identities = this.#database
+        .exec({
+          sql: `SELECT contact.resource_name FROM library_device_contacts AS contact
+              WHERE contact.generation_id = ?1 COLLATE BINARY AND contact.deleted = 0
+                AND (?2 IS NULL OR contact.resource_name > ?2 COLLATE BINARY)
+                AND NOT EXISTS (SELECT 1 FROM library_device_contact_match_receipts AS receipt
+                  WHERE receipt.generation_id = contact.generation_id AND receipt.resource_name = contact.resource_name)
+              ORDER BY contact.resource_name COLLATE BINARY LIMIT ?3;`,
+          bind: [
+            request.generationId,
+            request.afterResourceName,
+            request.limit + 1,
+          ],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })
+        .map((value) => text(value, "device contact match identity"));
+      const rows = [];
+      let bytes = 16_384;
+      for (const identity of identities.slice(0, request.limit)) {
+        const contact = deviceContactFromDatabase(
+          this.#database,
+          request.generationId,
+          identity,
+        );
+        const contactBytes = encodedBytes(contact);
+        if (bytes + contactBytes > maximumBytes) break;
+        bytes += contactBytes;
+        rows.push(contact);
+      }
+      const response = parseLibraryCoreDeviceContactQueryResponseV1(
+        {
+          generationId: request.generationId,
+          nextCursor:
+            rows.length < identities.length
+              ? (rows.at(-1)?.resourceName ?? null)
+              : null,
+          queryId: request.queryId,
+          revision,
+          rows,
+          schemaVersion: 1,
+        },
+        request,
+      );
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    }
+    const generationId = nullableText(
+      state[0]![0],
+      "device contact active generation",
+    );
+    if (generationId === null)
+      throw new Error("device contact generation is unavailable");
+    if (request.queryId === "device_contact_suggestion_page_v1") {
+      const rank =
+        request.cursor === null
+          ? null
+          : request.cursor.confidence === "high"
+            ? 0
+            : 1;
+      const candidates = this.#database.exec({
+        sql: `SELECT suggestion_id, resource_name, kind, confidence, person_id, label, reason, created_at
+              FROM library_device_contact_suggestions WHERE generation_id = ?1 COLLATE BINARY AND dismissed_at IS NULL
+                AND (?2 IS NULL OR CASE confidence WHEN 'high' THEN 0 ELSE 1 END > ?2
+                  OR (CASE confidence WHEN 'high' THEN 0 ELSE 1 END = ?2 AND created_at < ?3)
+                  OR (CASE confidence WHEN 'high' THEN 0 ELSE 1 END = ?2 AND created_at = ?3 AND suggestion_id > ?4 COLLATE BINARY))
+              ORDER BY CASE confidence WHEN 'high' THEN 0 ELSE 1 END, created_at DESC, suggestion_id COLLATE BINARY LIMIT ?5;`,
+        bind: [
+          generationId,
+          rank,
+          request.cursor?.createdAt ?? null,
+          request.cursor?.suggestionId ?? null,
+          request.limit + 1,
+        ],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const rows = [];
+      let bytes = 16_384;
+      for (const candidate of candidates.slice(0, request.limit)) {
+        const suggestionId = text(
+          candidate[0],
+          "device contact suggestion identity",
+        );
+        const accountIds = this.#database
+          .exec({
+            sql: `SELECT account_id FROM library_device_contact_suggestion_accounts WHERE generation_id = ?1 COLLATE BINARY AND suggestion_id = ?2 COLLATE BINARY ORDER BY ordinal;`,
+            bind: [generationId, suggestionId],
+            rowMode: 0,
+            returnValue: "resultRows",
+          })
+          .map((value) => text(value, "device contact suggestion account"));
+        const row = {
+          contact: deviceContactFromDatabase(
+            this.#database,
+            generationId,
+            text(candidate[1], "device contact suggestion resource"),
+          ),
+          suggestion: {
+            accountIds,
+            confidence: text(
+              candidate[3],
+              "device contact suggestion confidence",
+            ),
+            createdAt: safeInteger(
+              candidate[7],
+              "device contact suggestion created time",
+            ),
+            id: suggestionId,
+            kind: text(candidate[2], "device contact suggestion kind"),
+            label: text(candidate[5], "device contact suggestion label"),
+            ...(candidate[4] === null
+              ? {}
+              : {
+                  personId: text(
+                    candidate[4],
+                    "device contact suggestion person",
+                  ),
+                }),
+            ...(candidate[6] === null
+              ? {}
+              : {
+                  reason: text(
+                    candidate[6],
+                    "device contact suggestion reason",
+                  ),
+                }),
+          },
+        };
+        if (bytes + encodedBytes(row) > maximumBytes) break;
+        bytes += encodedBytes(row);
+        rows.push(row);
+      }
+      const last = rows.at(-1)?.suggestion;
+      const response = parseLibraryCoreDeviceContactQueryResponseV1(
+        {
+          nextCursor:
+            rows.length < candidates.length && last
+              ? {
+                  confidence: last.confidence,
+                  createdAt: last.createdAt,
+                  suggestionId: last.id,
+                }
+              : null,
+          queryId: request.queryId,
+          revision,
+          rows,
+          schemaVersion: 1,
+        },
+        request,
+      );
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    }
+    const candidates = this.#database.exec({
+      sql: `SELECT COALESCE(contact.display_name, ''), contact.resource_name FROM library_device_contacts AS contact
+            WHERE contact.generation_id = ?1 COLLATE BINARY AND contact.deleted = 0
+              AND EXISTS (SELECT 1 FROM library_device_contact_match_receipts AS receipt WHERE receipt.generation_id = contact.generation_id AND receipt.resource_name = contact.resource_name)
+              AND NOT EXISTS (SELECT 1 FROM library_device_contact_suggestions AS suggestion WHERE suggestion.generation_id = contact.generation_id AND suggestion.resource_name = contact.resource_name)
+              AND (?2 IS NULL OR COALESCE(contact.display_name, '') > ?2 COLLATE BINARY OR (COALESCE(contact.display_name, '') = ?2 COLLATE BINARY AND contact.resource_name > ?3 COLLATE BINARY))
+            ORDER BY COALESCE(contact.display_name, '') COLLATE BINARY, contact.resource_name COLLATE BINARY LIMIT ?4;`,
+      bind: [
+        generationId,
+        request.cursor?.displayName ?? null,
+        request.cursor?.resourceName ?? null,
+        request.limit + 1,
+      ],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const rows = [];
+    let bytes = 16_384;
+    for (const candidate of candidates.slice(0, request.limit)) {
+      const contact = deviceContactFromDatabase(
+        this.#database,
+        generationId,
+        text(candidate[1], "device contact unmatched identity"),
+      );
+      const contactBytes = encodedBytes(contact);
+      if (bytes + contactBytes > maximumBytes) break;
+      bytes += contactBytes;
+      rows.push(contact);
+    }
+    const last = rows.at(-1);
+    const response = parseLibraryCoreDeviceContactQueryResponseV1(
+      {
+        nextCursor:
+          rows.length < candidates.length && last
+            ? {
+                displayName: last.name.displayName ?? "",
+                resourceName: last.resourceName,
+              }
+            : null,
+        queryId: request.queryId,
+        revision,
+        rows,
+        schemaVersion: 1,
+      },
+      request,
+    );
+    if (!response.ok) throw new Error(response.error);
+    return response.value;
   }
 
   mutateDeviceContactSync(

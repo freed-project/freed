@@ -170,7 +170,10 @@ import {
   type LibraryCoreDeviceGraphLayoutMutationV1,
 } from "./device-graph-layout-mutation-contracts.js";
 import {
+  parseLibraryCoreDeviceContactQueryRequestV1,
   parseLibraryCoreDeviceContactSyncMutationV1,
+  type LibraryCoreDeviceContactQueryRequestV1,
+  type LibraryCoreDeviceContactQueryResponseV1,
   type LibraryCoreDeviceContactMutationReceiptV1,
   type LibraryCoreDeviceContactSyncMutationV1,
 } from "./device-contact-sync-contracts.js";
@@ -562,6 +565,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "query_device_contacts";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      query: LibraryCoreDeviceContactQueryRequestV1;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "mutate_device_graph_layout";
       mutation: LibraryCoreDeviceGraphLayoutMutationV1;
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
@@ -786,6 +795,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreNormalizedCheckpointSelectionV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1
   | LibraryCoreDeviceContactMutationReceiptV1
+  | LibraryCoreDeviceContactQueryResponseV1
   | LibraryCoreContentPolicyMutationReceiptV1
   | LibraryCoreContentStateV1
   | LibraryCoreContentRangePublicationStatusV1
@@ -862,7 +872,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
   }
   const keys = Object.keys(value).sort();
   const expectedKeys =
-    value.kind === "query"
+    value.kind === "query" || value.kind === "query_device_contacts"
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout" ||
           value.kind === "mutate_device_contacts" ||
@@ -1008,6 +1018,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "publish_follower_intent",
       "publish_normalized_follower_intent_transport",
       "query",
+      "query_device_contacts",
       "read_normalized_checkpoint_receipt",
       "read_content_state",
       "read_content_range",
@@ -1159,6 +1170,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                                                       value.query,
                                                                     )
       : parseLibraryCoreFeedPageRequestV1(value.query);
+    if (!query.ok) throw new TypeError(query.error);
+  } else if (value.kind === "query_device_contacts") {
+    const query = parseLibraryCoreDeviceContactQueryRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {
     const mutation = parseLibraryCoreDeviceGraphLayoutMutationV1(
@@ -1514,6 +1528,18 @@ export function createLibraryCoreSqliteDeviceContactMutationWorkerRequest(
     kind: "mutate_device_contacts",
     mutation,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteDeviceContactQueryWorkerRequest(
+  requestId: string,
+  query: LibraryCoreDeviceContactQueryRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "query_device_contacts",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    query,
     requestId,
   });
 }

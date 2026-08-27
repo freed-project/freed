@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   LIBRARY_CORE_DEVICE_CONTACT_DELTA_MAXIMUM_MEMBERS,
   digestLibraryCoreDeviceContactSyncMutationV1,
+  parseLibraryCoreDeviceContactQueryRequestV1,
+  parseLibraryCoreDeviceContactQueryResponseV1,
   parseLibraryCoreDeviceContactMutationReceiptV1,
   parseLibraryCoreDeviceContactSyncMutationV1,
 } from "./device-contact-sync-contracts.js";
@@ -48,9 +50,7 @@ describe("device contact sync contracts", () => {
         schemaVersion: 1,
         updatedAt: 110,
       }),
-    ).toBe(
-      "966cf9a2505a7ddcae8260bacab9aaa4aaa109a609f668a9359d962c4be6fccd",
-    );
+    ).toBe("966cf9a2505a7ddcae8260bacab9aaa4aaa109a609f668a9359d962c4be6fccd");
   });
 
   it("accepts the largest legal child windows and rejects one oversized field", () => {
@@ -231,5 +231,90 @@ describe("device contact sync contracts", () => {
         stagedContactCount: 2,
       }).ok,
     ).toBe(true);
+  });
+
+  it("admits only bounded closed contact review pages", () => {
+    const request = parseLibraryCoreDeviceContactQueryRequestV1({
+      cursor: null,
+      limit: 50,
+      queryId: "device_contact_suggestion_page_v1",
+      schemaVersion: 1,
+    });
+    expect(request.ok).toBe(true);
+    if (!request.ok) return;
+
+    const suggestion = {
+      accountIds: ["account:1"],
+      confidence: "high" as const,
+      createdAt: 20,
+      id: "suggestion:1",
+      kind: "attach_accounts_to_person" as const,
+      label: "Example Person",
+      personId: "person:1",
+      reason: "Exact match",
+    };
+    expect(
+      parseLibraryCoreDeviceContactQueryResponseV1(
+        {
+          nextCursor: null,
+          queryId: request.value.queryId,
+          revision: 3,
+          rows: [{ contact: contact(), suggestion }],
+          schemaVersion: 1,
+        },
+        request.value,
+      ).ok,
+    ).toBe(true);
+    expect(
+      parseLibraryCoreDeviceContactQueryResponseV1(
+        {
+          nextCursor: null,
+          queryId: request.value.queryId,
+          revision: 3,
+          rows: [
+            { contact: contact(), suggestion },
+            { contact: contact("people/2"), suggestion },
+          ],
+          schemaVersion: 1,
+        },
+        request.value,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("rejects incoherent contact status responses", () => {
+    const request = parseLibraryCoreDeviceContactQueryRequestV1({
+      queryId: "device_contact_status_v1",
+      schemaVersion: 1,
+    });
+    expect(request.ok).toBe(true);
+    if (!request.ok) return;
+
+    const status = {
+      activeContactCount: 1,
+      activeGenerationId: "contacts:1",
+      authStatus: "connected",
+      createdFriendCount: 0,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      lastSyncedAt: 20,
+      pendingSuggestionCount: 1,
+      queryId: request.value.queryId,
+      revision: 3,
+      schemaVersion: 1,
+      syncStartedAt: null,
+      syncStatus: "idle",
+      syncToken: "token",
+      updatedAt: 20,
+    };
+    expect(
+      parseLibraryCoreDeviceContactQueryResponseV1(status, request.value).ok,
+    ).toBe(true);
+    expect(
+      parseLibraryCoreDeviceContactQueryResponseV1(
+        { ...status, syncStartedAt: 20 },
+        request.value,
+      ).ok,
+    ).toBe(false);
   });
 });

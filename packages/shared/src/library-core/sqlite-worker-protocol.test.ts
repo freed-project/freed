@@ -18,6 +18,7 @@ import {
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteCloseScopeActionWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
+  createLibraryCoreSqliteDeviceContactQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteDeviceContactMutationWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
@@ -468,6 +469,39 @@ describe("Library Core SQLite worker protocol", () => {
         mutation: { ...request.mutation, sql: "DELETE FROM contacts" },
       }),
     ).toThrow(/device contact generation begin mutation is invalid/);
+  });
+
+  it("carries only closed bounded device contact queries", () => {
+    const request = createLibraryCoreSqliteDeviceContactQueryWorkerRequest(
+      "request-contact-review",
+      {
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_suggestion_page_v1",
+        schemaVersion: 1,
+      },
+    );
+    expect(request.kind).toBe("query_device_contacts");
+    if (request.kind !== "query_device_contacts") {
+      throw new Error("device contact query lane is invalid");
+    }
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...request,
+        query: { ...request.query, sql: "SELECT * FROM contacts" },
+      }),
+    ).toThrow(/device contact suggestion page request is invalid/);
+    expect(() =>
+      createLibraryCoreSqliteDeviceContactQueryWorkerRequest(
+        "request-contact-review-oversized",
+        {
+          cursor: null,
+          limit: 51,
+          queryId: "device_contact_suggestion_page_v1",
+          schemaVersion: 1,
+        },
+      ),
+    ).toThrow(/device contact suggestion page request is invalid/);
   });
 
   it("carries closed device-local selective content requests", () => {
