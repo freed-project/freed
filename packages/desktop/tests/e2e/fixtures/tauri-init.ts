@@ -326,6 +326,45 @@ export function tauriInitScript(): string {
           source: source,
         };
       }
+      if (request.queryId === 'account_picker_page_v1') {
+        var accountPickerQuery = String(request.search || '').toLowerCase();
+        var accountPickerItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var accountPickerRows = Object.values(state.accounts || {})
+          .filter(function(account) {
+            if (account.kind !== 'social' || account.personId != null) return false;
+            var hasActivity = accountPickerItems.some(function(item) {
+              return item.platform === account.provider && item.author &&
+                item.author.id === account.externalId;
+            });
+            var searchable = [account.displayName, account.handle, account.provider, account.externalId]
+              .filter(Boolean).join(' ').toLowerCase();
+            return hasActivity && (!accountPickerQuery || searchable.includes(accountPickerQuery));
+          })
+          .sort(function(left, right) {
+            var leftName = String(left.displayName || left.handle || left.externalId);
+            var rightName = String(right.displayName || right.handle || right.externalId);
+            return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+          })
+          .slice(0, request.limit || 50)
+          .map(function(account) {
+            return {
+              accountId: account.id,
+              authorId: account.externalId,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              displayName: account.displayName || account.handle || account.externalId,
+              handle: account.handle || account.externalId,
+              platform: account.provider,
+            };
+          });
+        return {
+          queryId: request.queryId,
+          rows: accountPickerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'person_graph_page_v1') {
         var personRows = Object.values(state.persons || {})
           .sort(function(left, right) { return left.id.localeCompare(right.id); })

@@ -367,6 +367,16 @@ pub struct NormalizedPersonPickerPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountPickerPageRequestV1 {
+    pub cancellation_id: String,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+    pub search: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -399,6 +409,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 pub enum NormalizedQueryRequestV1 {
     AccountDetail(NormalizedAccountDetailRequestV1),
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
+    AccountPickerPage(NormalizedAccountPickerPageRequestV1),
     AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     ContactMatch(NormalizedContactMatchRequestV1),
@@ -1204,10 +1215,31 @@ pub struct NormalizedPersonPickerPageResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountPickerRowV1 {
+    pub account_id: String,
+    pub author_id: String,
+    pub avatar_url: Option<String>,
+    pub display_name: String,
+    pub handle: String,
+    pub platform: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountPickerPageResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedAccountPickerRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
+    AccountPickerPage(NormalizedAccountPickerPageResponseV1),
     AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     ContactMatch(NormalizedContactMatchResponseV1),
@@ -3971,6 +4003,80 @@ fn query_person_picker_page(
     Ok(response)
 }
 
+fn query_account_picker_page(
+    connection: &mut Connection,
+    request: NormalizedAccountPickerPageRequestV1,
+) -> Result<NormalizedAccountPickerPageResponseV1, NormalizedSqliteError> {
+    let search_scalars = request.search.chars().count();
+    if request.schema_version != 1
+        || !(1..=50).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || request.search.len() > 1_024
+        || (search_scalars > 0 && search_scalars < 3)
+    {
+        return Err(invalid("normalized Account picker request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "account_picker_page_v1")
+        .ok_or(invalid("normalized Account picker program is missing"))?;
+    let variant_id = if request.search.is_empty() {
+        "empty"
+    } else {
+        "search"
+    };
+    let variant = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == variant_id)
+        .ok_or(invalid("normalized Account picker variant is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let limit = i64::try_from(request.limit + 1).expect("bounded Account picker limit");
+    let mut statement = transaction.prepare(variant.sql)?;
+    let mut rows = if request.search.is_empty() {
+        statement
+            .query_map(params![limit], |row| {
+                decode_generated_query_row(row, "account_picker_page_v1")
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        let phrase = format!("\"{}\"", request.search.replace('"', "\"\""));
+        statement
+            .query_map(params![phrase, limit], |row| {
+                decode_generated_query_row(row, "account_picker_page_v1")
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    drop(statement);
+    if rows.len() > program.maximum_scan_rows {
+        return Err(invalid("normalized Account picker exceeded its row bound"));
+    }
+    rows.truncate(request.limit);
+    let response = NormalizedAccountPickerPageResponseV1 {
+        query_id: "account_picker_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Account picker response is invalid"))?
+        .len()
+        > 1_024 * 1_024
+    {
+        return Err(invalid(
+            "normalized Account picker response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_facet_summary(
     connection: &mut Connection,
     request: NormalizedFacetSummaryRequestV1,
@@ -5764,6 +5870,11 @@ pub fn query_normalized_v1(
                 query_person_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::AccountPickerPage(request) => {
+            Ok(NormalizedQueryResponseV1::AccountPickerPage(
+                query_account_picker_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PersonPickerPage(request) => {
             Ok(NormalizedQueryResponseV1::PersonPickerPage(
                 query_person_picker_page(connection, request)?,
@@ -5839,6 +5950,9 @@ pub fn query_normalized_json_v1(
         "account_detail_v1" => decode_request!(NormalizedAccountDetailRequestV1, AccountDetail),
         "account_graph_page_v1" => {
             decode_request!(NormalizedAccountGraphPageRequestV1, AccountGraphPage)
+        }
+        "account_picker_page_v1" => {
+            decode_request!(NormalizedAccountPickerPageRequestV1, AccountPickerPage)
         }
         "account_timeline_v1" => {
             decode_request!(NormalizedAccountTimelineRequestV1, AccountTimeline)
@@ -5928,6 +6042,7 @@ pub fn query_normalized_json_v1(
     match response {
         NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AccountPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
         NormalizedQueryResponseV1::ContactMatch(response) => encode_response!(response),
@@ -8204,9 +8319,10 @@ mod tests {
                           ('person-1', 'reach-2', 200);
                  INSERT INTO library_accounts
                    (id, person_id, kind, provider, external_id, first_seen_at,
-                    last_seen_at, discovered_from, created_at, updated_at)
-                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50, 200, 'capture', 50, 200),
-                          ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 60, 210);
+                    last_seen_at, discovered_from, display_name, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50, 200, 'capture', 'Ada', 50, 200),
+                          ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 'Grace', 60, 210),
+                          ('account-3', NULL, 'social', 'youtube', 'ada-video', 70, 220, 'capture', 'Lovelace Video', 70, 220);
                  INSERT INTO library_rss_feeds
                    (url, title, image_url, enabled, track_unread, updated_at)
                    VALUES ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
@@ -8216,6 +8332,7 @@ mod tests {
                     author_id, author_handle, author_display_name, author_avatar_url, rss_feed_url,
                     hidden, saved, archived, updated_at)
                    VALUES ('account-activity', 'x', 'post', 220, 220, 'ada', 'ada', 'Ada', NULL, NULL, 0, 0, 0, 220),
+                          ('picker-activity', 'youtube', 'video', 240, 240, 'ada-video', 'ada-video', 'Lovelace Video', NULL, NULL, 0, 0, 0, 240),
                           ('rss-activity', 'rss', 'article', 230, 230, 'alpha', 'alpha', 'Alpha', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 0, 0, 0, 230);
                  INSERT INTO library_device_person_graph_layout
                    (person_id, graph_x, graph_y, updated_at)
@@ -8307,7 +8424,7 @@ mod tests {
             if query_id == "account_graph_page_v1" {
                 assert!(plan
                     .iter()
-                    .any(|detail| { detail.contains("library_feed_items_provider_author") }));
+                    .any(|detail| { detail.contains("SEARCH activity USING PRIMARY KEY") }));
             }
             if query_id == "rss_feed_page_v1" {
                 assert!(plan
@@ -8332,6 +8449,56 @@ mod tests {
         assert!(picker_plan
             .iter()
             .all(|detail| !detail.contains("SCAN person") && !detail.contains("USE TEMP B-TREE")));
+
+        let account_picker_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "account_picker_page_v1")
+            .expect("Account picker program");
+        for variant in account_picker_program.variants {
+            let mut plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", variant.sql))
+                .expect("Account picker plan");
+            let details = if variant.variant_id == "search" {
+                plan.query_map(params!["\"video\"", 51], |row| row.get::<_, String>(3))
+                    .expect("search plan rows")
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .expect("search plan")
+            } else {
+                plan.query_map(params![51], |row| row.get::<_, String>(3))
+                    .expect("empty plan rows")
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .expect("empty plan")
+            };
+            assert!(details
+                .iter()
+                .all(|detail| !detail.contains("SCAN account")
+                    && !detail.contains("USE TEMP B-TREE")));
+            if variant.variant_id == "search" {
+                assert!(details
+                    .iter()
+                    .any(|detail| detail.contains("SCAN picker VIRTUAL TABLE INDEX")));
+            } else {
+                assert!(details.iter().any(|detail| {
+                    detail.contains("SEARCH account USING INDEX library_accounts_picker_unlinked")
+                }));
+            }
+        }
+        let NormalizedQueryResponseV1::AccountPickerPage(account_picker) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountPickerPage(NormalizedAccountPickerPageRequestV1 {
+                cancellation_id: "cancel-account-picker".to_owned(),
+                limit: 50,
+                reader_session_id: "reader-account-picker".to_owned(),
+                schema_version: 1,
+                search: "video".to_owned(),
+            }),
+        )
+        .expect("Account picker") else {
+            panic!("Account picker response");
+        };
+        assert_eq!(account_picker.rows.len(), 1);
+        assert_eq!(account_picker.rows[0].account_id, "account-3");
+        assert_eq!(account_picker.rows[0].display_name, "Lovelace Video");
 
         let request = NormalizedPersonGraphPageRequestV1 {
             cancellation_id: "cancel-person-graph".to_owned(),

@@ -24,7 +24,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "5bd2a8bd903a038c004bb14835f467f803b1a0deaa52952aa8226fae3eb5d095";
+    "a0bf08a0186948125163d6ed235548f39a64e3af779263429a92cde2a8be48c2";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -658,6 +658,7 @@ pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[
 pub const QUERY_IDS: &[&str] = &[
     "account_detail_v1",
     "account_graph_page_v1",
+    "account_picker_page_v1",
     "account_timeline_v1",
     "background_item_page_v1",
     "change_feed_v1",
@@ -715,10 +716,14 @@ pub struct SqliteQueryProgram {
 }
 
 pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
+    SqliteQueryProgram { query_id: "account_picker_page_v1", maximum_scan_rows: 51, sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE ASC, COALESCE(account.handle, account.external_id) COLLATE NOCASE ASC, account.provider COLLATE BINARY ASC, account.external_id COLLATE BINARY ASC, account.id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: Some("SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE DESC, COALESCE(account.handle, account.external_id) COLLATE NOCASE DESC, account.provider COLLATE BINARY DESC, account.external_id COLLATE BINARY DESC, account.id COLLATE BINARY DESC LIMIT ?1;"), count_sql: "SELECT count(*) FROM library_accounts AS account JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0;", variants: &[
+        SqliteQueryVariant { variant_id: "empty", sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE ASC, COALESCE(account.handle, account.external_id) COLLATE NOCASE ASC, account.provider COLLATE BINARY ASC, account.external_id COLLATE BINARY ASC, account.id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE DESC, COALESCE(account.handle, account.external_id) COLLATE NOCASE DESC, account.provider COLLATE BINARY DESC, account.external_id COLLATE BINARY DESC, account.id COLLATE BINARY DESC LIMIT ?1;" },
+        SqliteQueryVariant { variant_id: "search", sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank ASC LIMIT ?2;", reverse_sql: "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank DESC LIMIT ?2;" },
+    ] },
     SqliteQueryProgram { query_id: "account_detail_v1", maximum_scan_rows: 1, sql: "SELECT account.id, account.person_id AS personId, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.profile_url AS profileUrl, account.email, account.phone, account.address, account.imported_at AS importedAt, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.follow_roster_synced_at AS followRosterSyncedAt, account.sample_batch_id AS sampleBatchId, account.sample_generated_at AS sampleGeneratedAt, account.sample_generator_version AS sampleGeneratorVersion, account.created_at AS createdAt, account.updated_at AS updatedAt, (SELECT json_group_array(role) FROM (SELECT role FROM library_account_follow_roles WHERE account_id = account.id ORDER BY role COLLATE BINARY LIMIT 8)) AS followRosterRolesJson FROM library_accounts AS account WHERE account.id = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;", variants: &[
 
     ] },
-    SqliteQueryProgram { query_id: "account_graph_page_v1", maximum_scan_rows: 129, sql: "SELECT account.id, account.person_id AS personId, person.name AS personName, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.updated_at AS updatedAt, (layout.account_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, (SELECT count(*) FROM library_feed_items AS item WHERE item.platform = account.provider AND item.author_id = account.external_id AND item.hidden = 0) AS activityCount, (SELECT max(item.published_at) FROM library_feed_items AS item WHERE item.platform = account.provider AND item.author_id = account.external_id AND item.hidden = 0) AS latestActivityAt FROM library_accounts AS account LEFT JOIN library_persons AS person ON person.id = account.person_id LEFT JOIN library_device_account_graph_layout AS layout ON layout.account_id = account.id WHERE account.id > COALESCE(?1, '') COLLATE BINARY ORDER BY account.id COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts;", variants: &[
+    SqliteQueryProgram { query_id: "account_graph_page_v1", maximum_scan_rows: 129, sql: "SELECT account.id, account.person_id AS personId, person.name AS personName, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.updated_at AS updatedAt, (layout.account_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, COALESCE(activity.visible_count, 0) AS activityCount, activity.latest_published_at AS latestActivityAt FROM library_accounts AS account LEFT JOIN library_persons AS person ON person.id = account.person_id LEFT JOIN library_device_account_graph_layout AS layout ON layout.account_id = account.id LEFT JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.id > COALESCE(?1, '') COLLATE BINARY ORDER BY account.id COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts;", variants: &[
 
     ] },
     SqliteQueryProgram { query_id: "account_timeline_v1", maximum_scan_rows: 101, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints FROM library_accounts AS account JOIN library_feed_items AS item ON item.platform = account.provider AND item.author_id = account.external_id LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE account.id = ?1 COLLATE BINARY AND item.hidden = 0 AND item.archived = 0 AND (?2 IS NULL OR item.published_at < ?2 OR (item.published_at = ?2 AND item.global_id > ?3 COLLATE BINARY)) ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT ?4;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts AS account JOIN library_feed_items AS item ON item.platform = account.provider AND item.author_id = account.external_id WHERE account.id = ?1 COLLATE BINARY AND item.hidden = 0 AND item.archived = 0;", variants: &[
@@ -832,6 +837,77 @@ pub struct SqliteQueryRowModel {
 
 #[rustfmt::skip]
 pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
+    SqliteQueryRowModel {
+        query_id: "account_picker_page_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "accountId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "authorId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "avatarUrl",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(8192),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "displayName",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "handle",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "platform",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(255),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
     SqliteQueryRowModel {
         query_id: "friends_directory_page_v1",
         fields: &[

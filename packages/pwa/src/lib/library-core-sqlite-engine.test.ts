@@ -2684,6 +2684,50 @@ describe("PWA Library Core SQLite engine", () => {
       queryId: "item_detail_v1",
       source: { projectionRevision: 7 },
     });
+    database.exec(`
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, hidden, saved,
+         archived, updated_at)
+      VALUES
+        ('account-picker-item', 'instagram', 'post', 240, 240,
+         'ada-instagram', 'ada.lovelace', 'Ada Lovelace', 0, 0, 0, 240);
+    `);
+    const accountPickerRequest = {
+      cancellationId: operationId("cancel-account-picker-1"),
+      limit: 50,
+      queryId: "account_picker_page_v1" as const,
+      readerSessionId: operationId("reader-account-picker-1"),
+      schemaVersion: 1 as const,
+      search: "love",
+    };
+    expect(engine.query(accountPickerRequest)).toMatchObject({
+      queryId: "account_picker_page_v1",
+      rows: [
+        {
+          accountId: "account-4",
+          authorId: "ada-instagram",
+          displayName: "Ada Lovelace",
+          platform: "instagram",
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(() =>
+      engine.query({ ...accountPickerRequest, search: "lo" }),
+    ).toThrow("request is invalid");
+    database.exec(
+      "UPDATE library_feed_items SET hidden = 1 WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toEqual([]);
+    database.exec(
+      "UPDATE library_feed_items SET hidden = 0, published_at = 250 WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toHaveLength(1);
+    database.exec(
+      "DELETE FROM library_feed_items WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toEqual([]);
     expect(
       engine.query({
         globalId: "missing",
@@ -2798,11 +2842,13 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toMatchObject({
       queryId: "person_picker_page_v1",
-      rows: [{
-        id: "person-1",
-        name: "Ada",
-        relationshipStatus: "friend",
-      }],
+      rows: [
+        {
+          id: "person-1",
+          name: "Ada",
+          relationshipStatus: "friend",
+        },
+      ],
       source: { projectionRevision: 7 },
     });
     expect(

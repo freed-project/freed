@@ -3,6 +3,8 @@ import {
   decodeLibraryCoreFriendsDirectoryCursorV1,
   encodeLibraryCoreFriendsDirectoryCursorV1,
   libraryCoreFriendsDirectoryBindingDigestV1,
+  parseLibraryCoreAccountPickerPageRequestV1,
+  parseLibraryCoreAccountPickerPageResponseV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
   parseLibraryCorePersonPickerPageRequestV1,
@@ -71,34 +73,34 @@ describe("Friends directory contract", () => {
       ),
     ).toStrictEqual(coerced);
     expect(
-      coerceLibraryCoreGeneratedSqliteQueryRow(
-        "friends_directory_page_v1",
-        { ...sqliteRow, relationshipStatus: "connection" },
-      ),
+      coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
+        ...sqliteRow,
+        relationshipStatus: "connection",
+      }),
     ).toBeNull();
     expect(
-      coerceLibraryCoreGeneratedSqliteQueryRow(
-        "friends_directory_page_v1",
-        { ...sqliteRow, surprise: true },
-      ),
+      coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
+        ...sqliteRow,
+        surprise: true,
+      }),
     ).toBeNull();
     expect(
-      coerceLibraryCoreGeneratedSqliteQueryRow(
-        "friends_directory_page_v1",
-        { ...sqliteRow, id: "" },
-      ),
+      coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
+        ...sqliteRow,
+        id: "",
+      }),
     ).toBeNull();
     expect(
-      coerceLibraryCoreGeneratedSqliteQueryRow(
-        "friends_directory_page_v1",
-        { ...sqliteRow, name: "" },
-      ),
+      coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
+        ...sqliteRow,
+        name: "",
+      }),
     ).toBeNull();
     expect(
-      coerceLibraryCoreGeneratedSqliteQueryRow(
-        "friends_directory_page_v1",
-        { ...sqliteRow, careLevel: 6 },
-      ),
+      coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
+        ...sqliteRow,
+        careLevel: 6,
+      }),
     ).toBeNull();
   });
 
@@ -228,12 +230,14 @@ describe("Person picker contract", () => {
       parseLibraryCorePersonPickerPageResponseV1(
         {
           queryId: "person_picker_page_v1",
-          rows: [{
-            avatarUrl: null,
-            id: "person-ada",
-            name: "Ada Lovelace",
-            relationshipStatus: "friend",
-          }],
+          rows: [
+            {
+              avatarUrl: null,
+              id: "person-ada",
+              name: "Ada Lovelace",
+              relationshipStatus: "friend",
+            },
+          ],
           schemaVersion: 1,
           source,
         },
@@ -244,13 +248,15 @@ describe("Person picker contract", () => {
       parseLibraryCorePersonPickerPageResponseV1(
         {
           queryId: "person_picker_page_v1",
-          rows: [{
-            avatarUrl: null,
-            id: "person-ada",
-            name: "Ada Lovelace",
-            notes: "must never cross the picker boundary",
-            relationshipStatus: "friend",
-          }],
+          rows: [
+            {
+              avatarUrl: null,
+              id: "person-ada",
+              name: "Ada Lovelace",
+              notes: "must never cross the picker boundary",
+              relationshipStatus: "friend",
+            },
+          ],
           schemaVersion: 1,
           source,
         },
@@ -272,5 +278,84 @@ describe("Person picker contract", () => {
         arbitrarySql: "SELECT *",
       }).ok,
     ).toBe(false);
+  });
+});
+
+describe("Account picker contract", () => {
+  const pickerRequest = {
+    cancellationId: "cancel-account-picker",
+    limit: 50,
+    queryId: "account_picker_page_v1" as const,
+    readerSessionId: "account-picker-session",
+    schemaVersion: 1 as const,
+    search: "love",
+  };
+
+  it("accepts only the compact generated Account row", () => {
+    const request = parseLibraryCoreAccountPickerPageRequestV1(pickerRequest);
+    expect(request.ok).toBe(true);
+    if (!request.ok) return;
+    expect(
+      parseLibraryCoreAccountPickerPageResponseV1(
+        {
+          queryId: "account_picker_page_v1",
+          rows: [
+            {
+              accountId: "account-ada",
+              authorId: "ada-remote",
+              avatarUrl: null,
+              displayName: "Ada Lovelace",
+              handle: "ada",
+              platform: "x",
+            },
+          ],
+          schemaVersion: 1,
+          source,
+        },
+        request.value,
+      ).ok,
+    ).toBe(true);
+    expect(
+      parseLibraryCoreAccountPickerPageResponseV1(
+        {
+          queryId: "account_picker_page_v1",
+          rows: [
+            {
+              accountId: "account-ada",
+              activityCount: 100,
+              authorId: "ada-remote",
+              avatarUrl: null,
+              displayName: "Ada Lovelace",
+              handle: "ada",
+              platform: "x",
+            },
+          ],
+          schemaVersion: 1,
+          source,
+        },
+        request.value,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("permits an empty search and rejects one or two scalars", () => {
+    expect(
+      parseLibraryCoreAccountPickerPageRequestV1({
+        ...pickerRequest,
+        search: "",
+      }).ok,
+    ).toBe(true);
+    expect(
+      parseLibraryCoreAccountPickerPageRequestV1({
+        ...pickerRequest,
+        search: "lo",
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCoreAccountPickerPageRequestV1({
+        ...pickerRequest,
+        search: "猫犬鳥",
+      }).ok,
+    ).toBe(true);
   });
 });

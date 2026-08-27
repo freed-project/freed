@@ -33,6 +33,12 @@ export const LIBRARY_CORE_PERSON_PICKER_QUERY_ID =
 export const LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT = 12;
 export const LIBRARY_CORE_PERSON_PICKER_MAXIMUM_RESPONSE_BYTES = 64 * 1_024;
+export const LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID =
+  "account_picker_page_v1" as const;
+export const LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION = 1 as const;
+export const LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT = 50;
+export const LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_RESPONSE_BYTES = 1_024 * 1_024;
+export const LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS = 3;
 
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_FILTERS = Object.freeze([
   "close_friends",
@@ -90,6 +96,68 @@ const PERSON_PICKER_RESPONSE_KEYS = [
   "schemaVersion",
   "source",
 ] as const;
+const ACCOUNT_PICKER_REQUEST_KEYS = PERSON_PICKER_REQUEST_KEYS;
+const ACCOUNT_PICKER_RESPONSE_KEYS = PERSON_PICKER_RESPONSE_KEYS;
+
+export const LIBRARY_CORE_ACCOUNT_PICKER_REQUEST_SCHEMA = Object.freeze({
+  schemaId: "library_core_account_picker_request_v1",
+  schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+  canonicalKeys: ACCOUNT_PICKER_REQUEST_KEYS,
+  maximumLimit: LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT,
+  maximumSearchBytes: LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES,
+  minimumSearchScalars: LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS,
+});
+
+export const LIBRARY_CORE_ACCOUNT_PICKER_RESPONSE_SCHEMA = Object.freeze({
+  schemaId: "library_core_account_picker_response_v1",
+  schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+  canonicalKeys: ACCOUNT_PICKER_RESPONSE_KEYS,
+  maximumRows: LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT,
+  maximumResponseBytes: LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_RESPONSE_BYTES,
+});
+
+export const LIBRARY_CORE_ACCOUNT_PICKER_PROJECTION = Object.freeze({
+  projectionId: "library_core_account_picker_row_v1",
+  sourceTable: "library_accounts",
+  supportingTables: Object.freeze([
+    "library_account_picker_fts",
+    "library_author_activity",
+  ]),
+  fullContentAllowed: false,
+  orderedColumns: Object.freeze([
+    "variant_order",
+    "display_name",
+    "handle",
+    "platform",
+    "external_id",
+    "id",
+  ]),
+});
+
+export const LIBRARY_CORE_ACCOUNT_PICKER_NESTED_BOUNDS = Object.freeze({
+  nestedValuesAllowed: false,
+});
+
+export interface LibraryCoreAccountPickerPageRequestV1 {
+  readonly cancellationId: string;
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID;
+  readonly readerSessionId: string;
+  readonly schemaVersion: typeof LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION;
+  readonly search: string;
+}
+
+export type LibraryCoreAccountPickerRowV1 =
+  LibraryCoreGeneratedSqliteQueryRow<"account_picker_page_v1">;
+
+export interface LibraryCoreAccountPickerPageResponseV1 {
+  readonly queryId: typeof LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID;
+  readonly rows: readonly LibraryCoreAccountPickerRowV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION;
+  readonly source: LibraryCoreFeedPageSourceV1;
+}
 
 export const LIBRARY_CORE_PERSON_PICKER_REQUEST_SCHEMA = Object.freeze({
   schemaId: "library_core_person_picker_request_v1",
@@ -485,6 +553,83 @@ export function parseLibraryCorePersonPickerPageResponseV1(
       queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
       rows: Object.freeze(rows as LibraryCorePersonPickerRowV1[]),
       schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+      source: source.value,
+    }),
+  };
+}
+
+export function parseLibraryCoreAccountPickerPageRequestV1(
+  input: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreAccountPickerPageRequestV1> {
+  const record = recordValue(input);
+  const searchScalars =
+    typeof record?.search === "string" ? [...record.search].length : -1;
+  if (
+    !record ||
+    !exactKeys(record, ACCOUNT_PICKER_REQUEST_KEYS) ||
+    record.queryId !== LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID ||
+    record.schemaVersion !== LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION ||
+    !isLibraryCoreOperationInstanceId(record.cancellationId) ||
+    !isLibraryCoreOperationInstanceId(record.readerSessionId) ||
+    !Number.isInteger(record.limit) ||
+    (record.limit as number) < 1 ||
+    (record.limit as number) > LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT ||
+    !boundedText(
+      record.search,
+      LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES,
+    ) ||
+    (searchScalars > 0 &&
+      searchScalars < LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS)
+  ) {
+    return { ok: false, error: "Account picker request is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      cancellationId: record.cancellationId,
+      limit: record.limit,
+      queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+      readerSessionId: record.readerSessionId,
+      schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
+      search: record.search,
+    }) as LibraryCoreAccountPickerPageRequestV1,
+  };
+}
+
+export function parseLibraryCoreAccountPickerPageResponseV1(
+  input: unknown,
+  request: LibraryCoreAccountPickerPageRequestV1,
+): LibraryCoreFeedPageParseResult<LibraryCoreAccountPickerPageResponseV1> {
+  const record = recordValue(input);
+  const source = parseLibraryCoreFeedPageSourceV1(record?.source);
+  if (
+    !record ||
+    !exactKeys(record, ACCOUNT_PICKER_RESPONSE_KEYS) ||
+    record.queryId !== LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID ||
+    record.schemaVersion !== LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION ||
+    !source.ok ||
+    !Array.isArray(record.rows) ||
+    record.rows.length > request.limit ||
+    textEncoder.encode(JSON.stringify(record)).byteLength >
+      LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return { ok: false, error: "Account picker response is invalid" };
+  }
+  const rows = record.rows.map((row) =>
+    parseLibraryCoreGeneratedSqliteQueryRow(
+      LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+      row,
+    ),
+  );
+  if (rows.some((row) => row === null)) {
+    return { ok: false, error: "Account picker row is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+      rows: Object.freeze(rows as LibraryCoreAccountPickerRowV1[]),
+      schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
       source: source.value,
     }),
   };

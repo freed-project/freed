@@ -348,6 +348,14 @@ CREATE TABLE IF NOT EXISTS library_tag_counts (
   item_count INTEGER NOT NULL CHECK (item_count >= 0)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_author_activity (
+  platform TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  visible_count INTEGER NOT NULL CHECK (visible_count >= 0),
+  latest_published_at INTEGER NOT NULL CHECK (latest_published_at >= 0),
+  PRIMARY KEY (platform, author_id)
+) STRICT, WITHOUT ROWID;
+
 CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_insert
 AFTER INSERT ON library_feed_items
 BEGIN
@@ -375,6 +383,13 @@ BEGIN
   INSERT INTO library_saved_platform_counts (platform, item_count)
     SELECT NEW.platform, 1 WHERE NEW.saved = 1
     ON CONFLICT(platform) DO UPDATE SET item_count = item_count + 1;
+  INSERT INTO library_author_activity
+    (platform, author_id, visible_count, latest_published_at)
+    SELECT NEW.platform, NEW.author_id, 1, NEW.published_at
+    WHERE NEW.hidden = 0
+    ON CONFLICT(platform, author_id) DO UPDATE SET
+      visible_count = visible_count + 1,
+      latest_published_at = max(latest_published_at, NEW.published_at);
 END;
 
 CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_delete
@@ -398,10 +413,23 @@ BEGIN
   UPDATE library_saved_platform_counts SET item_count = item_count - 1
     WHERE OLD.saved = 1 AND platform = OLD.platform;
   DELETE FROM library_saved_platform_counts WHERE item_count = 0;
+  UPDATE library_author_activity SET
+    visible_count = visible_count - 1,
+    latest_published_at = COALESCE((
+      SELECT max(item.published_at)
+      FROM library_feed_items AS item
+      WHERE item.platform = OLD.platform
+        AND item.author_id = OLD.author_id
+        AND item.hidden = 0
+    ), 0)
+  WHERE OLD.hidden = 0
+    AND platform = OLD.platform
+    AND author_id = OLD.author_id;
+  DELETE FROM library_author_activity WHERE visible_count = 0;
 END;
 
 CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_update
-AFTER UPDATE OF archived, hidden, read_at, saved, platform, sample_batch_id ON library_feed_items
+AFTER UPDATE OF archived, hidden, read_at, saved, platform, author_id, published_at, sample_batch_id ON library_feed_items
 BEGIN
   UPDATE library_facet_summary SET
     archived_count = archived_count + (NEW.archived = 1) - (OLD.archived = 1),
@@ -435,6 +463,26 @@ BEGIN
     SELECT NEW.platform, 1 WHERE NEW.saved = 1
     ON CONFLICT(platform) DO UPDATE SET item_count = item_count + 1;
   DELETE FROM library_saved_platform_counts WHERE item_count = 0;
+  UPDATE library_author_activity SET
+    visible_count = visible_count - 1,
+    latest_published_at = COALESCE((
+      SELECT max(item.published_at)
+      FROM library_feed_items AS item
+      WHERE item.platform = OLD.platform
+        AND item.author_id = OLD.author_id
+        AND item.hidden = 0
+    ), 0)
+  WHERE OLD.hidden = 0
+    AND platform = OLD.platform
+    AND author_id = OLD.author_id;
+  DELETE FROM library_author_activity WHERE visible_count = 0;
+  INSERT INTO library_author_activity
+    (platform, author_id, visible_count, latest_published_at)
+    SELECT NEW.platform, NEW.author_id, 1, NEW.published_at
+    WHERE NEW.hidden = 0
+    ON CONFLICT(platform, author_id) DO UPDATE SET
+      visible_count = visible_count + 1,
+      latest_published_at = max(latest_published_at, NEW.published_at);
 END;
 
 CREATE TRIGGER IF NOT EXISTS library_feed_item_tag_facet_insert
@@ -592,6 +640,79 @@ CREATE INDEX IF NOT EXISTS library_accounts_contact_provider_imported
     COALESCE(imported_at, last_seen_at, created_at) DESC,
     id
   );
+CREATE INDEX IF NOT EXISTS library_accounts_picker_unlinked
+  ON library_accounts(
+    kind,
+    person_id,
+    COALESCE(display_name, handle, external_id) COLLATE NOCASE,
+    COALESCE(handle, external_id) COLLATE NOCASE,
+    provider COLLATE BINARY,
+    external_id COLLATE BINARY,
+    id COLLATE BINARY
+  );
+
+CREATE VIRTUAL TABLE IF NOT EXISTS library_account_picker_fts USING fts5(
+  display_name,
+  handle,
+  provider,
+  external_id,
+  content = 'library_accounts',
+  content_rowid = 'rowid',
+  tokenize = 'trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS library_account_picker_fts_insert
+AFTER INSERT ON library_accounts
+BEGIN
+  INSERT INTO library_account_picker_fts
+    (rowid, display_name, handle, provider, external_id)
+  VALUES (
+    NEW.rowid,
+    COALESCE(NEW.display_name, NEW.handle, NEW.external_id),
+    COALESCE(NEW.handle, NEW.external_id),
+    NEW.provider,
+    NEW.external_id
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_picker_fts_delete
+AFTER DELETE ON library_accounts
+BEGIN
+  INSERT INTO library_account_picker_fts
+    (library_account_picker_fts, rowid, display_name, handle, provider, external_id)
+  VALUES (
+    'delete',
+    OLD.rowid,
+    COALESCE(OLD.display_name, OLD.handle, OLD.external_id),
+    COALESCE(OLD.handle, OLD.external_id),
+    OLD.provider,
+    OLD.external_id
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_picker_fts_update
+AFTER UPDATE OF display_name, handle, provider, external_id ON library_accounts
+BEGIN
+  INSERT INTO library_account_picker_fts
+    (library_account_picker_fts, rowid, display_name, handle, provider, external_id)
+  VALUES (
+    'delete',
+    OLD.rowid,
+    COALESCE(OLD.display_name, OLD.handle, OLD.external_id),
+    COALESCE(OLD.handle, OLD.external_id),
+    OLD.provider,
+    OLD.external_id
+  );
+  INSERT INTO library_account_picker_fts
+    (rowid, display_name, handle, provider, external_id)
+  VALUES (
+    NEW.rowid,
+    COALESCE(NEW.display_name, NEW.handle, NEW.external_id),
+    COALESCE(NEW.handle, NEW.external_id),
+    NEW.provider,
+    NEW.external_id
+  );
+END;
 
 CREATE TABLE IF NOT EXISTS library_person_contact_match_keys (
   match_value TEXT NOT NULL,

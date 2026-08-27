@@ -960,6 +960,7 @@ describe("Library Core query registry", () => {
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_graph_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.account_picker_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||

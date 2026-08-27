@@ -171,9 +171,7 @@
       "rss_feed_title_assignment",
       "rss_feed_upsert"
     ],
-    "scraper": [
-      "feed_item_capture_upsert"
-    ]
+    "scraper": ["feed_item_capture_upsert"]
   },
   "limits": {
     "checkpointRecordCanonicalBytes": 131072,
@@ -201,20 +199,10 @@
     "query_v1"
   ],
   "fractionalFields": {
-    "10_feed_item": [
-      "locationLat",
-      "locationLng",
-      "priority"
-    ],
-    "16_feed_item_signal_score": [
-      "score"
-    ],
-    "17_feed_item_event": [
-      "confidence"
-    ],
-    "50_preference": [
-      "realValue"
-    ]
+    "10_feed_item": ["locationLat", "locationLng", "priority"],
+    "16_feed_item_signal_score": ["score"],
+    "17_feed_item_event": ["confidence"],
+    "50_preference": ["realValue"]
   },
   "checkpointImports": {
     "00_checkpoint_header": {
@@ -230,22 +218,15 @@
     },
     "01_authority_epoch": {
       "table": "library_authority_epochs",
-      "primaryKeyColumns": [
-        "epoch_id"
-      ]
+      "primaryKeyColumns": ["epoch_id"]
     },
     "02_authority_frontier": {
       "table": "library_authority_frontier",
-      "primaryKeyColumns": [
-        "epoch_id",
-        "ordinal"
-      ]
+      "primaryKeyColumns": ["epoch_id", "ordinal"]
     },
     "03_active_authority": {
       "table": "library_active_authority",
-      "primaryKeyColumns": [
-        "active_key"
-      ],
+      "primaryKeyColumns": ["active_key"],
       "fieldColumns": {
         "activeKey": null
       },
@@ -255,119 +236,81 @@
     },
     "10_feed_item": {
       "table": "library_feed_items",
-      "primaryKeyColumns": [
-        "global_id"
-      ]
+      "primaryKeyColumns": ["global_id"]
     },
     "11_feed_item_media": {
       "table": "library_feed_item_media",
-      "primaryKeyColumns": [
-        "global_id",
-        "ordinal"
-      ]
+      "primaryKeyColumns": ["global_id", "ordinal"]
     },
     "12_feed_item_topic": {
       "table": "library_feed_item_topics",
-      "primaryKeyColumns": [
-        "global_id",
-        "topic"
-      ],
+      "primaryKeyColumns": ["global_id", "topic"],
       "identityPayloadFields": {
         "topic": 1
       }
     },
     "13_feed_item_tag": {
       "table": "library_feed_item_tags",
-      "primaryKeyColumns": [
-        "global_id",
-        "tag"
-      ],
+      "primaryKeyColumns": ["global_id", "tag"],
       "identityPayloadFields": {
         "tag": 1
       }
     },
     "14_feed_item_highlight": {
       "table": "library_feed_item_highlights",
-      "primaryKeyColumns": [
-        "global_id",
-        "ordinal"
-      ],
+      "primaryKeyColumns": ["global_id", "ordinal"],
       "fieldColumns": {
         "text": "text_value"
       }
     },
     "15_feed_item_signal": {
       "table": "library_feed_item_signals",
-      "primaryKeyColumns": [
-        "global_id"
-      ]
+      "primaryKeyColumns": ["global_id"]
     },
     "16_feed_item_signal_score": {
       "table": "library_feed_item_signal_scores",
-      "primaryKeyColumns": [
-        "global_id",
-        "signal"
-      ],
+      "primaryKeyColumns": ["global_id", "signal"],
       "identityPayloadFields": {
         "signal": 1
       }
     },
     "17_feed_item_event": {
       "table": "library_feed_item_events",
-      "primaryKeyColumns": [
-        "global_id"
-      ]
+      "primaryKeyColumns": ["global_id"]
     },
     "20_rss_feed": {
       "table": "library_rss_feeds",
-      "primaryKeyColumns": [
-        "url"
-      ]
+      "primaryKeyColumns": ["url"]
     },
     "30_person": {
       "table": "library_persons",
-      "primaryKeyColumns": [
-        "id"
-      ]
+      "primaryKeyColumns": ["id"]
     },
     "31_person_tag": {
       "table": "library_person_tags",
-      "primaryKeyColumns": [
-        "person_id",
-        "tag"
-      ],
+      "primaryKeyColumns": ["person_id", "tag"],
       "identityPayloadFields": {
         "tag": 1
       }
     },
     "32_person_reach_out": {
       "table": "library_person_reach_outs",
-      "primaryKeyColumns": [
-        "person_id",
-        "reach_out_id"
-      ]
+      "primaryKeyColumns": ["person_id", "reach_out_id"]
     },
     "40_account": {
       "table": "library_accounts",
-      "primaryKeyColumns": [
-        "id"
-      ]
+      "primaryKeyColumns": ["id"]
     },
     "41_account_follow_role": {
       "table": "library_account_follow_roles",
-      "primaryKeyColumns": [
-        "account_id",
-        "role"
-      ],
+      "primaryKeyColumns": ["account_id", "role"],
       "identityPayloadFields": {
         "role": 1
       }
     },
     "50_preference": {
       "table": "library_preferences",
-      "primaryKeyColumns": [
-        "path"
-      ]
+      "primaryKeyColumns": ["path"]
     },
     "60_relationship": {
       "table": "library_relationships",
@@ -381,53 +324,34 @@
     },
     "70_field_clock": {
       "table": "library_field_clocks",
-      "primaryKeyColumns": [
-        "entity_type",
-        "entity_id",
-        "field_path"
-      ]
+      "primaryKeyColumns": ["entity_type", "entity_id", "field_path"]
     },
     "80_tombstone": {
       "table": "library_tombstones",
-      "primaryKeyColumns": [
-        "entity_type",
-        "entity_id"
-      ]
+      "primaryKeyColumns": ["entity_type", "entity_id"]
     },
     "90_actor_state": {
       "table": "library_actors",
-      "primaryKeyColumns": [
-        "actor_id"
-      ]
+      "primaryKeyColumns": ["actor_id"]
     },
     "91_actor_capability": {
       "table": "library_actor_capabilities",
-      "primaryKeyColumns": [
-        "capability_id"
-      ]
+      "primaryKeyColumns": ["capability_id"]
     },
     "92_actor_capability_mutation": {
       "table": "library_actor_capability_mutations",
-      "primaryKeyColumns": [
-        "capability_id",
-        "mutation_id"
-      ],
+      "primaryKeyColumns": ["capability_id", "mutation_id"],
       "identityPayloadFields": {
         "mutationId": 1
       }
     },
     "a0_receipt": {
       "table": "library_receipts",
-      "primaryKeyColumns": [
-        "actor_id",
-        "operation_id"
-      ]
+      "primaryKeyColumns": ["actor_id", "operation_id"]
     },
     "b0_blob_descriptor": {
       "table": "library_blobs",
-      "primaryKeyColumns": [
-        "content_digest"
-      ],
+      "primaryKeyColumns": ["content_digest"],
       "fieldColumns": {
         "blobContentDigest": null
       },
@@ -437,10 +361,7 @@
     },
     "b1_content_chunk": {
       "table": "library_blob_chunks",
-      "primaryKeyColumns": [
-        "content_digest",
-        "chunk_index"
-      ],
+      "primaryKeyColumns": ["content_digest", "chunk_index"],
       "fieldColumns": {
         "blobContentDigest": null,
         "byteLength": null,
@@ -455,10 +376,7 @@
     },
     "b2_content_range": {
       "table": "library_content_ranges",
-      "primaryKeyColumns": [
-        "content_digest",
-        "range_index"
-      ],
+      "primaryKeyColumns": ["content_digest", "range_index"],
       "fieldColumns": {
         "blobContentDigest": null,
         "rangeContentDigest": "range_digest"
@@ -590,58 +508,37 @@
       "registryKey": "11_feed_item_media",
       "primaryKey": "ordinal",
       "payload": "feed_item_media",
-      "fields": [
-        "blobContentDigest",
-        "mediaType",
-        "sourceUrl"
-      ]
+      "fields": ["blobContentDigest", "mediaType", "sourceUrl"]
     },
     {
       "registryKey": "12_feed_item_topic",
       "primaryKey": "pair",
       "payload": "feed_item_topic",
-      "fields": [
-        "topic"
-      ]
+      "fields": ["topic"]
     },
     {
       "registryKey": "13_feed_item_tag",
       "primaryKey": "pair",
       "payload": "feed_item_tag",
-      "fields": [
-        "tag"
-      ]
+      "fields": ["tag"]
     },
     {
       "registryKey": "14_feed_item_highlight",
       "primaryKey": "ordinal",
       "payload": "feed_item_highlight",
-      "fields": [
-        "createdAt",
-        "note",
-        "text",
-        "textBlobDigest"
-      ]
+      "fields": ["createdAt", "note", "text", "textBlobDigest"]
     },
     {
       "registryKey": "15_feed_item_signal",
       "primaryKey": "text",
       "payload": "feed_item_signal",
-      "fields": [
-        "inferredAt",
-        "method",
-        "version"
-      ]
+      "fields": ["inferredAt", "method", "version"]
     },
     {
       "registryKey": "16_feed_item_signal_score",
       "primaryKey": "pair",
       "payload": "feed_item_signal_score",
-      "fields": [
-        "score",
-        "signal",
-        "tagged"
-      ]
+      "fields": ["score", "signal", "tagged"]
     },
     {
       "registryKey": "17_feed_item_event",
@@ -704,19 +601,13 @@
       "registryKey": "31_person_tag",
       "primaryKey": "pair",
       "payload": "person_tag",
-      "fields": [
-        "tag"
-      ]
+      "fields": ["tag"]
     },
     {
       "registryKey": "32_person_reach_out",
       "primaryKey": "ordinal",
       "payload": "person_reach_out",
-      "fields": [
-        "channel",
-        "loggedAt",
-        "notes"
-      ]
+      "fields": ["channel", "loggedAt", "notes"]
     },
     {
       "registryKey": "40_account",
@@ -751,9 +642,7 @@
       "registryKey": "41_account_follow_role",
       "primaryKey": "pair",
       "payload": "account_follow_role",
-      "fields": [
-        "role"
-      ]
+      "fields": ["role"]
     },
     {
       "registryKey": "50_preference",
@@ -772,34 +661,19 @@
       "registryKey": "60_relationship",
       "primaryKey": "relationship",
       "payload": "relationship",
-      "fields": [
-        "createdAt",
-        "metadataBlobDigest",
-        "metadataText",
-        "updatedAt"
-      ]
+      "fields": ["createdAt", "metadataBlobDigest", "metadataText", "updatedAt"]
     },
     {
       "registryKey": "70_field_clock",
       "primaryKey": "field",
       "payload": "field_clock",
-      "fields": [
-        "actorId",
-        "counter",
-        "operationId",
-        "updatedAt"
-      ]
+      "fields": ["actorId", "counter", "operationId", "updatedAt"]
     },
     {
       "registryKey": "80_tombstone",
       "primaryKey": "entity",
       "payload": "tombstone",
-      "fields": [
-        "actorId",
-        "counter",
-        "deletedAt",
-        "operationId"
-      ]
+      "fields": ["actorId", "counter", "deletedAt", "operationId"]
     },
     {
       "registryKey": "90_actor_state",
@@ -845,9 +719,7 @@
       "registryKey": "92_actor_capability_mutation",
       "primaryKey": "pair",
       "payload": "actor_capability_mutation",
-      "fields": [
-        "mutationId"
-      ]
+      "fields": ["mutationId"]
     },
     {
       "registryKey": "a0_receipt",
@@ -1290,6 +1162,20 @@
     "sample_library_remove"
   ],
   "queryPrograms": {
+    "account_picker_page_v1": {
+      "maximumScanRows": 51,
+      "countSql": "SELECT count(*) FROM library_accounts AS account JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0;",
+      "variants": {
+        "empty": {
+          "sql": "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE ASC, COALESCE(account.handle, account.external_id) COLLATE NOCASE ASC, account.provider COLLATE BINARY ASC, account.external_id COLLATE BINARY ASC, account.id COLLATE BINARY ASC LIMIT ?1;",
+          "reverseSql": "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_accounts AS account INDEXED BY library_accounts_picker_unlinked JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY COALESCE(account.display_name, account.handle, account.external_id) COLLATE NOCASE DESC, COALESCE(account.handle, account.external_id) COLLATE NOCASE DESC, account.provider COLLATE BINARY DESC, account.external_id COLLATE BINARY DESC, account.id COLLATE BINARY DESC LIMIT ?1;"
+        },
+        "search": {
+          "sql": "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank ASC LIMIT ?2;",
+          "reverseSql": "SELECT substr(account.id, 1, 2048) AS accountId, substr(account.external_id, 1, 4096) AS authorId, substr(account.avatar_url, 1, 8192) AS avatarUrl, substr(COALESCE(account.display_name, account.handle, account.external_id), 1, 4096) AS displayName, substr(COALESCE(account.handle, account.external_id), 1, 4096) AS handle, substr(account.provider, 1, 255) AS platform FROM library_account_picker_fts AS picker CROSS JOIN library_accounts AS account ON account.rowid = picker.rowid JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE library_account_picker_fts MATCH ?1 AND account.kind = 'social' AND account.person_id IS NULL AND activity.visible_count > 0 ORDER BY rank DESC LIMIT ?2;"
+        }
+      }
+    },
     "account_detail_v1": {
       "maximumScanRows": 1,
       "countSql": "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;",
@@ -1298,7 +1184,7 @@
     "account_graph_page_v1": {
       "maximumScanRows": 129,
       "countSql": "SELECT count(*) FROM library_accounts;",
-      "sql": "SELECT account.id, account.person_id AS personId, person.name AS personName, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.updated_at AS updatedAt, (layout.account_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, (SELECT count(*) FROM library_feed_items AS item WHERE item.platform = account.provider AND item.author_id = account.external_id AND item.hidden = 0) AS activityCount, (SELECT max(item.published_at) FROM library_feed_items AS item WHERE item.platform = account.provider AND item.author_id = account.external_id AND item.hidden = 0) AS latestActivityAt FROM library_accounts AS account LEFT JOIN library_persons AS person ON person.id = account.person_id LEFT JOIN library_device_account_graph_layout AS layout ON layout.account_id = account.id WHERE account.id > COALESCE(?1, '') COLLATE BINARY ORDER BY account.id COLLATE BINARY ASC LIMIT ?2;"
+      "sql": "SELECT account.id, account.person_id AS personId, person.name AS personName, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.updated_at AS updatedAt, (layout.account_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, COALESCE(activity.visible_count, 0) AS activityCount, activity.latest_published_at AS latestActivityAt FROM library_accounts AS account LEFT JOIN library_persons AS person ON person.id = account.person_id LEFT JOIN library_device_account_graph_layout AS layout ON layout.account_id = account.id LEFT JOIN library_author_activity AS activity ON activity.platform = account.provider AND activity.author_id = account.external_id WHERE account.id > COALESCE(?1, '') COLLATE BINARY ORDER BY account.id COLLATE BINARY ASC LIMIT ?2;"
     },
     "account_timeline_v1": {
       "maximumScanRows": 101,
@@ -1450,26 +1336,264 @@
     }
   },
   "queryRowModels": {
+    "account_picker_page_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 2048,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "accountId",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 4096,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "authorId",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 8192,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "avatarUrl",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 4096,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "displayName",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 4096,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "handle",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 255,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "platform",
+        "nullable": false
+      }
+    ],
     "friends_directory_page_v1": [
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 8192, "minimumInteger": null, "minimumUtf8Bytes": 0, "name": "avatarUrl", "nullable": true },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 8192, "minimumInteger": null, "minimumUtf8Bytes": 0, "name": "bio", "nullable": true },
-      { "enumValues": [], "integerValues": [1, 2, 3, 4, 5], "kind": "integer", "maximumInteger": 5, "maximumUtf8Bytes": null, "minimumInteger": 1, "minimumUtf8Bytes": null, "name": "careLevel", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "boolean", "maximumInteger": null, "maximumUtf8Bytes": null, "minimumInteger": null, "minimumUtf8Bytes": null, "name": "hasLocation", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 2048, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "id", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "boolean", "maximumInteger": null, "maximumUtf8Bytes": null, "minimumInteger": null, "minimumUtf8Bytes": null, "name": "isRecentlyActive", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "integer", "maximumInteger": 9007199254740991, "maximumUtf8Bytes": null, "minimumInteger": 0, "minimumUtf8Bytes": null, "name": "lastContactAt", "nullable": true },
-      { "enumValues": [], "integerValues": [], "kind": "integer", "maximumInteger": 9007199254740991, "maximumUtf8Bytes": null, "minimumInteger": 0, "minimumUtf8Bytes": null, "name": "latestActivityAt", "nullable": true },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 8192, "minimumInteger": null, "minimumUtf8Bytes": 0, "name": "latestAvatarUrl", "nullable": true },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 4096, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "name", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "boolean", "maximumInteger": null, "maximumUtf8Bytes": null, "minimumInteger": null, "minimumUtf8Bytes": null, "name": "needsOutreach", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "integer", "maximumInteger": 9007199254740991, "maximumUtf8Bytes": null, "minimumInteger": 0, "minimumUtf8Bytes": null, "name": "reachOutIntervalDays", "nullable": true },
-      { "enumValues": ["friend"], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 255, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "relationshipStatus", "nullable": false }
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 8192,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "avatarUrl",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 8192,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "bio",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [1, 2, 3, 4, 5],
+        "kind": "integer",
+        "maximumInteger": 5,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 1,
+        "minimumUtf8Bytes": null,
+        "name": "careLevel",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "hasLocation",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 2048,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "id",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "isRecentlyActive",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "lastContactAt",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "latestActivityAt",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 8192,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "latestAvatarUrl",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 4096,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "name",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "needsOutreach",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "reachOutIntervalDays",
+        "nullable": true
+      },
+      {
+        "enumValues": ["friend"],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 255,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "relationshipStatus",
+        "nullable": false
+      }
     ],
     "person_picker_page_v1": [
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 8192, "minimumInteger": null, "minimumUtf8Bytes": 0, "name": "avatarUrl", "nullable": true },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 2048, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "id", "nullable": false },
-      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 4096, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "name", "nullable": false },
-      { "enumValues": ["connection", "friend"], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 255, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "relationshipStatus", "nullable": false }
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 8192,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "avatarUrl",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 2048,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "id",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 4096,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "name",
+        "nullable": false
+      },
+      {
+        "enumValues": ["connection", "friend"],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 255,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "relationshipStatus",
+        "nullable": false
+      }
     ]
   },
   "scopeActionPrograms": {
@@ -1484,6 +1608,7 @@
   "queries": [
     "account_detail_v1",
     "account_graph_page_v1",
+    "account_picker_page_v1",
     "account_timeline_v1",
     "background_item_page_v1",
     "change_feed_v1",

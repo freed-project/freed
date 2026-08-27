@@ -140,6 +140,8 @@ import {
   libraryCoreFriendsDirectoryBindingDigestV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCoreAccountPickerPageRequestV1,
+  parseLibraryCoreAccountPickerPageResponseV1,
   parseLibraryCorePersonPickerPageRequestV1,
   parseLibraryCorePersonPickerPageResponseV1,
   LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES,
@@ -264,6 +266,8 @@ import {
   type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCoreAccountPickerPageRequestV1,
+  type LibraryCoreAccountPickerPageResponseV1,
   type LibraryCorePersonPickerPageRequestV1,
   type LibraryCorePersonPickerPageResponseV1,
   type LibraryCoreRssFeedDetailRequestV1,
@@ -5137,6 +5141,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "account_picker_page_v1":
+        return this.#queryAccountPickerPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_picker_page_v1":
         return this.#queryPersonPickerPage(
           input,
@@ -6338,7 +6346,9 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (rawRows.length > program.maximumScanRows) {
-      throw new Error("PWA Library SQLite Person picker exceeded its row bound");
+      throw new Error(
+        "PWA Library SQLite Person picker exceeded its row bound",
+      );
     }
     const rows = rawRows.slice(0, request.value.limit).map((row) => {
       const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
@@ -6361,6 +6371,59 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCorePersonPickerPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryAccountPickerPage(
+    input: LibraryCoreAccountPickerPageRequestV1,
+  ): LibraryCoreAccountPickerPageResponseV1 {
+    const request = parseLibraryCoreAccountPickerPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_picker_page_v1;
+    const hasSearch = request.value.search.length > 0;
+    const variant = hasSearch
+      ? program.variants.search
+      : program.variants.empty;
+    const ftsPhrase = `"${request.value.search.replaceAll('"', '""')}"`;
+    const rawRows = this.#database.exec({
+      sql: variant.sql,
+      bind: hasSearch
+        ? [ftsPhrase, request.value.limit + 1]
+        : [request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Account picker exceeded its row bound",
+      );
+    }
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "account_picker_page_v1",
+        row,
+      );
+      if (!parsed) {
+        throw new Error("PWA Library SQLite Account picker row is invalid");
+      }
+      return parsed;
+    });
+    const response = {
+      queryId: "account_picker_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreAccountPickerPageResponseV1(
       response,
       request.value,
     );

@@ -24,7 +24,7 @@
       requests implemented by the native core. The historical database remains
       outside this database and receives no mirrored normalized writes.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 33 bounded query IDs for Rust and TypeScript from one executable
+      IDs, and 40 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
       defines the 18-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
@@ -183,6 +183,14 @@
         returns stable Person and Account IDs, labels, and admitted counts. The
         graph link control searches the indexed Person model through
         `person_picker_page_v1` and retains at most 12 compact results.
+  - [x] The Friend editor resolves linkable social identities through
+        `account_picker_page_v1`. Empty search uses the dedicated unlinked
+        Account index. Searches of three or more Unicode scalars use the FTS5
+        trigram index across display name, handle, provider, and external ID.
+        Native SQLite returns at most 50 compact candidates with visible
+        activity. One or two scalar searches filter only that resident window.
+        React never pages or scans the Account catalog. Selected Accounts are
+        revalidated through `account_detail_v1` before the Person mutation.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past
@@ -619,6 +627,7 @@ export async function captureDomFeed(
 | 5.118 | Remove the primary Feed surface's complete RSS Feed and Account subscriptions. Read subscription presence from `library_facet_summary_v1`, return the exact nullable Account ID from the indexed `filter_scope_summary_v1` author lookup, and create a typed Account mutation only when SQLite reports no existing author identity                                                                                                                     | High       | ✓ Complete |
 | 5.119 | Remove Story Wall's complete Account subscription. Join each bounded media candidate to its nullable Account and Person IDs through `library_accounts_provider_external`, apply identity filters to those rows, and prove the native plan performs no Account scan                                                                                                                             | High       | ✓ Complete |
 | 5.120 | Read the selected Friends Person and Account through exact `person_detail_v1` and `account_detail_v1` native SQLite queries, retain only those active rows, and remove the Friends React shell's complete RSS Feed subscription because the graph worker pages RSS identity directly from SQLite                                                                                              | High       | ✓ Complete |
+| 5.121 | Replace the Friend editor's 100,000-row Account graph paging scan with `account_picker_page_v1`. Use trigger-maintained visible author activity plus indexed unlinked Account ordering and FTS5 trigram search, retain at most 50 compact rows in React, and revalidate selected Accounts through `account_detail_v1` before save                                                                 | High       | ✓ Complete |
 
 ---
 

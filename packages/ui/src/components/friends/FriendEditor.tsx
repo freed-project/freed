@@ -9,7 +9,7 @@
  *   4. Tags and notes
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Friend,
   FriendSource,
@@ -17,8 +17,11 @@ import type {
   Platform,
 } from "@freed/shared";
 import {
-  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
-  type LibraryCoreAccountGraphPageResponseV1,
+  createLibraryCoreOperationInstanceId,
+  LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT,
+  LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS,
+  LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+  LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "@freed/shared/library-core";
@@ -105,25 +108,17 @@ interface AuthorCandidate {
   avatarUrl?: string;
 }
 
-const FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT = 50;
-const FRIEND_EDITOR_ACCOUNT_SCAN_LIMIT = 100_000;
 const FRIEND_EDITOR_SEARCH_DEBOUNCE_MS = 150;
 
 interface VersionedAuthorCandidates {
   candidates: AuthorCandidate[];
-  linked: ReadonlySet<string>;
   query: string;
   sourceVersion: number;
 }
 
 interface VersionedAuthorCandidateFailure {
-  linked: ReadonlySet<string>;
   query: string;
   sourceVersion: number;
-}
-
-function safeText(value: unknown, fallback = ""): string {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function authorCandidateKey(
@@ -132,106 +127,50 @@ function authorCandidateKey(
   return `${candidate.platform}:${candidate.authorId}`;
 }
 
-function compareAuthorCandidates(
-  left: AuthorCandidate,
-  right: AuthorCandidate,
-): number {
-  return (
-    safeText(left.displayName).localeCompare(safeText(right.displayName)) ||
-    safeText(left.handle).localeCompare(safeText(right.handle)) ||
-    left.platform.localeCompare(right.platform) ||
-    left.authorId.localeCompare(right.authorId)
-  );
-}
-
-function authorCandidateMatches(
-  candidate: AuthorCandidate,
-  normalizedQuery: string,
-): boolean {
-  return (
-    !normalizedQuery ||
-    candidate.displayName.toLowerCase().includes(normalizedQuery) ||
-    candidate.handle.toLowerCase().includes(normalizedQuery) ||
-    candidate.platform.includes(normalizedQuery)
-  );
-}
-
 function authorCandidateFromAccount(
   account: Readonly<{
     avatarUrl: string | null;
-    displayName: string | null;
-    externalId: string;
-    handle: string | null;
-    id: string;
-    provider: string;
+    displayName: string;
+    authorId: string;
+    handle: string;
+    accountId: string;
+    platform: string;
   }>,
 ): AuthorCandidate {
   return {
-    accountId: account.id,
-    platform: account.provider as Platform,
-    authorId: account.externalId,
-    handle: account.handle ?? account.externalId,
-    displayName:
-      account.displayName ?? account.handle ?? account.externalId,
+    accountId: account.accountId,
+    platform: account.platform as Platform,
+    authorId: account.authorId,
+    handle: account.handle,
+    displayName: account.displayName,
     avatarUrl: account.avatarUrl ?? undefined,
   };
 }
 
 async function readBoundedAuthorCandidates(
   queryLibraryCore: LibraryCoreNormalizedQueryExecutor,
-  linked: ReadonlySet<string>,
   normalizedQuery: string,
+  readerSessionId: string,
   signal: AbortSignal,
 ): Promise<AuthorCandidate[]> {
-  const candidates: AuthorCandidate[] = [];
-  let cursor: string | null = null;
-  let scannedRows = 0;
-  const assertActive = (): void => {
-    if (signal.aborted) {
-      throw new Error("Friend author candidate scan was cancelled");
-    }
-  };
-
-  do {
-    assertActive();
-    const page: LibraryCoreAccountGraphPageResponseV1 =
-      await queryLibraryCore({
-      cancellationId: "friend-editor-author-candidates",
-      cursor,
-      limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
-      queryId: "account_graph_page_v1",
-      readerSessionId: "friend-editor-author-candidates",
-      schemaVersion: 1,
-      });
-    scannedRows += page.rows.length;
-    if (scannedRows > FRIEND_EDITOR_ACCOUNT_SCAN_LIMIT) {
-      throw new Error("Friend author candidate scan exceeded its row bound");
-    }
-    for (const account of page.rows) {
-      assertActive();
-      if (account.kind !== "social" || account.activityCount <= 0) continue;
-      const candidate = authorCandidateFromAccount(account);
-      const key = authorCandidateKey(candidate);
-      const currentIndex = candidates.findIndex(
-        (current) => authorCandidateKey(current) === key,
-      );
-      if (currentIndex >= 0) continue;
-      if (
-        linked.has(key) ||
-        !authorCandidateMatches(candidate, normalizedQuery)
-      ) {
-        continue;
-      }
-      candidates.push(candidate);
-      candidates.sort(compareAuthorCandidates);
-      if (candidates.length > FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT) {
-        candidates.pop();
-      }
-    }
-    cursor = page.nextCursor;
-  } while (cursor !== null);
-  assertActive();
-  return candidates;
+  if (signal.aborted) {
+    throw new Error("Friend author candidate query was cancelled");
+  }
+  const page = await queryLibraryCore({
+    cancellationId: createLibraryCoreOperationInstanceId(
+      "account-picker-query",
+      crypto.randomUUID(),
+    ),
+    limit: LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT,
+    queryId: LIBRARY_CORE_ACCOUNT_PICKER_QUERY_ID,
+    readerSessionId,
+    schemaVersion: LIBRARY_CORE_ACCOUNT_PICKER_SCHEMA_VERSION,
+    search: normalizedQuery,
+  });
+  if (signal.aborted) {
+    throw new Error("Friend author candidate query was cancelled");
+  }
+  return page.rows.map(authorCandidateFromAccount);
 }
 
 async function readSelectedAuthorActivity(
@@ -281,11 +220,7 @@ async function readSelectedAuthorActivity(
   return activity;
 }
 
-function useAuthorCandidates(
-  existingSources: FriendSource[],
-  allFriends: Record<string, Friend>,
-  sourceSearch: string,
-): {
+function useAuthorCandidates(sourceSearch: string): {
   candidates: AuthorCandidate[];
   failed: boolean;
   ready: boolean;
@@ -297,19 +232,17 @@ function useAuthorCandidates(
   const { queryLibraryCore } = usePlatform();
   const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
   const normalizedQuery = sourceSearch.toLowerCase();
-
-  const linked = useMemo(() => {
-    const next = new Set<string>();
-    for (const friend of Object.values(allFriends)) {
-      for (const source of friend.sources) {
-        next.add(authorCandidateKey(source));
-      }
-    }
-    for (const source of existingSources) {
-      next.delete(authorCandidateKey(source));
-    }
-    return next;
-  }, [allFriends, existingSources]);
+  const remoteQuery =
+    [...normalizedQuery].length >=
+    LIBRARY_CORE_ACCOUNT_PICKER_MINIMUM_SEARCH_SCALARS
+      ? normalizedQuery
+      : "";
+  const readerSessionId = useRef(
+    createLibraryCoreOperationInstanceId(
+      "account-picker-reader",
+      crypto.randomUUID(),
+    ),
+  ).current;
 
   const [versionedCandidates, setVersionedCandidates] =
     useState<VersionedAuthorCandidates | null>(null);
@@ -320,8 +253,7 @@ function useAuthorCandidates(
     if (!queryLibraryCore) {
       setVersionedCandidates(null);
       setFailedAttempt({
-        linked,
-        query: normalizedQuery,
+        query: remoteQuery,
         sourceVersion,
       });
       return;
@@ -332,16 +264,15 @@ function useAuthorCandidates(
     const startRead = (): void => {
       void readBoundedAuthorCandidates(
         queryLibraryCore,
-        linked,
-        normalizedQuery,
+        remoteQuery,
+        readerSessionId,
         controller.signal,
       )
         .then((candidates) => {
           if (!controller.signal.aborted) {
             setVersionedCandidates({
               candidates,
-              linked,
-              query: normalizedQuery,
+              query: remoteQuery,
               sourceVersion,
             });
           }
@@ -349,14 +280,13 @@ function useAuthorCandidates(
         .catch(() => {
           if (!controller.signal.aborted) {
             setFailedAttempt({
-              linked,
-              query: normalizedQuery,
+              query: remoteQuery,
               sourceVersion,
             });
           }
         });
     };
-    const debounceId = normalizedQuery
+    const debounceId = remoteQuery
       ? setTimeout(startRead, FRIEND_EDITOR_SEARCH_DEBOUNCE_MS)
       : null;
     if (debounceId === null) {
@@ -366,22 +296,15 @@ function useAuthorCandidates(
       if (debounceId !== null) clearTimeout(debounceId);
       controller.abort();
     };
-  }, [
-    linked,
-    normalizedQuery,
-    queryLibraryCore,
-    sourceVersion,
-  ]);
+  }, [queryLibraryCore, readerSessionId, remoteQuery, sourceVersion]);
 
   const currentRead =
-    versionedCandidates?.linked === linked &&
-    versionedCandidates.query === normalizedQuery &&
+    versionedCandidates?.query === remoteQuery &&
     versionedCandidates.sourceVersion === sourceVersion
       ? versionedCandidates
       : null;
   const failed =
-    failedAttempt?.linked === linked &&
-    failedAttempt.query === normalizedQuery &&
+    failedAttempt?.query === remoteQuery &&
     failedAttempt.sourceVersion === sourceVersion;
   const resolveSelectedActivity = (
     selectedAccounts: ReadonlyMap<string, string>,
@@ -419,7 +342,6 @@ export function FriendEditor({
   onCancel,
 }: FriendEditorProps) {
   const platform = usePlatform();
-  const allFriends = useAppStore((s) => s.friends);
   const seed = existing ?? draft ?? null;
   const initialSources = useRef(seed?.sources ?? []).current;
 
@@ -460,11 +382,7 @@ export function FriendEditor({
     [],
   );
 
-  const authorCandidates = useAuthorCandidates(
-    initialSources,
-    allFriends,
-    sourceSearch,
-  );
+  const authorCandidates = useAuthorCandidates(sourceSearch);
   const candidates = authorCandidates.candidates;
   const selectedProfilesReady =
     selectedCandidateAccounts.size === 0 ||
@@ -885,7 +803,7 @@ export function FriendEditor({
 
             <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
               {filteredCandidates
-                .slice(0, FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT)
+                .slice(0, LIBRARY_CORE_ACCOUNT_PICKER_MAXIMUM_LIMIT)
                 .map((c) => (
                   <button
                     key={`${c.platform}-${c.authorId}`}

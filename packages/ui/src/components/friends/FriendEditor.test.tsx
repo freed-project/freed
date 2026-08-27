@@ -3,12 +3,20 @@
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { create } from "zustand";
 import type { BaseAppState, Friend } from "@freed/shared";
 import type {
   LibraryCoreAccountDetailResponseV1,
-  LibraryCoreAccountGraphPageResponseV1,
+  LibraryCoreAccountPickerPageResponseV1,
 } from "@freed/shared/library-core";
 import {
   PlatformProvider,
@@ -50,15 +58,19 @@ function accountRow(index: number) {
   } as const;
 }
 
-function accountPage(
+function accountPickerPage(
   rows: readonly ReturnType<typeof accountRow>[],
-  nextCursor: string | null,
-): LibraryCoreAccountGraphPageResponseV1 {
+): LibraryCoreAccountPickerPageResponseV1 {
   return {
-    layoutRevision: 0,
-    nextCursor,
-    queryId: "account_graph_page_v1",
-    rows,
+    queryId: "account_picker_page_v1",
+    rows: rows.map((row) => ({
+      accountId: row.id,
+      authorId: row.externalId,
+      avatarUrl: row.avatarUrl,
+      displayName: row.displayName,
+      handle: row.handle,
+      platform: row.provider,
+    })),
     schemaVersion: 1,
     source: SOURCE,
   };
@@ -200,22 +212,12 @@ describe("FriendEditor SQLite candidates", () => {
     return onSave;
   }
 
-  it("retains the best 50 unlinked Account rows and revalidates a selection", async () => {
+  it("holds one 50-row Account window and revalidates a selection", async () => {
     const rows = Array.from({ length: 55 }, (_, index) => accountRow(index));
-    const linkedFriend = {
-      sources: [
-        {
-          platform: "instagram",
-          authorId: "author-00",
-          handle: "author-00",
-          displayName: "Candidate 00",
-        },
-      ],
-    } as unknown as Friend;
     const useStore = create(
       () =>
         ({
-          friends: { linked: linkedFriend },
+          friends: {},
           searchCorpusVersion: 1,
         }) as unknown as BaseAppState,
     );
@@ -231,9 +233,8 @@ describe("FriendEditor SQLite candidates", () => {
           )!;
           return accountDetail(row);
         }
-        return request.cursor === null
-          ? accountPage(rows.slice(0, 32), "page-2")
-          : accountPage(rows.slice(32), null);
+        expect(request.queryId).toBe("account_picker_page_v1");
+        return accountPickerPage(rows.slice(0, 50));
       },
     );
     const onSave = renderEditor(
@@ -249,17 +250,17 @@ describe("FriendEditor SQLite candidates", () => {
     expect(
       container?.querySelectorAll('[data-testid="friend-author-candidate"]'),
     ).toHaveLength(50);
-    expect(buttonContaining(container, "Candidate 00")).toBeNull();
+    expect(buttonContaining(container, "Candidate 00")).not.toBeNull();
     expect(buttonContaining(container, "Candidate 01")).not.toBeNull();
-    expect(buttonContaining(container, "Candidate 50")).not.toBeNull();
-    expect(buttonContaining(container, "Candidate 51")).toBeNull();
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(buttonContaining(container, "Candidate 49")).not.toBeNull();
+    expect(buttonContaining(container, "Candidate 50")).toBeNull();
+    expect(query).toHaveBeenCalledOnce();
 
     await act(async () => buttonContaining(container, "Candidate 01")?.click());
     await act(async () => buttonContaining(container, "Add friend")?.click());
     await flush();
 
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls.at(-1)?.[0]).toMatchObject({
       accountId: "account-01",
       queryId: "account_detail_v1",
@@ -277,20 +278,19 @@ describe("FriendEditor SQLite candidates", () => {
         ({ friends: {}, searchCorpusVersion: 1 }) as unknown as BaseAppState,
     );
     let finishStale:
-      | ((page: LibraryCoreAccountGraphPageResponseV1) => void)
-      | null = null;
-    const stale = new Promise<LibraryCoreAccountGraphPageResponseV1>(
+      ((page: LibraryCoreAccountPickerPageResponseV1) => void) | null = null;
+    const stale = new Promise<LibraryCoreAccountPickerPageResponseV1>(
       (resolve) => {
         finishStale = resolve;
       },
     );
     let graphCalls = 0;
     const query = vi.fn(async (request: { queryId: string }) => {
-      if (request.queryId !== "account_graph_page_v1") {
+      if (request.queryId !== "account_picker_page_v1") {
         throw new Error("unexpected point query");
       }
       graphCalls += 1;
-      return graphCalls === 1 ? stale : accountPage([accountRow(2)], null);
+      return graphCalls === 1 ? stale : accountPickerPage([accountRow(2)]);
     });
     renderEditor(
       platformConfig(
@@ -307,7 +307,7 @@ describe("FriendEditor SQLite candidates", () => {
     expect(buttonContaining(container, "Candidate 02")).not.toBeNull();
 
     await act(async () => {
-      finishStale?.(accountPage([accountRow(1)], null));
+      finishStale?.(accountPickerPage([accountRow(1)]));
       await stale;
     });
     await flush();
@@ -321,7 +321,7 @@ describe("FriendEditor SQLite candidates", () => {
       () =>
         ({ friends: {}, searchCorpusVersion: 1 }) as unknown as BaseAppState,
     );
-    const query = vi.fn(async () => accountPage([accountRow(1)], null));
+    const query = vi.fn(async () => accountPickerPage([accountRow(1)]));
     renderEditor(
       platformConfig(
         useStore,
@@ -341,6 +341,9 @@ describe("FriendEditor SQLite candidates", () => {
     await act(async () => vi.advanceTimersByTimeAsync(149));
     expect(query).toHaveBeenCalledOnce();
 
+    await setInputValue(input!, "Dev");
+    await act(async () => vi.advanceTimersByTimeAsync(149));
+    expect(query).toHaveBeenCalledOnce();
     await act(async () => vi.advanceTimersByTimeAsync(1));
     await flush();
     expect(query).toHaveBeenCalledTimes(2);
