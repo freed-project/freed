@@ -586,6 +586,14 @@ One shared secondary-surface adapter executes `item_detail_v1`,
 use shared closed row-to-visible-card transforms. The transforms do not hydrate
 reader bodies or invent a general FeedItem query.
 
+`map_markers_v1` resolves the optional linked Person inside SQLite through the
+unique Account provider and external identity index. Each row contains only the
+Account ID plus the Person ID, name, avatar URL, and relationship status needed by the map. Desktop
+and PWA use the same closed transform. React retains at most 1,000 location
+candidates and ephemeral geocoding state. It never subscribes to complete
+Person or Account maps, and the generic secondary-surface item reader does not
+offer a Map compatibility projection.
+
 Synchronized preferences are normalized typed SQLite nodes. The
 `preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite
 binary path order. Scalar rows use a `v:` path prefix. Object markers use `o:`
@@ -1284,7 +1292,9 @@ Desktop and PWA navigation validate only the currently selected item through
 one exact `item_detail_v1` point query. Navigation does not subscribe to a
 corpus or construct a complete item-ID set. A missing row clears the selection,
 a failed query proves nothing, and a late response cannot clear a newer
-selection.
+selection. Each host injects its typed point reader into the shared hook. The
+root app never tries to consume its own Platform context while that context is
+still being constructed.
 
 Desktop background services follow the same rule. Snapshot summaries read the
 maintained Friend count from `facet_summary_v1`. Content fetching accepts exact

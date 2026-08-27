@@ -7,6 +7,7 @@ import {
   type NavigationState,
 } from "@freed/shared";
 import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
+import { readLibraryCoreItemDetail } from "./library-core-item-detail-runtime";
 import { useAppStore } from "./store";
 
 function snapshotNavigationState(): NavigationState {
@@ -33,8 +34,15 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
   const activeView = useAppStore((state) => state.activeView);
   const activeFilter = useAppStore((state) => state.activeFilter);
   const selectedItemId = useAppStore((state) => state.selectedItemId);
+  const setSelectedItem = useAppStore((state) => state.setSelectedItem);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  useSelectedLibraryItemValidity(enabled);
+  useSelectedLibraryItemValidity({
+    enabled,
+    isInitialized,
+    readLibraryItemDetail: readLibraryCoreItemDetail,
+    selectedItemId,
+    setSelectedItem,
+  });
 
   const historyStackRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);

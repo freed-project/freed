@@ -24,18 +24,35 @@ export interface GeoLocation {
   country?: string;
 }
 
-export interface ResolvedLocationItem {
+/** Minimal normalized Person projection needed by location surfaces. */
+export interface LocationPersonIdentity {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  relationshipStatus: Person["relationshipStatus"];
+}
+
+/** One bounded map row after its author identity is resolved inside SQLite. */
+export interface LibraryMapLocationCandidate {
+  accountId: string | null;
   item: FeedItem;
-  friend: Person | null;
+  friend: LocationPersonIdentity | null;
+}
+
+export interface ResolvedLocationItem {
+  accountId: string | null;
+  item: FeedItem;
+  friend: LocationPersonIdentity | null;
   lat: number;
   lng: number;
   label?: string;
 }
 
 export interface LocationMarkerSummary {
+  accountId: string | null;
   key: string;
   authorKey: string;
-  friend: Person | null;
+  friend: LocationPersonIdentity | null;
   item: FeedItem;
   lat: number;
   lng: number;
@@ -209,7 +226,7 @@ function authorIdentityKey(item: FeedItem): string {
   return `author:${item.platform}:${item.author.id}`;
 }
 
-function friendIdentityKey(friend: Person): string {
+function friendIdentityKey(friend: LocationPersonIdentity): string {
   return `friend:${friend.id}`;
 }
 
@@ -414,6 +431,7 @@ export function groupResolvedLocations(
 
     if (!existing) {
       groups.set(key, {
+        accountId: resolved.accountId,
         key,
         authorKey,
         friend: resolved.friend,
@@ -432,6 +450,7 @@ export function groupResolvedLocations(
 
     if (isNewer) {
       existing.item = resolved.item;
+      existing.accountId = resolved.accountId;
       existing.friend = resolved.friend;
       existing.label = resolved.label ?? existing.label;
       existing.seenAt = resolved.item.publishedAt;
@@ -473,6 +492,7 @@ export function getLatestFriendLocationMarkers(
       const groupKey = locationGroupKey(resolved.friend!.id, resolved.lat, resolved.lng);
 
       return {
+        accountId: resolved.accountId,
         key: `friend:${resolved.friend!.id}`,
         authorKey: markerIdentityKey(resolved),
         friend: resolved.friend,
@@ -515,6 +535,7 @@ export function getLatestAuthorLocationMarkers(
       const groupKey = locationGroupKey(authorKey, resolved.lat, resolved.lng);
 
       return {
+        accountId: resolved.accountId,
         key: authorKey,
         authorKey,
         friend: resolved.friend,

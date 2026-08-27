@@ -1,4 +1,5 @@
-import type { ContentType, FeedItem, MediaType, Platform } from "../types.js";
+import type { LibraryMapLocationCandidate } from "../location.js";
+import type { ContentType, FeedItem, MediaType, Platform, RelationshipStatus } from "../types.js";
 import {
   LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
   parseLibraryCoreFeedPageSourceV1,
@@ -53,6 +54,11 @@ const MAP_ROW_KEYS = Object.freeze([
   "contentText",
   "contentType",
   "globalId",
+  "linkedAccountId",
+  "friendAvatarUrl",
+  "friendName",
+  "friendPersonId",
+  "friendRelationshipStatus",
   "locationLat",
   "locationLng",
   "locationName",
@@ -97,6 +103,10 @@ const CONTENT_TYPES = new Set<ContentType>([
   "article",
   "video",
   "podcast",
+]);
+const RELATIONSHIP_STATUSES = new Set<RelationshipStatus>([
+  "connection",
+  "friend",
 ]);
 const MEDIA_TYPES = new Set<MediaType | "unknown">(["image", "video", "link", "unknown"]);
 const textEncoder = new TextEncoder();
@@ -181,6 +191,11 @@ export interface LibraryCoreMapMarkerV1 {
   readonly contentText: string | null;
   readonly contentType: ContentType;
   readonly globalId: string;
+  readonly linkedAccountId: string | null;
+  readonly friendAvatarUrl: string | null;
+  readonly friendName: string | null;
+  readonly friendPersonId: string | null;
+  readonly friendRelationshipStatus: RelationshipStatus | null;
   readonly locationLat: number | null;
   readonly locationLng: number | null;
   readonly locationName: string | null;
@@ -268,6 +283,24 @@ export function libraryCoreMapMarkerToItemV1(
     topics: [],
     ...(row.sourceUrl ? { sourceUrl: row.sourceUrl } : {}),
   };
+}
+
+/** Convert one joined Map row into the complete bounded location read model. */
+export function libraryCoreMapMarkerToLocationCandidateV1(
+  row: LibraryCoreMapMarkerV1,
+): LibraryMapLocationCandidate {
+  return Object.freeze({
+    accountId: row.linkedAccountId,
+    item: libraryCoreMapMarkerToItemV1(row),
+    friend: row.friendPersonId === null
+      ? null
+      : Object.freeze({
+          id: row.friendPersonId,
+          name: row.friendName!,
+          relationshipStatus: row.friendRelationshipStatus!,
+          ...(row.friendAvatarUrl ? { avatarUrl: row.friendAvatarUrl } : {}),
+        }),
+  });
 }
 
 /** Convert one compact normalized Story Wall row into its visible-card model. */
@@ -406,6 +439,10 @@ function parseMapRow(value: unknown): LibraryCoreFeedPageParseResult<LibraryCore
     !boundedString(row.authorHandle, 1_024) ||
     !boundedString(row.authorDisplayName, 2_048) ||
     !boundedString(row.authorAvatarUrl, 8_192, true) ||
+    !boundedString(row.friendPersonId, 4_096, true) ||
+    !boundedString(row.friendName, 2_048, true) ||
+    !boundedString(row.friendAvatarUrl, 8_192, true) ||
+    !boundedString(row.linkedAccountId, 4_096, true) ||
     !boundedString(row.contentText, 8_192, true) ||
     !boundedString(row.sourceUrl, 8_192, true) ||
     !boundedString(row.locationName, 2_048, true) ||
@@ -419,6 +456,19 @@ function parseMapRow(value: unknown): LibraryCoreFeedPageParseResult<LibraryCore
     ((row.locationLat === null) !== (row.locationLng === null)) ||
     (row.locationLat === null && row.locationName === null)
   ) return failure("map row is invalid or unbounded");
+  const hasFriend = row.friendPersonId !== null;
+  if (
+    (hasFriend && (
+      row.friendName === null ||
+      row.friendRelationshipStatus === null ||
+      !RELATIONSHIP_STATUSES.has(row.friendRelationshipStatus as RelationshipStatus)
+    )) ||
+    (!hasFriend && (
+      row.friendName !== null ||
+      row.friendAvatarUrl !== null ||
+      row.friendRelationshipStatus !== null
+    ))
+  ) return failure("map row Friend identity is incomplete");
   return success(Object.freeze(row as unknown as LibraryCoreMapMarkerV1));
 }
 

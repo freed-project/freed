@@ -7,6 +7,7 @@ import {
   type NavigationState,
 } from "@freed/shared";
 import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
+import { readPwaLibraryCoreItemDetail } from "./library-core-runtime";
 import { useAppStore } from "./store";
 
 function currentPathWithSearch(): string {
@@ -26,8 +27,15 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
   const activeView = useAppStore((state) => state.activeView);
   const activeFilter = useAppStore((state) => state.activeFilter);
   const selectedItemId = useAppStore((state) => state.selectedItemId);
+  const setSelectedItem = useAppStore((state) => state.setSelectedItem);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  useSelectedLibraryItemValidity(enabled);
+  useSelectedLibraryItemValidity({
+    enabled,
+    isInitialized,
+    readLibraryItemDetail: readPwaLibraryCoreItemDetail,
+    selectedItemId,
+    setSelectedItem,
+  });
 
   const bootstrappedRef = useRef(false);
   const skipWriteRef = useRef(false);

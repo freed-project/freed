@@ -65,6 +65,7 @@ function resolved(
   coordinates: { lat: number; lng: number },
 ): ResolvedLocationItem {
   return {
+    accountId: "account-ada",
     item,
     friend: ADA,
     lat: coordinates.lat,
@@ -310,6 +311,7 @@ describe("map playback selectors", () => {
       resolved(adaParisEarlier, { lat: 48.8566, lng: 2.3522 }),
       resolved(adaRome, { lat: 41.9028, lng: 12.4964 }),
       {
+        accountId: null,
         item: authorParis,
         friend: null,
         lat: 48.8566,
@@ -317,6 +319,7 @@ describe("map playback selectors", () => {
         label: "Paris",
       },
       {
+        accountId: null,
         item: authorParisLater,
         friend: null,
         lat: 48.8566,
@@ -357,6 +360,7 @@ describe("map playback selectors", () => {
           displayName: `Author ${authorIndex}`,
         };
         resolvedItems.push({
+          accountId: null,
           item,
           friend: null,
           lat: item.location!.coordinates!.lat,

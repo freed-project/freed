@@ -6,6 +6,7 @@ import {
 import {
   extractLocationFromItem,
   isLocationItemVisibleInTimeMode,
+  type LibraryMapLocationCandidate,
 } from "../location.js";
 import {
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
@@ -46,7 +47,7 @@ import {
   LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
   LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
   LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
-  libraryCoreMapMarkerToItemV1,
+  libraryCoreMapMarkerToLocationCandidateV1,
   libraryCoreStoryWallCandidateToItemV1,
 } from "./secondary-surface-contracts.js";
 import {
@@ -332,16 +333,6 @@ export async function readLibraryCoreNormalizedSurfaceItemsV1(
 ): Promise<readonly FeedItem[]> {
   const cancellationId = operationId(runtime, `${surface}-surface`);
   const readerSessionId = operationId(runtime, `${surface}-surface-reader`);
-  if (surface === "map") {
-    const response = await runtime.query({
-      cancellationId,
-      limit: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
-      queryId: LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
-      readerSessionId,
-      schemaVersion: LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
-    });
-    return response.rows.map(libraryCoreMapMarkerToItemV1);
-  }
   const response = await runtime.query({
     cancellationId,
     limit: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
@@ -350,6 +341,20 @@ export async function readLibraryCoreNormalizedSurfaceItemsV1(
     schemaVersion: LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
   });
   return response.rows.map(libraryCoreStoryWallCandidateToItemV1);
+}
+
+/** Read one bounded Map candidate set with Friend identity joined in SQLite. */
+export async function readLibraryCoreNormalizedMapCandidatesV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+): Promise<readonly LibraryMapLocationCandidate[]> {
+  const response = await runtime.query({
+    cancellationId: operationId(runtime, "map-surface"),
+    limit: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+    queryId: LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
+    readerSessionId: operationId(runtime, "map-surface-reader"),
+    schemaVersion: LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
+  });
+  return response.rows.map(libraryCoreMapMarkerToLocationCandidateV1);
 }
 
 export async function readLibraryCoreNormalizedPersonTimelineV1(

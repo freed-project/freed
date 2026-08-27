@@ -100,7 +100,7 @@ function makeFullScanEvent(): DocChangeEvent {
 
 function scanFixtureItems(
   getItems: () => readonly FeedItem[],
-): ReturnType<typeof vi.fn> {
+) {
   return vi.fn(async (
     visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
   ) => {

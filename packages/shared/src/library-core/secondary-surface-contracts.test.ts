@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  libraryCoreMapMarkerToLocationCandidateV1,
   libraryCoreMapMarkerToItemV1,
   libraryCoreStoryWallCandidateToItemV1,
   parseLibraryCoreMapMarkersRequestV1,
@@ -37,7 +38,12 @@ describe("secondary surface query contracts", () => {
         capturedAt: 10,
         contentText: "At the observatory",
         contentType: "post",
+        friendAvatarUrl: null,
+        friendName: "Ada Friend",
+        friendPersonId: "person-1",
+        friendRelationshipStatus: "friend",
         globalId: "x:item-1",
+        linkedAccountId: "account-1",
         locationLat: 34.2,
         locationLng: -118.2,
         locationName: "Observatory",
@@ -101,7 +107,12 @@ describe("secondary surface query contracts", () => {
       capturedAt: 10,
       contentText: "At the observatory",
       contentType: "post",
+      friendAvatarUrl: null,
+      friendName: null,
+      friendPersonId: null,
+      friendRelationshipStatus: null,
       globalId: "x:map-1",
+      linkedAccountId: null,
       locationLat: 34.2,
       locationLng: -118.2,
       locationName: "Observatory",
@@ -114,6 +125,38 @@ describe("secondary surface query contracts", () => {
     });
     expect(mapItem.location?.coordinates).toEqual({ lat: 34.2, lng: -118.2 });
     expect(mapItem.timeRange).toEqual({ startsAt: 20, endsAt: 30, kind: "event" });
+
+    const mapCandidate = libraryCoreMapMarkerToLocationCandidateV1({
+      authorAvatarUrl: null,
+      authorDisplayName: "Ada",
+      authorHandle: "ada",
+      authorId: "author-1",
+      capturedAt: 10,
+      contentText: "At the observatory",
+      contentType: "post",
+      friendAvatarUrl: "https://example.test/ada.jpg",
+      friendName: "Ada Friend",
+      friendPersonId: "person-1",
+      friendRelationshipStatus: "friend",
+      globalId: "x:map-2",
+      linkedAccountId: "account-1",
+      locationLat: 34.2,
+      locationLng: -118.2,
+      locationName: "Observatory",
+      locationUrl: null,
+      platform: "x",
+      publishedAt: 10,
+      sourceUrl: null,
+      timeRangeEndsAt: null,
+      timeRangeStartsAt: null,
+    });
+    expect(mapCandidate.friend).toEqual({
+      avatarUrl: "https://example.test/ada.jpg",
+      id: "person-1",
+      name: "Ada Friend",
+      relationshipStatus: "friend",
+    });
+    expect(mapCandidate.accountId).toBe("account-1");
 
     const storyItem = libraryCoreStoryWallCandidateToItemV1({
       authorDisplayName: "Ada",

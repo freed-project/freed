@@ -30,6 +30,7 @@ import type {
   LocalAIHardwareProfile,
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
+  LibraryMapLocationCandidate,
   ReportPrivacyTier,
   SavedContentSortMode,
   StoryWallManifest,
@@ -310,7 +311,7 @@ export interface LibrarySavedAnalytics {
   readonly contentMix: readonly LibrarySavedAnalyticsCount[];
 }
 
-export type LibrarySurface = "map" | "story_wall";
+export type LibrarySurface = "story_wall";
 
 export interface ChangelogPreviewRelease {
   version: string;
@@ -681,7 +682,10 @@ export interface PlatformConfig {
   /** One exact source-fenced item row from platform-local Library storage. */
   readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
 
-  /** One bounded, row-store-filtered candidate set for a secondary surface. */
+  /** One bounded Map candidate set with author identity joined inside SQLite. */
+  readLibraryMapCandidates?: () => Promise<readonly LibraryMapLocationCandidate[]>;
+
+  /** One bounded Story Wall candidate set selected inside SQLite. */
   readLibrarySurfaceItems?: (
     surface: LibrarySurface,
   ) => Promise<readonly FeedItem[]>;

@@ -5,10 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { create } from "zustand";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import {
-  PlatformProvider,
-  type PlatformConfig,
-} from "../context/PlatformContext.js";
 import { useSelectedLibraryItemValidity } from "./useSelectedLibraryItemValidity.js";
 
 interface TestState {
@@ -44,23 +40,24 @@ describe("selected Library item validity", () => {
     readonly selectedItemId: string;
   }) {
     const store = testStore(input.selectedItemId);
-    const config = {
-      readLibraryItemDetail: input.readLibraryItemDetail,
-      store,
-    } as unknown as PlatformConfig;
     function Harness() {
-      useSelectedLibraryItemValidity(true);
+      const isInitialized = store((state) => state.isInitialized);
+      const selectedItemId = store((state) => state.selectedItemId);
+      const setSelectedItem = store((state) => state.setSelectedItem);
+      useSelectedLibraryItemValidity({
+        enabled: true,
+        isInitialized,
+        readLibraryItemDetail: input.readLibraryItemDetail,
+        selectedItemId,
+        setSelectedItem,
+      });
       return null;
     }
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     act(() => {
-      root?.render(
-        <PlatformProvider value={config}>
-          <Harness />
-        </PlatformProvider>,
-      );
+      root?.render(<Harness />);
     });
     return store;
   }

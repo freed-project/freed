@@ -29,6 +29,7 @@ import {
   executeLibraryCoreScopeActionV1,
   libraryCoreFeedBrowseFilterInputFromV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
+  readLibraryCoreNormalizedMapCandidatesV1,
   parseLibraryCoreControlPointerV1,
   sha256LowerHex,
   type FeedItemUserStateAssignmentFieldV1,
@@ -860,6 +861,11 @@ export const readPwaLibraryCoreSurfaceItems: NonNullable<
   PlatformConfig["readLibrarySurfaceItems"]
 > = (surface) =>
   readLibraryCoreNormalizedSurfaceItemsV1(NORMALIZED_READER_RUNTIME, surface);
+
+/** Read bounded Map candidates with linked Friend identity from SQLite. */
+export const readPwaLibraryCoreMapCandidates: NonNullable<
+  PlatformConfig["readLibraryMapCandidates"]
+> = () => readLibraryCoreNormalizedMapCandidatesV1(NORMALIZED_READER_RUNTIME);
 
 async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState> {
   const state = await readSelectedState();

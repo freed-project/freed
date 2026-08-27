@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, LibraryMapLocationCandidate } from "@freed/shared";
 import {
   usePlatform,
   type LibrarySurface,
@@ -7,68 +7,84 @@ import {
 } from "../context/PlatformContext.js";
 
 type SurfaceReader = NonNullable<PlatformConfig["readLibrarySurfaceItems"]>;
+type MapReader = NonNullable<PlatformConfig["readLibraryMapCandidates"]>;
 
-interface CachedSurfaceItems {
-  reader: SurfaceReader;
+interface CachedRows<Row, Reader> {
+  reader: Reader;
   sourceVersion: number;
-  promise: Promise<FeedItem[]>;
-  result: FeedItem[] | null;
+  promise: Promise<Row[]>;
+  result: Row[] | null;
 }
 
-interface VersionedSurfaceItems {
+interface VersionedRows<Row> {
   sourceVersion: number;
-  items: FeedItem[];
+  rows: Row[];
 }
 
-const surfaceCache = new Map<LibrarySurface, CachedSurfaceItems>();
+const surfaceCache = new Map<
+  LibrarySurface,
+  CachedRows<FeedItem, SurfaceReader>
+>();
+const mapCandidatesCache = new Map<
+  "map",
+  CachedRows<LibraryMapLocationCandidate, MapReader>
+>();
 const EMPTY_SURFACE_ITEMS: FeedItem[] = [];
 Object.freeze(EMPTY_SURFACE_ITEMS);
+const EMPTY_MAP_CANDIDATES: LibraryMapLocationCandidate[] = [];
+Object.freeze(EMPTY_MAP_CANDIDATES);
 
-function prepareSurfaceItems(
-  reader: SurfaceReader,
-  surface: LibrarySurface,
+function prepareRows<Row, Reader, Key>(
+  cache: Map<Key, CachedRows<Row, Reader>>,
+  key: Key,
+  reader: Reader,
   sourceVersion: number,
-): CachedSurfaceItems {
-  const cached = surfaceCache.get(surface);
+  load: (reader: Reader, key: Key) => Promise<readonly Row[]>,
+): CachedRows<Row, Reader> {
+  const cached = cache.get(key);
   if (cached?.reader === reader && cached.sourceVersion === sourceVersion) {
     return cached;
   }
-  const entry: CachedSurfaceItems = {
+  const entry: CachedRows<Row, Reader> = {
     reader,
     sourceVersion,
     result: null,
     promise: Promise.resolve(null as never),
   };
-  entry.promise = reader(surface).then((items) => {
-    const result = [...items];
+  entry.promise = load(reader, key).then((rows) => {
+    const result = [...rows];
     entry.result = result;
     return result;
   });
-  surfaceCache.set(surface, entry);
+  cache.set(key, entry);
   return entry;
 }
 
-/** Return one bounded candidate set selected inside the platform row store. */
-export function useLibrarySurfaceItems(
-  surface: LibrarySurface,
+function useVersionedRows<Row, Reader, Key>(
+  cache: Map<Key, CachedRows<Row, Reader>>,
+  key: Key,
+  reader: Reader | undefined,
   sourceVersion: number,
-): FeedItem[] {
-  const { readLibrarySurfaceItems } = usePlatform();
-  const [versionedItems, setVersionedItems] = useState<VersionedSurfaceItems | null>(() => {
-    if (!readLibrarySurfaceItems) return null;
-    const result = prepareSurfaceItems(
-      readLibrarySurfaceItems,
-      surface,
+  load: (reader: Reader, key: Key) => Promise<readonly Row[]>,
+  emptyRows: readonly Row[],
+): readonly Row[] {
+  const [versionedRows, setVersionedRows] = useState<VersionedRows<Row> | null>(() => {
+    if (!reader) return null;
+    const result = prepareRows(
+      cache,
+      key,
+      reader,
       sourceVersion,
+      load,
     ).result;
-    return result ? { sourceVersion, items: result } : null;
+    return result ? { sourceVersion, rows: result } : null;
   });
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    if (!readLibrarySurfaceItems) {
-      setVersionedItems(null);
+    if (!reader) {
+      setVersionedRows(null);
       setFailedVersion(null);
       return () => {
         cancelled = true;
@@ -76,17 +92,19 @@ export function useLibrarySurfaceItems(
     }
 
     setFailedVersion(null);
-    const prepared = prepareSurfaceItems(
-      readLibrarySurfaceItems,
-      surface,
+    const prepared = prepareRows(
+      cache,
+      key,
+      reader,
       sourceVersion,
+      load,
     );
     if (prepared.result) {
-      setVersionedItems({ sourceVersion, items: prepared.result });
+      setVersionedRows({ sourceVersion, rows: prepared.result });
     }
     prepared.promise
-      .then((items) => {
-        if (!cancelled) setVersionedItems({ sourceVersion, items });
+      .then((rows) => {
+        if (!cancelled) setVersionedRows({ sourceVersion, rows });
       })
       .catch(() => {
         if (!cancelled) setFailedVersion(sourceVersion);
@@ -95,12 +113,56 @@ export function useLibrarySurfaceItems(
     return () => {
       cancelled = true;
     };
-  }, [readLibrarySurfaceItems, sourceVersion, surface]);
+  }, [cache, key, load, reader, sourceVersion]);
 
-  if (!readLibrarySurfaceItems || failedVersion === sourceVersion) {
-    return EMPTY_SURFACE_ITEMS;
+  if (!reader || failedVersion === sourceVersion) {
+    return emptyRows;
   }
-  return versionedItems?.sourceVersion === sourceVersion
-    ? versionedItems.items
-    : EMPTY_SURFACE_ITEMS;
+  return versionedRows?.sourceVersion === sourceVersion
+    ? versionedRows.rows
+    : emptyRows;
+}
+
+function loadSurfaceItems(
+  reader: SurfaceReader,
+  surface: LibrarySurface,
+): Promise<readonly FeedItem[]> {
+  return reader(surface);
+}
+
+function loadMapCandidates(
+  reader: MapReader,
+): Promise<readonly LibraryMapLocationCandidate[]> {
+  return reader();
+}
+
+/** Return one bounded Story Wall set selected inside SQLite. */
+export function useLibrarySurfaceItems(
+  surface: LibrarySurface,
+  sourceVersion: number,
+): readonly FeedItem[] {
+  const { readLibrarySurfaceItems } = usePlatform();
+  return useVersionedRows(
+    surfaceCache,
+    surface,
+    readLibrarySurfaceItems,
+    sourceVersion,
+    loadSurfaceItems,
+    EMPTY_SURFACE_ITEMS,
+  );
+}
+
+/** Retain one bounded SQLite-selected Map candidate window in React. */
+export function useLibraryMapCandidates(
+  sourceVersion: number,
+): readonly LibraryMapLocationCandidate[] {
+  const { readLibraryMapCandidates } = usePlatform();
+  return useVersionedRows(
+    mapCandidatesCache,
+    "map",
+    readLibraryMapCandidates,
+    sourceVersion,
+    loadMapCandidates,
+    EMPTY_MAP_CANDIDATES,
+  );
 }

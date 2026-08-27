@@ -12,6 +12,7 @@ vi.mock("./library-core-normalized-query-client", () => ({
 const {
   readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  readLibraryCoreMapCandidates,
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
@@ -145,7 +146,12 @@ describe("Freed Desktop normalized surface readers", () => {
               capturedAt: 20,
               contentText: "Map",
               contentType: "post",
+              friendAvatarUrl: null,
+              friendName: "Ada Friend",
+              friendPersonId: "person-1",
+              friendRelationshipStatus: "friend",
               globalId: "x:map-1",
+              linkedAccountId: "account-1",
               locationLat: 34.2,
               locationLng: -118.2,
               locationName: "Observatory",
@@ -179,8 +185,11 @@ describe("Freed Desktop normalized surface readers", () => {
       };
     });
 
-    await expect(readLibraryCoreSurfaceItems("map")).resolves.toEqual([
-      expect.objectContaining({ globalId: "x:map-1" }),
+    await expect(readLibraryCoreMapCandidates()).resolves.toEqual([
+      expect.objectContaining({
+        friend: expect.objectContaining({ id: "person-1" }),
+        item: expect.objectContaining({ globalId: "x:map-1" }),
+      }),
     ]);
     await expect(readLibraryCoreSurfaceItems("story_wall")).resolves.toEqual([
       expect.objectContaining({ globalId: "x:story-1" }),

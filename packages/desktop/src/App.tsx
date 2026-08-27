@@ -95,6 +95,7 @@ import {
   readLibraryCoreFriendsGraph,
   readLibraryCoreFriendsLocationItem,
   readLibraryCoreItemDetail,
+  readLibraryCoreMapCandidates,
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
@@ -1650,6 +1651,10 @@ function App() {
       readLibrarySurfaceItems:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreSurfaceItems
+          : undefined,
+      readLibraryMapCandidates:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreMapCandidates
           : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable

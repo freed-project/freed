@@ -72,7 +72,6 @@ import {
 import {
   initDoc,
   subscribe,
-  getDocState,
   docAddFeedItems,
   docAddSampleLibraryData,
   docAddRssFeed,

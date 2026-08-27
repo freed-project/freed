@@ -537,6 +537,11 @@ pub struct NormalizedMapMarkerV1 {
     pub content_text: Option<String>,
     pub content_type: String,
     pub global_id: String,
+    pub linked_account_id: Option<String>,
+    pub friend_avatar_url: Option<String>,
+    pub friend_name: Option<String>,
+    pub friend_person_id: Option<String>,
+    pub friend_relationship_status: Option<String>,
     pub location_lat: Option<f64>,
     pub location_lng: Option<f64>,
     pub location_name: Option<String>,
@@ -2767,12 +2772,17 @@ fn query_map_markers(
                 author_avatar_url: row.get(8)?,
                 source_url: row.get(9)?,
                 content_text: row.get(10)?,
-                location_name: row.get(11)?,
-                location_lat: row.get(12)?,
-                location_lng: row.get(13)?,
-                location_url: row.get(14)?,
-                time_range_starts_at: row.get(15)?,
-                time_range_ends_at: row.get(16)?,
+                linked_account_id: row.get(11)?,
+                friend_person_id: row.get(12)?,
+                friend_name: row.get(13)?,
+                friend_avatar_url: row.get(14)?,
+                friend_relationship_status: row.get(15)?,
+                location_name: row.get(16)?,
+                location_lat: row.get(17)?,
+                location_lng: row.get(18)?,
+                location_url: row.get(19)?,
+                time_range_starts_at: row.get(20)?,
+                time_range_ends_at: row.get(21)?,
             })
         },
     )?;
@@ -2787,6 +2797,23 @@ fn query_map_markers(
                     && (-180.0..=180.0).contains(&lng)
             }
             (None, None) => row.location_name.is_some(),
+            _ => false,
+        };
+        let friend_identity_valid = match (
+            row.friend_person_id.as_deref(),
+            row.friend_name.as_deref(),
+            row.friend_avatar_url.as_deref(),
+            row.friend_relationship_status.as_deref(),
+        ) {
+            (None, None, None, None) => true,
+            (Some(person_id), Some(name), avatar_url, Some(status)) => {
+                !person_id.is_empty()
+                    && person_id.len() <= 4_096
+                    && !name.is_empty()
+                    && name.len() <= 2_048
+                    && avatar_url.is_none_or(|value| value.len() <= 8_192)
+                    && matches!(status, "connection" | "friend")
+            }
             _ => false,
         };
         if row.global_id.is_empty()
@@ -2804,6 +2831,11 @@ fn query_map_markers(
                 .content_text
                 .as_ref()
                 .is_some_and(|value| value.len() > 8_192)
+            || row
+                .linked_account_id
+                .as_ref()
+                .is_some_and(|value| value.is_empty() || value.len() > 4_096)
+            || !friend_identity_valid
             || row
                 .source_url
                 .as_ref()
@@ -5680,6 +5712,15 @@ mod tests {
                       'An older caption', 'Library', 34.1, -118.1, 0, 0, 0, 200),
                      ('hidden', 'x', 'post', 400, 400, 'ada', 'ada', 'Ada',
                       'Not visible', 'Hidden place', 1.0, 2.0, 1, 0, 0, 400);
+                 INSERT INTO library_persons
+                   (id, name, avatar_url, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-ada', 'Ada Friend', 'https://example.test/ada',
+                           'friend', 5, 1, 1);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-ada', 'person-ada', 'social', 'x', 'ada',
+                           1, 1, 'capture', 1, 1);
                  INSERT INTO library_feed_item_media
                    (global_id, ordinal, source_url, media_type)
                    VALUES ('visible', 0, 'https://example.test/image', 'image'),
@@ -5703,6 +5744,10 @@ mod tests {
         };
         assert!(map.has_more);
         assert_eq!(map.rows[0].global_id, "visible");
+        assert_eq!(map.rows[0].linked_account_id.as_deref(), Some("account-ada"));
+        assert_eq!(map.rows[0].friend_person_id.as_deref(), Some("person-ada"));
+        assert_eq!(map.rows[0].friend_name.as_deref(), Some("Ada Friend"));
+        assert_eq!(map.rows[0].friend_relationship_status.as_deref(), Some("friend"));
         let story = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::StoryWallCandidates(NormalizedStoryWallCandidatesRequestV1 {

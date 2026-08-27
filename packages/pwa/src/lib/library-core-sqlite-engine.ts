@@ -7334,7 +7334,24 @@ export class PwaLibraryCoreSqliteEngine {
         capturedAt: safeInteger(row.capturedAt, "map captured time"),
         contentText: nullableText(row.contentText, "map content text"),
         contentType: text(row.contentType, "map content type") as never,
+        friendAvatarUrl: nullableText(
+          row.friendAvatarUrl,
+          "map Friend avatar",
+        ),
+        friendName: nullableText(row.friendName, "map Friend name"),
+        friendPersonId: nullableText(
+          row.friendPersonId,
+          "map Friend identity",
+        ),
+        friendRelationshipStatus: nullableText(
+          row.friendRelationshipStatus,
+          "map Friend relationship",
+        ) as never,
         globalId: text(row.globalId, "map item identity"),
+        linkedAccountId: nullableText(
+          row.linkedAccountId,
+          "map linked Account identity",
+        ),
         locationLat: row.locationLat === null ? null : Number(row.locationLat),
         locationLng: row.locationLng === null ? null : Number(row.locationLng),
         locationName: nullableText(row.locationName, "map location name"),

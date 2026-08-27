@@ -12,7 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
-import type { FeedItem, FilterOptions } from "@freed/shared";
+import type { FeedItem, FilterOptions, LibraryMapLocationCandidate } from "@freed/shared";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreAccountGraphPageResponseV1,
@@ -38,7 +38,10 @@ import {
   useLibrarySavedAnalytics,
   type LibrarySavedAnalyticsState,
 } from "./useLibrarySavedAnalytics.js";
-import { useLibrarySurfaceItems } from "./useLibrarySurfaceItems.js";
+import {
+  useLibraryMapCandidates,
+  useLibrarySurfaceItems,
+} from "./useLibrarySurfaceItems.js";
 import {
   useLibraryFriendsRows,
   type LibraryFriendsRowsState,
@@ -78,6 +81,7 @@ function platformConfig(
       | "readLibraryFacetSummary"
       | "readLibraryFriendsGraph"
       | "readLibraryFriendsLocationItem"
+      | "readLibraryMapCandidates"
       | "readLibraryPersonTimeline"
       | "readLibrarySavedAnalytics"
       | "readLibrarySurfaceItems"
@@ -105,12 +109,21 @@ function platformConfig(
 
 function SurfaceHarness({
   onItems,
-  surface = "map",
+  surface = "story_wall",
 }: {
   onItems: (items: readonly FeedItem[]) => void;
   surface?: LibrarySurface;
 }) {
   onItems(useLibrarySurfaceItems(surface, 7));
+  return null;
+}
+
+function MapHarness({
+  onCandidates,
+}: {
+  onCandidates: (candidates: readonly LibraryMapLocationCandidate[]) => void;
+}) {
+  onCandidates(useLibraryMapCandidates(7));
   return null;
 }
 
@@ -440,8 +453,8 @@ describe("Library row query hooks", () => {
     }
   });
 
-  it("loads bounded native surface rows", async () => {
-    const readLibrarySurfaceItems = vi.fn(async () => [item("native-map")]);
+  it("loads bounded native Story Wall rows", async () => {
+    const readLibrarySurfaceItems = vi.fn(async () => [item("native-story")]);
     let current: readonly FeedItem[] = [];
     renderHarness(
       <PlatformProvider value={platformConfig({ readLibrarySurfaceItems })}>
@@ -456,10 +469,38 @@ describe("Library row query hooks", () => {
     expect(current).toEqual([]);
     await flush();
     expect(current.map((candidate) => candidate.globalId)).toEqual([
-      "native-map",
+      "native-story",
     ]);
     expect(readLibrarySurfaceItems).toHaveBeenCalledOnce();
-    expect(readLibrarySurfaceItems).toHaveBeenCalledWith("map");
+    expect(readLibrarySurfaceItems).toHaveBeenCalledWith("story_wall");
+  });
+
+  it("loads bounded Map rows with their SQLite-joined Friend identity", async () => {
+    const candidate: LibraryMapLocationCandidate = {
+      accountId: "account-1",
+      item: item("native-map"),
+      friend: {
+        id: "person-1",
+        name: "Ada",
+        relationshipStatus: "friend",
+      },
+    };
+    const readLibraryMapCandidates = vi.fn(async () => [candidate]);
+    let current: readonly LibraryMapLocationCandidate[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ readLibraryMapCandidates })}>
+        <MapHarness
+          onCandidates={(rows) => {
+            current = rows;
+          }}
+        />
+      </PlatformProvider>,
+    );
+
+    expect(current).toEqual([]);
+    await flush();
+    expect(current).toEqual([candidate]);
+    expect(readLibraryMapCandidates).toHaveBeenCalledOnce();
   });
 
   it("fails closed when the surface query boundary is unavailable", async () => {

@@ -3,6 +3,7 @@ import {
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedMapCandidatesV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
@@ -209,6 +210,10 @@ export async function readLibraryCoreSurfaceItems(
     NORMALIZED_READER_RUNTIME,
     surface,
   );
+}
+
+export async function readLibraryCoreMapCandidates() {
+  return readLibraryCoreNormalizedMapCandidatesV1(NORMALIZED_READER_RUNTIME);
 }
 
 export async function scanLibraryCoreBackgroundItems(

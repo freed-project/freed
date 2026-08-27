@@ -2572,7 +2572,14 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(mapMarkers.hasMore).toBe(true);
     expect(mapMarkers.rows).toMatchObject([
-      { globalId: "item-2", locationName: "Observatory" },
+      {
+        friendName: "Ada",
+        friendPersonId: "person-1",
+        friendRelationshipStatus: "friend",
+        globalId: "item-2",
+        linkedAccountId: "account-1",
+        locationName: "Observatory",
+      },
     ]);
     expect(mapMarkers.rows[0]).not.toHaveProperty("tags");
     expect(mapMarkers.rows[0]).not.toHaveProperty("mediaUrls");
