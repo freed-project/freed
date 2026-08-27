@@ -212,6 +212,7 @@ import {
   removeSqliteLibraryPerson,
   replaceSqliteLibraryFriend,
   upsertSqliteLibraryPerson,
+  upsertSqliteLibraryAccount,
 } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
@@ -1673,6 +1674,10 @@ function App() {
       appendLibraryPersonReachOut:
         tauriRuntimeAvailable && isInitialized
           ? appendSqliteLibraryPersonReachOut
+          : undefined,
+      upsertLibraryAccount:
+        tauriRuntimeAvailable && isInitialized
+          ? upsertSqliteLibraryAccount
           : undefined,
       readLibraryAccountDetail:
         tauriRuntimeAvailable && isInitialized

@@ -733,6 +733,9 @@ export interface PlatformConfig {
     personId: string | null,
   ) => Promise<void>;
 
+  /** Upsert one complete synchronized Account through the registered mutation. */
+  upsertLibraryAccount?: (account: Account) => Promise<void>;
+
   /** Append one bounded reach-out event without rewriting the Person root. */
   appendLibraryPersonReachOut?: (
     personId: string,

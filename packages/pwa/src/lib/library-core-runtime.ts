@@ -703,6 +703,12 @@ export async function enqueuePwaLibraryCoreAccountUpsert(
   await enqueuePwaLibraryCoreAccountUpserts([account]);
 }
 
+export async function upsertPwaLibraryCoreAccount(
+  account: Account,
+): Promise<void> {
+  await enqueuePwaLibraryCoreAccountUpsert(account);
+}
+
 /** Commit bounded whole sanitized Accounts to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountUpserts(
   accounts: readonly Account[],

@@ -20,6 +20,7 @@ import {
   removeSqliteLibraryPerson,
   replaceSqliteLibraryFriend,
   upsertSqliteLibraryPerson,
+  upsertSqliteLibraryAccount,
 } from "./sqlite-library";
 
 const ITEM_ID = "rss:follower-item";
@@ -723,6 +724,25 @@ describe("SQLite Primary mutations", () => {
       entity_id: "account-2",
       operation_type: "account_person_assignment",
       payload: { assigned_at_ms: 43, person_id: "person-2" },
+    });
+
+    await upsertSqliteLibraryAccount(
+      {
+        id: "account-3",
+        kind: "social",
+        provider: "instagram",
+        externalId: "grace",
+        discoveredFrom: "captured_item",
+        firstSeenAt: 43,
+        lastSeenAt: 43,
+        createdAt: 43,
+        updatedAt: 43,
+      },
+      43,
+    );
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "account-3",
+      operation_type: "account_upsert",
     });
 
     await removeSqliteLibraryPerson("person-2", 44);

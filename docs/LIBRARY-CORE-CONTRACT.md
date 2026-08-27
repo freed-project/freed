@@ -293,6 +293,14 @@ shared deterministic identity transform. Creating that relationship uses one
 uses one root-only `person_upsert`. The palette never reads a renderer Account
 map or calls the historical connection-person store action.
 
+Google Contacts suggestion linking reads the exact matched Person, its complete
+bounded linked Account ID window, and each exact Account detail. It combines
+those rows with the one contact Account and submits one `friend_replace`.
+Creating a Friend from a contact uses the same mutation with one Person and one
+Account. Feed author navigation creates a missing normalized Account through
+one direct `account_upsert`. No shared UI component calls Person or Account
+Zustand mutations.
+
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active
 Desktop actor public identity and exact chain tip, and the bounded accepted

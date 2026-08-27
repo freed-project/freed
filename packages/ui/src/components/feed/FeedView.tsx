@@ -388,6 +388,7 @@ export function FeedView() {
     openBoundedSavedFeedReader,
     openUrl,
     queryLibraryCore,
+    upsertLibraryAccount,
   } = platform;
   const canAddFeeds = !!addRssFeed;
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -410,7 +411,6 @@ export function FeedView() {
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const addAccount = useAppStore((s) => s.addAccount);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
@@ -448,7 +448,10 @@ export function FeedView() {
         if (!accountId) {
           const draft = discoveredSocialAccountFromItem(item);
           if (!draft) return;
-          await addAccount(draft);
+          if (!upsertLibraryAccount) {
+            throw new Error("SQLite Account mutation is unavailable");
+          }
+          await upsertLibraryAccount(draft);
           accountId = draft.id;
         }
 
@@ -460,11 +463,11 @@ export function FeedView() {
       }
     },
     [
-      addAccount,
       queryLibraryCore,
       setActiveView,
       setSelectedAccount,
       setSelectedItem,
+      upsertLibraryAccount,
     ],
   );
 

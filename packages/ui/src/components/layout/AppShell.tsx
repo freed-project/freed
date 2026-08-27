@@ -26,6 +26,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
+  type Account,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
@@ -102,12 +103,12 @@ export function AppShell({ children }: AppShellProps) {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const {
     queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
     releaseMapRendererMemory,
+    replaceLibraryFriend,
   } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
-  const addPerson = useAppStore((s) => s.addPerson);
-  const addAccounts = useAppStore((s) => s.addAccounts);
-  const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
@@ -397,64 +398,97 @@ export function AppShell({ children }: AppShellProps) {
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
     if (!match) return;
-    if (!queryLibraryCore) {
+    if (
+      !queryLibraryCore ||
+      !readLibraryAccountDetail ||
+      !replaceLibraryFriend
+    ) {
       toast.error("Freed could not query the local Library.");
       return;
     }
 
     const now = Date.now();
     const personId = match.personId ?? crypto.randomUUID();
-    const person = {
+    const currentPerson = match.personId
+      ? readLibraryPersonDetail
+        ? await readLibraryPersonDetail(match.personId)
+        : null
+      : null;
+    if (match.personId && !currentPerson) {
+      throw new Error("The matched Person is unavailable.");
+    }
+    const person = currentPerson ?? {
       id: personId,
-      name: match.contact.name.displayName ?? match.contact.name.givenName ?? "Unknown",
+      name:
+        match.contact.name.displayName ??
+        match.contact.name.givenName ??
+        "Unknown",
       relationshipStatus: "friend" as const,
       careLevel: 3 as const,
       createdAt: now,
       updatedAt: now,
     };
-
-    if (!match.personId) {
-      await addPerson(person);
-    }
-    await addAccounts([
-      createContactAccountFromGoogleContact(match.contact, now, personId),
-    ]);
-    for (const accountId of match.accountIds) {
-      const existing = await queryLibraryCore({
-        accountId,
-        queryId: "account_detail_v1",
+    const linkedAccountIds = new Set(match.accountIds);
+    if (match.personId) {
+      const detail = await queryLibraryCore({
+        personId: match.personId,
+        queryId: "person_detail_v1",
         schemaVersion: 1,
       });
-      if (!existing.account) {
-        throw new Error("A matched social Account no longer exists.");
+      if (detail.linkedAccountCount !== detail.linkedAccounts.length) {
+        throw new Error("The matched Person has too many linked Accounts.");
       }
-      await linkAccountToPerson(accountId, personId);
+      for (const account of detail.linkedAccounts) {
+        linkedAccountIds.add(account.id);
+      }
     }
+    const accounts = await Promise.all(
+      [...linkedAccountIds].map(async (accountId) => {
+        const account = await readLibraryAccountDetail(accountId);
+        if (!account) {
+          throw new Error("A matched social Account no longer exists.");
+        }
+        return { ...account, personId, updatedAt: now };
+      }),
+    );
+    const contactAccount = createContactAccountFromGoogleContact(
+      match.contact,
+      now,
+      personId,
+    );
+    const desiredById = new Map<string, Account>(
+      accounts.map((account) => [account.id, account]),
+    );
+    desiredById.set(contactAccount.id, contactAccount);
+    await replaceLibraryFriend(person, [...desiredById.values()]);
 
     contactSync.dismissSuggestion(suggestion.id);
   }, [
-    addAccounts,
-    addPerson,
     contactSync,
-    linkAccountToPerson,
     queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+    replaceLibraryFriend,
   ]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
+    if (!replaceLibraryFriend) {
+      throw new Error("The atomic Friend SQLite mutation is unavailable.");
+    }
     const now = Date.now();
     const personId = crypto.randomUUID();
-    await addPerson({
+    const person = {
       id: personId,
       name: contact.name.displayName ?? contact.name.givenName ?? "",
-      relationshipStatus: "friend",
-      careLevel: 3,
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
       createdAt: now,
       updatedAt: now,
-    });
-    await addAccounts([
+    };
+    await replaceLibraryFriend(person, [
       createContactAccountFromGoogleContact(contact, now, personId),
     ]);
-  }, [addAccounts, addPerson]);
+  }, [replaceLibraryFriend]);
 
   const openReview = useCallback(async () => {
     const result = await contactSync.syncNow();

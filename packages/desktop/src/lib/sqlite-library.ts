@@ -1527,6 +1527,15 @@ async function maybeSubmitAccountUpserts(
   return true;
 }
 
+export async function upsertSqliteLibraryAccount(
+  account: Account,
+  createdAtMs = Date.now(),
+): Promise<void> {
+  if (!(await maybeSubmitAccountUpserts([account], createdAtMs))) {
+    throw new Error("Library mutation context is unavailable");
+  }
+}
+
 async function maybeSubmitAccountRemove(
   accountId: string,
   removedAtMs: number,

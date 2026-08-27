@@ -100,6 +100,7 @@ import {
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
   upsertPwaLibraryCorePerson,
+  upsertPwaLibraryCoreAccount,
 } from "./lib/library-core-runtime";
 import { queryPwaNormalizedLibrary } from "./lib/library-core-sqlite-runtime";
 import {
@@ -490,6 +491,7 @@ function App() {
       removeLibraryPerson: removePwaLibraryCorePerson,
       assignLibraryAccountToPerson: assignPwaLibraryCoreAccountToPerson,
       appendLibraryPersonReachOut: appendPwaLibraryCorePersonReachOut,
+      upsertLibraryAccount: upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
