@@ -1465,6 +1465,7 @@ describe("Library row query hooks", () => {
 
   it("queries only exact Feed and provider-author filter identities", async () => {
     const queryLibraryCore = vi.fn(async (request: { feedUrl: string | null }) => ({
+      accountId: request.feedUrl ? null : "account-ada",
       itemCount: request.feedUrl ? 4 : 7,
       label: request.feedUrl ? "Example Feed" : "Ada",
       queryId: "filter_scope_summary_v1",

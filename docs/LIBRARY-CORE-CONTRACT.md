@@ -1339,11 +1339,17 @@ or Friend maps.
 An active Feed or provider-author filter resolves through
 `filter_scope_summary_v1`. The request contains exactly one Feed URL or one
 provider plus external author ID. SQLite returns one nullable display label and
-one exact visible-item count under a 16 KiB response ceiling. Feed URL,
-provider-author, and item predicates use their normalized indexes. Header does
-not subscribe to Feed, Account, per-Feed count, per-platform count, or total
-item dictionaries. Platform and Library totals come from the maintained facet
-row. React retains only the one active scope result.
+one exact visible-item count under a 16 KiB response ceiling. Author scopes
+also return the nullable stable Account ID selected by the same indexed
+provider and external-ID lookup. Feed URL scopes must return a null Account ID.
+Feed author navigation consumes that scalar directly, creates a typed Account
+mutation only when SQLite reports no matching row, and never scans or retains
+the Account catalog. Feed subscription presence comes from the maintained
+facet row, so the Feed surface subscribes to neither the RSS Feed catalog nor
+the Account catalog. Feed URL, provider-author, and item predicates use their
+normalized indexes. Header and Feed do not subscribe to Feed, Account,
+per-Feed count, per-platform count, or total item dictionaries. React retains
+only the active scope result and visible feed windows.
 
 Exact item lookups use `item_detail_v1`. Background enumeration uses
 `background_item_page_v1` with an opaque source-fenced cursor and a 64-row

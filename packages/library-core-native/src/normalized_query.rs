@@ -1114,6 +1114,7 @@ pub struct NormalizedItemReaderBodyResponseV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFilterScopeSummaryResponseV1 {
+    pub account_id: Option<String>,
     pub item_count: i64,
     pub label: Option<String>,
     pub query_id: String,
@@ -3549,17 +3550,22 @@ fn query_filter_scope_summary(
         ))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let (label, item_count) = transaction.query_row(
+    let (account_id, label, item_count) = transaction.query_row(
         program.sql,
         params![request.feed_url, request.platform, request.author_id],
         |row| {
             Ok((
+                row.get::<_, Option<String>>("accountId")?,
                 row.get::<_, Option<String>>("label")?,
                 row.get::<_, i64>("itemCount")?,
             ))
         },
     )?;
     if !valid_safe_integer(item_count)
+        || account_id
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 2_048)
+        || (feed_mode && account_id.is_some())
         || label
             .as_ref()
             .is_some_and(|value| value.is_empty() || value.len() > 4_096)
@@ -3569,6 +3575,7 @@ fn query_filter_scope_summary(
         ));
     }
     let response = NormalizedFilterScopeSummaryResponseV1 {
+        account_id,
         item_count,
         label,
         query_id: "filter_scope_summary_v1".to_owned(),
@@ -6482,6 +6489,33 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "filter_scope_summary_v1")
+            .expect("filter scope program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+            .expect("filter scope query plan");
+        let plan = plan_statement
+            .query_map(params![Option::<String>::None, "x", "ada-remote"], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("filter scope plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("filter scope plan");
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("library_accounts_provider_external")),
+            "{plan:?}"
+        );
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("library_feed_items_provider_author")),
+            "{plan:?}"
+        );
+        assert!(!plan.iter().any(|detail| detail.contains("SCAN account")));
+        assert!(!plan.iter().any(|detail| detail.contains("SCAN item")));
+        drop(plan_statement);
 
         let NormalizedQueryResponseV1::FilterScopeSummary(feed) = query_normalized_v1(
             &mut connection,
@@ -6496,6 +6530,7 @@ mod tests {
             panic!("filter scope response");
         };
         assert_eq!(feed.label.as_deref(), Some("Alpha"));
+        assert_eq!(feed.account_id, None);
         assert_eq!(feed.item_count, 1);
         assert_eq!(feed.source.projection_revision, 9);
 
@@ -6512,6 +6547,7 @@ mod tests {
             panic!("filter scope response");
         };
         assert_eq!(author.label.as_deref(), Some("Countess Ada"));
+        assert_eq!(author.account_id.as_deref(), Some("account-1"));
         assert_eq!(author.item_count, 1);
 
         let NormalizedQueryResponseV1::FilterScopeSummary(missing) = query_normalized_v1(
@@ -6527,6 +6563,7 @@ mod tests {
             panic!("filter scope response");
         };
         assert_eq!(missing.label, None);
+        assert_eq!(missing.account_id, None);
         assert_eq!(missing.item_count, 0);
 
         let invalid = query_normalized_v1(

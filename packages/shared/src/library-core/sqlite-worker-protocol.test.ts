@@ -407,6 +407,7 @@ describe("Library Core SQLite worker protocol", () => {
       schemaVersion: 1 as const,
     };
     const filterScopeResponse = {
+      accountId: null,
       itemCount: 4,
       label: "Example",
       queryId: "filter_scope_summary_v1",

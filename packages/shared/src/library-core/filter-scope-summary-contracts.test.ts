@@ -26,6 +26,7 @@ describe("Library Core filter scope summary contract", () => {
     expect(
       parseLibraryCoreFilterScopeSummaryResponseV1(
         {
+          accountId: null,
           itemCount: 7,
           label: "Example",
           queryId: "filter_scope_summary_v1",
@@ -34,7 +35,10 @@ describe("Library Core filter scope summary contract", () => {
         },
         feedRequest,
       ),
-    ).toMatchObject({ ok: true, value: { itemCount: 7, label: "Example" } });
+    ).toMatchObject({
+      ok: true,
+      value: { accountId: null, itemCount: 7, label: "Example" },
+    });
 
     expect(
       parseLibraryCoreFilterScopeSummaryRequestV1({
@@ -69,6 +73,7 @@ describe("Library Core filter scope summary contract", () => {
     expect(
       parseLibraryCoreFilterScopeSummaryResponseV1(
         {
+          accountId: null,
           itemCount: 0,
           label: null,
           queryId: "filter_scope_summary_v1",

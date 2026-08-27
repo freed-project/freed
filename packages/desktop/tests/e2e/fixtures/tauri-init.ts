@@ -318,6 +318,35 @@ export function tauriInitScript(): string {
           },
         };
       }
+      if (request.queryId === 'filter_scope_summary_v1') {
+        var shell = state.shell || {};
+        var account = Object.values(shell.accounts || {}).find(function(candidate) {
+          return request.feedUrl == null &&
+            candidate.provider === request.platform &&
+            candidate.externalId === request.authorId;
+        }) || null;
+        var feed = Object.values(shell.feeds || {}).find(function(candidate) {
+          return request.feedUrl != null && candidate.url === request.feedUrl;
+        }) || null;
+        var itemCount = Object.values(sqliteState().items).filter(function(item) {
+          if (!item || item.__deleted || sqliteItemState(item).hidden) return false;
+          return request.feedUrl != null
+            ? item.rssSource && item.rssSource.feedUrl === request.feedUrl
+            : item.platform === request.platform && item.author && item.author.id === request.authorId;
+        }).length;
+        return {
+          accountId: account ? account.id : null,
+          itemCount: itemCount,
+          label: feed
+            ? feed.title
+            : account
+              ? account.displayName || account.handle || account.externalId
+              : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'preferences_snapshot_v1') {
         return {
           queryId: request.queryId,

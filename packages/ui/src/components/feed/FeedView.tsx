@@ -8,6 +8,7 @@ import {
   memo,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { toast } from "../Toast.js";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
@@ -29,12 +30,11 @@ import {
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
-  buildDiscoveredAccountsFromItems,
-  socialAccountForAuthor,
-  type Account,
+  discoveredSocialAccountFromItem,
   type FeedItem,
 } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
@@ -387,10 +387,9 @@ export function FeedView() {
     openBoundedFriendsFeedReader,
     openBoundedSavedFeedReader,
     openUrl,
+    queryLibraryCore,
   } = platform;
   const canAddFeeds = !!addRssFeed;
-  const feeds = useAppStore((s) => s.feeds);
-  const accounts = useAppStore((s) => s.accounts);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -417,6 +416,7 @@ export function FeedView() {
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const [deviceDisplay] = useDeviceDisplayPreferences();
   const friendsMode = deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
@@ -433,23 +433,39 @@ export function FeedView() {
   );
   const openAuthorInFriends = useCallback(
     async (item: FeedItem) => {
-      let account: Account | null = socialAccountForAuthor(
-        accounts,
-        item.platform,
-        item.author.id,
-      );
-      if (!account) {
-        const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
-        if (!draft) return;
-        await addAccount(draft);
-        account = draft;
-      }
+      try {
+        if (!queryLibraryCore) {
+          throw new Error("SQLite author lookup is unavailable");
+        }
+        const scope = await queryLibraryCore({
+          authorId: item.author.id,
+          feedUrl: null,
+          platform: item.platform,
+          queryId: "filter_scope_summary_v1",
+          schemaVersion: 1,
+        });
+        let accountId = scope.accountId;
+        if (!accountId) {
+          const draft = discoveredSocialAccountFromItem(item);
+          if (!draft) return;
+          await addAccount(draft);
+          accountId = draft.id;
+        }
 
-      setSelectedItem(null);
-      setSelectedAccount(account.id);
-      setActiveView("friends");
+        setSelectedItem(null);
+        setSelectedAccount(accountId);
+        setActiveView("friends");
+      } catch {
+        toast.error("Freed could not open this author from the Library.");
+      }
     },
-    [accounts, addAccount, setActiveView, setSelectedAccount, setSelectedItem],
+    [
+      addAccount,
+      queryLibraryCore,
+      setActiveView,
+      setSelectedAccount,
+      setSelectedItem,
+    ],
   );
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
@@ -1100,7 +1116,7 @@ export function FeedView() {
         focusMoveDirection={keyboardFocusDirection}
         onFocusChange={handleFocusChange}
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
-        hasFeedsSubscribed={Object.keys(feeds).length > 0}
+        hasFeedsSubscribed={libraryFacets.rssFeedCount > 0}
         onItemSave={handleItemSave}
         onItemArchive={
           activeFilter.archivedOnly ? undefined : handleItemArchive

@@ -29,6 +29,7 @@ export const LIBRARY_CORE_FILTER_SCOPE_SUMMARY_RESPONSE_SCHEMA = Object.freeze({
   schemaVersion: LIBRARY_CORE_FILTER_SCOPE_SUMMARY_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_FILTER_SCOPE_SUMMARY_QUERY_ID,
   canonicalKeys: Object.freeze([
+    "accountId",
     "itemCount",
     "label",
     "queryId",
@@ -68,6 +69,7 @@ export interface LibraryCoreFilterScopeSummaryRequestV1 {
 }
 
 export interface LibraryCoreFilterScopeSummaryResponseV1 {
+  readonly accountId: string | null;
   readonly itemCount: number;
   readonly label: string | null;
   readonly queryId: typeof LIBRARY_CORE_FILTER_SCOPE_SUMMARY_QUERY_ID;
@@ -170,12 +172,18 @@ export function parseLibraryCoreFilterScopeSummaryResponseV1(
   const request = parseLibraryCoreFilterScopeSummaryRequestV1(requestValue);
   const record = closedRecord(value, RESPONSE_KEYS);
   const source = parseLibraryCoreFeedPageSourceV1(record?.source);
+  const accountId =
+    record?.accountId === null
+      ? null
+      : boundedNullableText(record?.accountId, 2_048);
   const label =
     record?.label === null ? null : boundedNullableText(record?.label, 4_096);
   if (
     !request.ok ||
     !record ||
     !source.ok ||
+    accountId === undefined ||
+    (request.ok && request.value.feedUrl !== null && accountId !== null) ||
     label === undefined ||
     !isLibraryCoreNonnegativeSafeInteger(record.itemCount) ||
     record.queryId !== LIBRARY_CORE_FILTER_SCOPE_SUMMARY_QUERY_ID ||
@@ -184,6 +192,7 @@ export function parseLibraryCoreFilterScopeSummaryResponseV1(
     return failure("filter scope summary response is invalid");
   }
   const response = Object.freeze({
+    accountId,
     itemCount: record.itemCount,
     label,
     queryId: LIBRARY_CORE_FILTER_SCOPE_SUMMARY_QUERY_ID,

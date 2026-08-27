@@ -3155,6 +3155,7 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }),
     ).toMatchObject({
+      accountId: null,
       itemCount: 1,
       label: "Alpha",
       queryId: "filter_scope_summary_v1",
@@ -3169,6 +3170,7 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }),
     ).toMatchObject({
+      accountId: "account-1",
       itemCount: 1,
       label: "Ada",
       queryId: "filter_scope_summary_v1",
@@ -3182,7 +3184,7 @@ describe("PWA Library Core SQLite engine", () => {
         queryId: "filter_scope_summary_v1",
         schemaVersion: 1,
       }),
-    ).toMatchObject({ itemCount: 0, label: null });
+    ).toMatchObject({ accountId: null, itemCount: 0, label: null });
     expect(() =>
       engine.query({
         authorId: "ada-remote",

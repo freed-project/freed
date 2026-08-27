@@ -6147,6 +6147,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const row = rows[0]!;
     const response = {
+      accountId: nullableText(row.accountId, "filter scope Account identity"),
       itemCount: safeInteger(row.itemCount, "filter scope item count"),
       label: nullableText(row.label, "filter scope label"),
       queryId: "filter_scope_summary_v1" as const,
