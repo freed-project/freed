@@ -13,6 +13,10 @@ import {
   type LibraryCoreLowercaseHex64,
 } from "./protocol-scalars.js";
 import { sha256LowerHex } from "./sha256.js";
+import {
+  parseLibraryCoreGeneratedSqliteQueryRow,
+  type LibraryCoreGeneratedSqliteQueryRow,
+} from "./sqlite-contract.generated.js";
 
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_QUERY_ID =
   "friends_directory_page_v1" as const;
@@ -65,21 +69,6 @@ const RESPONSE_KEYS = [
   "schemaVersion",
   "source",
   "totalCount",
-] as const;
-const ROW_KEYS = [
-  "avatarUrl",
-  "bio",
-  "careLevel",
-  "hasLocation",
-  "id",
-  "isRecentlyActive",
-  "lastContactAt",
-  "latestActivityAt",
-  "latestAvatarUrl",
-  "name",
-  "needsOutreach",
-  "reachOutIntervalDays",
-  "relationshipStatus",
 ] as const;
 const textEncoder = new TextEncoder();
 
@@ -146,21 +135,8 @@ export interface LibraryCoreFriendsDirectoryPageRequestV1 {
   readonly sort: LibraryCoreFriendsDirectorySortV1;
 }
 
-export interface LibraryCoreFriendsDirectoryRowV1 {
-  readonly avatarUrl: string | null;
-  readonly bio: string | null;
-  readonly careLevel: 1 | 2 | 3 | 4 | 5;
-  readonly hasLocation: boolean;
-  readonly id: string;
-  readonly isRecentlyActive: boolean;
-  readonly lastContactAt: number | null;
-  readonly latestActivityAt: number | null;
-  readonly latestAvatarUrl: string | null;
-  readonly name: string;
-  readonly needsOutreach: boolean;
-  readonly reachOutIntervalDays: number | null;
-  readonly relationshipStatus: "friend";
-}
+export type LibraryCoreFriendsDirectoryRowV1 =
+  LibraryCoreGeneratedSqliteQueryRow<"friends_directory_page_v1">;
 
 export interface LibraryCoreFriendsDirectoryPageResponseV1 {
   readonly nextCursor: string | null;
@@ -194,17 +170,6 @@ function boundedText(value: unknown, maximumBytes: number): value is string {
     typeof value === "string" &&
     textEncoder.encode(value).byteLength <= maximumBytes
   );
-}
-
-function nullableSafeInteger(value: unknown): value is number | null {
-  return value === null || isLibraryCoreNonnegativeSafeInteger(value);
-}
-
-function nullableBoundedText(
-  value: unknown,
-  maximumBytes: number,
-): value is string | null {
-  return value === null || boundedText(value, maximumBytes);
 }
 
 function normalizedFilters(
@@ -321,29 +286,10 @@ export function parseLibraryCoreFriendsDirectoryPageRequestV1(
 }
 
 function parseRow(value: unknown): LibraryCoreFriendsDirectoryRowV1 | null {
-  const row = recordValue(value);
-  if (
-    !row ||
-    !exactKeys(row, ROW_KEYS) ||
-    !boundedText(row.id, 2_048) ||
-    !boundedText(row.name, 4_096) ||
-    !nullableBoundedText(row.avatarUrl, 8_192) ||
-    !nullableBoundedText(row.bio, 8_192) ||
-    !nullableBoundedText(row.latestAvatarUrl, 8_192) ||
-    row.relationshipStatus !== "friend" ||
-    !Number.isInteger(row.careLevel) ||
-    (row.careLevel as number) < 1 ||
-    (row.careLevel as number) > 5 ||
-    !nullableSafeInteger(row.reachOutIntervalDays) ||
-    !nullableSafeInteger(row.lastContactAt) ||
-    !nullableSafeInteger(row.latestActivityAt) ||
-    typeof row.hasLocation !== "boolean" ||
-    typeof row.isRecentlyActive !== "boolean" ||
-    typeof row.needsOutreach !== "boolean"
-  ) {
-    return null;
-  }
-  return Object.freeze(row) as unknown as LibraryCoreFriendsDirectoryRowV1;
+  return parseLibraryCoreGeneratedSqliteQueryRow(
+    LIBRARY_CORE_FRIENDS_DIRECTORY_QUERY_ID,
+    value,
+  );
 }
 
 export function parseLibraryCoreFriendsDirectoryPageResponseV1(

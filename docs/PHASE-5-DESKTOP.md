@@ -28,7 +28,11 @@
       contract source, with generated-drift validation. The same source now
       defines the 18-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
-      constants, and no parallel actor-operation registry remains.
+      constants, and no parallel actor-operation registry remains. Query row
+      models now generate native Rust field descriptors and TypeScript row
+      transforms from the same closed field definitions. The Friends directory
+      native executor uses that descriptor directly, with no hand-written row
+      mapper or duplicate response validator.
 - [x] Expose source-fenced native hydration and cache-pressure candidate pages
       from the shared Rust core. Both pages use generated SQL, cap results at
       128 rows, and bind canonical generation plus device content revision.

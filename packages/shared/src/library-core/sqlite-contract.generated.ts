@@ -1428,3 +1428,305 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
   }
 } as const;
 export type LibraryCoreSqliteQueryProgramId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_PROGRAMS;
+
+export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
+  "friends_directory_page_v1": [
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "avatarUrl",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "bio",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "kind": "integer",
+      "maximumInteger": 5,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 1,
+      "minimumUtf8Bytes": null,
+      "name": "careLevel",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "boolean",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": null,
+      "name": "hasLocation",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 2048,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "id",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "boolean",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": null,
+      "name": "isRecentlyActive",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "lastContactAt",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "latestActivityAt",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "latestAvatarUrl",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 4096,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "name",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "boolean",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": null,
+      "name": "needsOutreach",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "reachOutIntervalDays",
+      "nullable": true
+    },
+    {
+      "enumValues": [
+        "friend"
+      ],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 255,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "relationshipStatus",
+      "nullable": false
+    }
+  ]
+} as const;
+export type LibraryCoreSqliteQueryRowModelId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS;
+
+type LibraryCoreSqliteQueryRowField =
+  (typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS)[LibraryCoreSqliteQueryRowModelId][number];
+type LibraryCoreSqliteQueryRowFieldValue<
+  Field extends LibraryCoreSqliteQueryRowField,
+> = Field["kind"] extends "boolean"
+  ? boolean
+  : Field["kind"] extends "integer"
+    ? Field["integerValues"] extends readonly []
+      ? number
+      : Field["integerValues"][number]
+    : Field["enumValues"] extends readonly []
+      ? string
+      : Field["enumValues"][number];
+type LibraryCoreSqliteQueryRowValue<
+  Field extends LibraryCoreSqliteQueryRowField,
+> = Field["nullable"] extends true
+  ? LibraryCoreSqliteQueryRowFieldValue<Field> | null
+  : LibraryCoreSqliteQueryRowFieldValue<Field>;
+
+export type LibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+> = Readonly<{
+  [Field in (typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS)[QueryId][number] as Field["name"]]: LibraryCoreSqliteQueryRowValue<Field>;
+}>;
+
+const LIBRARY_CORE_GENERATED_QUERY_ROW_TEXT_ENCODER = new TextEncoder();
+
+function libraryCoreGeneratedQueryRowRecord(
+  value: unknown,
+  sqliteRow: boolean,
+): Record<string, unknown> | null {
+  const prototype =
+    value !== null && typeof value === "object"
+      ? Object.getPrototypeOf(value)
+      : undefined;
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    (prototype !== Object.prototype && !(sqliteRow && prototype === null))
+  ) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function libraryCoreGeneratedQueryRowValue(
+  field: LibraryCoreSqliteQueryRowField,
+  input: unknown,
+  sqliteBooleanIntegers: boolean,
+): unknown | undefined {
+  if (input === null) return field.nullable ? null : undefined;
+  if (field.kind === "boolean") {
+    if (typeof input === "boolean") return input;
+    if (sqliteBooleanIntegers && (input === 0 || input === 1)) {
+      return input === 1;
+    }
+    return undefined;
+  }
+  if (field.kind === "integer") {
+    return Number.isSafeInteger(input) &&
+      (input as number) >= field.minimumInteger! &&
+      (input as number) <= field.maximumInteger! &&
+      (field.integerValues.length === 0 ||
+        (field.integerValues as readonly number[]).includes(input as number))
+      ? input
+      : undefined;
+  }
+  if (typeof input !== "string") {
+    return undefined;
+  }
+  const utf8Bytes =
+    LIBRARY_CORE_GENERATED_QUERY_ROW_TEXT_ENCODER.encode(input).byteLength;
+  if (
+    utf8Bytes < field.minimumUtf8Bytes! ||
+    utf8Bytes > field.maximumUtf8Bytes!
+  ) {
+    return undefined;
+  }
+  if (
+    field.enumValues.length > 0 &&
+    !(field.enumValues as readonly string[]).includes(input)
+  ) {
+    return undefined;
+  }
+  return input;
+}
+
+function libraryCoreGeneratedQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+  sqliteBooleanIntegers: boolean,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  const record = libraryCoreGeneratedQueryRowRecord(
+    input,
+    sqliteBooleanIntegers,
+  );
+  if (!record) return null;
+  const fields = LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS[queryId];
+  const ownKeys = Reflect.ownKeys(record);
+  if (
+    ownKeys.length !== fields.length ||
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !fields.some((field) => field.name === key),
+    )
+  ) {
+    return null;
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(record);
+  const snapshot: Record<string, unknown> = {};
+  for (const field of fields) {
+    const descriptor = descriptors[field.name];
+    if (!descriptor?.enumerable || !("value" in descriptor)) return null;
+    const value = libraryCoreGeneratedQueryRowValue(
+      field,
+      descriptor.value,
+      sqliteBooleanIntegers,
+    );
+    if (value === undefined) return null;
+    snapshot[field.name] = value;
+  }
+  return Object.freeze(snapshot) as LibraryCoreGeneratedSqliteQueryRow<QueryId>;
+}
+
+export function parseLibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  return libraryCoreGeneratedQueryRow(queryId, input, false);
+}
+
+export function coerceLibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  return libraryCoreGeneratedQueryRow(queryId, input, true);
+}

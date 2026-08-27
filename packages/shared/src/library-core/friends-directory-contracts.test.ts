@@ -7,6 +7,10 @@ import {
   parseLibraryCoreFriendsDirectoryPageResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
 } from "./friends-directory-contracts.js";
+import {
+  coerceLibraryCoreGeneratedSqliteQueryRow,
+  parseLibraryCoreGeneratedSqliteQueryRow,
+} from "./sqlite-contract.generated.js";
 
 const source = {
   generationId: "a".repeat(64) as never,
@@ -33,6 +37,69 @@ function request(
 }
 
 describe("Friends directory contract", () => {
+  it("generates one closed row transform for SQLite and wire values", () => {
+    const sqliteRow = {
+      avatarUrl: null,
+      bio: "First programmer",
+      careLevel: 5,
+      hasLocation: 1,
+      id: "person-ada",
+      isRecentlyActive: 1,
+      lastContactAt: 1_799_000_000_000,
+      latestActivityAt: 1_799_500_000_000,
+      latestAvatarUrl: "https://example.test/ada.jpg",
+      name: "Ada Lovelace",
+      needsOutreach: 0,
+      reachOutIntervalDays: 7,
+      relationshipStatus: "friend",
+    };
+    const coerced = coerceLibraryCoreGeneratedSqliteQueryRow(
+      "friends_directory_page_v1",
+      sqliteRow,
+    );
+    expect(coerced).toMatchObject({
+      hasLocation: true,
+      isRecentlyActive: true,
+      needsOutreach: false,
+    });
+    expect(
+      parseLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        coerced,
+      ),
+    ).toStrictEqual(coerced);
+    expect(
+      coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        { ...sqliteRow, relationshipStatus: "connection" },
+      ),
+    ).toBeNull();
+    expect(
+      coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        { ...sqliteRow, surprise: true },
+      ),
+    ).toBeNull();
+    expect(
+      coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        { ...sqliteRow, id: "" },
+      ),
+    ).toBeNull();
+    expect(
+      coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        { ...sqliteRow, name: "" },
+      ),
+    ).toBeNull();
+    expect(
+      coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        { ...sqliteRow, careLevel: 6 },
+      ),
+    ).toBeNull();
+  });
+
   it("binds an offset cursor to the exact query and source", () => {
     const bindingDigest = libraryCoreFriendsDirectoryBindingDigestV1(request());
     const encoded = encodeLibraryCoreFriendsDirectoryCursorV1({

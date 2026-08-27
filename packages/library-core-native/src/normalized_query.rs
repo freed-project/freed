@@ -1,8 +1,11 @@
 use crate::lower_hex;
 use crate::normalized_sqlite::NormalizedSqliteError;
-use crate::sqlite_contract_generated::SQLITE_QUERY_PROGRAMS;
+use crate::sqlite_contract_generated::{
+    SqliteQueryRowFieldKind, SQLITE_QUERY_PROGRAMS, SQLITE_QUERY_ROW_MODELS,
+};
 use base64::engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
+use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1243,6 +1246,60 @@ struct SavedFeedCursorV2 {
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
+}
+
+fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
+    row: &Row<'_>,
+    query_id: &str,
+) -> rusqlite::Result<T> {
+    let model = SQLITE_QUERY_ROW_MODELS
+        .iter()
+        .find(|model| model.query_id == query_id)
+        .ok_or(rusqlite::Error::InvalidQuery)?;
+    let mut object = serde_json::Map::with_capacity(model.fields.len());
+    for field in model.fields {
+        let raw = row.get_ref(field.name)?;
+        let value = match raw {
+            ValueRef::Null if field.nullable => serde_json::Value::Null,
+            ValueRef::Integer(value) if field.kind == SqliteQueryRowFieldKind::Boolean => {
+                match value {
+                    0 => serde_json::Value::Bool(false),
+                    1 => serde_json::Value::Bool(true),
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                }
+            }
+            ValueRef::Integer(value) if field.kind == SqliteQueryRowFieldKind::Integer => {
+                if field.minimum_integer.is_none_or(|minimum| value >= minimum)
+                    && field.maximum_integer.is_none_or(|maximum| value <= maximum)
+                    && (field.integer_values.is_empty() || field.integer_values.contains(&value))
+                {
+                    serde_json::Value::Number(value.into())
+                } else {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+            }
+            ValueRef::Text(bytes) if field.kind == SqliteQueryRowFieldKind::Text => {
+                if field
+                    .minimum_utf8_bytes
+                    .is_some_and(|minimum| bytes.len() < minimum)
+                    || field
+                        .maximum_utf8_bytes
+                        .is_some_and(|maximum| bytes.len() > maximum)
+                {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                let text = std::str::from_utf8(bytes).map_err(|_| rusqlite::Error::InvalidQuery)?;
+                if !field.enum_values.is_empty() && !field.enum_values.contains(&text) {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                serde_json::Value::String(text.to_owned())
+            }
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        };
+        object.insert(field.name.to_owned(), value);
+    }
+    serde_json::from_value(serde_json::Value::Object(object))
+        .map_err(|_| rusqlite::Error::InvalidQuery)
 }
 
 fn valid_operation_instance_id(value: &str) -> bool {
@@ -3764,30 +3821,7 @@ fn query_friends_directory_page(
             offset,
             i64::try_from(request.limit + 1).expect("bounded Friends directory limit"),
         ],
-        |row| {
-            let boolean = |name| -> rusqlite::Result<bool> {
-                match row.get::<_, i64>(name)? {
-                    0 => Ok(false),
-                    1 => Ok(true),
-                    _ => Err(rusqlite::Error::InvalidQuery),
-                }
-            };
-            Ok(NormalizedFriendsDirectoryRowV1 {
-                avatar_url: row.get("avatarUrl")?,
-                bio: row.get("bio")?,
-                care_level: row.get("careLevel")?,
-                has_location: boolean("hasLocation")?,
-                id: row.get("id")?,
-                is_recently_active: boolean("isRecentlyActive")?,
-                last_contact_at: row.get("lastContactAt")?,
-                latest_activity_at: row.get("latestActivityAt")?,
-                latest_avatar_url: row.get("latestAvatarUrl")?,
-                name: row.get("name")?,
-                needs_outreach: boolean("needsOutreach")?,
-                reach_out_interval_days: row.get("reachOutIntervalDays")?,
-                relationship_status: row.get("relationshipStatus")?,
-            })
-        },
+        |row| decode_generated_query_row(row, "friends_directory_page_v1"),
     )?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
@@ -3798,31 +3832,6 @@ fn query_friends_directory_page(
     }
     let mut has_more = rows.len() > request.limit;
     rows.truncate(request.limit);
-    for row in &rows {
-        let bounded = |value: &Option<String>, maximum| {
-            value.as_ref().is_none_or(|text| text.len() <= maximum)
-        };
-        if row.id.is_empty()
-            || row.id.len() > 2_048
-            || row.name.len() > 4_096
-            || !bounded(&row.avatar_url, 8_192)
-            || !bounded(&row.bio, 8_192)
-            || !bounded(&row.latest_avatar_url, 8_192)
-            || row.relationship_status != "friend"
-            || !(1..=5).contains(&row.care_level)
-            || row
-                .reach_out_interval_days
-                .is_some_and(|value| !valid_safe_integer(value))
-            || row
-                .last_contact_at
-                .is_some_and(|value| !valid_safe_integer(value))
-            || row
-                .latest_activity_at
-                .is_some_and(|value| !valid_safe_integer(value))
-        {
-            return Err(invalid("normalized Friends directory row is invalid"));
-        }
-    }
     let response = loop {
         let next_cursor = if has_more {
             if rows.is_empty() {

@@ -88,6 +88,7 @@ function assertContract(contract) {
     "protocolVersion",
     "queries",
     "queryPrograms",
+    "queryRowModels",
     "schemaVersion",
     "scopeActionPrograms",
   ];
@@ -391,6 +392,77 @@ function assertContract(contract) {
       throw new TypeError("SQLite query program registry is invalid");
     }
   }
+  const queryRowFieldKeys = [
+    "enumValues",
+    "integerValues",
+    "kind",
+    "maximumInteger",
+    "maximumUtf8Bytes",
+    "minimumInteger",
+    "minimumUtf8Bytes",
+    "name",
+    "nullable",
+  ];
+  for (const [queryId, fields] of Object.entries(contract.queryRowModels)) {
+    if (
+      !contract.queries.includes(queryId) ||
+      !Array.isArray(fields) ||
+      fields.length === 0
+    ) {
+      throw new TypeError("SQLite query row model registry is invalid");
+    }
+    let previousField = "";
+    for (const field of fields) {
+      if (
+        field === null ||
+        typeof field !== "object" ||
+        Array.isArray(field) ||
+        Object.keys(field).sort().join(",") !== queryRowFieldKeys.join(",") ||
+        typeof field.name !== "string" ||
+        !/^[a-z][A-Za-z0-9]*$/.test(field.name) ||
+        field.name <= previousField ||
+        !["boolean", "integer", "text"].includes(field.kind) ||
+        typeof field.nullable !== "boolean" ||
+        !Array.isArray(field.enumValues) ||
+        field.enumValues.some((value) => typeof value !== "string") ||
+        field.enumValues.some(
+          (value, index) => index > 0 && field.enumValues[index - 1] >= value,
+        ) ||
+        !Array.isArray(field.integerValues) ||
+        field.integerValues.some((value) => !Number.isSafeInteger(value)) ||
+        field.integerValues.some(
+          (value, index) => index > 0 && field.integerValues[index - 1] >= value,
+        ) ||
+        (field.kind === "text" &&
+          (!Number.isSafeInteger(field.minimumUtf8Bytes) ||
+            field.minimumUtf8Bytes < 0 ||
+            !Number.isSafeInteger(field.maximumUtf8Bytes) ||
+            field.maximumUtf8Bytes < 1 ||
+            field.minimumUtf8Bytes > field.maximumUtf8Bytes ||
+            field.maximumUtf8Bytes > 131_072)) ||
+        (field.kind !== "text" &&
+          (field.minimumUtf8Bytes !== null ||
+            field.maximumUtf8Bytes !== null ||
+            field.enumValues.length !== 0)) ||
+        (field.kind === "integer" &&
+          (!Number.isSafeInteger(field.minimumInteger) ||
+            !Number.isSafeInteger(field.maximumInteger) ||
+            field.minimumInteger > field.maximumInteger)) ||
+        (field.kind === "integer" &&
+          field.integerValues.some(
+            (value) =>
+              value < field.minimumInteger || value > field.maximumInteger,
+          )) ||
+        (field.kind !== "integer" &&
+          (field.minimumInteger !== null ||
+            field.maximumInteger !== null ||
+            field.integerValues.length !== 0))
+      ) {
+        throw new TypeError("SQLite query row field model is invalid");
+      }
+      previousField = field.name;
+    }
+  }
   const allowedKeyCodecs = new Set([
     "chunk",
     "digest",
@@ -691,6 +763,154 @@ export type LibraryCoreQueryId = (typeof LIBRARY_CORE_QUERY_IDS)[number];
 
 export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = ${JSON.stringify(contract.queryPrograms, null, 2)} as const;
 export type LibraryCoreSqliteQueryProgramId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_PROGRAMS;
+
+export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = ${JSON.stringify(contract.queryRowModels, null, 2)} as const;
+export type LibraryCoreSqliteQueryRowModelId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS;
+
+type LibraryCoreSqliteQueryRowField =
+  (typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS)[LibraryCoreSqliteQueryRowModelId][number];
+type LibraryCoreSqliteQueryRowFieldValue<
+  Field extends LibraryCoreSqliteQueryRowField,
+> = Field["kind"] extends "boolean"
+  ? boolean
+  : Field["kind"] extends "integer"
+    ? Field["integerValues"] extends readonly []
+      ? number
+      : Field["integerValues"][number]
+    : Field["enumValues"] extends readonly []
+      ? string
+      : Field["enumValues"][number];
+type LibraryCoreSqliteQueryRowValue<
+  Field extends LibraryCoreSqliteQueryRowField,
+> = Field["nullable"] extends true
+  ? LibraryCoreSqliteQueryRowFieldValue<Field> | null
+  : LibraryCoreSqliteQueryRowFieldValue<Field>;
+
+export type LibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+> = Readonly<{
+  [Field in (typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS)[QueryId][number] as Field["name"]]: LibraryCoreSqliteQueryRowValue<Field>;
+}>;
+
+const LIBRARY_CORE_GENERATED_QUERY_ROW_TEXT_ENCODER = new TextEncoder();
+
+function libraryCoreGeneratedQueryRowRecord(
+  value: unknown,
+  sqliteRow: boolean,
+): Record<string, unknown> | null {
+  const prototype =
+    value !== null && typeof value === "object"
+      ? Object.getPrototypeOf(value)
+      : undefined;
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    (prototype !== Object.prototype && !(sqliteRow && prototype === null))
+  ) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function libraryCoreGeneratedQueryRowValue(
+  field: LibraryCoreSqliteQueryRowField,
+  input: unknown,
+  sqliteBooleanIntegers: boolean,
+): unknown | undefined {
+  if (input === null) return field.nullable ? null : undefined;
+  if (field.kind === "boolean") {
+    if (typeof input === "boolean") return input;
+    if (sqliteBooleanIntegers && (input === 0 || input === 1)) {
+      return input === 1;
+    }
+    return undefined;
+  }
+  if (field.kind === "integer") {
+    return Number.isSafeInteger(input) &&
+      (input as number) >= field.minimumInteger! &&
+      (input as number) <= field.maximumInteger! &&
+      (field.integerValues.length === 0 ||
+        (field.integerValues as readonly number[]).includes(input as number))
+      ? input
+      : undefined;
+  }
+  if (typeof input !== "string") {
+    return undefined;
+  }
+  const utf8Bytes =
+    LIBRARY_CORE_GENERATED_QUERY_ROW_TEXT_ENCODER.encode(input).byteLength;
+  if (
+    utf8Bytes < field.minimumUtf8Bytes! ||
+    utf8Bytes > field.maximumUtf8Bytes!
+  ) {
+    return undefined;
+  }
+  if (
+    field.enumValues.length > 0 &&
+    !(field.enumValues as readonly string[]).includes(input)
+  ) {
+    return undefined;
+  }
+  return input;
+}
+
+function libraryCoreGeneratedQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+  sqliteBooleanIntegers: boolean,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  const record = libraryCoreGeneratedQueryRowRecord(
+    input,
+    sqliteBooleanIntegers,
+  );
+  if (!record) return null;
+  const fields = LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS[queryId];
+  const ownKeys = Reflect.ownKeys(record);
+  if (
+    ownKeys.length !== fields.length ||
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !fields.some((field) => field.name === key),
+    )
+  ) {
+    return null;
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(record);
+  const snapshot: Record<string, unknown> = {};
+  for (const field of fields) {
+    const descriptor = descriptors[field.name];
+    if (!descriptor?.enumerable || !("value" in descriptor)) return null;
+    const value = libraryCoreGeneratedQueryRowValue(
+      field,
+      descriptor.value,
+      sqliteBooleanIntegers,
+    );
+    if (value === undefined) return null;
+    snapshot[field.name] = value;
+  }
+  return Object.freeze(snapshot) as LibraryCoreGeneratedSqliteQueryRow<QueryId>;
+}
+
+export function parseLibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  return libraryCoreGeneratedQueryRow(queryId, input, false);
+}
+
+export function coerceLibraryCoreGeneratedSqliteQueryRow<
+  QueryId extends LibraryCoreSqliteQueryRowModelId,
+>(
+  queryId: QueryId,
+  input: unknown,
+): LibraryCoreGeneratedSqliteQueryRow<QueryId> | null {
+  return libraryCoreGeneratedQueryRow(queryId, input, true);
+}
 `;
 }
 
@@ -752,6 +972,32 @@ function rustSource(contract, schemaDigest) {
         .join("\n");
       const defaultVariant = Object.values(program.variants ?? {})[0];
       return `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql ?? defaultVariant.sql)}, reverse_sql: ${program.reverseSql === undefined && defaultVariant === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql ?? defaultVariant.reverseSql)})`}, count_sql: ${JSON.stringify(program.countSql)}, variants: &[\n${variants}\n    ] },`;
+    })
+    .join("\n");
+  const queryRowModels = Object.entries(contract.queryRowModels)
+    .map(([queryId, fields]) => {
+      const rows = fields
+        .map(
+          (field) =>
+            `        SqliteQueryRowField {
+            name: ${JSON.stringify(field.name)},
+            kind: SqliteQueryRowFieldKind::${rustVariant(field.kind)},
+            nullable: ${field.nullable},
+            minimum_utf8_bytes: ${field.minimumUtf8Bytes === null ? "None" : `Some(${field.minimumUtf8Bytes})`},
+            maximum_utf8_bytes: ${field.maximumUtf8Bytes === null ? "None" : `Some(${field.maximumUtf8Bytes})`},
+            minimum_integer: ${field.minimumInteger === null ? "None" : `Some(${field.minimumInteger})`},
+            maximum_integer: ${field.maximumInteger === null ? "None" : `Some(${field.maximumInteger})`},
+            enum_values: &[${field.enumValues.map((value) => JSON.stringify(value)).join(", ")}],
+            integer_values: &[${field.integerValues.join(", ")}],
+        },`,
+        )
+        .join("\n");
+      return `    SqliteQueryRowModel {
+        query_id: ${JSON.stringify(queryId)},
+        fields: &[
+${rows}
+        ],
+    },`;
     })
     .join("\n");
   const mutationPrograms = Object.entries(contract.mutationPrograms)
@@ -943,6 +1189,37 @@ pub struct SqliteQueryProgram {
 
 pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 ${queryPrograms}
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqliteQueryRowFieldKind {
+    Boolean,
+    Integer,
+    Text,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteQueryRowField {
+    pub name: &'static str,
+    pub kind: SqliteQueryRowFieldKind,
+    pub nullable: bool,
+    pub minimum_utf8_bytes: Option<usize>,
+    pub maximum_utf8_bytes: Option<usize>,
+    pub minimum_integer: Option<i64>,
+    pub maximum_integer: Option<i64>,
+    pub enum_values: &'static [&'static str],
+    pub integer_values: &'static [i64],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteQueryRowModel {
+    pub query_id: &'static str,
+    pub fields: &'static [SqliteQueryRowField],
+}
+
+#[rustfmt::skip]
+pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
+${queryRowModels}
 ];
 
 pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[

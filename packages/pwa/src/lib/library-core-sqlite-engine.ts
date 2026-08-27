@@ -8,6 +8,7 @@ import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  coerceLibraryCoreGeneratedSqliteQueryRow,
   LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
@@ -6258,39 +6259,16 @@ export class PwaLibraryCoreSqliteEngine {
       );
     }
     let hasMore = rawRows.length > request.value.limit;
-    const rows = rawRows.slice(0, request.value.limit).map((row) => ({
-      avatarUrl: nullableText(row.avatarUrl, "Friend avatar URL"),
-      bio: nullableText(row.bio, "Friend biography"),
-      careLevel: safeInteger(row.careLevel, "Friend care level"),
-      hasLocation: requiredBoolean(row.hasLocation, "Friend location state"),
-      id: text(row.id, "Friend identity"),
-      isRecentlyActive: requiredBoolean(
-        row.isRecentlyActive,
-        "Friend recent activity state",
-      ),
-      lastContactAt: nullableInteger(row.lastContactAt, "Friend last contact"),
-      latestActivityAt: nullableInteger(
-        row.latestActivityAt,
-        "Friend latest activity",
-      ),
-      latestAvatarUrl: nullableText(
-        row.latestAvatarUrl,
-        "Friend latest avatar URL",
-      ),
-      name: text(row.name, "Friend name"),
-      needsOutreach: requiredBoolean(
-        row.needsOutreach,
-        "Friend outreach state",
-      ),
-      reachOutIntervalDays: nullableInteger(
-        row.reachOutIntervalDays,
-        "Friend outreach interval",
-      ),
-      relationshipStatus: text(
-        row.relationshipStatus,
-        "Friend relationship status",
-      ) as "friend",
-    }));
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "friends_directory_page_v1",
+        row,
+      );
+      if (!parsed) {
+        throw new Error("PWA Library SQLite Friends directory row is invalid");
+      }
+      return parsed;
+    });
     for (;;) {
       const response = {
         nextCursor:

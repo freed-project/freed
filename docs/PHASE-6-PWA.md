@@ -244,7 +244,10 @@
         native Rust. Each response returns at most 64 compact Person rows under
         512 KiB, carries an exact filtered total, and binds its opaque offset
         cursor to the complete request and SQLite source generation. The
-        Friends overview retains only its visible page in React.
+        Friends overview retains only its visible page in React. Its closed row
+        model now generates the PWA SQLite coercer, strict wire parser,
+        TypeScript row type, and native Rust field descriptor from one contract
+        definition, so browser and native result transforms cannot drift.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

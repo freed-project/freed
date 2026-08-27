@@ -520,6 +520,17 @@ typed dispatch through the Rust core. Browser and native cursor codecs share
 exact golden byte vectors, so a registered query has one wire identity rather
 than platform-specific pagination behavior.
 
+Each query row model is also declared in the executable contract. One field
+descriptor closes the field name, scalar kind, nullability, UTF-8 byte range,
+integer range, and enum membership. Generation produces the TypeScript row
+type, strict wire parser, browser SQLite coercer, and Rust row descriptor.
+Browser SQLite may coerce only SQLite integer booleans, while the wire parser
+accepts booleans only. Both paths reject missing fields, unknown fields,
+invalid scalar representations, and values outside the declared bounds. The
+native executor decodes its SQLite row through the same generated descriptor
+before deserializing the typed response. A query therefore cannot acquire a
+second platform-specific result transform.
+
 Ordinary interactive queries return no more than 2 MiB. Reader content uses a
 separate ranged API. Export, backup, and migration enumerate a pinned durable
 checkpoint through bounded pages.
