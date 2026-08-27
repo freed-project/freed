@@ -11,6 +11,7 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  FRIEND_REPLACE_PAYLOAD_SCHEMA,
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
@@ -451,6 +452,58 @@ describe("Library Core operation payload contracts", () => {
       expect(
         ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate({ account: invalid }),
       ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("closes one Friend replacement to a sorted bounded linked Account set", () => {
+    const person = {
+      id: "person:one",
+      name: "One Friend",
+      relationshipStatus: "friend",
+      careLevel: 5,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    const account = {
+      id: "account:one",
+      personId: person.id,
+      kind: "social",
+      provider: "instagram",
+      externalId: "one",
+      discoveredFrom: "manual_entry",
+      firstSeenAt: 1,
+      lastSeenAt: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    expect(
+      FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: [account], person }),
+    ).toMatchObject({ ok: true });
+    for (const invalid of [
+      { accounts: [account, account], person },
+      {
+        accounts: [{ ...account, personId: "person:other" }],
+        person,
+      },
+      {
+        accounts: [
+          { ...account, id: "account:z" },
+          { ...account, id: "account:a" },
+        ],
+        person,
+      },
+      {
+        accounts: Array.from({ length: 65 }, (_, index) => ({
+          ...account,
+          id: `account:${index.toString().padStart(2, "0")}`,
+        })),
+        person,
+      },
+    ]) {
+      expect(FRIEND_REPLACE_PAYLOAD_SCHEMA.validate(invalid)).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
     }
   });
 });

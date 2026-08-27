@@ -77,6 +77,7 @@ import {
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
@@ -601,6 +602,49 @@ export async function enqueuePwaLibraryCorePersonUpserts(
       Date.now(),
     );
   }
+}
+
+export async function replacePwaLibraryCoreFriend(
+  person: Person,
+  desiredAccounts: readonly Account[],
+): Promise<void> {
+  const committedAt = Date.now();
+  const currentPerson = await readLibraryCoreNormalizedPersonDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    person.id,
+  );
+  const resolvedPerson = sanitizePersonWrite({
+    ...currentPerson,
+    ...person,
+    createdAt: currentPerson?.createdAt ?? person.createdAt,
+    updatedAt: committedAt,
+  }) as Person;
+  const resolvedAccounts = await Promise.all(
+    desiredAccounts.map(async (desired) => {
+      const current = await readLibraryCoreNormalizedAccountDetailV1(
+        NORMALIZED_READER_RUNTIME,
+        desired.id,
+      );
+      return sanitizeAccountWrite({
+        ...current,
+        ...desired,
+        personId: person.id,
+        createdAt: current?.createdAt ?? desired.createdAt,
+        firstSeenAt: current
+          ? Math.min(current.firstSeenAt, desired.firstSeenAt)
+          : desired.firstSeenAt,
+        lastSeenAt: current
+          ? Math.max(current.lastSeenAt, desired.lastSeenAt)
+          : desired.lastSeenAt,
+        updatedAt: committedAt,
+      }) as Account;
+    }),
+  );
+  await commitPwaLibraryCoreFriendReplace(
+    resolvedPerson,
+    resolvedAccounts,
+    committedAt,
+  );
 }
 
 /** Commit one atomic Person and linked-account removal to OPFS SQLite. */

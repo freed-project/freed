@@ -714,6 +714,12 @@ export interface PlatformConfig {
   /** One selected Friend plus its bounded linked Account window from SQLite. */
   readLibraryFriendDetail?: (personId: string) => Promise<Friend | null>;
 
+  /** Atomically replace one Friend and its complete bounded linked Account set. */
+  replaceLibraryFriend?: (
+    person: Person,
+    accounts: readonly Account[],
+  ) => Promise<void>;
+
   /** One exact Account selected from the current SQLite generation. */
   readLibraryAccountDetail?: (accountId: string) => Promise<Account | null>;
 

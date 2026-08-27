@@ -886,7 +886,7 @@ pub(crate) fn validate_transaction(
                     });
                 }
             }
-            "person_upsert" => {
+            "friend_replace" | "person_upsert" => {
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()

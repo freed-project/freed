@@ -35,6 +35,8 @@ import {
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  FRIEND_REPLACE_MAXIMUM_ACCOUNTS,
+  FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
@@ -76,6 +78,7 @@ import {
   type FeedItemSyncReceiptTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
+  type FriendReplaceTransactionMemberInputV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreFollowerTransportContextV2,
@@ -1248,6 +1251,86 @@ async function maybeSubmitPersonUpserts(
     }
   }
   return true;
+}
+
+export async function replaceSqliteLibraryFriend(
+  person: Person,
+  desiredAccounts: readonly Account[],
+  createdAtMs = Date.now(),
+): Promise<void> {
+  if (
+    desiredAccounts.length > FRIEND_REPLACE_MAXIMUM_ACCOUNTS ||
+    desiredAccounts.some((account) => account.personId !== person.id)
+  ) {
+    throw new RangeError("Friend Account window is invalid");
+  }
+  const context = await mutationContext();
+  if (!context) {
+    throw new Error("Library mutation context is unavailable");
+  }
+  const currentPerson = await readNormalizedPerson(person.id);
+  const resolvedPerson = sanitizePersonWrite({
+    ...currentPerson,
+    ...person,
+    createdAt: currentPerson?.createdAt ?? person.createdAt,
+    updatedAt: createdAtMs,
+  });
+  const resolvedAccounts = await Promise.all(
+    desiredAccounts.map(async (desired) => {
+      const current = await readNormalizedAccount(desired.id);
+      return sanitizeAccountWrite({
+        ...current,
+        ...desired,
+        personId: person.id,
+        createdAt: current?.createdAt ?? desired.createdAt,
+        firstSeenAt: current
+          ? Math.min(current.firstSeenAt, desired.firstSeenAt)
+          : desired.firstSeenAt,
+        lastSeenAt: current
+          ? Math.max(current.lastSeenAt, desired.lastSeenAt)
+          : desired.lastSeenAt,
+        updatedAt: createdAtMs,
+      }) as Account;
+    }),
+  );
+  resolvedAccounts.sort((left, right) => left.id.localeCompare(right.id));
+  if (
+    new Set(resolvedAccounts.map((account) => account.id)).size !==
+    resolvedAccounts.length
+  ) {
+    throw new TypeError("Friend Account window contains duplicate IDs");
+  }
+  const transactionId =
+    `desktop-library-friend-replace:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const member = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+    {
+      operation_id: `${transactionId}:0`,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
+      actor_id: context.actorId,
+      actor_sequence: context.nextSequence,
+      previous_actor_operation_id: context.previousOperationId,
+      causal_frontier: context.observedFrontier,
+      hlc_wall_ms: createdAtMs,
+      hlc_counter: 0,
+      transaction_id: transactionId,
+      transaction_member_index: 0,
+      transaction_member_count: 1,
+      entity_id: person.id,
+      payload: {
+        accounts: resolvedAccounts as unknown as readonly Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >[],
+        person: resolvedPerson as unknown as Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >,
+      },
+      created_at_ms: createdAtMs,
+    } satisfies FriendReplaceTransactionMemberInputV1,
+    { digest: operationDigest },
+  );
+  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
 }
 
 async function maybeSubmitPersonRemove(

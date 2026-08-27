@@ -2,6 +2,7 @@ import {
   decodeLibraryCoreCanonicalValue,
   type LibraryCoreFollowerIntentCommitV1,
 } from "@freed/shared/library-core";
+import type { Account, Person } from "@freed/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ import {
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
@@ -40,8 +42,7 @@ const HEX = {
   chain: "22".repeat(32),
   epoch: "33".repeat(32),
   library: "44".repeat(32),
-  publicKey:
-    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  publicKey: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
   signature: "55".repeat(64),
 } as const;
 
@@ -312,5 +313,41 @@ describe("PWA SQLite follower mutations", () => {
     expect(envelopes.map((envelope) => envelope.actor_sequence)).toEqual([
       4, 5,
     ]);
+  });
+
+  it("commits one signed Friend replacement instead of partial Person and Account writes", async () => {
+    const person = {
+      id: "person:friend",
+      name: "Friend",
+      relationshipStatus: "friend" as const,
+      careLevel: 3,
+      createdAt: 1,
+      updatedAt: 2,
+    } satisfies Person;
+    const account = {
+      id: "account:friend",
+      personId: person.id,
+      kind: "social" as const,
+      provider: "instagram" as const,
+      externalId: "friend",
+      discoveredFrom: "manual_entry" as const,
+      firstSeenAt: 1,
+      lastSeenAt: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    } satisfies Account;
+    await commitPwaLibraryCoreFriendReplace(person, [account], 8_000);
+
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
+    const [envelope] = decodeCommit(
+      mocks.commitFollowerIntent.mock.calls[0]![0],
+    );
+    expect(envelope).toMatchObject({
+      entity_id: person.id,
+      entity_type: "Person",
+      operation_type: "friend_replace",
+      payload: { accounts: [account], person },
+      transaction_member_count: 1,
+    });
   });
 });

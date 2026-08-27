@@ -13,7 +13,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
 }));
 
-import { dispatchSqliteMutation } from "./sqlite-library";
+import {
+  dispatchSqliteMutation,
+  replaceSqliteLibraryFriend,
+} from "./sqlite-library";
 
 const ITEM_ID = "rss:follower-item";
 
@@ -639,6 +642,40 @@ describe("SQLite Primary mutations", () => {
         }),
       }),
     );
+  });
+
+  it("submits one atomic Friend replacement through the Primary", async () => {
+    await replaceSqliteLibraryFriend(
+      {
+        id: "person-1",
+        name: "Ada Updated",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: 10,
+        updatedAt: 30,
+      },
+      [],
+      30,
+    );
+
+    expect(mocks.enqueuedEnvelopes).toHaveLength(1);
+    expect(JSON.parse(mocks.enqueuedEnvelopes[0]!)).toMatchObject({
+      entity_id: "person-1",
+      entity_type: "Person",
+      operation_type: "friend_replace",
+      payload: {
+        accounts: [],
+        person: {
+          id: "person-1",
+          name: "Ada Updated",
+          relationshipStatus: "friend",
+          careLevel: 5,
+          createdAt: 10,
+          updatedAt: 30,
+        },
+      },
+      transaction_member_count: 1,
+    });
   });
 
   it("reads an exact RSS Feed before applying a partial normalized update", async () => {

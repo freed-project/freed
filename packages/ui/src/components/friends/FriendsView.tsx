@@ -608,12 +608,8 @@ export function FriendsView({
   mobileSurface,
 }: FriendsViewProps) {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
   const removePerson = useAppStore((s) => s.removePerson);
-  const addAccount = useAppStore((s) => s.addAccount);
-  const updateAccount = useAppStore((s) => s.updateAccount);
-  const removeAccount = useAppStore((s) => s.removeAccount);
   const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
   const logReachOut = useAppStore((s) => s.logReachOut);
   const selectedPersonId = useAppStore((s) => s.selectedPersonId);
@@ -636,6 +632,7 @@ export function FriendsView({
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [editorState, setEditorState] = useState<EditorState>(null);
+  const [libraryMutationNonce, setLibraryMutationNonce] = useState(0);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(
@@ -657,6 +654,7 @@ export function FriendsView({
   const isDraggingSidebar = useRef(false);
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile();
+  const friendsReadVersion = searchCorpusVersion + libraryMutationNonce;
   const directoryFilters = useMemo(
     () => [...activeFilters].sort(),
     [activeFilters],
@@ -665,16 +663,16 @@ export function FriendsView({
     filters: directoryFilters,
     search: searchQuery,
     sort: sortBy,
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const reconnectDirectory = useLibraryFriendsDirectory({
     filters: NEED_OUTREACH_DIRECTORY_FILTERS,
     limit: 1,
     search: "",
     sort: "last_contact",
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(friendsReadVersion);
 
   const {
     googleContacts,
@@ -682,6 +680,7 @@ export function FriendsView({
     readLibraryAccountDetail,
     readLibraryFriendDetail,
     readLibraryPersonDetail,
+    replaceLibraryFriend,
   } = usePlatform();
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
@@ -690,18 +689,18 @@ export function FriendsView({
 
   const selectedFriendDetail = useLibraryFriendDetail(
     selectedPersonId,
-    searchCorpusVersion,
+    friendsReadVersion,
   );
   const selectedAccountDetail = useLibraryAccountDetail(
     selectedAccountId,
-    searchCorpusVersion,
+    friendsReadVersion,
   );
   const selectedFriend = selectedFriendDetail.value;
   const selectedPerson = selectedFriend;
   const selectedAccount = selectedAccountDetail.value;
   const selectedAccountLinkedPersonDetail = useLibraryPersonDetail(
     selectedAccount?.personId ?? null,
-    searchCorpusVersion,
+    friendsReadVersion,
   );
 
   const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
@@ -749,7 +748,7 @@ export function FriendsView({
     locationSources,
     timelineIdentity,
     timelineSources,
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const nativeActivity = useMemo(
     () =>
@@ -763,18 +762,18 @@ export function FriendsView({
   const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
     entityId: selectedAccountId,
     entityKind: "account",
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const selectedPersonSuggestions = useLibraryAccountLinkCandidates({
     entityId: selectedPersonId,
     entityKind: "person",
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const friendCandidateSuggestions = useLibraryFriendCandidateReview({
     contactSuggestions: contactSync.syncState.pendingSuggestions,
     dismissedSuggestionIds:
       friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
@@ -937,130 +936,48 @@ export function FriendsView({
         relationshipStatus: "friend",
         careLevel: data.careLevel,
         reachOutIntervalDays: data.reachOutIntervalDays,
-        reachOutLog: existingPerson?.reachOutLog,
         tags: data.tags,
         notes: data.notes?.trim() || undefined,
         createdAt: existingPerson?.createdAt ?? now,
         updatedAt: now,
       };
 
-      if (existingPerson) {
-        await updatePerson(nextPersonId, {
-          name: nextPerson.name,
-          avatarUrl: nextPerson.avatarUrl,
-          bio: nextPerson.bio,
-          relationshipStatus: nextPerson.relationshipStatus,
-          careLevel: nextPerson.careLevel,
-          reachOutIntervalDays: nextPerson.reachOutIntervalDays,
-          tags: nextPerson.tags,
-          notes: nextPerson.notes,
-        });
-      } else {
-        await addPerson(nextPerson);
+      if (!replaceLibraryFriend) {
+        throw new Error("The atomic Friend SQLite mutation is unavailable.");
       }
-
-      const desiredSocialIds = new Set(
-        data.sources.map((source) => socialAccountId(source)),
-      );
-      const existingSocialAccountIds = new Set(
-        existingFriend?.sources.map(socialAccountId) ?? [],
-      );
-
-      await Promise.all(
-        [...existingSocialAccountIds]
-          .filter((accountId) => !desiredSocialIds.has(accountId))
-          .map((accountId) =>
-            updateAccount(accountId, { personId: undefined }),
-          ),
-      );
-
-      await Promise.all(
-        data.sources.map(async (source) => {
-          const accountId = socialAccountId(source);
-          const existingAccount = readLibraryAccountDetail
-            ? await readLibraryAccountDetail(accountId)
-            : null;
-          const activity =
-            editorSourceActivity?.get(
-              friendActivitySourceKey(source.platform, source.authorId),
-            ) ??
-            sourceActivityEvidence.get(
-              friendActivitySourceKey(source.platform, source.authorId),
-            ) ??
-            null;
-          if (existingAccount) {
-            await updateAccount(accountId, {
-              personId: nextPersonId,
-              handle: source.handle ?? existingAccount.handle,
-              displayName: source.displayName ?? existingAccount.displayName,
-              avatarUrl: source.avatarUrl ?? existingAccount.avatarUrl,
-              profileUrl: source.profileUrl ?? existingAccount.profileUrl,
-              firstSeenAt: activity
-                ? Math.min(existingAccount.firstSeenAt, activity.firstSeenAt)
-                : existingAccount.firstSeenAt,
-              lastSeenAt: activity
-                ? Math.max(existingAccount.lastSeenAt, activity.lastSeenAt)
-                : existingAccount.lastSeenAt,
-            });
-            return;
-          }
-          await addAccount(
-            socialAccountDraftFromSource(source, nextPersonId, activity, now),
-          );
-        }),
-      );
-
-      const existingContactId = existingFriend?.contact
-        ? contactAccountId(nextPersonId, existingFriend.contact)
-        : null;
-
-      if (!data.contact) {
-        if (existingContactId) await removeAccount(existingContactId);
-      } else {
-        const nextContact = contactAccountDraft(
+      const desiredAccounts = data.sources.map((source) => {
+        const activity =
+          editorSourceActivity?.get(
+            friendActivitySourceKey(source.platform, source.authorId),
+          ) ??
+          sourceActivityEvidence.get(
+            friendActivitySourceKey(source.platform, source.authorId),
+          ) ??
+          null;
+        return socialAccountDraftFromSource(
+          source,
           nextPersonId,
-          data.contact,
+          activity,
           now,
         );
-        if (existingContactId && existingContactId !== nextContact.id) {
-          await removeAccount(existingContactId);
-        }
-
-        const existingContact = readLibraryAccountDetail
-          ? await readLibraryAccountDetail(nextContact.id)
-          : null;
-        if (existingContact) {
-          await updateAccount(nextContact.id, {
-            personId: nextPersonId,
-            provider: nextContact.provider,
-            externalId: nextContact.externalId,
-            displayName: nextContact.displayName,
-            email: nextContact.email,
-            phone: nextContact.phone,
-            address: nextContact.address,
-            importedAt: nextContact.importedAt,
-            firstSeenAt: existingContact.firstSeenAt ?? nextContact.firstSeenAt,
-            lastSeenAt: nextContact.lastSeenAt,
-          });
-        } else {
-          await addAccount(nextContact);
-        }
+      });
+      if (data.contact) {
+        desiredAccounts.push(
+          contactAccountDraft(nextPersonId, data.contact, now),
+        );
       }
+      await replaceLibraryFriend(nextPerson, desiredAccounts);
+      setLibraryMutationNonce((value) => value + 1);
 
       setEditorState(null);
       setSelectedPerson(nextPersonId);
     },
     [
-      addAccount,
-      addPerson,
-      readLibraryAccountDetail,
       readLibraryFriendDetail,
-      removeAccount,
+      replaceLibraryFriend,
       selectedFriend,
       setSelectedPerson,
       sourceActivityEvidence,
-      updateAccount,
-      updatePerson,
     ],
   );
 
@@ -1807,7 +1724,7 @@ export function FriendsView({
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
         friendSuggestion={selectedAccountFriendSuggestion}
-        sourceVersion={searchCorpusVersion}
+        sourceVersion={friendsReadVersion}
         feedItems={friendsRows.timelineItems}
         timelineLoading={friendsRows.timelineLoading}
         timelineTotalCount={friendsRows.timelineTotalCount}
@@ -2120,7 +2037,7 @@ export function FriendsView({
           <FriendGraph
             ref={graphRef}
             sqliteGraphQuery={graphSqliteQuery}
-            sourceVersion={searchCorpusVersion}
+            sourceVersion={friendsReadVersion}
             mode={effectiveMode}
             selectedPersonId={selectedPerson?.id ?? null}
             selectedAccountId={selectedAccount?.id ?? null}

@@ -93,6 +93,7 @@ import {
   readPwaLibraryCorePersonDetail,
   readPwaLibraryCoreSavedAnalytics,
   readPwaLibraryCoreStoryWallCandidates,
+  replacePwaLibraryCoreFriend,
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
 } from "./lib/library-core-runtime";
@@ -480,6 +481,7 @@ function App() {
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
       readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
       readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
+      replaceLibraryFriend: replacePwaLibraryCoreFriend,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,

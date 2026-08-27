@@ -24,6 +24,8 @@ const PREFERENCE_PATH_MAXIMUM_UTF8_BYTES = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_UTF8_BYTES = 8_192;
 const PERSON_UPSERT_MAXIMUM_BYTES = 65_536;
 const ACCOUNT_UPSERT_MAXIMUM_BYTES = 65_536;
+const FRIEND_REPLACE_MAXIMUM_BYTES = 98_304;
+export const FRIEND_REPLACE_MAXIMUM_ACCOUNTS = 64;
 const ACCOUNT_PROVIDERS = Object.freeze([
   "x",
   "rss",
@@ -58,8 +60,7 @@ export interface FeedItemSyncReceiptPayloadV1 {
 }
 
 export type FeedItemSyncReceiptOperationTypeV1 =
-  | "feed_item_like_sync_receipt"
-  | "feed_item_seen_sync_receipt";
+  "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt";
 
 export interface FeedItemRemovePayloadV1 {
   readonly removed_at_ms: number;
@@ -83,6 +84,13 @@ export interface PreferencesLeafAssignmentPayloadV1 {
 }
 
 export interface PersonUpsertPayloadV1 {
+  readonly person: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface FriendReplacePayloadV1 {
+  readonly accounts: readonly Readonly<
+    Record<string, LibraryCoreCanonicalValue>
+  >[];
   readonly person: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
@@ -161,6 +169,7 @@ const RSS_FEED_TITLE_ASSIGNMENT_KEYS = ["assigned_at_ms", "title"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const PERSON_UPSERT_KEYS = ["person"] as const;
+const FRIEND_REPLACE_KEYS = ["accounts", "person"] as const;
 const PERSON_REACH_OUT_APPEND_KEYS = [
   "channel",
   "logged_at_ms",
@@ -860,6 +869,74 @@ function validatePersonUpsertPayload(
   }
 }
 
+function validateFriendReplacePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FriendReplacePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== FRIEND_REPLACE_KEYS.length ||
+    keys.some((key, index) => key !== FRIEND_REPLACE_KEYS[index])
+  ) {
+    return invalid("payload must contain only accounts and person");
+  }
+  const record = value as Readonly<Record<string, unknown>>;
+  const personResult = validatePersonUpsertPayload({ person: record.person });
+  if (!personResult.ok) return invalid(personResult.reason);
+  if (
+    !Array.isArray(record.accounts) ||
+    record.accounts.length > FRIEND_REPLACE_MAXIMUM_ACCOUNTS
+  ) {
+    return invalid("accounts must be a bounded array");
+  }
+  const accounts: Readonly<Record<string, LibraryCoreCanonicalValue>>[] = [];
+  const accountIds = new Set<string>();
+  let priorAccountId: string | null = null;
+  let contactCount = 0;
+  for (const candidate of record.accounts) {
+    const accountResult = validateAccountUpsertPayload({ account: candidate });
+    if (!accountResult.ok) return invalid(accountResult.reason);
+    const account = accountResult.value.account;
+    const accountId = account.id as string;
+    if (
+      account.personId !== personResult.value.person.id ||
+      accountIds.has(accountId) ||
+      (priorAccountId !== null && priorAccountId.localeCompare(accountId) >= 0)
+    ) {
+      return invalid(
+        "accounts must be unique, sorted by ID, and linked to the Person",
+      );
+    }
+    if (account.kind === "contact" && ++contactCount > 1) {
+      return invalid("a Friend may contain at most one contact Account");
+    }
+    accountIds.add(accountId);
+    priorAccountId = accountId;
+    accounts.push(account);
+  }
+  try {
+    encodeLibraryCoreCanonicalValue(
+      { accounts, person: personResult.value.person },
+      { maximumBytes: FRIEND_REPLACE_MAXIMUM_BYTES },
+    );
+  } catch (error) {
+    return invalid(
+      error instanceof Error
+        ? error.message
+        : "Friend payload is not canonical",
+    );
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      accounts: Object.freeze(accounts),
+      person: personResult.value.person,
+    }),
+  };
+}
+
 function validatePersonReachOutAppendPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<PersonReachOutAppendPayloadV1> {
@@ -1308,6 +1385,17 @@ export const PERSON_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "person_upsert",
   PersonUpsertPayloadV1
+>;
+
+export const FRIEND_REPLACE_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "friend_replace_payload_v1",
+  schemaVersion: 1,
+  operationType: "friend_replace",
+  canonicalKeys: FRIEND_REPLACE_KEYS,
+  validate: validateFriendReplacePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "friend_replace",
+  FriendReplacePayloadV1
 >;
 
 export const PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA = Object.freeze({

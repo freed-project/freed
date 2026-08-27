@@ -1937,6 +1937,90 @@ fn materialize_person_reach_out_append(
     Ok(())
 }
 
+fn materialize_friend_replace(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload_json =
+        member
+            .person_json
+            .as_deref()
+            .ok_or(NormalizedSqliteError::InvalidRequest(
+                "normalized Friend payload is missing",
+            ))?;
+    let payload: Value = serde_json::from_str(payload_json).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized Friend payload is invalid")
+    })?;
+    let person = payload
+        .get("person")
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Friend Person payload is missing",
+        ))?;
+    let accounts = payload.get("accounts").and_then(Value::as_array).ok_or(
+        NormalizedSqliteError::InvalidRequest("normalized Friend Account payload is missing"),
+    )?;
+    let person_json = serde_json::to_string(person).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized Friend Person payload is invalid")
+    })?;
+    let changed = transaction.execute(
+        program.materialize_sql,
+        params![member.entity_id, payload_json],
+    )?;
+    if changed == 0 {
+        return Ok(());
+    }
+
+    let person_program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|candidate| candidate.mutation_id == "person_upsert")
+        .copied()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Person materializer is not registered",
+        ))?;
+    for sql in person_program.dependent_delete_sql {
+        transaction.execute(sql, [&member.entity_id])?;
+    }
+    for sql in person_program.dependent_insert_sql {
+        transaction.execute(sql, params![member.entity_id, person_json])?;
+    }
+    for sql in program.dependent_delete_sql {
+        transaction.execute(sql, params![member.entity_id, payload_json])?;
+    }
+
+    let account_program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|candidate| candidate.mutation_id == "account_upsert")
+        .copied()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Account materializer is not registered",
+        ))?;
+    for account in accounts {
+        let account_id = account.get("id").and_then(Value::as_str).ok_or(
+            NormalizedSqliteError::InvalidRequest("normalized Friend Account identity is invalid"),
+        )?;
+        let account_json = serde_json::to_string(account).map_err(|_| {
+            NormalizedSqliteError::InvalidRequest("normalized Friend Account payload is invalid")
+        })?;
+        let account_changed = transaction.execute(
+            account_program.materialize_sql,
+            params![account_id, account_json],
+        )?;
+        if account_changed == 0 {
+            continue;
+        }
+        for sql in account_program.dependent_delete_sql {
+            transaction.execute(sql, [account_id])?;
+        }
+        for sql in account_program.dependent_insert_sql {
+            transaction.execute(sql, params![account_id, account_json])?;
+        }
+    }
+    Ok(())
+}
+
 fn materialize_member(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -1970,6 +2054,9 @@ fn materialize_member(
         ),
         "person_reach_out_append" => {
             materialize_person_reach_out_append(transaction, verified, member_index, program)
+        }
+        "friend_replace" => {
+            materialize_friend_replace(transaction, verified, member_index, program)
         }
         "remove" => materialize_remove(transaction, verified, member_index, program),
         "account_upsert" => {
@@ -2468,6 +2555,18 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
                 member.entity_id,
             ],
         )?;
+        if member.operation_type == "friend_replace" {
+            transaction.execute(
+                "INSERT INTO library_invalidations
+                 (revision, ordinal, topic, entity_id, reset_required)
+                 VALUES (?1, ?2, 'account', NULL, 1);",
+                params![
+                    committed_revision,
+                    i64::try_from(verified.members.len() + member_index)
+                        .expect("bounded Friend invalidation index"),
+                ],
+            )?;
+        }
     }
     let actor_updated = transaction.execute(
         "UPDATE library_actors
@@ -5112,6 +5211,142 @@ mod tests {
                 )
                 .expect("assigned Account owner"),
             ("person:other".to_owned(), 2_100, 1_200)
+        );
+    }
+
+    #[test]
+    fn signed_friend_replace_atomically_resolves_the_complete_linked_account_set() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES ('person:friend', 'Before', 'friend', 3, 100, 100);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                 VALUES
+                   ('account:keep', 'person:friend', 'social', 'instagram', 'keep', 'Keep',
+                    100, 200, 'captured_item', 100, 200),
+                   ('account:remove', 'person:friend', 'social', 'facebook', 'remove', 'Remove',
+                    100, 200, 'captured_item', 100, 200),
+                   ('contact:old', 'person:friend', 'contact', 'web_contact', 'old', 'Old',
+                    100, 200, 'contact_import', 100, 200);",
+            )
+            .expect("seed Friend graph");
+        let payload = json!({
+            "accounts": [
+                {
+                    "id": "account:keep",
+                    "personId": "person:friend",
+                    "kind": "social",
+                    "provider": "instagram",
+                    "externalId": "keep",
+                    "displayName": "Kept and updated",
+                    "firstSeenAt": 100,
+                    "lastSeenAt": 300,
+                    "discoveredFrom": "captured_item",
+                    "createdAt": 100,
+                    "updatedAt": 300
+                },
+                {
+                    "id": "contact:new",
+                    "personId": "person:friend",
+                    "kind": "contact",
+                    "provider": "web_contact",
+                    "externalId": "new",
+                    "displayName": "New Contact",
+                    "firstSeenAt": 300,
+                    "lastSeenAt": 300,
+                    "discoveredFrom": "contact_import",
+                    "createdAt": 300,
+                    "updatedAt": 300
+                }
+            ],
+            "person": {
+                "id": "person:friend",
+                "name": "After",
+                "relationshipStatus": "friend",
+                "careLevel": 5,
+                "tags": ["family"],
+                "createdAt": 100,
+                "updatedAt": 300
+            }
+        });
+        let envelopes = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:friend:replace",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("person:friend", 300)],
+            "friend_replace",
+            Some(&payload),
+        );
+        let receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &envelopes, &key_pair, 400)
+                .expect("replace Friend");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT name, care_level FROM library_persons WHERE id = 'person:friend';",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .expect("Friend Person"),
+            ("After".to_owned(), 5)
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT display_name, last_seen_at FROM library_accounts
+                     WHERE id = 'account:keep' AND person_id = 'person:friend';",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .expect("kept Account"),
+            ("Kept and updated".to_owned(), 300)
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT person_id FROM library_accounts WHERE id = 'account:remove';",
+                    [],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .expect("detached social Account"),
+            None
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_accounts
+                     WHERE id = 'contact:old' OR
+                           (id = 'contact:new' AND person_id = 'person:friend');",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("replaced contact Account"),
+            1
+        );
+        assert_eq!(
+            receipt.invalidations,
+            vec![
+                NormalizedMutationInvalidationV1 {
+                    ordinal: 0,
+                    topic: "person".to_owned(),
+                    entity_id: Some("person:friend".to_owned()),
+                    reset_required: false,
+                },
+                NormalizedMutationInvalidationV1 {
+                    ordinal: 1,
+                    topic: "account".to_owned(),
+                    entity_id: None,
+                    reset_required: true,
+                },
+            ]
         );
     }
 

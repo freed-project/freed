@@ -273,6 +273,7 @@ function assertContract(contract) {
         "account_upsert",
         "boolean_assignment",
         "feed_item_capture_upsert",
+        "friend_replace",
         "person_upsert",
         "preferences_leaf_assignment",
         "nullable_text_assignment",
@@ -299,6 +300,7 @@ function assertContract(contract) {
       (![
         "account_upsert",
         "feed_item_capture_upsert",
+        "friend_replace",
         "person_upsert",
         "person_reach_out_append",
         "preferences_leaf_assignment",
@@ -431,7 +433,8 @@ function assertContract(contract) {
         !Array.isArray(field.integerValues) ||
         field.integerValues.some((value) => !Number.isSafeInteger(value)) ||
         field.integerValues.some(
-          (value, index) => index > 0 && field.integerValues[index - 1] >= value,
+          (value, index) =>
+            index > 0 && field.integerValues[index - 1] >= value,
         ) ||
         (field.kind === "text" &&
           (!Number.isSafeInteger(field.minimumUtf8Bytes) ||

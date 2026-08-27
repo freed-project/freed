@@ -172,15 +172,16 @@ or wrong-key writer fails before mutation.
 
 ## 6. Mutation contract
 
-The generated mutation registry is exhaustive. It begins with 39 named product
+The generated mutation registry is exhaustive. It begins with 40 named product
 mutations and grows only through an explicit contract version change. The
 registry covers account, person, feed-item, RSS, preference, provider-result,
-sample-library, repair, bulk, restore, and tombstone behavior.
+sample-library, repair, bulk, restore, Friend replacement, and tombstone
+behavior.
 
 Actor capability profiles live in this same executable contract. Generation
 fails if a profile names an undeclared mutation. The Primary writer profile
-grows only as verified mutation implementations land. It currently admits 18
-verified mutations through 18 generated normalized SQL programs. This now
+grows only as verified mutation implementations land. It currently admits 21
+verified mutations through 21 generated normalized SQL programs. This now
 includes `feed_item_capture_upsert`, which atomically materializes FeedItem
 source fields, media, and topics into normalized tables while preserving
 existing user state and refusing tombstone resurrection. Feed capture metadata
@@ -192,7 +193,7 @@ legal content uses descriptors and content-addressed chunks. The capture actor
 remains limited to this one feed-capture mutation. Declaring a future mutation
 does not grant it to any profile. Rust and TypeScript consume generated profile
 constants, so no second capability-operation registry can drift from the
-mutation catalog. All 18 generated mutation programs also share one closed TypeScript
+mutation catalog. All 21 generated mutation programs also share one closed TypeScript
 assembly, signing-body, and final-envelope path before the native verifier and
 materializer. No supported program can bypass canonical transaction bounds by
 falling out of a handwritten transform union.
@@ -255,6 +256,25 @@ stored receipt. Reusing an identity with changed bytes fails closed.
 There is no generic patch, toggle, merge-object, execute-SQL, or shell mutation
 route. Product conveniences such as toggles read an exact current value and
 submit a named assignment mutation with an explicit precondition.
+
+Friend editing uses the closed `friend_replace` mutation instead of exposing a
+renderer transaction builder. Its payload contains one desired Person and the
+complete desired linked Account set, sorted by Account ID. The set contains at
+most 64 unique Accounts, every Account names the payload Person, and at most
+one Account may use the contact provider. The complete canonical payload is
+capped at 98,304 bytes. Freed Desktop and the PWA may read only the exact
+current Person and desired Account rows needed to preserve synchronized fields
+before signing this one mutation.
+
+The Primary resolves `friend_replace` in one immediate SQLite transaction. It
+upserts the Person, Person tags, desired Accounts, and Account roles. A social
+Account omitted from the desired set is detached from the Person. An omitted
+contact Account is deleted. The same commit appends one journal operation,
+advances the actor tip, records one receipt and replication result, and emits a
+Person invalidation plus an Account reset invalidation. No intermediate Person
+or Account state is visible, durable, or transportable. The mutation is
+admitted only to the current Primary-writer capability and creates no provider
+request.
 
 Freed Desktop assembles each Primary transaction from one native context read.
 That context contains only the admitted Library and epoch identity, the active

@@ -770,6 +770,7 @@ export const LIBRARY_CORE_OPERATION_IDS = [
   "feed_items_prune_archived_frozen",
   "feed_items_read_frozen",
   "feed_items_unarchive_saved_frozen",
+  "friend_replace",
   "person_reach_out_append",
   "person_remove_and_accounts",
   "person_remove_detach_accounts",
@@ -817,6 +818,7 @@ export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([
   "feed_item_remove",
   "feed_item_saved_assignment",
   "feed_item_seen_sync_receipt",
+  "friend_replace",
   "person_reach_out_append",
   "person_remove_and_accounts",
   "person_remove_detach_accounts",
@@ -858,6 +860,7 @@ export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS = Object.freeze([
   "feed_item_remove",
   "feed_item_saved_assignment",
   "feed_item_seen_sync_receipt",
+  "friend_replace",
   "person_reach_out_append",
   "person_remove_and_accounts",
   "person_remove_detach_accounts",
@@ -1037,6 +1040,23 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "payloadKind": "sync_receipt",
     "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+  },
+  "friend_replace": {
+    "clockReadSql": "",
+    "clockWriteSql": "",
+    "currentValueSql": "",
+    "dependentDeleteSql": [
+      "UPDATE library_accounts SET person_id = NULL, updated_at = json_extract(?2, '$.person.updatedAt') WHERE person_id = ?1 COLLATE BINARY AND kind <> 'contact' AND NOT EXISTS (SELECT 1 FROM json_each(?2, '$.accounts') AS desired WHERE json_extract(desired.value, '$.id') = library_accounts.id COLLATE BINARY);",
+      "DELETE FROM library_accounts WHERE person_id = ?1 COLLATE BINARY AND kind = 'contact' AND NOT EXISTS (SELECT 1 FROM json_each(?2, '$.accounts') AS desired WHERE json_extract(desired.value, '$.id') = library_accounts.id COLLATE BINARY);"
+    ],
+    "dependentInsertSql": [],
+    "entityType": "Person",
+    "invalidationTopic": "person",
+    "materializeSql": "INSERT INTO library_persons (id, name, avatar_url, bio, relationship_status, care_level, reach_out_interval_days, notes, sample_batch_id, sample_generated_at, sample_generator_version, created_at, updated_at) SELECT ?1, json_extract(?2, '$.person.name'), json_extract(?2, '$.person.avatarUrl'), json_extract(?2, '$.person.bio'), json_extract(?2, '$.person.relationshipStatus'), json_extract(?2, '$.person.careLevel'), json_extract(?2, '$.person.reachOutIntervalDays'), json_extract(?2, '$.person.notes'), json_extract(?2, '$.person.sampleDataFingerprint.batchId'), json_extract(?2, '$.person.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.person.sampleDataFingerprint.generatorVersion'), json_extract(?2, '$.person.createdAt'), json_extract(?2, '$.person.updatedAt') WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url, bio = excluded.bio, relationship_status = excluded.relationship_status, care_level = excluded.care_level, reach_out_interval_days = excluded.reach_out_interval_days, notes = excluded.notes, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, created_at = excluded.created_at, updated_at = excluded.updated_at;",
+    "maximumMembers": 1,
+    "payloadKind": "friend_replace",
+    "requiresExistingTarget": false,
+    "targetExistsSql": "SELECT 1;"
   },
   "person_upsert": {
     "clockReadSql": "",

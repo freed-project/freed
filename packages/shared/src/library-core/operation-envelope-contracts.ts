@@ -16,6 +16,7 @@ import {
   PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  FRIEND_REPLACE_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
@@ -27,6 +28,7 @@ import {
   type RssFeedTitleAssignmentPayloadV1,
   type PreferencesLeafAssignmentPayloadV1,
   type PersonUpsertPayloadV1,
+  type FriendReplacePayloadV1,
   type PersonReachOutAppendPayloadV1,
   type PersonRemovePayloadV1,
   type AccountRemovePayloadV1,
@@ -88,6 +90,8 @@ export type RssFeedRemoveTransactionMemberInputV1 =
 export type PreferencesLeafAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FriendReplaceTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonReachOutAppendTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
@@ -354,6 +358,31 @@ export interface PersonUpsertTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface FriendReplaceTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "friend_replace";
+  readonly entity_type: "Person";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FriendReplacePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export interface PersonReachOutAppendTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
@@ -395,8 +424,7 @@ export interface PersonRemoveTransactionMemberBodyV1 {
   readonly transaction_member_index: number;
   readonly transaction_member_count: number;
   readonly operation_type:
-    | "person_remove_and_accounts"
-    | "person_remove_detach_accounts";
+    "person_remove_and_accounts" | "person_remove_detach_accounts";
   readonly entity_type: "Person";
   readonly entity_id: LibraryCoreEntityId;
   readonly payload: PersonRemovePayloadV1;
@@ -491,6 +519,7 @@ export type LibraryCoreTransactionMemberBodyV1 =
   | RssFeedTitleAssignmentTransactionMemberBodyV1
   | RssFeedRemoveTransactionMemberBodyV1
   | PreferencesLeafAssignmentTransactionMemberBodyV1
+  | FriendReplaceTransactionMemberBodyV1
   | PersonUpsertTransactionMemberBodyV1
   | PersonReachOutAppendTransactionMemberBodyV1
   | PersonRemoveTransactionMemberBodyV1
@@ -837,14 +866,18 @@ function constructEntityTransactionMember(
         readonly entityType: "Person";
       }
     | {
+        readonly operationType: "friend_replace";
+        readonly validatePayload: typeof FRIEND_REPLACE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Person";
+      }
+    | {
         readonly operationType: "person_reach_out_append";
         readonly validatePayload: typeof PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
       }
     | {
         readonly operationType:
-          | "person_remove_and_accounts"
-          | "person_remove_detach_accounts";
+          "person_remove_and_accounts" | "person_remove_detach_accounts";
         readonly validatePayload: typeof PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
       }
@@ -1149,6 +1182,21 @@ function constructPersonUpsertTransactionMember(
   return construction;
 }
 
+function constructFriendReplaceTransactionMember(
+  input: FriendReplaceTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1> {
+  const construction = constructEntityTransactionMember(input, dependencies, {
+    operationType: "friend_replace",
+    validatePayload: FRIEND_REPLACE_PAYLOAD_SCHEMA.validate,
+    entityType: "Person",
+  }) as LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1>;
+  if (construction.body.payload.person.id !== construction.body.entity_id) {
+    throw new TypeError("Friend Person ID must equal entity_id");
+  }
+  return construction;
+}
+
 function constructPersonReachOutAppendTransactionMember(
   input: PersonReachOutAppendTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -1390,6 +1438,18 @@ export const PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   PersonUpsertTransactionMemberBodyV1
 >;
 
+export const FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "friend_replace_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "friend_replace",
+  entityType: "Person",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructFriendReplaceTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  FriendReplaceTransactionMemberInputV1,
+  FriendReplaceTransactionMemberBodyV1
+>;
+
 export const PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   schemaId: "person_reach_out_append_transaction_member_v1",
   schemaVersion: 1,
@@ -1412,7 +1472,7 @@ export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
     construct: constructPersonRemoveTransactionMember,
   }) satisfies LibraryCoreTransactionMemberSchema<
     PersonRemoveTransactionMemberInputV1,
-  PersonRemoveTransactionMemberBodyV1
+    PersonRemoveTransactionMemberBodyV1
   >;
 
 export const PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =

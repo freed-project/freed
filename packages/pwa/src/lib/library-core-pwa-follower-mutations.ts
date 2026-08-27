@@ -8,6 +8,8 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FRIEND_REPLACE_MAXIMUM_ACCOUNTS,
+  FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   encodeLibraryCoreFractionalNumbersV1,
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -26,6 +28,7 @@ import {
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
+  type FriendReplaceTransactionMemberInputV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
   type LibraryCoreFollowerIntentCommitResultV1,
@@ -49,11 +52,10 @@ import {
 const MAXIMUM_ASSIGNMENT_MEMBERS = 1_000;
 export const PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT =
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert.maximumMembers;
-export const PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT =
-  Math.min(
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers,
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers,
-  );
+export const PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT = Math.min(
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers,
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers,
+);
 
 function digest(
   domain: LibraryCoreDigestDomain,
@@ -112,7 +114,9 @@ async function commitFollowerTransaction(
       context.next_actor_sequence + finalized.members.length - 1 ||
     receipt.memberCount !== finalized.members.length
   ) {
-    throw new Error("PWA follower intent receipt does not match its transaction");
+    throw new Error(
+      "PWA follower intent receipt does not match its transaction",
+    );
   }
   return receipt;
 }
@@ -253,9 +257,12 @@ export async function commitPwaLibraryCoreFeedItemCaptures(
   }
   const identities = new Set<string>();
   for (const item of items) {
-    if (!item.globalId) throw new TypeError("capture item global ID is required");
+    if (!item.globalId)
+      throw new TypeError("capture item global ID is required");
     if (identities.has(item.globalId)) {
-      throw new TypeError("FeedItem capture transaction contains a duplicate ID");
+      throw new TypeError(
+        "FeedItem capture transaction contains a duplicate ID",
+      );
     }
     identities.add(item.globalId);
   }
@@ -360,15 +367,10 @@ export async function commitPwaLibraryCoreRssFeedTitleAssignment(
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-rss-title");
   const member = RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-    transactionMemberInput(
-      context,
-      transactionId,
-      0,
-      1,
-      url,
-      assignedAtMs,
-      { assigned_at_ms: assignedAtMs, title },
-    ),
+    transactionMemberInput(context, transactionId, 0, 1, url, assignedAtMs, {
+      assigned_at_ms: assignedAtMs,
+      title,
+    }),
     { digest },
   );
   await commitFollowerTransaction(context, [member]);
@@ -379,11 +381,7 @@ export async function commitPwaLibraryCoreRssFeedRemove(
   includeItems: boolean,
   removedAtMs: number,
 ): Promise<void> {
-  await commitPwaLibraryCoreRssFeedRemoves(
-    [url],
-    includeItems,
-    removedAtMs,
-  );
+  await commitPwaLibraryCoreRssFeedRemoves([url], includeItems, removedAtMs);
 }
 
 export async function commitPwaLibraryCoreRssFeedRemoves(
@@ -432,18 +430,19 @@ export async function commitPwaLibraryCorePreferencesPatch(
 ): Promise<void> {
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-preferences");
-  const member = PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-    transactionMemberInput(
-      context,
-      transactionId,
-      0,
-      1,
-      "preferences",
-      createdAtMs,
-      { updates: updates as unknown as LibraryCoreCanonicalValue },
-    ),
-    { digest },
-  );
+  const member =
+    PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        0,
+        1,
+        "preferences",
+        createdAtMs,
+        { updates: updates as unknown as LibraryCoreCanonicalValue },
+      ),
+      { digest },
+    );
   await commitFollowerTransaction(context, [member]);
 }
 
@@ -482,6 +481,46 @@ export async function commitPwaLibraryCorePersonUpserts(
     ),
   );
   await commitFollowerTransaction(context, members);
+}
+
+export async function commitPwaLibraryCoreFriendReplace(
+  person: Person,
+  accounts: readonly Account[],
+  createdAtMs: number,
+): Promise<void> {
+  if (
+    accounts.length > FRIEND_REPLACE_MAXIMUM_ACCOUNTS ||
+    accounts.some((account) => account.personId !== person.id)
+  ) {
+    throw new RangeError("Friend Account window is invalid");
+  }
+  const sortedAccounts = [...accounts].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  if (
+    new Set(sortedAccounts.map((account) => account.id)).size !==
+    sortedAccounts.length
+  ) {
+    throw new TypeError("Friend Account window contains duplicate IDs");
+  }
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-friend-replace");
+  const member = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+    transactionMemberInput(
+      context,
+      transactionId,
+      0,
+      1,
+      person.id,
+      createdAtMs,
+      {
+        accounts: sortedAccounts as unknown as LibraryCoreCanonicalValue,
+        person: person as unknown as LibraryCoreCanonicalValue,
+      },
+    ) satisfies FriendReplaceTransactionMemberInputV1,
+    { digest },
+  );
+  await commitFollowerTransaction(context, [member]);
 }
 
 export async function commitPwaLibraryCorePersonRemove(

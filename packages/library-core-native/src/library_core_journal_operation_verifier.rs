@@ -58,6 +58,7 @@ const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
 const RSS_FEED_TITLE_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "title"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
+const FRIEND_REPLACE_PAYLOAD_KEYS: [&str; 2] = ["accounts", "person"];
 const PERSON_REACH_OUT_APPEND_PAYLOAD_KEYS: [&str; 3] = ["channel", "logged_at_ms", "notes"];
 const ACCOUNT_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["account"];
 const ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "person_id"];
@@ -120,6 +121,8 @@ const MAX_PREFERENCE_PATH_BYTES: usize = 4_096;
 const MAX_PREFERENCE_TEXT_BYTES: usize = 8_192;
 const MAX_PERSON_BYTES: usize = 262_144;
 const MAX_ACCOUNT_BYTES: usize = 262_144;
+const MAX_FRIEND_REPLACE_BYTES: usize = 98_304;
+const MAX_FRIEND_REPLACE_ACCOUNTS: usize = 64;
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationIdentity {
@@ -1065,6 +1068,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     } else if matches!(
         operation_type.as_str(),
         "person_reach_out_append"
+            | "friend_replace"
             | "person_upsert"
             | "person_remove_and_accounts"
             | "person_remove_detach_accounts"
@@ -1331,6 +1335,58 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             let canonical =
                 encode_canonical_value(&Value::Object(person.clone()), MAX_PERSON_BYTES)
                     .map_err(|_| invalid(index, "person"))?;
+            (
+                None,
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "friend_replace" => {
+            let payload_object =
+                exact_object(payload, &FRIEND_REPLACE_PAYLOAD_KEYS, index, "payload")?;
+            let person = payload_object
+                .get("person")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "person"))?;
+            validate_person(person, &entity_id, index)?;
+            let accounts = payload_object
+                .get("accounts")
+                .and_then(Value::as_array)
+                .filter(|accounts| accounts.len() <= MAX_FRIEND_REPLACE_ACCOUNTS)
+                .ok_or_else(|| invalid(index, "accounts"))?;
+            let mut prior_account_id: Option<&str> = None;
+            let mut contact_count = 0usize;
+            for account_value in accounts {
+                let account = account_value
+                    .as_object()
+                    .ok_or_else(|| invalid(index, "accounts"))?;
+                let account_id = account
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| invalid(index, "accounts"))?;
+                validate_account(account, account_id, index)?;
+                if account.get("personId").and_then(Value::as_str) != Some(entity_id.as_str())
+                    || prior_account_id.is_some_and(|prior| prior >= account_id)
+                {
+                    return Err(invalid(index, "accounts"));
+                }
+                if account.get("kind").and_then(Value::as_str) == Some("contact") {
+                    contact_count += 1;
+                    if contact_count > 1 {
+                        return Err(invalid(index, "accounts"));
+                    }
+                }
+                prior_account_id = Some(account_id);
+            }
+            let canonical = encode_canonical_value(payload, MAX_FRIEND_REPLACE_BYTES)
+                .map_err(|_| invalid(index, "friend_replace"))?;
             (
                 None,
                 None,
@@ -1897,6 +1953,17 @@ pub(crate) mod tests {
                             "updatedAt": timestamp_ms
                         }
                     }),
+                    "friend_replace" => json!({
+                        "accounts": [],
+                        "person": {
+                            "id": entity_id,
+                            "name": "Verified Friend",
+                            "relationshipStatus": "friend",
+                            "careLevel": 3,
+                            "createdAt": timestamp_ms,
+                            "updatedAt": timestamp_ms
+                        }
+                    }),
                     "person_reach_out_append" => json!({
                         "channel": "text",
                         "logged_at_ms": timestamp_ms,
@@ -1941,6 +2008,7 @@ pub(crate) mod tests {
             } else if operation_type == "preferences_leaf_assignment" {
                 "UserPreferences"
             } else if operation_type == "person_reach_out_append"
+                || operation_type == "friend_replace"
                 || operation_type == "person_upsert"
                 || operation_type == "person_remove_and_accounts"
                 || operation_type == "person_remove_detach_accounts"
@@ -2393,7 +2461,7 @@ pub(crate) mod tests {
                 "https://example.com/feed.xml"
             }
             "preferences_leaf_assignment" => "preferences",
-            "person_upsert" | "person_remove_and_accounts" => "person:verified",
+            "friend_replace" | "person_upsert" | "person_remove_and_accounts" => "person:verified",
             "account_upsert" | "account_remove" => "account:verified",
             _ => "rss:item:capability",
         }

@@ -205,7 +205,10 @@ import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
-import { isSqliteLibraryActive } from "./lib/sqlite-library";
+import {
+  isSqliteLibraryActive,
+  replaceSqliteLibraryFriend,
+} from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
@@ -1646,6 +1649,10 @@ function App() {
       readLibraryFriendDetail:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendDetail
+          : undefined,
+      replaceLibraryFriend:
+        tauriRuntimeAvailable && isInitialized
+          ? replaceSqliteLibraryFriend
           : undefined,
       readLibraryAccountDetail:
         tauriRuntimeAvailable && isInitialized

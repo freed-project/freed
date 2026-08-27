@@ -92,7 +92,11 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
       "current method writes legacy Automerge and its successor payload is unresolved",
   }),
   addFriend: functionSurface("legacy_compatibility", {
-    successorOperationIds: ["account_upsert", "person_upsert"],
+    successorOperationIds: [
+      "account_upsert",
+      "friend_replace",
+      "person_upsert",
+    ],
     successorQueryIds: [],
     activationBlocker:
       "deprecated Friend write aliases Person without an explicit migration boundary",
@@ -371,6 +375,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorOperationIds: [
       "account_remove",
       "account_upsert",
+      "friend_replace",
       "person_upsert",
     ],
     successorQueryIds: [],

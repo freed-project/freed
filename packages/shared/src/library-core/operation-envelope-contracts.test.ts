@@ -8,6 +8,7 @@ import {
 } from "./canonical-codec.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
   PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreConstructionDigestDomain,
@@ -286,16 +287,49 @@ describe("Library Core reach-out transaction-member schema", () => {
         notes: "Checked in",
       },
     };
-    const result =
-      PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(input, {
+    const result = PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(
+      input,
+      {
         digest,
-      });
+      },
+    );
 
     expect(result.body).toMatchObject({
       operation_id: "op:reach-out:fixture:1",
       operation_type: "person_reach_out_append",
       entity_type: "Person",
       entity_id: "person:fixture",
+      payload: input.payload,
+    });
+    expect(result.member_digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("Library Core Friend replacement transaction-member schema", () => {
+  it("constructs one Person-scoped signed intent for the complete desired graph", () => {
+    const person = {
+      id: "person:fixture",
+      name: "Fixture Friend",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    const input = {
+      ...validInput(),
+      operation_id: "op:friend:replace:1",
+      transaction_id: "tx:friend:replace:1",
+      entity_id: person.id,
+      payload: { accounts: [], person },
+    };
+    const result = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(input, {
+      digest,
+    });
+
+    expect(result.body).toMatchObject({
+      operation_type: "friend_replace",
+      entity_type: "Person",
+      entity_id: person.id,
       payload: input.payload,
     });
     expect(result.member_digest).toMatch(/^[0-9a-f]{64}$/);

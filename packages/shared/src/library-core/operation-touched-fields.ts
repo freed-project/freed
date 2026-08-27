@@ -131,12 +131,11 @@ export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  * history is a separate stable-identity event relation and can only change
  * through `person_reach_out_append`. The four graph leaves are device-local.
  */
-export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  Object.freeze(
-    LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS.filter(
-      (key) => !key.includes(".reachOutLog[]."),
-    ),
-  );
+export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS = Object.freeze(
+  LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS.filter(
+    (key) => !key.includes(".reachOutLog[]."),
+  ),
+);
 
 /**
  * Traced from `addAccount` and `updateAccount`.
@@ -146,6 +145,13 @@ export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  */
 export const ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
   LIBRARY_CORE_ACCOUNT_OPERATION_FIELD_KEYS;
+
+export const FRIEND_REPLACE_TOUCHED_FIELD_REGISTRY_KEYS = Object.freeze(
+  [
+    ...PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ...ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  ].sort(),
+);
 
 /**
  * Traced from `logReachOut`, which is far narrower than the person upsert.
