@@ -6,7 +6,7 @@ import {
   readLibraryCoreNormalizedMapCandidatesV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
-  readLibraryCoreNormalizedSurfaceItemsV1,
+  readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -143,7 +143,6 @@ export interface LibraryCoreSavedAnalytics {
   readonly totalCount: number;
 }
 
-export type LibraryCoreSurface = "map" | "story_wall";
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryNormalizedLibrary,
   randomId: () => crypto.randomUUID(),
@@ -203,12 +202,9 @@ export async function readLibraryCoreSavedAnalytics(
   );
 }
 
-export async function readLibraryCoreSurfaceItems(
-  surface: LibraryCoreSurface,
-): Promise<readonly FeedItem[]> {
-  return readLibraryCoreNormalizedSurfaceItemsV1(
+export async function readLibraryCoreStoryWallCandidates() {
+  return readLibraryCoreNormalizedStoryWallCandidatesV1(
     NORMALIZED_READER_RUNTIME,
-    surface,
   );
 }
 

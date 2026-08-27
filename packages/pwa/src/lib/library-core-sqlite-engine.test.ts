@@ -2594,7 +2594,12 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(storyCandidates.hasMore).toBe(true);
     expect(storyCandidates.rows).toMatchObject([
-      { globalId: "item-2", mediaUrls: ["https://example.com/image"] },
+      {
+        globalId: "item-2",
+        linkedAccountId: "account-1",
+        linkedPersonId: "person-1",
+        mediaUrls: ["https://example.com/image"],
+      },
     ]);
     expect(storyCandidates.rows[0]).not.toHaveProperty("contentType");
     const scanRequest = {

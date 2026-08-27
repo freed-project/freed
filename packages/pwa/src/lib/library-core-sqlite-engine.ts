@@ -7477,6 +7477,14 @@ export class PwaLibraryCoreSqliteEngine {
         capturedAt: safeInteger(row.capturedAt, "Story Wall captured time"),
         contentText: nullableText(row.contentText, "Story Wall caption"),
         globalId: text(row.globalId, "Story Wall item identity"),
+        linkedAccountId: nullableText(
+          row.linkedAccountId,
+          "Story Wall linked Account identity",
+        ),
+        linkedPersonId: nullableText(
+          row.linkedPersonId,
+          "Story Wall linked Person identity",
+        ),
         locationName: nullableText(row.locationName, "Story Wall location"),
         mediaTypes: stringArray(
           row.mediaTypesJson,

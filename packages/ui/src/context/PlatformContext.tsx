@@ -34,6 +34,7 @@ import type {
   ReportPrivacyTier,
   SavedContentSortMode,
   StoryWallManifest,
+  StoryWallCandidate,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
@@ -316,8 +317,6 @@ export interface LibrarySavedAnalytics {
   readonly sourceCounts: readonly LibrarySavedAnalyticsCount[];
   readonly contentMix: readonly LibrarySavedAnalyticsCount[];
 }
-
-export type LibrarySurface = "story_wall";
 
 export interface ChangelogPreviewRelease {
   version: string;
@@ -692,9 +691,9 @@ export interface PlatformConfig {
   readLibraryMapCandidates?: () => Promise<readonly LibraryMapLocationCandidate[]>;
 
   /** One bounded Story Wall candidate set selected inside SQLite. */
-  readLibrarySurfaceItems?: (
-    surface: LibrarySurface,
-  ) => Promise<readonly FeedItem[]>;
+  readLibraryStoryWallCandidates?: () => Promise<
+    readonly StoryWallCandidate[]
+  >;
 
   /** Exact Saved overview aggregates computed inside the local row store. */
   readLibrarySavedAnalytics?: (

@@ -98,7 +98,7 @@ import {
   readLibraryCoreMapCandidates,
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
-  readLibraryCoreSurfaceItems,
+  readLibraryCoreStoryWallCandidates,
   scanLibraryCoreBackgroundItems,
 } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -1648,9 +1648,9 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsLocationItem
           : undefined,
-      readLibrarySurfaceItems:
+      readLibraryStoryWallCandidates:
         tauriRuntimeAvailable && isInitialized
-          ? readLibraryCoreSurfaceItems
+          ? readLibraryCoreStoryWallCandidates
           : undefined,
       readLibraryMapCandidates:
         tauriRuntimeAvailable && isInitialized

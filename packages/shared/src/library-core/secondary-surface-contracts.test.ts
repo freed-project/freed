@@ -3,6 +3,7 @@ import {
   libraryCoreMapMarkerToLocationCandidateV1,
   libraryCoreMapMarkerToItemV1,
   libraryCoreStoryWallCandidateToItemV1,
+  libraryCoreStoryWallCandidateToVisibleV1,
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
@@ -78,6 +79,8 @@ describe("secondary surface query contracts", () => {
         capturedAt: 10,
         contentText: "Caption",
         globalId: "x:item-1",
+        linkedAccountId: "account-1",
+        linkedPersonId: "person-1",
         locationName: null,
         mediaTypes: ["video"],
         mediaUrls: ["https://example.test/video.mp4"],
@@ -165,6 +168,8 @@ describe("secondary surface query contracts", () => {
       capturedAt: 10,
       contentText: "Caption",
       globalId: "x:story-1",
+      linkedAccountId: "account-1",
+      linkedPersonId: "person-1",
       locationName: null,
       mediaTypes: ["video", "unknown"],
       mediaUrls: ["https://example.test/video.mp4", "https://example.test/raw"],
@@ -175,5 +180,25 @@ describe("secondary surface query contracts", () => {
     expect(storyItem.content.mediaTypes).toEqual(["video", "link"]);
     expect(storyItem.content.mediaUrls).toHaveLength(2);
     expect(storyItem).not.toHaveProperty("shellJson");
+    expect(libraryCoreStoryWallCandidateToVisibleV1({
+      authorDisplayName: "Ada",
+      authorHandle: "ada",
+      authorId: "author-1",
+      capturedAt: 10,
+      contentText: "Caption",
+      globalId: "x:story-1",
+      linkedAccountId: "account-1",
+      linkedPersonId: "person-1",
+      locationName: null,
+      mediaTypes: ["video"],
+      mediaUrls: ["https://example.test/video.mp4"],
+      platform: "x",
+      publishedAt: 10,
+      sourceUrl: null,
+    })).toMatchObject({
+      accountId: "account-1",
+      item: { globalId: "x:story-1" },
+      personId: "person-1",
+    });
   });
 });

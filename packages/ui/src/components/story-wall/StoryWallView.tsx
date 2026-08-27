@@ -4,7 +4,7 @@ import {
   estimateStoryWallPublishSize,
   PLATFORM_LABELS,
   selectableStoryWallYears,
-  selectStoryWallItems,
+  selectStoryWallCandidates,
   type FeedItem,
   type Platform,
   type StoryWallLayoutPreset,
@@ -12,7 +12,7 @@ import {
 } from "@freed/shared";
 import { useAppStore, usePlatform, type StoryWallArchiveSummary } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
-import { useLibrarySurfaceItems } from "../../hooks/useLibrarySurfaceItems.js";
+import { useLibraryStoryWallCandidates } from "../../hooks/useLibrarySurfaceItems.js";
 
 type StoryWallPreferenceUpdate = Partial<Omit<StoryWallPreferences, "style" | "publishTarget">> & {
   style?: Partial<StoryWallPreferences["style"]>;
@@ -319,7 +319,6 @@ export function StoryWallView({
   variant = "workspace",
 }: StoryWallViewProps = {}) {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const accounts = useAppStore((s) => s.accounts);
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const platform = usePlatform();
@@ -334,21 +333,26 @@ export function StoryWallView({
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
-  const storyWallItems = useLibrarySurfaceItems(
-    "story_wall",
-    searchCorpusVersion,
+  const storyWallCandidates = useLibraryStoryWallCandidates(searchCorpusVersion);
+  const storyWallItems = useMemo(
+    () => storyWallCandidates.map((candidate) => candidate.item),
+    [storyWallCandidates],
   );
   const availableYears = useMemo(
     () => selectableStoryWallYears(storyWallItems),
     [storyWallItems],
   );
+  const selectedCandidates = useMemo(
+    () => selectStoryWallCandidates(storyWallCandidates, storyWall),
+    [storyWall, storyWallCandidates],
+  );
   const selectedItems = useMemo(
-    () => selectStoryWallItems(storyWallItems, storyWall, accounts),
-    [accounts, storyWall, storyWallItems],
+    () => selectedCandidates.map((candidate) => candidate.item),
+    [selectedCandidates],
   );
   const manifest = useMemo(
-    () => buildStoryWallManifest(storyWallItems, storyWall),
-    [storyWall, storyWallItems],
+    () => buildStoryWallManifest(storyWallCandidates, storyWall),
+    [storyWall, storyWallCandidates],
   );
   const estimatedSize = useMemo(() => estimateStoryWallPublishSize(manifest), [manifest]);
   const featuredIds = useMemo(() => new Set(storyWall.featuredItemIds), [storyWall.featuredItemIds]);

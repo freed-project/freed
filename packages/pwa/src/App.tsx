@@ -89,7 +89,7 @@ import {
   readPwaLibraryCoreMapCandidates,
   readPwaLibraryCorePersonTimeline,
   readPwaLibraryCoreSavedAnalytics,
-  readPwaLibraryCoreSurfaceItems,
+  readPwaLibraryCoreStoryWallCandidates,
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
 } from "./lib/library-core-runtime";
@@ -478,7 +478,7 @@ function App() {
       queryLibraryCore: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
-      readLibrarySurfaceItems: readPwaLibraryCoreSurfaceItems,
+      readLibraryStoryWallCandidates: readPwaLibraryCoreStoryWallCandidates,
       readLibraryMapCandidates: readPwaLibraryCoreMapCandidates,
       readLibraryItemDetail: readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,

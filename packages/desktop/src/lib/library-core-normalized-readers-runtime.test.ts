@@ -15,7 +15,7 @@ const {
   readLibraryCoreMapCandidates,
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
-  readLibraryCoreSurfaceItems,
+  readLibraryCoreStoryWallCandidates,
   scanLibraryCoreItems,
 } = await import("./library-core-item-detail-runtime");
 
@@ -180,6 +180,8 @@ describe("Freed Desktop normalized surface readers", () => {
             capturedAt: 20,
             contentText: "Story",
             globalId: "x:story-1",
+            linkedAccountId: "account-1",
+            linkedPersonId: "person-1",
             locationName: null,
             mediaTypes: ["image"],
             mediaUrls: ["https://example.test/image.jpg"],
@@ -197,8 +199,12 @@ describe("Freed Desktop normalized surface readers", () => {
         item: expect.objectContaining({ globalId: "x:map-1" }),
       }),
     ]);
-    await expect(readLibraryCoreSurfaceItems("story_wall")).resolves.toEqual([
-      expect.objectContaining({ globalId: "x:story-1" }),
+    await expect(readLibraryCoreStoryWallCandidates()).resolves.toEqual([
+      expect.objectContaining({
+        accountId: "account-1",
+        item: expect.objectContaining({ globalId: "x:story-1" }),
+        personId: "person-1",
+      }),
     ]);
     expect(
       mocks.queryNormalizedLibrary.mock.calls.map(

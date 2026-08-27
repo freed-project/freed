@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FeedItem, StoryWallPreferences } from "@freed/shared";
 import {
   buildStoryWallManifest,
-  selectStoryWallItems,
+  selectStoryWallCandidates,
   storyWallYearForItem,
 } from "@freed/shared";
 
@@ -33,6 +33,10 @@ function item(
     sourceUrl: `https://example.com/${id}`,
     ...overrides,
   };
+}
+
+function candidate(value: FeedItem) {
+  return { accountId: `account:${value.author.id}`, item: value, personId: null };
 }
 
 const preferences: StoryWallPreferences = {
@@ -69,29 +73,47 @@ describe("story wall selection", () => {
   });
 
   it("filters by year, platform, hidden item, and archive state", () => {
-    const selected = selectStoryWallItems([
-      item("instagram:one", "instagram", Date.UTC(2024, 3, 2)),
-      item("instagram:no-media", "instagram", Date.UTC(2024, 3, 3), {
+    const selected = selectStoryWallCandidates([
+      candidate(item("instagram:one", "instagram", Date.UTC(2024, 3, 2))),
+      candidate(item("instagram:no-media", "instagram", Date.UTC(2024, 3, 3), {
         content: {
           text: "Only text",
           mediaUrls: [],
           mediaTypes: [],
         },
-      }),
-      item("facebook:hidden", "facebook", Date.UTC(2024, 4, 2)),
-      item("x:wrong-platform", "x", Date.UTC(2024, 5, 2)),
-      item("instagram:old", "instagram", Date.UTC(2023, 5, 2)),
-      item("instagram:archived", "instagram", Date.UTC(2024, 6, 2), {
+      })),
+      candidate(item("facebook:hidden", "facebook", Date.UTC(2024, 4, 2))),
+      candidate(item("x:wrong-platform", "x", Date.UTC(2024, 5, 2))),
+      candidate(item("instagram:old", "instagram", Date.UTC(2023, 5, 2))),
+      candidate(item("instagram:archived", "instagram", Date.UTC(2024, 6, 2), {
         userState: { hidden: false, saved: false, archived: true, tags: [] },
-      }),
+      })),
     ], preferences);
 
-    expect(selected.map((entry) => entry.globalId)).toEqual(["instagram:one"]);
+    expect(selected.map((entry) => entry.item.globalId)).toEqual(["instagram:one"]);
+  });
+
+  it("matches included identities from the bounded SQLite join", () => {
+    const visible = item("instagram:one", "instagram", Date.UTC(2024, 3, 2));
+    const other = item("facebook:two", "facebook", Date.UTC(2024, 3, 3));
+    const candidates = [
+      { accountId: "account-ada", item: visible, personId: "person-ada" },
+      { accountId: "account-grace", item: other, personId: "person-grace" },
+    ];
+
+    expect(selectStoryWallCandidates(candidates, {
+      ...preferences,
+      includedAccountIds: ["person-ada"],
+    }).map((entry) => entry.item.globalId)).toEqual(["instagram:one"]);
+    expect(selectStoryWallCandidates(candidates, {
+      ...preferences,
+      includedAccountIds: ["account-grace"],
+    }).map((entry) => entry.item.globalId)).toEqual(["facebook:two"]);
   });
 
   it("builds a publish manifest with captions and featured state", () => {
     const manifest = buildStoryWallManifest([
-      item("instagram:one", "instagram", Date.UTC(2024, 3, 2)),
+      candidate(item("instagram:one", "instagram", Date.UTC(2024, 3, 2))),
     ], preferences, { generatedAt: 1 });
 
     expect(manifest.totalItems).toBe(1);

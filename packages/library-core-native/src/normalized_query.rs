@@ -582,6 +582,8 @@ pub struct NormalizedStoryWallCandidateV1 {
     pub captured_at: i64,
     pub content_text: Option<String>,
     pub global_id: String,
+    pub linked_account_id: Option<String>,
+    pub linked_person_id: Option<String>,
     pub location_name: Option<String>,
     pub media_types: Vec<String>,
     pub media_urls: Vec<String>,
@@ -2941,8 +2943,8 @@ fn query_story_wall_candidates(
     let mut query_rows = statement.query_map(
         params![i64::try_from(request.limit + 1).expect("bounded Story Wall limit")],
         |row| {
-            let media_urls_json: String = row.get(10)?;
-            let media_types_json: String = row.get(11)?;
+            let media_urls_json: String = row.get(12)?;
+            let media_types_json: String = row.get(13)?;
             Ok(NormalizedStoryWallCandidateV1 {
                 global_id: row.get(0)?,
                 platform: row.get(1)?,
@@ -2954,16 +2956,18 @@ fn query_story_wall_candidates(
                 source_url: row.get(7)?,
                 content_text: row.get(8)?,
                 location_name: row.get(9)?,
+                linked_account_id: row.get(10)?,
+                linked_person_id: row.get(11)?,
                 media_urls: serde_json::from_str(&media_urls_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        10,
+                        12,
                         rusqlite::types::Type::Text,
                         Box::new(error),
                     )
                 })?,
                 media_types: serde_json::from_str(&media_types_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        11,
+                        13,
                         rusqlite::types::Type::Text,
                         Box::new(error),
                     )
@@ -2992,6 +2996,15 @@ fn query_story_wall_candidates(
                 .location_name
                 .as_ref()
                 .is_some_and(|value| value.len() > 2_048)
+            || row
+                .linked_account_id
+                .as_ref()
+                .is_some_and(|value| value.is_empty() || value.len() > 2_048)
+            || row
+                .linked_person_id
+                .as_ref()
+                .is_some_and(|value| value.is_empty() || value.len() > 2_048)
+            || (row.linked_account_id.is_none() && row.linked_person_id.is_some())
             || !valid_safe_integer(row.published_at)
             || !valid_safe_integer(row.captured_at)
             || row.media_urls.is_empty()
@@ -5817,6 +5830,12 @@ mod tests {
                 .iter()
                 .any(|detail| detail.contains("library_feed_items_browse")));
             assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+            if query_id == "story_wall_candidates_v1" {
+                assert!(plan
+                    .iter()
+                    .any(|detail| detail.contains("library_accounts_provider_external")));
+                assert!(!plan.iter().any(|detail| detail.contains("SCAN account")));
+            }
         }
         connection
             .execute_batch(&format!(
@@ -5896,6 +5915,14 @@ mod tests {
         };
         assert!(story.has_more);
         assert_eq!(story.rows[0].media_urls, ["https://example.test/image"]);
+        assert_eq!(
+            story.rows[0].linked_account_id.as_deref(),
+            Some("account-ada")
+        );
+        assert_eq!(
+            story.rows[0].linked_person_id.as_deref(),
+            Some("person-ada")
+        );
     }
 
     #[test]

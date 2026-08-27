@@ -1254,7 +1254,7 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     currentKinds: [
       "ProjectionReadSession::surface_items",
       "read_library_core_surface_items",
-      "readLibrarySurfaceItems",
+      "readLibraryStoryWallCandidates",
     ],
     requestSchema: LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
     responseSchema: LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,

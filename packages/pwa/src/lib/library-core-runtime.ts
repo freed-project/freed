@@ -28,7 +28,7 @@ import {
   searchLibraryCoreNormalizedItemsV1,
   executeLibraryCoreScopeActionV1,
   libraryCoreFeedBrowseFilterInputFromV1,
-  readLibraryCoreNormalizedSurfaceItemsV1,
+  readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedMapCandidatesV1,
   parseLibraryCoreControlPointerV1,
   sha256LowerHex,
@@ -857,10 +857,10 @@ export const readPwaLibraryCoreFriendsLocationItem: NonNullable<
   );
 
 /** Read bounded Map or Story Wall candidates through normalized SQLite. */
-export const readPwaLibraryCoreSurfaceItems: NonNullable<
-  PlatformConfig["readLibrarySurfaceItems"]
-> = (surface) =>
-  readLibraryCoreNormalizedSurfaceItemsV1(NORMALIZED_READER_RUNTIME, surface);
+export const readPwaLibraryCoreStoryWallCandidates: NonNullable<
+  PlatformConfig["readLibraryStoryWallCandidates"]
+> = () =>
+  readLibraryCoreNormalizedStoryWallCandidatesV1(NORMALIZED_READER_RUNTIME);
 
 /** Read bounded Map candidates with linked Friend identity from SQLite. */
 export const readPwaLibraryCoreMapCandidates: NonNullable<

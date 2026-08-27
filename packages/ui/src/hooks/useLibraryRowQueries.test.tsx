@@ -12,7 +12,12 @@ import {
   it,
   vi,
 } from "vitest";
-import type { FeedItem, FilterOptions, LibraryMapLocationCandidate } from "@freed/shared";
+import type {
+  FeedItem,
+  FilterOptions,
+  LibraryMapLocationCandidate,
+  StoryWallCandidate,
+} from "@freed/shared";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreAccountGraphPageResponseV1,
@@ -30,7 +35,6 @@ import {
   type LibraryPersonTimelinePage,
   type LibrarySavedAnalytics,
   type LibrarySavedAnalyticsRequest,
-  type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
@@ -40,7 +44,7 @@ import {
 } from "./useLibrarySavedAnalytics.js";
 import {
   useLibraryMapCandidates,
-  useLibrarySurfaceItems,
+  useLibraryStoryWallCandidates,
 } from "./useLibrarySurfaceItems.js";
 import {
   useLibraryFriendsRows,
@@ -84,7 +88,7 @@ function platformConfig(
       | "readLibraryMapCandidates"
       | "readLibraryPersonTimeline"
       | "readLibrarySavedAnalytics"
-      | "readLibrarySurfaceItems"
+      | "readLibraryStoryWallCandidates"
       | "queryLibraryCore"
     >
   >,
@@ -109,12 +113,10 @@ function platformConfig(
 
 function SurfaceHarness({
   onItems,
-  surface = "story_wall",
 }: {
-  onItems: (items: readonly FeedItem[]) => void;
-  surface?: LibrarySurface;
+  onItems: (items: readonly StoryWallCandidate[]) => void;
 }) {
-  onItems(useLibrarySurfaceItems(surface, 7));
+  onItems(useLibraryStoryWallCandidates(7));
   return null;
 }
 
@@ -454,10 +456,15 @@ describe("Library row query hooks", () => {
   });
 
   it("loads bounded native Story Wall rows", async () => {
-    const readLibrarySurfaceItems = vi.fn(async () => [item("native-story")]);
-    let current: readonly FeedItem[] = [];
+    const candidate = {
+      accountId: "account-1",
+      item: item("native-story"),
+      personId: "person-1",
+    };
+    const readLibraryStoryWallCandidates = vi.fn(async () => [candidate]);
+    let current: readonly StoryWallCandidate[] = [];
     renderHarness(
-      <PlatformProvider value={platformConfig({ readLibrarySurfaceItems })}>
+      <PlatformProvider value={platformConfig({ readLibraryStoryWallCandidates })}>
         <SurfaceHarness
           onItems={(items) => {
             current = items;
@@ -468,11 +475,10 @@ describe("Library row query hooks", () => {
 
     expect(current).toEqual([]);
     await flush();
-    expect(current.map((candidate) => candidate.globalId)).toEqual([
+    expect(current.map((candidate) => candidate.item.globalId)).toEqual([
       "native-story",
     ]);
-    expect(readLibrarySurfaceItems).toHaveBeenCalledOnce();
-    expect(readLibrarySurfaceItems).toHaveBeenCalledWith("story_wall");
+    expect(readLibraryStoryWallCandidates).toHaveBeenCalledOnce();
   });
 
   it("loads bounded Map rows with their SQLite-joined Friend identity", async () => {
@@ -504,14 +510,13 @@ describe("Library row query hooks", () => {
   });
 
   it("fails closed when the surface query boundary is unavailable", async () => {
-    let current: readonly FeedItem[] = [];
+    let current: readonly StoryWallCandidate[] = [];
     renderHarness(
       <PlatformProvider value={platformConfig({})}>
         <SurfaceHarness
           onItems={(items) => {
             current = items;
           }}
-          surface="story_wall"
         />
       </PlatformProvider>,
     );

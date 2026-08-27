@@ -48,8 +48,9 @@ import {
   LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
   LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
   libraryCoreMapMarkerToLocationCandidateV1,
-  libraryCoreStoryWallCandidateToItemV1,
+  libraryCoreStoryWallCandidateToVisibleV1,
 } from "./secondary-surface-contracts.js";
+import type { StoryWallCandidate } from "../story-wall.js";
 import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreFeedBrowseFilterV1,
@@ -84,8 +85,6 @@ export interface LibraryCoreNormalizedSavedAnalyticsInputV1 {
   readonly dailyWindows: readonly LibraryCoreSavedAnalyticsWindowV2[];
   readonly hourlyWindows: readonly LibraryCoreSavedAnalyticsWindowV2[];
 }
-
-export type LibraryCoreNormalizedSurfaceV1 = "map" | "story_wall";
 
 export interface LibraryCoreNormalizedPersonTimelineInputV1 {
   readonly cursor?: string | null;
@@ -327,12 +326,11 @@ export async function readLibraryCoreNormalizedSavedAnalyticsV1(
   });
 }
 
-export async function readLibraryCoreNormalizedSurfaceItemsV1(
+export async function readLibraryCoreNormalizedStoryWallCandidatesV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
-  surface: LibraryCoreNormalizedSurfaceV1,
-): Promise<readonly FeedItem[]> {
-  const cancellationId = operationId(runtime, `${surface}-surface`);
-  const readerSessionId = operationId(runtime, `${surface}-surface-reader`);
+): Promise<readonly StoryWallCandidate[]> {
+  const cancellationId = operationId(runtime, "story-wall-surface");
+  const readerSessionId = operationId(runtime, "story-wall-surface-reader");
   const response = await runtime.query({
     cancellationId,
     limit: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
@@ -340,7 +338,7 @@ export async function readLibraryCoreNormalizedSurfaceItemsV1(
     readerSessionId,
     schemaVersion: LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
   });
-  return response.rows.map(libraryCoreStoryWallCandidateToItemV1);
+  return response.rows.map(libraryCoreStoryWallCandidateToVisibleV1);
 }
 
 /** Read one bounded Map candidate set with Friend identity joined in SQLite. */

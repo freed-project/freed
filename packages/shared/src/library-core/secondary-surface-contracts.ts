@@ -1,4 +1,5 @@
 import type { LibraryMapLocationCandidate } from "../location.js";
+import type { StoryWallCandidate } from "../story-wall.js";
 import type { ContentType, FeedItem, MediaType, Platform, RelationshipStatus } from "../types.js";
 import {
   LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
@@ -76,6 +77,8 @@ const STORY_ROW_KEYS = Object.freeze([
   "capturedAt",
   "contentText",
   "globalId",
+  "linkedAccountId",
+  "linkedPersonId",
   "locationName",
   "mediaTypes",
   "mediaUrls",
@@ -214,6 +217,8 @@ export interface LibraryCoreStoryWallCandidateV1 {
   readonly capturedAt: number;
   readonly contentText: string | null;
   readonly globalId: string;
+  readonly linkedAccountId: string | null;
+  readonly linkedPersonId: string | null;
   readonly locationName: string | null;
   readonly mediaTypes: readonly (MediaType | "unknown")[];
   readonly mediaUrls: readonly string[];
@@ -337,6 +342,17 @@ export function libraryCoreStoryWallCandidateToItemV1(
     topics: [],
     ...(row.sourceUrl ? { sourceUrl: row.sourceUrl } : {}),
   };
+}
+
+/** Convert one joined Story Wall row into the complete bounded view read model. */
+export function libraryCoreStoryWallCandidateToVisibleV1(
+  row: LibraryCoreStoryWallCandidateV1,
+): StoryWallCandidate {
+  return Object.freeze({
+    accountId: row.linkedAccountId,
+    item: libraryCoreStoryWallCandidateToItemV1(row),
+    personId: row.linkedPersonId,
+  });
 }
 
 function success<T>(value: T): LibraryCoreFeedPageParseResult<T> {
@@ -485,6 +501,9 @@ function parseStoryRow(value: unknown): LibraryCoreFeedPageParseResult<LibraryCo
     !boundedString(row.contentText, 8_192, true) ||
     !boundedString(row.sourceUrl, 8_192, true) ||
     !boundedString(row.locationName, 2_048, true) ||
+    (row.linkedAccountId !== null && !isLibraryCoreEntityId(row.linkedAccountId)) ||
+    (row.linkedPersonId !== null && !isLibraryCoreEntityId(row.linkedPersonId)) ||
+    (row.linkedAccountId === null && row.linkedPersonId !== null) ||
     !isLibraryCoreNonnegativeSafeInteger(row.capturedAt) ||
     !isLibraryCoreNonnegativeSafeInteger(row.publishedAt) ||
     !Array.isArray(row.mediaUrls) ||

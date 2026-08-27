@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
-import type { FeedItem, LibraryMapLocationCandidate } from "@freed/shared";
+import type {
+  LibraryMapLocationCandidate,
+  StoryWallCandidate,
+} from "@freed/shared";
 import {
   usePlatform,
-  type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
 
-type SurfaceReader = NonNullable<PlatformConfig["readLibrarySurfaceItems"]>;
+type StoryWallReader = NonNullable<
+  PlatformConfig["readLibraryStoryWallCandidates"]
+>;
 type MapReader = NonNullable<PlatformConfig["readLibraryMapCandidates"]>;
 
 interface CachedRows<Row, Reader> {
@@ -21,16 +25,16 @@ interface VersionedRows<Row> {
   rows: Row[];
 }
 
-const surfaceCache = new Map<
-  LibrarySurface,
-  CachedRows<FeedItem, SurfaceReader>
+const storyWallCache = new Map<
+  "story_wall",
+  CachedRows<StoryWallCandidate, StoryWallReader>
 >();
 const mapCandidatesCache = new Map<
   "map",
   CachedRows<LibraryMapLocationCandidate, MapReader>
 >();
-const EMPTY_SURFACE_ITEMS: FeedItem[] = [];
-Object.freeze(EMPTY_SURFACE_ITEMS);
+const EMPTY_STORY_WALL_CANDIDATES: StoryWallCandidate[] = [];
+Object.freeze(EMPTY_STORY_WALL_CANDIDATES);
 const EMPTY_MAP_CANDIDATES: LibraryMapLocationCandidate[] = [];
 Object.freeze(EMPTY_MAP_CANDIDATES);
 
@@ -123,11 +127,10 @@ function useVersionedRows<Row, Reader, Key>(
     : emptyRows;
 }
 
-function loadSurfaceItems(
-  reader: SurfaceReader,
-  surface: LibrarySurface,
-): Promise<readonly FeedItem[]> {
-  return reader(surface);
+function loadStoryWallCandidates(
+  reader: StoryWallReader,
+): Promise<readonly StoryWallCandidate[]> {
+  return reader();
 }
 
 function loadMapCandidates(
@@ -137,18 +140,17 @@ function loadMapCandidates(
 }
 
 /** Return one bounded Story Wall set selected inside SQLite. */
-export function useLibrarySurfaceItems(
-  surface: LibrarySurface,
+export function useLibraryStoryWallCandidates(
   sourceVersion: number,
-): readonly FeedItem[] {
-  const { readLibrarySurfaceItems } = usePlatform();
+): readonly StoryWallCandidate[] {
+  const { readLibraryStoryWallCandidates } = usePlatform();
   return useVersionedRows(
-    surfaceCache,
-    surface,
-    readLibrarySurfaceItems,
+    storyWallCache,
+    "story_wall",
+    readLibraryStoryWallCandidates,
     sourceVersion,
-    loadSurfaceItems,
-    EMPTY_SURFACE_ITEMS,
+    loadStoryWallCandidates,
+    EMPTY_STORY_WALL_CANDIDATES,
   );
 }
 

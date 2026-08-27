@@ -1,5 +1,11 @@
-import { PLATFORM_LABELS } from "./types";
-import type { Account, FeedItem, Platform, StoryWallPreferences } from "./types.js";
+import { PLATFORM_LABELS } from "./types.js";
+import type { FeedItem, Platform, StoryWallPreferences } from "./types.js";
+
+export interface StoryWallCandidate {
+  readonly accountId: string | null;
+  readonly item: FeedItem;
+  readonly personId: string | null;
+}
 
 export interface StoryWallMediaAsset {
   id: string;
@@ -66,18 +72,6 @@ function uniqueSortedNumbers(values: readonly number[]): number[] {
   return Array.from(new Set(values.filter((value) => Number.isFinite(value)))).sort((a, b) => b - a);
 }
 
-function accountIdsForAuthor(item: FeedItem, accounts: Record<string, Account>): string[] {
-  const ids = new Set<string>([item.author.id]);
-  for (const account of Object.values(accounts)) {
-    if (account.provider !== item.platform) continue;
-    if (account.externalId === item.author.id || account.handle === item.author.handle) {
-      ids.add(account.id);
-      if (account.personId) ids.add(account.personId);
-    }
-  }
-  return Array.from(ids);
-}
-
 function itemTimestamp(item: FeedItem): number {
   return item.publishedAt || item.capturedAt;
 }
@@ -98,27 +92,29 @@ export function selectableStoryWallYears(items: readonly FeedItem[]): number[] {
   );
 }
 
-export function selectStoryWallItems(
-  items: readonly FeedItem[],
+export function selectStoryWallCandidates(
+  candidates: readonly StoryWallCandidate[],
   preferences: StoryWallPreferences,
-  accounts: Record<string, Account> = {},
-): FeedItem[] {
+): StoryWallCandidate[] {
   const selectedYears = new Set(preferences.selectedYears);
   const includedPlatforms = new Set<Platform>(preferences.includedPlatforms);
   const includedAccountIds = new Set(preferences.includedAccountIds);
   const hiddenIds = new Set(preferences.hiddenItemIds);
 
-  return items
-    .filter((item) => {
+  return candidates
+    .filter((candidate) => {
+      const item = candidate.item;
       if (hiddenIds.has(item.globalId)) return false;
       if (item.userState.hidden || item.userState.archived) return false;
       if (!itemHasStoryWallMedia(item)) return false;
       if (!includedPlatforms.has(item.platform)) return false;
       if (selectedYears.size > 0 && !selectedYears.has(storyWallYearForItem(item))) return false;
       if (includedAccountIds.size === 0) return true;
-      return accountIdsForAuthor(item, accounts).some((id) => includedAccountIds.has(id));
+      return [item.author.id, candidate.accountId, candidate.personId].some(
+        (id) => id !== null && includedAccountIds.has(id),
+      );
     })
-    .sort((a, b) => itemTimestamp(b) - itemTimestamp(a));
+    .sort((a, b) => itemTimestamp(b.item) - itemTimestamp(a.item));
 }
 
 export function groupStoryWallItemsByYear(items: readonly FeedItem[]): Map<number, FeedItem[]> {
@@ -162,39 +158,47 @@ function referencesForItem(
 }
 
 export function buildStoryWallManifest(
-  items: readonly FeedItem[],
+  candidates: readonly StoryWallCandidate[],
   preferences: StoryWallPreferences,
   options: BuildStoryWallManifestOptions = {},
 ): StoryWallManifest {
   const featuredIds = new Set(preferences.featuredItemIds);
-  const filtered = selectStoryWallItems(items, preferences);
-  const years = Array.from(groupStoryWallItemsByYear(filtered).entries()).map(([year, yearItems]) => {
-    const manifestItems = yearItems.map((item) => {
-      const media = referencesForItem(item, options.mediaReferences ?? []);
+  const filtered = selectStoryWallCandidates(candidates, preferences);
+  const grouped = new Map<number, StoryWallCandidate[]>();
+  for (const candidate of filtered) {
+    const year = storyWallYearForItem(candidate.item);
+    grouped.set(year, [...(grouped.get(year) ?? []), candidate]);
+  }
+  const years = Array.from(grouped.entries())
+    .sort(([left], [right]) => right - left)
+    .map(([year, yearCandidates]) => {
+      const manifestItems = yearCandidates.map((candidate) => {
+        const item = candidate.item;
+        const media = referencesForItem(item, options.mediaReferences ?? []);
+        return {
+          id: item.globalId,
+          year,
+          platform: item.platform,
+          platformLabel: PLATFORM_LABELS[item.platform],
+          accountId: candidate.accountId ?? item.author.id,
+          authorName: item.author.displayName || item.author.handle || "Unknown",
+          authorHandle: item.author.handle,
+          text: preferences.style.captionsEnabled ? item.content.text : undefined,
+          capturedAt: item.capturedAt,
+          publishedAt: item.publishedAt,
+          locationName: item.location?.name,
+          sourceUrl: item.sourceUrl,
+          featured: featuredIds.has(item.globalId),
+          media,
+        } satisfies StoryWallManifestItem;
+      });
       return {
-        id: item.globalId,
         year,
-        platform: item.platform,
-        platformLabel: PLATFORM_LABELS[item.platform],
-        accountId: item.author.id,
-        authorName: item.author.displayName || item.author.handle || "Unknown",
-        authorHandle: item.author.handle,
-        text: preferences.style.captionsEnabled ? item.content.text : undefined,
-        capturedAt: item.capturedAt,
-        publishedAt: item.publishedAt,
-        locationName: item.location?.name,
-        sourceUrl: item.sourceUrl,
-        featured: featuredIds.has(item.globalId),
-        media,
-      } satisfies StoryWallManifestItem;
+        itemCount: manifestItems.length,
+        mediaCount: manifestItems.reduce((sum, item) => sum + item.media.length, 0),
+        items: manifestItems,
+      };
     });
-    return {
-      year,
-      itemCount: manifestItems.length,
-      mediaCount: manifestItems.reduce((sum, item) => sum + item.media.length, 0),
-      items: manifestItems,
-    };
-  });
 
   return {
     version: 1,

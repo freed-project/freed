@@ -590,8 +590,10 @@ so a cursor from all-content mode cannot cross into Friends mode.
 One shared secondary-surface adapter executes `item_detail_v1`,
 `library_facet_summary_v1`, `saved_analytics_v2`, `map_markers_v1`, and
 `story_wall_candidates_v1` through the host executor. Map and Story Wall rows
-use shared closed row-to-visible-card transforms. The transforms do not hydrate
-reader bodies or invent a general FeedItem query.
+use shared closed row-to-visible-card transforms. Each Story Wall row also
+carries its nullable Account and Person IDs from the same indexed SQLite join
+used to select the item. The transforms do not hydrate reader bodies, scan
+identity catalogs, or invent a general FeedItem query.
 
 `map_markers_v1` resolves the optional linked Person inside SQLite through the
 unique Account provider and external identity index. Each row contains only the
@@ -817,11 +819,14 @@ corpus.
 
 `story_wall_candidates_v1` is the Story Wall candidate query. It returns at
 most 250 visible, nonarchived media rows in the same stable order. Each row
-contains only its compact caption and author metadata plus at most eight media
-URLs and media types. It contains no FeedItem remainder, tags, signals,
-highlights, engagement state, or reader bodies. Native Rust and browser SQLite
-execute the same generated program through their existing typed query
-dispatches. Story Wall uses the same one-row `hasMore` rule.
+contains only its compact caption and author metadata, nullable joined Account
+and Person IDs, plus at most eight media URLs and media types. The join uses the
+unique Account provider and external identity index. Account inclusion filters
+therefore operate on identities carried by the bounded candidate window, not a
+complete renderer Account map. The row contains no FeedItem remainder, tags,
+signals, highlights, engagement state, or reader bodies. Native Rust and
+browser SQLite execute the same generated program through their existing typed
+query dispatches. Story Wall uses the same one-row `hasMore` rule.
 
 `change_feed_v1` is the only view-refresh subscription payload. A request
 names its last fully applied revision and receives at most 512 compact rows in
