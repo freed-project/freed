@@ -114,7 +114,7 @@ import {
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
-import type { LibraryMutationEvent, WorkerRequest } from "./library-types";
+import type { LibraryMutationEvent, LibraryMutationRequest } from "./library-types";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
@@ -1264,6 +1264,15 @@ export async function upsertSqliteLibraryPerson(
   }
 }
 
+export async function upsertSqliteLibraryPersons(
+  persons: readonly Person[],
+  createdAtMs = Date.now(),
+): Promise<void> {
+  if (!(await maybeSubmitPersonUpserts(persons, createdAtMs))) {
+    throw new Error("Library mutation context is unavailable");
+  }
+}
+
 export async function appendSqliteLibraryPersonReachOut(
   personId: string,
   entry: ReachOutLog,
@@ -1529,6 +1538,15 @@ export async function upsertSqliteLibraryAccount(
   createdAtMs = Date.now(),
 ): Promise<void> {
   if (!(await maybeSubmitAccountUpserts([account], createdAtMs))) {
+    throw new Error("Library mutation context is unavailable");
+  }
+}
+
+export async function upsertSqliteLibraryAccounts(
+  accounts: readonly Account[],
+  createdAtMs = Date.now(),
+): Promise<void> {
+  if (!(await maybeSubmitAccountUpserts(accounts, createdAtMs))) {
     throw new Error("Library mutation context is unavailable");
   }
 }
@@ -2161,7 +2179,7 @@ async function refreshNormalizedMutationProjection(
 }
 
 export async function dispatchSqliteMutation(
-  message: WorkerRequest,
+  message: LibraryMutationRequest,
 ): Promise<{
   state: LibraryCoreRuntimeStateV1;
   event: LibraryMutationEvent;
@@ -2608,90 +2626,6 @@ export async function dispatchSqliteMutation(
       source = "preferences_patch";
       break;
     }
-    case "ADD_PERSON": {
-      if (!(await maybeSubmitPersonUpserts([message.person], timestamp))) {
-        throw new Error("Normalized SQLite Person mutation context is required");
-      }
-      break;
-    }
-    case "ADD_PERSONS": {
-      if (!(await maybeSubmitPersonUpserts(message.persons, timestamp))) {
-        throw new Error("Normalized SQLite Person mutation context is required");
-      }
-      break;
-    }
-    case "UPDATE_PERSON": {
-      const person = await readNormalizedPerson(message.personId);
-      const updated = person ? { ...person, ...message.updates } : null;
-      if (
-        updated &&
-        !(await maybeSubmitPersonUpserts([updated], timestamp))
-      ) {
-        throw new Error("Normalized SQLite Person mutation context is required");
-      }
-      break;
-    }
-    case "UPSERT_CONNECTION_PERSONS": {
-      const persons = message.candidates.map((candidate) => candidate.person);
-      const accounts: Account[] = [];
-      for (const candidate of message.candidates) {
-        for (const accountId of candidate.accountIds) {
-          const account = await readNormalizedAccount(accountId);
-          if (account)
-            accounts.push({ ...account, personId: candidate.person.id });
-        }
-      }
-      if (!(await maybeSubmitPersonUpserts(persons, timestamp))) {
-        throw new Error("Normalized SQLite Person mutation context is required");
-      }
-      if (!(await maybeSubmitAccountUpserts(accounts, timestamp))) {
-        throw new Error("Normalized SQLite Account mutation context is required");
-      }
-      break;
-    }
-    case "REMOVE_PERSON": {
-      if (!(await maybeSubmitPersonRemove(message.personId, timestamp))) {
-        throw new Error("Normalized SQLite Person mutation context is required");
-      }
-      break;
-    }
-    case "LOG_REACH_OUT": {
-      await appendSqliteLibraryPersonReachOut(
-        message.personId,
-        message.entry,
-        timestamp,
-      );
-      break;
-    }
-    case "ADD_ACCOUNT": {
-      if (!(await maybeSubmitAccountUpserts([message.account], timestamp))) {
-        throw new Error("Normalized SQLite Account mutation context is required");
-      }
-      break;
-    }
-    case "ADD_ACCOUNTS": {
-      if (!(await maybeSubmitAccountUpserts(message.accounts, timestamp))) {
-        throw new Error("Normalized SQLite Account mutation context is required");
-      }
-      break;
-    }
-    case "UPDATE_ACCOUNT": {
-      const account = await readNormalizedAccount(message.accountId);
-      const updated = account ? { ...account, ...message.updates } : null;
-      if (
-        updated &&
-        !(await maybeSubmitAccountUpserts([updated], timestamp))
-      ) {
-        throw new Error("Normalized SQLite Account mutation context is required");
-      }
-      break;
-    }
-    case "REMOVE_ACCOUNT": {
-      if (!(await maybeSubmitAccountRemove(message.accountId, timestamp))) {
-        throw new Error("Normalized SQLite Account mutation context is required");
-      }
-      break;
-    }
     case "BATCH_REFRESH_FEEDS": {
       await mergeIncomingSqliteItems(message.items);
       const feeds: RssFeed[] = [];
@@ -2733,8 +2667,6 @@ export async function dispatchSqliteMutation(
     case "DEDUPLICATE_ITEMS":
     case "BACKFILL_CONTENT_SIGNALS":
       break;
-    default:
-      throw new Error(`SQLite Library does not implement ${message.type}`);
   }
 
   const { state, changedItems } =

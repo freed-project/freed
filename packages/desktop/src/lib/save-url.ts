@@ -7,7 +7,7 @@
  *  3. Queue background detail fetching and cache hydration.
  */
 
-import { docAddStubItem } from "./library-client";
+import { addLibraryStubItem } from "./library-client";
 import { enqueue } from "./content-fetcher.js";
 
 export interface SaveUrlOptions {
@@ -40,7 +40,7 @@ export async function saveUrlInDesktop(
   }
 
   const stableUrl = parsed.toString();
-  const item = await docAddStubItem(stableUrl, options.tags);
+  const item = await addLibraryStubItem(stableUrl, options.tags);
   enqueue([item], {
     priority: true,
     force: true,

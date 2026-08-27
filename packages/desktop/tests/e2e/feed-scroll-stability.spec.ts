@@ -49,7 +49,7 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page): Prom
   await page.evaluate(
     async ({ delayedMediaUrl, brokenMediaUrl }) => {
       const automerge = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
-        docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+        importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
       const now = Date.now();
       const longText = "Long preview text ".repeat(60);
@@ -122,7 +122,7 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page): Prom
         };
       });
 
-      await automerge.docBatchImportItems(items);
+      await automerge.importLibraryItems(items);
     },
     { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL },
   );

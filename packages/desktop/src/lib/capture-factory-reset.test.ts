@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => {
     captureIgFeed: vi.fn(),
     captureLiFeed: vi.fn(),
     captureYouTube: vi.fn(),
-    docBatchRefreshFeeds: vi.fn(async () => undefined),
+    refreshLibraryFeeds: vi.fn(async () => undefined),
     recordProviderHealthEvent: vi.fn(async () => undefined),
     recordRssPullAttempt: vi.fn(),
     withProviderSyncing: vi.fn(
@@ -58,7 +58,7 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
   trackFactoryResetSensitiveOperation: <T>(operation: Promise<T>) => operation,
 }));
 vi.mock("./library-client", () => ({
-  docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
+  refreshLibraryFeeds: mocks.refreshLibraryFeeds,
 }));
 vi.mock("./fb-capture", () => ({ captureFbFeed: mocks.captureFbFeed }));
 vi.mock("./instagram-capture", () => ({ captureIgFeed: mocks.captureIgFeed }));

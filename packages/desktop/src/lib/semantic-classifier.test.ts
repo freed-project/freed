@@ -23,7 +23,7 @@ async function loadSemanticClassifierModule({
     model: null,
     preferences: null,
   };
-  const mockDocBackfillContentSignals = vi.fn(
+  const mockBackfillLibraryContentSignals = vi.fn(
     backfillImpl ?? (async () => summary),
   );
   const mockUpdateHealth = vi.fn(async () => {
@@ -43,7 +43,7 @@ async function loadSemanticClassifierModule({
   ]);
 
   vi.doMock("./library-client.js", () => ({
-    docBackfillContentSignals: mockDocBackfillContentSignals,
+    backfillLibraryContentSignals: mockBackfillLibraryContentSignals,
     subscribeDesktopLibraryRuntime: vi.fn((callback: (state: { totalItemCount: number }) => void) => {
       callbacks.doc = callback;
       return () => {
@@ -87,7 +87,7 @@ async function loadSemanticClassifierModule({
 
   return {
     callbacks,
-    mockDocBackfillContentSignals,
+    mockBackfillLibraryContentSignals,
     mockUpdateHealth,
     mod,
   };
@@ -108,7 +108,7 @@ describe("semantic classifier", () => {
     });
     const writeSettled = vi.fn();
     const enabled = { current: true };
-    const { mockDocBackfillContentSignals, mod } =
+    const { mockBackfillLibraryContentSignals, mod } =
       await loadSemanticClassifierModule({
         enabled,
         backfillImpl: async () => {
@@ -119,7 +119,7 @@ describe("semantic classifier", () => {
       });
 
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledOnce();
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledOnce();
 
     const cleanupStarted = vi.fn();
     const draining = mod.stopAndDrain().then(cleanupStarted);
@@ -137,7 +137,7 @@ describe("semantic classifier", () => {
   it("does not backfill or record health while workflow preferences are disabled", async () => {
     vi.useFakeTimers();
     const enabled = { current: false };
-    const { callbacks, mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+    const { callbacks, mockBackfillLibraryContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({ enabled });
 
     callbacks.doc?.({ totalItemCount: 1 });
@@ -145,7 +145,7 @@ describe("semantic classifier", () => {
     callbacks.preferences?.();
     await vi.advanceTimersByTimeAsync(15_000);
 
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
     expect(mockUpdateHealth).not.toHaveBeenCalled();
     mod.stop();
   });
@@ -153,14 +153,14 @@ describe("semantic classifier", () => {
   it("starts classification and records health when Topics and ranking becomes enabled", async () => {
     vi.useFakeTimers();
     const enabled = { current: false };
-    const { callbacks, mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+    const { callbacks, mockBackfillLibraryContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({ enabled });
 
     enabled.current = true;
     callbacks.preferences?.();
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 5_000);
 
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledWith(100);
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledWith(100);
     expect(mockUpdateHealth).toHaveBeenCalledWith("integrated-pro", {
       lastIndexedItemCount: 28_349,
       lastRunAt: expect.any(Number),
@@ -172,12 +172,12 @@ describe("semantic classifier", () => {
   it("does not run semantic enrichment during the launch memory quiet period", async () => {
     vi.useFakeTimers();
     const enabled = { current: true };
-    const { mockDocBackfillContentSignals, mod } =
+    const { mockBackfillLibraryContentSignals, mod } =
       await loadSemanticClassifierModule({ enabled });
 
     await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
 
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
     mod.stop();
   });
 
@@ -194,7 +194,7 @@ describe("semantic classifier", () => {
       cloudUploadSkipIsDownstream: true,
       cloudUploadSkipSchedulesClassifierTick: false,
     });
-    const { mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+    const { mockBackfillLibraryContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({
         enabled,
         summary: terminalSummary,
@@ -206,7 +206,7 @@ describe("semantic classifier", () => {
         (replay.semanticClassifier.processIntervalMs * 3),
     );
 
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledTimes(
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledTimes(
       replay.expectedPositiveControl.healthBroadcastBatchCount,
     );
     expect(mockUpdateHealth).toHaveBeenCalledTimes(
@@ -220,7 +220,7 @@ describe("semantic classifier", () => {
     const enabled = { current: true };
     const replay = localAIHealthFeedbackReplay.automergeLoop;
     const terminalSummary = replay.semanticClassifier.terminalSummary;
-    const { mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+    const { mockBackfillLibraryContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({
         enabled,
         summary: terminalSummary,
@@ -231,7 +231,7 @@ describe("semantic classifier", () => {
         (replay.semanticClassifier.processIntervalMs * 3),
     );
 
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledTimes(
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledTimes(
       replay.expectedPositiveControl.isolatedHealthBatchCount,
     );
     expect(mockUpdateHealth).toHaveBeenCalledTimes(

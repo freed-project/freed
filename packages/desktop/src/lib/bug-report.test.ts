@@ -24,7 +24,7 @@ describe("desktop bug reporting", () => {
     mockInvoke.mockReset();
     resetBugReportState();
     clearFatalRuntimeError();
-    useDebugStore.setState({ events: [], visible: false, docSnapshot: null, cloudProviders: null, perfSnapshot: null, perfResetGeneration: 0 });
+    useDebugStore.setState({ events: [], visible: false, librarySnapshot: null, cloudProviders: null, perfSnapshot: null, perfResetGeneration: 0 });
     useAppStore.setState({
       items: [],
       feeds: {},

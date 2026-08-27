@@ -108,7 +108,7 @@ function describeFollowerState(
 }
 
 export function MobileSyncTab() {
-  const docSnapshot = useDebugStore((state) => state.docSnapshot);
+  const librarySnapshot = useDebugStore((state) => state.librarySnapshot);
   const cloudProviders = useDebugStore((state) => state.cloudProviders);
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(
@@ -514,12 +514,12 @@ export function MobileSyncTab() {
               <DiagnosticCell
                 label="Local items"
                 value={
-                  docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"
+                  librarySnapshot ? librarySnapshot.itemCount.toLocaleString() : "-"
                 }
               />
               <DiagnosticCell
                 label="Local size"
-                value={formatBytes(docSnapshot?.binarySize)}
+                value={formatBytes(librarySnapshot?.storageBytes)}
               />
               <DiagnosticCell
                 label="Last upload"

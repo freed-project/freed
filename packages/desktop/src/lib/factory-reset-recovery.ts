@@ -16,7 +16,7 @@ export function getDesktopFactoryResetFailureRecovery(
       message: "Factory reset stopped because account cleanup did not finish. Freed will reload with cloud sync paused so you can retry safely.",
     };
   }
-  if (failedPhase === "clear document") {
+  if (failedPhase === "clear Library") {
     return {
       message: "Factory reset stopped while clearing the library. Freed will reload with cloud sync paused so another device cannot restore cleared data. Retry reset after reload.",
     };

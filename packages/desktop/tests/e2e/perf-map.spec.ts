@@ -14,7 +14,7 @@ async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
     const now = Date.now();
@@ -50,7 +50,7 @@ async function seedLargeMapWorkspace(page: Page): Promise<void> {
       };
     });
 
-    await automerge.docBatchImportItems(items);
+    await automerge.importLibraryItems(items);
   }, { authorCount: MAP_AUTHOR_COUNT, itemCount: MAP_ITEM_COUNT });
 }
 

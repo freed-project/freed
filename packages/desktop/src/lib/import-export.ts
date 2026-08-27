@@ -14,7 +14,7 @@ import { parseMarkdownArchiveFile } from "@freed/capture-save/import-markdown";
 import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { FeedItem } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docBatchImportItems, getAllItemIds } from "./library-client";
+import { importLibraryItems, getAllItemIds } from "./library-client";
 import { enqueue as enqueueFetch } from "./content-fetcher.js";
 
 export type ImportPhase = "scanning" | "writing" | "caching" | "fetching";
@@ -69,7 +69,7 @@ export async function importMarkdownFiles(
 
   // ── Phase 1: Scanning ──────────────────────────────────────────────────────
   // Snapshot existing globalIds once upfront — O(1) per lookup vs O(n) Automerge reads.
-  // This is the primary deduplication gate; docBatchImportItems has a secondary guard
+  // This is the primary deduplication gate; importLibraryItems has a secondary guard
   // inside the CRDT change for within-batch duplicates. Fetch the full id set
   // on demand rather than keeping it inside every live runtime update.
   const existingIds = new Set(await getAllItemIds());
@@ -122,7 +122,7 @@ export async function importMarkdownFiles(
   if (parsedItems.length > 0) {
     const totalChunks = Math.ceil(parsedItems.length / 500);
     emit("writing", 0, totalChunks);
-    await docBatchImportItems(parsedItems, (chunkDone, totalChunks_) => {
+    await importLibraryItems(parsedItems, (chunkDone, totalChunks_) => {
       emit("writing", chunkDone, totalChunks_);
     });
   }

@@ -41,31 +41,31 @@ import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery"
 import {
   initializeDesktopLibraryRuntime,
   subscribeDesktopLibraryRuntime,
-  docAddFeedItems,
-  docAddSampleLibraryData,
-  docAddRssFeed,
-  docRemoveRssFeed,
-  docRemoveAllFeeds,
-  docUpdateRssFeed,
-  docUpdateFeedItem,
-  docMarkItemsAsRead,
-  docMarkAllAsRead,
-  docToggleSaved,
-  docRemoveFeedItem,
-  docClearSampleData,
-  docToggleArchived,
-  docArchiveItems,
-  docArchiveAllReadUnsaved,
-  docUnarchiveSavedItems,
-  docDeleteAllArchived,
-  docPruneArchivedItems,
-  docUpdatePreferences,
-  docBackfillContentSignals,
-  docDeduplicateFeedItems,
-  docHealUntitledFeedTitles,
-  docToggleLiked,
-  docConfirmLikedSynced,
-  docConfirmSeenSynced,
+  addLibraryFeedItems,
+  addSampleLibraryData,
+  addLibraryRssFeed,
+  removeLibraryRssFeed,
+  removeAllLibraryFeeds,
+  updateLibraryRssFeed,
+  updateLibraryFeedItem,
+  markLibraryItemsAsRead,
+  markAllLibraryItemsAsRead,
+  toggleLibraryItemSaved,
+  removeLibraryFeedItem,
+  clearSampleLibraryData,
+  toggleLibraryItemArchived,
+  archiveLibraryItems,
+  archiveAllReadUnsavedLibraryItems,
+  unarchiveSavedLibraryItems,
+  deleteAllArchivedLibraryItems,
+  pruneArchivedLibraryItems,
+  updateLibraryPreferences,
+  backfillLibraryContentSignals,
+  deduplicateLibraryFeedItems,
+  healUntitledLibraryFeedTitles,
+  toggleLibraryItemLiked,
+  confirmLibraryItemLikedSynced,
+  confirmLibraryItemSeenSynced,
   quiesceDesktopLibraryForFactoryReset,
   type LibraryMutationEvent,
 } from "./library-client";
@@ -121,7 +121,7 @@ let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalBackfillRunning = false;
 let appInitializationPromise: Promise<void> | null = null;
-let documentSubscriptionTeardown: (() => void) | null = null;
+let librarySubscriptionTeardown: (() => void) | null = null;
 let storeAcceptingResetSensitiveWork = true;
 const activeResetSensitiveStoreOperations = new Set<Promise<unknown>>();
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
@@ -336,7 +336,7 @@ interface AppState {
     revision: number,
   ) => void;
 
-  // Item actions (persisted to Automerge)
+  // Item actions persisted through typed SQLite mutations.
   addItems: (items: FeedItem[]) => Promise<void>;
   updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
@@ -349,16 +349,16 @@ interface AppState {
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
-  /** Record like intent in Automerge. Outbox processor drains to platform. */
+  /** Record like intent in SQLite. The outbox processor drains it to the provider. */
   toggleLiked: (id: string) => Promise<void>;
 
-  // Feed actions (persisted to Automerge)
+  // Feed actions persisted through typed SQLite mutations.
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string, options?: RemoveFeedOptions) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
-  // Preference actions (persisted to Automerge)
+  // Preference actions persisted through typed SQLite mutations.
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
 
   // X auth actions
@@ -537,17 +537,17 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
   if (!isSqliteLibraryActive()) {
     try {
-      await docHealUntitledFeedTitles();
+      await healUntitledLibraryFeedTitles();
     } catch { /* non-fatal */ }
     if (!storeAcceptingResetSensitiveWork) return;
     try {
-      await docDeduplicateFeedItems();
+      await deduplicateLibraryFeedItems();
     } catch { /* non-fatal */ }
   }
   if (!storeAcceptingResetSensitiveWork) return;
   try {
     if (archivePruneDays > 0) {
-      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+      await pruneArchivedLibraryItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
   if (!isSqliteLibraryActive()) {
@@ -631,7 +631,7 @@ async function runStartupContentSignalBackfill(): Promise<void> {
       blocking: false,
       timeoutMs: 120_000,
       run: () => trackResetSensitiveStoreOperation(
-        docBackfillContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
+        backfillLibraryContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
       ),
     });
 
@@ -668,7 +668,7 @@ async function flushPendingReadMarks(): Promise<void> {
       pendingReadIds.clear();
 
       try {
-        await docMarkItemsAsRead(ids);
+        await markLibraryItemsAsRead(ids);
       } catch (error) {
         recordReadStateFailure(error, ids.length);
       }
@@ -775,7 +775,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         set({ isLoading: true });
 
-        // Prime the empty-shell probe before the SQLite shell is loaded.
+        // Prime the pre-initialization memory probe before Library Core starts.
         // This is intentionally fire-and-forget: telemetry must never delay
         // startup. The hydration-start marker below rejects a late result.
         void captureShellMemoryBaseline();
@@ -786,8 +786,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         const runtimeState = await initializeDesktopLibraryRuntime(
           desktopClientRegistration,
         );
-        // Closes the shell-baseline window. Any memory sample after this point
-        // includes the materialized Library shell, so it cannot be a baseline.
+        // Close the startup-baseline window. Any memory sample after this point
+        // includes the active Library Core runtime, so it cannot be a baseline.
         recordDocumentHydrated();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display);
@@ -803,8 +803,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on
         // count maps to avoid spurious selector re-renders.
-        documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribeDesktopLibraryRuntime((state, event) => {
+        librarySubscriptionTeardown?.();
+        librarySubscriptionTeardown = subscribeDesktopLibraryRuntime((state, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
           const prev = get();
           const libraryItemVersion =
@@ -920,8 +920,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           (cb) =>
             subscribeDesktopLibraryRuntime((_state, event) => cb(event)),
           platformActionsRegistry,
-          async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
-          async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
+          async (id, syncedAt) => { await confirmLibraryItemLikedSynced(id, syncedAt); },
+          async (id, syncedAt) => { await confirmLibraryItemSeenSynced(id, syncedAt); },
         );
 
         // Schedule bounded local SQLite maintenance after initial hydration.
@@ -946,7 +946,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Item actions
   addItems: async (items) => {
     const before = get().totalItemCount;
-    await docAddFeedItems(items);
+    await addLibraryFeedItems(items);
     const after = get().totalItemCount;
     log.info(
       `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
@@ -956,7 +956,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateItem: async (id, update) => {
     await runStoreMutation(
       "desktop:updateItem",
-      () => docUpdateFeedItem(id, update),
+      () => updateLibraryFeedItem(id, update),
     );
   },
 
@@ -1004,7 +1004,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   markAllAsRead: async (platform) => {
     await runStoreMutation(
       "desktop:markAllAsRead",
-      () => docMarkAllAsRead(platform),
+      () => markAllLibraryItemsAsRead(platform),
     );
   },
 
@@ -1014,7 +1014,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const itemToPin = item && !item.userState.saved ? item : null;
     await runStoreMutation(
       "desktop:toggleSaved",
-      () => docToggleSaved(id),
+      () => toggleLibraryItemSaved(id),
     );
     if (itemToPin) {
       void pinReaderItem(itemToPin).catch((error) => {
@@ -1030,7 +1030,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleArchived: async (id) => {
     await runStoreMutation(
       "desktop:toggleArchived",
-      () => docToggleArchived(id),
+      () => toggleLibraryItemArchived(id),
       { waitForPersistence: false },
     );
   },
@@ -1038,14 +1038,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveItems: async (ids) => {
     await runStoreMutation(
       "desktop:archiveItems",
-      () => docArchiveItems(ids),
+      () => archiveLibraryItems(ids),
     );
   },
 
   toggleLiked: async (id) => {
     await runStoreMutation(
       "desktop:toggleLiked",
-      () => docToggleLiked(id),
+      () => toggleLibraryItemLiked(id),
       { waitForPersistence: false },
     );
     // The outbox processor will pick up the pending like on its next drain.
@@ -1054,31 +1054,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveAllReadUnsaved: async (platform, feedUrl) => {
     await runStoreMutation(
       "desktop:archiveAllReadUnsaved",
-      () => docArchiveAllReadUnsaved(platform, feedUrl),
+      () => archiveAllReadUnsavedLibraryItems(platform, feedUrl),
     );
   },
 
   unarchiveSavedItems: async () => {
-    await docUnarchiveSavedItems();
+    await unarchiveSavedLibraryItems();
   },
 
   deleteAllArchived: async () => {
-    await docDeleteAllArchived();
+    await deleteAllArchivedLibraryItems();
   },
 
   removeItem: async (id) => {
     await runStoreMutation(
       "desktop:removeItem",
-      () => docRemoveFeedItem(id),
+      () => removeLibraryFeedItem(id),
     );
   },
 
   clearSampleData: async () => {
-    return docClearSampleData();
+    return clearSampleLibraryData();
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
-    await docAddSampleLibraryData({
+    await addSampleLibraryData({
       feeds: data.feeds,
       items: data.items,
       persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
@@ -1088,11 +1088,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Feed actions
   addFeed: async (feed) => {
-    await docAddRssFeed(feed);
+    await addLibraryRssFeed(feed);
   },
 
   removeFeed: async (url, options) => {
-    await docRemoveRssFeed(url, options?.includeItems ?? false);
+    await removeLibraryRssFeed(url, options?.includeItems ?? false);
     const { removeRssRuntimeState } = await import("./rss-runtime-state");
     removeRssRuntimeState(url);
     const { forgetRssFeedHealth } = await import("./provider-health");
@@ -1101,7 +1101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeAllFeeds: async (includeItems) => {
     const feedUrls = await collectRssFeedUrls();
-    await docRemoveAllFeeds(includeItems);
+    await removeAllLibraryFeeds(includeItems);
     const { removeRssRuntimeState } = await import("./rss-runtime-state");
     for (const url of feedUrls) removeRssRuntimeState(url);
     const { forgetRssFeedHealth } = await import("./provider-health");
@@ -1111,7 +1111,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   renameFeed: async (url, title) => {
     await runStoreMutation(
       "desktop:renameFeed",
-      () => docUpdateRssFeed(url, { title }),
+      () => updateLibraryRssFeed(url, { title }),
     );
   },
 
@@ -1140,7 +1140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ preferences: nextPreferences });
       await runStoreMutation(
         "desktop:updatePreferences",
-        () => docUpdatePreferences(syncedUpdate),
+        () => updateLibraryPreferences(syncedUpdate),
         { recordFailure: false },
       );
     } catch (error) {
@@ -1243,8 +1243,8 @@ export function withProviderSyncing<T>(
 /** Stop every store-owned writer and wait for already-issued work before document deletion. */
 export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   storeAcceptingResetSensitiveWork = false;
-  documentSubscriptionTeardown?.();
-  documentSubscriptionTeardown = null;
+  librarySubscriptionTeardown?.();
+  librarySubscriptionTeardown = null;
 
   if (startupMaintenanceTimer) {
     clearTimeout(startupMaintenanceTimer);

@@ -171,9 +171,9 @@ async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ personCount, accountCount, itemCount }) => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
     const now = Date.now();
@@ -228,9 +228,9 @@ async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
       };
     });
 
-    await automerge.docAddPersons(persons);
-    await automerge.docAddAccounts(accounts);
-    await automerge.docBatchImportItems(items);
+    await automerge.upsertLibraryPersons(persons);
+    await automerge.upsertLibraryAccounts(accounts);
+    await automerge.importLibraryItems(items);
   }, { personCount: PERSON_COUNT, accountCount: ACCOUNT_COUNT, itemCount: ITEM_COUNT });
 }
 

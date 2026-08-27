@@ -8,37 +8,37 @@ const libraryRuntime = vi.hoisted(() => {
     quiesceDesktopLibraryForFactoryReset: resolved(),
     subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
     getDesktopLibraryRuntimeState: vi.fn(() => null),
-    docAddFeedItems: resolved(),
-    docAddSampleLibraryData: resolved(),
-    docAddRssFeed: resolved(),
-    docRemoveRssFeed: resolved(),
-    docRemoveAllFeeds: resolved(),
-    docUpdateRssFeed: resolved(),
-    docUpdateFeedItem: resolved(),
-    docMarkItemsAsRead: resolved(),
-    docMarkAllAsRead: resolved(),
-    docToggleSaved: resolved(),
-    docRemoveFeedItem: resolved(),
-    docClearSampleData: vi.fn(() => Promise.resolve({
+    addLibraryFeedItems: resolved(),
+    addSampleLibraryData: resolved(),
+    addLibraryRssFeed: resolved(),
+    removeLibraryRssFeed: resolved(),
+    removeAllLibraryFeeds: resolved(),
+    updateLibraryRssFeed: resolved(),
+    updateLibraryFeedItem: resolved(),
+    markLibraryItemsAsRead: resolved(),
+    markAllLibraryItemsAsRead: resolved(),
+    toggleLibraryItemSaved: resolved(),
+    removeLibraryFeedItem: resolved(),
+    clearSampleLibraryData: vi.fn(() => Promise.resolve({
       feeds: 0,
       items: 0,
       persons: 0,
       accounts: 0,
       total: 0,
     })),
-    docToggleArchived: resolved(),
-    docArchiveItems: resolved(),
-    docArchiveAllReadUnsaved: resolved(),
-    docUnarchiveSavedItems: resolved(),
-    docDeleteAllArchived: resolved(),
-    docPruneArchivedItems: resolved(),
-    docUpdatePreferences: resolved(),
-    docBackfillContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
-    docDeduplicateFeedItems: resolved(),
-    docHealUntitledFeedTitles: resolved(),
-    docToggleLiked: resolved(),
-    docConfirmLikedSynced: resolved(),
-    docConfirmSeenSynced: resolved(),
+    toggleLibraryItemArchived: resolved(),
+    archiveLibraryItems: resolved(),
+    archiveAllReadUnsavedLibraryItems: resolved(),
+    unarchiveSavedLibraryItems: resolved(),
+    deleteAllArchivedLibraryItems: resolved(),
+    pruneArchivedLibraryItems: resolved(),
+    updateLibraryPreferences: resolved(),
+    backfillLibraryContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
+    deduplicateLibraryFeedItems: resolved(),
+    healUntitledLibraryFeedTitles: resolved(),
+    toggleLibraryItemLiked: resolved(),
+    confirmLibraryItemLikedSynced: resolved(),
+    confirmLibraryItemSeenSynced: resolved(),
   };
 });
 
@@ -61,7 +61,7 @@ vi.mock("@freed/ui/lib/bug-report", () => ({
   recordRuntimeError: vi.fn(),
 }));
 
-function makeDocState() {
+function makeLibraryState() {
   const preferences = createDefaultPreferences();
   preferences.display.sidebarMode = "closed";
   preferences.ai.provider = "ollama";
@@ -94,7 +94,7 @@ describe("Desktop store factory reset write boundary", () => {
         mock.mockResolvedValue(undefined);
       }
     }
-    libraryRuntime.docBackfillContentSignals.mockResolvedValue({
+    libraryRuntime.backfillLibraryContentSignals.mockResolvedValue({
       updated: 0,
       remaining: 0,
     });
@@ -111,7 +111,7 @@ describe("Desktop store factory reset write boundary", () => {
 
     expect(localStorage.getItem("freed-device-display-preferences-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-ai-preferences-v1")).toBeNull();
-    expect(libraryRuntime.docUpdatePreferences).not.toHaveBeenCalled();
+    expect(libraryRuntime.updateLibraryPreferences).not.toHaveBeenCalled();
   });
 
   it("does not submit SQLite mutations after local writers quiesce", async () => {
@@ -123,11 +123,11 @@ describe("Desktop store factory reset write boundary", () => {
       useAppStore.getState().renameFeed(feedUrl, "After reset"),
     ).rejects.toThrow("Desktop store is quiesced for factory reset");
 
-    expect(libraryRuntime.docUpdateRssFeed).not.toHaveBeenCalled();
+    expect(libraryRuntime.updateLibraryRssFeed).not.toHaveBeenCalled();
   });
 
   it("does not migrate device state when startup finishes during quiescence", async () => {
-    let finishInitialization!: (state: ReturnType<typeof makeDocState>) => void;
+    let finishInitialization!: (state: ReturnType<typeof makeLibraryState>) => void;
     libraryRuntime.initializeDesktopLibraryRuntime.mockImplementationOnce(
       () => new Promise((resolve) => {
         finishInitialization = resolve;
@@ -147,7 +147,7 @@ describe("Desktop store factory reset write boundary", () => {
     await Promise.resolve();
     expect(quiesced).not.toHaveBeenCalled();
     localStorage.clear();
-    finishInitialization(makeDocState());
+    finishInitialization(makeLibraryState());
 
     await Promise.all([initializing, quiescing]);
     expect(localStorage.getItem("freed-device-graph-layout-v1")).toBeNull();

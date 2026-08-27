@@ -48,7 +48,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 }));
 
 vi.mock("./library-client", () => ({
-  docReconcileYouTubeCapture: mocks.reconcile,
+  reconcileYouTubeLibraryCapture: mocks.reconcile,
   getSavedYouTubeVideoUrls: mocks.getSavedUrls,
 }));
 
@@ -200,23 +200,23 @@ describe("YouTube native bridge", () => {
       "yt_capture",
       expect.anything(),
     ));
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
     const reset = runFactoryResetOperations({
       quiesceLocalWriters: [],
       clearDeviceStores: () => [],
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => undefined,
-      clearDocument,
+      clearLibrary,
     });
     await Promise.resolve();
-    expect(clearDocument).not.toHaveBeenCalled();
+    expect(clearLibrary).not.toHaveBeenCalled();
 
     resolveCapture({ stages: [] });
     await expect(capture).rejects.toThrow("Factory reset is in progress");
     await reset;
 
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("registers the auth listener before invoking the native check", async () => {

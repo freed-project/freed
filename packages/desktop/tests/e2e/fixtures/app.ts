@@ -159,7 +159,7 @@ export class AppFixture {
 
   /**
    * Generate and inject `count` mock RSS feed items into the live Automerge doc
-   * via docBatchImportItems(). Items are chunked at 500 per the existing helper.
+   * via importLibraryItems(). Items are chunked at 500 per the existing helper.
    *
    * Call waitForReady() before this so the doc is initialised.
    */
@@ -168,7 +168,7 @@ export class AppFixture {
       async ({ count, feedUrl }) => {
         const w = window as Record<string, unknown>;
         const automerge = w.__FREED_LIBRARY_CORE__ as {
-          docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+          importLibraryItems: (items: unknown[]) => Promise<unknown>;
         };
 
         const now = Date.now();
@@ -201,8 +201,8 @@ export class AppFixture {
           },
         }));
 
-        // docBatchImportItems chunks at 500 items per Automerge change.
-        await automerge.docBatchImportItems(items);
+        // importLibraryItems chunks at 500 items per Automerge change.
+        await automerge.importLibraryItems(items);
       },
       { count, feedUrl },
     );
@@ -241,9 +241,9 @@ export class AppFixture {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docAddPerson: (person: unknown) => Promise<void>;
-        docAddAccount: (account: unknown) => Promise<void>;
-        docAddFeedItems: (items: unknown[]) => Promise<void>;
+        upsertLibraryPerson: (person: unknown) => Promise<void>;
+        upsertLibraryAccount: (account: unknown) => Promise<void>;
+        addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
@@ -256,7 +256,7 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.docAddPerson({
+      await automerge.upsertLibraryPerson({
         id: "friend-ada",
         name: "Ada Lovelace",
         relationshipStatus: "friend",
@@ -264,7 +264,7 @@ export class AppFixture {
         createdAt: now,
         updatedAt: now,
       });
-      await automerge.docAddAccount({
+      await automerge.upsertLibraryAccount({
         id: "friend-ada:instagram:ada-ig",
         personId: "friend-ada",
         kind: "social",
@@ -279,7 +279,7 @@ export class AppFixture {
         updatedAt: now,
       });
 
-      await automerge.docAddFeedItems([
+      await automerge.addLibraryFeedItems([
         {
           globalId: "ig:ada:paris",
           platform: "instagram",
@@ -343,7 +343,7 @@ export class AppFixture {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docAddFeedItems: (items: unknown[]) => Promise<void>;
+        addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
@@ -353,7 +353,7 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.docAddFeedItems([
+      await automerge.addLibraryFeedItems([
         {
           globalId: "ig:nora:paris",
           platform: "instagram",

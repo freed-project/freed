@@ -78,9 +78,9 @@ import {
   type CloudProvider,
 } from "./lib/sync";
 import {
-  clearLocalDoc,
-  docArchiveItems,
-  docMarkItemsAsRead,
+  clearLocalLibrary,
+  archiveLibraryItems,
+  markLibraryItemsAsRead,
 } from "./lib/library-client";
 import {
   openBoundedDesktopFeedReader,
@@ -357,8 +357,8 @@ const executeDesktopLibraryScopeAction: NonNullable<
       invoke("close_normalized_scope_action", { stageId }).then(() => {}),
     commitBatch: (action, entityIds) =>
       action === "read"
-        ? docMarkItemsAsRead([...entityIds])
-        : docArchiveItems([...entityIds]),
+        ? markLibraryItemsAsRead([...entityIds])
+        : archiveLibraryItems([...entityIds]),
   });
 };
 
@@ -1203,8 +1203,8 @@ function App() {
             }
             if (disconnectFailures.length > 0) throw disconnectFailures[0];
           },
-          clearDocument: async () => {
-            await clearLocalDoc();
+          clearLibrary: async () => {
+            await clearLocalLibrary();
           },
         });
         clearFactoryResetCloudCleanupBarrier();

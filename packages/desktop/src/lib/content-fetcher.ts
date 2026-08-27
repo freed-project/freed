@@ -23,7 +23,7 @@ import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-sa
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
 import {
-  docUpdateFeedItem,
+  updateLibraryFeedItem,
   subscribeDesktopLibraryRuntime,
   type LibraryMutationEvent,
 } from "./library-client";
@@ -117,7 +117,7 @@ let running = false;
 let workerTimer: ReturnType<typeof setTimeout> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
-let unsubscribeDoc: (() => void) | null = null;
+let unsubscribeLibrary: (() => void) | null = null;
 let lastScannedItemCount: number | null = null;
 let activeStartedAt: number | null = null;
 let nextDelayMs: number | undefined;
@@ -618,7 +618,7 @@ async function processNext(): Promise<ProcessOutcome> {
     // Omit author rather than assigning undefined so the durable JSON stays canonical.
     // throws on undefined assignments and updateFeedItem uses Object.assign.
     const resolvedAuthor = content.author ?? metadata.author;
-    await docUpdateFeedItem(entry.globalId, {
+    await updateLibraryFeedItem(entry.globalId, {
       preservedContent: {
         text: summaryText,
         ...(resolvedAuthor !== undefined ? { author: resolvedAuthor } : {}),
@@ -682,7 +682,7 @@ export function start(options: ContentFetcherOptions = {}): void {
   // Important: never rescan the Library for an ordinary item patch. New rows
   // arrive with their exact payload. A whole-corpus scan is reserved for an
   // explicit state replacement whose changed identities are unknowable.
-  unsubscribeDoc = subscribeDesktopLibraryRuntime((state, event) => {
+  unsubscribeLibrary = subscribeDesktopLibraryRuntime((state, event) => {
     maybeScanLibraryItems(state.totalItemCount, event);
   });
 
@@ -723,9 +723,9 @@ export function stop(): void {
     heartbeatHandle = null;
   }
 
-  if (unsubscribeDoc) {
-    unsubscribeDoc();
-    unsubscribeDoc = null;
+  if (unsubscribeLibrary) {
+    unsubscribeLibrary();
+    unsubscribeLibrary = null;
   }
 
   removeUserInteractionListeners?.();

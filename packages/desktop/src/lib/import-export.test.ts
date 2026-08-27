@@ -24,7 +24,7 @@ import type { FeedItem } from "@freed/shared";
 // Only mock I/O — NOT the capture-save parser (ESM live bindings prevent it).
 
 const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
-  const docStore: Record<string, FeedItem> = {};
+  const libraryStore: Record<string, FeedItem> = {};
 
   const mockBatchImport = vi.fn(
     async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
@@ -32,7 +32,7 @@ const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoi
       const total = Math.ceil(items.length / CHUNK);
       for (let i = 0; i < items.length; i += CHUNK) {
         for (const item of items.slice(i, i + CHUNK)) {
-          if (!docStore[item.globalId]) docStore[item.globalId] = item;
+          if (!libraryStore[item.globalId]) libraryStore[item.globalId] = item;
         }
         onChunk?.(Math.floor(i / CHUNK) + 1, total);
       }
@@ -41,18 +41,18 @@ const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoi
 
   return {
     mockBatchImport,
-    mockGetAllItemIds: vi.fn(async () => Object.keys(docStore)),
+    mockGetAllItemIds: vi.fn(async () => Object.keys(libraryStore)),
     mockCacheSet: vi.fn(async () => undefined),
     mockEnqueue: vi.fn(),
-    _docStore: docStore,
+    _docStore: libraryStore,
   };
 });
 
 // Module-level store accessible to test assertions
-const docStore: Record<string, FeedItem> = {};
+const libraryStore: Record<string, FeedItem> = {};
 
 vi.mock("./library-client.js", () => ({
-  docBatchImportItems: mockBatchImport,
+  importLibraryItems: mockBatchImport,
   getAllItemIds: mockGetAllItemIds,
 }));
 
@@ -131,7 +131,7 @@ describe("folderTagsFromRelativePath", () => {
 describe("importMarkdownFiles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    Object.keys(docStore).forEach((k) => delete docStore[k]);
+    Object.keys(libraryStore).forEach((k) => delete libraryStore[k]);
 
     // Restore implementations cleared by resetAllMocks()
     mockBatchImport.mockImplementation(
@@ -140,13 +140,13 @@ describe("importMarkdownFiles", () => {
         const total = Math.ceil(items.length / CHUNK);
         for (let i = 0; i < items.length; i += CHUNK) {
         for (const item of items.slice(i, i + CHUNK)) {
-          if (!docStore[item.globalId]) docStore[item.globalId] = item;
+          if (!libraryStore[item.globalId]) libraryStore[item.globalId] = item;
         }
         onChunk?.(Math.floor(i / CHUNK) + 1, total);
       }
       },
     );
-    mockGetAllItemIds.mockImplementation(async () => Object.keys(docStore));
+    mockGetAllItemIds.mockImplementation(async () => Object.keys(libraryStore));
     mockCacheSet.mockResolvedValue(undefined);
   });
 
@@ -195,7 +195,7 @@ describe("importMarkdownFiles", () => {
     const result = await importMarkdownFiles(files);
     expect(result.imported).toBe(1);
 
-    const writtenItem = Object.values(docStore)[0];
+    const writtenItem = Object.values(libraryStore)[0];
     expect(writtenItem).toBeDefined();
     expect(writtenItem!.userState.tags).toContain("Technology");
     expect(writtenItem!.userState.tags).toContain("Technology/AI");
@@ -239,7 +239,7 @@ describe("importMarkdownFiles", () => {
     expect(mockCacheSet).toHaveBeenCalledOnce();
   });
 
-  it("does not invoke docBatchImportItems when all items are already known", async () => {
+  it("does not invoke importLibraryItems when all items are already known", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
     const files = makeFileList([makeMdFile(60)]);
 
@@ -248,7 +248,7 @@ describe("importMarkdownFiles", () => {
     expect(firstResult.imported).toBe(1);
 
     vi.clearAllMocks();
-    // The mock store now reflects docStore state via mockAllItemIds — no extra setup needed.
+    // The mock store now reflects libraryStore state via mockAllItemIds — no extra setup needed.
 
     await importMarkdownFiles(files);
     expect(mockBatchImport).not.toHaveBeenCalled();

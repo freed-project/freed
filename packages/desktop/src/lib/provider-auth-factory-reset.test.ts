@@ -58,7 +58,7 @@ function resetOperations(clearProviderDataAndConnections: () => Promise<void>) {
     clearLocalSettings: [],
     clearLocalData: [],
     clearProviderDataAndConnections,
-    clearDocument: async () => undefined,
+    clearLibrary: async () => undefined,
   };
 }
 

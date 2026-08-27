@@ -10,7 +10,7 @@ import type { Account, FeedItem } from "@freed/shared";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { docReconcileYouTubeCapture } from "./library-client";
+import { reconcileYouTubeLibraryCapture } from "./library-client";
 import { safeUnlisten } from "./safe-unlisten";
 import { storeYouTubeAuthState } from "./youtube-auth";
 import { clearYouTubePlaylistState } from "./youtube-playlist";
@@ -545,7 +545,7 @@ export function captureYouTube(
     const beforeAccountCount = before.socialAccountCount ?? 0;
     const beforeItemCount = before.totalItemCount;
 
-    await docReconcileYouTubeCapture(result.accounts, result.items, {
+    await reconcileYouTubeLibraryCapture(result.accounts, result.items, {
       rosterComplete: result.diag.rosterComplete,
       capturedAt: result.capturedAt,
     });

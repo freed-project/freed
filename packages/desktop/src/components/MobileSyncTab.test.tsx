@@ -124,11 +124,11 @@ describe("MobileSyncTab cloud diagnostics", () => {
     mocks.providers.gdrive = { status: "connected", error: undefined };
     window.localStorage.clear();
     useDebugStore.setState({
-      docSnapshot: {
-        documentId: "document-1",
+      librarySnapshot: {
+        libraryId: "document-1",
         itemCount: 10288,
         feedCount: 106,
-        binarySize: 12_900_000,
+        storageBytes: 12_900_000,
         savedAt: Date.now(),
       },
       cloudProviders: {
@@ -162,7 +162,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
       root.unmount();
     });
     container.remove();
-    useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
+    useDebugStore.setState({ librarySnapshot: null, cloudProviders: null });
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;

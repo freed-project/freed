@@ -124,7 +124,7 @@ async function injectPreservedRssItems(
     async ({ count, feedUrl, preservedTextLength }) => {
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+        importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
 
       const now = Date.now();
@@ -166,7 +166,7 @@ async function injectPreservedRssItems(
         },
       }));
 
-      await automerge.docBatchImportItems(items);
+      await automerge.importLibraryItems(items);
     },
     { count, feedUrl, preservedTextLength },
   );

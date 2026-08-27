@@ -121,11 +121,11 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       isSyncing: false,
     });
     useDebugStore.setState({
-      docSnapshot: {
-        documentId: "document-1",
+      librarySnapshot: {
+        libraryId: "document-1",
         itemCount: 1,
         feedCount: 0,
-        binarySize: 1536,
+        storageBytes: 1536,
         savedAt: Date.now(),
       },
       cloudProviders: {
@@ -157,7 +157,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       syncConnected: false,
       isSyncing: false,
     });
-    useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
+    useDebugStore.setState({ librarySnapshot: null, cloudProviders: null });
     document.body.innerHTML = "";
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }

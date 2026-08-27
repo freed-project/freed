@@ -45,11 +45,11 @@ export interface SyncEvent {
   bytes?: number;
 }
 
-export interface DocSnapshot {
-  documentId: string;
+export interface LibrarySnapshot {
+  libraryId: string;
   itemCount: number;
   feedCount: number;
-  binarySize: number;
+  storageBytes?: number;
   savedAt: number;
 }
 
@@ -296,7 +296,7 @@ export interface ProviderHealthDebugState {
 interface DebugState {
   visible: boolean;
   events: SyncEvent[];
-  docSnapshot: DocSnapshot | null;
+  librarySnapshot: LibrarySnapshot | null;
   runtimeMemory: RuntimeMemorySnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
   health: ProviderHealthDebugState | null;
@@ -309,7 +309,7 @@ interface DebugState {
   setVisible: (visible: boolean) => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
-  setDocSnapshot: (snap: DocSnapshot) => void;
+  setLibrarySnapshot: (snap: LibrarySnapshot) => void;
   setRuntimeMemory: (snap: RuntimeMemorySnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
   updateCloudProvider: (provider: keyof CloudProvidersDebugState, state: Partial<CloudProviderDebugState>) => void;
@@ -332,7 +332,7 @@ const MAX_CLOUD_PROVIDER_EVENTS = 12;
 export const useDebugStore = create<DebugState>()((set) => ({
   visible: false,
   events: [],
-  docSnapshot: null,
+  librarySnapshot: null,
   runtimeMemory: null,
   cloudProviders: null,
   health: null,
@@ -357,7 +357,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
 
   clearEvents: () => set({ events: [] }),
 
-  setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
+  setLibrarySnapshot: (librarySnapshot) => set({ librarySnapshot }),
 
   setRuntimeMemory: (runtimeMemory) => set({ runtimeMemory }),
 
@@ -463,8 +463,8 @@ export function addDebugEvent(
   }
 }
 
-export function setDocSnapshot(snap: DocSnapshot): void {
-  useDebugStore.getState().setDocSnapshot(snap);
+export function setLibrarySnapshot(snap: LibrarySnapshot): void {
+  useDebugStore.getState().setLibrarySnapshot(snap);
 }
 
 export function setRuntimeMemory(snap: RuntimeMemorySnapshot): void {
@@ -503,24 +503,21 @@ export function setProviderHealth(state: ProviderHealthDebugState): void {
 declare global {
   interface Window {
     __freed: {
-      getDoc?: () => unknown;
-      getDocJson?: () => string;
-      getDocBinary?: () => Uint8Array | Promise<Uint8Array>;
+      getLibrarySummary?: () => unknown;
+      getLibrarySummaryJson?: () => string;
       debug?: () => DebugState;
     };
   }
 }
 
-export function registerDocAccessors(
-  getDoc: () => unknown,
-  getDocJson: () => string,
-  getDocBinary?: () => Uint8Array | Promise<Uint8Array>,
+export function registerLibraryAccessors(
+  getLibrarySummary: () => unknown,
+  getLibrarySummaryJson: () => string,
 ): void {
   window.__freed = {
     ...window.__freed,
-    getDoc,
-    getDocJson,
-    ...(getDocBinary ? { getDocBinary } : {}),
+    getLibrarySummary,
+    getLibrarySummaryJson,
     debug: () => useDebugStore.getState(),
   };
 }

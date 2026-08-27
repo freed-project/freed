@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => {
     invoke: vi.fn(),
     recordRssPullAttempt: vi.fn(),
     recordProviderHealthEvent: vi.fn(async () => {}),
-    docBatchRefreshFeeds: vi.fn(async () => {}),
+    refreshLibraryFeeds: vi.fn(async () => {}),
   };
 });
 
@@ -38,7 +38,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent: vi.fn() }));
 vi.mock("./library-client", () => ({
-  docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
+  refreshLibraryFeeds: mocks.refreshLibraryFeeds,
 }));
 vi.mock("./fb-capture", () => ({ captureFbFeed: vi.fn() }));
 vi.mock("./instagram-capture", () => ({ captureIgFeed: vi.fn() }));

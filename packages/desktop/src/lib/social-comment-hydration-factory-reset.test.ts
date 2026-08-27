@@ -35,14 +35,14 @@ describe("social comment hydration factory reset boundary", () => {
     const request = fetchFacebookComments("https://www.facebook.com/posts/123");
     await vi.waitFor(() => expect(mocks.listen).toHaveBeenCalledOnce());
 
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
     const reset = runFactoryResetOperations({
       quiesceLocalWriters: [],
       clearDeviceStores: () => [],
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => undefined,
-      clearDocument,
+      clearLibrary,
     });
     finishListen(vi.fn());
 
@@ -50,6 +50,6 @@ describe("social comment hydration factory reset boundary", () => {
     await reset;
 
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 });

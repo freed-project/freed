@@ -1,6 +1,6 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
-  docBackfillContentSignals,
+  backfillLibraryContentSignals,
   subscribeDesktopLibraryRuntime,
 } from "./library-client";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
@@ -33,7 +33,7 @@ let lastRunAt: number | undefined;
 let lastScannedItemCount: number | null = null;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
-let unsubscribeDoc: (() => void) | null = null;
+let unsubscribeLibrary: (() => void) | null = null;
 let unsubscribeLocalAIModelState: (() => void) | null = null;
 let unsubscribePreferenceChanges: (() => void) | null = null;
 let pending = 0;
@@ -59,7 +59,7 @@ function scheduleBackfill(): void {
   pending = Math.max(pending, 1);
 }
 
-async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
+async function recordSemanticHealth(summary: Awaited<ReturnType<typeof backfillLibraryContentSignals>>): Promise<void> {
   if (!isEnabled()) return;
   try {
     const models = await localAIModels.listModels();
@@ -104,7 +104,7 @@ async function processNextBatch(): Promise<void> {
       blocking: false,
       timeoutMs: 120_000,
       run: () => trackResetSensitiveOperation(
-        Promise.resolve().then(() => docBackfillContentSignals(BATCH_SIZE)),
+        Promise.resolve().then(() => backfillLibraryContentSignals(BATCH_SIZE)),
       ),
     });
     lastRunAt = Date.now();
@@ -142,7 +142,7 @@ export function start(options: SemanticClassifierOptions = {}): void {
   lastScannedItemCount = null;
   startedAt = Date.now();
 
-  unsubscribeDoc = subscribeDesktopLibraryRuntime((state) => {
+  unsubscribeLibrary = subscribeDesktopLibraryRuntime((state) => {
     if (lastScannedItemCount === state.totalItemCount) return;
     lastScannedItemCount = state.totalItemCount;
     scheduleBackfill();
@@ -185,9 +185,9 @@ export function stop(): void {
     heartbeatHandle = null;
   }
 
-  if (unsubscribeDoc) {
-    unsubscribeDoc();
-    unsubscribeDoc = null;
+  if (unsubscribeLibrary) {
+    unsubscribeLibrary();
+    unsubscribeLibrary = null;
   }
 
   if (unsubscribeLocalAIModelState) {

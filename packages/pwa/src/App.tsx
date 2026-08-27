@@ -363,7 +363,7 @@ function App() {
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
               clearStoredRelayUrlForFactoryReset();
             },
-            clearDocument: async () => {},
+            clearLibrary: async () => {},
           });
           clearFactoryResetCloudCleanupBarrier();
         });

@@ -13,12 +13,12 @@ import {
 } from "./facebook-group-discovery";
 
 const {
-  mockDocBackfillContentSignals,
-  mockDocDeduplicateFeedItems,
-  mockDocHealUntitledFeedTitles,
-  mockDocPruneArchivedItems,
+  mockBackfillLibraryContentSignals,
+  mockDeduplicateLibraryFeedItems,
+  mockHealUntitledLibraryFeedTitles,
+  mockPruneArchivedLibraryItems,
   mockCaptureShellMemoryBaseline,
-  mockInitDoc,
+  mockInitializeLibrary,
   mockRecordDocumentHydrated,
   mockRecordDocumentHydrationStarted,
   mockRunBackgroundJob,
@@ -26,12 +26,12 @@ const {
   mockSubscribe,
   mockUnsubscribe,
 } = vi.hoisted(() => ({
-  mockDocBackfillContentSignals: vi.fn(),
-  mockDocDeduplicateFeedItems: vi.fn(),
-  mockDocHealUntitledFeedTitles: vi.fn(),
-  mockDocPruneArchivedItems: vi.fn(),
+  mockBackfillLibraryContentSignals: vi.fn(),
+  mockDeduplicateLibraryFeedItems: vi.fn(),
+  mockHealUntitledLibraryFeedTitles: vi.fn(),
+  mockPruneArchivedLibraryItems: vi.fn(),
   mockCaptureShellMemoryBaseline: vi.fn(),
-  mockInitDoc: vi.fn(),
+  mockInitializeLibrary: vi.fn(),
   mockRecordDocumentHydrated: vi.fn(),
   mockRecordDocumentHydrationStarted: vi.fn(),
   mockRunBackgroundJob: vi.fn(),
@@ -41,45 +41,35 @@ const {
 }));
 
 vi.mock("./library-client", () => ({
-  initializeDesktopLibraryRuntime: mockInitDoc,
+  initializeDesktopLibraryRuntime: mockInitializeLibrary,
   quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
   subscribeDesktopLibraryRuntime: mockSubscribe,
   getDesktopLibraryRuntimeState: vi.fn(() => null),
-  docAddFeedItems: vi.fn(),
-  docAddSampleLibraryData: vi.fn(),
-  docAddRssFeed: vi.fn(),
-  docRemoveRssFeed: vi.fn(),
-  docRemoveAllFeeds: vi.fn(),
-  docUpdateRssFeed: vi.fn(),
-  docUpdateFeedItem: vi.fn(),
-  docMarkItemsAsRead: vi.fn(),
-  docMarkAllAsRead: vi.fn(),
-  docToggleSaved: vi.fn(),
-  docRemoveFeedItem: vi.fn(),
-  docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
-  docToggleArchived: vi.fn(),
-  docArchiveItems: vi.fn(),
-  docArchiveAllReadUnsaved: vi.fn(),
-  docUnarchiveSavedItems: vi.fn(),
-  docDeleteAllArchived: vi.fn(),
-  docPruneArchivedItems: mockDocPruneArchivedItems,
-  docUpdatePreferences: vi.fn(),
-  docBackfillContentSignals: mockDocBackfillContentSignals,
-  docDeduplicateFeedItems: mockDocDeduplicateFeedItems,
-  docHealUntitledFeedTitles: mockDocHealUntitledFeedTitles,
-  docAddAccount: vi.fn(),
-  docAddAccounts: vi.fn(),
-  docAddPerson: vi.fn(),
-  docAddPersons: vi.fn(),
-  docUpdateAccount: vi.fn(),
-  docUpdatePerson: vi.fn(),
-  docUpsertConnectionPersons: vi.fn(),
-  docRemoveAccount: vi.fn(),
-  docRemovePerson: vi.fn(),
-  docLogReachOut: vi.fn(),
-  docToggleLiked: vi.fn(),
-  docConfirmLikedSynced: vi.fn(),
-  docConfirmSeenSynced: vi.fn(),
+  addLibraryFeedItems: vi.fn(),
+  addSampleLibraryData: vi.fn(),
+  addLibraryRssFeed: vi.fn(),
+  removeLibraryRssFeed: vi.fn(),
+  removeAllLibraryFeeds: vi.fn(),
+  updateLibraryRssFeed: vi.fn(),
+  updateLibraryFeedItem: vi.fn(),
+  markLibraryItemsAsRead: vi.fn(),
+  markAllLibraryItemsAsRead: vi.fn(),
+  toggleLibraryItemSaved: vi.fn(),
+  removeLibraryFeedItem: vi.fn(),
+  clearSampleLibraryData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
+  toggleLibraryItemArchived: vi.fn(),
+  archiveLibraryItems: vi.fn(),
+  archiveAllReadUnsavedLibraryItems: vi.fn(),
+  unarchiveSavedLibraryItems: vi.fn(),
+  deleteAllArchivedLibraryItems: vi.fn(),
+  pruneArchivedLibraryItems: mockPruneArchivedLibraryItems,
+  updateLibraryPreferences: vi.fn(),
+  backfillLibraryContentSignals: mockBackfillLibraryContentSignals,
+  deduplicateLibraryFeedItems: mockDeduplicateLibraryFeedItems,
+  healUntitledLibraryFeedTitles: mockHealUntitledLibraryFeedTitles,
+  toggleLibraryItemLiked: vi.fn(),
+  confirmLibraryItemLikedSynced: vi.fn(),
+  confirmLibraryItemSeenSynced: vi.fn(),
 }));
 
 vi.mock("./background-runtime-coordinator", () => ({
@@ -132,7 +122,7 @@ vi.mock("./logger", () => ({
   },
 }));
 
-function createDocState() {
+function createLibraryState() {
   return {
     searchCorpusVersion: 0,
     preferences: createDefaultPreferences(),
@@ -180,18 +170,18 @@ describe("store startup migrations", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
-    mockDocBackfillContentSignals.mockReset();
-    mockDocBackfillContentSignals.mockResolvedValue({ updated: 50, remaining: 0, total: 50 });
-    mockDocDeduplicateFeedItems.mockReset();
-    mockDocDeduplicateFeedItems.mockResolvedValue(undefined);
-    mockDocHealUntitledFeedTitles.mockReset();
-    mockDocHealUntitledFeedTitles.mockResolvedValue(undefined);
-    mockDocPruneArchivedItems.mockReset();
-    mockDocPruneArchivedItems.mockResolvedValue(undefined);
+    mockBackfillLibraryContentSignals.mockReset();
+    mockBackfillLibraryContentSignals.mockResolvedValue({ updated: 50, remaining: 0, total: 50 });
+    mockDeduplicateLibraryFeedItems.mockReset();
+    mockDeduplicateLibraryFeedItems.mockResolvedValue(undefined);
+    mockHealUntitledLibraryFeedTitles.mockReset();
+    mockHealUntitledLibraryFeedTitles.mockResolvedValue(undefined);
+    mockPruneArchivedLibraryItems.mockReset();
+    mockPruneArchivedLibraryItems.mockResolvedValue(undefined);
     mockCaptureShellMemoryBaseline.mockReset();
     mockCaptureShellMemoryBaseline.mockResolvedValue(true);
-    mockInitDoc.mockReset();
-    mockInitDoc.mockResolvedValue(createDocState());
+    mockInitializeLibrary.mockReset();
+    mockInitializeLibrary.mockResolvedValue(createLibraryState());
     mockRunBackgroundJob.mockReset();
     mockRunBackgroundJob.mockImplementation(async (task) => task.run());
     mockStartOutboxProcessor.mockReset();
@@ -220,9 +210,9 @@ describe("store startup migrations", () => {
     mockRecordDocumentHydrationStarted.mockImplementation(() => {
       order.push("hydration-started");
     });
-    mockInitDoc.mockImplementation(async () => {
+    mockInitializeLibrary.mockImplementation(async () => {
       order.push("document");
-      return createDocState();
+      return createLibraryState();
     });
     mockRecordDocumentHydrated.mockImplementation(() => {
       order.push("hydrated");
@@ -245,12 +235,12 @@ describe("store startup migrations", () => {
 
     await expect(useAppStore.getState().initialize()).resolves.toBeUndefined();
 
-    expect(mockInitDoc).toHaveBeenCalledTimes(1);
+    expect(mockInitializeLibrary).toHaveBeenCalledTimes(1);
     expect(mockRecordDocumentHydrationStarted.mock.invocationCallOrder[0]).toBeLessThan(
-      mockInitDoc.mock.invocationCallOrder[0],
+      mockInitializeLibrary.mock.invocationCallOrder[0],
     );
     expect(mockRecordDocumentHydrated.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mockInitDoc.mock.invocationCallOrder[0],
+      mockInitializeLibrary.mock.invocationCallOrder[0],
     );
   });
 
@@ -260,27 +250,27 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
     expect(mockRunBackgroundJob).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 1);
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(mockDocHealUntitledFeedTitles).toHaveBeenCalledTimes(1);
-    expect(mockDocDeduplicateFeedItems).toHaveBeenCalledTimes(1);
-    expect(mockDocPruneArchivedItems).toHaveBeenCalledTimes(1);
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).toHaveBeenCalledTimes(1);
+    expect(mockDeduplicateLibraryFeedItems).toHaveBeenCalledTimes(1);
+    expect(mockPruneArchivedLibraryItems).toHaveBeenCalledTimes(1);
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
     expect(mockRunBackgroundJob).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000 - 1);
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
 
@@ -290,7 +280,7 @@ describe("store startup migrations", () => {
         source: "startup-migration",
       }),
     );
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledWith(50);
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledWith(50);
   });
 
   it("does not run cleanup migrations before cloud sync catches up", async () => {
@@ -303,16 +293,16 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
+    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
   });
 
   it("imports the legacy sidebar mode before initialization completes", async () => {
-    const state = createDocState();
+    const state = createLibraryState();
     state.preferences.display.sidebarMode = "closed";
-    mockInitDoc.mockResolvedValue(state);
+    mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
@@ -322,7 +312,7 @@ describe("store startup migrations", () => {
   });
 
   it("imports legacy Facebook group discovery before initialization completes", async () => {
-    const state = createDocState();
+    const state = createLibraryState();
     state.preferences.fbCapture.knownGroups = {
       "group-one": {
         id: "group-one",
@@ -330,7 +320,7 @@ describe("store startup migrations", () => {
         url: "https://www.facebook.com/groups/group-one",
       },
     };
-    mockInitDoc.mockResolvedValue(state);
+    mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
@@ -340,8 +330,8 @@ describe("store startup migrations", () => {
   });
 
   it("coalesces concurrent initialization into one worker subscription", async () => {
-    let resolveInit!: (state: ReturnType<typeof createDocState>) => void;
-    mockInitDoc.mockImplementationOnce(
+    let resolveInit!: (state: ReturnType<typeof createLibraryState>) => void;
+    mockInitializeLibrary.mockImplementationOnce(
       () => new Promise((resolve) => {
         resolveInit = resolve;
       }),
@@ -353,11 +343,11 @@ describe("store startup migrations", () => {
     const second = initialize();
 
     expect(second).toBe(first);
-    await vi.waitFor(() => expect(mockInitDoc).toHaveBeenCalledTimes(1));
-    resolveInit(createDocState());
+    await vi.waitFor(() => expect(mockInitializeLibrary).toHaveBeenCalledTimes(1));
+    resolveInit(createLibraryState());
     await Promise.all([first, second]);
 
-    expect(mockInitDoc).toHaveBeenCalledTimes(1);
+    expect(mockInitializeLibrary).toHaveBeenCalledTimes(1);
     expect(mockSubscribe).toHaveBeenCalledTimes(1);
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
@@ -368,7 +358,7 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
       | ((
-        state: ReturnType<typeof createDocState>,
+        state: ReturnType<typeof createLibraryState>,
         event: {
           mutation?: string;
           source?: "state_update" | "preferences_patch" | "item_patch" | "feeds_patch";
@@ -381,32 +371,32 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(0);
     expect(useAppStore.getState().savedFeedVersion).toBe(0);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_SAVED",
       source: "item_patch",
     });
     expect(useAppStore.getState().libraryItemVersion).toBe(1);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_AS_READ",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_LIKED",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_SEEN_SYNCED",
       source: "item_patch",
       changedItemIds: [],
@@ -415,7 +405,7 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    const irrelevantPreferenceState = createDocState();
+    const irrelevantPreferenceState = createLibraryState();
     irrelevantPreferenceState.preferences = {
       ...irrelevantPreferenceState.preferences,
       weights: useAppStore.getState().preferences.weights,
@@ -424,14 +414,14 @@ describe("store startup migrations", () => {
       mutation: "UPDATE_PREFERENCES",
       source: "preferences_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "UPDATE_RSS_FEED",
       source: "feeds_patch",
     });
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    const rankingPreferenceState = createDocState();
+    const rankingPreferenceState = createLibraryState();
     rankingPreferenceState.preferences.weights = {
       ...useAppStore.getState().preferences.weights,
       recency: 75,
@@ -443,27 +433,27 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(2);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "UPDATE_PREFERENCES",
       source: "state_update",
     });
     expect(useAppStore.getState().savedFeedVersion).toBe(3);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "ADD_FEED_ITEMS",
       source: "item_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "FUTURE_ITEM_PATCH",
       source: "item_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_ARCHIVED",
       source: "item_patch",
     });
     expect(useAppStore.getState().savedFeedVersion).toBe(6);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MERGE_DOC",
       source: "state_update",
     });
@@ -477,7 +467,7 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
       | ((
-          state: ReturnType<typeof createDocState>,
+          state: ReturnType<typeof createLibraryState>,
           event: {
             mutation: string;
             source: "item_patch";
@@ -490,7 +480,7 @@ describe("store startup migrations", () => {
 
     const first = createFeedItem("read-one", "rss", { readAt: 100 });
     const second = createFeedItem("read-two", "rss", { readAt: 100 });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ITEMS_AS_READ",
       source: "item_patch",
       changedItemIds: [first.globalId, second.globalId],
@@ -508,7 +498,7 @@ describe("store startup migrations", () => {
 
     const markAllX = createFeedItem("all-x", "x", { readAt: 200 });
     const markAllRss = createFeedItem("all-rss", "rss", { readAt: 200 });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ALL_AS_READ",
       source: "item_patch",
       changedItemIds: [markAllX.globalId, markAllRss.globalId],
@@ -526,7 +516,7 @@ describe("store startup migrations", () => {
       likedAt: 250,
       likedSyncedAt: 300,
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [liked.globalId],
@@ -558,7 +548,7 @@ describe("store startup migrations", () => {
       { length: 513 },
       (_, index) => `read-${index}`,
     );
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ITEMS_AS_READ",
       source: "item_patch",
       changedItemIds: oversizedIds,
@@ -574,7 +564,7 @@ describe("store startup migrations", () => {
         likedSyncedAt: 800 + index,
       }),
     );
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: maximumUserStates.map((item) => item.globalId),
@@ -590,7 +580,7 @@ describe("store startup migrations", () => {
       likedAt: 912,
       likedSyncedAt: 1_312,
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [overflowUserState.globalId],

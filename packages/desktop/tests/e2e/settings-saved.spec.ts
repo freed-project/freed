@@ -37,14 +37,14 @@ test("saved settings overview survives items arriving while open", async ({ app,
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_LIBRARY_CORE__ as
-      | { docAddFeedItems: (items: unknown[]) => Promise<void> }
+      | { addLibraryFeedItems: (items: unknown[]) => Promise<void> }
       | undefined;
 
     if (!automerge) {
       throw new Error("Freed Automerge bridge not found");
     }
 
-    await automerge.docAddFeedItems([
+    await automerge.addLibraryFeedItems([
       {
         globalId: "saved:e2e:arrives-while-open",
         platform: "saved",

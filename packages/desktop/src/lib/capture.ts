@@ -25,7 +25,7 @@ import { captureLiFeed } from "./li-capture";
 import { captureSubstackFeed } from "./substack-capture";
 import { captureMediumFeed } from "./medium-capture";
 import { captureYouTube } from "./youtube-capture";
-import { docBatchRefreshFeeds } from "./library-client";
+import { refreshLibraryFeeds } from "./library-client";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
@@ -726,7 +726,7 @@ async function refreshEnabledRssFeeds(
 
       if (feedUpdates.length > 0 || allNewItems.length > 0) {
         await preserveRssEssayBodies(allNewItems);
-        await docBatchRefreshFeeds(feedUpdates, allNewItems);
+        await refreshLibraryFeeds(feedUpdates, allNewItems);
       }
       const rssAfterState = useAppStore.getState();
       const rssAfter = rssAfterState.totalItemCount;

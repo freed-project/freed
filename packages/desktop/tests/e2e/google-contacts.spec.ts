@@ -125,10 +125,10 @@ async function injectAuthor(page: import("@playwright/test").Page, displayName: 
   await page.evaluate(async ({ displayName, handle }) => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<void>;
+      importLibraryItems: (items: unknown[]) => Promise<void>;
     };
     const now = Date.now();
-    await automerge.docBatchImportItems([
+    await automerge.importLibraryItems([
       {
         globalId: `x:${displayName}`,
         platform: "x",
@@ -148,10 +148,10 @@ async function injectFriend(page: import("@playwright/test").Page, friendName: s
   await page.evaluate(async (friendName) => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPerson: (person: unknown) => Promise<void>;
+      upsertLibraryPerson: (person: unknown) => Promise<void>;
     };
     const now = Date.now();
-    await automerge.docAddPerson({
+    await automerge.upsertLibraryPerson({
       id: `friend:${friendName}`,
       name: friendName,
       relationshipStatus: "friend",

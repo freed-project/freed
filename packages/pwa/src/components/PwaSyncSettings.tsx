@@ -200,7 +200,7 @@ export function PwaSyncSettings() {
   const isSyncing = useAppStore((s) => s.isSyncing);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
-  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<
     "gdrive" | "dropbox" | null
@@ -523,11 +523,11 @@ export function PwaSyncSettings() {
         <div className="grid grid-cols-2 gap-2">
           <SyncDiagnosticCell
             label="Local items"
-            value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"}
+            value={librarySnapshot ? librarySnapshot.itemCount.toLocaleString() : "-"}
           />
           <SyncDiagnosticCell
             label="Local size"
-            value={formatBytes(docSnapshot?.binarySize)}
+            value={formatBytes(librarySnapshot?.storageBytes)}
           />
           <SyncDiagnosticCell
             label="Last download"

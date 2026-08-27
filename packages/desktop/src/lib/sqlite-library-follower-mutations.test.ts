@@ -595,42 +595,6 @@ describe("SQLite Primary mutations", () => {
     },
   );
 
-  it("reads an exact Person before applying a partial normalized update", async () => {
-    await dispatchSqliteMutation(
-      {
-        reqId: 6,
-        type: "UPDATE_PERSON",
-        personId: "person-1",
-        updates: { notes: "Follow up next week" },
-      },
-    );
-
-    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
-      JSON.parse(value),
-    );
-    expect(envelope).toMatchObject({
-      operation_type: "person_upsert",
-      entity_id: "person-1",
-      payload: {
-        person: {
-          id: "person-1",
-          name: "Ada",
-          notes: "Follow up next week",
-          tags: ["mathematician"],
-        },
-      },
-    });
-    expect(mocks.invoke).toHaveBeenCalledWith(
-      "query_normalized_library",
-      expect.objectContaining({
-        request: expect.objectContaining({
-          personId: "person-1",
-          queryId: "person_detail_v1",
-        }),
-      }),
-    );
-  });
-
   it("submits one atomic Friend replacement through the Primary", async () => {
     await replaceSqliteLibraryFriend(
       {

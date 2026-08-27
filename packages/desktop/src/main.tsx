@@ -3,6 +3,12 @@ import { createRoot } from "react-dom/client";
 import { bootstrapDocumentTheme } from "@freed/ui/lib/theme";
 import App from "./App";
 import * as libraryClient from "./lib/library-client";
+import {
+  upsertSqliteLibraryAccount,
+  upsertSqliteLibraryAccounts,
+  upsertSqliteLibraryPerson,
+  upsertSqliteLibraryPersons,
+} from "./lib/sqlite-library";
 import { installDevSyncTriggerBridge } from "./lib/dev-sync-triggers";
 import { useAppStore } from "./lib/store";
 import "./index.css";
@@ -21,8 +27,13 @@ if (previewLabel) {
 if (import.meta.env.VITE_TEST_TAURI) {
   const w = window as unknown as Record<string, unknown>;
   w.__FREED_STORE__ = useAppStore;
-  // Historical E2E name retained only inside test builds.
-  w.__FREED_LIBRARY_CORE__ = libraryClient;
+  w.__FREED_LIBRARY_CORE__ = {
+    ...libraryClient,
+    upsertLibraryAccount: upsertSqliteLibraryAccount,
+    upsertLibraryAccounts: upsertSqliteLibraryAccounts,
+    upsertLibraryPerson: upsertSqliteLibraryPerson,
+    upsertLibraryPersons: upsertSqliteLibraryPersons,
+  };
   w.__FREED_GRAPH_DEBUG_ENABLED__ = true;
 }
 
