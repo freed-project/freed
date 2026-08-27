@@ -604,6 +604,14 @@ are fetched through `item_reader_body_v1`. Item detail and background scans do
 not return full bodies, arbitrary remainder objects, or an enlarged metadata
 response.
 
+Desktop provider-delivery discovery also has no renderer corpus path. Startup
+and explicit replacement scans must visit bounded authoritative SQLite pages.
+Ordinary item-patch events may enqueue only the exact changed rows carried by
+the mutation receipt. If a bounded scan fails, provider delivery pauses. It
+must not read a projected item map, reconstruct a Library shell, or fall back
+to renderer state. This changes where candidates are discovered, not provider
+admission, request behavior, retry budgets, or confirmation semantics.
+
 `person_detail_v1` is the normalized point query for one visible Person
 header. It returns one closed Person row, no Accounts and no FeedItems. Tags
 are capped at 64 in SQLite binary order. Reach-out history is capped at the

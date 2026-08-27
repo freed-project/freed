@@ -983,12 +983,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
         const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
         outboxTeardown = startOutboxProcessor(
-          () => getDocState()?.items ?? null,
+          scanLibraryCoreItems,
           (cb) => subscribe((_state, event) => cb(event)),
           platformActionsRegistry,
           async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
           async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
-          scanLibraryCoreItems,
         );
 
         // Schedule bounded local SQLite maintenance after initial hydration.
