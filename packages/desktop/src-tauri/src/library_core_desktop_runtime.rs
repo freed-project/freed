@@ -5,11 +5,12 @@ use freed_library_core::{
     normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
     NormalizedMutationReceiptV1,
 };
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(not(unix))]
+use std::{fs, path::PathBuf};
+#[cfg(not(unix))]
 use tauri::Manager;
 
 use super::library_core_actor_key_store::{
@@ -22,7 +23,7 @@ use super::library_core_authority_key_store::{
 const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 #[cfg(not(unix))]
 const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
-const JOURNAL_FILE: &str = "library-core.sqlite";
+#[cfg(not(unix))]
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 #[cfg(not(unix))]
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
@@ -180,88 +181,12 @@ pub(super) struct DesktopNormalizedWriterEpochReassignment {
     canonical_epoch_certificate_json: String,
 }
 
+#[cfg(not(unix))]
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
 
-#[cfg(unix)]
-fn create_private_directory(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-
-    match fs::symlink_metadata(path) {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(path)?;
-        }
-        Err(error) => return Err(error),
-    }
-
-    let directory = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
-        .open(path)?;
-    let metadata = directory.metadata()?;
-    if !metadata.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Library Core storage root is not a physical directory",
-        ));
-    }
-    if metadata.permissions().mode() & 0o7777 != 0o700 {
-        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
-    }
-    if directory.metadata()?.permissions().mode() & 0o7777 != 0o700 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "Library Core storage root is not private",
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn create_private_directory(path: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(path)
-}
-
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
-    #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .connect_normalized()
-            .map_err(|error| error.to_string());
-    }
-    let directory = app_root(app)?.join(NORMALIZED_LIBRARY_DIRECTORY);
-    create_private_directory(&directory).map_err(|error| error.to_string())?;
-    let connection = Connection::open_with_flags(
-        directory.join(JOURNAL_FILE),
-        OpenFlags::SQLITE_OPEN_READ_WRITE
-            | OpenFlags::SQLITE_OPEN_CREATE
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX
-            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-            | OpenFlags::SQLITE_OPEN_NOFOLLOW
-            | OpenFlags::SQLITE_OPEN_EXRESCODE,
-    )
-    .map_err(|error| error.to_string())?;
-    connection
-        .execute_batch(
-            "PRAGMA foreign_keys = ON;
-             PRAGMA trusted_schema = OFF;
-             PRAGMA busy_timeout = 5000;",
-        )
-        .map_err(|error| error.to_string())?;
-    freed_library_core::install_normalized_schema_v1(&connection)
-        .map_err(|error| error.to_string())?;
-    connection
-        .pragma_update(None, "journal_mode", "WAL")
-        .map_err(|error| error.to_string())?;
-    Ok(connection)
-}
-
-fn open_selected_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
     #[cfg(unix)]
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
@@ -502,7 +427,7 @@ pub(super) fn query_normalized_device_contact_unmatched_page(
 pub(super) fn describe_normalized_library_checkpoint(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
         .map_err(|error| error.to_string())
 }
@@ -512,7 +437,7 @@ pub(super) fn describe_normalized_library_cloud_identity(
     app: tauri::AppHandle,
     installation_witness: String,
 ) -> Result<DesktopNormalizedLibraryCloudIdentity, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     let checkpoint = freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
         .map_err(|error| error.to_string())?;
     let local_actor_id = load_or_create_normalized_actor_id_v2(
@@ -531,7 +456,7 @@ pub(super) fn read_normalized_library_checkpoint_page(
     app: tauri::AppHandle,
     request: freed_library_core::PinnedNormalizedCheckpointExportRequestV2,
 ) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::export_pinned_normalized_checkpoint_page_v2(&mut connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -548,7 +473,7 @@ pub(super) fn begin_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: freed_library_core::BeginNormalizedCheckpointStageV2,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::begin_normalized_checkpoint_stage_v2(&connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -558,7 +483,7 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
     app: tauri::AppHandle,
     request: AppendNormalizedLibraryCheckpointPageRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::append_normalized_checkpoint_stage_page_v2(
         &mut connection,
         &request.stage_id,
@@ -572,7 +497,7 @@ pub(super) fn activate_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: ActivateNormalizedLibraryCheckpointImportRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     match request.follower_receipt {
         Some(receipt) => freed_library_core::replace_with_normalized_follower_checkpoint_stage_v2(
             &mut connection,
@@ -591,7 +516,7 @@ pub(super) fn activate_normalized_library_checkpoint_import(
 pub(super) fn normalized_library_follower_runtime_status(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::normalized_follower_runtime_status_v2(&connection)
         .map_err(|error| error.to_string())
 }
@@ -600,7 +525,7 @@ pub(super) fn normalized_library_follower_runtime_status(
 pub(super) fn normalized_library_follower_transport_context(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedFollowerTransportContextV2, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::normalized_follower_transport_context_v2(&connection)
         .map_err(|error| error.to_string())
 }
@@ -610,7 +535,7 @@ pub(super) fn page_normalized_library_follower_transport(
     app: tauri::AppHandle,
     page: freed_library_core::NormalizedFollowerTransportPageRequestV2,
 ) -> Result<freed_library_core::NormalizedFollowerTransportPageV2, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::page_normalized_follower_transport_v2(&connection, &page)
         .map_err(|error| error.to_string())
 }
@@ -620,7 +545,7 @@ pub(super) fn prepare_normalized_library_follower_actor_request(
     app: tauri::AppHandle,
     created_at: i64,
 ) -> Result<freed_library_core::NormalizedFollowerActorRequestV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let installation_witness = crate::get_desktop_installation_witness()?;
     freed_library_core::prepare_normalized_follower_actor_request_v2(
         &mut connection,
@@ -636,7 +561,7 @@ pub(super) fn install_normalized_library_follower_actor_enrollment(
     app: tauri::AppHandle,
     canonical_enrollment_certificate_json: String,
 ) -> Result<freed_library_core::NormalizedFollowerActorEnrollmentV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::install_normalized_follower_actor_enrollment_v2(
         &mut connection,
         canonical_enrollment_certificate_json.as_bytes(),
@@ -650,7 +575,7 @@ pub(super) fn countersign_normalized_library_follower_actor_request(
     canonical_enrollment_request_json: String,
     accepted_at: i64,
 ) -> Result<freed_library_core::NormalizedFollowerActorEnrollmentV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::countersign_normalized_follower_actor_request_v2(
         &mut connection,
         canonical_enrollment_request_json.as_bytes(),
@@ -664,7 +589,7 @@ pub(super) fn countersign_normalized_library_follower_actor_request(
 pub(super) fn normalized_library_follower_mutation_context(
     app: tauri::AppHandle,
 ) -> Result<NormalizedMutationContextV1, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::normalized_follower_mutation_context_v1(&connection)
         .map_err(|error| error.to_string())
 }
@@ -674,7 +599,7 @@ pub(super) fn sign_normalized_library_follower_operation(
     app: tauri::AppHandle,
     request: SignNormalizedOperationRequest,
 ) -> Result<DesktopLibraryOperationSignature, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     let context = freed_library_core::normalized_follower_mutation_context_v1(&connection)
         .map_err(|error| error.to_string())?;
     if request.library_id != context.library_id
@@ -720,7 +645,7 @@ pub(super) fn enqueue_normalized_library_follower_intent(
     {
         return Err("normalized follower intent exceeds its closed bounds".into());
     }
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let canonical = request
         .canonical_envelope_json
         .into_iter()
@@ -739,7 +664,7 @@ pub(super) fn read_normalized_library_follower_intent_page(
     app: tauri::AppHandle,
     request: freed_library_core::NormalizedFollowerIntentPageRequestV1,
 ) -> Result<freed_library_core::NormalizedFollowerIntentPageV1, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::export_normalized_follower_intent_page_v1(&connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -749,7 +674,7 @@ pub(super) fn record_normalized_library_follower_intent_publication(
     app: tauri::AppHandle,
     request: RecordNormalizedFollowerIntentPublicationRequest,
 ) -> Result<freed_library_core::NormalizedFollowerIntentPublicationReceiptV1, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::record_normalized_follower_intent_publication_v1(
         &mut connection,
         &request.transaction_id,
@@ -765,7 +690,7 @@ pub(super) fn record_normalized_library_follower_intent_transport_publication(
     app: tauri::AppHandle,
     publication: freed_library_core::NormalizedFollowerIntentTransportPublicationV2,
 ) -> Result<freed_library_core::NormalizedFollowerIntentTransportPublicationReceiptV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::record_normalized_follower_intent_transport_publication_v2(
         &mut connection,
         &publication,
@@ -779,7 +704,7 @@ pub(super) fn ingest_normalized_library_follower_intent_page(
     page: freed_library_core::NormalizedFollowerIntentStagePageV1,
     received_at: i64,
 ) -> Result<freed_library_core::NormalizedFollowerIntentStageReceiptV1, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
     let authority_key_pair = load_established_authority_key_pair(&context.library_id)?;
@@ -797,7 +722,7 @@ pub(super) fn normalized_library_primary_follower_actor_transport_state(
     app: tauri::AppHandle,
     actor_id: String,
 ) -> Result<freed_library_core::NormalizedPrimaryFollowerActorTransportStateV1, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::normalized_primary_follower_actor_transport_state_v1(&connection, &actor_id)
         .map_err(|error| error.to_string())
 }
@@ -807,7 +732,7 @@ pub(super) fn read_normalized_library_follower_result_page(
     app: tauri::AppHandle,
     request: freed_library_core::NormalizedFollowerResultPageRequestV1,
 ) -> Result<freed_library_core::NormalizedFollowerResultPageV1, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     freed_library_core::export_normalized_follower_result_page_v1(&connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -818,7 +743,7 @@ pub(super) fn import_normalized_library_follower_result_page(
     records: Vec<freed_library_core::NormalizedFollowerResultRecordV1>,
     received_at: i64,
 ) -> Result<freed_library_core::NormalizedFollowerResultImportReceiptV1, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::import_normalized_follower_result_page_v1(
         &mut connection,
         &records,
@@ -832,7 +757,7 @@ pub(super) fn import_normalized_library_follower_result_transport_segment(
     app: tauri::AppHandle,
     publication: freed_library_core::NormalizedFollowerResultTransportImportV2,
 ) -> Result<freed_library_core::NormalizedFollowerResultTransportImportReceiptV2, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     freed_library_core::import_normalized_follower_result_transport_segment_v2(
         &mut connection,
         &publication,
@@ -852,7 +777,7 @@ pub(super) fn reassign_normalized_library_writer_epoch(
     app: tauri::AppHandle,
     request: ReassignNormalizedWriterEpochRequest,
 ) -> Result<DesktopNormalizedWriterEpochReassignment, String> {
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let reassigned = freed_library_core::reassign_normalized_writer_epoch_v2(
         &mut connection,
         &request.canonical_source_control_json,
@@ -891,7 +816,7 @@ pub(super) fn reassign_normalized_library_writer_epoch(
 pub(super) fn normalized_library_primary_mutation_context(
     app: tauri::AppHandle,
 ) -> Result<NormalizedMutationContextV1, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())
 }
 
@@ -901,7 +826,7 @@ pub(super) fn sign_normalized_library_operation(
     app: tauri::AppHandle,
     request: SignNormalizedOperationRequest,
 ) -> Result<DesktopLibraryOperationSignature, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
     if request.library_id != context.library_id
@@ -949,7 +874,7 @@ pub(super) fn commit_normalized_library_transaction(
     {
         return Err("normalized mutation transaction exceeds its closed bounds".into());
     }
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
     if request.library_id != context.library_id {
@@ -1307,7 +1232,7 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
     {
         return Err("SQLite Library cloud writer admission is invalid".into());
     }
-    let mut connection = open_selected_normalized_database(&app)?;
+    let mut connection = open_normalized_database(&app)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
@@ -1341,7 +1266,7 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
 pub(super) fn sqlite_library_cloud_writer_admission_status(
     app: tauri::AppHandle,
 ) -> Result<CloudWriterAdmissionStatus, String> {
-    let connection = open_selected_normalized_database(&app)?;
+    let connection = open_normalized_database(&app)?;
     writer_admission_status(&connection)
 }
 
@@ -1372,7 +1297,7 @@ pub(super) fn create_normalized_local_snapshot(
         .create_normalized_local_snapshot_v1(created_at_ms, normalized_snapshot_reason(&reason)?)
         .map_err(|error| error.to_string());
     #[cfg(not(unix))]
-    let mut connection = open_selected_normalized_database(&_app)?;
+    let mut connection = open_normalized_database(&_app)?;
     #[cfg(not(unix))]
     freed_library_core::create_normalized_local_snapshot_v1(
         &mut connection,
@@ -1418,7 +1343,7 @@ pub(super) fn restore_normalized_local_snapshot(
         )
         .map_err(|error| error.to_string());
     #[cfg(not(unix))]
-    let mut connection = open_selected_normalized_database(&_app)?;
+    let mut connection = open_normalized_database(&_app)?;
     #[cfg(not(unix))]
     freed_library_core::restore_normalized_local_snapshot_v1(
         &mut connection,
