@@ -123,8 +123,6 @@ export function subscribeDesktopLibraryRuntime(callback: Subscriber): () => void
   return () => subscribers.delete(callback);
 }
 
-export function setRelayClientCount(_count: number): void {}
-
 export async function initializeDesktopLibraryRuntime(
   _registration?: DesktopClientRegistration,
 ): Promise<LibraryCoreRuntimeStateV1> {

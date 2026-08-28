@@ -33,7 +33,6 @@ vi.mock("./library-client", () => ({
     friendCount: 0,
   })),
   getDocBinary: vi.fn(async () => new Uint8Array()),
-  setRelayClientCount: vi.fn(),
   subscribeDesktopLibraryRuntime: vi.fn(() => vi.fn()),
 }));
 

@@ -205,14 +205,3 @@ export function recordReaderArticleFetchAttempt(input: {
 }): void {
   recordRuntimeHealthEvent({ event: "reader_article_fetch_attempt", ...input });
 }
-
-/**
- * One line per Automerge worker INIT (full A.load of the document).
- * INITs/hour during a content backlog is the F20 worker-churn counter.
- */
-export function recordWorkerInit(input: {
-  durationMs: number;
-  docBytes: number;
-}): void {
-  recordRuntimeHealthEvent({ event: "worker_init", ...input });
-}

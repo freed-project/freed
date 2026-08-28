@@ -696,6 +696,7 @@ export async function captureDomFeed(
 | 5.163 | Generate sample identity data as normalized Person and Account records at the shared source, then submit those records through the same typed SQLite mutations used by product workflows. Freed Desktop no longer converts a Friend compatibility fixture before writing sample data | Medium     | ✓ Complete |
 | 5.167 | Stream Markdown export through bounded source-fenced SQLite pages. The renderer releases each FeedItem page before requesting the next and never reconstructs the complete Library corpus for archive assembly | Medium     | ✓ Complete |
 | 5.168 | Delete the unused full-corpus Saved analytics compatibility reducer. Saved overview aggregates come only from the typed bounded SQLite analytics query, and the UI retains only the returned fixed-size aggregate | Low        | ✓ Complete |
+| 5.169 | Delete the unused relay-client setter and Automerge worker-init event emitter from the shipping Desktop Library client. Historical soak readers may still classify archived build events, but current runtime code exposes no document-worker lifecycle API | Low        | ✓ Complete |
 
 ---
 
