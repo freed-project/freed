@@ -25,14 +25,13 @@ import {
   type LibraryServiceStartEnvelope,
 } from "./contracts.js";
 import {
-  LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES,
-  LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
 } from "./library-core-command-contract.generated.js";
+import { createLibraryCoreNativeCommandClientV1 } from "./native-command.js";
 import {
   assertLibraryServiceBindingsStable,
   bindLibraryServiceConfig,
@@ -202,59 +201,25 @@ function parseReadyRecord(bytes: Uint8Array): LibraryServiceReadyRecord {
 
 async function inspectNormalizedCommandStorage(
   child: LibraryServiceSidecarProcess,
-  requestId: string,
+  entropy: LibraryServiceEntropyPort,
 ): Promise<void> {
-  if (!NONCE_HEX.test(requestId)) {
-    throw new LibraryServiceFailure("filesystem_failure");
-  }
-  const request = Buffer.from(
-    JSON.stringify({
-      protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
-      requestId,
-      commandId: "inspect_storage_v1",
-      payload: {},
-    }),
-    "utf8",
-  );
-  let responseBytes: Uint8Array;
-  try {
-    responseBytes = await child.exchangeCommand(
-      request,
-      LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES,
-    );
-  } catch {
-    throw new LibraryServiceFailure("command_channel_failed");
-  }
-  let response: unknown;
-  try {
-    response = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(responseBytes));
-  } catch {
-    throw new LibraryServiceFailure("command_response_invalid");
-  }
+  const response = await createLibraryCoreNativeCommandClientV1(
+    child,
+    entropy,
+  ).execute("inspect_storage_v1", {});
   if (!isObject(response)) {
     throw new LibraryServiceFailure("command_response_invalid");
   }
-  const keys = Object.keys(response).sort();
-  if (
-    keys.join(",") !== "ok,protocolVersion,requestId,result" ||
-    response.protocolVersion !== LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION ||
-    response.requestId !== requestId ||
-    response.ok !== true ||
-    !isObject(response.result)
-  ) {
-    throw new LibraryServiceFailure("command_response_invalid");
-  }
-  const resultKeys = Object.keys(response.result).sort();
+  const resultKeys = Object.keys(response).sort();
   if (
     resultKeys.join(",") !==
       "activeAuthority,applicationId,contractVersion,protocolVersion,schemaSha256,schemaVersion" ||
-    response.result.applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID ||
-    response.result.contractVersion !== LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
-    response.result.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
-    response.result.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
-    response.result.schemaSha256 !== LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 ||
-    (response.result.activeAuthority !== null &&
-      !isObject(response.result.activeAuthority))
+    response.applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID ||
+    response.contractVersion !== LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
+    response.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
+    response.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
+    response.schemaSha256 !== LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 ||
+    (response.activeAuthority !== null && !isObject(response.activeAuthority))
   ) {
     throw new LibraryServiceFailure("command_response_invalid");
   }
@@ -699,7 +664,7 @@ export class LibraryServiceSupervisor {
       }
       const ready = parseReadyRecord(readiness.bytes);
       assertReadyBinding(ready, child, bound, parentNonce);
-      await inspectNormalizedCommandStorage(child, this.#entropy.nonceHex(32));
+      await inspectNormalizedCommandStorage(child, this.#entropy);
       throwIfAborted(signal);
 
       this.#state = "running";

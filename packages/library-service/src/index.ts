@@ -12,3 +12,8 @@ export {
   type LibraryServiceStatusReport,
 } from "./contracts.js";
 export { runLibraryServiceCli } from "./cli-runtime.js";
+export {
+  createLibraryCoreNativeCommandClientV1,
+  LibraryCoreNativeCommandFailure,
+  type LibraryCoreNativeCommandClientV1,
+} from "./native-command.js";

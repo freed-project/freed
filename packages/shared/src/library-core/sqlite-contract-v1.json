@@ -177,6 +177,14 @@
     "operationTransactionMembers": 1000,
     "operationTransactionBytes": 4194304
   },
+  "nativeCommandErrorCodes": [
+    "command_failed",
+    "command_unknown",
+    "credential_invalid",
+    "request_invalid",
+    "response_invalid",
+    "storage_unavailable"
+  ],
   "nativeCommands": [
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",

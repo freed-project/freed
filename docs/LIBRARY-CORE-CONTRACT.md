@@ -99,6 +99,11 @@ state, bounded result export, Primary actor identity, and exact writer epoch
 reassignment commands. Startup must round-trip storage inspection and
 match the generated SQLite application ID, contract version, schema version,
 wire protocol version, and schema digest before the service reports running.
+The same executable source generates the closed native error-code registry.
+The Node command client validates exact success and refusal envelopes, binds
+every response to its request ID, and retains a typed native refusal code
+without accepting arbitrary error text. One bounded client now owns every
+headless command exchange, including startup inspection and later actor work.
 Unknown commands, extra fields, changed versions, malformed UTF-8, truncated
 frames, oversized frames, response identity drift, and transport closure fail
 closed. This command protocol never carries raw SQL, SQLite files, shell JSON,

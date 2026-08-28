@@ -547,6 +547,15 @@ pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "sign_operation_v1",
 ];
 
+pub const NATIVE_COMMAND_ERROR_CODES: &[&str] = &[
+    "command_failed",
+    "command_unknown",
+    "credential_invalid",
+    "request_invalid",
+    "response_invalid",
+    "storage_unavailable",
+];
+
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
     "account_person_assignment",
     "account_remove",

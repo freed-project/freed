@@ -96,6 +96,13 @@ new writer admission atomically. Exact replay returns the same certificate.
 Stale source control, a changed witness, a foreign target actor, or changed
 local authority fails without partial promotion.
 
+One reusable bounded command client owns every Node-to-sidecar exchange. Its
+command IDs and native refusal codes are generated from the executable SQLite
+contract. It binds each response to one fresh request ID, accepts only an exact
+success or refusal envelope, and rejects unknown error text, malformed UTF-8,
+oversized frames, and response identity drift. Startup storage inspection uses
+this same client instead of a separate parser.
+
 `credentialsReady: true` proves that exact native Primary signing custody. It
 does not prove Drive authentication, OAuth validity, cloud reachability, or
 writer promotion. The sidecar never interprets a Drive token and makes no

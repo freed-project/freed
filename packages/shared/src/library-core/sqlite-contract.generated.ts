@@ -816,7 +816,16 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "reassign_writer_epoch_v2",
   "sign_operation_v1",
 ] as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES = [
+  "command_failed",
+  "command_unknown",
+  "credential_invalid",
+  "request_invalid",
+  "response_invalid",
+  "storage_unavailable",
+] as const;
 export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];
+export type LibraryCoreNativeCommandErrorCode = (typeof LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES)[number];
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([

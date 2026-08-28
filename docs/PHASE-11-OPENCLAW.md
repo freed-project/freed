@@ -220,7 +220,10 @@ query, storage-inspection, Primary context, signing, canonical transaction,
 follower-intent admission, actor-state, bounded result-export, Primary actor
 identity, and exact writer-reassignment commands. Startup performs one storage inspection
 and verifies the exact generated application, contract, schema, wire protocol,
-and schema digest before the supervisor reports running. A malformed,
+and schema digest before the supervisor reports running. One reusable Node
+client owns every bounded exchange and validates the generated command and
+native refusal registries plus exact request identity before returning a
+result. A malformed,
 truncated, oversized, unknown-version, or broken transport frame fails closed.
 
 One strict v1 admission record binds the exact start envelope, executable

@@ -504,13 +504,21 @@ fn run_command_loop(
                 result: Some(result),
                 error_code: None,
             },
-            Err(error_code) => NativeCommandResponseV1 {
-                protocol_version: NATIVE_COMMAND_PROTOCOL_VERSION,
-                request_id: &command.request_id,
-                ok: false,
-                result: None,
-                error_code: Some(error_code),
-            },
+            Err(error_code) => {
+                if crate::sqlite_contract_generated::NATIVE_COMMAND_ERROR_CODES
+                    .binary_search(&error_code)
+                    .is_err()
+                {
+                    return Err(failure("response_invalid"));
+                }
+                NativeCommandResponseV1 {
+                    protocol_version: NATIVE_COMMAND_PROTOCOL_VERSION,
+                    request_id: &command.request_id,
+                    ok: false,
+                    result: None,
+                    error_code: Some(error_code),
+                }
+            }
         };
         write_command_frame(&mut response, &response_record)?;
     }
