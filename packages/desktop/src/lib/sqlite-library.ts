@@ -1622,24 +1622,23 @@ export async function readSqliteLibraryFacetSummary(): Promise<SqliteLibraryFace
   };
 }
 
-export interface SqliteLibraryBackupSummary {
-  backupId: string;
-  fileName: string;
+export interface NormalizedLocalSnapshotSummary {
+  snapshotId: string;
   createdAtMs: number;
-  revision: number;
-  itemCount: number;
   reason: "auto" | "manual";
-  byteLength: number;
-  sha256: string;
+  libraryId: string;
+  authorityEpoch: string;
+  sourceRevision: number;
+  itemCount: number;
+  recordCount: number;
+  canonicalRecordBytes: number;
+  archiveByteLength: number;
+  checkpointDigest: string;
 }
 
-export interface SqliteLibraryBackupChunk {
-  readonly backupId: string;
-  readonly bytes: number[];
-  readonly nextOffset: number | null;
-  readonly offset: number;
-  readonly sha256: string;
-  readonly totalByteLength: number;
+export interface NormalizedLocalSnapshotRestoreRequest {
+  operationId: string;
+  restoredAtMs: number;
 }
 
 let sqliteActive = false;
@@ -2697,48 +2696,35 @@ export async function dispatchSqliteMutation(
   return { state, event, result };
 }
 
-export async function createSqliteLibraryBackup(
+export async function createNormalizedLocalSnapshot(
   reason: "auto" | "manual",
-): Promise<SqliteLibraryBackupSummary> {
-  return invoke<SqliteLibraryBackupSummary>("create_sqlite_library_backup", {
+): Promise<NormalizedLocalSnapshotSummary> {
+  return invoke<NormalizedLocalSnapshotSummary>("create_normalized_local_snapshot", {
     createdAtMs: Date.now(),
     reason,
   });
 }
 
-export async function listSqliteLibraryBackups(): Promise<
-  SqliteLibraryBackupSummary[]
+export async function listNormalizedLocalSnapshots(): Promise<
+  NormalizedLocalSnapshotSummary[]
 > {
-  return invoke<SqliteLibraryBackupSummary[]>("list_sqlite_library_backups");
+  return invoke<NormalizedLocalSnapshotSummary[]>("list_normalized_local_snapshots");
 }
 
-export async function readSqliteLibraryBackupChunk(input: {
-  readonly backupId: string;
-  readonly offset: number;
-  readonly limit?: number;
-}): Promise<SqliteLibraryBackupChunk> {
-  return invoke<SqliteLibraryBackupChunk>("read_sqlite_library_backup_chunk", {
-    request: {
-      backupId: input.backupId,
-      offset: input.offset,
-      limit: input.limit ?? 1_048_576,
-    },
-  });
-}
-
-export async function restoreSqliteLibraryBackup(
-  backupId: string,
-): Promise<SqliteLibraryBackupSummary> {
-  const restored = await invoke<SqliteLibraryBackupSummary>(
-    "restore_sqlite_library_backup",
-    { backupId },
+export async function restoreNormalizedLocalSnapshot(
+  snapshotId: string,
+  request: NormalizedLocalSnapshotRestoreRequest,
+): Promise<NormalizedLocalSnapshotSummary> {
+  const restored = await invoke<NormalizedLocalSnapshotSummary>(
+    "restore_normalized_local_snapshot",
+    { snapshotId, operationId: request.operationId, restoredAtMs: request.restoredAtMs },
   );
   sqliteActive = true;
   return restored;
 }
 
-export async function clearSqliteLibraryBackups(): Promise<void> {
-  await invoke("clear_sqlite_library_backups");
+export async function clearNormalizedLocalSnapshots(): Promise<void> {
+  await invoke("clear_normalized_local_snapshots");
 }
 
 export async function clearSqliteLibrary(): Promise<void> {

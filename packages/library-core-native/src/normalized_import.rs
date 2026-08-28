@@ -1,9 +1,13 @@
+use crate::library_core_authority_genesis::WriterEpochReassignment;
 use crate::library_core_canonical::decode_canonical_value;
 use crate::library_core_hash::lower_hex;
+use crate::library_core_journal::{
+    actor_capability::ActorCapabilityScope, VerifiedActorEnrollment,
+};
 use crate::normalized_checkpoint::{
     checked_record, decode_fractional_payload, NormalizedCheckpointRecordV2,
 };
-use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::normalized_sqlite::{describe_normalized_checkpoint_export_v2, NormalizedSqliteError};
 use crate::sqlite_contract_generated::{
     CONTENT_RANGE_MAP_DIGEST_DOMAIN, SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
 };
@@ -143,6 +147,23 @@ pub struct NormalizedFollowerCheckpointReceiptV2 {
     pub manifest_content_digest: String,
     pub control_revision: String,
     pub installed_at: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NormalizedRestoreTransitionV1 {
+    pub(crate) operation_id: String,
+    pub(crate) snapshot_id: String,
+    pub(crate) checkpoint_digest: String,
+    pub(crate) source_checkpoint: crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2,
+    pub(crate) expected_current_checkpoint:
+        crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2,
+    pub(crate) source_control: String,
+    pub(crate) reassignment: WriterEpochReassignment,
+    pub(crate) enrollment: VerifiedActorEnrollment,
+    pub(crate) prior_generation: String,
+    pub(crate) prior_manifest_generation: i64,
+    pub(crate) restored_at_ms: u64,
+    pub(crate) target_source_revision: u64,
 }
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
@@ -650,14 +671,258 @@ fn install_follower_checkpoint_receipt(
     Ok(())
 }
 
+fn install_normalized_restore_transition_v1(
+    transaction: &Transaction<'_>,
+    stage: &(String, String, i64, i64, i64),
+    checkpoint_digest: &str,
+    restore: &NormalizedRestoreTransitionV1,
+) -> Result<(), NormalizedSqliteError> {
+    if restore.snapshot_id.len() != 64
+        || restore.checkpoint_digest != checkpoint_digest
+        || restore.source_checkpoint.library_id != stage.0
+        || restore.source_checkpoint.authority_epoch != stage.1
+        || i64::try_from(restore.source_checkpoint.source_revision).ok() != Some(stage.2)
+        || restore.source_checkpoint.record_count != usize::try_from(stage.3).unwrap_or(usize::MAX)
+        || restore.enrollment.actor_id != restore.expected_current_checkpoint.writer_id
+        || restore.enrollment.epoch_id != restore.reassignment.authority.epoch_id
+        || restore.enrollment.library_id != stage.0
+        || restore.reassignment.authority.library_id != stage.0
+        || restore.target_source_revision
+            != restore
+                .expected_current_checkpoint
+                .source_revision
+                .checked_add(1)
+                .ok_or_else(|| invalid("normalized restore revision is exhausted"))?
+    {
+        return Err(invalid("normalized restore transition identity is invalid"));
+    }
+    let (scope_mode, scope_kind, scope_id) = match &restore.enrollment.capability.scope {
+        ActorCapabilityScope::LibraryWide => {
+            ("library_wide", Option::<&str>::None, Option::<&str>::None)
+        }
+        _ => return Err(invalid("normalized restore writer capability is invalid")),
+    };
+    transaction.execute(
+        "INSERT INTO library_authority_epochs
+         (epoch_id, library_id, epoch_number, authority_key_id,
+          authority_public_key, transition_certificate_digest,
+          canonical_transition_certificate, accepted_manifest_generation,
+          checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10);",
+        params![
+            restore.reassignment.authority.epoch_id,
+            restore.reassignment.authority.library_id,
+            restore.reassignment.authority.epoch,
+            restore.reassignment.authority.authority_key_id,
+            restore.reassignment.authority.authority_public_key,
+            restore.reassignment.transition_certificate_digest,
+            restore.reassignment.canonical_certificate_json,
+            restore.source_checkpoint.causal_frontier_digest,
+            checkpoint_digest,
+            i64::try_from(restore.restored_at_ms)
+                .map_err(|_| invalid("normalized restore time is invalid"))?,
+        ],
+    )?;
+    if restore.reassignment.authority.observed_frontier.len() > 1_000 {
+        return Err(invalid("normalized restore frontier exceeds its bound"));
+    }
+    for (ordinal, tip) in restore
+        .reassignment
+        .authority
+        .observed_frontier
+        .iter()
+        .enumerate()
+    {
+        transaction.execute(
+            "INSERT INTO library_authority_frontier
+             (epoch_id, ordinal, actor_id, accepted_counter,
+              accepted_operation_id, accepted_chain_digest)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            params![
+                restore.reassignment.authority.epoch_id,
+                i64::try_from(ordinal)
+                    .map_err(|_| invalid("normalized restore frontier is invalid"))?,
+                tip.actor_id,
+                tip.sequence,
+                tip.operation_id,
+                tip.chain_digest,
+            ],
+        )?;
+    }
+    let updated = transaction.execute(
+        "UPDATE library_active_authority
+         SET library_id = ?1, epoch_id = ?2, writer_id = ?3,
+             accepted_manifest_generation = 0, activated_at = ?4
+         WHERE active_key = 'active';",
+        params![
+            restore.reassignment.authority.library_id,
+            restore.reassignment.authority.epoch_id,
+            restore.enrollment.actor_id,
+            i64::try_from(restore.restored_at_ms)
+                .map_err(|_| invalid("normalized restore time is invalid"))?,
+        ],
+    )?;
+    if updated != 1 {
+        return Err(invalid("normalized restore active authority is missing"));
+    }
+    let updated = transaction.execute(
+        "UPDATE library_meta
+         SET authority_epoch = ?1, source_revision = ?2, updated_at = ?3
+         WHERE singleton_id = 1 AND library_id = ?4;",
+        params![
+            restore.reassignment.authority.epoch_id,
+            i64::try_from(restore.target_source_revision)
+                .map_err(|_| invalid("normalized restore revision is invalid"))?,
+            i64::try_from(restore.restored_at_ms)
+                .map_err(|_| invalid("normalized restore time is invalid"))?,
+            stage.0,
+        ],
+    )?;
+    if updated != 1 {
+        return Err(invalid("normalized restore metadata is missing"));
+    }
+    transaction.execute(
+        "INSERT INTO library_actors
+         (actor_id, authority_epoch_id, actor_kind, public_key,
+          enrollment_operation_id, enrollment_certificate_digest,
+          canonical_enrollment_certificate, chain_genesis_digest,
+          accepted_counter, accepted_operation_id, accepted_chain_digest,
+          created_at, updated_at)
+         VALUES (?1, ?2, 'desktop', ?3, ?4, ?5, ?6, ?7, 0, NULL, ?7, ?8, ?8)
+         ON CONFLICT(actor_id) DO UPDATE SET
+           authority_epoch_id = excluded.authority_epoch_id,
+           actor_kind = excluded.actor_kind,
+           public_key = excluded.public_key,
+           enrollment_operation_id = excluded.enrollment_operation_id,
+           enrollment_certificate_digest = excluded.enrollment_certificate_digest,
+           canonical_enrollment_certificate = excluded.canonical_enrollment_certificate,
+           chain_genesis_digest = excluded.chain_genesis_digest,
+           accepted_counter = 0,
+           accepted_operation_id = NULL,
+           accepted_chain_digest = excluded.accepted_chain_digest,
+           retired_at = NULL,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at;",
+        params![
+            restore.enrollment.actor_id,
+            restore.enrollment.epoch_id,
+            restore.enrollment.actor_public_key,
+            restore.enrollment.enrollment_operation_id,
+            restore.enrollment.enrollment_certificate_digest,
+            restore.enrollment.canonical_enrollment_certificate_json,
+            restore.enrollment.actor_chain_genesis,
+            restore.enrollment.enrolled_at_ms,
+        ],
+    )?;
+    transaction.execute(
+        "DELETE FROM library_actor_capabilities WHERE actor_id = ?1;",
+        [&restore.enrollment.actor_id],
+    )?;
+    transaction.execute(
+        "INSERT INTO library_actor_capabilities
+         (capability_id, actor_id, certificate_version, actor_class,
+          scope_mode, scope_kind, scope_id, issuance_identity,
+          retirement_identity, certificate_digest, canonical_certificate,
+          issued_at, retired_at, retirement_certificate_digest)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?1, ?10, ?11, NULL, NULL);",
+        params![
+            restore.enrollment.capability.capability_certificate_digest,
+            restore.enrollment.actor_id,
+            restore.enrollment.capability.certificate_version,
+            restore.enrollment.capability.actor_class,
+            scope_mode,
+            scope_kind,
+            scope_id,
+            restore.enrollment.capability.issuance_identity,
+            restore.enrollment.capability.retirement_identity,
+            restore.enrollment.canonical_enrollment_certificate_json,
+            restore.enrollment.capability.issued_at_ms,
+        ],
+    )?;
+    for mutation_id in &restore.enrollment.capability.allowed_operation_types {
+        transaction.execute(
+            "INSERT INTO library_actor_capability_mutations
+             (capability_id, mutation_id) VALUES (?1, ?2);",
+            params![
+                restore.enrollment.capability.capability_certificate_digest,
+                mutation_id,
+            ],
+        )?;
+    }
+    transaction.execute("DELETE FROM library_writer_admission;", [])?;
+    transaction.execute(
+        "INSERT INTO library_writer_admission
+         (singleton_id, local_writer_id, active_writer_id,
+          observed_manifest_generation, observed_at)
+         VALUES (1, ?1, ?1, 0, ?2);",
+        params![
+            restore.enrollment.actor_id,
+            i64::try_from(restore.restored_at_ms)
+                .map_err(|_| invalid("normalized restore time is invalid"))?,
+        ],
+    )?;
+    let receipt_value = serde_json::json!({
+        "snapshotId": restore.snapshot_id,
+        "checkpointDigest": checkpoint_digest,
+        "format": "freed_normalized_restore_receipt_v1",
+        "operationId": restore.operation_id,
+        "priorAuthorityEpoch": restore.expected_current_checkpoint.authority_epoch,
+        "priorGeneration": restore.prior_generation,
+        "priorManifestGeneration": restore.prior_manifest_generation,
+        "restoredAtMs": restore.restored_at_ms,
+        "sourceAuthorityEpoch": restore.source_checkpoint.authority_epoch,
+        "sourceControl": serde_json::from_str::<Value>(&restore.source_control)
+            .map_err(|_| invalid("normalized restore source control is invalid"))?,
+        "sourceRevision": restore.source_checkpoint.source_revision,
+        "targetAuthorityEpoch": restore.reassignment.authority.epoch_id,
+        "targetSourceRevision": restore.target_source_revision,
+        "targetWriterId": restore.enrollment.actor_id,
+        "transitionCertificateDigest": restore.reassignment.transition_certificate_digest,
+    });
+    let receipt_bytes =
+        crate::library_core_canonical::encode_canonical_value(&receipt_value, 65_536)
+            .map_err(|_| invalid("normalized restore receipt is invalid"))?;
+    let receipt_text = String::from_utf8(receipt_bytes)
+        .map_err(|_| invalid("normalized restore receipt is not UTF-8"))?;
+    transaction.execute(
+        "INSERT INTO library_receipts
+         (actor_id, operation_id, status, digest, result_text, accepted_at)
+         VALUES (?1, ?2, 'restored', ?3, ?4, ?5);",
+        params![
+            restore.enrollment.actor_id,
+            restore.operation_id,
+            restore.reassignment.transition_certificate_digest,
+            receipt_text,
+            i64::try_from(restore.restored_at_ms)
+                .map_err(|_| invalid("normalized restore time is invalid"))?,
+        ],
+    )?;
+    Ok(())
+}
+
 fn activate_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
     replace_existing: bool,
     follower_receipt: Option<&NormalizedFollowerCheckpointReceiptV2>,
+    restore: Option<&NormalizedRestoreTransitionV1>,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
     let transaction = connection.transaction()?;
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
+    if let Some(restore) = restore {
+        if describe_normalized_checkpoint_export_v2(&transaction)?
+            != restore.expected_current_checkpoint
+        {
+            return Err(invalid("normalized Library changed during restore"));
+        }
+        let (_, _, generation, manifest_generation) =
+            crate::normalized_writer_reassignment::current_authority(&transaction)?;
+        if generation != restore.prior_generation
+            || manifest_generation != restore.prior_manifest_generation
+        {
+            return Err(invalid("normalized restore authority changed"));
+        }
+    }
     let stage: (String, String, i64, i64, i64) = transaction
         .query_row(
             "SELECT library_id, authority_epoch, source_revision, expected_record_count,
@@ -752,20 +1017,25 @@ fn activate_normalized_checkpoint_stage_v2(
          (singleton_id, generation_id) VALUES (1, ?1);",
         [&checkpoint_digest],
     )?;
+    let activated_revision = restore
+        .map(|value| value.target_source_revision)
+        .unwrap_or_else(|| u64::try_from(stage.2).unwrap_or_default());
     let revision_updated = transaction.execute(
         "UPDATE library_change_state SET revision = ?1
          WHERE singleton_id = 1 AND revision = 0;",
-        [stage.2],
+        [i64::try_from(activated_revision)
+            .map_err(|_| invalid("checkpoint change revision is invalid"))?],
     )?;
     if revision_updated != 1 {
         return Err(invalid("checkpoint change revision could not be activated"));
     }
-    if stage.2 > 0 {
+    if activated_revision > 0 {
         transaction.execute(
             "INSERT INTO library_invalidations
              (revision, ordinal, topic, entity_id, reset_required)
              VALUES (?1, 0, 'library', NULL, 1);",
-            [stage.2],
+            [i64::try_from(activated_revision)
+                .map_err(|_| invalid("checkpoint change revision is invalid"))?],
         )?;
     }
     verify_blob_rows(&transaction)?;
@@ -783,6 +1053,19 @@ fn activate_normalized_checkpoint_stage_v2(
         ));
     }
     verify_authority_rows(&transaction, &stage.0, &stage.1)?;
+    if let Some(restore) = restore {
+        install_normalized_restore_transition_v1(
+            &transaction,
+            &stage,
+            &checkpoint_digest,
+            restore,
+        )?;
+        verify_authority_rows(
+            &transaction,
+            &stage.0,
+            &restore.reassignment.authority.epoch_id,
+        )?;
+    }
     if let Some(receipt) = follower_receipt {
         install_follower_checkpoint_receipt(&transaction, &stage, &checkpoint_digest, receipt)?;
     }
@@ -808,14 +1091,14 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
-    activate_normalized_checkpoint_stage_v2(connection, stage_id, false, None)
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, false, None, None)
 }
 
 pub fn replace_with_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
-    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, None)
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, None, None)
 }
 
 pub fn replace_with_normalized_follower_checkpoint_stage_v2(
@@ -823,7 +1106,15 @@ pub fn replace_with_normalized_follower_checkpoint_stage_v2(
     stage_id: &str,
     receipt: &NormalizedFollowerCheckpointReceiptV2,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
-    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, Some(receipt))
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, Some(receipt), None)
+}
+
+pub(crate) fn restore_normalized_checkpoint_stage_v1(
+    connection: &mut Connection,
+    stage_id: &str,
+    restore: &NormalizedRestoreTransitionV1,
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, None, Some(restore))
 }
 
 pub fn normalized_checkpoint_digest_v2(

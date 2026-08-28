@@ -91,8 +91,9 @@ The current product already provides the protocol foundation:
   subset, explicit scope, issuance identity, and retirement identity. The
   final schema rejects version 1 actors. Historical actor policy is readable
   only inside the fenced one-time source verifier.
-- Freed Desktop preserves its existing command DTOs and behavior through thin
-  data-root and platform-vault adapters around that reusable native package.
+- Freed Desktop invokes the reusable native package through thin data-root,
+  snapshot-directory, and platform-vault adapters. Its active commands expose
+  only normalized SQLite queries, mutations, checkpoints, and snapshots.
 - `@freed/library-service` validates one explicit Primary role, private roots,
   admission and credential descriptors, an exact sidecar digest, descriptor
   bound authority inputs, a private lifetime watchdog, and whole process group
@@ -104,8 +105,9 @@ remain owned by the Freed Desktop renderer. The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
 private `library-sqlite` directory. It verifies the exact schema, application,
 contract, and protocol identity before it reports ready. It creates no
-historical checkpoint store or backup tree, but it exposes no checkpoint
-command ingress or cloud coordinator yet. Its
+historical checkpoint store or snapshot tree. Its closed command channel
+exposes bounded normalized checkpoint and query ingress, but no installed
+cloud coordinator or authority-key mutation admission yet. Its
 mounted credential proof establishes only that bounded private local material
 is exactly readable through a fixed zeroizing buffer. Growth beyond the bound,
 partial read failure, or post-read identity or metadata drift fails closed. The
@@ -118,7 +120,7 @@ Freed Desktop retains the historical checkpoint store only as fenced migration
 input while the one-epoch normalized cutover is completed. The headless
 sidecar never opens that store. The sidecar command channel calls normalized
 checkpoint staging, pinned export, and registered query functions directly. It
-does not translate the old import, status, backup, or whole-item DTOs.
+does not translate the old import, status, database-copy, or whole-item DTOs.
 Canonical mutation admission remains closed until the service can supply the
 established authority key through the separately governed task 11.5 secret
 contract. Installed headless Drive coordination remains unshipped.
@@ -130,16 +132,16 @@ open physical directory. Every database, WAL, SHM, rollback-journal, status,
 import, and later connection open then uses `openat` with `O_NOFOLLOW` beneath
 that descriptor. The sidecar holds fd4 through this route. Freed Desktop binds
 its app-data and `library-core` directories before it acquires the process
-lease, then uses the same route for every existing command without changing
-any command DTO. Backup creation, listing, reads, restore staging, retention,
-and clearing use held directory or file descriptors too. Deterministic root
-replacement and final-leaf swap tests prove the original lease, SQLite files,
-and backups remain together while replacement roots and symlink targets stay
-untouched.
+lease. Normalized snapshot creation, listing, restore staging, retention, and
+clearing stay relative to a held private directory descriptor. Deterministic
+root replacement and final-leaf swap tests prove that the original lease,
+SQLite files, and snapshots remain bound while replacement roots and symbolic
+link targets stay untouched.
 Startup also proves EOF and exact post-read metadata for fd3, fd6, and fd7.
-Backup retention accepts only an exact internal backup ID, time, and leaf-name
-binding before deletion, so corrupt path-shaped metadata cannot escape the
-already-open backup directory or delete the live database.
+Snapshot retention derives every file name from a canonical digest identity
+and deletes only validated archives relative to the already-open snapshot
+directory. Corrupt path-shaped metadata cannot escape that directory or delete
+the live database.
 
 ---
 
@@ -176,12 +178,12 @@ the existing Tauri modules. It owns:
 - signed operation journal and materializer
 - actor enrollment and capability verification
 - authority epochs and writer admission
-- backup and forward-only restore
+- normalized local snapshots and forward-only restore
 - local data-root process lease
 - injected key store, clock, and durable-state traits
 
 It accepts an explicit data root. It does not accept a Tauri application
-handle. Freed Desktop keeps its current command names through a thin adapter.
+handle. Freed Desktop exposes the native contract through a thin adapter.
 
 ### Shared Primary runtime
 
@@ -400,8 +402,8 @@ After promotion, rollback means another forward writer transfer:
    itself.
 
 Code can roll back to a previous signed binary. Library data does not roll back
-to an older live database. A verified closed backup is restored only into a new
-authority epoch with an attributable restore receipt.
+to an older live database. A verified normalized snapshot is restored only
+into a new authority epoch with an attributable replay-safe restore receipt.
 
 ---
 

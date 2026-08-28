@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  backups: vi.fn(),
-  contactStatus: vi.fn(),
-  facetSummary: vi.fn(),
+  restore: vi.fn(),
+  snapshots: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
@@ -15,18 +14,12 @@ vi.mock("./library-client", () => ({
   reloadDesktopLibraryRuntimeState: vi.fn(),
   subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
 }));
-vi.mock("./library-core-item-detail-runtime", () => ({
-  readLibraryCoreFacetSummary: mocks.facetSummary,
-}));
 vi.mock("./sqlite-library", () => ({
-  clearSqliteLibraryBackups: vi.fn(),
-  createSqliteLibraryBackup: vi.fn(),
+  clearNormalizedLocalSnapshots: vi.fn(),
+  createNormalizedLocalSnapshot: vi.fn(),
   isSqliteLibraryActive: () => true,
-  listSqliteLibraryBackups: mocks.backups,
-  restoreSqliteLibraryBackup: vi.fn(),
-}));
-vi.mock("./library-core-normalized-query-client.js", () => ({
-  queryNormalizedDeviceContacts: mocks.contactStatus,
+  listNormalizedLocalSnapshots: mocks.snapshots,
+  restoreNormalizedLocalSnapshot: mocks.restore,
 }));
 vi.mock("./background-runtime-coordinator.js", () => ({
   isBackgroundRuntimeDeferredError: () => false,
@@ -36,45 +29,58 @@ vi.mock("./logger.js", () => ({
   log: { error: vi.fn(), info: vi.fn() },
 }));
 
-import { listSnapshots } from "./snapshots";
+import { listSnapshots, restoreSnapshot } from "./snapshots";
 
 describe("SQLite snapshot summaries", () => {
   beforeEach(() => {
-    mocks.contactStatus.mockReset().mockResolvedValue({
-      activeContactCount: 2,
-      pendingSuggestionCount: 1,
-    });
-    mocks.facetSummary.mockReset().mockResolvedValue({
-      friendPersonCount: 7,
-    });
-    mocks.backups.mockReset().mockResolvedValue([
+    vi.restoreAllMocks();
+    mocks.snapshots.mockReset().mockResolvedValue([
       {
-        backupId: "backup-1",
-        byteLength: 4_096,
+        snapshotId: "snapshot-1",
+        archiveByteLength: 4_096,
         createdAtMs: 1_000,
         itemCount: 42,
+        recordCount: 89,
+        reason: "manual",
+      },
+    ]);
+    mocks.restore.mockReset();
+  });
+
+  it("reports only counts committed by the normalized snapshot", async () => {
+    await expect(listSnapshots()).resolves.toEqual([
+      {
+        byteSize: 4_096,
+        createdAt: 1_000,
+        id: "snapshot-1",
+        itemCount: 42,
+        recordCount: 89,
         reason: "manual",
       },
     ]);
   });
 
-  it("reads the Friend count from the exact maintained SQLite facet", async () => {
-    await expect(listSnapshots()).resolves.toEqual([
-      {
-        byteSize: 4_096,
-        contactCount: 2,
-        createdAt: 1_000,
-        friendCount: 7,
-        id: "backup-1",
-        itemCount: 42,
-        pendingMatchCount: 1,
-        reason: "manual",
-      },
-    ]);
-    expect(mocks.facetSummary).toHaveBeenCalledOnce();
-    expect(mocks.contactStatus).toHaveBeenCalledWith({
-      queryId: "device_contact_status_v1",
-      schemaVersion: 1,
+  it("reuses one restore identity after a lost response", async () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "11111111-2222-4333-8444-555555555555",
+    );
+    vi.spyOn(Date, "now").mockReturnValue(2_000);
+    mocks.restore
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(restoreSnapshot("snapshot-1")).rejects.toThrow("response lost");
+    await expect(restoreSnapshot("snapshot-1")).resolves.toMatchObject({ id: "snapshot-1" });
+
+    expect(mocks.restore).toHaveBeenNthCalledWith(1, "snapshot-1", {
+      operationId:
+        "local-snapshot-restore:11111111-2222-4333-8444-555555555555",
+      restoredAtMs: 2_000,
+    });
+    expect(mocks.restore).toHaveBeenNthCalledWith(2, "snapshot-1", {
+      operationId:
+        "local-snapshot-restore:11111111-2222-4333-8444-555555555555",
+      restoredAtMs: 2_000,
     });
   });
 });

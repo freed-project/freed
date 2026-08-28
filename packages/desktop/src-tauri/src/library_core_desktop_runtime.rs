@@ -5,21 +5,15 @@
 //! migration and caller cut remove them. They are not part of the final
 //! Library contract.
 
-#[cfg(test)]
-use freed_library_core::upsert_item;
 use freed_library_core::{
     accept_normalized_operation_transaction_v1, load_or_create_normalized_actor_id_v2,
-    normalized_primary_mutation_context_v1, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
-    LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
-    LibraryCoreStore, LibraryCoreStoreStatus, NormalizedMutationContextV1,
-    NormalizedMutationReceiptV1,
+    normalized_primary_mutation_context_v1, LibraryCoreStore, LibraryCoreStoreStatus,
+    NormalizedMutationContextV1, NormalizedMutationReceiptV1,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use std::fs::{self, File};
-use std::io::{Read, Seek, SeekFrom};
+use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
@@ -31,11 +25,10 @@ use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
-const BACKUP_DIRECTORY: &str = "library-backups";
+const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 const JOURNAL_DIRECTORY: &str = "library-core";
 const JOURNAL_FILE: &str = "library-core.sqlite";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
-const MAX_BACKUP_CHUNK_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -285,81 +278,6 @@ pub(super) struct DesktopLibraryFacetSummary {
     saved_platform_count: i64,
     tags: Vec<String>,
     total_count: i64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopBackupSummary {
-    backup_id: String,
-    file_name: String,
-    created_at_ms: i64,
-    revision: i64,
-    item_count: i64,
-    reason: String,
-    byte_length: u64,
-    sha256: String,
-}
-
-impl From<LibraryCoreBackupReceipt> for DesktopBackupSummary {
-    fn from(receipt: LibraryCoreBackupReceipt) -> Self {
-        Self {
-            backup_id: receipt.backup_id,
-            file_name: receipt.file_name,
-            created_at_ms: receipt.created_at_ms,
-            revision: receipt.revision,
-            item_count: receipt.item_count,
-            reason: receipt.reason,
-            byte_length: receipt.byte_length,
-            sha256: receipt.sha256,
-        }
-    }
-}
-
-impl From<LibraryCoreBackupRecord> for DesktopBackupSummary {
-    fn from(record: LibraryCoreBackupRecord) -> Self {
-        Self {
-            backup_id: record.backup_id,
-            file_name: record.file_name,
-            created_at_ms: record.created_at_ms,
-            revision: record.revision,
-            item_count: record.item_count,
-            reason: record.reason,
-            byte_length: record.byte_length,
-            sha256: record.sha256,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReadDesktopBackupChunkRequest {
-    backup_id: String,
-    offset: u64,
-    limit: usize,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopBackupChunk {
-    backup_id: String,
-    bytes: Vec<u8>,
-    next_offset: Option<u64>,
-    offset: u64,
-    sha256: String,
-    total_byte_length: u64,
-}
-
-impl From<NativeLibraryCoreBackupChunk> for DesktopBackupChunk {
-    fn from(chunk: NativeLibraryCoreBackupChunk) -> Self {
-        Self {
-            backup_id: chunk.backup_id,
-            bytes: chunk.bytes,
-            next_offset: chunk.next_offset,
-            offset: chunk.offset,
-            sha256: chunk.sha256,
-            total_byte_length: chunk.total_byte_length,
-        }
-    }
 }
 
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -1759,364 +1677,104 @@ pub(super) fn read_sqlite_library_facet_summary(
     })
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| error.to_string())?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1_024];
-    loop {
-        let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(crate::library_core_hash::lower_hex(&digest.finalize()))
+#[cfg(not(unix))]
+fn normalized_snapshot_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_root(app)?.join(SNAPSHOT_DIRECTORY))
 }
 
-#[tauri::command]
-pub(super) fn create_sqlite_library_backup(
-    app: tauri::AppHandle,
-    created_at_ms: i64,
-    reason: String,
-) -> Result<DesktopBackupSummary, String> {
-    log::info!("[library-core] creating SQLite Library backup reason={reason}");
-    create_sqlite_library_backup_at(&app_root(&app)?, created_at_ms, &reason)
-}
-
-fn create_sqlite_library_backup_at(
-    root: &Path,
-    created_at_ms: i64,
+fn normalized_snapshot_reason(
     reason: &str,
-) -> Result<DesktopBackupSummary, String> {
-    let receipt = open_store_at(root)?
-        .create_backup(created_at_ms, reason)
-        .map_err(|error| error.to_string())?;
-    log::info!(
-        "[library-core] created SQLite Library backup items={} bytes={}",
-        receipt.item_count,
-        receipt.byte_length
-    );
-    if receipt.retention_pending {
-        log::warn!(
-            "[library-core] SQLite Library backup committed; retention cleanup remains pending"
-        );
+) -> Result<freed_library_core::NormalizedLocalSnapshotReasonV1, String> {
+    match reason {
+        "auto" => Ok(freed_library_core::NormalizedLocalSnapshotReasonV1::Auto),
+        "manual" => Ok(freed_library_core::NormalizedLocalSnapshotReasonV1::Manual),
+        _ => Err("normalized local snapshot reason is invalid".into()),
     }
-    Ok(receipt.into())
-}
-
-fn acquire_sqlite_library_backup_operation(
-    root: &Path,
-) -> Result<LibraryCoreBackupOperationGuard, String> {
-    LibraryCoreBackupOperationGuard::acquire(root).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(super) fn list_sqlite_library_backups(
-    app: tauri::AppHandle,
-) -> Result<Vec<DesktopBackupSummary>, String> {
+pub(super) fn create_normalized_local_snapshot(
+    _app: tauri::AppHandle,
+    created_at_ms: u64,
+    reason: String,
+) -> Result<freed_library_core::NormalizedLocalSnapshotSummaryV1, String> {
     #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .store()
-            .map_err(|error| error.to_string())?
-            .list_bound_backups()
-            .map(|records| records.into_iter().map(Into::into).collect())
-            .map_err(|error| error.to_string());
-    }
-    let root = app_root(&app)?;
-    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
-    let backup_directory = root.join(BACKUP_DIRECTORY);
-    let connection = open_database(&app)?;
-    require_active(&connection)?;
-    let mut statement = connection
-        .prepare(
-            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
-             FROM library_core_desktop_backups
-             ORDER BY createdAtMs DESC, backupId DESC;",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok(DesktopBackupSummary {
-                backup_id: row.get(0)?,
-                file_name: row.get(1)?,
-                created_at_ms: row.get(2)?,
-                revision: row.get(3)?,
-                item_count: row.get(4)?,
-                reason: row.get(5)?,
-                byte_length: row.get::<_, i64>(6)? as u64,
-                sha256: row.get(7)?,
-            })
-        })
-        .map_err(|error| error.to_string())?;
-    let summaries = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    Ok(summaries
-        .into_iter()
-        .filter(|summary| backup_directory.join(&summary.file_name).is_file())
-        .collect())
-}
-
-/// Read one verified, closed backup in bounded chunks for off-device archival.
-#[tauri::command]
-pub(super) fn read_sqlite_library_backup_chunk(
-    app: tauri::AppHandle,
-    request: ReadDesktopBackupChunkRequest,
-) -> Result<DesktopBackupChunk, String> {
-    read_sqlite_library_backup_chunk_at(&app_root(&app)?, request)
-}
-
-fn read_sqlite_library_backup_chunk_at(
-    root: &Path,
-    request: ReadDesktopBackupChunkRequest,
-) -> Result<DesktopBackupChunk, String> {
-    if request.backup_id.is_empty()
-        || request.backup_id.len() > 128
-        || request.limit == 0
-        || request.limit > MAX_BACKUP_CHUNK_BYTES
-    {
-        return Err("invalid SQLite Library backup chunk request".into());
-    }
-    #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .store()
-            .map_err(|error| error.to_string())?
-            .read_bound_backup_chunk(&request.backup_id, request.offset, request.limit)
-            .map(Into::into)
-            .map_err(|error| error.to_string());
-    }
-    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
-    let connection = open_database_at(root)?;
-    require_active(&connection)?;
-    let summary = connection
-        .query_row(
-            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
-             FROM library_core_desktop_backups WHERE backupId = ?1;",
-            [&request.backup_id],
-            |row| {
-                Ok(DesktopBackupSummary {
-                    backup_id: row.get(0)?,
-                    file_name: row.get(1)?,
-                    created_at_ms: row.get(2)?,
-                    revision: row.get(3)?,
-                    item_count: row.get(4)?,
-                    reason: row.get(5)?,
-                    byte_length: row.get::<_, i64>(6)? as u64,
-                    sha256: row.get(7)?,
-                })
-            },
-        )
-        .optional()
+    return freed_library_core::desktop_binding()
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| "SQLite Library backup does not exist".to_string())?;
-    let expected_file_name = format!("{}.sqlite", summary.backup_id);
-    if summary.file_name != expected_file_name || request.offset > summary.byte_length {
-        return Err("SQLite Library backup metadata is invalid".into());
-    }
-    let path = root.join(BACKUP_DIRECTORY).join(&summary.file_name);
-    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
-    if !metadata.is_file() || metadata.len() != summary.byte_length {
-        return Err("SQLite Library backup bytes do not match metadata".into());
-    }
-    let remaining = summary.byte_length - request.offset;
-    let byte_count = remaining.min(request.limit as u64) as usize;
-    let mut file = File::open(path).map_err(|error| error.to_string())?;
-    file.seek(SeekFrom::Start(request.offset))
-        .map_err(|error| error.to_string())?;
-    let mut bytes = vec![0_u8; byte_count];
-    file.read_exact(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    let consumed = request
-        .offset
-        .checked_add(byte_count as u64)
-        .ok_or_else(|| "SQLite Library backup offset overflowed".to_string())?;
-    Ok(DesktopBackupChunk {
-        backup_id: summary.backup_id,
-        bytes,
-        next_offset: (consumed < summary.byte_length).then_some(consumed),
-        offset: request.offset,
-        sha256: summary.sha256,
-        total_byte_length: summary.byte_length,
-    })
+        .create_normalized_local_snapshot_v1(created_at_ms, normalized_snapshot_reason(&reason)?)
+        .map_err(|error| error.to_string());
+    #[cfg(not(unix))]
+    let mut connection = open_selected_normalized_database(&_app)?;
+    #[cfg(not(unix))]
+    freed_library_core::create_normalized_local_snapshot_v1(
+        &mut connection,
+        &normalized_snapshot_root(&_app)?,
+        created_at_ms,
+        normalized_snapshot_reason(&reason)?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(super) fn restore_sqlite_library_backup(
-    app: tauri::AppHandle,
-    backup_id: String,
-) -> Result<DesktopBackupSummary, String> {
-    restore_sqlite_library_backup_at(&app_root(&app)?, &backup_id)
-}
-
-fn restore_sqlite_library_backup_at(
-    root: &Path,
-    backup_id: &str,
-) -> Result<DesktopBackupSummary, String> {
-    if backup_id.is_empty() || backup_id.len() > 256 {
-        return Err("invalid SQLite Library backup identity".into());
-    }
+pub(super) fn list_normalized_local_snapshots(
+    _app: tauri::AppHandle,
+) -> Result<Vec<freed_library_core::NormalizedLocalSnapshotSummaryV1>, String> {
     #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .store()
-            .map_err(|error| error.to_string())?
-            .restore_bound_backup(backup_id)
-            .map(Into::into)
-            .map_err(|error| error.to_string());
-    }
-    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
-    let database_path = journal_path(root);
-    let backup_directory = root.join(BACKUP_DIRECTORY);
-    let connection = open_database_at(root)?;
-    require_active(&connection)?;
-    let retained_summaries = {
-        let mut statement = connection
-            .prepare(
-                "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
-                 FROM library_core_desktop_backups;",
-            )
-            .map_err(|error| error.to_string())?;
-        let summaries = statement
-            .query_map([], |row| {
-                Ok(DesktopBackupSummary {
-                    backup_id: row.get(0)?,
-                    file_name: row.get(1)?,
-                    created_at_ms: row.get(2)?,
-                    revision: row.get(3)?,
-                    item_count: row.get(4)?,
-                    reason: row.get(5)?,
-                    byte_length: row.get::<_, i64>(6)? as u64,
-                    sha256: row.get(7)?,
-                })
-            })
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        summaries
-    };
-    let summary = connection
-        .query_row(
-            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
-             FROM library_core_desktop_backups WHERE backupId = ?1;",
-            [backup_id],
-            |row| {
-                Ok(DesktopBackupSummary {
-                    backup_id: row.get(0)?,
-                    file_name: row.get(1)?,
-                    created_at_ms: row.get(2)?,
-                    revision: row.get(3)?,
-                    item_count: row.get(4)?,
-                    reason: row.get(5)?,
-                    byte_length: row.get::<_, i64>(6)? as u64,
-                    sha256: row.get(7)?,
-                })
-            },
-        )
-        .optional()
+    return freed_library_core::desktop_binding()
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| "SQLite Library backup not found".to_string())?;
-    drop(connection);
-
-    let backup_path = backup_directory.join(&summary.file_name);
-    if !backup_path.is_file() || sha256_file(&backup_path)? != summary.sha256 {
-        return Err("SQLite Library backup bytes do not match their recorded digest".into());
-    }
-    let check = Connection::open(&backup_path).map_err(|error| error.to_string())?;
-    let integrity: String = check
-        .query_row("PRAGMA integrity_check;", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    let active: i64 = check
-        .query_row(
-            "SELECT active FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    drop(check);
-    if integrity != "ok" || active != 1 {
-        return Err("SQLite Library backup failed integrity or activation verification".into());
-    }
-
-    let staging = database_path.with_extension("sqlite.restore-staging");
-    let rollback = database_path.with_extension("sqlite.pre-restore");
-    let _ = fs::remove_file(&staging);
-    let _ = fs::remove_file(&rollback);
-    fs::copy(&backup_path, &staging).map_err(|error| error.to_string())?;
-    if sha256_file(&staging)? != summary.sha256 {
-        let _ = fs::remove_file(&staging);
-        return Err("SQLite Library restore staging copy changed bytes".into());
-    }
-    let _ = fs::remove_file(format!("{}-wal", database_path.display()));
-    let _ = fs::remove_file(format!("{}-shm", database_path.display()));
-    fs::rename(&database_path, &rollback).map_err(|error| error.to_string())?;
-    if let Err(error) = fs::rename(&staging, &database_path) {
-        let _ = fs::rename(&rollback, &database_path);
-        return Err(error.to_string());
-    }
-    if let Err(error) = LibraryCoreJournal::open(&database_path) {
-        let _ = fs::remove_file(&database_path);
-        let _ = fs::rename(&rollback, &database_path);
-        return Err(format!(
-            "restored SQLite Library failed catalog verification: {error}"
-        ));
-    }
-    let restored = Connection::open(&database_path).map_err(|error| error.to_string())?;
-    for retained in retained_summaries {
-        restored
-            .execute(
-                "INSERT OR REPLACE INTO library_core_desktop_backups (
-                   backupId, createdAtMs, revision, itemCount, reason, fileName, byteLength, sha256
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
-                params![
-                    retained.backup_id,
-                    retained.created_at_ms,
-                    retained.revision,
-                    retained.item_count,
-                    retained.reason,
-                    retained.file_name,
-                    i64::try_from(retained.byte_length).map_err(|_| "backup is too large")?,
-                    retained.sha256,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    drop(restored);
-    let _ = fs::remove_file(&rollback);
-    Ok(summary)
+        .list_normalized_local_snapshots_v1()
+        .map_err(|error| error.to_string());
+    #[cfg(not(unix))]
+    freed_library_core::list_normalized_local_snapshots_v1(&normalized_snapshot_root(&_app)?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), String> {
-    let root = app_root(&app)?;
-    clear_sqlite_library_backups_at(&root)
+pub(super) fn restore_normalized_local_snapshot(
+    _app: tauri::AppHandle,
+    snapshot_id: String,
+    operation_id: String,
+    restored_at_ms: u64,
+) -> Result<freed_library_core::NormalizedLocalSnapshotSummaryV1, String> {
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    #[cfg(unix)]
+    return freed_library_core::desktop_binding()
+        .map_err(|error| error.to_string())?
+        .restore_normalized_local_snapshot_v1(
+            &snapshot_id,
+            &installation_witness,
+            &PlatformActorKeyStore,
+            &PlatformAuthorityKeyStore,
+            &operation_id,
+            restored_at_ms,
+        )
+        .map_err(|error| error.to_string());
+    #[cfg(not(unix))]
+    let mut connection = open_selected_normalized_database(&_app)?;
+    #[cfg(not(unix))]
+    freed_library_core::restore_normalized_local_snapshot_v1(
+        &mut connection,
+        &normalized_snapshot_root(&_app)?,
+        &snapshot_id,
+        &installation_witness,
+        &PlatformActorKeyStore,
+        &PlatformAuthorityKeyStore,
+        &operation_id,
+        restored_at_ms,
+    )
+    .map_err(|error| error.to_string())
 }
 
-fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
+#[tauri::command]
+pub(super) fn clear_normalized_local_snapshots(_app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .store()
-            .map_err(|error| error.to_string())?
-            .clear_bound_backups()
-            .map_err(|error| error.to_string());
-    }
-    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
-    let backup_directory = root.join(BACKUP_DIRECTORY);
-    let connection = open_database_at(root)?;
-    connection
-        .execute("DELETE FROM library_core_desktop_backups;", [])
-        .map_err(|error| error.to_string())?;
-    if backup_directory.is_dir() {
-        for entry in fs::read_dir(&backup_directory).map_err(|error| error.to_string())? {
-            let path = entry.map_err(|error| error.to_string())?.path();
-            if path.is_file() {
-                fs::remove_file(path).map_err(|error| error.to_string())?;
-            }
-        }
-    }
-    Ok(())
+    return freed_library_core::desktop_binding()
+        .map_err(|error| error.to_string())?
+        .clear_normalized_local_snapshots_v1()
+        .map_err(|error| error.to_string());
+    #[cfg(not(unix))]
+    freed_library_core::clear_normalized_local_snapshots_v1(&normalized_snapshot_root(&_app)?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -2130,7 +1788,6 @@ pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> 
             .map_err(|error| error.to_string());
     }
     let root = app_root(&app)?;
-    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let path = journal_path(&root);
     for candidate in [
         path.clone(),
@@ -2143,8 +1800,8 @@ pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> 
             Err(error) => return Err(error.to_string()),
         }
     }
-    let backups = root.join(BACKUP_DIRECTORY);
-    match fs::remove_dir_all(backups) {
+    let snapshots = root.join(SNAPSHOT_DIRECTORY);
+    match fs::remove_dir_all(snapshots) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.to_string()),
@@ -2268,166 +1925,5 @@ mod tests {
             Some("3333333333333333333333333333333333333333333333333333333333333333")
         );
         assert_eq!(status.control_revision.as_deref(), Some("etag-2"));
-    }
-
-    fn seed_active_import_test_library(root: &Path) {
-        let mut connection = open_database_at(root).expect("open Library database");
-        connection
-            .execute(
-                "INSERT INTO library_core_desktop_state (
-                   singletonId, active, revision, sourceGeneration, sourceRevision,
-                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
-                   startedAtMs, activatedAtMs
-                 ) VALUES (1, 1, 7, 1, 2, ?1, 1, 1, '{}', 100, 200);",
-                ["a".repeat(64)],
-            )
-            .expect("insert active Desktop state");
-        let transaction = connection.transaction().expect("begin item insert");
-        upsert_item(
-            &transaction,
-            r#"{"globalId":"rss:old","platform":"rss","userState":{"saved":true}}"#,
-            250,
-        )
-        .expect("insert old item");
-        transaction.commit().expect("commit old item");
-    }
-
-    #[test]
-    fn backup_restore_and_clear_honor_the_shared_operation_lock() {
-        let root = temporary_root("sqlite-backup-operation-lock");
-        fs::create_dir_all(&root).expect("create temporary root");
-        seed_active_import_test_library(&root);
-        let backup = create_sqlite_library_backup_at(&root, 400, "manual").expect("create backup");
-        let held = LibraryCoreBackupOperationGuard::acquire(&root).expect("hold backup lock");
-        let restore_error = restore_sqlite_library_backup_at(&root, &backup.backup_id)
-            .expect_err("refuse concurrent restore");
-        assert_eq!(
-            restore_error,
-            "SQLite Library backup operation is already in progress"
-        );
-        let clear_error =
-            clear_sqlite_library_backups_at(&root).expect_err("refuse concurrent backup clear");
-        assert_eq!(
-            clear_error,
-            "SQLite Library backup operation is already in progress"
-        );
-        assert!(root
-            .join(BACKUP_DIRECTORY)
-            .join(&backup.file_name)
-            .is_file());
-        drop(held);
-        clear_sqlite_library_backups_at(&root).expect("clear after lock release");
-        assert!(!root.join(BACKUP_DIRECTORY).join(&backup.file_name).exists());
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[test]
-    fn sqlite_backup_restores_the_exact_active_library() {
-        let root = temporary_root("sqlite-backup-restore");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let mut connection = open_database_at(&root).expect("open Library database");
-        connection
-            .execute(
-                "INSERT INTO library_core_desktop_state (
-                   singletonId, active, revision, sourceGeneration, sourceRevision,
-                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
-                   startedAtMs, activatedAtMs
-                 ) VALUES (1, 1, 7, 3, 9, ?1, 1, 1, '{}', 100, 200);",
-                ["a".repeat(64)],
-            )
-            .expect("insert active Desktop state");
-        let transaction = connection.transaction().expect("begin item insert");
-        upsert_item(
-            &transaction,
-            r#"{"globalId":"rss:test","platform":"rss","contentType":"article","publishedAt":100,"capturedAt":101,"userState":{"hidden":false,"saved":false,"archived":false}}"#,
-            300,
-        )
-        .expect("insert test item");
-        transaction.commit().expect("commit test item");
-        drop(connection);
-
-        let backup =
-            create_sqlite_library_backup_at(&root, 400, "manual").expect("create SQLite backup");
-        assert_eq!(backup.item_count, 1);
-        assert_eq!(backup.revision, 7);
-        assert!(root
-            .join(BACKUP_DIRECTORY)
-            .join(&backup.file_name)
-            .is_file());
-        let mut offset = 0_u64;
-        let mut copied = Vec::new();
-        loop {
-            let chunk = read_sqlite_library_backup_chunk_at(
-                &root,
-                ReadDesktopBackupChunkRequest {
-                    backup_id: backup.backup_id.clone(),
-                    offset,
-                    limit: 127,
-                },
-            )
-            .expect("read bounded backup chunk");
-            assert_eq!(chunk.offset, offset);
-            assert_eq!(chunk.total_byte_length, backup.byte_length);
-            assert_eq!(chunk.sha256, backup.sha256);
-            copied.extend_from_slice(&chunk.bytes);
-            let Some(next_offset) = chunk.next_offset else {
-                break;
-            };
-            assert!(next_offset > offset);
-            offset = next_offset;
-        }
-        assert_eq!(copied.len() as u64, backup.byte_length);
-        assert_eq!(
-            crate::library_core_hash::lower_hex(&Sha256::digest(&copied)),
-            backup.sha256,
-        );
-
-        let connection = open_database_at(&root).expect("reopen Library database");
-        connection
-            .execute(
-                "UPDATE library_core_feed_items SET saved = 1 WHERE globalId = 'rss:test';",
-                [],
-            )
-            .expect("mutate live Library after backup");
-        connection
-            .execute(
-                "UPDATE library_core_desktop_state SET revision = 8 WHERE singletonId = 1;",
-                [],
-            )
-            .expect("advance live Library revision");
-        drop(connection);
-
-        let later_backup =
-            create_sqlite_library_backup_at(&root, 500, "auto").expect("create later backup");
-        assert_eq!(later_backup.revision, 8);
-
-        restore_sqlite_library_backup_at(&root, &backup.backup_id).expect("restore SQLite backup");
-        let restored = open_database_at(&root).expect("open restored Library database");
-        let saved: i64 = restored
-            .query_row(
-                "SELECT saved FROM library_core_feed_items WHERE globalId = 'rss:test';",
-                [],
-                |row| row.get(0),
-            )
-            .expect("read restored item");
-        assert_eq!(saved, 0);
-        let retained_backups: i64 = restored
-            .query_row(
-                "SELECT COUNT(*) FROM library_core_desktop_backups WHERE backupId = ?1;",
-                [&backup.backup_id],
-                |row| row.get(0),
-            )
-            .expect("read retained backup registry");
-        assert_eq!(retained_backups, 1);
-        let retained_later_revision: i64 = restored
-            .query_row(
-                "SELECT revision FROM library_core_desktop_backups WHERE backupId = ?1;",
-                [&later_backup.backup_id],
-                |row| row.get(0),
-            )
-            .expect("read retained later backup revision");
-        assert_eq!(retained_later_revision, 8);
-        drop(restored);
-        fs::remove_dir_all(root).expect("remove temporary root");
     }
 }

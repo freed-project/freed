@@ -119,8 +119,8 @@ hours.
 
 Complete `packages/library-core-native` as the only native Library engine.
 Move schema opening, migrations, authority, mutation execution, query
-execution, checkpoint staging, content-vault access, backup, recovery, and
-process exclusion behind runtime-neutral Rust APIs.
+execution, checkpoint staging, content-vault access, normalized local
+snapshots, recovery, and process exclusion behind runtime-neutral Rust APIs.
 
 Freed Desktop becomes a Tauri host adapter. The headless Primary becomes a
 second host of the same core. Neither host forks Library behavior.
@@ -304,11 +304,12 @@ Estimated machine time: included across stages 3, 5, and 6.
 Read the source Library through a bounded external-memory migration process and
 write directly into the final SQLite schema. Record an explicit result for
 every source field and content object. Activate one SQLite-only storage epoch
-after parity, authority, checkpoint, backup, and follower import proof.
+after parity, authority, checkpoint, normalized snapshot, and follower import
+proof.
 
 Rollback is allowed only before a later canonical write and only to the same
 frontier. After a later write, recovery rolls forward from immutable logical
-objects and backups.
+objects and normalized snapshots.
 
 Fresh Freed Desktop installations do not manufacture an empty historical
 Library to enter this sequence. After bounded retired-storage absence checks,

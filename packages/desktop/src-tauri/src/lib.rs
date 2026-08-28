@@ -9,7 +9,6 @@ mod library_core_canonical;
 mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
-mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 mod library_core_platform_key;
@@ -14235,11 +14234,10 @@ pub fn run() {
             library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
             library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
             library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
-            library_core_desktop_runtime::create_sqlite_library_backup,
-            library_core_desktop_runtime::list_sqlite_library_backups,
-            library_core_desktop_runtime::read_sqlite_library_backup_chunk,
-            library_core_desktop_runtime::restore_sqlite_library_backup,
-            library_core_desktop_runtime::clear_sqlite_library_backups,
+            library_core_desktop_runtime::create_normalized_local_snapshot,
+            library_core_desktop_runtime::list_normalized_local_snapshots,
+            library_core_desktop_runtime::restore_normalized_local_snapshot,
+            library_core_desktop_runtime::clear_normalized_local_snapshots,
             library_core_desktop_runtime::clear_sqlite_library,
             clear_factory_reset_runtime_artifacts,
             show_window,

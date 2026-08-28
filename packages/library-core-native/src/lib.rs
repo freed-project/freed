@@ -36,6 +36,8 @@ mod normalized_migration;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
 mod normalized_query;
+#[cfg(unix)]
+mod normalized_snapshot;
 mod normalized_sqlite;
 mod normalized_writer_reassignment;
 mod product_projection;
@@ -160,6 +162,12 @@ pub use normalized_query::{
     NormalizedSavedFeedPageRequestV2, NormalizedSavedFeedPageResponseV2,
     NormalizedStoryWallCandidateV1, NormalizedStoryWallCandidatesRequestV1,
     NormalizedStoryWallCandidatesResponseV1,
+};
+#[cfg(unix)]
+pub use normalized_snapshot::{
+    clear_normalized_local_snapshots_v1, create_normalized_local_snapshot_v1,
+    list_normalized_local_snapshots_v1, restore_normalized_local_snapshot_v1,
+    NormalizedLocalSnapshotReasonV1, NormalizedLocalSnapshotSummaryV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Read;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -17,19 +17,21 @@ use crate::normalized_sqlite::{
 };
 use crate::{
     page_eviction_candidates_v1, page_hydration_candidates_v1,
-    publish_content_range_from_reader_v1, set_content_policy_v1, ContentCompletionReceiptV1,
-    ContentCompletionRequestV1, ContentEvictionReceiptV1, ContentEvictionRequestV1,
-    ContentHydrationPolicyV1, ContentPolicyMutationReceiptV1, ContentPolicyMutationV1,
-    ContentRangePublicationRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
-    EvictionCandidatePageRequestV1, EvictionCandidatePageV1, HydrationCandidatePageRequestV1,
-    HydrationCandidatePageV1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
-    LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity,
-    VerifiedContentRangeReceiptV1,
+    publish_content_range_from_reader_v1, set_content_policy_v1, ActorKeyStore, AuthorityKeyStore,
+    ContentCompletionReceiptV1, ContentCompletionRequestV1, ContentEvictionReceiptV1,
+    ContentEvictionRequestV1, ContentHydrationPolicyV1, ContentPolicyMutationReceiptV1,
+    ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
+    ContentRangeReadResponseV1, EvictionCandidatePageRequestV1, EvictionCandidatePageV1,
+    HydrationCandidatePageRequestV1, HydrationCandidatePageV1, LibraryCoreJournal,
+    LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
+    NormalizedDesktopAuthorityPreparedV1, NormalizedLocalSnapshotReasonV1,
+    NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
+const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 const AUTHORITY_SELECTION_MAXIMUM_BYTES: usize = 16_384;
 
@@ -46,6 +48,7 @@ struct DesktopAuthoritySelectionV1 {
 /// journal, lease, and backup operation resolves from held directory handles.
 pub struct LibraryCoreDesktopBinding {
     content_vault: LibraryCoreContentVault,
+    snapshot_directory: OwnedFd,
     historical_store: Option<LibraryCoreStore>,
     normalized_database: BoundSqliteDatabase,
     _historical_lease: Option<LibraryCoreProcessLease>,
@@ -142,6 +145,7 @@ impl LibraryCoreDesktopBinding {
         let content_vault_directory =
             app_root.open_or_create_private_directory(CONTENT_VAULT_DIRECTORY)?;
         let content_vault = LibraryCoreContentVault::from_directory(content_vault_directory)?;
+        let snapshot_directory = app_root.open_or_create_private_directory(SNAPSHOT_DIRECTORY)?;
         let mut normalized_connection =
             normalized_database.open(normalized_sqlite_open_flags(true))?;
         configure_normalized_sqlite_connection(&normalized_connection)
@@ -150,6 +154,7 @@ impl LibraryCoreDesktopBinding {
         drop(normalized_connection);
         Ok(Self {
             content_vault,
+            snapshot_directory,
             historical_store,
             normalized_database,
             _historical_lease: historical_lease,
@@ -281,6 +286,61 @@ impl LibraryCoreDesktopBinding {
                 .content_revision;
         }
         Ok(receipt)
+    }
+
+    pub fn create_normalized_local_snapshot_v1(
+        &self,
+        created_at_ms: u64,
+        reason: NormalizedLocalSnapshotReasonV1,
+    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_snapshot::create_normalized_local_snapshot_bound_v1(
+            &mut connection,
+            self.snapshot_directory.as_raw_fd(),
+            created_at_ms,
+            reason,
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    pub fn list_normalized_local_snapshots_v1(
+        &self,
+    ) -> Result<Vec<NormalizedLocalSnapshotSummaryV1>, LibraryCoreStoreError> {
+        crate::normalized_snapshot::list_normalized_local_snapshots_bound_v1(
+            self.snapshot_directory.as_raw_fd(),
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_normalized_local_snapshot_v1(
+        &self,
+        snapshot_id: &str,
+        installation_witness: &str,
+        actor_store: &dyn ActorKeyStore,
+        authority_store: &dyn AuthorityKeyStore,
+        operation_id: &str,
+        restored_at_ms: u64,
+    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_snapshot::restore_normalized_local_snapshot_bound_v1(
+            &mut connection,
+            self.snapshot_directory.as_raw_fd(),
+            snapshot_id,
+            installation_witness,
+            actor_store,
+            authority_store,
+            operation_id,
+            restored_at_ms,
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    pub fn clear_normalized_local_snapshots_v1(&self) -> Result<(), LibraryCoreStoreError> {
+        crate::normalized_snapshot::clear_normalized_local_snapshots_bound_v1(
+            self.snapshot_directory.as_raw_fd(),
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {

@@ -986,20 +986,41 @@ A follower can fully authenticate a checkpoint while holding zero media bytes.
 It must know that every required authoritative content object exists remotely,
 but local hydration is optional.
 
-## 14. Backups and restore
+## 14. Snapshots and restore
 
-A complete backup captures one normalized checkpoint, its reachable content
-root set, authority evidence, and exact frontier. It does not copy the live
-SQLite database.
+A local snapshot is an immutable `freed_normalized_local_snapshot_v1` archive.
+Its first line is one canonical closed manifest. Every later line is one
+canonical normalized checkpoint record whose encoded size is at most 131,072
+bytes. The archive binds its snapshot ID, Library identity, authority epoch,
+source revision, causal frontier, record count, canonical record bytes,
+checkpoint digest, creation time, and reason. It never copies the live SQLite
+database, WAL, or SHM file.
+
+Snapshot creation pins one checkpoint export, streams bounded typed pages into
+a private pending file, flushes the file, atomically installs the digest-named
+archive, flushes the directory, and retains the newest 24 valid archives.
+Listing and deletion stay relative to the already-open private snapshot
+directory. Path replacement, symbolic links, nonprivate files, changed
+manifests, changed records, trailing bytes, and digest disagreement fail
+closed.
 
 Device-local provider sessions, OAuth tokens, actor private keys, authority
-private keys, caches, free pages, and provisional local overlays do not enter
-portable backup objects.
+private keys, caches, Google Contacts matching generations, free pages, and
+provisional local overlays do not enter snapshot archives.
 
-Restore stages a fresh SQLite database and content plan, verifies the complete
-logical commitment, and selects the generation only after its exact receipt
-closes. Restoring into a new installation creates a new installation identity
-and actor enrollment. It does not clone actor private authority.
+Restore verifies the complete archive before any Library mutation, stages the
+bounded records through the normalized checkpoint importer, and commits them
+inside a new signed authority epoch. It carries the live causal frontier
+forward, advances the source revision, installs a fresh Primary capability,
+and records a canonical `freed_normalized_restore_receipt_v1` receipt. One
+caller-supplied operation ID and restore time are signed into the transition.
+An exact response-loss retry returns the committed snapshot summary without
+creating another epoch. Reusing that operation ID with changed inputs fails
+before mutation.
+
+Portable recovery uses the same normalized checkpoint and selective-content
+objects. Restoring into a new installation creates a new installation identity
+and actor enrollment. It never clones actor private authority.
 
 ## 15. Protocol version boundaries
 

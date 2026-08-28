@@ -261,6 +261,7 @@ pub(super) fn validate_capability_state(
     .map(|_| ())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn parse_normalized_stored_capability(
     certificate_version: i64,
     actor_class: String,
