@@ -17,10 +17,10 @@ const {
   mockDeduplicateLibraryFeedItems,
   mockHealUntitledLibraryFeedTitles,
   mockPruneArchivedLibraryItems,
-  mockCaptureShellMemoryBaseline,
+  mockCapturePreLibraryMemoryBaseline,
   mockInitializeLibrary,
-  mockRecordDocumentHydrated,
-  mockRecordDocumentHydrationStarted,
+  mockRecordLibraryRuntimeReady,
+  mockRecordLibraryRuntimeLoadStarted,
   mockRunBackgroundJob,
   mockStartOutboxProcessor,
   mockSubscribe,
@@ -30,10 +30,10 @@ const {
   mockDeduplicateLibraryFeedItems: vi.fn(),
   mockHealUntitledLibraryFeedTitles: vi.fn(),
   mockPruneArchivedLibraryItems: vi.fn(),
-  mockCaptureShellMemoryBaseline: vi.fn(),
+  mockCapturePreLibraryMemoryBaseline: vi.fn(),
   mockInitializeLibrary: vi.fn(),
-  mockRecordDocumentHydrated: vi.fn(),
-  mockRecordDocumentHydrationStarted: vi.fn(),
+  mockRecordLibraryRuntimeReady: vi.fn(),
+  mockRecordLibraryRuntimeLoadStarted: vi.fn(),
   mockRunBackgroundJob: vi.fn(),
   mockStartOutboxProcessor: vi.fn(),
   mockSubscribe: vi.fn(),
@@ -86,9 +86,9 @@ vi.mock("./outbox", () => ({
 }));
 
 vi.mock("./memory-monitor", () => ({
-  captureShellMemoryBaseline: mockCaptureShellMemoryBaseline,
-  recordDocumentHydrated: mockRecordDocumentHydrated,
-  recordDocumentHydrationStarted: mockRecordDocumentHydrationStarted,
+  capturePreLibraryMemoryBaseline: mockCapturePreLibraryMemoryBaseline,
+  recordLibraryRuntimeReady: mockRecordLibraryRuntimeReady,
+  recordLibraryRuntimeLoadStarted: mockRecordLibraryRuntimeLoadStarted,
 }));
 
 vi.mock("./desktop-client-registration", () => ({
@@ -178,8 +178,8 @@ describe("store startup migrations", () => {
     mockHealUntitledLibraryFeedTitles.mockResolvedValue(undefined);
     mockPruneArchivedLibraryItems.mockReset();
     mockPruneArchivedLibraryItems.mockResolvedValue(undefined);
-    mockCaptureShellMemoryBaseline.mockReset();
-    mockCaptureShellMemoryBaseline.mockResolvedValue(true);
+    mockCapturePreLibraryMemoryBaseline.mockReset();
+    mockCapturePreLibraryMemoryBaseline.mockResolvedValue(true);
     mockInitializeLibrary.mockReset();
     mockInitializeLibrary.mockResolvedValue(createLibraryState());
     mockRunBackgroundJob.mockReset();
@@ -189,8 +189,8 @@ describe("store startup migrations", () => {
     mockSubscribe.mockReset();
     mockSubscribe.mockReturnValue(mockUnsubscribe);
     mockUnsubscribe.mockReset();
-    mockRecordDocumentHydrated.mockReset();
-    mockRecordDocumentHydrationStarted.mockReset();
+    mockRecordLibraryRuntimeReady.mockReset();
+    mockRecordLibraryRuntimeLoadStarted.mockReset();
     localStorage.clear();
     resetDeviceDisplayPreferencesForTests();
     resetFacebookGroupDiscoveryForTests();
@@ -201,21 +201,21 @@ describe("store startup migrations", () => {
     localStorage.clear();
   });
 
-  it("primes the shell baseline and closes its window before loading the document", async () => {
+  it("primes the renderer baseline and closes its window before loading SQLite", async () => {
     const order: string[] = [];
-    mockCaptureShellMemoryBaseline.mockImplementation(async () => {
+    mockCapturePreLibraryMemoryBaseline.mockImplementation(async () => {
       order.push("baseline");
       return true;
     });
-    mockRecordDocumentHydrationStarted.mockImplementation(() => {
-      order.push("hydration-started");
+    mockRecordLibraryRuntimeLoadStarted.mockImplementation(() => {
+      order.push("library-load-started");
     });
     mockInitializeLibrary.mockImplementation(async () => {
-      order.push("document");
+      order.push("sqlite-library");
       return createLibraryState();
     });
-    mockRecordDocumentHydrated.mockImplementation(() => {
-      order.push("hydrated");
+    mockRecordLibraryRuntimeReady.mockImplementation(() => {
+      order.push("library-ready");
     });
     const { useAppStore } = await import("./store");
 
@@ -223,23 +223,23 @@ describe("store startup migrations", () => {
 
     expect(order.slice(0, 4)).toEqual([
       "baseline",
-      "hydration-started",
-      "document",
-      "hydrated",
+      "library-load-started",
+      "sqlite-library",
+      "library-ready",
     ]);
   });
 
-  it("does not await a stalled shell measurement", async () => {
-    mockCaptureShellMemoryBaseline.mockReturnValue(new Promise(() => {}));
+  it("does not await a stalled pre-Library measurement", async () => {
+    mockCapturePreLibraryMemoryBaseline.mockReturnValue(new Promise(() => {}));
     const { useAppStore } = await import("./store");
 
     await expect(useAppStore.getState().initialize()).resolves.toBeUndefined();
 
     expect(mockInitializeLibrary).toHaveBeenCalledTimes(1);
-    expect(mockRecordDocumentHydrationStarted.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mockRecordLibraryRuntimeLoadStarted.mock.invocationCallOrder[0]).toBeLessThan(
       mockInitializeLibrary.mock.invocationCallOrder[0],
     );
-    expect(mockRecordDocumentHydrated.mock.invocationCallOrder[0]).toBeGreaterThan(
+    expect(mockRecordLibraryRuntimeReady.mock.invocationCallOrder[0]).toBeGreaterThan(
       mockInitializeLibrary.mock.invocationCallOrder[0],
     );
   });
@@ -352,7 +352,7 @@ describe("store startup migrations", () => {
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
 
-  it("increments Library and Saved sources only for their relevant document changes", async () => {
+  it("increments Library and Saved sources only for their relevant SQLite changes", async () => {
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
@@ -590,7 +590,7 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().savedFeedPresentationPatch).toBeNull();
   });
 
-  it("replaces the document subscription when initialization runs again", async () => {
+  it("replaces the Library subscription when initialization runs again", async () => {
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();

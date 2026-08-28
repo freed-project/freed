@@ -1,12 +1,12 @@
 /**
  * Debug store for Freed sync diagnostics
  *
- * Zustand store that tracks sync events, document state snapshots, and
+ * Zustand store that tracks sync events, bounded Library state snapshots, and
  * panel visibility. Consumed by DebugPanel; written to by Library clients.
  * and sync.ts in both the PWA and desktop packages.
  *
  * Also exposes window.__freed as a console escape hatch for inspecting
- * live document state without opening the panel.
+ * live Library state without opening the panel.
  */
 
 import { create } from "zustand";
@@ -111,21 +111,21 @@ export interface RuntimeMemorySnapshot {
    * nobody has measured.
    */
   rendererHeapAvailable?: boolean;
-  /** Main renderer RSS sampled before Library UI hydration, captured once per launch. */
-  shellBaselineMainRendererResidentBytes?: number;
-  /** PID that owns the shell baseline. Later samples are comparable only while this process survives. */
-  shellBaselineMainRendererProcessId?: number;
+  /** Main renderer RSS sampled before SQLite Library load, captured once per launch. */
+  preLibraryBaselineMainRendererResidentBytes?: number;
+  /** PID that owns the pre-Library baseline. Later samples are comparable only while this process survives. */
+  preLibraryBaselineMainRendererProcessId?: number;
   /** Native process start time paired with the PID so PID reuse cannot resurrect an old baseline. */
-  shellBaselineMainRendererStartedAtUnixSeconds?: number;
+  preLibraryBaselineMainRendererStartedAtUnixSeconds?: number;
   /** Native microsecond process start identity used for exact same-process comparisons. */
-  shellBaselineMainRendererStartedAtUnixMicros?: number;
-  /** Same-process main renderer growth since the shell baseline. This is undefined after renderer replacement. */
-  mainRendererResidentOverShellBaselineBytes?: number;
+  preLibraryBaselineMainRendererStartedAtUnixMicros?: number;
+  /** Same-process main renderer growth since the pre-Library baseline. This is undefined after renderer replacement. */
+  mainRendererResidentOverPreLibraryBaselineBytes?: number;
   /** Why a same-process comparison is or is not available for this sample. */
-  shellBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
-  shellBaselineAgeMs?: number;
-  /** Whether the document had been hydrated when this sample was taken. A baseline is only valid from a pre-hydration sample. */
-  documentHydrated?: boolean;
+  preLibraryBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
+  preLibraryBaselineAgeMs?: number;
+  /** Whether authoritative SQLite Library startup had completed when this sample was taken. */
+  libraryRuntimeReady?: boolean;
   domNodeCount?: number;
   sampleTs: number;
 }

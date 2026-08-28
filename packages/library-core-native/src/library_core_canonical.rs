@@ -11,10 +11,6 @@ const MAX_CANONICAL_NODES: usize = 65_536;
 /// literal tuples to the same file at module load, and this side embeds it at
 /// compile time the way the SQL schemas are shared. Neither side keeps its own
 /// copy, so the two cannot drift.
-///
-/// They had drifted before this: `operation-segment-body` and
-/// `intent-segment-body` were registered in TypeScript and missing here, which
-/// would have made a digest computed there unverifiable on this side.
 const CANONICAL_DOMAINS_JSON: &str =
     include_str!("../../shared/src/library-core/canonical-domains-v1.json");
 
@@ -608,10 +604,8 @@ mod tests {
             );
         }
 
-        // The two that had drifted out of this side entirely.
-        for domain in ["operation-segment-body", "intent-segment-body"] {
-            assert!(is_digest_domain(domain), "{domain} must be registered here");
-        }
+        assert!(is_digest_domain("intent-segment-body"));
+        assert!(!is_digest_domain("operation-segment-body"));
 
         // Positive control: a codec that accepted everything would satisfy the
         // assertions above while providing no domain separation.

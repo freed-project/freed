@@ -42,9 +42,6 @@ import { hasLegacyLibraryData } from "./legacy-library-presence";
 
 export type { LibraryMutationEvent } from "./library-types";
 
-export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
-  "freed.libraryCore.rendererItemEvictionV1.disabled";
-
 type Subscriber = (
   state: LibraryCoreRuntimeStateV1,
   event: LibraryMutationEvent,

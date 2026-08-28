@@ -3,7 +3,7 @@
  *
  * Native SQLite owns persistence and emits bounded materialized state updates.
  * The subscriber here applies them directly, with no document decode or
- * corpus-sized hydration on the main thread.
+ * corpus-sized materialization on the main thread.
  */
 
 import { create } from "zustand";
@@ -103,9 +103,9 @@ import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import {
-  captureShellMemoryBaseline,
-  recordDocumentHydrated,
-  recordDocumentHydrationStarted,
+  capturePreLibraryMemoryBaseline,
+  recordLibraryRuntimeReady,
+  recordLibraryRuntimeLoadStarted,
 } from "./memory-monitor";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
@@ -775,18 +775,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Prime the pre-initialization memory probe before Library Core starts.
         // This is intentionally fire-and-forget: telemetry must never delay
-        // startup. The hydration-start marker below rejects a late result.
-        void captureShellMemoryBaseline();
+        // startup. The Library-load marker below rejects a late result.
+        void capturePreLibraryMemoryBaseline();
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
 
-        recordDocumentHydrationStarted();
+        recordLibraryRuntimeLoadStarted();
         assertDesktopStoreWritable();
         const runtimeState = await initializeDesktopLibraryRuntime(
           desktopClientRegistration,
         );
         // Close the startup-baseline window. Any memory sample after this point
         // includes the active Library Core runtime, so it cannot be a baseline.
-        recordDocumentHydrated();
+        recordLibraryRuntimeReady();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display);
         migrateLegacyThemePreference(runtimeState.preferences.display.themeId);
@@ -885,7 +885,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (liAuth !== previousAuth.liAuth) storeLiAuthState(liAuth);
         }
 
-        // Hydrate immediately from the row-free SQLite runtime snapshot.
+        // Initialize immediately from the row-free SQLite runtime snapshot.
         set({
           ...runtimeStatePatch(runtimeState),
           activeFilter: applyFeedSignalModesToFilter(
@@ -922,7 +922,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           async (id, syncedAt) => { await confirmLibraryItemSeenSynced(id, syncedAt); },
         );
 
-        // Schedule bounded local SQLite maintenance after initial hydration.
+        // Schedule bounded local SQLite maintenance after Library startup.
         const archivePruneDays =
           runtimeState.preferences.display.archivePruneDays ?? 30;
         scheduleStartupMigrations(archivePruneDays);
@@ -1238,7 +1238,7 @@ export function withProviderSyncing<T>(
   return trackResetSensitiveStoreOperation(runWithProviderSyncing(provider, task));
 }
 
-/** Stop every store-owned writer and wait for already-issued work before document deletion. */
+/** Stop every store-owned writer and wait for already-issued work before Library deletion. */
 export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   storeAcceptingResetSensitiveWork = false;
   librarySubscriptionTeardown?.();

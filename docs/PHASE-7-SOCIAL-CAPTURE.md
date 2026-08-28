@@ -114,9 +114,9 @@ Story replies are treated differently from post comments. Facebook and Instagram
 
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
 
-Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
+Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to SQLite Library maintenance.
 
-Startup memory attribution now primes a nonblocking native sample before document hydration and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as document or provider memory.
+Startup memory attribution now primes a nonblocking native sample before the SQLite Library runtime loads and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as Library or provider memory. Runtime events and snapshots name the pre-Library baseline and authoritative SQLite readiness directly. They contain no document-hydration or compatibility-shell vocabulary.
 
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
@@ -242,7 +242,7 @@ const RATE_LIMITS = {
 - [x] Social settings share generated or custom cadence bounds, next opportunity and pace state, randomized reset, per-provider pause, a global automatic-sync kill switch, and a warning below 15 minutes while preserving manual Sync Now
 - [x] Deterministic injected-clock and injected-RNG simulation covers at least 100,000 installations and rejects bound violations, wake bursts, concurrent automatic work, release waves, shared provider state, starvation, and a default opportunity p95 above the legacy scheduler
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
-- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-hydration comparisons
+- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-Library-load comparisons
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
 - [x] Authenticated Substack and Medium beta capture serializes behind the same
       native social session lock, runs memory preflight before provider loads,

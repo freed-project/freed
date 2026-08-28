@@ -1909,8 +1909,9 @@ The implementation is incomplete while any runtime caller can reach:
 - generic JSON patch or toggle mutation authority
 - SQLite database, WAL, SHM, or rollback-journal cloud transport
 - a rollback flag capable of reviving a retired engine
-- version 1 operation-segment records, preparation and import helpers, or the
-  dormant browser operation-segment bridge
+- version 1 operation-segment records, preparation and import helpers, the
+  dormant browser operation-segment bridge, or its retired canonical digest
+  domain
 - unused migration, repair, export, test, or authority vocabulary with no final
   product requirement
 

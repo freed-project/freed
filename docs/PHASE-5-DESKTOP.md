@@ -817,7 +817,7 @@ export async function captureDomFeed(
 - [x] Settings expandable lists now use the shared filtered inner-list panel, so Facebook groups, RSS management, OPML previews, saved import errors, and scrape logs cannot stretch the outer Settings scroll when content loads late
 - [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while the feed rows sit in their own searchable inner scroller and still show whether the feed looks likely dead or just failing
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
-- [x] Desktop debug tooling samples native and WebKit memory, SQLite and content-vault storage, renderer hydration, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
+- [x] Desktop debug tooling samples native and WebKit memory, SQLite and content-vault storage, authoritative Library readiness, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first. Startup attribution uses one pre-Library renderer baseline and no document-hydration or compatibility-shell terminology.
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
 - [x] Desktop diagnostics include native and Freed-owned WebKit renderer RSS, WebKit cache size, SQLite and content-vault storage, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
 - [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
@@ -880,7 +880,7 @@ export async function captureDomFeed(
 > **Current state:**
 > Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical document storage remains fenced migration input until the one-epoch cutover is accepted, then it is deleted.
 >
-> Release builds use the governed signing, notarization, updater, and channel promotion paths described in the release documentation. Runtime memory telemetry measures native and WebKit processes, visible renderer hydration, content work, and pressure controls without document-relay counters or whole-corpus payloads.
+> Release builds use the governed signing, notarization, updater, and channel promotion paths described in the release documentation. Runtime memory telemetry measures native and WebKit processes, authoritative SQLite Library readiness, visible content work, and pressure controls without document-relay counters or whole-corpus payloads.
 
 ### Mobile
 

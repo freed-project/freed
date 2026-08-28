@@ -210,6 +210,12 @@ describe("Library Core canonical codec", () => {
         { probe: 1 },
       ),
     ).toThrow(/unregistered/i);
+    expect(() =>
+      encodeLibraryCoreDigestInput(
+        "operation-segment-body" as never,
+        { probe: 1 },
+      ),
+    ).toThrow(/unregistered/i);
   });
 
   it("rejects sparse arrays, extra array properties, symbols, accessors, and cycles", () => {

@@ -21,7 +21,6 @@
     "actor-chain-genesis",
     "actor-chain",
     "operation-envelope",
-    "operation-segment-body",
     "intent-segment-body",
     "result-segment-body",
     "normalized-intent-segment-body-v2",

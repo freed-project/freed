@@ -219,7 +219,7 @@ import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import {
-  captureShellMemoryBaseline,
+  capturePreLibraryMemoryBaseline,
   startMemoryMonitor,
   stopMemoryMonitor,
 } from "./lib/memory-monitor";
@@ -535,9 +535,9 @@ function App() {
 
   useEffect(() => {
     if (!tauriRuntimeAvailable) return;
-    // Give the nonblocking shell probe the legal and lock checks as headroom.
-    // Document initialization closes the window and discards a late result.
-    void captureShellMemoryBaseline();
+    // Give the nonblocking pre-Library probe the legal and lock checks as headroom.
+    // SQLite Library initialization closes the window and discards a late result.
+    void capturePreLibraryMemoryBaseline();
   }, [tauriRuntimeAvailable]);
 
   useEffect(() => {
