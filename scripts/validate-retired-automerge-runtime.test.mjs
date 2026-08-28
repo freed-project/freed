@@ -15,6 +15,7 @@ import {
   assertNoRetiredAutomergeArtifactDirectory,
   assertNoRetiredAutomergeRollupBundle,
   assertNoRetiredLibraryCorePublicExports,
+  assertNoRetiredNativeWholeRecordProjection,
 } from "./lib/retired-automerge-runtime.mjs";
 
 function withTempDirectory(run) {
@@ -140,6 +141,38 @@ test("public entrypoint inspection rejects retired registry reexports", () => {
 test("current Library Core public entrypoint excludes retired registries", () => {
   const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   assert.doesNotThrow(() => assertNoRetiredLibraryCorePublicExports(repoRoot));
+});
+
+test("native core inspection rejects the retired whole-record projector", () => {
+  withTempDirectory((directory) => {
+    const nativeSourceDirectory = path.join(
+      directory,
+      "packages",
+      "library-core-native",
+      "src",
+    );
+    mkdirSync(nativeSourceDirectory, { recursive: true });
+    writeFileSync(
+      path.join(nativeSourceDirectory, "lib.rs"),
+      "mod product_projection;\npub use product_projection::upsert_item;\n",
+    );
+    writeFileSync(
+      path.join(nativeSourceDirectory, "product_projection.rs"),
+      "pub fn upsert_item() {}\n",
+    );
+
+    assert.throws(
+      () => assertNoRetiredNativeWholeRecordProjection(directory),
+      /product_projection\.rs[\s\S]*mod product_projection[\s\S]*upsert_item/,
+    );
+  });
+});
+
+test("current native core excludes the retired whole-record projector", () => {
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  assert.doesNotThrow(() =>
+    assertNoRetiredNativeWholeRecordProjection(repoRoot),
+  );
 });
 
 test("Vercel staging carries the current artifact guard without the retired patch", () => {

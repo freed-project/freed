@@ -14,9 +14,12 @@
 
 ## Current SQLite Desktop work
 
-- [ ] Complete extraction of Library semantics into
+- [x] Complete extraction of Library semantics into
       `packages/library-core-native` so Freed Desktop and the headless Primary
-      call the same Rust core.
+      call the same Rust core. The Tauri crate retains only host key custody,
+      process leasing, platform-key access, and command wiring. The extracted
+      core no longer exports the uncalled historical whole-FeedItem JSON
+      projector.
 - [x] Open the final normalized Desktop database in its own private
       descriptor-bound `library-sqlite` directory under a separate process
       lease. Startup installs and verifies the generated schema identity, and
@@ -702,6 +705,7 @@ export async function captureDomFeed(
 | 5.170 | Process Markdown import in bounded batches of at most 128 source files. SQLite reports the exact inserted identities for each typed mutation, so import releases every parsed batch and never loads the existing Library ID corpus into the renderer | Medium     | ✓ Complete |
 | 5.171 | Let a genuinely fresh Freed Desktop launch reach normalized SQLite genesis without opening a nonexistent historical migration database. Native startup now skips the one-time migration cutover probe when no historical source exists, while the renderer-owned absence census still gates fresh authority creation | High       | ✓ Complete |
 | 5.172 | Require the verified normalized authority selector at the sole native product database opener. Queries, device-local models, maintenance stages, mutations, checkpoints, follower work, snapshots, and content operations can no longer open or create an unselected normalized database through a compatibility fallback | High       | ✓ Complete |
+| 5.173 | Delete the uncalled native `product_projection` module and its public `upsert_item` export. The helper wrote a complete FeedItem JSON payload into the historical `library_core_feed_items.payloadJson` table and had no production consumer. Native product writes now exist only as registered normalized SQLite mutations | High       | ✓ Complete |
 
 ---
 

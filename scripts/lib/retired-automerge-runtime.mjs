@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export const RETIRED_LIBRARY_CORE_PUBLIC_MODULES = Object.freeze([
@@ -338,6 +338,36 @@ export function assertNoRetiredLibraryCorePublicExports(repoRoot) {
   if (retired.length > 0) {
     throw new Error(
       `The Library Core public entrypoint reexports retired registry modules: ${retired.join(", ")}.`,
+    );
+  }
+}
+
+export function assertNoRetiredNativeWholeRecordProjection(repoRoot) {
+  const nativeSourceRoot = path.join(
+    repoRoot,
+    "packages",
+    "library-core-native",
+    "src",
+  );
+  const retiredModulePath = path.join(
+    nativeSourceRoot,
+    "product_projection.rs",
+  );
+  const entrypointPath = path.join(nativeSourceRoot, "lib.rs");
+  const entrypoint = readFileSync(entrypointPath, "utf8");
+  const findings = [];
+  if (existsSync(retiredModulePath)) {
+    findings.push("product_projection.rs");
+  }
+  if (/\bmod\s+product_projection\s*;/.test(entrypoint)) {
+    findings.push("mod product_projection");
+  }
+  if (/\bpub\s+use\s+product_projection\s*::\s*upsert_item\s*;/.test(entrypoint)) {
+    findings.push("pub use product_projection::upsert_item");
+  }
+  if (findings.length > 0) {
+    throw new Error(
+      `The native Library Core exposes the retired whole-record projection: ${findings.join(", ")}.`,
     );
   }
 }
