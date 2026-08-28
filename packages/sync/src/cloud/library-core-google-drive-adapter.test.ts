@@ -9,6 +9,7 @@ import {
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreIntentHeadV1,
   parseLibraryCoreNormalizedIntentHeadV2,
+  parseLibraryCoreNormalizedResultHeadV2,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
@@ -17,6 +18,7 @@ import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
+  createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
@@ -25,6 +27,7 @@ import {
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2,
+  provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   provisionGoogleDriveLibraryCoreResultHeadV1,
 } from "./library-core-google-drive-adapter.js";
 
@@ -140,6 +143,19 @@ function emptyResultHead() {
   });
 }
 
+function emptyNormalizedResultHead() {
+  return parseLibraryCoreNormalizedResultHeadV2({
+    actor_id: "11".repeat(32),
+    latest_segment: null,
+    latest_segment_digest: null,
+    library_id: "22".repeat(32),
+    next_result_sequence: 1,
+    protocol: "normalized_result_head_v2",
+    protocol_version: 2,
+    storage_epoch_id: "33".repeat(32),
+  });
+}
+
 interface FakeDriveFile {
   readonly id: string;
   name: string;
@@ -162,7 +178,10 @@ class FakeGoogleDrive {
     | ReturnType<typeof emptyIntentHead>
     | ReturnType<typeof emptyNormalizedIntentHead>
     | null = null;
-  resultHeadFixture: ReturnType<typeof emptyResultHead> | null = null;
+  resultHeadFixture:
+    | ReturnType<typeof emptyResultHead>
+    | ReturnType<typeof emptyNormalizedResultHead>
+    | null = null;
   exposeMediaEtag = true;
 
   addControl(
@@ -239,15 +258,19 @@ class FakeGoogleDrive {
   }
 
   addResultHead(
-    head = emptyResultHead(),
+    head:
+      | ReturnType<typeof emptyResultHead>
+      | ReturnType<typeof emptyNormalizedResultHead> = emptyResultHead(),
     id = "result-head-1",
     etag = '"result-head-revision-1"',
   ): FakeDriveFile {
+    const epochId =
+      "storage_epoch_id" in head ? head.storage_epoch_id : head.epoch_id;
     const file: FakeDriveFile = {
       id,
       name: createLibraryCoreResultHeadObjectKey(
         head.library_id,
-        head.epoch_id,
+        epochId,
         head.actor_id,
       ),
       bytes: encodeLibraryCoreCanonicalValue(
@@ -257,7 +280,7 @@ class FakeGoogleDrive {
         freedProtocol: "library-core-v1",
         freedLibraryDigest: libraryDigest(head.library_id),
         freedObjectKind: "result_head",
-        freedEpochDigest: libraryDigest(head.epoch_id),
+        freedEpochDigest: libraryDigest(epochId),
         freedActorDigest: libraryDigest(head.actor_id),
       },
       etag,
@@ -1161,6 +1184,49 @@ describe("Google Drive Library Core immutable adapter", () => {
 
     const updates = fake.requests.filter((request) => request.method === "PUT");
     expect(updates).toHaveLength(2);
+    expect(updates[0]?.url).toBe(
+      "https://www.googleapis.com/upload/drive/v2/files/result-head-1?uploadType=media&fields=id,etag",
+    );
+    expect(updates[0]?.headers.get("If-Match")).toBe(initial.revision);
+  });
+
+  it("uses the same bounded Drive routes for the normalized v2 result head", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl();
+    const head = emptyNormalizedResultHead();
+    fake.resultHeadFixture = head;
+
+    await expect(
+      provisionGoogleDriveLibraryCoreNormalizedResultHeadV2({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+        head,
+      }),
+    ).resolves.toEqual({ resultHeadFileId: "result-head-1", created: true });
+
+    const resultAdapter = createGoogleDriveLibraryCoreNormalizedResultAdapterV2(
+      {
+        accessToken: "test-token",
+        actorId: head.actor_id,
+        controlFileId: "control-1",
+        epochId: head.storage_epoch_id,
+        googleFetch: fake.fetch,
+        libraryId: head.library_id,
+        resultHeadFileId: "result-head-1",
+      },
+    );
+    const initial = await resultAdapter.readHead();
+    await expect(
+      resultAdapter.compareAndSwapHead({
+        bytes: encodeLibraryCoreCanonicalValue(
+          head as unknown as LibraryCoreCanonicalValue,
+        ),
+        expectedRevision: initial.revision,
+      }),
+    ).resolves.toEqual({ status: "committed" });
+
+    const updates = fake.requests.filter((request) => request.method === "PUT");
+    expect(updates).toHaveLength(1);
     expect(updates[0]?.url).toBe(
       "https://www.googleapis.com/upload/drive/v2/files/result-head-1?uploadType=media&fields=id,etag",
     );

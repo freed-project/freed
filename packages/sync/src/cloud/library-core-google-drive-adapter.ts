@@ -12,6 +12,7 @@ import {
   parseLibraryCoreMediaBlobReferenceV1,
   parseLibraryCoreIntentHeadV1,
   parseLibraryCoreNormalizedIntentHeadV2,
+  parseLibraryCoreNormalizedResultHeadV2,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
@@ -20,6 +21,7 @@ import {
   type LibraryCoreMediaBlobReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreNormalizedIntentHeadV2,
+  type LibraryCoreNormalizedResultHeadV2,
   type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
 import type {
@@ -523,6 +525,24 @@ function encodeResultHead(head: LibraryCoreResultHeadV1): Uint8Array {
 
 function decodeResultHead(bytes: Uint8Array): LibraryCoreResultHeadV1 {
   return parseLibraryCoreResultHeadV1(
+    decodeLibraryCoreCanonicalValue(bytes, {
+      maximumBytes: MAX_RESULT_HEAD_BYTES,
+    }),
+  );
+}
+
+function encodeNormalizedResultHead(
+  head: LibraryCoreNormalizedResultHeadV2,
+): Uint8Array {
+  return encodeLibraryCoreCanonicalValue(
+    head as unknown as LibraryCoreCanonicalValue,
+  );
+}
+
+function decodeNormalizedResultHead(
+  bytes: Uint8Array,
+): LibraryCoreNormalizedResultHeadV2 {
+  return parseLibraryCoreNormalizedResultHeadV2(
     decodeLibraryCoreCanonicalValue(bytes, {
       maximumBytes: MAX_RESULT_HEAD_BYTES,
     }),
@@ -1627,10 +1647,14 @@ export async function discoverGoogleDriveLibraryCoreResultHeadV1(input: {
   return Object.freeze({ resultHeadFileId: file.id });
 }
 
-export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
+async function provisionGoogleDriveLibraryCoreResultHead(input: {
   readonly accessToken: string;
-  readonly head: LibraryCoreResultHeadV1;
+  readonly actorId: string;
+  readonly bytes: Uint8Array;
+  readonly epochId: string;
   readonly googleFetch?: GoogleDriveFetch;
+  readonly label: string;
+  readonly libraryId: string;
   readonly signal?: AbortSignal;
 }): Promise<ProvisionedGoogleDriveLibraryCoreResultHeadV1> {
   assertBoundedText(
@@ -1638,20 +1662,18 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
     "Google Drive access token",
     MAX_ACCESS_TOKEN_BYTES,
   );
-  const head = parseLibraryCoreResultHeadV1(input.head);
   const discovery = {
     accessToken: input.accessToken,
-    actorId: head.actor_id,
-    epochId: head.epoch_id,
-    libraryId: head.library_id,
+    actorId: input.actorId,
+    epochId: input.epochId,
+    libraryId: input.libraryId,
     googleFetch: input.googleFetch,
     signal: input.signal,
   };
   const existing = await discoverGoogleDriveLibraryCoreResultHeadV1(discovery);
   if (existing) return Object.freeze({ ...existing, created: false });
   const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
-  const actorDigest = await actorIdentityDigest(head.actor_id);
-  const bytes = encodeResultHead(head);
+  const actorDigest = await actorIdentityDigest(input.actorId);
   const boundary = `freed-result-head-${actorDigest.slice(0, 32)}`;
   const response = await googleFetch(
     `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
@@ -1665,31 +1687,31 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
         boundary,
         {
           name: createLibraryCoreResultHeadObjectKey(
-            head.library_id,
-            head.epoch_id,
-            head.actor_id,
+            input.libraryId,
+            input.epochId,
+            input.actorId,
           ),
           parents: ["appDataFolder"],
           appProperties: resultHeadAppProperties(
-            await libraryIdentityDigest(head.library_id),
-            await libraryIdentityDigest(head.epoch_id),
+            await libraryIdentityDigest(input.libraryId),
+            await libraryIdentityDigest(input.epochId),
             actorDigest,
           ),
         },
-        bytes,
+        input.bytes,
       ),
       signal: input.signal,
     },
   );
   if (!response.ok)
     throw await responseError(
-      "Library Core Drive result-head bootstrap failed",
+      `Library Core Drive ${input.label} bootstrap failed`,
       response,
     );
   await readBoundedResponseBytes(
     response,
     MAX_DRIVE_JSON_BYTES,
-    "Library Core Drive result-head bootstrap response",
+    `Library Core Drive ${input.label} bootstrap response`,
   );
   const provisioned =
     await discoverGoogleDriveLibraryCoreResultHeadV1(discovery);
@@ -1700,15 +1722,59 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
   return Object.freeze({ ...provisioned, created: true });
 }
 
-export function createGoogleDriveLibraryCoreResultAdapterV1(
+export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
+  readonly accessToken: string;
+  readonly head: LibraryCoreResultHeadV1;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreResultHeadV1> {
+  const head = parseLibraryCoreResultHeadV1(input.head);
+  return provisionGoogleDriveLibraryCoreResultHead({
+    accessToken: input.accessToken,
+    actorId: head.actor_id,
+    bytes: encodeResultHead(head),
+    epochId: head.epoch_id,
+    googleFetch: input.googleFetch,
+    label: "result-head",
+    libraryId: head.library_id,
+    signal: input.signal,
+  });
+}
+
+export async function provisionGoogleDriveLibraryCoreNormalizedResultHeadV2(input: {
+  readonly accessToken: string;
+  readonly head: LibraryCoreNormalizedResultHeadV2;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreResultHeadV1> {
+  const head = parseLibraryCoreNormalizedResultHeadV2(input.head);
+  return provisionGoogleDriveLibraryCoreResultHead({
+    accessToken: input.accessToken,
+    actorId: head.actor_id,
+    bytes: encodeNormalizedResultHead(head),
+    epochId: head.storage_epoch_id,
+    googleFetch: input.googleFetch,
+    label: "normalized result-head",
+    libraryId: head.library_id,
+    signal: input.signal,
+  });
+}
+
+function createGoogleDriveLibraryCoreResultHeadAdapter<Head>(
   options: GoogleDriveLibraryCoreResultAdapterOptionsV1,
-): LibraryCoreResultPublicationAdapterV1 {
+  config: Readonly<{
+    decode(bytes: Uint8Array): Head;
+    epochId(head: Head): string;
+    label: string;
+    proposedLabel: string;
+  }>,
+) {
   assertLibraryId(options.libraryId);
   assertLibraryId(options.epochId);
   assertLibraryId(options.actorId);
   assertBoundedText(
     options.resultHeadFileId,
-    "Google Drive result-head file id",
+    `Google Drive ${config.label} file id`,
     MAX_DRIVE_FILE_ID_BYTES,
   );
   const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
@@ -1720,7 +1786,7 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
   ]).then(([libraryDigest, epochDigest, actorDigest]) =>
     resultHeadAppProperties(libraryDigest, epochDigest, actorDigest),
   );
-  const readResultHead = async (): Promise<LibraryCoreResultHeadReadV1> => {
+  const readHead = async () => {
     const metadata = await readDriveFileMetadata({
       accessToken: options.accessToken,
       fileId: options.resultHeadFileId,
@@ -1730,7 +1796,7 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
     assertExpectedProperties(
       metadata.appProperties,
       await expectedPropertiesPromise,
-      "Library Core Drive result head",
+      `Library Core Drive ${config.label}`,
     );
     const stored = await readDriveFileWithRevision({
       accessToken: options.accessToken,
@@ -1738,28 +1804,34 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       googleFetch,
       signal: options.signal,
       maxBytes: MAX_RESULT_HEAD_BYTES,
-      label: "Library Core Drive result-head read failed",
+      label: `Library Core Drive ${config.label} read failed`,
     });
-    const head = decodeResultHead(stored.bytes);
+    const head = config.decode(stored.bytes);
+    const identity = head as Readonly<{
+      actor_id: string;
+      library_id: string;
+    }>;
     if (
-      head.library_id !== options.libraryId ||
-      head.epoch_id !== options.epochId ||
-      head.actor_id !== options.actorId
+      identity.library_id !== options.libraryId ||
+      config.epochId(head) !== options.epochId ||
+      identity.actor_id !== options.actorId
     ) {
-      throw new Error("Library Core Drive result-head identity is incorrect");
+      throw new Error(
+        `Library Core Drive ${config.label} identity is incorrect`,
+      );
     }
     return Object.freeze({ ...stored, head });
   };
   return Object.freeze({
     ...immutableAdapter,
-    readResultHead,
-    async compareAndSwapResultHead(input: {
+    readHead,
+    async compareAndSwapHead(input: {
       readonly bytes: Uint8Array;
       readonly expectedRevision: string;
     }) {
       const expectedRevision = parseStrongDriveEtag(
         input.expectedRevision,
-        "expected Drive result-head revision",
+        `expected Drive ${config.label} revision`,
       );
       if (
         !(input.bytes instanceof Uint8Array) ||
@@ -1767,16 +1839,22 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
         input.bytes.byteLength > MAX_RESULT_HEAD_BYTES
       ) {
         throw new RangeError(
-          `result-head bytes must contain 1 to ${MAX_RESULT_HEAD_BYTES.toLocaleString()} bytes`,
+          `${config.label} bytes must contain 1 to ${MAX_RESULT_HEAD_BYTES.toLocaleString()} bytes`,
         );
       }
-      const proposed = decodeResultHead(input.bytes);
+      const proposed = config.decode(input.bytes);
+      const proposedIdentity = proposed as Readonly<{
+        actor_id: string;
+        library_id: string;
+      }>;
       if (
-        proposed.library_id !== options.libraryId ||
-        proposed.epoch_id !== options.epochId ||
-        proposed.actor_id !== options.actorId
+        proposedIdentity.library_id !== options.libraryId ||
+        config.epochId(proposed) !== options.epochId ||
+        proposedIdentity.actor_id !== options.actorId
       ) {
-        throw new TypeError("proposed result head has the wrong identity");
+        throw new TypeError(
+          `proposed ${config.proposedLabel} has the wrong identity`,
+        );
       }
       const response = await googleFetch(
         `${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(options.resultHeadFileId)}?uploadType=media&fields=id,etag`,
@@ -1794,20 +1872,49 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       if (response.status === 412)
         return Object.freeze({
           status: "conflict" as const,
-          current: await readResultHead(),
+          current: await readHead(),
         });
       if (!response.ok)
         throw await responseError(
-          "Library Core Drive result-head update failed",
+          `Library Core Drive ${config.label} update failed`,
           response,
         );
-      const readBack = await readResultHead();
+      const readBack = await readHead();
       if (!bytesEqual(readBack.bytes, input.bytes))
         throw new Error(
-          "Library Core Drive result-head readback did not match committed bytes",
+          `Library Core Drive ${config.label} readback did not match committed bytes`,
         );
       return Object.freeze({ status: "committed" as const });
     },
+  });
+}
+
+export function createGoogleDriveLibraryCoreNormalizedResultAdapterV2(
+  options: GoogleDriveLibraryCoreResultAdapterOptionsV1,
+): LibraryCoreNormalizedHeadPublicationAdapterV2<LibraryCoreNormalizedResultHeadV2> &
+  LibraryCoreImmutableReadAdapterV1 {
+  return createGoogleDriveLibraryCoreResultHeadAdapter(options, {
+    decode: decodeNormalizedResultHead,
+    epochId: (head) => head.storage_epoch_id,
+    label: "normalized result-head",
+    proposedLabel: "normalized result head",
+  });
+}
+
+export function createGoogleDriveLibraryCoreResultAdapterV1(
+  options: GoogleDriveLibraryCoreResultAdapterOptionsV1,
+): LibraryCoreResultPublicationAdapterV1 {
+  const adapter = createGoogleDriveLibraryCoreResultHeadAdapter(options, {
+    decode: decodeResultHead,
+    epochId: (head) => head.epoch_id,
+    label: "result-head",
+    proposedLabel: "result head",
+  });
+  const { compareAndSwapHead, readHead, ...immutableAdapter } = adapter;
+  return Object.freeze({
+    ...immutableAdapter,
+    compareAndSwapResultHead: compareAndSwapHead,
+    readResultHead: readHead as () => Promise<LibraryCoreResultHeadReadV1>,
   });
 }
 
