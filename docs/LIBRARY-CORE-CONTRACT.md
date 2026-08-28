@@ -396,6 +396,12 @@ operation, and transaction values live beside those normalized identities.
 The historical source journal consumes these types but does not define them,
 and the former unversioned authority and causal-tip type names are absent.
 
+Native authority and migration failures use one `LibraryCoreError` and
+`LibraryCoreResult` model outside the historical journal. Normalized SQLite
+wraps those failures as protocol failures, never as journal failures. The
+former `JournalError`, `JournalResult`, and `NormalizedSqliteError::Journal`
+vocabulary is absent from the native core.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

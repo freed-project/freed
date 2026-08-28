@@ -7,8 +7,8 @@
 //! capture, or advance the cloud control pointer.
 
 use super::{
-    is_lower_hex, JournalError, JournalResult, LibraryCoreJournal, NormalizedAuthorityStateV2,
-    MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
+    is_lower_hex, LibraryCoreError, LibraryCoreJournal, LibraryCoreResult,
+    NormalizedAuthorityStateV2, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use crate::library_core_canonical::encode_canonical_value;
 use rusqlite::{params, OptionalExtension, Result as SqlResult, Transaction, TransactionBehavior};
@@ -18,8 +18,8 @@ const MAX_CONTROL_REVISION_BYTES: usize = 512;
 const MAX_MANIFEST_OBJECT_KEY_BYTES: usize = 4_096;
 const MAX_FRONTIER_BYTES: usize = 4_194_304;
 
-fn invalid(field: &'static str) -> JournalError {
-    JournalError::InvalidVerifiedInput { field }
+fn invalid(field: &'static str) -> LibraryCoreError {
+    LibraryCoreError::InvalidVerifiedInput { field }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -179,7 +179,7 @@ pub struct FollowerOverlayReplayReceipt {
     pub revision_advanced: bool,
 }
 
-fn canonical_frontier(authority: &NormalizedAuthorityStateV2) -> JournalResult<String> {
+fn canonical_frontier(authority: &NormalizedAuthorityStateV2) -> LibraryCoreResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
     }
@@ -216,7 +216,7 @@ fn canonical_frontier(authority: &NormalizedAuthorityStateV2) -> JournalResult<S
     String::from_utf8(bytes).map_err(|_| invalid("follower_anchor.observed_frontier"))
 }
 
-fn validate_checkpoint_actor(actor: &VerifiedFollowerCheckpointActor) -> JournalResult<()> {
+fn validate_checkpoint_actor(actor: &VerifiedFollowerCheckpointActor) -> LibraryCoreResult<()> {
     if !is_lower_hex(&actor.actor_id, 32)
         || !(0..=MAX_SAFE_INTEGER).contains(&actor.accepted_sequence)
         || (actor.accepted_sequence == 0) != actor.accepted_operation_id.is_none()
@@ -232,7 +232,7 @@ fn validate_checkpoint_actor(actor: &VerifiedFollowerCheckpointActor) -> Journal
     Ok(())
 }
 
-fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
+fn validate(anchor: &VerifiedFollowerAnchor) -> LibraryCoreResult<String> {
     let authority = &anchor.authority;
     if !is_lower_hex(&authority.library_id, 32)
         || !(1..=MAX_SAFE_INTEGER).contains(&authority.epoch)
@@ -260,7 +260,7 @@ fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
     canonical_frontier(authority)
 }
 
-fn parse_frontier(value: &str) -> JournalResult<Vec<super::NormalizedCausalTipV1>> {
+fn parse_frontier(value: &str) -> LibraryCoreResult<Vec<super::NormalizedCausalTipV1>> {
     let parsed: Value =
         serde_json::from_str(value).map_err(|_| invalid("follower_anchor.observed_frontier"))?;
     let entries = parsed
@@ -309,7 +309,7 @@ fn checkpoint_actor_from_storage(
     accepted_operation_id: Option<String>,
     accepted_chain_digest: Option<String>,
     enrollment_certificate_digest: Option<String>,
-) -> JournalResult<Option<VerifiedFollowerCheckpointActor>> {
+) -> LibraryCoreResult<Option<VerifiedFollowerCheckpointActor>> {
     match (
         actor_id,
         accepted_sequence,
@@ -340,7 +340,7 @@ fn checkpoint_actor_from_storage(
 }
 
 impl LibraryCoreJournal {
-    pub fn follower_runtime_status(&self) -> JournalResult<FollowerRuntimeStatus> {
+    pub fn follower_runtime_status(&self) -> LibraryCoreResult<FollowerRuntimeStatus> {
         let Some(anchor) = self.follower_anchor()? else {
             return Ok(FollowerRuntimeStatus {
                 state: "awaiting_checkpoint",
@@ -436,7 +436,7 @@ impl LibraryCoreJournal {
         ))
     }
 
-    pub fn follower_anchor(&self) -> JournalResult<Option<VerifiedFollowerAnchor>> {
+    pub fn follower_anchor(&self) -> LibraryCoreResult<Option<VerifiedFollowerAnchor>> {
         let stored = self
             .connection
             .query_row(
@@ -517,7 +517,7 @@ impl LibraryCoreJournal {
         &self,
         library_id: &str,
         epoch_id: &str,
-    ) -> JournalResult<Option<StoredFollowerActorRequest>> {
+    ) -> LibraryCoreResult<Option<StoredFollowerActorRequest>> {
         self.connection
             .query_row(
                 "SELECT libraryId, epochId, actorId, actorPublicKey,
@@ -547,7 +547,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<StoredFollowerActorEnrollment>> {
+    ) -> LibraryCoreResult<Option<StoredFollowerActorEnrollment>> {
         self.connection
             .query_row(
                 "SELECT libraryId, epochId, actorId, actorPublicKey,
@@ -580,7 +580,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<super::ActorState>> {
+    ) -> LibraryCoreResult<Option<super::ActorState>> {
         self.connection
             .query_row(
                 "SELECT actor.libraryId, anchor.epoch, actor.epochId,
@@ -633,7 +633,7 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
-    pub fn active_follower_actor_state(&self) -> JournalResult<Option<super::ActorState>> {
+    pub fn active_follower_actor_state(&self) -> LibraryCoreResult<Option<super::ActorState>> {
         let Some(anchor) = self.follower_anchor()? else {
             return Ok(None);
         };
@@ -660,7 +660,7 @@ impl LibraryCoreJournal {
     pub fn store_follower_actor_request(
         &mut self,
         request: &StoredFollowerActorRequest,
-    ) -> JournalResult<StoredFollowerActorRequest> {
+    ) -> LibraryCoreResult<StoredFollowerActorRequest> {
         if !is_lower_hex(&request.library_id, 32)
             || !is_lower_hex(&request.epoch_id, 32)
             || !is_lower_hex(&request.actor_id, 32)
@@ -748,7 +748,7 @@ impl LibraryCoreJournal {
     pub(super) fn install_verified_follower_actor_enrollment(
         &mut self,
         enrollment: &super::VerifiedActorEnrollment,
-    ) -> JournalResult<StoredFollowerActorEnrollment> {
+    ) -> LibraryCoreResult<StoredFollowerActorEnrollment> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -857,7 +857,7 @@ impl LibraryCoreJournal {
         &mut self,
         verified: &super::VerifiedOperationTransaction,
         enqueued_at_ms: i64,
-    ) -> JournalResult<FollowerIntentEnqueueReceipt> {
+    ) -> LibraryCoreResult<FollowerIntentEnqueueReceipt> {
         if !(0..=MAX_SAFE_INTEGER).contains(&enqueued_at_ms) {
             return Err(invalid("follower_intent.enqueued_at_ms"));
         }
@@ -1070,7 +1070,7 @@ impl LibraryCoreJournal {
 
     pub fn replay_pending_follower_overlay(
         &mut self,
-    ) -> JournalResult<FollowerOverlayReplayReceipt> {
+    ) -> LibraryCoreResult<FollowerOverlayReplayReceipt> {
         self.replay_pending_follower_overlay_with(|journal, envelopes| {
             journal.verify_follower_operation_transaction(envelopes)
         })
@@ -1079,12 +1079,12 @@ impl LibraryCoreJournal {
     fn replay_pending_follower_overlay_with<F>(
         &mut self,
         mut verify: F,
-    ) -> JournalResult<FollowerOverlayReplayReceipt>
+    ) -> LibraryCoreResult<FollowerOverlayReplayReceipt>
     where
         F: FnMut(
             &LibraryCoreJournal,
             &[Vec<u8>],
-        ) -> JournalResult<super::VerifiedOperationTransaction>,
+        ) -> LibraryCoreResult<super::VerifiedOperationTransaction>,
     {
         let Some(anchor) = self.follower_anchor()? else {
             return Ok(FollowerOverlayReplayReceipt {
@@ -1280,7 +1280,7 @@ impl LibraryCoreJournal {
         &self,
         maximum_operations: usize,
         maximum_canonical_envelope_bytes: usize,
-    ) -> JournalResult<Option<FollowerIntentOutboxCandidate>> {
+    ) -> LibraryCoreResult<Option<FollowerIntentOutboxCandidate>> {
         if maximum_operations == 0
             || maximum_operations > 1_000
             || maximum_canonical_envelope_bytes == 0
@@ -1437,7 +1437,7 @@ impl LibraryCoreJournal {
     pub fn record_follower_intent_publication(
         &mut self,
         publication: &VerifiedFollowerIntentPublication,
-    ) -> JournalResult<FollowerIntentPublicationReceipt> {
+    ) -> LibraryCoreResult<FollowerIntentPublicationReceipt> {
         if !is_lower_hex(&publication.library_id, 32)
             || !is_lower_hex(&publication.epoch_id, 32)
             || !is_lower_hex(&publication.actor_id, 32)
@@ -1597,7 +1597,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<FollowerResultImportCursor>> {
+    ) -> LibraryCoreResult<Option<FollowerResultImportCursor>> {
         self.connection
             .query_row(
                 "SELECT nextResultSequence, latestResultSegmentDigest
@@ -1618,7 +1618,7 @@ impl LibraryCoreJournal {
     pub fn append_follower_result_segment(
         &mut self,
         segment: &VerifiedFollowerResultSegment,
-    ) -> JournalResult<FollowerResultImportReceipt> {
+    ) -> LibraryCoreResult<FollowerResultImportReceipt> {
         if !is_lower_hex(&segment.library_id, 32)
             || !is_lower_hex(&segment.epoch_id, 32)
             || !is_lower_hex(&segment.actor_id, 32)
@@ -1809,7 +1809,7 @@ impl LibraryCoreJournal {
     pub(crate) fn install_follower_anchor(
         &mut self,
         anchor: &VerifiedFollowerAnchor,
-    ) -> JournalResult<VerifiedFollowerAnchor> {
+    ) -> LibraryCoreResult<VerifiedFollowerAnchor> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1821,7 +1821,7 @@ impl LibraryCoreJournal {
     pub fn install_follower_anchor_in_transaction(
         transaction: &Transaction<'_>,
         anchor: &VerifiedFollowerAnchor,
-    ) -> JournalResult<()> {
+    ) -> LibraryCoreResult<()> {
         let observed_frontier_json = validate(anchor)?;
         let checkpoint_actor_id = anchor
             .checkpoint_actor
@@ -2477,7 +2477,7 @@ mod tests {
             journal.replay_pending_follower_overlay_with(|_, _| {
                 panic!("split transactions must not be verified or replayed")
             }),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "follower_overlay.checkpoint_actor_split"
             })
         ));
@@ -2509,7 +2509,7 @@ mod tests {
             journal.replay_pending_follower_overlay_with(|_, _| {
                 panic!("mismatched actor tips must not be verified or replayed")
             }),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "follower_overlay.checkpoint_actor_tip"
             })
         ));
@@ -2532,7 +2532,7 @@ mod tests {
             journal.replay_pending_follower_overlay_with(|_, _| {
                 panic!("stale-anchor operations must not be verified or replayed")
             }),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "follower_overlay.checkpoint_anchor"
             })
         ));

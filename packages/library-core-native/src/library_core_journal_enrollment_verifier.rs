@@ -8,7 +8,7 @@
 #[cfg(test)]
 use super::VerifiedAuthorityEpoch;
 use super::{
-    is_lower_hex, is_operation_id, JournalError, JournalResult, NormalizedAuthorityStateV2,
+    is_lower_hex, is_operation_id, LibraryCoreError, LibraryCoreResult, NormalizedAuthorityStateV2,
     NormalizedCausalTipV1, VerifiedActorEnrollment, MAX_CAUSAL_TIPS_PER_OPERATION,
     MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES,
 };
@@ -73,15 +73,15 @@ const ENROLLMENT_BODY_KEYS: [&str; 15] = [
 ];
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
 
-fn invalid(field: &'static str) -> JournalError {
-    JournalError::EnrollmentVerification { field }
+fn invalid(field: &'static str) -> LibraryCoreError {
+    LibraryCoreError::EnrollmentVerification { field }
 }
 
 fn exact_object<'a>(
     value: &'a Value,
     keys: &[&str],
     field: &'static str,
-) -> JournalResult<&'a Map<String, Value>> {
+) -> LibraryCoreResult<&'a Map<String, Value>> {
     let object = value.as_object().ok_or_else(|| invalid(field))?;
     if object.len() != keys.len() || keys.iter().any(|key| !object.contains_key(*key)) {
         return Err(invalid(field));
@@ -89,7 +89,7 @@ fn exact_object<'a>(
     Ok(object)
 }
 
-fn required_string(object: &Map<String, Value>, key: &'static str) -> JournalResult<String> {
+fn required_string(object: &Map<String, Value>, key: &'static str) -> LibraryCoreResult<String> {
     object
         .get(key)
         .and_then(Value::as_str)
@@ -97,7 +97,7 @@ fn required_string(object: &Map<String, Value>, key: &'static str) -> JournalRes
         .ok_or_else(|| invalid(key))
 }
 
-fn safe_integer(object: &Map<String, Value>, key: &'static str) -> JournalResult<i64> {
+fn safe_integer(object: &Map<String, Value>, key: &'static str) -> LibraryCoreResult<i64> {
     object
         .get(key)
         .and_then(Value::as_i64)
@@ -105,7 +105,7 @@ fn safe_integer(object: &Map<String, Value>, key: &'static str) -> JournalResult
         .ok_or_else(|| invalid(key))
 }
 
-fn positive_safe_integer(object: &Map<String, Value>, key: &'static str) -> JournalResult<i64> {
+fn positive_safe_integer(object: &Map<String, Value>, key: &'static str) -> LibraryCoreResult<i64> {
     safe_integer(object, key).and_then(|value| {
         if value == 0 {
             Err(invalid(key))
@@ -119,7 +119,7 @@ fn require_literal(
     object: &Map<String, Value>,
     key: &'static str,
     expected: &str,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if object.get(key).and_then(Value::as_str) != Some(expected) {
         return Err(invalid(key));
     }
@@ -130,21 +130,21 @@ fn require_integer_literal(
     object: &Map<String, Value>,
     key: &'static str,
     expected: i64,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if object.get(key).and_then(Value::as_i64) != Some(expected) {
         return Err(invalid(key));
     }
     Ok(())
 }
 
-fn require_hex(value: &str, bytes: usize, field: &'static str) -> JournalResult<()> {
+fn require_hex(value: &str, bytes: usize, field: &'static str) -> LibraryCoreResult<()> {
     if !is_lower_hex(value, bytes) {
         return Err(invalid(field));
     }
     Ok(())
 }
 
-fn digest_hex(domain: &str, value: &Value) -> JournalResult<String> {
+fn digest_hex(domain: &str, value: &Value) -> LibraryCoreResult<String> {
     let input = encode_operation_digest_input(domain, value, MAX_TRANSACTION_ENVELOPE_BYTES)
         .map_err(|_| invalid("digest_input"))?;
     let bytes = Sha256::digest(input);
@@ -157,7 +157,7 @@ fn digest_hex(domain: &str, value: &Value) -> JournalResult<String> {
     Ok(encoded)
 }
 
-fn parse_causal_tips(value: &Value) -> JournalResult<Vec<NormalizedCausalTipV1>> {
+fn parse_causal_tips(value: &Value) -> LibraryCoreResult<Vec<NormalizedCausalTipV1>> {
     let tips = value
         .as_array()
         .ok_or_else(|| invalid("observed_frontier"))?;
@@ -200,7 +200,7 @@ fn parse_causal_tips(value: &Value) -> JournalResult<Vec<NormalizedCausalTipV1>>
     Ok(parsed)
 }
 
-fn validate_authority(authority: &NormalizedAuthorityStateV2) -> JournalResult<()> {
+fn validate_authority(authority: &NormalizedAuthorityStateV2) -> LibraryCoreResult<()> {
     require_hex(&authority.library_id, 32, "authority.library_id")?;
     if !(1..=MAX_SAFE_INTEGER).contains(&authority.epoch) {
         return Err(invalid("authority.epoch"));
@@ -264,7 +264,7 @@ fn verify_capability_body_v2(
     actor_id: &str,
     actor_public_key: &str,
     created_at_ms: i64,
-) -> JournalResult<crate::library_core_actor_capability::ActorCapabilityState> {
+) -> LibraryCoreResult<crate::library_core_actor_capability::ActorCapabilityState> {
     let capability_value = certificate_body
         .get("actor_capability_body")
         .ok_or_else(|| invalid("actor_capability_body"))?;
@@ -304,7 +304,7 @@ fn verify_capability_body_v2(
                 .map(str::to_owned)
                 .ok_or_else(|| invalid("allowed_operation_types"))
         })
-        .collect::<JournalResult<Vec<_>>>()?;
+        .collect::<LibraryCoreResult<Vec<_>>>()?;
     crate::library_core_actor_capability::validate_allowed_operation_types(
         &actor_class,
         &operations,
@@ -381,7 +381,7 @@ fn verify_capability_body_v2(
 pub(super) fn verify_actor_enrollment(
     canonical_certificate: &[u8],
     authority: &NormalizedAuthorityStateV2,
-) -> JournalResult<VerifiedActorEnrollment> {
+) -> LibraryCoreResult<VerifiedActorEnrollment> {
     validate_authority(authority)?;
     let decoded = decode_canonical_value(canonical_certificate, MAX_TRANSACTION_ENVELOPE_BYTES)
         .map_err(|_| invalid("canonical_certificate"))?;
@@ -876,7 +876,7 @@ mod tests {
         ]);
         assert!(matches!(
             parse_causal_tips(&tips),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "observed_frontier"
             })
         ));
@@ -900,7 +900,7 @@ mod tests {
         ];
         assert!(matches!(
             validate_authority(&accepted),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "authority.observed_frontier"
             })
         ));
@@ -918,7 +918,7 @@ mod tests {
             .expect("changed capability certificate");
         assert!(matches!(
             verify_actor_enrollment(&changed, &authority),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "actor_capability_body_digest"
             })
         ));
@@ -932,7 +932,7 @@ mod tests {
             .expect("missing scope certificate");
         assert!(matches!(
             verify_actor_enrollment(&missing_scope, &authority),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "actor_capability_body"
             })
         ));
@@ -945,7 +945,7 @@ mod tests {
                 .expect("scraper escape certificate");
         assert!(matches!(
             verify_actor_enrollment(&scraper_escape, &authority),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "allowed_operation_types"
             })
         ));
@@ -957,7 +957,7 @@ mod tests {
         stale.epoch += 1;
         assert!(matches!(
             verify_actor_enrollment(&certificate, &stale),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "authority_binding"
             })
         ));
@@ -986,7 +986,7 @@ mod tests {
 
         assert!(matches!(
             journal.verify_and_enroll_actor(&tampered, &authority.library_id),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "actor_proof"
             })
         ));
@@ -1018,7 +1018,7 @@ mod tests {
 
         assert!(matches!(
             journal.verify_and_enroll_actor(&tampered, &authority.library_id),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "authority_signature"
             })
         ));
@@ -1062,7 +1062,7 @@ mod tests {
 
         assert!(matches!(
             journal.enroll_actor_under_authority(&verified, &accepted, false),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         let rows: (i64, i64) = journal
             .connection
@@ -1134,7 +1134,7 @@ mod tests {
         wrong.epoch_id = "9".repeat(64);
         assert!(matches!(
             verify_actor_enrollment(&certificate, &wrong),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "authority_binding"
             })
         ));
@@ -1143,7 +1143,7 @@ mod tests {
                 br#"{"certificate_body":{},"certificate_body":{}}"#,
                 &authority
             ),
-            Err(JournalError::EnrollmentVerification {
+            Err(LibraryCoreError::EnrollmentVerification {
                 field: "canonical_certificate"
             })
         ));

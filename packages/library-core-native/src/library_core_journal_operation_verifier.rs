@@ -6,7 +6,7 @@
 //! enter the authoritative log by merely matching a Rust struct's shape.
 
 use super::{
-    ActorState, JournalError, JournalResult, NormalizedCausalTipV1, VerifiedOperation,
+    ActorState, LibraryCoreError, LibraryCoreResult, NormalizedCausalTipV1, VerifiedOperation,
     VerifiedOperationTransaction, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
     MAX_OPERATION_ID_BYTES, MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES,
     MAX_TRANSACTION_MEMBERS,
@@ -200,15 +200,15 @@ struct ParsedEnvelope {
     canonical_json: String,
 }
 
-fn invalid(index: usize, field: &'static str) -> JournalError {
-    JournalError::OperationVerification { index, field }
+fn invalid(index: usize, field: &'static str) -> LibraryCoreError {
+    LibraryCoreError::OperationVerification { index, field }
 }
 
 fn validate_rss_feed(
     feed: &Map<String, Value>,
     entity_id: &str,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if feed
         .keys()
         .any(|key| !RSS_FEED_KEYS.contains(&key.as_str()))
@@ -273,7 +273,7 @@ fn validate_person(
     person: &Map<String, Value>,
     entity_id: &str,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if person
         .keys()
         .any(|key| !PERSON_KEYS.contains(&key.as_str()))
@@ -388,7 +388,7 @@ fn validate_account(
     account: &Map<String, Value>,
     entity_id: &str,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if account
         .keys()
         .any(|key| !ACCOUNT_KEYS.contains(&key.as_str()))
@@ -524,7 +524,7 @@ fn validate_preference_node_bounds(
     path: &str,
     node_count: &mut usize,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     *node_count += 1;
     if *node_count > MAX_PREFERENCE_NODES || path.len() > MAX_PREFERENCE_PATH_BYTES {
         return Err(invalid(index, "preferences_node_bounds"));
@@ -561,7 +561,7 @@ fn validate_preference_node_bounds(
     }
 }
 
-fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> JournalResult<()> {
+fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> LibraryCoreResult<()> {
     const TOP_LEVEL: [&str; 8] = [
         "weights",
         "ulysses",
@@ -638,7 +638,7 @@ fn exact_object<'a>(
     keys: &[&str],
     index: usize,
     field: &'static str,
-) -> JournalResult<&'a Map<String, Value>> {
+) -> LibraryCoreResult<&'a Map<String, Value>> {
     let object = value.as_object().ok_or_else(|| invalid(index, field))?;
     if object.len() != keys.len() || keys.iter().any(|key| !object.contains_key(*key)) {
         return Err(invalid(index, field));
@@ -651,14 +651,14 @@ fn validate_capture_object_keys(
     allowed: &[&str],
     index: usize,
     field: &'static str,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid(index, field));
     }
     Ok(())
 }
 
-fn validate_feed_item_capture(item: &Map<String, Value>, index: usize) -> JournalResult<()> {
+fn validate_feed_item_capture(item: &Map<String, Value>, index: usize) -> LibraryCoreResult<()> {
     validate_capture_object_keys(
         item,
         &[
@@ -876,7 +876,7 @@ fn required_string(
     object: &Map<String, Value>,
     key: &'static str,
     index: usize,
-) -> JournalResult<String> {
+) -> LibraryCoreResult<String> {
     object
         .get(key)
         .and_then(Value::as_str)
@@ -888,7 +888,7 @@ fn safe_integer(
     object: &Map<String, Value>,
     key: &'static str,
     index: usize,
-) -> JournalResult<i64> {
+) -> LibraryCoreResult<i64> {
     object
         .get(key)
         .and_then(Value::as_i64)
@@ -900,7 +900,7 @@ fn positive_safe_integer(
     object: &Map<String, Value>,
     key: &'static str,
     index: usize,
-) -> JournalResult<i64> {
+) -> LibraryCoreResult<i64> {
     safe_integer(object, key, index).and_then(|value| {
         if value == 0 {
             Err(invalid(index, key))
@@ -947,7 +947,7 @@ fn require_literal(
     key: &'static str,
     expected: &str,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if object.get(key).and_then(Value::as_str) != Some(expected) {
         return Err(invalid(index, key));
     }
@@ -959,14 +959,19 @@ fn require_integer_literal(
     key: &'static str,
     expected: i64,
     index: usize,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if object.get(key).and_then(Value::as_i64) != Some(expected) {
         return Err(invalid(index, key));
     }
     Ok(())
 }
 
-fn require_hex(value: &str, bytes: usize, index: usize, field: &'static str) -> JournalResult<()> {
+fn require_hex(
+    value: &str,
+    bytes: usize,
+    index: usize,
+    field: &'static str,
+) -> LibraryCoreResult<()> {
     if value.len() != bytes * 2
         || !value
             .bytes()
@@ -977,7 +982,7 @@ fn require_hex(value: &str, bytes: usize, index: usize, field: &'static str) -> 
     Ok(())
 }
 
-fn require_operation_id(value: &str, index: usize, field: &'static str) -> JournalResult<()> {
+fn require_operation_id(value: &str, index: usize, field: &'static str) -> LibraryCoreResult<()> {
     if value.is_empty()
         || value.len() > MAX_OPERATION_ID_BYTES
         || !value.bytes().enumerate().all(|(offset, byte)| {
@@ -990,7 +995,7 @@ fn require_operation_id(value: &str, index: usize, field: &'static str) -> Journ
     Ok(())
 }
 
-fn digest_hex(domain: &str, value: &Value, index: usize) -> JournalResult<String> {
+fn digest_hex(domain: &str, value: &Value, index: usize) -> LibraryCoreResult<String> {
     let input = encode_operation_digest_input(domain, value, MAX_TRANSACTION_ENVELOPE_BYTES)
         .map_err(|_| invalid(index, "digest_input"))?;
     let bytes = Sha256::digest(input);
@@ -1003,7 +1008,7 @@ fn digest_hex(domain: &str, value: &Value, index: usize) -> JournalResult<String
     Ok(encoded)
 }
 
-fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<NormalizedCausalTipV1>> {
+fn parse_causal_tips(value: &Value, index: usize) -> LibraryCoreResult<Vec<NormalizedCausalTipV1>> {
     let tips = value
         .as_array()
         .ok_or_else(|| invalid(index, "causal_frontier"))?;
@@ -1044,7 +1049,7 @@ fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<Normalize
     Ok(parsed)
 }
 
-fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
+fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelope> {
     if bytes.is_empty() || bytes.len() > MAX_OPERATION_ENVELOPE_BYTES {
         return Err(invalid(index, "canonical_envelope"));
     }
@@ -1592,9 +1597,9 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
 fn verify_operation_transaction_with_verdict<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
-) -> JournalResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
+) -> LibraryCoreResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
 where
-    F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
+    F: FnOnce(&OperationIdentity) -> LibraryCoreResult<ActorState>,
 {
     if canonical_envelopes.is_empty() || canonical_envelopes.len() > MAX_TRANSACTION_MEMBERS {
         return Err(invalid(0, "transaction_members"));
@@ -1761,9 +1766,9 @@ where
 pub(crate) fn verify_operation_transaction_for_resolution<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
-) -> JournalResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
+) -> LibraryCoreResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
 where
-    F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
+    F: FnOnce(&OperationIdentity) -> LibraryCoreResult<ActorState>,
 {
     verify_operation_transaction_with_verdict(canonical_envelopes, actor_lookup)
 }
@@ -1771,9 +1776,9 @@ where
 pub(crate) fn verify_operation_transaction<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
-) -> JournalResult<VerifiedOperationTransaction>
+) -> LibraryCoreResult<VerifiedOperationTransaction>
 where
-    F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
+    F: FnOnce(&OperationIdentity) -> LibraryCoreResult<ActorState>,
 {
     let (verified, verdict) =
         verify_operation_transaction_with_verdict(canonical_envelopes, actor_lookup)?;
@@ -2488,13 +2493,13 @@ pub(crate) mod tests {
         });
         assert!(matches!(
             validate_rss_feed(device_local.as_object().expect("object"), entity_id, 0),
-            Err(JournalError::OperationVerification { field: "feed", .. })
+            Err(LibraryCoreError::OperationVerification { field: "feed", .. })
         ));
 
         let incomplete = json!({ "url": entity_id, "title": "Example" });
         assert!(matches!(
             validate_rss_feed(incomplete.as_object().expect("object"), entity_id, 0),
-            Err(JournalError::OperationVerification { field: "feed", .. })
+            Err(LibraryCoreError::OperationVerification { field: "feed", .. })
         ));
     }
 
@@ -2517,7 +2522,7 @@ pub(crate) mod tests {
         ]);
         assert!(matches!(
             parse_causal_tips(&tips, 0),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "causal_frontier"
             })
@@ -2594,7 +2599,7 @@ pub(crate) mod tests {
         let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
         assert!(matches!(
             journal.accept_operation_transaction(&envelopes, 9_000),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "actor_capability_retired"
             })
@@ -2636,7 +2641,7 @@ pub(crate) mod tests {
         let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
         assert!(matches!(
             journal.accept_operation_transaction(&envelopes, 9_999),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         assert_eq!(
             authoritative_operation_state(&journal, &enrollment.actor_id),
@@ -2681,7 +2686,7 @@ pub(crate) mod tests {
         let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
         assert!(matches!(
             journal.accept_operation_transaction(&envelopes, 9_999),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         assert_eq!(
             authoritative_operation_state(&journal, &enrollment.actor_id),
@@ -2749,7 +2754,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&denied, 2_500),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "actor_capability_operation"
             })
@@ -2844,7 +2849,7 @@ pub(crate) mod tests {
             );
             assert!(matches!(
                 journal.verify_and_commit_read_transaction(&denied, 1_500),
-                Err(JournalError::OperationVerification {
+                Err(LibraryCoreError::OperationVerification {
                     index: 0,
                     field: "actor_capability_operation"
                 })
@@ -2885,7 +2890,7 @@ pub(crate) mod tests {
         );
         assert!(matches!(
             bounded_journal.verify_and_commit_read_transaction(&bounded_envelope, 1_500),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "actor_capability_scope"
             })
@@ -2920,7 +2925,7 @@ pub(crate) mod tests {
             .expect("install retired state fixture");
         assert!(matches!(
             retired_journal.verify_and_commit_read_transaction(&active_envelope, 1_500),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "actor_capability_retired"
             })
@@ -2949,13 +2954,13 @@ pub(crate) mod tests {
             .expect("advance authority epoch");
         assert!(matches!(
             stale_journal.verify_and_commit_read_transaction(&stale_envelope, 1_500),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
 
         let oversized = vec![Vec::new(); MAX_TRANSACTION_MEMBERS + 1];
         assert!(matches!(
             stale_journal.verify_operation_transaction(&oversized),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "transaction_members"
             })
@@ -3005,7 +3010,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&removal, 1_500),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_signed_cache"
             })
         ));
@@ -3077,7 +3082,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&removal, 1_500),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_signed_cache"
             })
         ));
@@ -3670,7 +3675,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&stale_fork, 1_600),
-            Err(JournalError::StaleActorTip { actor_id })
+            Err(LibraryCoreError::StaleActorTip { actor_id })
                 if actor_id == enrollment.actor_id
         ));
         let transaction_rows: i64 = journal
@@ -3716,7 +3721,7 @@ pub(crate) mod tests {
         journal.enroll_actor(&enrollment).expect("enroll actor");
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&envelopes, 1_500),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 1,
                 field: "signature"
             })
@@ -3747,7 +3752,7 @@ pub(crate) mod tests {
 
         assert!(matches!(
             journal.verify_operation_transaction(&envelopes[..1]),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "transaction_identity"
             })
@@ -3756,7 +3761,7 @@ pub(crate) mod tests {
             journal.verify_operation_transaction(&[
                 br#"{"operation_id":"first","operation_id":"second"}"#.to_vec()
             ]),
-            Err(JournalError::OperationVerification {
+            Err(LibraryCoreError::OperationVerification {
                 index: 0,
                 field: "canonical_envelope"
             })

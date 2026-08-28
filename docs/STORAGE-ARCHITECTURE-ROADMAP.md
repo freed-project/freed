@@ -34,10 +34,12 @@ mutation admission, writer reassignment, and both native verifiers consume the
 same crate-level policy directly. Normalized authority, causal-tip, actor,
 enrollment, operation, and transaction identities are now versioned native
 protocol types outside the historical journal as well. The historical source
-runtime consumes these sealed types but no longer defines them. The shared
-error model and verifier implementation are the next extraction seams before
-the historical journal implementation can be deleted without widening its
-private runtime API.
+runtime consumes these sealed types but no longer defines them. Shared native
+authority and migration failures now use one `LibraryCoreError` model outside
+the journal, and normalized SQLite reports them as protocol failures. The
+verifier implementation is the next extraction seam before the historical
+journal implementation can be deleted without widening its private runtime
+API.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent

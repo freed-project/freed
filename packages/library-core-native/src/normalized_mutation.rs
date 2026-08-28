@@ -2,6 +2,7 @@ use crate::library_core_actor_capability::parse_normalized_stored_capability;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
+use crate::library_core_error::{LibraryCoreError, LibraryCoreResult};
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 #[cfg(test)]
 use crate::library_core_journal::operation_verifier::verify_operation_transaction;
@@ -9,7 +10,7 @@ use crate::library_core_journal::operation_verifier::{
     operation_admission_verdict, verify_operation_transaction_for_resolution,
     OperationAdmissionVerdict, OperationIdentity,
 };
-use crate::library_core_journal::{validate_transaction, JournalError, JournalResult};
+use crate::library_core_journal::validate_transaction;
 use crate::normalized_operation::{ActorState, VerifiedOperationTransaction};
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::{
@@ -107,7 +108,7 @@ pub(crate) enum NormalizedMutationResolutionV1 {
 pub(crate) fn actor_state_at(
     connection: &Connection,
     identity: &OperationIdentity,
-) -> JournalResult<ActorState> {
+) -> LibraryCoreResult<ActorState> {
     type ActorRow = (
         String,
         i64,
@@ -198,7 +199,7 @@ pub(crate) fn actor_state_at(
             },
         )
         .optional()?
-        .ok_or_else(|| JournalError::ActorNotFound {
+        .ok_or_else(|| LibraryCoreError::ActorNotFound {
             actor_id: identity.actor_id.clone(),
         })?;
     let mut statement = connection.prepare(
@@ -213,7 +214,7 @@ pub(crate) fn actor_state_at(
         row.11,
         row.12,
         serde_json::to_string(&allowed_operation_types).map_err(|_| {
-            JournalError::InvalidVerifiedInput {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability",
             }
         })?,
@@ -227,12 +228,12 @@ pub(crate) fn actor_state_at(
         i64::from(row.18.is_some()),
         row.19,
     )
-    .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+    .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
     let next_sequence = row
         .8
         .checked_add(1)
         .filter(|value| *value <= MAX_SAFE_INTEGER)
-        .ok_or(JournalError::InvalidVerifiedInput {
+        .ok_or(LibraryCoreError::InvalidVerifiedInput {
             field: "actor_sequence",
         })?;
     Ok(ActorState {
@@ -273,7 +274,7 @@ fn admitted_authority_epoch(
         )
         .optional()?
         .ok_or_else(|| {
-            JournalError::StaleAuthority {
+            LibraryCoreError::StaleAuthority {
                 library_id: library_id.to_owned(),
             }
             .into()
@@ -670,7 +671,7 @@ fn stored_follower_result(
         || actor_id != verified.actor_id
         || status != expected_status
     {
-        return Err(JournalError::TransactionReplayConflict {
+        return Err(LibraryCoreError::TransactionReplayConflict {
             transaction_id: verified.transaction_id.clone(),
         }
         .into());
@@ -1534,7 +1535,7 @@ fn stored_receipt(
         || receipt.actor_id != verified.actor_id
         || receipt.member_count != verified.members.len()
     {
-        return Err(JournalError::TransactionReplayConflict {
+        return Err(LibraryCoreError::TransactionReplayConflict {
             transaction_id: verified.transaction_id.clone(),
         }
         .into());
@@ -1596,7 +1597,7 @@ fn require_causal_tips(
                 |row| row.get(0),
             )?;
             if !exists {
-                return Err(JournalError::UnknownCausalTip {
+                return Err(LibraryCoreError::UnknownCausalTip {
                     operation_id: member.operation_id.clone(),
                 }
                 .into());
@@ -2394,7 +2395,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         },
     )?;
     if actor.capability != verified.actor_capability {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "actor_capability_changed",
         }
         .into());
@@ -2405,7 +2406,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     }
     if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
         if active_epoch <= verified.epoch || active_epoch_id == verified.epoch_id {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: verified.library_id,
             }
             .into());
@@ -2645,7 +2646,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         ],
     )?;
     if actor_updated != 1 {
-        return Err(JournalError::StaleActorTip {
+        return Err(LibraryCoreError::StaleActorTip {
             actor_id: verified.actor_id.clone(),
         }
         .into());

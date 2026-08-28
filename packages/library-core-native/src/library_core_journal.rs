@@ -13,7 +13,6 @@ use rusqlite::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -30,6 +29,7 @@ mod follower;
 pub(crate) mod operation_verifier;
 
 use crate::library_core_actor_capability as actor_capability;
+pub(crate) use crate::library_core_error::{LibraryCoreError, LibraryCoreResult};
 pub(crate) use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 pub(crate) use crate::normalized_operation::{
     ActorState, VerifiedActorEnrollment, VerifiedOperation, VerifiedOperationTransaction,
@@ -97,7 +97,7 @@ fn apply_schema_range(
     transaction: &Transaction<'_>,
     prior: i64,
     through: i64,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if prior == 0 {
         transaction.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
     }
@@ -175,27 +175,6 @@ const RESULT_OUTBOX_PAGE_SQL: &str = "
     ORDER BY actorId COLLATE BINARY, resultSequence
     LIMIT ?5;";
 
-#[derive(Debug)]
-pub enum JournalError {
-    Io(std::io::Error),
-    Sql(rusqlite::Error),
-    UnsupportedSchemaVersion { expected: i64, actual: i64 },
-    DatabaseIdentityMismatch { expected: i64, actual: i64 },
-    UnversionedSchemaPresent,
-    SchemaContractMismatch,
-    InvalidVerifiedInput { field: &'static str },
-    ActorEnrollmentConflict { actor_id: String },
-    ActorNotFound { actor_id: String },
-    AuthorityNotFound { library_id: String },
-    AuthorityConflict,
-    AuthorityProtocolConflict { library_id: String },
-    StaleAuthority { library_id: String },
-    StaleActorTip { actor_id: String },
-    TransactionReplayConflict { transaction_id: String },
-    UnknownCausalTip { operation_id: String },
-    OperationVerification { index: usize, field: &'static str },
-    EnrollmentVerification { field: &'static str },
-}
 /// What the runtime can say about an opened journal.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -209,105 +188,10 @@ pub struct JournalRuntimeStatus {
     pub unacknowledged_outbox: i64,
 }
 
-impl From<rusqlite::Error> for JournalError {
-    fn from(error: rusqlite::Error) -> Self {
-        Self::Sql(error)
-    }
-}
-
-impl From<std::io::Error> for JournalError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-impl fmt::Display for JournalError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(error) => write!(formatter, "filesystem error: {error}"),
-            Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
-            Self::UnsupportedSchemaVersion { expected, actual } => {
-                write!(
-                    formatter,
-                    "unsupported schema version: expected {expected}, got {actual}"
-                )
-            }
-            Self::DatabaseIdentityMismatch { expected, actual } => {
-                write!(
-                    formatter,
-                    "authoritative database identity mismatch: expected {expected}, got {actual}"
-                )
-            }
-            Self::UnversionedSchemaPresent => {
-                formatter.write_str("unversioned authoritative schema is present")
-            }
-            Self::SchemaContractMismatch => {
-                formatter.write_str("authoritative schema does not match its checked-in contract")
-            }
-            Self::InvalidVerifiedInput { field } => {
-                write!(formatter, "invalid verified input field: {field}")
-            }
-            Self::ActorEnrollmentConflict { actor_id } => {
-                write!(formatter, "actor enrollment conflicts for {actor_id}")
-            }
-            Self::ActorNotFound { actor_id } => write!(formatter, "actor not found: {actor_id}"),
-            Self::AuthorityNotFound { library_id } => {
-                write!(
-                    formatter,
-                    "active authority not found for library {library_id}"
-                )
-            }
-            Self::AuthorityConflict => {
-                formatter.write_str("more than one local authority is active")
-            }
-            Self::AuthorityProtocolConflict { library_id } => {
-                write!(
-                    formatter,
-                    "native authority protocol conflicts for library {library_id}"
-                )
-            }
-            Self::StaleAuthority { library_id } => {
-                write!(
-                    formatter,
-                    "active authority is stale for library {library_id}"
-                )
-            }
-            Self::StaleActorTip { actor_id } => {
-                write!(formatter, "actor tip is stale: {actor_id}")
-            }
-            Self::TransactionReplayConflict { transaction_id } => {
-                write!(formatter, "transaction replay conflicts: {transaction_id}")
-            }
-            Self::UnknownCausalTip { operation_id } => {
-                write!(
-                    formatter,
-                    "operation has an unknown causal tip: {operation_id}"
-                )
-            }
-            Self::OperationVerification { index, field } => {
-                write!(
-                    formatter,
-                    "operation envelope {index} failed verification at {field}"
-                )
-            }
-            Self::EnrollmentVerification { field } => {
-                write!(
-                    formatter,
-                    "actor enrollment certificate failed verification at {field}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for JournalError {}
-
-pub type JournalResult<T> = std::result::Result<T, JournalError>;
-
 pub(crate) fn verify_actor_enrollment_certificate(
     canonical_certificate: &[u8],
     authority: &NormalizedAuthorityStateV2,
-) -> JournalResult<VerifiedActorEnrollment> {
+) -> LibraryCoreResult<VerifiedActorEnrollment> {
     enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
 }
 
@@ -468,14 +352,14 @@ fn is_operation_id(value: &str) -> bool {
         })
 }
 
-fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalResult<()> {
+fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> LibraryCoreResult<()> {
     if !is_lower_hex(&enrollment.library_id, 32) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "library_id",
         });
     }
     if !(1..=MAX_SAFE_INTEGER).contains(&enrollment.epoch) {
-        return Err(JournalError::InvalidVerifiedInput { field: "epoch" });
+        return Err(LibraryCoreError::InvalidVerifiedInput { field: "epoch" });
     }
     for (field, value) in [
         ("epoch_id", enrollment.epoch_id.as_str()),
@@ -490,39 +374,39 @@ fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalRes
         ),
     ] {
         if !is_lower_hex(value, 32) {
-            return Err(JournalError::InvalidVerifiedInput { field });
+            return Err(LibraryCoreError::InvalidVerifiedInput { field });
         }
     }
     if !is_lower_hex(&enrollment.actor_public_key, 32) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "actor_public_key",
         });
     }
     if !is_operation_id(&enrollment.enrollment_operation_id) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "enrollment_operation_id",
         });
     }
     if enrollment.canonical_enrollment_certificate_json.is_empty()
         || enrollment.canonical_enrollment_certificate_json.len() > MAX_TRANSACTION_ENVELOPE_BYTES
     {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "canonical_enrollment_certificate_json",
         });
     }
     if !(0..=MAX_SAFE_INTEGER).contains(&enrollment.enrolled_at_ms) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "enrolled_at_ms",
         });
     }
     actor_capability::validate_capability_state(&enrollment.capability)
-        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+        .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
     if enrollment.capability.capability_certificate_digest
         != enrollment.enrollment_certificate_digest
         || enrollment.capability.issued_at_ms != enrollment.enrolled_at_ms
         || enrollment.capability.retired
     {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "actor_capability",
         });
     }
@@ -531,40 +415,40 @@ fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalRes
 
 pub(crate) fn validate_transaction(
     transaction: &VerifiedOperationTransaction,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if !is_operation_id(&transaction.transaction_id) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "transaction_id",
         });
     }
     if !is_lower_hex(&transaction.transaction_digest, 32) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "transaction_digest",
         });
     }
     if !is_lower_hex(&transaction.library_id, 32) {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "library_id",
         });
     }
     if !(1..=MAX_SAFE_INTEGER).contains(&transaction.epoch) {
-        return Err(JournalError::InvalidVerifiedInput { field: "epoch" });
+        return Err(LibraryCoreError::InvalidVerifiedInput { field: "epoch" });
     }
     if !is_lower_hex(&transaction.epoch_id, 32) {
-        return Err(JournalError::InvalidVerifiedInput { field: "epoch_id" });
+        return Err(LibraryCoreError::InvalidVerifiedInput { field: "epoch_id" });
     }
     if !is_lower_hex(&transaction.actor_id, 32) {
-        return Err(JournalError::InvalidVerifiedInput { field: "actor_id" });
+        return Err(LibraryCoreError::InvalidVerifiedInput { field: "actor_id" });
     }
     actor_capability::validate_capability_state(&transaction.actor_capability)
-        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+        .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
     if transaction.members.is_empty() || transaction.members.len() > MAX_TRANSACTION_MEMBERS {
-        return Err(JournalError::InvalidVerifiedInput { field: "members" });
+        return Err(LibraryCoreError::InvalidVerifiedInput { field: "members" });
     }
     if transaction.canonical_envelope_bytes == 0
         || transaction.canonical_envelope_bytes > MAX_TRANSACTION_ENVELOPE_BYTES
     {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "canonical_envelope_bytes",
         });
     }
@@ -572,20 +456,20 @@ pub(crate) fn validate_transaction(
     let mut measured_bytes = 0usize;
     for (index, member) in transaction.members.iter().enumerate() {
         if !is_operation_id(&member.operation_id) {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "operation_id",
             });
         }
         let expected_sequence = transaction.members[0]
             .actor_sequence
             .checked_add(index as i64)
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_sequence",
             })?;
         if !(1..MAX_SAFE_INTEGER).contains(&member.actor_sequence)
             || member.actor_sequence != expected_sequence
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_sequence",
             });
         }
@@ -593,7 +477,7 @@ pub(crate) fn validate_transaction(
             && member.previous_actor_operation_id.as_deref()
                 != Some(transaction.members[index - 1].operation_id.as_str())
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "previous_actor_operation_id",
             });
         }
@@ -608,19 +492,19 @@ pub(crate) fn validate_transaction(
             ("envelope_digest", member.envelope_digest.as_str()),
         ] {
             if !is_lower_hex(value, 32) {
-                return Err(JournalError::InvalidVerifiedInput { field });
+                return Err(LibraryCoreError::InvalidVerifiedInput { field });
             }
         }
         if index > 0
             && member.previous_actor_chain_digest
                 != transaction.members[index - 1].actor_chain_digest
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "previous_actor_chain_digest",
             });
         }
         if member.entity_id.is_empty() || member.entity_id.len() > MAX_ENTITY_ID_BYTES {
-            return Err(JournalError::InvalidVerifiedInput { field: "entity_id" });
+            return Err(LibraryCoreError::InvalidVerifiedInput { field: "entity_id" });
         }
         let payload_slot_count = usize::from(member.item_json.is_some())
             + usize::from(member.rss_feed_json.is_some())
@@ -632,7 +516,7 @@ pub(crate) fn validate_transaction(
             + usize::from(member.synced_at_ms.is_some())
             + usize::from(member.removed_at_ms.is_some());
         if payload_slot_count != 1 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "operation_payload",
             });
         }
@@ -641,7 +525,7 @@ pub(crate) fn validate_transaction(
             "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt"
         );
         if !is_sync_receipt && member.synced_at_ms.is_some() {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "synced_at_ms",
             });
         }
@@ -656,7 +540,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput { field: "item_json" });
+                    return Err(LibraryCoreError::InvalidVerifiedInput { field: "item_json" });
                 }
             }
             "feed_item_read_assignment" => {
@@ -671,7 +555,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "read_at_ms",
                     });
                 }
@@ -690,7 +574,7 @@ pub(crate) fn validate_transaction(
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "user_state_assignment",
                     });
                 }
@@ -710,7 +594,7 @@ pub(crate) fn validate_transaction(
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "sync_receipt",
                     });
                 }
@@ -727,7 +611,7 @@ pub(crate) fn validate_transaction(
                         .removed_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "removed_at_ms",
                     });
                 }
@@ -742,7 +626,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "rss_feed_json",
                     });
                 }
@@ -759,7 +643,7 @@ pub(crate) fn validate_transaction(
                         .removed_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "rss_feed_remove",
                     });
                 }
@@ -776,7 +660,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "rss_feed_title_assignment",
                     });
                 }
@@ -792,7 +676,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "preferences_patch_json",
                     });
                 }
@@ -808,7 +692,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "person_json",
                     });
                 }
@@ -825,7 +709,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "person_reach_out_append",
                     });
                 }
@@ -843,7 +727,7 @@ pub(crate) fn validate_transaction(
                         .removed_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "person_remove",
                     });
                 }
@@ -860,7 +744,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "account_json",
                     });
                 }
@@ -877,7 +761,7 @@ pub(crate) fn validate_transaction(
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "account_person_assignment",
                     });
                 }
@@ -896,29 +780,29 @@ pub(crate) fn validate_transaction(
                         .removed_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "account_remove",
                     });
                 }
             }
             _ => {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "operation_type",
                 });
             }
         }
         if member.canonical_envelope_json.is_empty() {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "canonical_envelope_json",
             });
         }
         measured_bytes = measured_bytes
             .checked_add(member.canonical_envelope_json.len())
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "canonical_envelope_bytes",
             })?;
         if member.causal_tips.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "causal_tips",
             });
         }
@@ -928,14 +812,14 @@ pub(crate) fn validate_transaction(
                 || !is_operation_id(&tip.operation_id)
                 || !is_lower_hex(&tip.chain_digest, 32)
             {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "causal_tip",
                 });
             }
         }
     }
     if measured_bytes != transaction.canonical_envelope_bytes {
-        return Err(JournalError::InvalidVerifiedInput {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
             field: "canonical_envelope_bytes",
         });
     }
@@ -950,10 +834,12 @@ impl LibraryCoreJournal {
         &self.connection
     }
 
-    pub fn open(path: &Path) -> JournalResult<Self> {
-        let file_name = path.file_name().ok_or(JournalError::InvalidVerifiedInput {
-            field: "database_path",
-        })?;
+    pub fn open(path: &Path) -> LibraryCoreResult<Self> {
+        let file_name = path
+            .file_name()
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
+                field: "database_path",
+            })?;
         let parent = path
             .parent()
             .filter(|candidate| !candidate.as_os_str().is_empty())
@@ -967,7 +853,7 @@ impl LibraryCoreJournal {
     }
 
     #[cfg(unix)]
-    pub(crate) fn open_bound(database: &BoundSqliteDatabase) -> JournalResult<Self> {
+    pub(crate) fn open_bound(database: &BoundSqliteDatabase) -> LibraryCoreResult<Self> {
         let read_flags = OpenFlags::SQLITE_OPEN_READ_ONLY
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
@@ -1007,7 +893,7 @@ impl LibraryCoreJournal {
     ///
     /// Deliberately cheap and read-only. This is the first observable evidence
     /// that a production call reached the journal, so it must not mutate.
-    pub fn runtime_status(&self) -> JournalResult<JournalRuntimeStatus> {
+    pub fn runtime_status(&self) -> LibraryCoreResult<JournalRuntimeStatus> {
         let schema_version: i64 =
             self.connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -1048,7 +934,7 @@ impl LibraryCoreJournal {
         })
     }
 
-    fn open_after_preflight(resolved_path: &Path, existing_file: bool) -> JournalResult<Self> {
+    fn open_after_preflight(resolved_path: &Path, existing_file: bool) -> LibraryCoreResult<Self> {
         let mut open_flags = OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
@@ -1070,7 +956,7 @@ impl LibraryCoreJournal {
         Ok(journal)
     }
 
-    fn preflight_existing_file(path: &Path) -> JournalResult<bool> {
+    fn preflight_existing_file(path: &Path) -> LibraryCoreResult<bool> {
         if !path.try_exists()? {
             return Ok(false);
         }
@@ -1091,13 +977,13 @@ impl LibraryCoreJournal {
         Ok(true)
     }
 
-    fn validate_existing_connection(connection: &Connection) -> JournalResult<()> {
+    fn validate_existing_connection(connection: &Connection) -> LibraryCoreResult<()> {
         let version =
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         let application_id =
             connection.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
         if !(0..=AUTHORITATIVE_SCHEMA_VERSION).contains(&version) {
-            return Err(JournalError::UnsupportedSchemaVersion {
+            return Err(LibraryCoreError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual: version,
             });
@@ -1105,7 +991,7 @@ impl LibraryCoreJournal {
         if (version == 0 && application_id != 0)
             || (version > 0 && application_id != AUTHORITATIVE_APPLICATION_ID)
         {
-            return Err(JournalError::DatabaseIdentityMismatch {
+            return Err(LibraryCoreError::DatabaseIdentityMismatch {
                 expected: AUTHORITATIVE_APPLICATION_ID,
                 actual: application_id,
             });
@@ -1118,7 +1004,7 @@ impl LibraryCoreJournal {
         )?;
         if version == 0 {
             return if has_unversioned_tables {
-                Err(JournalError::UnversionedSchemaPresent)
+                Err(LibraryCoreError::UnversionedSchemaPresent)
             } else {
                 Ok(())
             };
@@ -1127,7 +1013,7 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn open_in_memory() -> JournalResult<Self> {
+    fn open_in_memory() -> LibraryCoreResult<Self> {
         let connection = Connection::open_in_memory()?;
         let mut journal = Self { connection };
         journal.configure()?;
@@ -1135,7 +1021,7 @@ impl LibraryCoreJournal {
         Ok(journal)
     }
 
-    fn configure(&self) -> JournalResult<()> {
+    fn configure(&self) -> LibraryCoreResult<()> {
         Self::configure_validation_connection(&self.connection)?;
         #[cfg(target_os = "macos")]
         self.connection.pragma_update(None, "fullfsync", "ON")?;
@@ -1147,7 +1033,7 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn configure_validation_connection(connection: &Connection) -> JournalResult<()> {
+    fn configure_validation_connection(connection: &Connection) -> LibraryCoreResult<()> {
         // The journal executes checked-in SQL with at most 20 parameters and
         // accepts canonical payloads capped at 4 MiB. Keep SQLite's parser and
         // row allocations close to that contract instead of inheriting its
@@ -1193,7 +1079,7 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn migrate(&mut self) -> JournalResult<()> {
+    fn migrate(&mut self) -> LibraryCoreResult<()> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1202,7 +1088,7 @@ impl LibraryCoreJournal {
         let prior_application_id =
             transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
         if !(0..=AUTHORITATIVE_SCHEMA_VERSION).contains(&prior) {
-            return Err(JournalError::UnsupportedSchemaVersion {
+            return Err(LibraryCoreError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual: prior,
             });
@@ -1210,7 +1096,7 @@ impl LibraryCoreJournal {
         if (prior == 0 && prior_application_id != 0)
             || (prior > 0 && prior_application_id != AUTHORITATIVE_APPLICATION_ID)
         {
-            return Err(JournalError::DatabaseIdentityMismatch {
+            return Err(LibraryCoreError::DatabaseIdentityMismatch {
                 expected: AUTHORITATIVE_APPLICATION_ID,
                 actual: prior_application_id,
             });
@@ -1222,7 +1108,7 @@ impl LibraryCoreJournal {
             |row| row.get::<_, bool>(0),
         )?;
         if prior == 0 && has_unversioned_tables {
-            return Err(JournalError::UnversionedSchemaPresent);
+            return Err(LibraryCoreError::UnversionedSchemaPresent);
         }
         apply_schema_range(&transaction, prior, AUTHORITATIVE_SCHEMA_VERSION)?;
         let actual =
@@ -1230,13 +1116,13 @@ impl LibraryCoreJournal {
         let actual_application_id =
             transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
         if actual != AUTHORITATIVE_SCHEMA_VERSION {
-            return Err(JournalError::UnsupportedSchemaVersion {
+            return Err(LibraryCoreError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual,
             });
         }
         if actual_application_id != AUTHORITATIVE_APPLICATION_ID {
-            return Err(JournalError::DatabaseIdentityMismatch {
+            return Err(LibraryCoreError::DatabaseIdentityMismatch {
                 expected: AUTHORITATIVE_APPLICATION_ID,
                 actual: actual_application_id,
             });
@@ -1246,7 +1132,7 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn schema_catalog(connection: &Connection) -> JournalResult<Vec<SchemaCatalogEntry>> {
+    fn schema_catalog(connection: &Connection) -> LibraryCoreResult<Vec<SchemaCatalogEntry>> {
         let mut statement = connection.prepare(
             "SELECT
                length(CAST(type AS BLOB)),
@@ -1266,7 +1152,7 @@ impl LibraryCoreJournal {
         let mut retained_bytes = 0i64;
         while let Some(row) = rows.next()? {
             if entries.len() == MAX_SCHEMA_CATALOG_ENTRIES {
-                return Err(JournalError::SchemaContractMismatch);
+                return Err(LibraryCoreError::SchemaContractMismatch);
             }
             let type_bytes: Option<i64> = row.get(0)?;
             let name_bytes: Option<i64> = row.get(1)?;
@@ -1287,7 +1173,7 @@ impl LibraryCoreJournal {
                     {
                         (type_bytes, name_bytes, table_name_bytes, sql_bytes)
                     }
-                    _ => return Err(JournalError::SchemaContractMismatch),
+                    _ => return Err(LibraryCoreError::SchemaContractMismatch),
                 };
             retained_bytes = retained_bytes
                 .checked_add(type_bytes)
@@ -1295,7 +1181,7 @@ impl LibraryCoreJournal {
                 .and_then(|bytes| bytes.checked_add(table_name_bytes))
                 .and_then(|bytes| bytes.checked_add(sql_bytes))
                 .filter(|bytes| *bytes <= MAX_SCHEMA_CATALOG_BYTES)
-                .ok_or(JournalError::SchemaContractMismatch)?;
+                .ok_or(LibraryCoreError::SchemaContractMismatch)?;
             entries.push(SchemaCatalogEntry {
                 object_type: row.get(4)?,
                 name: row.get(5)?,
@@ -1306,7 +1192,7 @@ impl LibraryCoreJournal {
         Ok(entries)
     }
 
-    fn verify_schema_contract_at(connection: &Connection, version: i64) -> JournalResult<()> {
+    fn verify_schema_contract_at(connection: &Connection, version: i64) -> LibraryCoreResult<()> {
         let mut reference = Connection::open_in_memory()?;
         {
             let transaction = reference.transaction()?;
@@ -1316,7 +1202,7 @@ impl LibraryCoreJournal {
         let expected = Self::schema_catalog(&reference)?;
         let actual = Self::schema_catalog(connection)?;
         if actual != expected {
-            return Err(JournalError::SchemaContractMismatch);
+            return Err(LibraryCoreError::SchemaContractMismatch);
         }
         Ok(())
     }
@@ -1397,14 +1283,14 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<ActorState>> {
+    ) -> LibraryCoreResult<Option<ActorState>> {
         let Some(actor) = Self::stored_actor_at(connection, library_id, epoch_id, actor_id)? else {
             return Ok(None);
         };
         let capability = Self::stored_actor_capability_at(
             connection, library_id, epoch_id, actor_id,
         )?
-        .ok_or(JournalError::InvalidVerifiedInput {
+        .ok_or(LibraryCoreError::InvalidVerifiedInput {
             field: "actor_capability_missing",
         })?;
         let capability = actor_capability::parse_stored_capability(
@@ -1421,9 +1307,9 @@ impl LibraryCoreJournal {
             capability.retired,
             capability.retirement_certificate_digest,
         )
-        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+        .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
         if capability.capability_certificate_digest != actor.enrollment_certificate_digest {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_digest",
             });
         }
@@ -1450,7 +1336,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<ActorState>> {
+    ) -> LibraryCoreResult<Option<ActorState>> {
         let Some(actor) = Self::actor_state_at(connection, library_id, epoch_id, actor_id)? else {
             return Ok(None);
         };
@@ -1460,7 +1346,7 @@ impl LibraryCoreJournal {
         #[cfg(test)]
         if actor.canonical_enrollment_certificate_json == "{\"certificate\":\"fixture\"}" {
             if actor.capability.certificate_version != 1 {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "actor_capability_signed_cache",
                 });
             }
@@ -1468,7 +1354,7 @@ impl LibraryCoreJournal {
         }
         let authority =
             authority::authority_epoch_state(connection, library_id, actor.epoch, &actor.epoch_id)?
-                .ok_or_else(|| JournalError::AuthorityNotFound {
+                .ok_or_else(|| LibraryCoreError::AuthorityNotFound {
                     library_id: library_id.to_owned(),
                 })?;
         let signed = enrollment_verifier::verify_actor_enrollment(
@@ -1490,7 +1376,7 @@ impl LibraryCoreJournal {
             || actor.actor_chain_genesis != signed.actor_chain_genesis
             || stored_signed_capability != signed.capability
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_signed_cache",
             });
         }
@@ -1502,7 +1388,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<ActorState>> {
+    ) -> LibraryCoreResult<Option<ActorState>> {
         Self::actor_state_at(transaction, library_id, epoch_id, actor_id)
     }
 
@@ -1518,13 +1404,17 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> JournalResult<Option<ActorState>> {
+    ) -> LibraryCoreResult<Option<ActorState>> {
         Self::actor_state_at(&self.connection, library_id, epoch_id, actor_id)
     }
 
     /// Return the bounded actor set for one exact authority epoch in binary
     /// actor-id order so checkpoint construction is deterministic.
-    pub fn actor_states(&self, library_id: &str, epoch_id: &str) -> JournalResult<Vec<ActorState>> {
+    pub fn actor_states(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+    ) -> LibraryCoreResult<Vec<ActorState>> {
         let mut statement = self.connection.prepare(
             "SELECT actorId FROM library_core_actors
              WHERE libraryId = ?1 AND epochId = ?2
@@ -1535,7 +1425,7 @@ impl LibraryCoreJournal {
             .query_map(params![library_id, epoch_id], |row| row.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         if actor_ids.len() > 1_000 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_state_count",
             });
         }
@@ -1543,7 +1433,7 @@ impl LibraryCoreJournal {
         for actor_id in actor_ids {
             actors.push(
                 Self::actor_state_at(&self.connection, library_id, epoch_id, &actor_id)?
-                    .ok_or(JournalError::ActorNotFound { actor_id })?,
+                    .ok_or(LibraryCoreError::ActorNotFound { actor_id })?,
             );
         }
         Ok(actors)
@@ -1552,7 +1442,7 @@ impl LibraryCoreJournal {
     fn verify_operation_transaction(
         &self,
         canonical_envelopes: &[Vec<u8>],
-    ) -> JournalResult<VerifiedOperationTransaction> {
+    ) -> LibraryCoreResult<VerifiedOperationTransaction> {
         operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
             Self::actor_state_with_signed_capability_at(
                 &self.connection,
@@ -1560,7 +1450,7 @@ impl LibraryCoreJournal {
                 &identity.epoch_id,
                 &identity.actor_id,
             )?
-            .ok_or_else(|| JournalError::ActorNotFound {
+            .ok_or_else(|| LibraryCoreError::ActorNotFound {
                 actor_id: identity.actor_id.clone(),
             })
         })
@@ -1569,10 +1459,10 @@ impl LibraryCoreJournal {
     fn verify_follower_operation_transaction(
         &self,
         canonical_envelopes: &[Vec<u8>],
-    ) -> JournalResult<VerifiedOperationTransaction> {
+    ) -> LibraryCoreResult<VerifiedOperationTransaction> {
         operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
             self.follower_actor_state(&identity.library_id, &identity.epoch_id, &identity.actor_id)?
-                .ok_or_else(|| JournalError::ActorNotFound {
+                .ok_or_else(|| LibraryCoreError::ActorNotFound {
                     actor_id: identity.actor_id.clone(),
                 })
         })
@@ -1582,7 +1472,7 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         enqueued_at_ms: i64,
-    ) -> JournalResult<FollowerIntentEnqueueReceipt> {
+    ) -> LibraryCoreResult<FollowerIntentEnqueueReceipt> {
         let verified = self.verify_follower_operation_transaction(canonical_envelopes)?;
         self.enqueue_verified_follower_transaction(&verified, enqueued_at_ms)
     }
@@ -1591,7 +1481,7 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
-    ) -> JournalResult<TransactionReceipt> {
+    ) -> LibraryCoreResult<TransactionReceipt> {
         let verified = self.verify_operation_transaction(canonical_envelopes)?;
         self.commit_read_transaction(&verified, committed_at_ms)
     }
@@ -1602,7 +1492,7 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
-    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+    ) -> LibraryCoreResult<Vec<IntentResultOutboxEntry>> {
         let verified = self.verify_operation_transaction(canonical_envelopes)?;
         let transaction_id = verified.transaction_id.clone();
         self.commit_read_transaction(&verified, committed_at_ms)?;
@@ -1612,7 +1502,7 @@ impl LibraryCoreJournal {
     fn enroll_actor_in(
         transaction: &Transaction<'_>,
         enrollment: &VerifiedActorEnrollment,
-    ) -> JournalResult<ActorState> {
+    ) -> LibraryCoreResult<ActorState> {
         if let Some(existing) = Self::actor_state_in(
             transaction,
             &enrollment.library_id,
@@ -1622,7 +1512,7 @@ impl LibraryCoreJournal {
             if Self::actor_matches_enrollment(&existing, enrollment) {
                 return Ok(existing);
             }
-            return Err(JournalError::ActorEnrollmentConflict {
+            return Err(LibraryCoreError::ActorEnrollmentConflict {
                 actor_id: enrollment.actor_id.clone(),
             });
         }
@@ -1693,7 +1583,7 @@ impl LibraryCoreJournal {
             &enrollment.epoch_id,
             &enrollment.actor_id,
         )?
-        .ok_or_else(|| JournalError::ActorNotFound {
+        .ok_or_else(|| LibraryCoreError::ActorNotFound {
             actor_id: enrollment.actor_id.clone(),
         })?;
         Ok(state)
@@ -1718,13 +1608,13 @@ impl LibraryCoreJournal {
         enrollment: &VerifiedActorEnrollment,
         expected_authority: &NormalizedAuthorityStateV2,
         allow_missing_admission_for_first_actor: bool,
-    ) -> JournalResult<ActorState> {
+    ) -> LibraryCoreResult<ActorState> {
         validate_actor_enrollment(enrollment)?;
         if enrollment.library_id != expected_authority.library_id
             || enrollment.epoch != expected_authority.epoch
             || enrollment.epoch_id != expected_authority.epoch_id
         {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: enrollment.library_id.clone(),
             });
         }
@@ -1741,7 +1631,7 @@ impl LibraryCoreJournal {
                 transaction.commit()?;
                 return Ok(existing);
             }
-            return Err(JournalError::ActorEnrollmentConflict {
+            return Err(LibraryCoreError::ActorEnrollmentConflict {
                 actor_id: enrollment.actor_id.clone(),
             });
         }
@@ -1764,12 +1654,12 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, bool>(0),
             )?;
             if actor_exists {
-                return Err(JournalError::StaleAuthority {
+                return Err(LibraryCoreError::StaleAuthority {
                     library_id: enrollment.library_id.clone(),
                 });
             }
         } else {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: enrollment.library_id.clone(),
             });
         }
@@ -1780,9 +1670,12 @@ impl LibraryCoreJournal {
     }
 
     #[cfg(test)]
-    fn enroll_actor(&mut self, enrollment: &VerifiedActorEnrollment) -> JournalResult<ActorState> {
+    fn enroll_actor(
+        &mut self,
+        enrollment: &VerifiedActorEnrollment,
+    ) -> LibraryCoreResult<ActorState> {
         let authority = authority::active_authority(&self.connection, &enrollment.library_id)?
-            .ok_or_else(|| JournalError::AuthorityNotFound {
+            .ok_or_else(|| LibraryCoreError::AuthorityNotFound {
                 library_id: enrollment.library_id.clone(),
             })?;
         self.enroll_actor_under_authority(enrollment, &authority, false)
@@ -1792,7 +1685,7 @@ impl LibraryCoreJournal {
         &self,
         canonical_certificate: &[u8],
         authority: &NormalizedAuthorityStateV2,
-    ) -> JournalResult<VerifiedActorEnrollment> {
+    ) -> LibraryCoreResult<VerifiedActorEnrollment> {
         enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
     }
 
@@ -1805,10 +1698,10 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_certificate: &[u8],
         library_id: &str,
-    ) -> JournalResult<ActorState> {
+    ) -> LibraryCoreResult<ActorState> {
         let authority =
             authority::active_authority(&self.connection, library_id)?.ok_or_else(|| {
-                JournalError::AuthorityNotFound {
+                LibraryCoreError::AuthorityNotFound {
                     library_id: library_id.to_owned(),
                 }
             })?;
@@ -1824,10 +1717,10 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_certificate: &[u8],
         library_id: &str,
-    ) -> JournalResult<ActorState> {
+    ) -> LibraryCoreResult<ActorState> {
         let authority =
             authority::active_authority(&self.connection, library_id)?.ok_or_else(|| {
-                JournalError::AuthorityNotFound {
+                LibraryCoreError::AuthorityNotFound {
                     library_id: library_id.to_owned(),
                 }
             })?;
@@ -1840,10 +1733,10 @@ impl LibraryCoreJournal {
     pub fn verify_and_install_follower_actor(
         &mut self,
         canonical_certificate: &[u8],
-    ) -> JournalResult<StoredFollowerActorEnrollment> {
+    ) -> LibraryCoreResult<StoredFollowerActorEnrollment> {
         let anchor = self
             .follower_anchor()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "follower_actor_enrollment.anchor",
             })?;
         let enrollment = self.verify_actor_enrollment(canonical_certificate, &anchor.authority)?;
@@ -1856,7 +1749,7 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch: i64,
         epoch_id: &str,
-    ) -> JournalResult<NormalizedAuthorityStateV2> {
+    ) -> LibraryCoreResult<NormalizedAuthorityStateV2> {
         let authority = self.install_authority_epoch(&VerifiedAuthorityEpoch {
             authority: NormalizedAuthorityStateV2 {
                 library_id: library_id.to_owned(),
@@ -1971,7 +1864,7 @@ impl LibraryCoreJournal {
     fn require_cloud_writer_admission(
         transaction: &Transaction<'_>,
         library_id: &str,
-    ) -> JournalResult<()> {
+    ) -> LibraryCoreResult<()> {
         let writer_ids = transaction
             .query_row(
                 "SELECT localWriterId, activeWriterId
@@ -1985,7 +1878,7 @@ impl LibraryCoreJournal {
             .as_ref()
             .is_none_or(|(local_writer_id, active_writer_id)| local_writer_id != active_writer_id)
         {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: library_id.to_owned(),
             });
         }
@@ -1996,10 +1889,10 @@ impl LibraryCoreJournal {
         &mut self,
         verified: &VerifiedOperationTransaction,
         committed_at_ms: i64,
-    ) -> JournalResult<TransactionReceipt> {
+    ) -> LibraryCoreResult<TransactionReceipt> {
         validate_transaction(verified)?;
         if !(0..=MAX_SAFE_INTEGER).contains(&committed_at_ms) {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "committed_at_ms",
             });
         }
@@ -2019,17 +1912,17 @@ impl LibraryCoreJournal {
             &verified.epoch_id,
             &verified.actor_id,
         )?
-        .ok_or_else(|| JournalError::ActorNotFound {
+        .ok_or_else(|| LibraryCoreError::ActorNotFound {
             actor_id: verified.actor_id.clone(),
         })?;
         if actor.capability != verified.actor_capability {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_changed",
             });
         }
         for member in &verified.members {
             if actor.capability.retired {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "actor_capability_retired",
                 });
             }
@@ -2037,12 +1930,12 @@ impl LibraryCoreJournal {
                 &actor.capability.scope,
                 actor_capability::ActorCapabilityScope::Bounded { .. }
             ) {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "actor_capability_scope",
                 });
             }
             if !actor.capability.allows_operation(&member.operation_type) {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "actor_capability_operation",
                 });
             }
@@ -2056,7 +1949,7 @@ impl LibraryCoreJournal {
                 transaction.commit()?;
                 return Ok(receipt);
             }
-            return Err(JournalError::TransactionReplayConflict {
+            return Err(LibraryCoreError::TransactionReplayConflict {
                 transaction_id: verified.transaction_id.clone(),
             });
         }
@@ -2066,7 +1959,7 @@ impl LibraryCoreJournal {
             || actor.previous_operation_id != first.previous_actor_operation_id
             || actor.previous_chain_digest != first.previous_actor_chain_digest
         {
-            return Err(JournalError::StaleActorTip {
+            return Err(LibraryCoreError::StaleActorTip {
                 actor_id: verified.actor_id.clone(),
             });
         }
@@ -2078,7 +1971,7 @@ impl LibraryCoreJournal {
                     &verified.epoch_id,
                     tip,
                 )? {
-                    return Err(JournalError::UnknownCausalTip {
+                    return Err(LibraryCoreError::UnknownCausalTip {
                         operation_id: member.operation_id.clone(),
                     });
                 }
@@ -2088,34 +1981,34 @@ impl LibraryCoreJournal {
         let committed_revision =
             previous_revision
                 .checked_add(1)
-                .ok_or(JournalError::InvalidVerifiedInput {
+                .ok_or(LibraryCoreError::InvalidVerifiedInput {
                     field: "projection_revision",
                 })?;
         if committed_revision > MAX_SAFE_INTEGER {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "projection_revision",
             });
         }
         let last = verified
             .members
             .last()
-            .ok_or(JournalError::InvalidVerifiedInput { field: "members" })?;
+            .ok_or(LibraryCoreError::InvalidVerifiedInput { field: "members" })?;
         let first_ingest_sequence = Self::meta_integer_in(&transaction, "nextIngestSequence")?;
         if !(1..=MAX_SAFE_INTEGER).contains(&first_ingest_sequence) {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "next_ingest_sequence",
             });
         }
         let last_ingest_sequence = first_ingest_sequence
             .checked_add(verified.members.len() as i64 - 1)
             .filter(|value| *value <= MAX_SAFE_INTEGER)
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "ingest_sequence",
             })?;
         let prior_materializer_sequence =
             Self::meta_integer_in(&transaction, "materializerIngestSequence")?;
         if prior_materializer_sequence != first_ingest_sequence - 1 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "materializer_ingest_sequence",
             });
         }
@@ -2294,7 +2187,7 @@ impl LibraryCoreJournal {
                 [],
             )?;
             if updated != 1 {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "desktop_library_revision",
                 });
             }
@@ -2320,14 +2213,14 @@ impl LibraryCoreJournal {
             ],
         )?;
         if updated != 1 {
-            return Err(JournalError::StaleActorTip {
+            return Err(LibraryCoreError::StaleActorTip {
                 actor_id: verified.actor_id.clone(),
             });
         }
         let next_ingest_sequence = last_ingest_sequence
             .checked_add(1)
             .filter(|value| *value <= MAX_SAFE_INTEGER)
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "next_ingest_sequence",
             })?;
         let ingest_updated = transaction.execute(
@@ -2336,7 +2229,7 @@ impl LibraryCoreJournal {
             params![next_ingest_sequence, first_ingest_sequence],
         )?;
         if ingest_updated != 1 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "next_ingest_sequence",
             });
         }
@@ -2346,7 +2239,7 @@ impl LibraryCoreJournal {
             params![last_ingest_sequence, prior_materializer_sequence],
         )?;
         if materializer_updated != 1 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "materializer_ingest_sequence",
             });
         }
@@ -2356,7 +2249,7 @@ impl LibraryCoreJournal {
             params![committed_revision, previous_revision],
         )?;
         if revision_updated != 1 {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "projection_revision",
             });
         }
@@ -2383,7 +2276,7 @@ impl LibraryCoreJournal {
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
         committed_at_ms: i64,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         if member.entity_type == "RssFeed" {
             Self::materialize_rss_feed(transaction, member, committed_at_ms)
         } else if member.entity_type == "UserPreferences" {
@@ -2408,7 +2301,7 @@ impl LibraryCoreJournal {
                 Ok(0)
             } else {
                 crate::product_projection::upsert_item(transaction, item_json, committed_at_ms)
-                    .map_err(|_| JournalError::InvalidVerifiedInput { field: "item_json" })?;
+                    .map_err(|_| LibraryCoreError::InvalidVerifiedInput { field: "item_json" })?;
                 Ok(1)
             }
         } else if let Some(read_at_ms) = member.read_at_ms {
@@ -2490,7 +2383,7 @@ impl LibraryCoreJournal {
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
         committed_at_ms: i64,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         let shell_json = transaction
             .query_row(
                 "SELECT shellJson FROM library_core_desktop_state
@@ -2499,23 +2392,24 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let shell_object = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         let feeds = shell_object
             .entry("feeds")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_feeds",
             })?;
 
@@ -2527,7 +2421,7 @@ impl LibraryCoreJournal {
                         .as_deref()
                         .expect("validated RSS feed payload"),
                 )
-                .map_err(|_| JournalError::InvalidVerifiedInput {
+                .map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                     field: "rss_feed_json",
                 })?;
                 if feeds.get(&member.entity_id) == Some(&feed) {
@@ -2544,10 +2438,11 @@ impl LibraryCoreJournal {
         };
 
         if shell_changed {
-            let updated_shell =
-                serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            let updated_shell = serde_json::to_string(&shell).map_err(|_| {
+                LibraryCoreError::InvalidVerifiedInput {
                     field: "desktop_library_shell",
-                })?;
+                }
+            })?;
             transaction.execute(
                 "UPDATE library_core_desktop_state SET shellJson = ?1
                  WHERE singletonId = 1 AND active = 1;",
@@ -2575,7 +2470,7 @@ impl LibraryCoreJournal {
     fn materialize_preferences(
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         fn merge(target: &mut Value, patch: &Value) {
             match (target, patch) {
                 (Value::Object(target), Value::Object(patch)) => {
@@ -2600,25 +2495,26 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let patch: Value = serde_json::from_str(
             member
                 .preferences_patch_json
                 .as_deref()
                 .expect("validated preferences patch"),
         )
-        .map_err(|_| JournalError::InvalidVerifiedInput {
+        .map_err(|_| LibraryCoreError::InvalidVerifiedInput {
             field: "preferences_patch_json",
         })?;
         let preferences = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?
             .entry("preferences")
@@ -2629,7 +2525,7 @@ impl LibraryCoreJournal {
             return Ok(0);
         }
         let updated_shell =
-            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            serde_json::to_string(&shell).map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         transaction.execute(
@@ -2643,7 +2539,7 @@ impl LibraryCoreJournal {
     fn materialize_person(
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         let shell_json = transaction
             .query_row(
                 "SELECT shellJson FROM library_core_desktop_state
@@ -2652,31 +2548,32 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let person: Value = serde_json::from_str(
             member
                 .person_json
                 .as_deref()
                 .expect("validated person payload"),
         )
-        .map_err(|_| JournalError::InvalidVerifiedInput {
+        .map_err(|_| LibraryCoreError::InvalidVerifiedInput {
             field: "person_json",
         })?;
         let persons = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?
             .entry("persons")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_persons",
             })?;
         if persons.get(&member.entity_id) == Some(&person) {
@@ -2684,7 +2581,7 @@ impl LibraryCoreJournal {
         }
         persons.insert(member.entity_id.clone(), person);
         let updated_shell =
-            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            serde_json::to_string(&shell).map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         transaction.execute(
@@ -2698,7 +2595,7 @@ impl LibraryCoreJournal {
     fn materialize_person_remove(
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         let shell_json = transaction
             .query_row(
                 "SELECT shellJson FROM library_core_desktop_state
@@ -2707,23 +2604,24 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let shell_object = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         let person_removed = shell_object
             .entry("persons")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_persons",
             })?
             .remove(&member.entity_id)
@@ -2732,7 +2630,7 @@ impl LibraryCoreJournal {
             .entry("accounts")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_accounts",
             })?;
         let account_ids = accounts
@@ -2749,7 +2647,7 @@ impl LibraryCoreJournal {
             return Ok(0);
         }
         let updated_shell =
-            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            serde_json::to_string(&shell).map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         transaction.execute(
@@ -2763,7 +2661,7 @@ impl LibraryCoreJournal {
     fn materialize_account(
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         let shell_json = transaction
             .query_row(
                 "SELECT shellJson FROM library_core_desktop_state
@@ -2772,31 +2670,32 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let account: Value = serde_json::from_str(
             member
                 .account_json
                 .as_deref()
                 .expect("validated account payload"),
         )
-        .map_err(|_| JournalError::InvalidVerifiedInput {
+        .map_err(|_| LibraryCoreError::InvalidVerifiedInput {
             field: "account_json",
         })?;
         let accounts = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?
             .entry("accounts")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_accounts",
             })?;
         if accounts.get(&member.entity_id) == Some(&account) {
@@ -2804,7 +2703,7 @@ impl LibraryCoreJournal {
         }
         accounts.insert(member.entity_id.clone(), account);
         let updated_shell =
-            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            serde_json::to_string(&shell).map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         transaction.execute(
@@ -2818,7 +2717,7 @@ impl LibraryCoreJournal {
     fn materialize_account_remove(
         transaction: &Transaction<'_>,
         member: &VerifiedOperation,
-    ) -> JournalResult<usize> {
+    ) -> LibraryCoreResult<usize> {
         let shell_json = transaction
             .query_row(
                 "SELECT shellJson FROM library_core_desktop_state
@@ -2827,22 +2726,23 @@ impl LibraryCoreJournal {
                 |row| row.get::<_, String>(0),
             )
             .optional()?
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_state",
             })?;
-        let mut shell: Value =
-            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+        let mut shell: Value = serde_json::from_str(&shell_json).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
-            })?;
+            }
+        })?;
         let removed = shell
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?
             .entry("accounts")
             .or_insert_with(|| Value::Object(Default::default()))
             .as_object_mut()
-            .ok_or(JournalError::InvalidVerifiedInput {
+            .ok_or(LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_accounts",
             })?
             .remove(&member.entity_id)
@@ -2851,7 +2751,7 @@ impl LibraryCoreJournal {
             return Ok(0);
         }
         let updated_shell =
-            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+            serde_json::to_string(&shell).map_err(|_| LibraryCoreError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
             })?;
         transaction.execute(
@@ -2865,9 +2765,9 @@ impl LibraryCoreJournal {
     fn intent_results_for_transaction(
         &self,
         transaction_id: &str,
-    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+    ) -> LibraryCoreResult<Vec<IntentResultOutboxEntry>> {
         if !is_operation_id(transaction_id) {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "transaction_id",
             });
         }
@@ -2902,13 +2802,13 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch_id: &str,
         maximum_entries: usize,
-    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+    ) -> LibraryCoreResult<Vec<IntentResultOutboxEntry>> {
         if !is_lower_hex(library_id, 32)
             || !is_operation_id(epoch_id)
             || maximum_entries == 0
             || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "result_outbox_maximum_entries",
             });
         }
@@ -2935,7 +2835,7 @@ impl LibraryCoreJournal {
         &mut self,
         result_operation_ids: &[String],
         acknowledged_at_ms: i64,
-    ) -> JournalResult<()> {
+    ) -> LibraryCoreResult<()> {
         if result_operation_ids.is_empty()
             || result_operation_ids.len() > MAX_OUTBOX_PAGE_ENTRIES
             || !(0..=MAX_SAFE_INTEGER).contains(&acknowledged_at_ms)
@@ -2943,7 +2843,7 @@ impl LibraryCoreJournal {
                 .iter()
                 .any(|value| !is_operation_id(value))
         {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "result_acknowledgement",
             });
         }
@@ -2960,12 +2860,12 @@ impl LibraryCoreJournal {
                 )
                 .optional()?;
             let Some(enqueued_at_ms) = existing else {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "result_acknowledgement",
                 });
             };
             if acknowledged_at_ms < enqueued_at_ms {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "result_acknowledgement_time",
                 });
             }
@@ -2980,7 +2880,7 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn read_state(&self, entity_id: &str) -> JournalResult<Option<ReadState>> {
+    fn read_state(&self, entity_id: &str) -> LibraryCoreResult<Option<ReadState>> {
         Ok(self
             .connection
             .query_row(
@@ -3006,7 +2906,7 @@ impl LibraryCoreJournal {
         &self,
         after_ingest_sequence: i64,
         maximum_entries: usize,
-    ) -> JournalResult<OperationOutboxPage> {
+    ) -> LibraryCoreResult<OperationOutboxPage> {
         self.operation_outbox_page_with_budget(
             after_ingest_sequence,
             maximum_entries,
@@ -3019,19 +2919,19 @@ impl LibraryCoreJournal {
         after_ingest_sequence: i64,
         maximum_entries: usize,
         maximum_bytes: usize,
-    ) -> JournalResult<OperationOutboxPage> {
+    ) -> LibraryCoreResult<OperationOutboxPage> {
         if !(0..=MAX_SAFE_INTEGER).contains(&after_ingest_sequence) {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_after_ingest_sequence",
             });
         }
         if maximum_entries == 0 || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_maximum_entries",
             });
         }
         if maximum_bytes == 0 || maximum_bytes > MAX_OUTBOX_PAGE_BYTES {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_maximum_bytes",
             });
         }
@@ -3039,7 +2939,7 @@ impl LibraryCoreJournal {
         let row_limit =
             maximum_entries
                 .checked_add(1)
-                .ok_or(JournalError::InvalidVerifiedInput {
+                .ok_or(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_maximum_entries",
                 })?;
         let mut statement = self.connection.prepare(OPERATION_OUTBOX_PAGE_SQL)?;
@@ -3057,19 +2957,19 @@ impl LibraryCoreJournal {
             if !(1..=MAX_OUTBOX_PAGE_ENTRIES as i64).contains(&transaction_member_count)
                 || !(0..transaction_member_count).contains(&transaction_member_index)
             {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_transaction_members",
                 });
             }
             if transaction_member_index == 0 {
                 if !pending_transaction.is_empty() {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "outbox_transaction_members",
                     });
                 }
                 if transaction_member_count as usize > maximum_entries {
                     if entries.is_empty() {
-                        return Err(JournalError::InvalidVerifiedInput {
+                        return Err(LibraryCoreError::InvalidVerifiedInput {
                             field: "outbox_maximum_entries",
                         });
                     }
@@ -3081,7 +2981,7 @@ impl LibraryCoreJournal {
                     break;
                 }
             } else if pending_transaction.is_empty() {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_transaction_members",
                 });
             }
@@ -3091,19 +2991,19 @@ impl LibraryCoreJournal {
             }
             let entry_bytes: i64 = row.get(3)?;
             if !(1..=MAX_OUTBOX_PAGE_BYTES as i64).contains(&entry_bytes) {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
             let entry_bytes = entry_bytes as usize;
             let canonical_envelope_json: String = row.get(4)?;
             if canonical_envelope_json.len() != entry_bytes {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
             pending_transaction_bytes = pending_transaction_bytes.checked_add(entry_bytes).ok_or(
-                JournalError::InvalidVerifiedInput {
+                LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_transaction_bytes",
                 },
             )?;
@@ -3127,18 +3027,18 @@ impl LibraryCoreJournal {
                                 || entry.transaction_member_count != transaction_member_count
                         })
                 {
-                    return Err(JournalError::InvalidVerifiedInput {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
                         field: "outbox_transaction_members",
                     });
                 }
                 let next_bytes = retained_bytes
                     .checked_add(pending_transaction_bytes)
-                    .ok_or(JournalError::InvalidVerifiedInput {
+                    .ok_or(LibraryCoreError::InvalidVerifiedInput {
                         field: "outbox_transaction_bytes",
                     })?;
                 if next_bytes > maximum_bytes {
                     if entries.is_empty() {
-                        return Err(JournalError::InvalidVerifiedInput {
+                        return Err(LibraryCoreError::InvalidVerifiedInput {
                             field: "outbox_transaction_bytes",
                         });
                     }
@@ -3152,7 +3052,7 @@ impl LibraryCoreJournal {
             }
         }
         if !pending_transaction.is_empty() {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_transaction_members",
             });
         }
@@ -3169,7 +3069,7 @@ impl LibraryCoreJournal {
         &self,
         after: Option<&EnrollmentOutboxCursor>,
         maximum_entries: usize,
-    ) -> JournalResult<EnrollmentOutboxPage> {
+    ) -> LibraryCoreResult<EnrollmentOutboxPage> {
         self.enrollment_outbox_page_with_budget(after, maximum_entries, MAX_OUTBOX_PAGE_BYTES)
     }
 
@@ -3178,14 +3078,14 @@ impl LibraryCoreJournal {
         after: Option<&EnrollmentOutboxCursor>,
         maximum_entries: usize,
         maximum_bytes: usize,
-    ) -> JournalResult<EnrollmentOutboxPage> {
+    ) -> LibraryCoreResult<EnrollmentOutboxPage> {
         if maximum_entries == 0 || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_maximum_entries",
             });
         }
         if maximum_bytes == 0 || maximum_bytes > MAX_OUTBOX_PAGE_BYTES {
-            return Err(JournalError::InvalidVerifiedInput {
+            return Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_maximum_bytes",
             });
         }
@@ -3200,7 +3100,7 @@ impl LibraryCoreJournal {
                 )
             }
             Some(_) => {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "enrollment_outbox_cursor",
                 });
             }
@@ -3209,7 +3109,7 @@ impl LibraryCoreJournal {
         let row_limit =
             maximum_entries
                 .checked_add(1)
-                .ok_or(JournalError::InvalidVerifiedInput {
+                .ok_or(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_maximum_entries",
                 })?;
         let mut statement = self.connection.prepare(ENROLLMENT_OUTBOX_PAGE_SQL)?;
@@ -3225,13 +3125,13 @@ impl LibraryCoreJournal {
             }
             let entry_bytes: i64 = row.get(2)?;
             if !(1..=MAX_OUTBOX_PAGE_BYTES as i64).contains(&entry_bytes) {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
             let entry_bytes = entry_bytes as usize;
             if entries.is_empty() && entry_bytes > maximum_bytes {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
@@ -3244,7 +3144,7 @@ impl LibraryCoreJournal {
             }
             let canonical_enrollment_certificate_json: String = row.get(3)?;
             if canonical_enrollment_certificate_json.len() != entry_bytes {
-                return Err(JournalError::InvalidVerifiedInput {
+                return Err(LibraryCoreError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
@@ -3587,7 +3487,7 @@ mod tests {
 
         assert!(matches!(
             journal.install_authority_epoch(&epoch),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "authority.observed_frontier"
             })
         ));
@@ -3787,7 +3687,7 @@ mod tests {
             .expect("remove capability fixture");
         assert!(matches!(
             journal.actor_state(&library_id, &epoch_id, &actor_id),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_missing"
             })
         ));
@@ -3856,7 +3756,7 @@ mod tests {
         let bytes_before_rejection = std::fs::read(&path).expect("read mismatched database");
 
         match LibraryCoreJournal::open(&path) {
-            Err(JournalError::DatabaseIdentityMismatch { expected, actual }) => {
+            Err(LibraryCoreError::DatabaseIdentityMismatch { expected, actual }) => {
                 assert_eq!(expected, AUTHORITATIVE_APPLICATION_ID);
                 assert_eq!(actual, 0);
             }
@@ -3883,7 +3783,7 @@ mod tests {
         symlink(&target_path, &link_path).expect("create database symbolic link");
 
         match LibraryCoreJournal::open(&link_path) {
-            Err(JournalError::Sql(_)) => {}
+            Err(LibraryCoreError::Sql(_)) => {}
             Err(error) => panic!("unexpected symbolic-link error: {error}"),
             Ok(_) => panic!("symbolic-link database path must fail closed"),
         }
@@ -3905,7 +3805,7 @@ mod tests {
         drop(connection);
 
         match LibraryCoreJournal::open(&path) {
-            Err(JournalError::DatabaseIdentityMismatch { expected, actual }) => {
+            Err(LibraryCoreError::DatabaseIdentityMismatch { expected, actual }) => {
                 assert_eq!(expected, AUTHORITATIVE_APPLICATION_ID);
                 assert_eq!(actual, FOREIGN_APPLICATION_ID);
             }
@@ -3948,7 +3848,7 @@ mod tests {
         let bytes_before_rejection = std::fs::read(&path).expect("read foreign database");
 
         match LibraryCoreJournal::open_after_preflight(&path, false) {
-            Err(JournalError::UnversionedSchemaPresent) => {}
+            Err(LibraryCoreError::UnversionedSchemaPresent) => {}
             Err(error) => panic!("unexpected raced-database error: {error}"),
             Ok(_) => panic!("raced foreign database must fail closed"),
         }
@@ -3984,7 +3884,7 @@ mod tests {
                 std::fs::read(&path).expect("read changed-schema database");
 
             match LibraryCoreJournal::open(&path) {
-                Err(JournalError::SchemaContractMismatch) => {}
+                Err(LibraryCoreError::SchemaContractMismatch) => {}
                 Err(error) => panic!("unexpected schema error: {error}"),
                 Ok(_) => panic!("schema mutation must fail closed: {mutation}"),
             }
@@ -4457,7 +4357,7 @@ mod tests {
 
         assert!(matches!(
             journal.operation_outbox_page(0, 2),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_maximum_entries"
             })
         ));
@@ -4490,7 +4390,7 @@ mod tests {
         let first_entry_bytes = verified.members[0].canonical_envelope_json.len();
         assert!(matches!(
             journal.operation_outbox_page_with_budget(0, 3, first_entry_bytes),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "outbox_transaction_bytes"
             })
         ));
@@ -4676,7 +4576,7 @@ mod tests {
         );
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::Sql(_))
+            Err(LibraryCoreError::Sql(_))
         ));
         let counts: (i64, i64, i64, i64) = journal
             .connection
@@ -4717,7 +4617,7 @@ mod tests {
         let enrollment = actor();
         assert!(matches!(
             journal.enroll_actor(&enrollment),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
 
         journal
@@ -4747,7 +4647,7 @@ mod tests {
         );
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         let counts: (i64, i64, i64) = journal
             .connection
@@ -4788,7 +4688,7 @@ mod tests {
 
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_changed"
             })
         ));
@@ -4871,7 +4771,7 @@ mod tests {
 
         assert!(matches!(
             journal.commit_read_transaction(&verified, 9_999),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability_changed"
             })
         ));
@@ -4920,7 +4820,7 @@ mod tests {
 
         assert!(matches!(
             journal.enroll_actor(&enrollment),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         journal
             .connection
@@ -4948,7 +4848,7 @@ mod tests {
         );
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         let operation_count: i64 = journal
             .connection
@@ -4978,7 +4878,7 @@ mod tests {
             .expect("advance authority epoch");
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::StaleAuthority { .. })
+            Err(LibraryCoreError::StaleAuthority { .. })
         ));
         let counts: (i64, i64, i64) = journal
             .connection
@@ -5012,7 +4912,7 @@ mod tests {
             .expect("install enrollment failpoint");
         assert!(matches!(
             enrollment_journal.enroll_actor(&actor()),
-            Err(JournalError::Sql(_))
+            Err(LibraryCoreError::Sql(_))
         ));
         let enrollment_rows: i64 = enrollment_journal
             .connection
@@ -5046,7 +4946,7 @@ mod tests {
         );
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::Sql(_))
+            Err(LibraryCoreError::Sql(_))
         ));
 
         for table in [
@@ -5107,7 +5007,7 @@ mod tests {
         );
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::Sql(_))
+            Err(LibraryCoreError::Sql(_))
         ));
 
         let counts: (i64, i64, i64, i64, i64) = journal
@@ -5229,7 +5129,7 @@ mod tests {
         };
         assert!(matches!(
             journal.commit_read_transaction(&conflicting_replay, 1_200),
-            Err(JournalError::TransactionReplayConflict { .. })
+            Err(LibraryCoreError::TransactionReplayConflict { .. })
         ));
         assert!(matches!(
             journal.commit_read_transaction(
@@ -5242,7 +5142,7 @@ mod tests {
                 ),
                 1_200,
             ),
-            Err(JournalError::StaleActorTip { .. })
+            Err(LibraryCoreError::StaleActorTip { .. })
         ));
 
         let first_member = &first.members[0];
@@ -5261,7 +5161,7 @@ mod tests {
         });
         assert!(matches!(
             journal.commit_read_transaction(&unknown, 1_200),
-            Err(JournalError::UnknownCausalTip { .. })
+            Err(LibraryCoreError::UnknownCausalTip { .. })
         ));
         unknown.members[0].causal_tips[0] = NormalizedCausalTipV1 {
             actor_id: enrollment.actor_id,
@@ -5337,7 +5237,7 @@ mod tests {
             });
         assert!(matches!(
             journal.commit_read_transaction(&local_with_foreign_library_tip, 1_200),
-            Err(JournalError::UnknownCausalTip { .. })
+            Err(LibraryCoreError::UnknownCausalTip { .. })
         ));
 
         let mut epoch_journal = LibraryCoreJournal::open_in_memory().expect("open epoch journal");
@@ -5401,7 +5301,7 @@ mod tests {
             });
         assert!(matches!(
             epoch_journal.commit_read_transaction(&epoch_two_transaction, 1_400),
-            Err(JournalError::UnknownCausalTip { .. })
+            Err(LibraryCoreError::UnknownCausalTip { .. })
         ));
     }
 
@@ -5497,7 +5397,7 @@ mod tests {
         enrollment.enrolled_at_ms = MAX_SAFE_INTEGER + 1;
         assert!(matches!(
             journal.enroll_actor(&enrollment),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "enrolled_at_ms"
             })
         ));
@@ -5514,7 +5414,7 @@ mod tests {
         verified.members[0].read_at_ms = Some(MAX_SAFE_INTEGER + 1);
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
-            Err(JournalError::InvalidVerifiedInput {
+            Err(LibraryCoreError::InvalidVerifiedInput {
                 field: "read_at_ms"
             })
         ));
@@ -5532,7 +5432,7 @@ mod tests {
         let unversioned_bytes = std::fs::read(&unversioned_path).expect("read unversioned file");
         assert!(matches!(
             LibraryCoreJournal::open(&unversioned_path),
-            Err(JournalError::UnversionedSchemaPresent)
+            Err(LibraryCoreError::UnversionedSchemaPresent)
         ));
         assert_eq!(
             std::fs::read(&unversioned_path).expect("reread unversioned file"),
@@ -5552,7 +5452,7 @@ mod tests {
         let future_bytes = std::fs::read(&future_path).expect("read future file");
         assert!(matches!(
             LibraryCoreJournal::open(&future_path),
-            Err(JournalError::UnsupportedSchemaVersion {
+            Err(LibraryCoreError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual: 99
             })
@@ -5574,7 +5474,7 @@ mod tests {
             .expect("unversioned table");
         assert!(matches!(
             unversioned.migrate(),
-            Err(JournalError::UnversionedSchemaPresent)
+            Err(LibraryCoreError::UnversionedSchemaPresent)
         ));
 
         let mut future = LibraryCoreJournal {
@@ -5587,7 +5487,7 @@ mod tests {
             .expect("future version");
         assert!(matches!(
             future.migrate(),
-            Err(JournalError::UnsupportedSchemaVersion {
+            Err(LibraryCoreError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual: 99
             })

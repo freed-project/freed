@@ -508,7 +508,7 @@ fn normalized_command_error(error: NormalizedSqliteError) -> &'static str {
         NormalizedSqliteError::Content(_)
         | NormalizedSqliteError::InvalidRequest(_)
         | NormalizedSqliteError::Transport(_) => "request_invalid",
-        NormalizedSqliteError::Journal(_) | NormalizedSqliteError::Sqlite(_) => "command_failed",
+        NormalizedSqliteError::Protocol(_) | NormalizedSqliteError::Sqlite(_) => "command_failed",
     }
 }
 

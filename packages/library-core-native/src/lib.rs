@@ -22,6 +22,7 @@ mod library_core_content_vault;
 mod library_core_desktop_binding;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
+mod library_core_error;
 mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
@@ -83,12 +84,13 @@ pub use library_core_authority_genesis::{
 pub use library_core_desktop_binding::{
     desktop_binding, install_desktop_binding, LibraryCoreDesktopBinding,
 };
+pub use library_core_error::LibraryCoreError;
 pub use library_core_hash::lower_hex;
 pub use library_core_journal::{
     FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
-    FollowerRuntimeStatus, IntentResultOutboxEntry, JournalError, JournalRuntimeStatus,
-    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
+    FollowerRuntimeStatus, IntentResultOutboxEntry, JournalRuntimeStatus, LibraryCoreJournal,
+    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerAnchor,
+    VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
 };
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,

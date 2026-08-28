@@ -48,7 +48,7 @@ pub(crate) fn configure_normalized_sqlite_connection(
 pub enum NormalizedSqliteError {
     Content(ContentRecordError),
     InvalidRequest(&'static str),
-    Journal(crate::library_core_journal::JournalError),
+    Protocol(crate::library_core_error::LibraryCoreError),
     Sqlite(rusqlite::Error),
     Transport(String),
 }
@@ -58,7 +58,7 @@ impl std::fmt::Display for NormalizedSqliteError {
         match self {
             Self::Content(error) => write!(formatter, "{error}"),
             Self::InvalidRequest(message) => formatter.write_str(message),
-            Self::Journal(error) => write!(formatter, "normalized operation failure: {error}"),
+            Self::Protocol(error) => write!(formatter, "normalized operation failure: {error}"),
             Self::Sqlite(error) => write!(formatter, "normalized SQLite failure: {error}"),
             Self::Transport(message) => formatter.write_str(message),
         }
@@ -73,9 +73,9 @@ impl From<rusqlite::Error> for NormalizedSqliteError {
     }
 }
 
-impl From<crate::library_core_journal::JournalError> for NormalizedSqliteError {
-    fn from(value: crate::library_core_journal::JournalError) -> Self {
-        Self::Journal(value)
+impl From<crate::library_core_error::LibraryCoreError> for NormalizedSqliteError {
+    fn from(value: crate::library_core_error::LibraryCoreError) -> Self {
+        Self::Protocol(value)
     }
 }
 

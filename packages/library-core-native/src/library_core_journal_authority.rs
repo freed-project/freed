@@ -7,7 +7,7 @@
 //! the one certificate a fresh installation can mint for itself.
 
 use super::{
-    is_lower_hex, is_operation_id, JournalError, JournalResult, NormalizedAuthorityStateV2,
+    is_lower_hex, is_operation_id, LibraryCoreError, LibraryCoreResult, NormalizedAuthorityStateV2,
     NormalizedCausalTipV1, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use super::{
@@ -17,11 +17,11 @@ use super::{
 use rusqlite::TransactionBehavior;
 use rusqlite::{params, Connection, OptionalExtension};
 
-fn invalid(field: &'static str) -> JournalError {
-    JournalError::InvalidVerifiedInput { field }
+fn invalid(field: &'static str) -> LibraryCoreError {
+    LibraryCoreError::InvalidVerifiedInput { field }
 }
 
-fn validate_authority_state(authority: &NormalizedAuthorityStateV2) -> JournalResult<()> {
+fn validate_authority_state(authority: &NormalizedAuthorityStateV2) -> LibraryCoreResult<()> {
     if !is_lower_hex(&authority.library_id, 32) {
         return Err(invalid("authority.library_id"));
     }
@@ -69,7 +69,7 @@ fn validate_authority_state(authority: &NormalizedAuthorityStateV2) -> JournalRe
     Ok(())
 }
 
-fn validate_verified_epoch(epoch: &VerifiedAuthorityEpoch) -> JournalResult<()> {
+fn validate_verified_epoch(epoch: &VerifiedAuthorityEpoch) -> LibraryCoreResult<()> {
     validate_authority_state(&epoch.authority)?;
     if !is_lower_hex(&epoch.transition_certificate_digest, 32) {
         return Err(invalid("transition_certificate_digest"));
@@ -87,7 +87,7 @@ fn validate_verified_epoch(epoch: &VerifiedAuthorityEpoch) -> JournalResult<()> 
 
 fn validate_protocol_transition(
     transition: &VerifiedAuthorityProtocolTransition,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     if !is_lower_hex(&transition.library_id, 32)
         || !(1..=MAX_SAFE_INTEGER).contains(&transition.source_epoch)
         || !is_lower_hex(&transition.source_epoch_id, 32)
@@ -112,7 +112,7 @@ fn observed_frontier(
     connection: &Connection,
     library_id: &str,
     epoch_id: &str,
-) -> JournalResult<Vec<NormalizedCausalTipV1>> {
+) -> LibraryCoreResult<Vec<NormalizedCausalTipV1>> {
     let mut statement = connection.prepare(
         "SELECT tipIndex, actorId, sequence, operationId, chainDigest
          FROM library_core_authority_frontier
@@ -146,7 +146,7 @@ fn observed_frontier(
 pub(crate) fn active_authority(
     connection: &Connection,
     library_id: &str,
-) -> JournalResult<Option<NormalizedAuthorityStateV2>> {
+) -> LibraryCoreResult<Option<NormalizedAuthorityStateV2>> {
     let row = connection
         .query_row(
             "SELECT epochs.libraryId, epochs.epoch, epochs.epochId,
@@ -186,7 +186,7 @@ pub(super) fn authority_epoch_state(
     library_id: &str,
     epoch: i64,
     epoch_id: &str,
-) -> JournalResult<Option<NormalizedAuthorityStateV2>> {
+) -> LibraryCoreResult<Option<NormalizedAuthorityStateV2>> {
     let row = connection
         .query_row(
             "SELECT libraryId, epoch, epochId, authorityKeyId, authorityPublicKey
@@ -217,14 +217,14 @@ pub(super) fn authority_epoch_state(
 pub(crate) fn require_active_authority(
     connection: &Connection,
     expected: &NormalizedAuthorityStateV2,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     let actual = active_authority(connection, &expected.library_id)?.ok_or_else(|| {
-        JournalError::AuthorityNotFound {
+        LibraryCoreError::AuthorityNotFound {
             library_id: expected.library_id.clone(),
         }
     })?;
     if actual != *expected {
-        return Err(JournalError::StaleAuthority {
+        return Err(LibraryCoreError::StaleAuthority {
             library_id: expected.library_id.clone(),
         });
     }
@@ -236,7 +236,7 @@ pub(crate) fn require_active_epoch(
     library_id: &str,
     epoch: i64,
     epoch_id: &str,
-) -> JournalResult<()> {
+) -> LibraryCoreResult<()> {
     let matches = connection.query_row(
         "SELECT EXISTS(
            SELECT 1
@@ -254,7 +254,7 @@ pub(crate) fn require_active_epoch(
         |row| row.get::<_, bool>(0),
     )?;
     if !matches {
-        return Err(JournalError::StaleAuthority {
+        return Err(LibraryCoreError::StaleAuthority {
             library_id: library_id.to_owned(),
         });
     }
@@ -267,7 +267,7 @@ impl LibraryCoreJournal {
     /// head and fail closed instead of allowing file order to choose one.
     pub(crate) fn sole_active_authority_epoch(
         &self,
-    ) -> JournalResult<Option<VerifiedAuthorityEpoch>> {
+    ) -> LibraryCoreResult<Option<VerifiedAuthorityEpoch>> {
         let mut statement = self.connection.prepare(
             "SELECT libraryId FROM library_core_active_authority
              ORDER BY libraryId COLLATE BINARY LIMIT 2;",
@@ -278,7 +278,7 @@ impl LibraryCoreJournal {
         match library_ids.as_slice() {
             [] => Ok(None),
             [library_id] => self.active_authority_epoch(library_id),
-            _ => Err(JournalError::AuthorityConflict),
+            _ => Err(LibraryCoreError::AuthorityConflict),
         }
     }
 
@@ -289,7 +289,7 @@ impl LibraryCoreJournal {
         &self,
         library_id: &str,
         epoch_number: i64,
-    ) -> JournalResult<Option<VerifiedAuthorityEpoch>> {
+    ) -> LibraryCoreResult<Option<VerifiedAuthorityEpoch>> {
         let stored = self
             .connection
             .query_row(
@@ -347,7 +347,7 @@ impl LibraryCoreJournal {
     pub(crate) fn authority_protocol_transition(
         &self,
         library_id: &str,
-    ) -> JournalResult<Option<VerifiedAuthorityProtocolTransition>> {
+    ) -> LibraryCoreResult<Option<VerifiedAuthorityProtocolTransition>> {
         let stored = self
             .connection
             .query_row(
@@ -385,7 +385,7 @@ impl LibraryCoreJournal {
     pub(crate) fn install_authority_protocol_transition(
         &mut self,
         transition: &VerifiedAuthorityProtocolTransition,
-    ) -> JournalResult<VerifiedAuthorityProtocolTransition> {
+    ) -> LibraryCoreResult<VerifiedAuthorityProtocolTransition> {
         validate_protocol_transition(transition)?;
         let transaction = self
             .connection
@@ -429,7 +429,7 @@ impl LibraryCoreJournal {
                 transaction.commit()?;
                 return Ok(existing);
             }
-            return Err(JournalError::AuthorityProtocolConflict {
+            return Err(LibraryCoreError::AuthorityProtocolConflict {
                 library_id: transition.library_id.clone(),
             });
         }
@@ -448,7 +448,7 @@ impl LibraryCoreJournal {
             |row| row.get::<_, bool>(0),
         )?;
         if !source_exists {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: transition.library_id.clone(),
             });
         }
@@ -480,7 +480,7 @@ impl LibraryCoreJournal {
     pub(crate) fn active_authority_epoch(
         &self,
         library_id: &str,
-    ) -> JournalResult<Option<VerifiedAuthorityEpoch>> {
+    ) -> LibraryCoreResult<Option<VerifiedAuthorityEpoch>> {
         let Some(authority) = active_authority(&self.connection, library_id)? else {
             return Ok(None);
         };
@@ -522,7 +522,7 @@ impl LibraryCoreJournal {
     pub(crate) fn install_authority_epoch(
         &mut self,
         epoch: &VerifiedAuthorityEpoch,
-    ) -> JournalResult<NormalizedAuthorityStateV2> {
+    ) -> LibraryCoreResult<NormalizedAuthorityStateV2> {
         validate_verified_epoch(epoch)?;
         let transaction = self
             .connection
@@ -548,17 +548,17 @@ impl LibraryCoreJournal {
             {
                 transaction.commit()?;
                 return active_authority(&self.connection, &epoch.authority.library_id)?
-                    .ok_or_else(|| JournalError::AuthorityNotFound {
+                    .ok_or_else(|| LibraryCoreError::AuthorityNotFound {
                         library_id: epoch.authority.library_id.clone(),
                     });
             }
             if current_epoch.checked_add(1) != Some(epoch.authority.epoch) {
-                return Err(JournalError::StaleAuthority {
+                return Err(LibraryCoreError::StaleAuthority {
                     library_id: epoch.authority.library_id.clone(),
                 });
             }
         } else if epoch.authority.epoch != 1 {
-            return Err(JournalError::StaleAuthority {
+            return Err(LibraryCoreError::StaleAuthority {
                 library_id: epoch.authority.library_id.clone(),
             });
         }
@@ -627,7 +627,7 @@ impl LibraryCoreJournal {
                     ],
                 )?;
                 if updated != 1 {
-                    return Err(JournalError::StaleAuthority {
+                    return Err(LibraryCoreError::StaleAuthority {
                         library_id: epoch.authority.library_id.clone(),
                     });
                 }
@@ -635,7 +635,7 @@ impl LibraryCoreJournal {
         }
         transaction.commit()?;
         active_authority(&self.connection, &epoch.authority.library_id)?.ok_or_else(|| {
-            JournalError::AuthorityNotFound {
+            LibraryCoreError::AuthorityNotFound {
                 library_id: epoch.authority.library_id.clone(),
             }
         })
