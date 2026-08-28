@@ -6444,6 +6444,17 @@ pub fn query_normalized_json_v1(
 mod tests {
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
+    use crate::sqlite_contract_generated::QUERY_IDS;
+
+    #[test]
+    fn public_query_registry_contains_exactly_the_executable_programs() {
+        let mut program_ids = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .map(|program| program.query_id)
+            .collect::<Vec<_>>();
+        program_ids.sort_unstable();
+        assert_eq!(QUERY_IDS, program_ids);
+    }
 
     #[test]
     fn flat_json_boundary_accepts_only_registered_typed_queries() {

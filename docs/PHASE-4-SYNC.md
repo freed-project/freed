@@ -32,6 +32,9 @@
 > boundaries and atomically applies only a complete verified next revision.
 > The version 1 operation-segment runtime and canonical digest domain are deleted. Uncalled shadow-generation, generic surface-item, version 1 Saved analytics, and descriptive legacy merge-algebra exports are also removed. Broader retired-runtime
 > deletion and physical-device acceptance remain open.
+> The executable query registry now contains exactly the 31 generated SQLite
+> query programs. Eleven registry-only query names with no executable program
+> or product caller are deleted from both generated runtimes.
 
 ## Current SQLite sync work
 

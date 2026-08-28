@@ -1915,6 +1915,8 @@ The implementation is incomplete while any runtime caller can reach:
 - retired shadow-generation registries, version 1 Saved analytics or generic
   surface-item contracts, and descriptive merge-algebra exports without a
   final runtime caller
+- query registry names without one generated SQLite program and a final
+  product caller
 - unused migration, repair, export, test, or authority vocabulary with no final
   product requirement
 
