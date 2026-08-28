@@ -39,6 +39,12 @@ helper. Windows remains fail closed pending its service-account named-pipe ACL
 and inherited-handle implementation. Installed Drive coordination and live
 service installation remain separate gated work.
 
+The source tree no longer retains the 18 unreferenced authoritative-migration,
+shadow-schema, shadow-generation registry, and shadow-generation schema SQL
+artifacts. They had no caller, package export, build consumer, migration role,
+or test role. The generated normalized schema and the fenced read-only schema
+12 source verifier are now the only Library schema boundaries.
+
 The generated actor-capability policy is now independent of the historical
 journal namespace. Normalized enrollment, checkpoint import, migration,
 mutation admission, writer reassignment, and both native verifiers consume the
