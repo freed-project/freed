@@ -95,7 +95,8 @@ ID, and one exact command payload. The closed registry contains normalized
 checkpoint begin, append, finalize, pinned export, registered query,
 storage-inspection, Primary mutation context, native operation signing,
 canonical transaction commit, follower-intent admission, actor transport
-state, and bounded result export commands. Startup must round-trip storage inspection and
+state, bounded result export, Primary actor identity, and exact writer epoch
+reassignment commands. Startup must round-trip storage inspection and
 match the generated SQLite application ID, contract version, schema version,
 wire protocol version, and schema digest before the service reports running.
 Unknown commands, extra fields, changed versions, malformed UTF-8, truncated

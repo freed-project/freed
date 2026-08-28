@@ -539,9 +539,11 @@ pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "finalize_checkpoint_stage_v2",
     "ingest_follower_intent_page_v1",
     "inspect_storage_v1",
+    "primary_actor_identity_v1",
     "primary_follower_actor_transport_state_v1",
     "primary_mutation_context_v1",
     "query_v1",
+    "reassign_writer_epoch_v2",
     "sign_operation_v1",
 ];
 

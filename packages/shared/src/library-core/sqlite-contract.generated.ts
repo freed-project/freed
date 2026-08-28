@@ -809,9 +809,11 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "finalize_checkpoint_stage_v2",
   "ingest_follower_intent_page_v1",
   "inspect_storage_v1",
+  "primary_actor_identity_v1",
   "primary_follower_actor_transport_state_v1",
   "primary_mutation_context_v1",
   "query_v1",
+  "reassign_writer_epoch_v2",
   "sign_operation_v1",
 ] as const;
 export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];

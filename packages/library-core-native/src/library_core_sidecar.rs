@@ -24,13 +24,13 @@ use crate::{
     begin_normalized_checkpoint_stage_v2, describe_normalized_checkpoint_export_v2,
     export_normalized_follower_result_page_v1, export_pinned_normalized_checkpoint_page_v2,
     finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
-    ingest_normalized_follower_intent_page_v1, lower_hex,
+    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
-    set_content_policy_v1, sign_library_core_operation_digest, ActorKeyStore, AuthorityKeyStore,
-    BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1, ContentStateRequestV1,
-    EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1, LibraryCoreProcessLease,
-    NormalizedCheckpointRecordV2, NormalizedFollowerIntentStagePageV1,
+    reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
+    ActorKeyStore, AuthorityKeyStore, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
+    ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
+    LibraryCoreProcessLease, NormalizedCheckpointRecordV2, NormalizedFollowerIntentStagePageV1,
     NormalizedFollowerResultPageRequestV1, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity, SelectiveContentError,
 };
@@ -259,6 +259,56 @@ struct IngestFollowerIntentPageCommandV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PrimaryFollowerActorTransportStateCommandV1 {
     actor_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PrimaryActorIdentityCommandV1 {
+    installation_witness: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrimaryActorIdentityReceiptV1 {
+    actor_id: String,
+    library_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReassignWriterEpochCommandV2 {
+    accepted_at_ms: i64,
+    canonical_source_control_json: String,
+    installation_witness: String,
+    target_writer_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WriterCausalTipReceiptV1 {
+    actor_id: String,
+    sequence: i64,
+    operation_id: String,
+    chain_digest: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WriterAuthorityReceiptV2 {
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    authority_key_id: String,
+    authority_public_key: String,
+    observed_frontier: Vec<WriterCausalTipReceiptV1>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReassignWriterEpochReceiptV2 {
+    authority: WriterAuthorityReceiptV2,
+    canonical_epoch_certificate_json: String,
+    transition_certificate_digest: String,
 }
 
 #[derive(Deserialize)]
@@ -603,6 +653,20 @@ fn execute_native_command_v1(
                 .map_err(|_| "request_invalid")?;
             inspect_normalized_storage_v1(connection)
         }
+        "primary_actor_identity_v1" => {
+            let command: PrimaryActorIdentityCommandV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            let actor_id = load_or_create_normalized_actor_id_v2(
+                &credentials.library_id,
+                &command.installation_witness,
+                &MountedActorKeyStore(credentials),
+            )
+            .map_err(|_| "credential_invalid")?;
+            encode_command_result(PrimaryActorIdentityReceiptV1 {
+                actor_id,
+                library_id: credentials.library_id.clone(),
+            })
+        }
         "ingest_follower_intent_page_v1" => {
             let command: IngestFollowerIntentPageCommandV1 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
@@ -640,6 +704,42 @@ fn execute_native_command_v1(
         }
         "query_v1" => {
             query_normalized_json_v1(connection, payload).map_err(normalized_command_error)
+        }
+        "reassign_writer_epoch_v2" => {
+            let command: ReassignWriterEpochCommandV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            let reassigned = reassign_normalized_writer_epoch_v2(
+                connection,
+                &command.canonical_source_control_json,
+                &command.target_writer_id,
+                &command.installation_witness,
+                &MountedActorKeyStore(credentials),
+                &MountedAuthorityKeyStore(credentials),
+                command.accepted_at_ms,
+            )
+            .map_err(normalized_command_error)?;
+            encode_command_result(ReassignWriterEpochReceiptV2 {
+                authority: WriterAuthorityReceiptV2 {
+                    library_id: reassigned.authority.library_id,
+                    epoch: reassigned.authority.epoch,
+                    epoch_id: reassigned.authority.epoch_id,
+                    authority_key_id: reassigned.authority.authority_key_id,
+                    authority_public_key: reassigned.authority.authority_public_key,
+                    observed_frontier: reassigned
+                        .authority
+                        .observed_frontier
+                        .into_iter()
+                        .map(|tip| WriterCausalTipReceiptV1 {
+                            actor_id: tip.actor_id,
+                            sequence: tip.sequence,
+                            operation_id: tip.operation_id,
+                            chain_digest: tip.chain_digest,
+                        })
+                        .collect(),
+                },
+                canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
+                transition_certificate_digest: reassigned.transition_certificate_digest,
+            })
         }
         "sign_operation_v1" => {
             let command: SignOperationCommandV1 =
@@ -1630,6 +1730,25 @@ mod tests {
                 .expect("open normalized authority");
         let mut connection = authority.connect().expect("connect normalized authority");
         let credentials = test_primary_credentials(&"a".repeat(64));
+        let installation_witness = "5".repeat(64);
+        let identity = execute_native_command_v1(
+            &mut connection,
+            &credentials,
+            "primary_actor_identity_v1",
+            json!({"installationWitness": installation_witness.clone()}),
+        )
+        .expect("derive Primary actor identity inside sidecar");
+        assert_eq!(identity["libraryId"], credentials.library_id);
+        assert_eq!(
+            identity,
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                "primary_actor_identity_v1",
+                json!({"installationWitness": installation_witness}),
+            )
+            .expect("replay Primary actor identity")
+        );
         let (epoch_id, actor_id, actor_public_key) =
             install_primary_context(&connection, &credentials);
         assert_primary_credentials_match_storage(&connection, &credentials)

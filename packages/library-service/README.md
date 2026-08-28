@@ -87,6 +87,15 @@ foreign Library identity fail closed. Decoded keys remain only in zeroizing
 native memory. They never enter Node, SQLite, command frames, responses, or
 logs.
 
+The native command registry can derive the stable Primary actor ID from the
+retained actor key and one installation witness. Its writer-reassignment
+command accepts one canonical source-control record, exact target actor ID,
+installation witness, and accepted timestamp. The native core rechecks local
+authority, signs one successor epoch, enrolls the target actor, and commits the
+new writer admission atomically. Exact replay returns the same certificate.
+Stale source control, a changed witness, a foreign target actor, or changed
+local authority fails without partial promotion.
+
 `credentialsReady: true` proves that exact native Primary signing custody. It
 does not prove Drive authentication, OAuth validity, cloud reachability, or
 writer promotion. The sidecar never interprets a Drive token and makes no

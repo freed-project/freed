@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, and native authority-key mutation admission have landed; installed Drive coordination, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, and exact local writer reassignment have landed; installed Drive coordination, recurring actor processing, production v2 retirement, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -108,7 +108,8 @@ contract, and protocol identity before it reports ready. It creates no
 historical checkpoint store or snapshot tree. Its closed command channel
 exposes bounded normalized checkpoint, query, Primary mutation context,
 operation signing, canonical commit, follower-intent admission, actor
-transport state, and result-export commands. The mounted credential is one
+transport state, result-export, stable Primary actor identity, and exact
+writer-reassignment commands. The mounted credential is one
 closed version 1 record bound to one Library ID, one authority Ed25519 key, and
 one Primary actor Ed25519 key. It is read from an owner-only regular file under
 the held state-root descriptor. Decoded keys remain only in zeroizing native
@@ -216,7 +217,8 @@ command protocol is version 1. It accepts only the generated command registry,
 one 64-character request ID, and exact payload fields. The registry contains
 normalized checkpoint begin, append, finalize, pinned export, registered
 query, storage-inspection, Primary context, signing, canonical transaction,
-follower-intent admission, actor-state, and bounded result-export commands. Startup performs one storage inspection
+follower-intent admission, actor-state, bounded result-export, Primary actor
+identity, and exact writer-reassignment commands. Startup performs one storage inspection
 and verifies the exact generated application, contract, schema, wire protocol,
 and schema digest before the supervisor reports running. A malformed,
 truncated, oversized, unknown-version, or broken transport frame fails closed.
@@ -439,7 +441,7 @@ review before implementation.
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next |
-| 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
+| 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command; bind the installed 60-second Primary actor processing loop next |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
