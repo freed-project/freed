@@ -83,8 +83,6 @@ function nativeSample(
     webkitAttributionPrecise: true,
     memoryHighBytes: 2 * 1024 * MIB,
     memoryCriticalBytes: 3 * 1024 * MIB,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   };
 }
 

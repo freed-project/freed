@@ -90,8 +90,6 @@ function blockedPreparation() {
     sampleDurationMs: 1,
     memoryHighBytes: 2 * 1024 * 1024 * 1024,
     memoryCriticalBytes: 4 * 1024 * 1024 * 1024,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   };
   return {
     before: after,

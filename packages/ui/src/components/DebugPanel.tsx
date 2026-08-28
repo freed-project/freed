@@ -360,20 +360,6 @@ function ConnectionTab() {
             </div>
 
             <div className={DEBUG_CARD_CLASS}>
-              <p className={DEBUG_LABEL_CLASS}>Relay Doc</p>
-              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
-                {formatBytes(runtimeMemory.relayDocBytes)}
-              </p>
-            </div>
-
-            <div className={DEBUG_CARD_CLASS}>
-              <p className={DEBUG_LABEL_CLASS}>Relay Clients</p>
-              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
-                {runtimeMemory.relayClientCount.toLocaleString()}
-              </p>
-            </div>
-
-            <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Fetcher Queue</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {runtimeMemory.contentQueuePending.toLocaleString()}

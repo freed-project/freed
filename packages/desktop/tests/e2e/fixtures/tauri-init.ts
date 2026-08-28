@@ -1133,8 +1133,6 @@ export function tauriInitScript(): string {
         sampleDurationMs: 1,
         memoryHighBytes: 2508 * 1024 * 1024,
         memoryCriticalBytes: 3584 * 1024 * 1024,
-        relayDocBytes: 0,
-        relayClientCount: 0,
       }),
       trim_webkit_network_cache_now: () => ({
         beforeBytes: 16 * 1024 * 1024,
@@ -1178,8 +1176,6 @@ export function tauriInitScript(): string {
           webkitCacheBytes: 16 * 1024 * 1024,
           memoryHighBytes: 2508 * 1024 * 1024,
           memoryCriticalBytes: 3584 * 1024 * 1024,
-          relayDocBytes: 0,
-          relayClientCount: 0,
         };
         return {
           before: after,

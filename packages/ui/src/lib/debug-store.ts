@@ -93,8 +93,6 @@ export interface RuntimeMemorySnapshot {
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
   pressureLevel?: "normal" | "high" | "critical";
-  relayDocBytes: number;
-  relayClientCount: number;
   contentQueuePending: number;
   contentCompleted: number;
   contentFailed: number;

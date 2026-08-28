@@ -11,7 +11,6 @@ const MIN_CRITICAL_RESIDENT_BYTES = 3.5 * BYTES_PER_GIB;
 const MAX_CRITICAL_RESIDENT_BYTES = 12 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_COOLDOWN_MS = 5 * 60_000;
-const HIGH_RELAY_DOC_BYTES = 64 * 1024 * 1024;
 const PRESSURE_SAMPLE_MAX_AGE_MS = 30_000;
 
 interface NativeRuntimeMemoryStats {
@@ -53,8 +52,6 @@ interface NativeRuntimeMemoryStats {
   sampleDurationMs?: number;
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
-  relayDocBytes: number;
-  relayClientCount: number;
 }
 
 interface ScrapeMemoryPreparation {
@@ -308,7 +305,6 @@ let startupFollowupHandles: Array<ReturnType<typeof setTimeout>> = [];
 let sampleCount = 0;
 let peakResidentBytes = 0;
 let peakWebkitResidentBytes = 0;
-let peakRelayDocBytes = 0;
 let lastCriticalToastAt = 0;
 let currentPressureLevel: MemoryPressureLevel = "normal";
 let currentPressureSampleAt = 0;
@@ -426,8 +422,6 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
     sampleDurationMs: 0,
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   };
 }
 
@@ -486,7 +480,6 @@ async function sampleRuntimeMemory(
     peakWebkitResidentBytes,
     native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0,
   );
-  peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);
   const baselineMainRenderer =
     shellBaselineMainRendererProcessId === undefined ||
     shellBaselineMainRendererStartedAtUnixMicros === undefined
@@ -535,8 +528,6 @@ async function sampleRuntimeMemory(
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
     pressureLevel,
-    relayDocBytes: native.relayDocBytes,
-    relayClientCount: native.relayClientCount,
     contentQueuePending: fetcher.pending,
     contentCompleted: fetcher.completed,
     contentFailed: fetcher.failedCount,
@@ -585,8 +576,7 @@ async function sampleRuntimeMemory(
   const shouldLog =
     reason === "startup" ||
     sampleCount % MEMORY_LOG_INTERVAL === 0 ||
-    pressureLevel !== "normal" ||
-    native.relayDocBytes >= HIGH_RELAY_DOC_BYTES;
+    pressureLevel !== "normal";
 
   if (!shouldLog) return;
 
@@ -616,11 +606,7 @@ async function sampleRuntimeMemory(
     rendererHeapAvailable: snapshot.rendererHeapAvailable,
   });
 
-  const level =
-    pressureLevel !== "normal" ||
-    native.relayDocBytes >= HIGH_RELAY_DOC_BYTES
-      ? "warn"
-      : "info";
+  const level = pressureLevel !== "normal" ? "warn" : "info";
 
   log[level](
     `[memory] pressure=${pressureLevel} ` +
@@ -650,9 +636,6 @@ async function sampleRuntimeMemory(
       `webkit_precise=${String(native.webkitAttributionPrecise === true)} ` +
       `sample_ms=${(native.sampleDurationMs ?? 0).toLocaleString()} ` +
       `native_sample_ms=${nativeSampleDurationMs.toLocaleString()} ` +
-      `relay_doc=${formatBytesForMemoryLog(native.relayDocBytes)} ` +
-      `peak_relay_doc=${formatBytesForMemoryLog(peakRelayDocBytes)} ` +
-      `relay_clients=${native.relayClientCount.toLocaleString()} ` +
       `fetch_pending=${fetcher.pending.toLocaleString()} ` +
       `fetch_completed=${fetcher.completed.toLocaleString()} ` +
       `fetch_failed=${fetcher.failedCount.toLocaleString()} ` +
