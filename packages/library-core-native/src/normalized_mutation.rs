@@ -1743,6 +1743,70 @@ fn materialize_boolean_assignment(
     Ok(())
 }
 
+fn materialize_structured_set_assignment(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload_json =
+        member
+            .structured_payload_json
+            .as_deref()
+            .ok_or(NormalizedSqliteError::InvalidRequest(
+                "normalized structured set payload is missing",
+            ))?;
+    let payload: Value = serde_json::from_str(payload_json).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized structured set payload is invalid")
+    })?;
+    let assigned_at = payload
+        .get("assigned_at_ms")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized structured set time is invalid",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        assigned_at > clock.0
+            || (assigned_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![committed_at, member.entity_id],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized structured set target changed",
+            ));
+        }
+        for sql in program.dependent_delete_sql {
+            transaction.execute(sql, [&member.entity_id])?;
+        }
+        for sql in program.dependent_insert_sql {
+            transaction.execute(sql, params![member.entity_id, payload_json])?;
+        }
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn materialize_sync_receipt(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -2109,6 +2173,13 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "analysis_assignment" | "annotations_assignment" => materialize_structured_set_assignment(
+            transaction,
+            verified,
+            member_index,
+            committed_at,
+            program,
+        ),
         "sync_receipt" => {
             materialize_sync_receipt(transaction, verified, member_index, committed_at, program)
         }
@@ -2195,7 +2266,7 @@ fn materialize_member(
         }
         "preferences_leaf_assignment" => {
             let member = &verified.members[member_index];
-            let patch = member.preferences_patch_json.as_deref().ok_or(
+            let patch = member.structured_payload_json.as_deref().ok_or(
                 NormalizedSqliteError::InvalidRequest("normalized preference patch is missing"),
             )?;
             let (node_count, maximum_path_bytes, maximum_text_bytes): (i64, i64, i64) = transaction
@@ -4654,6 +4725,249 @@ pub(crate) mod tests {
                 )
                 .expect("refreshed normalized FeedItem"),
             ("Refreshed bounded body".to_owned(), 0, 1, 0, 1, 1, 1)
+        );
+    }
+
+    #[test]
+    fn signed_feed_item_children_materialize_exactly_and_reject_stale_replacements() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                 (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+                 VALUES (?1, 128, 65536, 1, 'text/plain');",
+                ["ab".repeat(32)],
+            )
+            .expect("highlight content descriptor");
+        let annotations_payload = json!({
+            "assigned_at_ms": 1_200,
+            "highlights": [
+                {
+                    "createdAt": 1_010,
+                    "note": "Remember",
+                    "text": "Bounded passage",
+                    "textBlobDigest": null
+                },
+                {
+                    "createdAt": 1_020,
+                    "note": null,
+                    "text": null,
+                    "textBlobDigest": "ab".repeat(32)
+                }
+            ],
+            "tags": ["alpha", "research"]
+        });
+        let annotations = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:annotations:newer",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_200)],
+            "feed_item_annotations_replace",
+            Some(&annotations_payload),
+        );
+        let annotations_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &annotations,
+            &key_pair,
+            2_000,
+        )
+        .expect("replace annotations");
+
+        let analysis_payload = json!({
+            "assigned_at_ms": 1_300,
+            "content_signals": {
+                "inferred_at_ms": 1_100,
+                "method": "rules",
+                "scores": [
+                    { "score_basis_points": 8_750, "signal": "event", "tagged": true },
+                    { "score_basis_points": 2_500, "signal": "essay", "tagged": false }
+                ],
+                "version": 1
+            },
+            "event_candidate": {
+                "confidence_basis_points": 8_125,
+                "detected_at_ms": 1_105,
+                "ends_at_ms": 1_500,
+                "evidence": "Saturday at noon",
+                "evidence_blob_digest": null,
+                "location_name": "Library",
+                "location_url": null,
+                "method": "rules",
+                "starts_at_ms": 1_400,
+                "timezone": "America/Los_Angeles",
+                "title": "Meetup",
+                "version": 1
+            }
+        });
+        let analysis = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:analysis:newer",
+            2,
+            Some(&annotations_receipt.committed_operation_id),
+            &annotations_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_300)],
+            "feed_item_analysis_replace",
+            Some(&analysis_payload),
+        );
+        let analysis_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &analysis,
+            &key_pair,
+            2_100,
+        )
+        .expect("replace analysis");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT
+                       (SELECT group_concat(tag, ',') FROM
+                          (SELECT tag FROM library_feed_item_tags
+                           WHERE global_id = 'rss:item:1' ORDER BY tag COLLATE BINARY)),
+                       (SELECT count(*) FROM library_feed_item_highlights
+                        WHERE global_id = 'rss:item:1'),
+                       (SELECT text_value FROM library_feed_item_highlights
+                        WHERE global_id = 'rss:item:1' AND ordinal = 0),
+                       (SELECT text_blob_digest FROM library_feed_item_highlights
+                        WHERE global_id = 'rss:item:1' AND ordinal = 1);",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    )),
+                )
+                .expect("annotation children"),
+            (
+                "alpha,research".to_owned(),
+                2,
+                "Bounded passage".to_owned(),
+                "ab".repeat(32),
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT version, method, inferred_at,
+                            (SELECT count(*) FROM library_feed_item_signal_scores
+                             WHERE global_id = 'rss:item:1')
+                     FROM library_feed_item_signals WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                    )),
+                )
+                .expect("analysis signal parent"),
+            (1, "rules".to_owned(), 1_100, 2)
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT score, tagged FROM library_feed_item_signal_scores
+                     WHERE global_id = 'rss:item:1' AND signal = 'event';",
+                    [],
+                    |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .expect("event score"),
+            (0.875, 1)
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT confidence, title, starts_at, ends_at, evidence
+                     FROM library_feed_item_events WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, f64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
+                    )),
+                )
+                .expect("event candidate"),
+            (
+                0.8125,
+                "Meetup".to_owned(),
+                1_400,
+                1_500,
+                "Saturday at noon".to_owned(),
+            )
+        );
+
+        let stale_annotations = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:annotations:stale",
+            3,
+            Some(&analysis_receipt.committed_operation_id),
+            &analysis_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_100)],
+            "feed_item_annotations_replace",
+            Some(&json!({
+                "assigned_at_ms": 1_100,
+                "highlights": [],
+                "tags": ["stale"]
+            })),
+        );
+        let stale_annotations_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_annotations,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal stale annotations");
+        let stale_analysis = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:analysis:stale",
+            4,
+            Some(&stale_annotations_receipt.committed_operation_id),
+            &stale_annotations_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_200)],
+            "feed_item_analysis_replace",
+            Some(&json!({
+                "assigned_at_ms": 1_200,
+                "content_signals": null,
+                "event_candidate": null
+            })),
+        );
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_analysis,
+            &key_pair,
+            2_300,
+        )
+        .expect("journal stale analysis");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT
+                       (SELECT group_concat(tag, ',') FROM
+                          (SELECT tag FROM library_feed_item_tags
+                           WHERE global_id = 'rss:item:1' ORDER BY tag COLLATE BINARY)),
+                       (SELECT count(*) FROM library_feed_item_signals
+                        WHERE global_id = 'rss:item:1'),
+                       (SELECT count(*) FROM library_feed_item_events
+                        WHERE global_id = 'rss:item:1');",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    )),
+                )
+                .expect("winning child sets"),
+            ("alpha,research".to_owned(), 1, 1)
         );
     }
 

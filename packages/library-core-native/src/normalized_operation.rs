@@ -52,7 +52,7 @@ pub(crate) struct VerifiedOperation {
     pub(crate) created_at_ms: i64,
     pub(crate) item_json: Option<String>,
     pub(crate) rss_feed_json: Option<String>,
-    pub(crate) preferences_patch_json: Option<String>,
+    pub(crate) structured_payload_json: Option<String>,
     pub(crate) person_json: Option<String>,
     pub(crate) account_json: Option<String>,
     pub(crate) read_at_ms: Option<i64>,

@@ -76,11 +76,11 @@ function itemTimestamp(item: FeedItem): number {
   return item.publishedAt || item.capturedAt;
 }
 
-export function storyWallYearForItem(item: FeedItem): number {
+function storyWallYearForItem(item: FeedItem): number {
   return new Date(itemTimestamp(item)).getFullYear();
 }
 
-export function itemHasStoryWallMedia(item: FeedItem): boolean {
+function itemHasStoryWallMedia(item: FeedItem): boolean {
   return item.content.mediaUrls.some((url) => typeof url === "string" && url.trim().length > 0);
 }
 
@@ -115,17 +115,6 @@ export function selectStoryWallCandidates(
       );
     })
     .sort((a, b) => itemTimestamp(b.item) - itemTimestamp(a.item));
-}
-
-export function groupStoryWallItemsByYear(items: readonly FeedItem[]): Map<number, FeedItem[]> {
-  const groups = new Map<number, FeedItem[]>();
-  for (const item of items) {
-    const year = storyWallYearForItem(item);
-    groups.set(year, [...(groups.get(year) ?? []), item]);
-  }
-  return new Map(
-    Array.from(groups.entries()).sort(([left], [right]) => right - left),
-  );
 }
 
 function referencesForItem(

@@ -3,7 +3,6 @@ import type { FeedItem, StoryWallPreferences } from "@freed/shared";
 import {
   buildStoryWallManifest,
   selectStoryWallCandidates,
-  storyWallYearForItem,
 } from "@freed/shared";
 
 function item(
@@ -68,10 +67,6 @@ const preferences: StoryWallPreferences = {
 };
 
 describe("story wall selection", () => {
-  it("groups content by publish year", () => {
-    expect(storyWallYearForItem(item("instagram:one", "instagram", Date.UTC(2024, 3, 2)))).toBe(2024);
-  });
-
   it("filters by year, platform, hidden item, and archive state", () => {
     const selected = selectStoryWallCandidates([
       candidate(item("instagram:one", "instagram", Date.UTC(2024, 3, 2))),

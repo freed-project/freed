@@ -5,7 +5,7 @@ import {
 } from "./feed-page-contracts.js";
 
 /**
- * Closed contract for the whole-corpus facet summary.
+ * Closed contract for the Library-wide facet summary.
  *
  * SQLite computes the aggregate without returning item rows. The response
  * admits at most 4,096 tags of 1,024 UTF-8 bytes each in binary order.
@@ -23,7 +23,7 @@ export const LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA = Object.freeze({
   schemaId: "library_core_facet_summary_request_v1",
   schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-  /** No filter, no cursor, no limit: the aggregate covers the whole corpus. */
+  /** No filter, no cursor, no limit: SQLite computes one fixed Library-wide aggregate. */
   canonicalKeys: Object.freeze(["queryId", "schemaVersion"]),
 });
 

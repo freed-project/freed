@@ -30,7 +30,7 @@ export * from "./navigation-state";
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
 export * from "./friend-suggestions";
-export * from "./identity-graph";
+export * from "./connection-person-draft";
 export * from "./contact-sync-state";
 export * from "./social-account-validity";
 export * from "./essay-identity";

@@ -5,12 +5,11 @@ import {
   useId,
   useImperativeHandle,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
-import type { FeedItem, MapMode } from "@freed/shared";
+import type { MapMode } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import { type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
@@ -37,6 +36,7 @@ import type {
 } from "../../lib/friends-galaxy-product-worker-protocol.js";
 import { projectFriendsGalaxyWorldPoint } from "../../lib/friends-galaxy-projection.js";
 import type { FriendsGalaxyRendererScene } from "../../lib/friends-galaxy-renderer.js";
+import { FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED } from "../../lib/friends-galaxy-sqlite-source.js";
 import { friendsGalaxyRendererPaletteForTheme } from "../../lib/friends-galaxy-theme-palettes.js";
 import type {
   FriendsGalaxyTransform,
@@ -44,7 +44,7 @@ import type {
 } from "../../lib/friends-galaxy-viewport.js";
 import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
-  buildIdentityGraphActivitySummaries,
+  EMPTY_IDENTITY_GRAPH_ACTIVITY_SUMMARIES,
   type IdentityGraphActivitySummaries,
 } from "../../lib/identity-graph-activity-summary.js";
 import type {
@@ -65,8 +65,6 @@ export type FriendGraphContextResolver = (
 ) => Promise<IdentityGraphAtlasNode | null>;
 
 interface FriendGraphProps {
-  feedItems?: Record<string, FeedItem>;
-  activitySummaries?: IdentityGraphActivitySummaries;
   sqliteGraphQuery: LibraryCoreNormalizedQueryExecutor;
   sourceVersion: number;
   mode: MapMode;
@@ -320,8 +318,6 @@ function graphDebugNodes(
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
   function FriendGraph(
     {
-      feedItems,
-      activitySummaries: activitySummariesProp,
       sqliteGraphQuery,
       sourceVersion,
       mode,
@@ -389,12 +385,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       activityPatchNodeCount: 0,
       unknownActivitySourceCount: 0,
     });
-    const activitySummaries = useMemo(
-      () =>
-        activitySummariesProp ??
-        buildIdentityGraphActivitySummaries(feedItems ?? {}),
-      [activitySummariesProp, feedItems],
-    );
+    const activitySummaries = EMPTY_IDENTITY_GRAPH_ACTIVITY_SUMMARIES;
     const [sourceCounts, setSourceCounts] = useState({
       channelCount: 0,
       linkCount: 0,
@@ -910,6 +901,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         },
         onWorkerFailure: (failure) => {
           setSourceBuildInFlight(false);
+          if (
+            failure.phase === "source" &&
+            failure.message === FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED
+          ) {
+            nextSourceImmediateRef.current = true;
+            setSourceRetry((value) => value + 1);
+            return;
+          }
           if (failure.phase === "source" && !engineRef.current?.sourceReady) {
             setGraphError(failure.message);
             setGraphStatus("");

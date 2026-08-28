@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Account, Person, RssFeed } from "@freed/shared";
 import {
-  buildIdentityGraphAtlas,
   buildIdentityGraphAtlasModel,
   sliceIdentityGraphAtlas,
 } from "./identity-graph-atlas.js";
 import type { IdentityGraphActivitySummaries } from "./identity-graph-activity-summary.js";
 import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
+
+function buildIdentityGraphAtlas(
+  input: Parameters<typeof buildIdentityGraphAtlasModel>[0] &
+    Omit<Parameters<typeof sliceIdentityGraphAtlas>[0], "model">,
+) {
+  const model = buildIdentityGraphAtlasModel(input);
+  return sliceIdentityGraphAtlas({ model, ...input });
+}
 
 function person(index: number): Person {
   return {

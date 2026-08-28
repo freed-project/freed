@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
   LibraryCoreAccountGraphPageResponseV1,
+  LibraryCoreFeedPageSourceV1,
+  LibraryCoreLowercaseHex64,
   LibraryCorePersonGraphPageResponseV1,
   LibraryCoreRssFeedPageResponseV1,
 } from "@freed/shared/library-core";
@@ -12,8 +14,8 @@ import {
 import { FriendsGalaxyProductWorkerService } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { FriendsGalaxySqliteSourceAccumulator } from "../../src/lib/friends-galaxy-sqlite-source.js";
 
-const SOURCE = Object.freeze({
-  generationId: "a".repeat(64),
+const SOURCE: LibraryCoreFeedPageSourceV1 = Object.freeze({
+  generationId: "a".repeat(64) as LibraryCoreLowercaseHex64,
   projectionRevision: 7,
   transitionSequence: 7,
 });
@@ -67,6 +69,7 @@ function accountPage(): LibraryCoreAccountGraphPageResponseV1 {
       lastSeenAt: 210,
       latestActivityAt: 190,
       personId: "person-1",
+      personName: "Ada",
       provider: "x",
       updatedAt: 210,
     }],
@@ -103,9 +106,13 @@ function rssPage(): LibraryCoreRssFeedPageResponseV1 {
   };
 }
 
+type WorkerRequestInput<T> = T extends FriendsGalaxyProductWorkerRequest
+  ? Omit<T, "protocolVersion" | "requestId" | "sourceRevision">
+  : never;
+
 function request(
   requestId: number,
-  value: Omit<FriendsGalaxyProductWorkerRequest, "protocolVersion" | "requestId" | "sourceRevision">,
+  value: WorkerRequestInput<FriendsGalaxyProductWorkerRequest>,
 ): FriendsGalaxyProductWorkerRequest {
   return {
     ...value,

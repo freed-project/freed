@@ -4,8 +4,7 @@
  * Pure functions only, no side effects, no network calls.
  */
 
-import { personForAuthor } from "./friends.js";
-import type { Account, FeedItem, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
+import type { FeedItem, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
 
 // =============================================================================
 // Types
@@ -561,51 +560,6 @@ export function getLastSeenLocationForFriend(
       options,
     )[0] ?? null
   );
-}
-
-export function countFriendsWithRecentLocationUpdates(
-  items: FeedItem[],
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  windowMs: number = 7 * 24 * 60 * 60 * 1000,
-  now: number = Date.now()
-): number {
-  const cutoff = now - windowMs;
-  const friendIds = new Set<string>();
-
-  for (const item of items) {
-    if (item.publishedAt < cutoff) continue;
-    if (!extractLocationFromItem(item)) continue;
-
-    const friend = personForAuthor(
-      persons,
-      accounts,
-      item.platform,
-      item.author.id,
-    );
-    if (friend?.relationshipStatus === "friend") {
-      friendIds.add(friend.id);
-    }
-  }
-
-  return friendIds.size;
-}
-
-export function countAuthorsWithRecentLocationUpdates(
-  items: FeedItem[],
-  windowMs: number = 7 * 24 * 60 * 60 * 1000,
-  now: number = Date.now()
-): number {
-  const cutoff = now - windowMs;
-  const authorIds = new Set<string>();
-
-  for (const item of items) {
-    if (item.publishedAt < cutoff) continue;
-    if (!extractLocationFromItem(item)) continue;
-    authorIds.add(authorIdentityKey(item));
-  }
-
-  return authorIds.size;
 }
 
 export function getDefaultMapMode(

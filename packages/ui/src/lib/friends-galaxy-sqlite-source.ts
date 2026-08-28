@@ -20,6 +20,8 @@ import type {
 } from "./identity-graph-atlas.js";
 
 export const FRIENDS_GALAXY_SQLITE_SOURCE_ROW_CAP = 100_000;
+export const FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED =
+  "Friends Galaxy SQLite source page moved to a different source fence.";
 
 export type FriendsGalaxySqliteSourcePage =
   | LibraryCorePersonGraphPageResponseV1
@@ -175,7 +177,7 @@ export class FriendsGalaxySqliteSourceAccumulator {
     const page = parsed.value;
     const fence = sourceFence(page.source, page.layoutRevision);
     if (this.#fence && !sameFence(this.#fence, fence)) {
-      throw new Error("Friends Galaxy SQLite source page moved to a different source fence.");
+      throw new Error(FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED);
     }
     this.#fence ??= fence;
     for (const row of page.rows) {

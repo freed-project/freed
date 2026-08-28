@@ -4,11 +4,13 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FRIEND_REPLACE_MAXIMUM_ACCOUNTS,
   FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   encodeLibraryCoreFractionalNumbersV1,
@@ -26,6 +28,10 @@ import {
   finalizeLibraryCoreTransactionV1,
   sha256LowerHex,
   type FeedItemCaptureUpsertTransactionMemberInputV1,
+  type FeedItemAnalysisReplacePayloadV1,
+  type FeedItemAnalysisReplaceTransactionMemberInputV1,
+  type FeedItemAnnotationsReplaceTransactionMemberInputV1,
+  type FeedItemAnnotationsReplacePayloadV1,
   type AccountPersonAssignmentTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
@@ -57,6 +63,10 @@ import {
 const MAXIMUM_ASSIGNMENT_MEMBERS = 1_000;
 export const PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT =
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert.maximumMembers;
+export const PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT =
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_analysis_replace.maximumMembers;
+export const PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT =
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
 export const PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT = Math.min(
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers,
@@ -301,6 +311,127 @@ export async function commitPwaLibraryCoreFeedItemCaptures(
         transaction_member_count: items.length,
         transaction_member_index: index,
       } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
+      { digest },
+    ),
+  );
+  await commitFollowerTransaction(context, members);
+}
+
+export async function commitPwaLibraryCoreFeedItemAnnotationSets(
+  assignments: readonly Readonly<{
+    entityId: string;
+    highlights: FeedItemAnnotationsReplacePayloadV1["highlights"];
+    tags: readonly string[];
+  }>[],
+  assignedAtMs: number,
+): Promise<void> {
+  if (
+    assignments.length === 0 ||
+    assignments.length > PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
+  ) {
+    throw new RangeError("PWA FeedItem annotation transaction is too large");
+  }
+  const identities = new Set<string>();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("annotation entity ID is required");
+    if (identities.has(assignment.entityId)) {
+      throw new TypeError(
+        "FeedItem annotation transaction contains a duplicate ID",
+      );
+    }
+    identities.add(assignment.entityId);
+  }
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-feed-item-annotations");
+  const members = assignments.map((assignment, index) =>
+    FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: context.actor_id,
+        actor_sequence: context.next_actor_sequence + index,
+        causal_frontier: context.observed_frontier,
+        created_at_ms: assignedAtMs,
+        entity_id: assignment.entityId,
+        epoch: context.epoch,
+        epoch_id: context.epoch_id,
+        hlc_counter: index,
+        hlc_wall_ms: assignedAtMs,
+        library_id: context.library_id,
+        operation_id: `${transactionId}:${index}`,
+        payload: {
+          assigned_at_ms: assignedAtMs,
+          highlights: assignment.highlights,
+          tags: assignment.tags,
+        },
+        previous_actor_operation_id:
+          index === 0
+            ? context.previous_actor_operation_id
+            : `${transactionId}:${index - 1}`,
+        transaction_id: transactionId,
+        transaction_member_count: assignments.length,
+        transaction_member_index: index,
+      } satisfies FeedItemAnnotationsReplaceTransactionMemberInputV1,
+      { digest },
+    ),
+  );
+  await commitFollowerTransaction(context, members);
+}
+
+export async function commitPwaLibraryCoreFeedItemAnalysisSets(
+  assignments: readonly Readonly<{
+    analysis: Readonly<
+      Pick<
+        FeedItemAnalysisReplacePayloadV1,
+        "content_signals" | "event_candidate"
+      >
+    >;
+    entityId: string;
+  }>[],
+  assignedAtMs: number,
+): Promise<void> {
+  if (
+    assignments.length === 0 ||
+    assignments.length > PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT
+  ) {
+    throw new RangeError("PWA FeedItem analysis transaction is too large");
+  }
+  const identities = new Set<string>();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("analysis entity ID is required");
+    if (identities.has(assignment.entityId)) {
+      throw new TypeError("FeedItem analysis transaction contains a duplicate ID");
+    }
+    identities.add(assignment.entityId);
+  }
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-feed-item-analysis");
+  const members = assignments.map((assignment, index) =>
+    FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: context.actor_id,
+        actor_sequence: context.next_actor_sequence + index,
+        causal_frontier: context.observed_frontier,
+        created_at_ms: assignedAtMs,
+        entity_id: assignment.entityId,
+        epoch: context.epoch,
+        epoch_id: context.epoch_id,
+        hlc_counter: index,
+        hlc_wall_ms: assignedAtMs,
+        library_id: context.library_id,
+        operation_id: `${transactionId}:${index}`,
+        payload: {
+          assigned_at_ms: assignedAtMs,
+          ...assignment.analysis,
+        },
+        previous_actor_operation_id:
+          index === 0
+            ? context.previous_actor_operation_id
+            : `${transactionId}:${index - 1}`,
+        transaction_id: transactionId,
+        transaction_member_count: assignments.length,
+        transaction_member_index: index,
+      } satisfies FeedItemAnalysisReplaceTransactionMemberInputV1,
       { digest },
     ),
   );

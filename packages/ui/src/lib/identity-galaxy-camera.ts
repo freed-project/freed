@@ -1,4 +1,4 @@
-import type { ViewTransform } from "./identity-graph-layout.js";
+import type { FriendsGalaxyTransform as ViewTransform } from "./friends-galaxy-viewport.js";
 
 export const IDENTITY_GALAXY_CAMERA_FOV = 42;
 

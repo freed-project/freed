@@ -340,6 +340,9 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
       }
       const resolvedAt = Date.now();
       const operationIds = members.map((member) => String(member.operation_id));
+      const envelopeDigests = members.map((member) =>
+        digest("operation-envelope", member)
+      );
       const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
         actor_id: previewActorId,
         authoritative_source_revision: previewSourceRevision + 1,
@@ -353,7 +356,7 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
         library_id: previewLibraryId,
         original_result_digest: null,
         previous_result_digest: previewPreviousResultDigest,
-        receipt_ids: operationIds,
+        receipt_ids: envelopeDigests,
         rejection_reason: null,
         replacement_fields: [],
         resolved_at_ms: resolvedAt,

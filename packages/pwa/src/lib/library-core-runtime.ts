@@ -3,6 +3,7 @@ import {
   sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
+  type Highlight,
   type Person,
   type ReachOutLog,
   type RssFeed,
@@ -39,6 +40,9 @@ import {
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   collectLibraryCoreSampleRemovalPlanV1,
+  canonicalizeFeedItemTagsV1,
+  canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemAnalysisV1,
   createLibraryCoreOperationInstanceId,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   searchLibraryCoreNormalizedItemsV1,
@@ -96,6 +100,8 @@ import {
   commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemAnalysisSets,
+  commitPwaLibraryCoreFeedItemAnnotationSets,
   commitPwaLibraryCoreFeedItemRemove,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
@@ -109,7 +115,9 @@ import {
   commitPwaLibraryCoreRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments,
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
 export interface PwaLibraryCoreLocalChangeV1 {
@@ -558,7 +566,21 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     identities = new Set<string>();
   };
   for (const input of items) {
-    const item = sanitizeFeedItemWrite(input) as FeedItem;
+    const sanitized = sanitizeFeedItemWrite(input) as FeedItem;
+    const {
+      contentSignals: _contentSignals,
+      eventCandidate: _eventCandidate,
+      ...root
+    } = sanitized;
+    const {
+      highlights: _highlights,
+      tags: _tags,
+      ...userState
+    } = root.userState;
+    const item = {
+      ...root,
+      userState: { ...userState, tags: [] },
+    } satisfies FeedItem;
     if (
       batch.length === PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT ||
       identities.has(item.globalId)
@@ -569,6 +591,86 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     identities.add(item.globalId);
   }
   await flush();
+}
+
+/** Commit bounded signed normalized FeedItem annotation replacements. */
+export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
+  assignments: readonly Readonly<{
+    entityId: string;
+    highlights: readonly Highlight[];
+    tags: readonly string[];
+  }>[],
+): Promise<void> {
+  if (assignments.length === 0) return;
+  const unique = new Map<
+    string,
+    Readonly<{
+      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
+      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
+    }>
+  >();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("annotation entity ID is required");
+    unique.set(assignment.entityId, {
+      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
+      tags: canonicalizeFeedItemTagsV1(assignment.tags),
+    });
+  }
+  const rows = [...unique].map(([entityId, annotations]) => ({
+    entityId,
+    ...annotations,
+  }));
+  for (
+    let start = 0;
+    start < rows.length;
+    start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemAnnotationSets(
+      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT),
+      Date.now(),
+    );
+  }
+}
+
+/** Commit bounded signed normalized FeedItem analysis replacements. */
+export async function enqueuePwaLibraryCoreFeedItemAnalysisSets(
+  assignments: readonly Readonly<{
+    contentSignals: FeedItem["contentSignals"];
+    entityId: string;
+    eventCandidate: FeedItem["eventCandidate"];
+  }>[],
+): Promise<void> {
+  if (assignments.length === 0) return;
+  const unique = new Map<
+    string,
+    ReturnType<typeof canonicalizeFeedItemAnalysisV1>
+  >();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("analysis entity ID is required");
+    unique.set(
+      assignment.entityId,
+      canonicalizeFeedItemAnalysisV1(
+        assignment.contentSignals,
+        assignment.eventCandidate,
+      ),
+    );
+  }
+  const rows = [...unique].map(([entityId, analysis]) => ({
+    analysis,
+    entityId,
+  }));
+  for (
+    let start = 0;
+    start < rows.length;
+    start += PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemAnalysisSets(
+      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT),
+      Date.now(),
+    );
+  }
 }
 
 /** Commit one signed RSS feed upsert to OPFS SQLite. */

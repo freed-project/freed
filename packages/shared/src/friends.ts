@@ -5,7 +5,7 @@
  * Safe to call in hot render paths.
  */
 
-import type { Account, FeedItem, Friend, Person, Platform } from "./types.js";
+import type { Account, FeedItem, Person, Platform } from "./types.js";
 import { isValidDiscoveredSocialFeedAuthor } from "./social-account-validity.js";
 
 const DEFAULT_INTERVALS: Record<1 | 2 | 3 | 4 | 5, number | null> = {
@@ -80,57 +80,12 @@ function inferredSocialProfileUrl(item: FeedItem): string | undefined {
   return undefined;
 }
 
-export function effectiveInterval(
+function effectiveInterval(
   careLevel: 1 | 2 | 3 | 4 | 5,
   overrideDays?: number
 ): number | null {
   if (overrideDays !== undefined) return overrideDays;
   return DEFAULT_INTERVALS[careLevel];
-}
-
-export function accountsForPerson(
-  accounts: Record<string, Account>,
-  personId: string
-): Account[] {
-  return Object.values(accounts).filter((account) => account.personId === personId);
-}
-
-export function socialAccountsForPerson(
-  accounts: Record<string, Account>,
-  personId: string
-): Account[] {
-  return accountsForPerson(accounts, personId).filter((account) => account.kind === "social");
-}
-
-export function contactAccountsForPerson(
-  accounts: Record<string, Account>,
-  personId: string
-): Account[] {
-  return accountsForPerson(accounts, personId).filter((account) => account.kind === "contact");
-}
-
-export function primaryContactAccountForPerson(
-  accounts: Record<string, Account>,
-  personId: string
-): Account | null {
-  return contactAccountsForPerson(accounts, personId)[0] ?? null;
-}
-
-export function socialAccountForAuthor(
-  accounts: Record<string, Account>,
-  platform: Platform,
-  authorId: string
-): Account | null {
-  for (const account of Object.values(accounts)) {
-    if (
-      account.kind === "social" &&
-      account.provider === platform &&
-      account.externalId === authorId
-    ) {
-      return account;
-    }
-  }
-  return null;
 }
 
 export function buildDiscoveredAccountsFromItems(
@@ -177,56 +132,6 @@ export function discoveredSocialAccountFromItem(item: FeedItem): Account | null 
   };
 }
 
-export function personForAuthor(
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  platform: Platform,
-  authorId: string
-): Person | null {
-  const account = socialAccountForAuthor(accounts, platform, authorId);
-  if (!account?.personId) return null;
-  return persons[account.personId] ?? null;
-}
-
-export function feedItemsForPerson(
-  feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account>,
-  person: Person
-): FeedItem[] {
-  const socialKeys = new Set(
-    socialAccountsForPerson(accounts, person.id).map(
-      (account) => `${account.provider}:${account.externalId}`
-    )
-  );
-
-  return Object.values(feedItems).filter((item) =>
-    socialKeys.has(`${item.platform}:${item.author.id}`)
-  );
-}
-
-export function lastPostAt(
-  feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account>,
-  person: Person,
-): number | null {
-  const items = feedItemsForPerson(feedItems, accounts, person);
-  if (items.length === 0) return null;
-  return Math.max(...items.map((item) => item.publishedAt));
-}
-
-export function recentPostCount(
-  feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account>,
-  person: Person,
-  windowMs: number = 7 * 24 * 60 * 60 * 1000
-): number {
-  const cutoff = Date.now() - windowMs;
-  const items = feedItemsForPerson(feedItems, accounts, person);
-  return items.filter(
-    (item) => item.publishedAt >= cutoff
-  ).length;
-}
-
 export function lastReachOutAt(person: Person): number | null {
   if (!person.reachOutLog || person.reachOutLog.length === 0) return null;
   return person.reachOutLog[0].loggedAt;
@@ -246,84 +151,4 @@ export function isDue(person: Person, now: number = Date.now()): boolean {
 
   const daysSince = (now - lastContact) / (1000 * 60 * 60 * 24);
   return daysSince > interval;
-}
-
-export function isInReconnectZone(person: Person, now: number = Date.now()): boolean {
-  return person.relationshipStatus === "friend" && person.careLevel >= 4 && isDue(person, now);
-}
-
-export function nodeRadius(
-  person: Person,
-  feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account>,
-): number {
-  const BASE: Record<1 | 2 | 3 | 4 | 5, number> = {
-    1: 16,
-    2: 20,
-    3: 24,
-    4: 28,
-    5: 32,
-  };
-  const base = BASE[person.careLevel];
-  const activity = recentPostCount(feedItems, accounts, person);
-  const scaled = base * Math.log2(activity + 2);
-  return Math.min(scaled, 48);
-}
-
-export function nodeOpacity(
-  person: Person,
-  feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account>,
-  now: number = Date.now()
-): number {
-  const last = lastPostAt(feedItems, accounts, person);
-  if (last === null) return 0.5;
-
-  const hours = (now - last) / (1000 * 60 * 60);
-  if (hours < 24) return 1.0;
-  if (hours < 24 * 7) return 0.85;
-  if (hours < 24 * 30) return 0.7;
-  return 0.5;
-}
-
-export function friendFromPerson(
-  person: Person,
-  accounts: Record<string, Account>
-): Friend {
-  const socialSources = socialAccountsForPerson(accounts, person.id).map((account) => ({
-    platform: account.provider as Platform,
-    authorId: account.externalId,
-    handle: account.handle,
-    displayName: account.displayName,
-    avatarUrl: account.avatarUrl,
-    profileUrl: account.profileUrl,
-  }));
-
-  const primaryContact = primaryContactAccountForPerson(accounts, person.id);
-  const contact: Friend["contact"] = primaryContact
-    ? {
-        importedFrom:
-          primaryContact.provider === "google_contacts"
-            ? "google"
-            : primaryContact.provider === "macos_contacts"
-              ? "macos"
-              : primaryContact.provider === "ios_contacts"
-                ? "ios"
-                : primaryContact.provider === "android_contacts"
-                  ? "android"
-                  : "web",
-        name: primaryContact.displayName ?? person.name,
-        phone: primaryContact.phone,
-        email: primaryContact.email,
-        address: primaryContact.address,
-        nativeId: primaryContact.externalId,
-        importedAt: primaryContact.importedAt ?? primaryContact.createdAt,
-      }
-    : undefined;
-
-  return {
-    ...person,
-    sources: socialSources,
-    ...(contact ? { contact } : {}),
-  };
 }

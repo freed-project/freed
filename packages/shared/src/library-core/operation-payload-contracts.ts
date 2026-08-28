@@ -10,7 +10,17 @@ import {
   sanitizeFeedItemWrite,
   sanitizePersonWrite,
 } from "../sync-write-policy.js";
-import type { Account, FeedItem, Person, UserPreferences } from "../types.js";
+import type {
+  Account,
+  ContentSignal,
+  ContentSignals,
+  EventCandidate,
+  FeedItem,
+  Highlight,
+  Person,
+  UserPreferences,
+} from "../types.js";
+import { CONTENT_SIGNAL_KEYS } from "../content-signals.js";
 
 // Operation envelopes and normalized checkpoint records share the 131,072-byte
 // logical-record ceiling. Keep metadata payloads below that ceiling so the
@@ -49,6 +59,45 @@ const ACCOUNT_PROVIDERS = Object.freeze([
 
 export interface FeedItemCaptureUpsertPayloadV1 {
   readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface FeedItemAnnotationsReplacePayloadV1 {
+  readonly assigned_at_ms: number;
+  readonly highlights: readonly Readonly<{
+    createdAt: number;
+    note: string | null;
+    text: string | null;
+    textBlobDigest: string | null;
+  }>[];
+  readonly tags: readonly string[];
+}
+
+export interface FeedItemAnalysisReplacePayloadV1 {
+  readonly assigned_at_ms: number;
+  readonly content_signals: Readonly<{
+    inferred_at_ms: number;
+    method: "rules" | "ai" | "manual";
+    scores: readonly Readonly<{
+      score_basis_points: number;
+      signal: ContentSignal;
+      tagged: boolean;
+    }>[];
+    version: number;
+  }> | null;
+  readonly event_candidate: Readonly<{
+    confidence_basis_points: number;
+    detected_at_ms: number;
+    ends_at_ms: number | null;
+    evidence: string | null;
+    evidence_blob_digest: string | null;
+    location_name: string | null;
+    location_url: string | null;
+    method: "rules" | "ai" | "manual";
+    starts_at_ms: number | null;
+    timezone: string | null;
+    title: string | null;
+    version: number;
+  }> | null;
 }
 
 export interface FeedItemReadAssignmentPayloadV1 {
@@ -163,6 +212,16 @@ export interface LibraryCoreOperationPayloadSchema<
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
 const SYNC_RECEIPT_KEYS = ["synced_at_ms"] as const;
 const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
+const FEED_ITEM_ANALYSIS_REPLACE_KEYS = [
+  "assigned_at_ms",
+  "content_signals",
+  "event_candidate",
+] as const;
+const FEED_ITEM_ANNOTATIONS_REPLACE_KEYS = [
+  "assigned_at_ms",
+  "highlights",
+  "tags",
+] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
 const RSS_FEED_TITLE_ASSIGNMENT_KEYS = ["assigned_at_ms", "title"] as const;
@@ -199,7 +258,7 @@ function invalid<T>(reason: string): LibraryCorePayloadValidationResult<T> {
 }
 
 function isCanonicalObject(
-  value: LibraryCoreCanonicalValue | undefined,
+  value: unknown,
 ): value is Readonly<Record<string, LibraryCoreCanonicalValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -405,6 +464,450 @@ function validateFeedItemCaptureUpsertPayload(
       error instanceof Error ? error.message : "item is not canonical",
     );
   }
+}
+
+function compareUtf8(left: string, right: string): number {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  const length = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+export function canonicalizeFeedItemTagsV1(
+  input: readonly string[],
+): readonly string[] {
+  const encoder = new TextEncoder();
+  const unique = new Set<string>();
+  for (const tag of input) {
+    if (
+      typeof tag !== "string" ||
+      tag.length === 0 ||
+      encoder.encode(tag).byteLength > 512
+    ) {
+      throw new TypeError("each tag must be a bounded nonempty string");
+    }
+    unique.add(tag);
+  }
+  if (unique.size > 64) {
+    throw new RangeError("a FeedItem may contain at most 64 tags");
+  }
+  return Object.freeze([...unique].sort(compareUtf8));
+}
+
+export function canonicalizeFeedItemHighlightsV1(
+  input: readonly Highlight[],
+): FeedItemAnnotationsReplacePayloadV1["highlights"] {
+  if (input.length > 64) {
+    throw new RangeError("a FeedItem may contain at most 64 highlights");
+  }
+  const encoder = new TextEncoder();
+  return Object.freeze(
+    input.map((highlight) => {
+      if (
+        !isLibraryCoreNonnegativeSafeInteger(highlight.createdAt) ||
+        typeof highlight.text !== "string" ||
+        highlight.text.length === 0 ||
+        encoder.encode(highlight.text).byteLength > 65_536 ||
+        (highlight.note !== undefined &&
+          (typeof highlight.note !== "string" ||
+            encoder.encode(highlight.note).byteLength > 8_192))
+      ) {
+        throw new TypeError("FeedItem highlight is invalid or too large");
+      }
+      return Object.freeze({
+        createdAt: highlight.createdAt,
+        note: highlight.note ?? null,
+        text: highlight.text,
+        textBlobDigest: null,
+      });
+    }),
+  );
+}
+
+export function canonicalizeFeedItemAnalysisV1(
+  contentSignals: ContentSignals | undefined,
+  eventCandidate: EventCandidate | undefined,
+): Readonly<
+  Pick<
+    FeedItemAnalysisReplacePayloadV1,
+    "content_signals" | "event_candidate"
+  >
+> {
+  const encoder = new TextEncoder();
+  const boundedOptionalText = (
+    value: string | undefined,
+    maximumBytes: number,
+    label: string,
+  ): string | null => {
+    if (value === undefined) return null;
+    if (encoder.encode(value).byteLength > maximumBytes) {
+      throw new RangeError(`${label} requires a content descriptor`);
+    }
+    return value;
+  };
+  if (contentSignals) {
+    const taggedSignals = new Set<ContentSignal>();
+    for (const signal of contentSignals.tags) {
+      if (
+        !CONTENT_SIGNAL_KEYS.includes(signal) ||
+        taggedSignals.has(signal) ||
+        contentSignals.scores[signal] === undefined
+      ) {
+        throw new TypeError(
+          "each content signal tag must be unique and have a score",
+        );
+      }
+      taggedSignals.add(signal);
+    }
+  }
+  const normalizedSignals = contentSignals
+    ? Object.freeze({
+        inferred_at_ms: contentSignals.inferredAt,
+        method: contentSignals.method,
+        scores: Object.freeze(
+          CONTENT_SIGNAL_KEYS.flatMap((signal) => {
+            const score = contentSignals.scores[signal];
+            if (score === undefined) return [];
+            if (!Number.isFinite(score) || score < 0 || score > 1) {
+              throw new TypeError("content signal score must be between 0 and 1");
+            }
+            return [
+              Object.freeze({
+                score_basis_points: Math.round(score * 10_000),
+                signal,
+                tagged: contentSignals.tags.includes(signal),
+              }),
+            ];
+          }),
+        ),
+        version: contentSignals.version,
+      })
+    : null;
+  if (
+    normalizedSignals !== null &&
+    (!isLibraryCoreNonnegativeSafeInteger(normalizedSignals.version) ||
+      !isLibraryCoreNonnegativeSafeInteger(normalizedSignals.inferred_at_ms))
+  ) {
+    throw new TypeError("content signal metadata is invalid");
+  }
+  const normalizedEvent = eventCandidate
+    ? Object.freeze({
+        confidence_basis_points: Math.round(eventCandidate.confidence * 10_000),
+        detected_at_ms: eventCandidate.detectedAt,
+        ends_at_ms: eventCandidate.endsAt ?? null,
+        evidence: boundedOptionalText(
+          eventCandidate.evidence,
+          65_536,
+          "event evidence",
+        ),
+        evidence_blob_digest: null,
+        location_name: boundedOptionalText(
+          eventCandidate.locationName,
+          4_096,
+          "event location",
+        ),
+        location_url: boundedOptionalText(
+          eventCandidate.locationUrl,
+          8_192,
+          "event location URL",
+        ),
+        method: eventCandidate.method,
+        starts_at_ms: eventCandidate.startsAt ?? null,
+        timezone: boundedOptionalText(
+          eventCandidate.timezone,
+          512,
+          "event timezone",
+        ),
+        title: boundedOptionalText(eventCandidate.title, 4_096, "event title"),
+        version: eventCandidate.version,
+      })
+    : null;
+  if (
+    normalizedEvent !== null &&
+    (!isLibraryCoreNonnegativeSafeInteger(normalizedEvent.version) ||
+      !isLibraryCoreNonnegativeSafeInteger(normalizedEvent.detected_at_ms) ||
+      !Number.isFinite(eventCandidate?.confidence) ||
+      normalizedEvent.confidence_basis_points < 0 ||
+      normalizedEvent.confidence_basis_points > 10_000 ||
+      ![normalizedEvent.starts_at_ms, normalizedEvent.ends_at_ms].every(
+        (value) => value === null || isLibraryCoreNonnegativeSafeInteger(value),
+      ))
+  ) {
+    throw new TypeError("event candidate metadata is invalid");
+  }
+  return Object.freeze({
+    content_signals: normalizedSignals,
+    event_candidate: normalizedEvent,
+  });
+}
+
+function validateFeedItemAnalysisReplacePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemAnalysisReplacePayloadV1> {
+  if (!isCanonicalObject(value)) return invalid("payload must be a plain object");
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== FEED_ITEM_ANALYSIS_REPLACE_KEYS.length ||
+    FEED_ITEM_ANALYSIS_REPLACE_KEYS.some((key) => !keys.includes(key))
+  ) {
+    return invalid(
+      "payload must contain only assigned_at_ms, content_signals, and event_candidate",
+    );
+  }
+  if (!isLibraryCoreNonnegativeSafeInteger(value.assigned_at_ms)) {
+    return invalid("assigned_at_ms must be a nonnegative safe integer");
+  }
+  const contentSignals = value.content_signals;
+  if (contentSignals !== null) {
+    if (
+      !isCanonicalObject(contentSignals) ||
+      Object.keys(contentSignals).sort().join(",") !==
+        "inferred_at_ms,method,scores,version" ||
+      !isLibraryCoreNonnegativeSafeInteger(contentSignals.version) ||
+      !isLibraryCoreNonnegativeSafeInteger(contentSignals.inferred_at_ms) ||
+      !["rules", "ai", "manual"].includes(String(contentSignals.method)) ||
+      !Array.isArray(contentSignals.scores) ||
+      contentSignals.scores.length > CONTENT_SIGNAL_KEYS.length
+    ) {
+      return invalid("content_signals must use the closed normalized shape");
+    }
+    let previousSignalIndex = -1;
+    for (const score of contentSignals.scores) {
+      if (
+        !isCanonicalObject(score) ||
+        Object.keys(score).sort().join(",") !==
+          "score_basis_points,signal,tagged" ||
+        typeof score.signal !== "string" ||
+        typeof score.tagged !== "boolean" ||
+        !isLibraryCoreNonnegativeSafeInteger(score.score_basis_points) ||
+        score.score_basis_points > 10_000
+      ) {
+        return invalid("content signal score is invalid");
+      }
+      const signalIndex = CONTENT_SIGNAL_KEYS.indexOf(
+        score.signal as ContentSignal,
+      );
+      if (signalIndex <= previousSignalIndex) {
+        return invalid("content signal scores must be ordered and unique");
+      }
+      previousSignalIndex = signalIndex;
+    }
+  }
+  const eventCandidate = value.event_candidate;
+  if (eventCandidate !== null) {
+    if (
+      !isCanonicalObject(eventCandidate) ||
+      Object.keys(eventCandidate).sort().join(",") !==
+        "confidence_basis_points,detected_at_ms,ends_at_ms,evidence,evidence_blob_digest,location_name,location_url,method,starts_at_ms,timezone,title,version" ||
+      !isLibraryCoreNonnegativeSafeInteger(eventCandidate.version) ||
+      !isLibraryCoreNonnegativeSafeInteger(eventCandidate.detected_at_ms) ||
+      !isLibraryCoreNonnegativeSafeInteger(
+        eventCandidate.confidence_basis_points,
+      ) ||
+      eventCandidate.confidence_basis_points > 10_000 ||
+      !["rules", "ai", "manual"].includes(String(eventCandidate.method))
+    ) {
+      return invalid("event_candidate must use the closed normalized shape");
+    }
+    for (const field of ["starts_at_ms", "ends_at_ms"] as const) {
+      const fieldValue = eventCandidate[field];
+      if (
+        fieldValue !== null &&
+        !isLibraryCoreNonnegativeSafeInteger(fieldValue)
+      ) {
+        return invalid(`${field} must be null or a nonnegative safe integer`);
+      }
+    }
+    const encoder = new TextEncoder();
+    for (const [field, maximum] of [
+      ["title", 4_096],
+      ["timezone", 512],
+      ["location_name", 4_096],
+      ["location_url", 8_192],
+      ["evidence", 65_536],
+    ] as const) {
+      const fieldValue = eventCandidate[field];
+      if (
+        fieldValue !== null &&
+        (typeof fieldValue !== "string" ||
+          encoder.encode(fieldValue).byteLength > maximum)
+      ) {
+        return invalid(`${field} exceeds its bound`);
+      }
+    }
+    if (
+      eventCandidate.evidence_blob_digest !== null &&
+      (typeof eventCandidate.evidence_blob_digest !== "string" ||
+        !/^[0-9a-f]{64}$/.test(eventCandidate.evidence_blob_digest))
+    ) {
+      return invalid("event evidence descriptor is invalid");
+    }
+    if (
+      eventCandidate.evidence !== null &&
+      eventCandidate.evidence_blob_digest !== null
+    ) {
+      return invalid("event evidence must be inline or content addressed");
+    }
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      value as LibraryCoreCanonicalValue,
+      { maximumBytes: 98_304 },
+    );
+    const decoded = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: 98_304,
+    }) as unknown as FeedItemAnalysisReplacePayloadV1;
+    return { ok: true, value: decoded };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "analysis payload is invalid",
+    );
+  }
+}
+
+function validateFeedItemAnnotationsReplacePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemAnnotationsReplacePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== FEED_ITEM_ANNOTATIONS_REPLACE_KEYS.length ||
+    FEED_ITEM_ANNOTATIONS_REPLACE_KEYS.some((key) => !keys.includes(key))
+  ) {
+    return invalid(
+      "payload must contain only assigned_at_ms, highlights, and tags",
+    );
+  }
+  const assignedAt = Object.getOwnPropertyDescriptor(value, "assigned_at_ms");
+  const tagsDescriptor = Object.getOwnPropertyDescriptor(value, "tags");
+  const highlightsDescriptor = Object.getOwnPropertyDescriptor(
+    value,
+    "highlights",
+  );
+  if (
+    assignedAt === undefined ||
+    !assignedAt.enumerable ||
+    !("value" in assignedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(assignedAt.value)
+  ) {
+    return invalid("assigned_at_ms must be a nonnegative safe integer");
+  }
+  if (
+    tagsDescriptor === undefined ||
+    !tagsDescriptor.enumerable ||
+    !("value" in tagsDescriptor) ||
+    !Array.isArray(tagsDescriptor.value) ||
+    tagsDescriptor.value.length > 64
+  ) {
+    return invalid("tags must be an array containing at most 64 values");
+  }
+  const tags: string[] = [];
+  const encoder = new TextEncoder();
+  for (const tag of tagsDescriptor.value) {
+    if (
+      typeof tag !== "string" ||
+      tag.length === 0 ||
+      encoder.encode(tag).byteLength > 512
+    ) {
+      return invalid("each tag must be a bounded nonempty string");
+    }
+    if (tags.length > 0 && compareUtf8(tags[tags.length - 1]!, tag) >= 0) {
+      return invalid("tags must be strictly binary sorted with no duplicates");
+    }
+    tags.push(tag);
+  }
+  if (
+    highlightsDescriptor === undefined ||
+    !highlightsDescriptor.enumerable ||
+    !("value" in highlightsDescriptor) ||
+    !Array.isArray(highlightsDescriptor.value) ||
+    highlightsDescriptor.value.length > 64
+  ) {
+    return invalid("highlights must be an array containing at most 64 values");
+  }
+  const highlights: FeedItemAnnotationsReplacePayloadV1["highlights"][number][] =
+    [];
+  for (const highlight of highlightsDescriptor.value) {
+    const highlightPrototype =
+      typeof highlight === "object" && highlight !== null
+        ? Object.getPrototypeOf(highlight)
+        : undefined;
+    if (
+      typeof highlight !== "object" ||
+      highlight === null ||
+      Array.isArray(highlight) ||
+      (highlightPrototype !== Object.prototype && highlightPrototype !== null) ||
+      Object.getOwnPropertyNames(highlight).sort().join(",") !==
+        "createdAt,note,text,textBlobDigest"
+    ) {
+      return invalid("each highlight must use the closed normalized shape");
+    }
+    const record = highlight as Record<string, unknown>;
+    const text = record.text;
+    const textBlobDigest = record.textBlobDigest;
+    if (
+      !isLibraryCoreNonnegativeSafeInteger(record.createdAt) ||
+      (record.note !== null &&
+        (typeof record.note !== "string" ||
+          encoder.encode(record.note).byteLength > 8_192)) ||
+      (text !== null &&
+        (typeof text !== "string" ||
+          text.length === 0 ||
+          encoder.encode(text).byteLength > 65_536)) ||
+      (textBlobDigest !== null &&
+        (typeof textBlobDigest !== "string" ||
+          !/^[0-9a-f]{64}$/.test(textBlobDigest))) ||
+      (text === null) === (textBlobDigest === null)
+    ) {
+      return invalid("highlight content or descriptor is invalid");
+    }
+    highlights.push(
+      Object.freeze({
+        createdAt: record.createdAt as number,
+        note: record.note as string | null,
+        text: text as string | null,
+        textBlobDigest: textBlobDigest as string | null,
+      }),
+    );
+  }
+  try {
+    encodeLibraryCoreCanonicalValue(
+      {
+        assigned_at_ms: assignedAt.value,
+        highlights,
+        tags,
+      },
+      { maximumBytes: 98_304 },
+    );
+  } catch (error) {
+    return invalid(
+      error instanceof Error
+        ? error.message
+        : "annotation payload exceeds its bound",
+    );
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      assigned_at_ms: assignedAt.value,
+      highlights: Object.freeze(highlights),
+      tags: Object.freeze(tags),
+    }),
+  };
 }
 
 function validateFeedItemRemovePayload(
@@ -1313,6 +1816,28 @@ export const FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "feed_item_capture_upsert",
   FeedItemCaptureUpsertPayloadV1
+>;
+
+export const FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "feed_item_analysis_replace_payload_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_analysis_replace",
+  canonicalKeys: FEED_ITEM_ANALYSIS_REPLACE_KEYS,
+  validate: validateFeedItemAnalysisReplacePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "feed_item_analysis_replace",
+  FeedItemAnalysisReplacePayloadV1
+>;
+
+export const FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "feed_item_annotations_replace_payload_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_annotations_replace",
+  canonicalKeys: FEED_ITEM_ANNOTATIONS_REPLACE_KEYS,
+  validate: validateFeedItemAnnotationsReplacePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "feed_item_annotations_replace",
+  FeedItemAnnotationsReplacePayloadV1
 >;
 
 export const FEED_ITEM_REMOVE_PAYLOAD_SCHEMA = Object.freeze({

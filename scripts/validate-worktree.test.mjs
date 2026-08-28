@@ -69,7 +69,6 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -86,7 +85,6 @@ test("feature plan for sync changes runs the sync package tests", () => {
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -114,7 +112,6 @@ test("feature plan for feed UI changes leaves raw timing checks to nightly", () 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -132,7 +129,6 @@ test("feature plan for Friends UI changes leaves raw timing checks to nightly", 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -150,7 +146,6 @@ test("feature plan for sidebar UI changes leaves raw timing checks to nightly", 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -567,7 +562,6 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
-  assert.ok(labels.includes("pwa performance tests"));
   assert.ok(labels.includes("shared unit tests"));
   assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("native rust clippy"));

@@ -2387,7 +2387,7 @@ pub(crate) fn migrate_legacy_feed_item_v1(
     for tag in bounded_array(
         user_state.get("tags"),
         MAXIMUM_TAGS,
-        "legacy FeedItem tag set exceeds its bound",
+        "legacy FeedItem annotation set exceeds its bound",
     )? {
         let tag = tag
             .as_str()

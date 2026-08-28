@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn executable_registry_is_sorted_and_historical_policy_is_source_local() {
-        assert_eq!(canonical_operation_types().len(), 21);
+        assert_eq!(canonical_operation_types().len(), 23);
         assert_eq!(
             historical_editor_operation_types(),
             [
@@ -367,7 +367,7 @@ mod tests {
                 "rss_feed_upsert",
             ]
         );
-        assert_eq!(primary_writer_operation_types().len(), 21);
+        assert_eq!(primary_writer_operation_types().len(), 23);
         assert!(primary_writer_operation_types().contains(&"friend_replace"));
         assert!(!historical_editor_operation_types().contains(&"friend_replace"));
         assert!(primary_writer_operation_types().contains(&"person_reach_out_append"));

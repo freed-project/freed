@@ -24,18 +24,23 @@ if (import.meta.env.DEV) {
     import("./lib/library-core-runtime"),
   ]).then(([store, libraryCore]) => {
     const w = window as unknown as Record<string, unknown>
-    w.__FREED_STORE__ = store.useAppStore
-    const run = async (action: () => Promise<void>) => {
+    const settle = async () => {
       await libraryCore.ensurePwaLibraryCoreLocalSampleState()
-      await action()
       const preview = await import("./lib/library-core-preview-bootstrap")
       await preview.settlePwaLibraryCorePreviewIntents()
       const state = store.useAppStore.getState()
       store.useAppStore.setState({
         libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
         savedFeedVersion: (state.savedFeedVersion ?? 0) + 1,
+        searchCorpusVersion: state.searchCorpusVersion + 1,
       })
     }
+    const run = async (action: () => Promise<void>) => {
+      await libraryCore.ensurePwaLibraryCoreLocalSampleState()
+      await action()
+      await settle()
+    }
+    w.__FREED_STORE__ = store.useAppStore
     w.__FREED_LIBRARY_CORE__ = {
       replacePerson: (person: Person, accounts: readonly Account[]) =>
         run(() => libraryCore.replacePwaLibraryCoreFriend(
@@ -53,6 +58,12 @@ if (import.meta.env.DEV) {
         run(() => store.useAppStore.getState().addItems(items as never)),
       addFeed: (feed: unknown) =>
         run(() => store.useAppStore.getState().addFeed(feed as never)),
+      removeAllFeeds: (includeItems: boolean) =>
+        run(() => store.useAppStore.getState().removeAllFeeds(includeItems)),
+      facetSummary: async () => {
+        await libraryCore.ensurePwaLibraryCoreLocalSampleState()
+        return libraryCore.readPwaLibraryCoreFacetSummary()
+      },
     }
   })
 }

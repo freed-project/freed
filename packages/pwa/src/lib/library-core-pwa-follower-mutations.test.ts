@@ -25,6 +25,8 @@ import {
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemAnalysisSets,
+  commitPwaLibraryCoreFeedItemAnnotationSets,
   commitPwaLibraryCoreFeedItemRemove,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
@@ -220,6 +222,79 @@ describe("PWA SQLite follower mutations", () => {
       entity_id: "item:1",
       operation_type: "feed_item_remove",
       payload: { removed_at_ms: 5_000 },
+    });
+  });
+
+  it("commits annotations and analysis as distinct closed child sets", async () => {
+    await commitPwaLibraryCoreFeedItemAnnotationSets(
+      [
+        {
+          entityId: "item:1",
+          highlights: [
+            {
+              createdAt: 5_000,
+              note: "Remember",
+              text: "Bounded passage",
+              textBlobDigest: null,
+            },
+          ],
+          tags: ["alpha", "research"],
+        },
+      ],
+      5_100,
+    );
+    await commitPwaLibraryCoreFeedItemAnalysisSets(
+      [
+        {
+          analysis: {
+            content_signals: {
+              inferred_at_ms: 5_000,
+              method: "rules",
+              scores: [
+                {
+                  score_basis_points: 8_750,
+                  signal: "event",
+                  tagged: true,
+                },
+              ],
+              version: 1,
+            },
+            event_candidate: null,
+          },
+          entityId: "item:1",
+        },
+      ],
+      5_200,
+    );
+
+    expect(mocks.commitFollowerIntent).toHaveBeenCalledTimes(2);
+    expect(
+      decodeCommit(mocks.commitFollowerIntent.mock.calls[0]![0])[0],
+    ).toMatchObject({
+      entity_id: "item:1",
+      operation_type: "feed_item_annotations_replace",
+      payload: {
+        assigned_at_ms: 5_100,
+        tags: ["alpha", "research"],
+      },
+    });
+    expect(
+      decodeCommit(mocks.commitFollowerIntent.mock.calls[1]![0])[0],
+    ).toMatchObject({
+      entity_id: "item:1",
+      operation_type: "feed_item_analysis_replace",
+      payload: {
+        assigned_at_ms: 5_200,
+        content_signals: {
+          scores: [
+            {
+              score_basis_points: 8_750,
+              signal: "event",
+              tagged: true,
+            },
+          ],
+        },
+      },
     });
   });
 

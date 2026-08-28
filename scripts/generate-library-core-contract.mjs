@@ -220,6 +220,14 @@ function assertContract(contract) {
     );
   }
   assertSortedUnique(contract.mutations, "mutations");
+  if (
+    contract.mutations.join(",") !==
+    Object.keys(contract.mutationPrograms).sort().join(",")
+  ) {
+    throw new TypeError(
+      "SQLite mutations must exactly match the executable mutation programs",
+    );
+  }
   assertSortedUnique(
     contract.nativeCommandErrorCodes,
     "nativeCommandErrorCodes",
@@ -228,6 +236,14 @@ function assertContract(contract) {
   assertSortedUnique(contract.localActorErrorCodes, "localActorErrorCodes");
   assertSortedUnique(contract.localActorMethods, "localActorMethods");
   assertSortedUnique(contract.queries, "queries");
+  if (
+    contract.queries.join(",") !==
+    Object.keys(contract.queryPrograms).sort().join(",")
+  ) {
+    throw new TypeError(
+      "SQLite queries must exactly match the executable query programs",
+    );
+  }
   const scopeActionProgramKeys = Object.keys(
     contract.scopeActionPrograms,
   ).sort();
@@ -366,6 +382,7 @@ function assertContract(contract) {
       ) ||
       ![
         "account_upsert",
+        "analysis_assignment",
         "boolean_assignment",
         "feed_item_capture_upsert",
         "friend_replace",
@@ -377,6 +394,7 @@ function assertContract(contract) {
         "remove",
         "rss_feed_upsert",
         "sync_receipt",
+        "annotations_assignment",
         "text_assignment",
       ].includes(program.payloadKind) ||
       typeof program.requiresExistingTarget !== "boolean" ||

@@ -67,6 +67,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     await page.evaluate(async ({ id, name }) => {
       const runtime = window as unknown as Record<string, unknown>;
       const libraryCore = runtime.__FREED_LIBRARY_CORE__ as {
+        addItems: (items: unknown[]) => Promise<void>;
         replacePerson: (person: unknown, accounts: unknown[]) => Promise<void>;
       };
       const store = runtime.__FREED_STORE__ as {
@@ -82,12 +83,52 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
         careLevel: 5,
         createdAt: now,
         updatedAt: now,
-      }, []);
+      }, [{
+        id: `social:x:${id}`,
+        personId: id,
+        kind: "social",
+        provider: "x",
+        externalId: `${id}-x`,
+        handle: `${id}-x`,
+        displayName: name,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      }]);
+      await libraryCore.addItems([{
+        globalId: `x:${id}:gesture-fixture`,
+        platform: "x",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now,
+        author: {
+          id: `${id}-x`,
+          handle: `${id}-x`,
+          displayName: name,
+        },
+        content: {
+          text: "Friends graph gesture fixture",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+        sourceUrl: `https://example.com/${id}/gesture-fixture`,
+      }]);
       store.getState().setActiveView("friends");
     }, { id: friendId, name: friendName });
   }
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Fit all", exact: true }).click();
   const deadline = Date.now() + 15_000;
+  let lastPerf: unknown = null;
   let previousSceneSyncCount = -1;
   let stableSamples = 0;
   while (Date.now() < deadline) {
@@ -100,6 +141,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
         };
       }
     ).__FREED_GRAPH_PERF__ ?? null);
+    lastPerf = perf;
     const sceneSyncCount = perf?.sceneSyncCount ?? -1;
     if (
       perf?.qualityMode === "settled" &&
@@ -114,7 +156,9 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     previousSceneSyncCount = sceneSyncCount;
     await page.waitForTimeout(150);
   }
-  throw new Error("Friends graph did not settle before gesture input");
+  throw new Error(
+    `Friends graph did not settle before gesture input: ${JSON.stringify(lastPerf)}`,
+  );
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -257,6 +301,8 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
 });
 
 test.describe("Friends graph touch gestures in WebKit", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("native two-finger input zooms the graph instead of the page", async ({ page }) => {
     await openSeededFriendsGraph(page, "friend-webkit-touch", "WebKit Touch");
 

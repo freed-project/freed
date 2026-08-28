@@ -12,6 +12,7 @@ import {
   stripDeviceLocalPreferenceUpdates,
   type Account,
   type FeedItem,
+  type Highlight,
   type Person,
   type ReachOutLog,
   type RssFeed,
@@ -28,6 +29,7 @@ import {
   encodeLibraryCoreOperationSignatureInput,
   digestLibraryCoreRssFeedScopeActionRequestV1,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
@@ -35,11 +37,13 @@ import {
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FRIEND_REPLACE_MAXIMUM_ACCOUNTS,
   FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
@@ -73,14 +77,19 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedItemDetailV1,
+  canonicalizeFeedItemTagsV1,
+  canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemAnalysisV1,
   sha256LowerHex,
   type AccountRemoveTransactionMemberInputV1,
   type AccountPersonAssignmentTransactionMemberInputV1,
   type AccountUpsertTransactionMemberInputV1,
   type FeedItemCaptureUpsertTransactionMemberInputV1,
+  type FeedItemAnalysisReplaceTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemSyncReceiptTransactionMemberInputV1,
+  type FeedItemAnnotationsReplaceTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type FriendReplaceTransactionMemberInputV1,
@@ -903,17 +912,34 @@ async function maybeSubmitFeedItemCaptures(
   if (!context) return false;
   const items = uniqueByIdentity(input, (item) => item.globalId);
   if (items.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
+      .maximumMembers;
   for (
     let start = 0;
     start < items.length;
-    start += FOLLOWER_ENTITY_BATCH_LIMIT
+    start += batchLimit
   ) {
     const batchContext = context;
-    const batch = items.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
+    const batch = items.slice(start, start + batchLimit);
     const transactionId =
       `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((item, index) =>
-      FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+    const members = batch.map((sourceItem, index) => {
+      const {
+        contentSignals: _contentSignals,
+        eventCandidate: _eventCandidate,
+        ...root
+      } = sourceItem;
+      const {
+        highlights: _highlights,
+        tags: _tags,
+        ...userState
+      } = root.userState;
+      const item = {
+        ...root,
+        userState: { ...userState, tags: [] },
+      } satisfies FeedItem;
+      return FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
           library_id: batchContext.libraryId,
@@ -941,8 +967,8 @@ async function maybeSubmitFeedItemCaptures(
           created_at_ms: createdAtMs,
         } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
         { digest: operationDigest },
-      ),
-    );
+      );
+    });
     await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < items.length) {
       context = await mutationContext();
@@ -950,6 +976,169 @@ async function maybeSubmitFeedItemCaptures(
         throw new Error(
           "Library mutation context changed during capture commit",
         );
+    }
+  }
+  return true;
+}
+
+async function maybeSubmitFeedItemAnnotationSets(
+  input: readonly Readonly<{
+    entityId: string;
+    highlights: readonly Highlight[];
+    tags: readonly string[];
+  }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const unique = new Map<
+    string,
+    Readonly<{
+      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
+      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
+    }>
+  >();
+  for (const assignment of input) {
+    unique.set(assignment.entityId, {
+      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
+      tags: canonicalizeFeedItemTagsV1(assignment.tags),
+    });
+  }
+  const assignments = [...unique].map(([entityId, annotations]) => ({
+    entityId,
+    ...annotations,
+  }));
+  if (assignments.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+  for (
+    let start = 0;
+    start < assignments.length;
+    start += batchLimit
+  ) {
+    const batchContext = context;
+    const batch = assignments.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((assignment, index) =>
+      FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: assignment.entityId,
+          payload: {
+            assigned_at_ms: assignedAtMs,
+            highlights: assignment.highlights,
+            tags: assignment.tags,
+          },
+          created_at_ms: assignedAtMs,
+        } satisfies FeedItemAnnotationsReplaceTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
+    if (start + batch.length < assignments.length) {
+      context = await mutationContext();
+      if (!context) {
+        throw new Error(
+          "Library mutation context changed during annotation commit",
+        );
+      }
+    }
+  }
+  return true;
+}
+
+async function maybeSubmitFeedItemAnalysisSets(
+  input: readonly Readonly<{
+    contentSignals: FeedItem["contentSignals"];
+    entityId: string;
+    eventCandidate: FeedItem["eventCandidate"];
+  }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const unique = new Map<
+    string,
+    ReturnType<typeof canonicalizeFeedItemAnalysisV1>
+  >();
+  for (const assignment of input) {
+    unique.set(
+      assignment.entityId,
+      canonicalizeFeedItemAnalysisV1(
+        assignment.contentSignals,
+        assignment.eventCandidate,
+      ),
+    );
+  }
+  const assignments = [...unique].map(([entityId, analysis]) => ({
+    analysis,
+    entityId,
+  }));
+  if (assignments.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_analysis_replace.maximumMembers;
+  for (
+    let start = 0;
+    start < assignments.length;
+    start += batchLimit
+  ) {
+    const batchContext = context;
+    const batch = assignments.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-analysis:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((assignment, index) =>
+      FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: assignment.entityId,
+          payload: {
+            assigned_at_ms: assignedAtMs,
+            ...assignment.analysis,
+          },
+          created_at_ms: assignedAtMs,
+        } satisfies FeedItemAnalysisReplaceTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
+    if (start + batch.length < assignments.length) {
+      context = await mutationContext();
+      if (!context) {
+        throw new Error(
+          "Library mutation context changed during analysis commit",
+        );
+      }
     }
   }
   return true;
@@ -1888,6 +2077,41 @@ async function insertMissingSqliteItems(
   if (!(await maybeSubmitFeedItemCaptures(missing, Date.now()))) {
     throw new Error("Normalized SQLite FeedItem mutation context is required");
   }
+  const annotated = missing.filter(
+    (item) =>
+      item.userState.tags.length > 0 ||
+      (item.userState.highlights?.length ?? 0) > 0,
+  );
+  if (
+    !(await maybeSubmitFeedItemAnnotationSets(
+      annotated.map((item) => ({
+        entityId: item.globalId,
+        highlights: item.userState.highlights ?? [],
+        tags: item.userState.tags,
+      })),
+      Date.now(),
+    ))
+  ) {
+    throw new Error(
+      "Normalized SQLite FeedItem annotation context is required",
+    );
+  }
+  const analyzed = missing.filter(
+    (item) =>
+      item.contentSignals !== undefined || item.eventCandidate !== undefined,
+  );
+  if (
+    !(await maybeSubmitFeedItemAnalysisSets(
+      analyzed.map((item) => ({
+        contentSignals: item.contentSignals,
+        entityId: item.globalId,
+        eventCandidate: item.eventCandidate,
+      })),
+      Date.now(),
+    ))
+  ) {
+    throw new Error("Normalized SQLite FeedItem analysis context is required");
+  }
   return missing;
 }
 
@@ -1907,6 +2131,23 @@ async function mergeIncomingSqliteItems(
   });
   if (!(await maybeSubmitFeedItemCaptures(merged, Date.now()))) {
     throw new Error("Normalized SQLite FeedItem mutation context is required");
+  }
+  const analyzed = merged.filter(
+    (_, index) =>
+      items[index]?.contentSignals !== undefined ||
+      items[index]?.eventCandidate !== undefined,
+  );
+  if (
+    !(await maybeSubmitFeedItemAnalysisSets(
+      analyzed.map((item) => ({
+        contentSignals: item.contentSignals,
+        entityId: item.globalId,
+        eventCandidate: item.eventCandidate,
+      })),
+      Date.now(),
+    ))
+  ) {
+    throw new Error("Normalized SQLite FeedItem analysis context is required");
   }
   return merged;
 }
@@ -2336,6 +2577,42 @@ export async function dispatchSqliteMutation(
         if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
           throw new Error(
             "Normalized SQLite FeedItem mutation context is required",
+          );
+        }
+        if (
+          (message.updates.userState?.tags !== undefined ||
+            message.updates.userState?.highlights !== undefined) &&
+          !(await maybeSubmitFeedItemAnnotationSets(
+            [
+              {
+                entityId: message.globalId,
+                highlights: updated.userState.highlights ?? [],
+                tags: updated.userState.tags,
+              },
+            ],
+            timestamp,
+          ))
+        ) {
+          throw new Error(
+            "Normalized SQLite FeedItem annotation mutation context is required",
+          );
+        }
+        if (
+          (message.updates.contentSignals !== undefined ||
+            message.updates.eventCandidate !== undefined) &&
+          !(await maybeSubmitFeedItemAnalysisSets(
+            [
+              {
+                contentSignals: updated.contentSignals,
+                entityId: message.globalId,
+                eventCandidate: updated.eventCandidate,
+              },
+            ],
+            timestamp,
+          ))
+        ) {
+          throw new Error(
+            "Normalized SQLite FeedItem analysis mutation context is required",
           );
         }
       }

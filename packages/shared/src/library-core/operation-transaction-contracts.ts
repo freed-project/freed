@@ -9,6 +9,8 @@ import {
 } from "./protocol-scalars.js";
 import type {
   FeedItemCaptureUpsertTransactionMemberBodyV1,
+  FeedItemAnalysisReplaceTransactionMemberBodyV1,
+  FeedItemAnnotationsReplaceTransactionMemberBodyV1,
   FeedItemReadAssignmentTransactionMemberBodyV1,
   FeedItemSyncReceiptTransactionMemberBodyV1,
   FeedItemRemoveTransactionMemberBodyV1,
@@ -46,6 +48,18 @@ export interface FeedItemReadAssignmentSigningBodyV1 extends FeedItemReadAssignm
 }
 
 export interface FeedItemCaptureUpsertSigningBodyV1 extends FeedItemCaptureUpsertTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
+export interface FeedItemAnalysisReplaceSigningBodyV1 extends FeedItemAnalysisReplaceTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
+export interface FeedItemAnnotationsReplaceSigningBodyV1 extends FeedItemAnnotationsReplaceTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly transaction_digest: LibraryCoreLowercaseHex64;
@@ -131,6 +145,8 @@ export interface AccountPersonAssignmentSigningBodyV1 extends AccountPersonAssig
 
 export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemCaptureUpsertSigningBodyV1
+  | FeedItemAnalysisReplaceSigningBodyV1
+  | FeedItemAnnotationsReplaceSigningBodyV1
   | FeedItemReadAssignmentSigningBodyV1
   | FeedItemUserStateAssignmentSigningBodyV1
   | FeedItemSyncReceiptSigningBodyV1

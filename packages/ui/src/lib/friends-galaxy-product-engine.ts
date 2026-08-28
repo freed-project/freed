@@ -13,7 +13,6 @@ import {
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
   type FriendsGalaxyProductWorkerNormalizedSourceInput,
-  type FriendsGalaxyProductWorkerSourceInput,
   type FriendsGalaxySqliteGraphQuery,
 } from "./friends-galaxy-product-worker-client.js";
 import type {
@@ -218,14 +217,6 @@ export class FriendsGalaxyProductEngine {
 
   get recoveryReason(): string | null {
     return this.renderer?.recoveryReason ?? null;
-  }
-
-  requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
-    this.assertActive();
-    this.latestPresentation = null;
-    this.pendingSourceResponse = null;
-    this.activityPatches = null;
-    return this.worker.requestSource(input);
   }
 
   requestNormalizedSource(

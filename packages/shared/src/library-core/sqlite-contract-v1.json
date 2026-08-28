@@ -167,6 +167,8 @@
       "account_person_assignment",
       "account_remove",
       "account_upsert",
+      "feed_item_analysis_replace",
+      "feed_item_annotations_replace",
       "feed_item_archive_assignment",
       "feed_item_capture_upsert",
       "feed_item_like_assignment",
@@ -1080,6 +1082,50 @@
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
     },
+    "feed_item_annotations_replace": {
+      "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'annotations';",
+      "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'annotations', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "currentValueSql": "SELECT json_object('tags', (SELECT json_group_array(tag) FROM (SELECT tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY)), 'highlights', (SELECT json_group_array(json_object('createdAt', created_at, 'note', note, 'text', text_value, 'textBlobDigest', text_blob_digest)) FROM (SELECT created_at, note, text_value, text_blob_digest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal)));",
+      "dependentDeleteSql": [
+        "DELETE FROM library_feed_item_tags WHERE global_id = ?1;",
+        "DELETE FROM library_feed_item_highlights WHERE global_id = ?1;"
+      ],
+      "dependentInsertSql": [
+        "INSERT INTO library_feed_item_tags (global_id, tag) SELECT ?1, value FROM json_each(?2, '$.tags') WHERE type = 'text';",
+        "INSERT INTO library_feed_item_highlights (global_id, ordinal, created_at, note, text_value, text_blob_digest) SELECT ?1, CAST(key AS INTEGER), json_extract(value, '$.createdAt'), json_extract(value, '$.note'), json_extract(value, '$.text'), json_extract(value, '$.textBlobDigest') FROM json_each(?2, '$.highlights');"
+      ],
+      "entityType": "FeedItem",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET updated_at = ?1 WHERE global_id = ?2;",
+      "maximumMembers": 256,
+      "optimisticEffectKind": "none",
+      "payloadKind": "annotations_assignment",
+      "requiresExistingTarget": true,
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
+    "feed_item_analysis_replace": {
+      "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'analysis';",
+      "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'analysis', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "currentValueSql": "SELECT json_object('hasSignals', EXISTS(SELECT 1 FROM library_feed_item_signals WHERE global_id = ?1), 'hasEvent', EXISTS(SELECT 1 FROM library_feed_item_events WHERE global_id = ?1));",
+      "dependentDeleteSql": [
+        "DELETE FROM library_feed_item_signal_scores WHERE global_id = ?1;",
+        "DELETE FROM library_feed_item_signals WHERE global_id = ?1;",
+        "DELETE FROM library_feed_item_events WHERE global_id = ?1;"
+      ],
+      "dependentInsertSql": [
+        "INSERT INTO library_feed_item_signals (global_id, version, method, inferred_at) SELECT ?1, json_extract(?2, '$.content_signals.version'), json_extract(?2, '$.content_signals.method'), json_extract(?2, '$.content_signals.inferred_at_ms') WHERE json_type(?2, '$.content_signals') = 'object';",
+        "INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged) SELECT ?1, json_extract(value, '$.signal'), json_extract(value, '$.score_basis_points') / 10000.0, json_extract(value, '$.tagged') FROM json_each(?2, '$.content_signals.scores');",
+        "INSERT INTO library_feed_item_events (global_id, version, method, detected_at, confidence, title, starts_at, ends_at, timezone, location_name, location_url, evidence, evidence_blob_digest) SELECT ?1, json_extract(?2, '$.event_candidate.version'), json_extract(?2, '$.event_candidate.method'), json_extract(?2, '$.event_candidate.detected_at_ms'), json_extract(?2, '$.event_candidate.confidence_basis_points') / 10000.0, json_extract(?2, '$.event_candidate.title'), json_extract(?2, '$.event_candidate.starts_at_ms'), json_extract(?2, '$.event_candidate.ends_at_ms'), json_extract(?2, '$.event_candidate.timezone'), json_extract(?2, '$.event_candidate.location_name'), json_extract(?2, '$.event_candidate.location_url'), json_extract(?2, '$.event_candidate.evidence'), json_extract(?2, '$.event_candidate.evidence_blob_digest') WHERE json_type(?2, '$.event_candidate') = 'object';"
+      ],
+      "entityType": "FeedItem",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET updated_at = ?1 WHERE global_id = ?2;",
+      "maximumMembers": 256,
+      "optimisticEffectKind": "none",
+      "payloadKind": "analysis_assignment",
+      "requiresExistingTarget": true,
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
     "friend_replace": {
       "clockReadSql": "",
       "clockWriteSql": "",
@@ -1249,44 +1295,27 @@
   "mutations": [
     "account_person_assignment",
     "account_remove",
-    "account_restore",
     "account_upsert",
+    "feed_item_analysis_replace",
+    "feed_item_annotations_replace",
     "feed_item_archive_assignment",
     "feed_item_capture_upsert",
     "feed_item_like_assignment",
     "feed_item_like_sync_receipt",
     "feed_item_read_assignment",
     "feed_item_remove",
-    "feed_item_restore",
     "feed_item_saved_assignment",
     "feed_item_seen_sync_receipt",
-    "feed_items_archive_frozen",
-    "feed_items_archive_read_unsaved_frozen",
-    "feed_items_content_signals_backfill_frozen",
-    "feed_items_deduplicate_frozen",
-    "feed_items_delete_archived_frozen",
-    "feed_items_prune_archived_frozen",
-    "feed_items_read_frozen",
-    "feed_items_unarchive_saved_frozen",
     "friend_replace",
     "person_reach_out_append",
     "person_remove_and_accounts",
     "person_remove_detach_accounts",
-    "person_restore",
     "person_upsert",
     "preferences_leaf_assignment",
-    "provider_capture_snapshot_reconcile",
-    "provider_intent",
     "rss_feed_remove_keep_items",
     "rss_feed_remove_with_items",
-    "rss_feed_restore",
     "rss_feed_title_assignment",
-    "rss_feed_upsert",
-    "rss_feeds_heal_untitled_frozen",
-    "rss_feeds_remove_keep_items",
-    "rss_feeds_remove_with_items",
-    "sample_library_import",
-    "sample_library_remove"
+    "rss_feed_upsert"
   ],
   "queryPrograms": {
     "account_detail_v1": {

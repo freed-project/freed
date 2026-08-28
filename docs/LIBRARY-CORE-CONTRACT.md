@@ -258,16 +258,20 @@ or wrong-key writer fails before mutation.
 
 ## 6. Mutation contract
 
-The generated mutation registry is exhaustive. It begins with 40 named product
-mutations and grows only through an explicit contract version change. The
-registry covers account, person, feed-item, RSS, preference, provider-result,
-sample-library, repair, bulk, restore, Friend replacement, and tombstone
-behavior.
+The generated canonical mutation registry is exhaustive. Its 23 mutation names
+must exactly match its 23 generated SQL programs. A declared name without an
+executable program fails generation. The registry covers FeedItem capture and
+state, provider delivery receipts, Person and Account identity, Friend
+replacement, RSS subscriptions, preferences, relationship effects, and typed
+tombstones. Bulk scope staging, device contact generations, content
+publication, actor administration, writer transition, checkpoint import, and
+recovery use their own closed protocols because they are not canonical product
+mutation members.
 
 Actor capability profiles live in this same executable contract. Generation
 fails if a profile names an undeclared mutation. The Primary writer profile
-grows only as verified mutation implementations land. It currently admits 21
-verified mutations through 21 generated normalized SQL programs. This now
+admits all 23 canonical mutations through the same 23 generated normalized SQL
+programs. This
 includes `feed_item_capture_upsert`, which atomically materializes FeedItem
 source fields, media, and topics into normalized tables while preserving
 existing user state and refusing tombstone resurrection. Feed capture metadata
@@ -276,13 +280,22 @@ capped at 65,536 canonical bytes. These limits reserve deterministic space for
 the closed operation and checkpoint wrappers below the 131,072-byte logical
 record ceiling. The limits count UTF-8 bytes, not JavaScript code units. Larger
 legal content uses descriptors and content-addressed chunks. The capture actor
-remains limited to this one feed-capture mutation. Declaring a future mutation
-does not grant it to any profile. Rust and TypeScript consume generated profile
+remains limited to this one feed-capture mutation. Adding a future mutation
+requires its executable program in the same contract change and does not grant
+it to any profile. Rust and TypeScript consume generated profile
 constants, so no second capability-operation registry can drift from the
-mutation catalog. All 21 generated mutation programs also share one closed TypeScript
+mutation catalog. All 23 generated mutation programs also share one closed TypeScript
 assembly, signing-body, and final-envelope path before the native verifier and
 materializer. No supported program can bypass canonical transaction bounds by
 falling out of a handwritten transform union.
+
+`feed_item_annotations_replace` owns the complete sorted tag and highlight sets
+under the `annotations` field clock. `feed_item_analysis_replace` owns content
+signal scores and the event candidate under the independent `analysis` field
+clock. Both payloads are closed and bounded. Oversized legal highlight or event
+evidence is represented by a content-addressed blob digest whose descriptor
+must already exist. `feed_item_capture_upsert` strips these child fields and
+therefore cannot overwrite either owner.
 
 The same executable contract defines the initial agent read profile. It grants
 only `friends_directory_page_v1`, `item_detail_v1`,
@@ -1964,6 +1977,14 @@ The implementation is incomplete while any runtime caller can reach:
 - retired shadow-generation registries, version 1 Saved analytics or generic
   surface-item contracts, and descriptive merge-algebra exports without a
   final runtime caller
+- retired full-corpus identity graph models, layout workers, renderers, repair
+  passes, or performance gates that do not execute the shipping SQLite source
+- renderer Saved re-ranking or tag-collection fallbacks that derive query
+  results from FeedItem arrays
+- Friend, map, or graph-activity helpers that derive identity state from
+  complete Person, Account, or FeedItem dictionaries
+- a direct Friends Galaxy whole-source worker request or caller-side source
+  queue outside normalized SQLite page staging
 - query registry names without one generated SQLite program and a final
   product caller
 - unused migration, repair, export, test, or authority vocabulary with no final

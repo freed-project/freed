@@ -928,7 +928,7 @@ export interface Person {
   relationshipStatus: RelationshipStatus;
   /**
    * Relationship priority: 5 = closest (nudge weekly), 1 = acquaintance (never nudged).
-   * Drives effectiveInterval() in the identity helpers.
+   * Drives the bounded Friends outreach interval policy.
    */
   careLevel: 1 | 2 | 3 | 4 | 5;
   reachOutIntervalDays?: number;

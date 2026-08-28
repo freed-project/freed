@@ -28,10 +28,12 @@
       outside this database and receives no mirrored normalized writes. A fresh
       installation creates only the normalized database and never creates the
       historical directory, process lease, backup directory, store, or shell.
-- [x] Generate the shared checkpoint registry, protocol limits, 40 mutation
-      IDs, and 33 bounded query IDs for Rust and TypeScript from one executable
-      contract source, with generated-drift validation. The same source now
-      defines the 18-mutation Primary writer capability and the
+- [x] Generate the shared checkpoint registry, protocol limits, 23 canonical
+      mutation programs, 5 device-local mutation programs, and 33 bounded query
+      programs for Rust and TypeScript from one executable contract source,
+      with generated-drift validation. Generation fails unless every canonical
+      mutation and query name maps one-to-one to an executable program. The
+      same source defines the 23-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
       constants, and no parallel actor-operation registry remains. Query row
       models now generate native Rust field descriptors and TypeScript row
@@ -737,6 +739,11 @@ export async function captureDomFeed(
 | 5.177 | Query follower overlays through `optimistic_fields_v1` for at most 64 visible FeedItem IDs and 448 sparse fields. Freed Desktop drains local changes after writes and reloads, resolves invalidated IDs through bounded detail, and leaves canonical revision identity unchanged | High       | ✓ Complete |
 | 5.178 | Delete the whole-document relay benchmark and its Criterion dependency, remove seven uncalled historical bootstrap digest domains, and replace Desktop browser fixtures that still modeled document debounce, corpus hydration, fake zero-valued runtime telemetry, or renderer arrays as Library authority | Medium     | ✓ Complete |
 | 5.179 | Replace the incremental reader-cutover activation catalog with one version 2 SQLite storage-epoch declaration and one retired-engine boundary. Bind the immutable version 1 audit digest, remove current rollback instructions and same-frontier fallback receipts, require roll-forward recovery, and preserve exact release identity plus owner approval gates | High       | ✓ Complete |
+| 5.180 | Delete the retired full-corpus identity graph model, layout worker, canvas renderer, provisional corpus repair utilities, and their compatibility tests. The shipping Friends Galaxy consumes acknowledged bounded SQLite pages, retains compact worker-owned scene state, and shares only its current transform contract with renderers | High       | ✓ Complete |
+| 5.181 | Delete the uncalled renderer Saved re-ranking fallback, its parity tests, and the uncalled FeedItem tag collector. Saved order comes only from the registered SQLite query under one retained ranking-clock fence, while navigation tags come from the bounded facet result | Medium     | ✓ Complete |
+| 5.182 | Delete unused shared identity and map helpers that scanned Person, Account, or FeedItem dictionaries, plus the final FriendGraph FeedItem activity-summary adapter. Discovery still transforms bounded capture batches, while Friends activity, map counts, and graph source state come from registered SQLite queries | High       | ✓ Complete |
+| 5.183 | Delete the Friends Galaxy worker's direct whole-source request and its caller-side queue. The shipping worker accepts only source-fenced person, Account, and RSS pages from the registered SQLite queries, stages one normalized job at a time, and commits the GPU scene only after all query families close | High       | ✓ Complete |
+| 5.184 | Give synchronized FeedItem annotations and analysis distinct normalized ownership. Tags and highlights replace atomically under one deterministic clock, content signals and event candidates replace under another, provider capture strips both child sets, and native Rust materializes only verified bounded payloads with blob foreign-key enforcement | High       | ✓ Complete |
 
 ---
 

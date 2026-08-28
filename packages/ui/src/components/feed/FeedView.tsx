@@ -19,7 +19,7 @@ import {
   resolveBoundedReaderRankingClock,
   savedFeedRankingClockMs,
   type BoundedReaderRankingClock,
-} from "./saved-feed-fallback-order.js";
+} from "./saved-feed-ranking-clock.js";
 import {
   applySavedFeedPresentationPatch,
   prepareSavedFeedPresentationPatch,

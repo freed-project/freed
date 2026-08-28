@@ -1,4 +1,4 @@
-import type { BuildIdentityGraphAtlasModelInput, IdentityGraphAtlas } from "./identity-graph-atlas.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import type { FriendsGalaxyActivitySummaryPatch } from "./friends-galaxy-activity-index.js";
 import {
   friendsGalaxyActivityScenePatchTransferables,
@@ -22,7 +22,7 @@ import type {
 } from "./friends-galaxy-sqlite-source.js";
 import type { MapMode } from "@freed/shared";
 
-export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 3 as const;
+export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 4 as const;
 
 export interface FriendsGalaxyProductWorkerSelection {
   selectedPersonId?: string | null;
@@ -40,16 +40,6 @@ interface FriendsGalaxyProductWorkerRequestBase {
   protocolVersion: typeof FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION;
   requestId: number;
   sourceRevision: number;
-}
-
-export interface FriendsGalaxyProductWorkerSourceRequest extends
-  FriendsGalaxyProductWorkerRequestBase {
-  kind: "source";
-  source: BuildIdentityGraphAtlasModelInput;
-  viewport: Omit<FriendsGalaxyProductWorkerViewport, "transform">;
-  backgroundStarCount?: number;
-  proceduralBackgroundStarCount?: number;
-  backgroundSeed?: string;
 }
 
 export interface FriendsGalaxyProductWorkerPresentationRequest extends
@@ -90,7 +80,6 @@ export interface FriendsGalaxyProductWorkerNormalizedSourceCommitRequest extends
 }
 
 export type FriendsGalaxyProductWorkerRequest =
-  | FriendsGalaxyProductWorkerSourceRequest
   | FriendsGalaxyProductWorkerPresentationRequest
   | FriendsGalaxyProductWorkerActivityRequest
   | FriendsGalaxyProductWorkerNormalizedSourceBeginRequest
@@ -207,7 +196,7 @@ export function validateFriendsGalaxyProductWorkerResponse(
     return;
   }
   if (
-    (request.kind === "source" || request.kind === "normalized-source-commit") &&
+    request.kind === "normalized-source-commit" &&
     response.kind === "source-ready"
   ) {
     validateFriendsGalaxyWorkerScene(

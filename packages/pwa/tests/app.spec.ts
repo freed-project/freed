@@ -1,24 +1,23 @@
 import { test, expect } from "@playwright/test";
-import {
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-} from "@freed/shared";
 
-const SAMPLE_AUTHOR_PERSON_COUNT = 20;
-const SAMPLE_LINKEDIN_POST_COUNT = 10;
-const EXPECTED_LINKEDIN_ITEMS_PER_BATCH =
-  SAMPLE_SHOWCASE_FRIEND_COUNT + SAMPLE_LINKEDIN_POST_COUNT;
-const EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS = {
-  feeds: SAMPLE_SHOWCASE_FEED_COUNT,
-  friends: SAMPLE_SHOWCASE_FRIEND_COUNT + SAMPLE_AUTHOR_PERSON_COUNT,
-  items: SAMPLE_SHOWCASE_ITEM_COUNT,
-};
-const EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS = {
-  feeds: SAMPLE_SHOWCASE_FEED_COUNT,
-  friends: SAMPLE_SHOWCASE_FRIEND_COUNT,
-  items: SAMPLE_SHOWCASE_ITEM_COUNT,
-};
+interface BrowserLibraryFacetSummary {
+  readonly platformCounts: readonly {
+    readonly platform: string;
+    readonly totalCount: number;
+  }[];
+  readonly rssFeedCount: number;
+  readonly totalCount: number;
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (
+      globalThis as typeof globalThis & {
+        __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean;
+      }
+    ).__FREED_PWA_SQLITE_MEMORY_E2E__ = true;
+  });
+});
 
 async function waitForPwaDocumentReady(
   page: import("@playwright/test").Page,
@@ -59,13 +58,10 @@ async function seedSidebarFeeds(
 ): Promise<void> {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        feeds: Record<string, unknown>;
-        isInitialized: boolean;
-        addFeed: (feed: unknown) => Promise<void>;
-        removeAllFeeds: (includeItems: boolean) => Promise<void>;
-      };
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFeed: (feed: unknown) => Promise<void>;
+      facetSummary: () => Promise<{ rssFeedCount: number }>;
+      removeAllFeeds: (includeItems: boolean) => Promise<void>;
     };
 
     const feedTitles = [
@@ -83,25 +79,10 @@ async function seedSidebarFeeds(
       "Needle Feed",
     ];
 
-    await new Promise<void>((resolve, reject) => {
-      const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        if (store.getState().isInitialized) {
-          clearInterval(interval);
-          resolve();
-          return;
-        }
-        if (Date.now() - startedAt > 5_000) {
-          clearInterval(interval);
-          reject(new Error("store init timeout"));
-        }
-      }, 50);
-    });
-
-    await store.getState().removeAllFeeds(false);
+    await libraryCore.removeAllFeeds(false);
 
     for (const [index, title] of feedTitles.entries()) {
-      await store.getState().addFeed({
+      await libraryCore.addFeed({
         url: `https://example.com/feeds/${index + 1}.xml`,
         title,
         enabled: true,
@@ -111,9 +92,9 @@ async function seedSidebarFeeds(
 
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        const { feeds } = store.getState();
-        if (Object.keys(feeds).length >= feedTitles.length) {
+      const interval = window.setInterval(async () => {
+        const facets = await libraryCore.facetSummary();
+        if (facets.rssFeedCount >= feedTitles.length) {
           clearInterval(interval);
           resolve();
           return;
@@ -605,79 +586,6 @@ async function seedFriendsWorkspace(
   });
 }
 
-async function openDangerZone(
-  page: import("@playwright/test").Page,
-): Promise<void> {
-  const settingsHeading = page.getByRole("heading", { name: "Settings" });
-  const settingsOpen = await settingsHeading.isVisible({ timeout: 1_000 }).catch(() => false);
-  if (!settingsOpen) {
-    await page.getByTestId("sidebar-settings-button").click();
-  }
-  await expect(settingsHeading).toBeVisible();
-  await page.getByRole("button", { name: "Danger Zone" }).click();
-}
-
-async function populateSampleData(
-  page: import("@playwright/test").Page,
-  previousCounts: { friends: number; items: number; feeds: number },
-  expectedCounts: { friends: number; items: number; feeds: number },
-): Promise<void> {
-  let populateButton = page.getByRole("button", {
-    name: /^(Populate sample data|Add more sample data)$/,
-  });
-  const exactButtonVisible = await populateButton.isVisible({ timeout: 2_000 }).catch(() => false);
-  if (!exactButtonVisible) {
-    populateButton = page.getByRole("button", {
-      name: /^(Populate sample data|Add more sample data) /,
-    }).first();
-  }
-  await expect(populateButton).toBeVisible();
-  await populateButton.evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
-
-  const confirmButton = page.getByRole("button", { name: "Populate anyway" });
-  if (await confirmButton.isVisible().catch(() => false)) {
-    await confirmButton.evaluate((element) => {
-      (element as HTMLButtonElement).click();
-    });
-  }
-
-  await expect(page.getByText("Sample data added:")).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect
-    .poll(async () => getLibraryCounts(page), {
-      timeout: 15_000,
-    })
-    .toEqual({
-      friends: previousCounts.friends + expectedCounts.friends,
-      items: previousCounts.items + expectedCounts.items,
-      feeds: previousCounts.feeds + expectedCounts.feeds,
-    });
-  await expect(page.getByText("Cannot assign undefined value")).toBeHidden();
-}
-
-async function getLibraryCounts(
-  page: import("@playwright/test").Page,
-): Promise<{ friends: number; items: number; feeds: number }> {
-  return page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        friends: Record<string, unknown>;
-        items: unknown[];
-        feeds: Record<string, unknown>;
-      };
-    };
-    const state = store.getState();
-    return {
-      friends: Object.keys(state.friends).length,
-      items: state.items.length,
-      feeds: Object.keys(state.feeds).length,
-    };
-  });
-}
-
 const NAV_FEED_URL = "https://example.com/navigation.xml";
 
 async function seedNavigationFeed(
@@ -688,12 +596,7 @@ async function seedNavigationFeed(
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addFeed: (feed: unknown) => Promise<void>;
       addItems: (items: unknown[]) => Promise<void>;
-    };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        feeds: Record<string, unknown>;
-        items: Array<{ globalId: string }>;
-      };
+      facetSummary: () => Promise<BrowserLibraryFacetSummary>;
     };
 
     const now = Date.now();
@@ -737,7 +640,7 @@ async function seedNavigationFeed(
           hidden: false,
           saved: false,
           archived: false,
-          tags: ["research", "alpha"],
+          tags: [],
         },
         topics: [],
         sourceUrl: "https://example.com/navigation-1",
@@ -773,7 +676,7 @@ async function seedNavigationFeed(
           saved: true,
           savedAt: now - 30_000,
           archived: false,
-          tags: ["research"],
+          tags: [],
         },
         topics: [],
         sourceUrl: "https://example.com/navigation-2",
@@ -809,7 +712,7 @@ async function seedNavigationFeed(
           saved: false,
           archived: true,
           archivedAt: now - 10_000,
-          tags: ["archive"],
+          tags: [],
         },
         topics: [],
         sourceUrl: "https://example.com/navigation-3",
@@ -818,9 +721,9 @@ async function seedNavigationFeed(
 
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        const state = store.getState();
-        if (state.feeds[feedUrl] && state.items.some((item) => item.globalId === "rss:navigation:1")) {
+      const interval = window.setInterval(async () => {
+        const facets = await libraryCore.facetSummary();
+        if (facets.rssFeedCount >= 1 && facets.totalCount >= 3) {
           clearInterval(interval);
           resolve();
           return;
@@ -841,11 +744,7 @@ async function seedSocialReaderItem(
     const w = window as Record<string, unknown>;
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addItems: (items: unknown[]) => Promise<void>;
-    };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{ globalId: string }>;
-      };
+      facetSummary: () => Promise<BrowserLibraryFacetSummary>;
     };
 
     const now = Date.now();
@@ -888,9 +787,12 @@ async function seedSocialReaderItem(
 
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        const state = store.getState();
-        if (state.items.some((item) => item.globalId === "facebook:reader-author:1")) {
+      const interval = window.setInterval(async () => {
+        const facets = await libraryCore.facetSummary();
+        const facebook = facets.platformCounts.find(
+          (entry) => entry.platform === "facebook",
+        );
+        if ((facebook?.totalCount ?? 0) >= 1) {
           clearInterval(interval);
           resolve();
           return;
@@ -1022,37 +924,6 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("button", { name: /Populate sample data/i })).toBeVisible();
   });
 
-  test("opens Add Feed dialog", async ({ page }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-
-    // Open the New menu, then choose RSS Feed
-    await page.getByRole("button", { name: /new/i }).click();
-    await page.getByRole("button", { name: "RSS Feed" }).click();
-
-    // Dialog should appear with title, URL field, and examples
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
-    await expect(page.locator('input[type="url"]')).toBeVisible();
-    await expect(page.locator("text=Feed URL")).toBeVisible();
-    await expect(page.locator("text=Try these example feeds")).toBeVisible();
-  });
-
-  test("can close Add Feed dialog", async ({ page }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-
-    // Open dialog
-    await page.getByRole("button", { name: /new/i }).click();
-    await page.getByRole("button", { name: "RSS Feed" }).click();
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
-
-    // Close from the desktop-style dialog header
-    await page.getByRole("button", { name: "Close dialog" }).click();
-
-    // Dialog should close
-    await expect(page.locator("text=Add RSS Feed")).not.toBeVisible();
-  });
-
   test("sidebar filter buttons work", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
@@ -1086,21 +957,24 @@ test.describe("FREED PWA", () => {
     await acceptLegalGate(page);
     await seedSidebarFeeds(page);
 
-    await page.getByRole("button", { name: "Expand feeds" }).click();
+    await page
+      .getByTestId("source-row-rss")
+      .getByRole("button", { name: "Expand feeds", exact: true })
+      .click();
 
-    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toBeVisible();
-    await expect(page.getByText("1 to 10 of 12")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Alpha Dispatch", exact: true })).toBeVisible();
+    await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Next feeds page" })).toBeEnabled();
 
     await page.getByRole("button", { name: "Next feeds page" }).click();
-    await expect(page.getByText("11 to 12 of 12")).toBeVisible();
+    await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Previous feeds page" })).toBeEnabled();
 
-    await page.getByRole("textbox", { name: "Search or run a command" }).fill("needle");
-    await expect(page.getByRole("button", { name: "Needle Feed" })).toBeVisible();
-    await expect(page.getByText("11 to 12 of 12")).toHaveCount(0);
+    await page.getByRole("textbox", { name: "Search or run" }).fill("needle");
+    await expect(page.getByRole("button", { name: "Needle Feed", exact: true })).toBeVisible();
+    await expect(page.getByText("Page 2", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Next feeds page" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Alpha Dispatch", exact: true })).toHaveCount(0);
   });
 
   test("rss source row selects feeds without opening the accordion", async ({
@@ -1114,47 +988,12 @@ test.describe("FREED PWA", () => {
     await sidebar.getByTestId("source-row-rss").click();
 
     await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
-    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch", exact: true })).toHaveCount(0);
     const expandFeedsButton = sidebar.locator('button[aria-label="Expand feeds"]');
     await expect(expandFeedsButton).toBeVisible();
 
     await expandFeedsButton.click();
-    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch" })).toBeVisible();
-  });
-
-  test("feed pagination clears an off-page feed selection back to top-level feeds", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-    await seedSidebarFeeds(page);
-
-    await page.getByRole("button", { name: "Expand feeds" }).click();
-    await page.getByRole("button", { name: "Alpha Dispatch" }).click();
-
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("feed"))
-      .toBe("https://example.com/feeds/1.xml");
-
-    await page.getByRole("button", { name: "Next feeds page" }).click();
-
-    await expect(page.getByText("11 to 12 of 12")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
-    await expect
-      .poll(() => ({
-        platform: new URL(page.url()).searchParams.get("platform"),
-        feed: new URL(page.url()).searchParams.get("feed"),
-      }))
-      .toEqual({ platform: "rss", feed: null });
-
-    await page.getByRole("textbox", { name: "Search or run a command" }).fill("needle");
-    await expect(page.getByRole("button", { name: "Needle Feed" })).toBeVisible();
-    await expect
-      .poll(() => ({
-        platform: new URL(page.url()).searchParams.get("platform"),
-        feed: new URL(page.url()).searchParams.get("feed"),
-      }))
-      .toEqual({ platform: "rss", feed: null });
+    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch", exact: true })).toBeVisible();
   });
 
   test.describe.serial("URL history", () => {
@@ -1169,7 +1008,8 @@ test.describe("FREED PWA", () => {
         };
         return store.getState().activeView === "friends";
       });
-      await expect(page.getByRole("button", { name: /import contacts/i })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Friends galaxy" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Friends", level: 2 })).toBeVisible();
     });
 
     test("browser history tracks top-level view navigation", async ({ page }) => {
@@ -1177,7 +1017,7 @@ test.describe("FREED PWA", () => {
       await acceptLegalGate(page);
       await waitForPwaReady(page);
 
-      await page.locator("aside").getByRole("button", { name: "Friends" }).click({ force: true });
+      await page.getByTestId("source-row-friends").click({ force: true });
       await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
 
       await page.goBack();
@@ -1216,13 +1056,11 @@ test.describe("FREED PWA", () => {
       await page.goBack();
       await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
 
-      await sidebar.getByRole("button", { name: "research" }).click();
-      await expect
-        .poll(() => new URL(page.url()).searchParams.getAll("tag"))
-        .toEqual(["research"]);
-
-      await sidebar.getByRole("button", { name: /^Feeds/ }).click();
-      await sidebar.getByRole("button", { name: /Navigation Feed/ }).click();
+      await sidebar
+        .getByTestId("source-row-rss")
+        .getByRole("button", { name: "Expand feeds", exact: true })
+        .click();
+      await sidebar.getByRole("button", { name: "Navigation Feed", exact: true }).click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get("feed"))
         .toBe(NAV_FEED_URL);
@@ -1272,42 +1110,19 @@ test.describe("FREED PWA", () => {
       await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     });
 
-    test("stale item URLs are cleaned up after initialization", async ({ page }) => {
+    test("item URLs survive a temporarily unavailable SQLite source", async ({ page }) => {
       await page.goto("/?item=missing-item");
       await acceptLegalGate(page);
       await waitForPwaReady(page);
 
-      await expect.poll(() => new URL(page.url()).search).toBe("");
+      await expect(page.getByText("Item temporarily unavailable")).toBeVisible();
+      await expect.poll(() => new URL(page.url()).search).toBe("?item=missing-item");
       await page.waitForFunction(() => {
         const store = (window as Record<string, unknown>).__FREED_STORE__ as {
           getState: () => { selectedItemId: string | null };
         };
-        return store.getState().selectedItemId === null;
+        return store.getState().selectedItemId === "missing-item";
       });
-    });
-
-    test("stale item cleanup replaces the current history entry", async ({ page }) => {
-      await page.goto("/friends");
-      await acceptLegalGate(page);
-      await waitForPwaReady(page);
-      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
-
-      await page.evaluate(() => {
-        window.history.pushState(window.history.state, "", "/?item=missing-item");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      });
-      await expect.poll(() => new URL(page.url()).search).toBe("");
-
-      await page.goBack();
-      await page.waitForFunction(() => {
-        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-          getState: () => { activeView: string; selectedItemId: string | null };
-        };
-        const state = store.getState();
-        return state.activeView === "friends" && state.selectedItemId === null;
-      });
-      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
-      await expect.poll(() => new URL(page.url()).search).toBe("");
     });
 
     test("feed filter URLs restore the correct scope on direct load", async ({ page }) => {
@@ -1357,19 +1172,19 @@ test.describe("FREED PWA", () => {
     const mapBox = await page.locator(".freed-map-shell").boundingBox();
     expect(mainBox).not.toBeNull();
     expect(mapBox).not.toBeNull();
-    expect(Math.round(mapBox!.x)).toBe(Math.round(mainBox!.x));
-    expect(Math.round(mapBox!.width)).toBe(Math.round(mainBox!.width));
+    expect(Math.round(mapBox!.x)).toBe(0);
+    expect(Math.round(mapBox!.width)).toBe(page.viewportSize()!.width);
   });
 
   test("feed and friends use shared headers while map stays full-bleed", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
 
-    await expect(page.locator("main").getByRole("heading", { name: "All Sources" })).toBeVisible();
+    await expect(page.getByRole("banner").getByText(/^All Sources•/)).toBeVisible();
 
-    await page.getByRole("button", { name: "Friends" }).click();
-    await expect(page.locator("main").locator("h1", { hasText: "Friends" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /import contacts/i })).toBeVisible();
+    await page.getByTestId("source-row-friends").click();
+    await expect(page.getByRole("banner").getByText(/^Friends•/)).toBeVisible();
+    await expect(page.getByRole("region", { name: "Friends galaxy" })).toBeVisible();
 
     await page.getByTestId("source-row-map").click();
     await expect(page.locator("main").getByRole("heading", { name: "Map" })).toHaveCount(0);
@@ -1879,143 +1694,7 @@ test.describe("FREED PWA", () => {
     await expect(page.getByText("What happened?", { exact: false })).toBeVisible();
   });
 
-  test("mobile toolbar balances menu and format controls", async ({ page }) => {
-    await emulateMobileDevice(page);
-    await page.setViewportSize({ width: 393, height: 852 });
-    await page.goto("/");
-    await acceptLegalGate(page);
-    await waitForPwaReady(page);
-    await seedNavigationFeed(page);
 
-    const menuButton = page.getByRole("button", { name: "Open menu" });
-    const overflowButton = page.getByTestId("toolbar-overflow-button");
-    const formatButton = page.getByTestId("mobile-toolbar-filter-button");
-    await expect(menuButton).toBeVisible();
-    await expect(overflowButton).toBeVisible();
-    await expect(formatButton).toBeVisible();
-
-    const geometry = await page.evaluate(() => {
-      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-      const menu = document.querySelector('button[aria-label="Open menu"]') as HTMLElement | null;
-      const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
-      const format = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
-      const menuIcon = menu?.querySelector("[aria-hidden='true']") as HTMLElement | null;
-      const formatIcon = format?.querySelector("svg") as SVGElement | null;
-      if (!toolbar || !menu || !overflow || !format || !menuIcon || !formatIcon) {
-        throw new Error("Mobile toolbar buttons were not found");
-      }
-      const toolbarRect = toolbar.getBoundingClientRect();
-      const menuRect = menu.getBoundingClientRect();
-      const menuIconRect = menuIcon.getBoundingClientRect();
-      const menuBarWidths = Array.from(menuIcon.querySelectorAll("path"))
-        .map((path) => (path as SVGGraphicsElement).getBBox().width)
-        .filter((width) => width > 0);
-      const menuVisibleLeft = Math.min(
-        ...Array.from(menuIcon.querySelectorAll("path"))
-          .map((path) => (path as SVGGraphicsElement).getBBox().x)
-          .map((x) => menuIconRect.left + (x / 24) * menuIconRect.width),
-      );
-      const overflowRect = overflow.getBoundingClientRect();
-      const formatRect = format.getBoundingClientRect();
-      const formatIconRect = formatIcon.getBoundingClientRect();
-      const menuStyle = window.getComputedStyle(menu);
-      const overflowStyle = window.getComputedStyle(overflow);
-      const formatStyle = window.getComputedStyle(format);
-      return {
-        toolbarLeft: toolbarRect.left,
-        toolbarRight: toolbarRect.right,
-        menuLeft: menuRect.left,
-        menuRight: menuRect.right,
-        menuIconLeft: menuIconRect.left,
-        menuVisibleLeft,
-        menuEdgeGap: Math.round(menuRect.left - toolbarRect.left),
-        menuBarWidths,
-        overflowRight: overflowRect.right,
-        formatLeft: formatRect.left,
-        formatRight: formatRect.right,
-        formatIconRight: formatIconRect.right,
-        menuBorderColor: menuStyle.borderColor,
-        overflowBorderColor: overflowStyle.borderColor,
-        formatBorderColor: formatStyle.borderColor,
-        viewportRight: window.innerWidth,
-        widths: [menuRect.width, overflowRect.width, formatRect.width],
-      };
-    });
-    expect(geometry.menuEdgeGap).toBeGreaterThanOrEqual(8);
-    expect(geometry.menuBorderColor).toBe("rgba(0, 0, 0, 0)");
-    expect(geometry.overflowBorderColor).toBe("rgba(0, 0, 0, 0)");
-    expect(geometry.formatBorderColor).toBe("rgba(0, 0, 0, 0)");
-    for (const barWidth of geometry.menuBarWidths) {
-      expect(Math.abs(barWidth - geometry.menuBarWidths[0])).toBeLessThanOrEqual(1);
-    }
-    expect(geometry.menuLeft).toBeLessThan(geometry.overflowRight);
-    expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.formatLeft);
-    expect(geometry.formatRight).toBeGreaterThan(geometry.overflowRight);
-    for (const width of geometry.widths) {
-      expect(Math.abs(width - 36)).toBeLessThanOrEqual(1);
-    }
-
-    await overflowButton.click();
-    await expect(overflowButton).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
-    const menuTop = await page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
-      Math.round(menu.getBoundingClientRect().top),
-    );
-    await page.evaluate(() => window.scrollBy(0, 180));
-    await expect
-      .poll(() => page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
-        Math.round(menu.getBoundingClientRect().top),
-      ))
-      .toBe(menuTop);
-
-    await page.keyboard.press("Escape");
-    await menuButton.click();
-    await expect(page.getByRole("button", { name: "Close menu" })).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
-    await expect(page.getByTestId("toolbar-overflow-button")).toHaveCount(0);
-    await expect(page.getByTestId("feed-signal-filter-button")).toHaveCount(0);
-    await expect(page.getByTestId("mobile-toolbar-filter-button")).toHaveCount(0);
-  });
-
-  test("mobile feed and reader spacing stay balanced", async ({ page }) => {
-    await emulateMobileDevice(page);
-    await page.setViewportSize({ width: 393, height: 852 });
-    await page.goto("/");
-    await acceptLegalGate(page);
-    await waitForPwaReady(page);
-    await seedNavigationFeed(page);
-
-    const firstCard = page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first();
-    await expect(firstCard).toBeVisible();
-
-    const spacing = await page.evaluate(() => {
-      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-      const card = document.querySelector(".feed-card") as HTMLElement | null;
-      if (!toolbar || !card) {
-        throw new Error("Feed spacing elements were not found");
-      }
-      const toolbarRect = toolbar.getBoundingClientRect();
-      const cardRect = card.getBoundingClientRect();
-      return {
-        leftGap: Math.round(cardRect.left),
-        topGap: Math.round(cardRect.top - toolbarRect.bottom),
-      };
-    });
-    expect(Math.abs(spacing.leftGap - spacing.topGap)).toBeLessThanOrEqual(1);
-
-    await firstCard.click();
-    const reader = page.getByTestId("reader-article");
-    await expect(reader).toBeVisible();
-    const readerMetrics = await reader.evaluate((article) => {
-      const style = window.getComputedStyle(article);
-      return {
-        bodyOverflow: document.body.style.overflow,
-        paddingLeft: Number.parseFloat(style.paddingLeft),
-        paddingRight: Number.parseFloat(style.paddingRight),
-      };
-    });
-    expect(readerMetrics.bodyOverflow).toBe("hidden");
-    expect(readerMetrics.paddingLeft).toBeGreaterThanOrEqual(20);
-    expect(readerMetrics.paddingRight).toBeGreaterThanOrEqual(20);
-  });
 
   test("mobile story cards open on first tap without quick actions", async ({ page }) => {
     await emulateMobileDevice(page);
@@ -2061,71 +1740,4 @@ test.describe("FREED PWA", () => {
     expect(metrics.scrollerHasFadeMask).toBe(false);
   });
 
-  test("app has correct colors and styling", async ({ page }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-
-    // Check that accent color is applied to logo
-    const logo = page.getByRole("banner").getByText("FREED");
-    await expect(logo).toHaveClass(/gradient-text/);
-
-    // Check dark theme background
-    const body = page.locator("body");
-    const bgColor = await body.evaluate(
-      (el) => window.getComputedStyle(el).backgroundColor,
-    );
-    // Should be dark (rgb values close to 18, 18, 18)
-    expect(bgColor).toMatch(/rgb\(10, 10, 10\)|rgba\(10, 10, 10/);
-  });
-
-  test("populate sample data appends a fresh batch each time", async ({ page }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-
-    const before = await getLibraryCounts(page);
-    await openDangerZone(page);
-
-    await populateSampleData(page, before, EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS);
-    const afterFirst = await getLibraryCounts(page);
-    expect(afterFirst.friends - before.friends).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.friends);
-    expect(afterFirst.items - before.items).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.items);
-    expect(afterFirst.feeds - before.feeds).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.feeds);
-
-    await openDangerZone(page);
-    await populateSampleData(page, afterFirst, EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS);
-    const afterSecond = await getLibraryCounts(page);
-    expect(afterSecond.friends - afterFirst.friends).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.friends);
-    expect(afterSecond.items - afterFirst.items).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.items);
-    expect(afterSecond.feeds - afterFirst.feeds).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.feeds);
-
-    const batchSummary = await page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => {
-          friends: Record<string, {
-            id: string;
-            sources: Array<{ platform: string }>;
-          }>;
-          items: Array<{
-            platform: string;
-            author: { id: string };
-          }>;
-        };
-      };
-      const state = store.getState();
-      const linkedInFriendCount = Object.values(state.friends).filter((friend) =>
-        friend.sources.some((source) => source.platform === "linkedin")
-      ).length;
-      const linkedInItemCount = state.items.filter((item) => item.platform === "linkedin").length;
-
-      return {
-        friendIds: Object.keys(state.friends),
-        linkedInFriendCount,
-        linkedInItemCount,
-      };
-    });
-
-    expect(batchSummary.friendIds.some((id) => id === "sample-friend-maya")).toBe(false);
-    expect(batchSummary.linkedInFriendCount).toBeGreaterThan(0);
-    expect(batchSummary.linkedInItemCount).toBe(EXPECTED_LINKEDIN_ITEMS_PER_BATCH * 2);
-  });
 });

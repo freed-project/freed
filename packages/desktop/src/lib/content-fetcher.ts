@@ -682,7 +682,7 @@ export function start(options: ContentFetcherOptions = {}): void {
   // Wire up the SQLite subscription so new stub items are enqueued directly.
   //
   // Important: never rescan the Library for an ordinary item patch. New rows
-  // arrive with their exact payload. A whole-corpus scan is reserved for an
+  // arrive with their exact payload. A complete bounded Library scan is reserved for an
   // explicit state replacement whose changed identities are unknowable.
   unsubscribeLibrary = subscribeDesktopLibraryRuntime((state, event) => {
     maybeScanLibraryItems(state.totalItemCount, event);

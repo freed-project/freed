@@ -10,7 +10,6 @@ import {
   type FriendsGalaxyProductWorkerPresentationRequest,
   type FriendsGalaxyProductWorkerPresentationResponse,
   type FriendsGalaxyProductWorkerRequest,
-  type FriendsGalaxyProductWorkerSourceRequest,
   type FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
 import type {
@@ -26,11 +25,6 @@ const NORMALIZED_SOURCE_QUERY_IDS = [
   "account_graph_page_v1",
   "rss_feed_page_v1",
 ] as const;
-
-export type FriendsGalaxyProductWorkerSourceInput = Omit<
-  FriendsGalaxyProductWorkerSourceRequest,
-  "protocolVersion" | "requestId"
->;
 
 export type FriendsGalaxyProductWorkerPresentationInput = Omit<
   FriendsGalaxyProductWorkerPresentationRequest,
@@ -57,7 +51,6 @@ export type FriendsGalaxySqliteGraphQuery = (
 ) => Promise<FriendsGalaxySqliteSourcePage>;
 
 type FriendsGalaxyProductWorkerSourceLaneRequest =
-  | FriendsGalaxyProductWorkerSourceRequest
   | FriendsGalaxyProductWorkerNormalizedSourceBeginRequest
   | FriendsGalaxyProductWorkerNormalizedSourcePageRequest
   | FriendsGalaxyProductWorkerNormalizedSourceCommitRequest;
@@ -172,7 +165,6 @@ export class FriendsGalaxyProductWorkerClient {
   private nextRequestId = 1;
   private currentSourceRevision: number | null = null;
   private sourceRequest: FriendsGalaxyProductWorkerSourceLaneRequest | null = null;
-  private queuedSourceRequest: FriendsGalaxyProductWorkerSourceRequest | null = null;
   private normalizedSourceJob: FriendsGalaxyNormalizedSourceJob | null = null;
   private residentScene: FriendsGalaxyRendererScene | null = null;
   private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
@@ -232,29 +224,6 @@ export class FriendsGalaxyProductWorkerClient {
     return this.failures;
   }
 
-  requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
-    this.assertActive();
-    this.inFlightPresentation = null;
-    this.queuedPresentation = null;
-    this.inFlightActivity = null;
-    this.queuedActivity = null;
-    this.latestPresentationRequestId = 0;
-    this.latestActivityRevision = -1;
-    const request: FriendsGalaxyProductWorkerSourceRequest = {
-      ...input,
-      kind: "source",
-      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
-      requestId: this.nextRequestId++,
-    };
-    this.currentSourceRevision = request.sourceRevision;
-    if (this.sourceRequest || this.normalizedSourceJob) {
-      this.queuedSourceRequest = request;
-      return request.requestId;
-    }
-    this.startSource(request);
-    return request.requestId;
-  }
-
   requestNormalizedSource(
     input: FriendsGalaxyProductWorkerNormalizedSourceInput,
     query: FriendsGalaxySqliteGraphQuery,
@@ -284,10 +253,6 @@ export class FriendsGalaxyProductWorkerClient {
     };
     this.startSourceLane(request);
     return request.requestId;
-  }
-
-  private startSource(request: FriendsGalaxyProductWorkerSourceRequest): void {
-    this.startSourceLane(request);
   }
 
   private startSourceLane(request: FriendsGalaxyProductWorkerSourceLaneRequest): void {
@@ -392,7 +357,6 @@ export class FriendsGalaxyProductWorkerClient {
     this.releaseWorker();
     this.currentSourceRevision = null;
     this.sourceRequest = null;
-    this.queuedSourceRequest = null;
     this.normalizedSourceJob = null;
     this.residentScene = null;
     this.inFlightPresentation = null;
@@ -412,7 +376,6 @@ export class FriendsGalaxyProductWorkerClient {
     if (!this.worker) throw new Error("Friends Galaxy worker is unavailable.");
     const deadline = this.now() + this.timeoutMs;
     if (
-      request.kind === "source" ||
       request.kind === "normalized-source-begin" ||
       request.kind === "normalized-source-page" ||
       request.kind === "normalized-source-commit"
@@ -503,13 +466,6 @@ export class FriendsGalaxyProductWorkerClient {
       this.sourceDeadline = 0;
       this.sourceRequest = null;
       this.normalizedSourceJob = null;
-      const queuedSource = this.queuedSourceRequest;
-      if (queuedSource) {
-        this.queuedSourceRequest = null;
-        this.droppedResponses += 1;
-        this.startSource(queuedSource);
-        return;
-      }
       this.residentScene = candidate.rendererScene;
       this.onSourceReady(candidate);
       this.flushPresentation();
@@ -704,7 +660,6 @@ export class FriendsGalaxyProductWorkerClient {
     this.releaseWorker();
     this.currentSourceRevision = null;
     this.sourceRequest = null;
-    this.queuedSourceRequest = null;
     this.normalizedSourceJob = null;
     this.residentScene = null;
     this.inFlightPresentation = null;

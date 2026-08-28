@@ -9,7 +9,7 @@ import type {
 } from "./identity-graph-activity-summary.js";
 import { socialActivitySummaryKey } from "./identity-graph-activity-summary.js";
 import { providerGalaxyNodePoint } from "./identity-galaxy-provider-field.js";
-import type { ViewTransform } from "./identity-graph-layout.js";
+import type { FriendsGalaxyTransform as ViewTransform } from "./friends-galaxy-viewport.js";
 
 export type IdentityGraphAtlasNodeKind =
   | "friend_person"
@@ -105,18 +105,14 @@ export interface IdentityGraphAtlas {
   metrics: IdentityGraphAtlasMetrics;
 }
 
-export interface BuildIdentityGraphAtlasInput {
+export interface BuildIdentityGraphAtlasModelInput {
   persons: readonly IdentityGraphPersonSource[];
   accounts: Readonly<Record<string, IdentityGraphAccountSource>>;
   feeds: Readonly<Record<string, IdentityGraphRssFeedSource>>;
   activitySummaries: IdentityGraphActivitySummaries;
   mode: MapMode;
-  transform: ViewTransform;
   width: number;
   height: number;
-  quality: IdentityGraphAtlasQuality;
-  selectedPersonId?: string | null;
-  selectedAccountId?: string | null;
   friendSuggestionStrengthByPerson?: Record<string, FriendCandidateConfidence>;
   friendSuggestionStrengthByAccount?: Record<string, FriendCandidateConfidence>;
 }
@@ -156,11 +152,6 @@ export interface IdentityGraphRssFeedSource {
   readonly title: string;
   readonly url: string;
 }
-
-export type BuildIdentityGraphAtlasModelInput = Omit<
-  BuildIdentityGraphAtlasInput,
-  "transform" | "quality" | "selectedPersonId" | "selectedAccountId"
->;
 
 export interface IdentityGraphAtlasModel {
   nodes: IdentityGraphAtlasNode[];
@@ -788,19 +779,6 @@ export function sliceIdentityGraphAtlas({
       buildMs: nowMs() - startedAt,
     },
   };
-}
-
-export function buildIdentityGraphAtlas(input: BuildIdentityGraphAtlasInput): IdentityGraphAtlas {
-  const model = buildIdentityGraphAtlasModel(input);
-  return sliceIdentityGraphAtlas({
-    model,
-    transform: input.transform,
-    width: input.width,
-    height: input.height,
-    quality: input.quality,
-    selectedPersonId: input.selectedPersonId,
-    selectedAccountId: input.selectedAccountId,
-  });
 }
 
 export function fitTransformToAtlasBounds(

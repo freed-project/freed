@@ -6,7 +6,6 @@ import {
   validateFriendsGalaxyProductWorkerResponse,
   type FriendsGalaxyProductWorkerActivityRequest,
   type FriendsGalaxyProductWorkerPresentationRequest,
-  type FriendsGalaxyProductWorkerSourceRequest,
 } from "../../src/lib/friends-galaxy-product-worker-protocol.js";
 import {
   FriendsGalaxyProductWorkerService,
@@ -14,25 +13,24 @@ import {
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
 import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
 import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
-import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
+import { buildFriendsGalaxyProductServiceSource } from "./product-sqlite-source-fixture.js";
 
-function sourceRequest(
+function buildSource(
+  service: FriendsGalaxyProductWorkerService,
   sourceRevision = 1,
-): FriendsGalaxyProductWorkerSourceRequest {
-  return {
-    kind: "source",
-    protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
-    requestId: 1,
+) {
+  return buildFriendsGalaxyProductServiceSource(service, {
+    accountCount: 500,
+    backgroundSeed: "product-worker",
+    backgroundStarCount: 2_000,
+    personCount: 120,
     sourceRevision,
-    source: createFriendsGalaxyProductSource(120, 500),
     viewport: {
       width: 390,
       height: 844,
       selectedAccountId: "product-account-499",
     },
-    backgroundStarCount: 2_000,
-    backgroundSeed: "product-worker",
-  };
+  });
 }
 
 function presentationRequest(
@@ -80,10 +78,7 @@ function activityRequest(
 describe("Friends Galaxy product worker", () => {
   it("builds one resident source scene and transfers its exact GPU envelope", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const request = sourceRequest();
-    const response = service.handle(request);
-    validateFriendsGalaxyProductWorkerResponse(response, request);
-    if (response.kind !== "source-ready") throw new Error("Expected a source response.");
+    const response = buildSource(service);
 
     expect(response.rendererScene.scene.nodeIds).toHaveLength(620);
     expect(response.rendererScene.scene.nodeIds.some(
@@ -96,9 +91,7 @@ describe("Friends Galaxy product worker", () => {
 
   it("returns settled presentation with no semantic scene transfer", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = sourceRequest();
-    const sourceResponse = service.handle(source);
-    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const sourceResponse = buildSource(service);
     const request = presentationRequest();
     const response = service.handle(request);
     validateFriendsGalaxyProductWorkerResponse(
@@ -120,9 +113,7 @@ describe("Friends Galaxy product worker", () => {
 
   it("keeps product label resolution inside worker-admitted metadata", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = sourceRequest();
-    const sourceResponse = service.handle(source);
-    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const sourceResponse = buildSource(service);
     const targetNodeId = "account:product-account-498";
     const targetNodeIndex = sourceResponse.rendererScene.scene.nodeIds.indexOf(targetNodeId);
     if (targetNodeIndex < 0) throw new Error("Expected an unlinked account in the resident scene.");
@@ -191,9 +182,7 @@ describe("Friends Galaxy product worker", () => {
 
   it("encodes sparse activity changes against the resident source scene", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = sourceRequest();
-    const sourceResponse = service.handle(source);
-    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const sourceResponse = buildSource(service);
     const request = activityRequest();
     const response = service.handle(request);
     validateFriendsGalaxyProductWorkerResponse(
@@ -220,9 +209,7 @@ describe("Friends Galaxy product worker", () => {
 
   it("reports unknown activity sources without rebuilding the scene", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = sourceRequest();
-    const sourceResponse = service.handle(source);
-    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const sourceResponse = buildSource(service);
     const request = activityRequest();
     request.patches = [{
       namespace: "rss",
@@ -244,7 +231,7 @@ describe("Friends Galaxy product worker", () => {
 
   it("rejects activity batches that exceed the sparse source cap", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    service.handle(sourceRequest());
+    buildSource(service);
     const request = activityRequest();
     request.patches = Array.from(
       { length: FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP + 1 },
@@ -272,8 +259,7 @@ describe("Friends Galaxy product worker", () => {
     expect(missingResponse.requestKind).toBe("presentation");
     expect(Array.from(missingResponse.message).length).toBeLessThanOrEqual(240);
 
-    const source = sourceRequest(4);
-    expect(service.handle(source).kind).toBe("source-ready");
+    expect(buildSource(service, 4).kind).toBe("source-ready");
     const staleRequest = presentationRequest(3);
     const staleResponse = service.handle(staleRequest);
     validateFriendsGalaxyProductWorkerResponse(staleResponse, staleRequest);
@@ -289,15 +275,14 @@ describe("Friends Galaxy product worker", () => {
   });
 
   it("uses stable virtual layout dimensions instead of source viewport dimensions", () => {
-    const narrowRequest = sourceRequest();
-    narrowRequest.source = { ...narrowRequest.source, width: 10, height: 10 };
-    const wideRequest = sourceRequest();
-    wideRequest.source = { ...wideRequest.source, width: 10_000, height: 8_000 };
-    const narrowResponse = new FriendsGalaxyProductWorkerService().handle(narrowRequest);
-    const wideResponse = new FriendsGalaxyProductWorkerService().handle(wideRequest);
-    if (narrowResponse.kind !== "source-ready" || wideResponse.kind !== "source-ready") {
-      throw new Error("Expected source responses.");
-    }
+    const narrowResponse = buildFriendsGalaxyProductServiceSource(
+      new FriendsGalaxyProductWorkerService(),
+      { accountCount: 500, personCount: 120, viewport: { width: 10, height: 10 } },
+    );
+    const wideResponse = buildFriendsGalaxyProductServiceSource(
+      new FriendsGalaxyProductWorkerService(),
+      { accountCount: 500, personCount: 120, viewport: { width: 10_000, height: 8_000 } },
+    );
     expect(Array.from(narrowResponse.rendererScene.scene.positions)).toEqual(
       Array.from(wideResponse.rendererScene.scene.positions),
     );
@@ -309,7 +294,7 @@ describe("Friends Galaxy product worker", () => {
     if (response.kind !== "error") throw new Error("Expected an error response.");
 
     expect(() => validateFriendsGalaxyProductWorkerResponse(
-      { ...response, requestKind: "source" },
+      { ...response, requestKind: "activity" },
       request,
     )).toThrow("Friends Galaxy worker error does not match its request lane.");
   });

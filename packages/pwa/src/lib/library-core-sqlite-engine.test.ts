@@ -38,6 +38,8 @@ import {
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -2559,7 +2561,10 @@ describe("PWA Library Core SQLite engine", () => {
     database.exec({
       sql: `INSERT INTO library_actor_capability_mutations
               (capability_id, mutation_id)
-            VALUES ('capture-capability', 'feed_item_capture_upsert');`,
+            VALUES
+              ('capture-capability', 'feed_item_analysis_replace'),
+              ('capture-capability', 'feed_item_annotations_replace'),
+              ('capture-capability', 'feed_item_capture_upsert');`,
     });
     const item = {
       author: { displayName: "Ada", handle: "ada", id: "author-1" },
@@ -2691,6 +2696,228 @@ describe("PWA Library Core SQLite engine", () => {
       ],
     ]);
 
+    type FinalizedTestTransaction = Awaited<
+      ReturnType<typeof finalizeLibraryCoreTransactionV1>
+    >;
+    const applyAcceptedTestTransaction = async (
+      accepted: FinalizedTestTransaction,
+      authoritativeSourceRevision: number,
+      previousResultDigest: string,
+      resultSequence: number,
+      resolvedAtMs: number,
+    ): Promise<string> => {
+      await engine.commitFollowerIntent({
+        envelopeBytes: accepted.members.map((value) =>
+          encodeLibraryCoreCanonicalValue(
+            value.envelope as unknown as LibraryCoreCanonicalValue,
+          ),
+        ),
+      });
+      const firstEnvelope = accepted.members[0]!.envelope;
+      const unsignedAcceptedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: authoritativeSourceRevision,
+        authority_key_id: "55".repeat(32),
+        canonical_operation_ids: accepted.members.map(
+          (value) => value.envelope.operation_id,
+        ),
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: previousResultDigest,
+        receipt_ids: accepted.members.map((value) => value.envelope_digest),
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: resolvedAtMs,
+        result_body_digest: "0".repeat(64),
+        result_sequence: resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: accepted.transaction_digest,
+        transaction_id: firstEnvelope.transaction_id,
+      });
+      const acceptedResultDigest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(unsignedAcceptedResult),
+      );
+      const acceptedResultBytes = encodeLibraryCoreCanonicalValue({
+        ...unsignedAcceptedResult,
+        result_body_digest: acceptedResultDigest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: acceptedResultDigest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      await engine.applyFollowerResult({
+        canonicalResultBytes: acceptedResultBytes,
+      });
+      return acceptedResultDigest;
+    };
+
+    const annotationsMember =
+      FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "annotations-operation-1",
+          payload: {
+            assigned_at_ms: 2_200,
+            highlights: [
+              {
+                createdAt: 2_000,
+                note: "Remember",
+                text: "Bounded passage",
+                textBlobDigest: null,
+              },
+            ],
+            tags: ["alpha", "research"],
+          },
+          previous_actor_operation_id: "capture-operation-1",
+          transaction_id: "annotations-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const annotationsAssembled = assembleLibraryCoreTransactionV1(
+      [annotationsMember],
+      finalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const annotationsFinalized = await finalizeLibraryCoreTransactionV1(
+      annotationsAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const annotationsResultDigest = await applyAcceptedTestTransaction(
+      annotationsFinalized,
+      2,
+      resultDigest,
+      2,
+      2_250,
+    );
+
+    const analysisMember =
+      FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_201,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_201,
+          library_id: libraryId,
+          operation_id: "analysis-operation-1",
+          payload: {
+            assigned_at_ms: 2_201,
+            content_signals: {
+              inferred_at_ms: 2_100,
+              method: "rules",
+              scores: [
+                {
+                  score_basis_points: 8_750,
+                  signal: "event",
+                  tagged: true,
+                },
+                {
+                  score_basis_points: 2_500,
+                  signal: "essay",
+                  tagged: false,
+                },
+              ],
+              version: 1,
+            },
+            event_candidate: {
+              confidence_basis_points: 8_125,
+              detected_at_ms: 2_110,
+              ends_at_ms: 2_500,
+              evidence: "Saturday at noon",
+              evidence_blob_digest: null,
+              location_name: "Library",
+              location_url: null,
+              method: "rules",
+              starts_at_ms: 2_400,
+              timezone: "America/Los_Angeles",
+              title: "Meetup",
+              version: 1,
+            },
+          },
+          previous_actor_operation_id: "annotations-operation-1",
+          transaction_id: "analysis-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const analysisAssembled = assembleLibraryCoreTransactionV1(
+      [analysisMember],
+      annotationsFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const analysisFinalized = await finalizeLibraryCoreTransactionV1(
+      analysisAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const analysisResultDigest = await applyAcceptedTestTransaction(
+      analysisFinalized,
+      3,
+      annotationsResultDigest,
+      3,
+      2_260,
+    );
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT group_concat(tag, ',') FROM
+                   (SELECT tag FROM library_feed_item_tags
+                    WHERE global_id = 'captured-item-1'
+                    ORDER BY tag COLLATE BINARY)),
+                (SELECT text_value FROM library_feed_item_highlights
+                 WHERE global_id = 'captured-item-1' AND ordinal = 0),
+                (SELECT score FROM library_feed_item_signal_scores
+                 WHERE global_id = 'captured-item-1' AND signal = 'event'),
+                (SELECT tagged FROM library_feed_item_signal_scores
+                 WHERE global_id = 'captured-item-1' AND signal = 'event'),
+                (SELECT confidence FROM library_feed_item_events
+                 WHERE global_id = 'captured-item-1'),
+                (SELECT title FROM library_feed_item_events
+                 WHERE global_id = 'captured-item-1');`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["alpha,research", "Bounded passage", 0.875, 1, 0.8125, "Meetup"],
+    ]);
+
     const gapItem = {
       ...item,
       content: { ...item.content, text: "Must wait for revision two" },
@@ -2700,7 +2927,7 @@ describe("PWA Library Core SQLite engine", () => {
       FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           actor_id: actorId,
-          actor_sequence: 2,
+          actor_sequence: 4,
           causal_frontier: [],
           created_at_ms: 2_200,
           entity_id: gapItem.globalId,
@@ -2711,7 +2938,7 @@ describe("PWA Library Core SQLite engine", () => {
           library_id: libraryId,
           operation_id: "capture-operation-gap",
           payload: { item: gapItem },
-          previous_actor_operation_id: "capture-operation-1",
+          previous_actor_operation_id: "analysis-operation-1",
           transaction_id: "capture-transaction-gap",
           transaction_member_count: 1,
           transaction_member_index: 0,
@@ -2720,7 +2947,7 @@ describe("PWA Library Core SQLite engine", () => {
       );
     const gapAssembled = assembleLibraryCoreTransactionV1(
       [gapMember],
-      finalized.members[0]!.envelope.actor_chain_digest,
+      analysisFinalized.members[0]!.envelope.actor_chain_digest,
       { digest: coreDigest },
     );
     const gapFinalized = await finalizeLibraryCoreTransactionV1(gapAssembled, {
@@ -2738,7 +2965,7 @@ describe("PWA Library Core SQLite engine", () => {
     });
     const unsignedGapResult = parseLibraryCoreFollowerResultEnvelopeV1({
       actor_id: actorId,
-      authoritative_source_revision: 3,
+      authoritative_source_revision: 5,
       authority_key_id: "55".repeat(32),
       canonical_operation_ids: ["capture-operation-gap"],
       epoch: 1,
@@ -2748,13 +2975,13 @@ describe("PWA Library Core SQLite engine", () => {
       intent_epoch_id: epochId,
       library_id: libraryId,
       original_result_digest: null,
-      previous_result_digest: resultDigest,
+      previous_result_digest: analysisResultDigest,
       receipt_ids: [gapFinalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [],
       resolved_at_ms: 2_300,
       result_body_digest: "0".repeat(64),
-      result_sequence: 2,
+      result_sequence: 4,
       schema_version: 1,
       signature: "0".repeat(128),
       signature_algorithm: "ed25519",
@@ -2794,7 +3021,7 @@ describe("PWA Library Core SQLite engine", () => {
         rowMode: "array",
         returnValue: "resultRows",
       }),
-    ).toEqual([[1, 1, 0, "accepted", 3]]);
+    ).toEqual([[3, 3, 0, "accepted", 5]]);
   });
 
   it("atomically materializes an accepted signed Friend replacement", async () => {

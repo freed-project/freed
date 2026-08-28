@@ -15,6 +15,8 @@ import {
   LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
+  FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
   libraryCoreOptimisticFieldsForEnvelopeV1,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
@@ -5532,6 +5534,43 @@ export class PwaLibraryCoreSqliteEngine {
           });
           if (changed() !== 1) {
             throw new Error("accepted follower assignment target changed");
+          }
+          writeClock(assignedAt);
+        }
+        continue;
+      }
+
+      if (
+        program.payloadKind === "analysis_assignment" ||
+        program.payloadKind === "annotations_assignment"
+      ) {
+        const validation =
+          program.payloadKind === "analysis_assignment"
+            ? FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate(payload)
+            : FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate(payload);
+        if (!validation.ok) {
+          throw new Error(
+            `accepted follower structured assignment is invalid: ${validation.reason}`,
+          );
+        }
+        const assignedAt = requiredInteger(
+          payload.assigned_at_ms,
+          "structured assignment time",
+        );
+        if (clockWins(assignedAt)) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [resolvedAt, entityId],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower structured target changed");
+          }
+          const payloadJson = JSON.stringify(payload);
+          for (const sql of program.dependentDeleteSql) {
+            this.#database.exec({ sql, bind: [entityId] });
+          }
+          for (const sql of program.dependentInsertSql) {
+            this.#database.exec({ sql, bind: [entityId, payloadJson] });
           }
           writeClock(assignedAt);
         }

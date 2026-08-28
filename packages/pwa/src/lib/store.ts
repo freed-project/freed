@@ -44,6 +44,8 @@ import {
   enqueuePwaLibraryCoreDeleteAllArchived,
   enqueuePwaLibraryCoreFeedItemCapture,
   enqueuePwaLibraryCoreFeedItemCaptures,
+  enqueuePwaLibraryCoreFeedItemAnalysisSets,
+  enqueuePwaLibraryCoreFeedItemAnnotationSets,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedTitleAssignment,
@@ -353,7 +355,32 @@ export const useAppStore = create<AppState>((set, get) => ({
       get,
       set,
       "pwa:addItems",
-      () => enqueuePwaLibraryCoreFeedItemCaptures(items),
+      async () => {
+        await enqueuePwaLibraryCoreFeedItemCaptures(items);
+        const annotated = items.filter(
+          (item) =>
+            item.userState.tags.length > 0 ||
+            (item.userState.highlights?.length ?? 0) > 0,
+        );
+        await enqueuePwaLibraryCoreFeedItemAnnotationSets(
+          annotated.map((item) => ({
+            entityId: item.globalId,
+            highlights: item.userState.highlights ?? [],
+            tags: item.userState.tags,
+          })),
+        );
+        const analyzed = items.filter(
+          (item) =>
+            item.contentSignals !== undefined || item.eventCandidate !== undefined,
+        );
+        await enqueuePwaLibraryCoreFeedItemAnalysisSets(
+          analyzed.map((item) => ({
+            contentSignals: item.contentSignals,
+            entityId: item.globalId,
+            eventCandidate: item.eventCandidate,
+          })),
+        );
+      },
       { allowLibraryCoreIntent: true },
     );
   },
@@ -371,6 +398,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           next.userState = applyDefinedUpdate(item.userState, update.userState);
         }
         await enqueuePwaLibraryCoreFeedItemCapture(next);
+        if (
+          update.contentSignals !== undefined ||
+          update.eventCandidate !== undefined
+        ) {
+          await enqueuePwaLibraryCoreFeedItemAnalysisSets([
+            {
+              contentSignals: next.contentSignals,
+              entityId: id,
+              eventCandidate: next.eventCandidate,
+            },
+          ]);
+        }
+        if (
+          update.userState?.tags !== undefined ||
+          update.userState?.highlights !== undefined
+        ) {
+          await enqueuePwaLibraryCoreFeedItemAnnotationSets([
+            {
+              entityId: id,
+              highlights: next.userState.highlights ?? [],
+              tags: next.userState.tags,
+            },
+          ]);
+        }
       },
       { allowLibraryCoreIntent: true },
     );
@@ -544,6 +595,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }
     await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
+    await enqueuePwaLibraryCoreFeedItemAnnotationSets(
+      data.items.map((item) => ({
+        entityId: item.globalId,
+        highlights: item.userState.highlights ?? [],
+        tags: item.userState.tags,
+      })),
+    );
+    await enqueuePwaLibraryCoreFeedItemAnalysisSets(
+      data.items
+        .filter(
+          (item) =>
+            item.contentSignals !== undefined || item.eventCandidate !== undefined,
+        )
+        .map((item) => ({
+          contentSignals: item.contentSignals,
+          entityId: item.globalId,
+          eventCandidate: item.eventCandidate,
+        })),
+    );
     await enqueuePwaLibraryCorePersonUpserts(data.persons);
     await enqueuePwaLibraryCoreAccountUpserts(data.accounts);
     invalidateLibraryWindows(get, set);

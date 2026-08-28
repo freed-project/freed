@@ -5,7 +5,6 @@ import {
   type FriendsGalaxyProductWorkerFailure,
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
-  type FriendsGalaxyProductWorkerSourceInput,
 } from "../../src/lib/friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerRequest,
@@ -13,7 +12,10 @@ import type {
 } from "../../src/lib/friends-galaxy-product-worker-protocol.js";
 import { FriendsGalaxyProductWorkerService } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
-import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
+import {
+  createFriendsGalaxyProductSqliteQuery,
+  productNormalizedSourceInput,
+} from "./product-sqlite-source-fixture.js";
 
 class FakeProductWorker implements FriendsGalaxyProductWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
@@ -33,21 +35,6 @@ class FakeProductWorker implements FriendsGalaxyProductWorkerPort {
   emit(response: FriendsGalaxyProductWorkerResponse): void {
     this.onmessage?.({ data: response } as MessageEvent<unknown>);
   }
-}
-
-function sourceInput(sourceRevision = 1): FriendsGalaxyProductWorkerSourceInput {
-  return {
-    kind: "source",
-    sourceRevision,
-    source: createFriendsGalaxyProductSource(80, 320),
-    viewport: {
-      width: 390,
-      height: 844,
-      selectedAccountId: "product-account-319",
-    },
-    backgroundStarCount: 1_000,
-    backgroundSeed: "product-client",
-  };
 }
 
 function presentationInput(
@@ -103,6 +90,47 @@ async function flushPromiseChain(): Promise<void> {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
 }
 
+function requestSource(
+  client: FriendsGalaxyProductWorkerClient,
+  sourceRevision = 1,
+) {
+  const options = {
+    accountCount: 320,
+    backgroundSeed: "product-client",
+    personCount: 80,
+    sourceRevision,
+    viewport: {
+      height: 844,
+      selectedAccountId: "product-account-319",
+      width: 390,
+    },
+  };
+  return client.requestNormalizedSource(
+    productNormalizedSourceInput(options),
+    createFriendsGalaxyProductSqliteQuery(options),
+  );
+}
+
+async function admitSource(
+  client: FriendsGalaxyProductWorkerClient,
+  worker: FakeProductWorker,
+  service: FriendsGalaxyProductWorkerService,
+  sourceRevision = 1,
+): Promise<number> {
+  const startIndex = worker.messages.length;
+  requestSource(client, sourceRevision);
+  let messageIndex = startIndex;
+  while (!client.sourceReady) {
+    if (messageIndex >= worker.messages.length) await flushPromiseChain();
+    const request = worker.messages[messageIndex];
+    if (!request) throw new Error("Expected a normalized source request.");
+    worker.emit(service.handle(request));
+    messageIndex += 1;
+    await flushPromiseChain();
+  }
+  return messageIndex;
+}
+
 describe("Friends Galaxy product worker client", () => {
   it("pumps one bounded SQLite graph page at a time before scene commit", async () => {
     const worker = new FakeProductWorker();
@@ -132,7 +160,9 @@ describe("Friends Galaxy product worker client", () => {
           projectionRevision: 4,
           transitionSequence: 4,
         },
-      } as Awaited<ReturnType<Parameters<typeof client.requestNormalizedSource>[1]>>;
+      } as unknown as Awaited<
+        ReturnType<Parameters<typeof client.requestNormalizedSource>[1]>
+      >;
     });
     expect(started).toBe(1);
     expect(worker.messages.map((message) => message.kind)).toEqual([
@@ -158,7 +188,7 @@ describe("Friends Galaxy product worker client", () => {
     expect(client.sourceReady).toBe(true);
   });
 
-  it("admits one source scene and queues settled detail until it is ready", () => {
+  it("admits one source scene and queues settled detail until it is ready", async () => {
     const worker = new FakeProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     const sourceReady: number[] = [];
@@ -171,22 +201,26 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput());
+    requestSource(client);
     client.requestPresentation(presentationInput(1));
-    expect(worker.messages.map((request) => request.kind)).toEqual(["source"]);
-    worker.emit(serviceResponse(service, worker, 0));
-    expect(sourceReady).toEqual([1]);
     expect(worker.messages.map((request) => request.kind)).toEqual([
-      "source",
-      "presentation",
+      "normalized-source-begin",
     ]);
-    worker.emit(serviceResponse(service, worker, 1));
+    let messageIndex = 0;
+    while (!client.sourceReady) {
+      worker.emit(serviceResponse(service, worker, messageIndex));
+      messageIndex += 1;
+      await flushPromiseChain();
+    }
+    expect(sourceReady).toEqual([1]);
+    expect(worker.messages.at(-1)?.kind).toBe("presentation");
+    worker.emit(serviceResponse(service, worker, messageIndex));
     expect(presentations).toEqual([1]);
     expect(client.sourceReady).toBe(true);
     expect(client.presentationInFlight).toBe(false);
   });
 
-  it("keeps one settled request in flight and applies only the latest coalesced view", () => {
+  it("keeps one settled request in flight and applies only the latest coalesced view", async () => {
     const worker = new FakeProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     const presentations: number[] = [];
@@ -198,25 +232,24 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput());
-    worker.emit(serviceResponse(service, worker, 0));
+    const messageIndex = await admitSource(client, worker, service);
     client.requestPresentation(presentationInput(1));
     client.requestPresentation(presentationInput(2));
     client.requestPresentation(presentationInput(3));
-    expect(worker.messages).toHaveLength(2);
+    expect(worker.messages).toHaveLength(messageIndex + 1);
     expect(client.presentationInFlight).toBe(true);
     expect(client.presentationQueued).toBe(true);
 
-    worker.emit(serviceResponse(service, worker, 1));
+    worker.emit(serviceResponse(service, worker, messageIndex));
     expect(presentations).toEqual([]);
-    expect(worker.messages).toHaveLength(3);
-    expect(worker.messages[2]).toMatchObject({ presentationRevision: 3 });
-    worker.emit(serviceResponse(service, worker, 2));
+    expect(worker.messages).toHaveLength(messageIndex + 2);
+    expect(worker.messages[messageIndex + 1]).toMatchObject({ presentationRevision: 3 });
+    worker.emit(serviceResponse(service, worker, messageIndex + 1));
     expect(presentations).toEqual([3]);
     expect(client.droppedResponseCount).toBe(1);
   });
 
-  it("queues sparse activity until its source scene is admitted", () => {
+  it("queues sparse activity until its source scene is admitted", async () => {
     const worker = new FakeProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     const activityRevisions: number[] = [];
@@ -229,20 +262,21 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput());
+    requestSource(client);
     client.requestActivity(activityInput(1));
-    expect(worker.messages.map((request) => request.kind)).toEqual(["source"]);
-    worker.emit(serviceResponse(service, worker, 0));
-    expect(worker.messages.map((request) => request.kind)).toEqual([
-      "source",
-      "activity",
-    ]);
-    worker.emit(serviceResponse(service, worker, 1));
+    let messageIndex = 0;
+    while (!client.sourceReady) {
+      worker.emit(serviceResponse(service, worker, messageIndex));
+      messageIndex += 1;
+      await flushPromiseChain();
+    }
+    expect(worker.messages.at(-1)?.kind).toBe("activity");
+    worker.emit(serviceResponse(service, worker, messageIndex));
     expect(activityRevisions).toEqual([1]);
     expect(client.activityInFlight).toBe(false);
   });
 
-  it("merges queued activity sources without dropping an earlier delta", () => {
+  it("merges queued activity sources without dropping an earlier delta", async () => {
     const worker = new FakeProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     const activityRevisions: number[] = [];
@@ -255,8 +289,7 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput());
-    worker.emit(serviceResponse(service, worker, 0));
+    const messageIndex = await admitSource(client, worker, service);
     client.requestActivity(activityInput(1));
     client.requestActivity(activityInput(
       2,
@@ -268,56 +301,38 @@ describe("Friends Galaxy product worker client", () => {
     ));
     expect(client.activityInFlight).toBe(true);
     expect(client.activityQueued).toBe(true);
-    expect(worker.messages).toHaveLength(2);
+    expect(worker.messages).toHaveLength(messageIndex + 1);
 
-    worker.emit(serviceResponse(service, worker, 1));
+    worker.emit(serviceResponse(service, worker, messageIndex));
     expect(activityRevisions).toEqual([1]);
-    expect(worker.messages).toHaveLength(3);
-    expect(worker.messages[2]).toMatchObject({
+    expect(worker.messages).toHaveLength(messageIndex + 2);
+    expect(worker.messages[messageIndex + 1]).toMatchObject({
       kind: "activity",
       activityRevision: 3,
     });
-    const queued = worker.messages[2];
+    const queued = worker.messages[messageIndex + 1];
     if (queued?.kind !== "activity") throw new Error("Expected an activity request.");
     expect(queued.patches.map((patch) => patch.key)).toEqual([
       socialActivitySummaryKey("instagram", "product-author-3"),
       socialActivitySummaryKey("linkedin", "product-author-2"),
     ]);
-    worker.emit(serviceResponse(service, worker, 2));
+    worker.emit(serviceResponse(service, worker, messageIndex + 1));
     expect(activityRevisions).toEqual([1, 3]);
   });
 
-  it("keeps one worker and admits only the latest queued source", () => {
-    const workers: FakeProductWorker[] = [];
-    const sourceReady: number[] = [];
-    const failures: FriendsGalaxyProductWorkerFailure[] = [];
+  it("refuses a second normalized source while one fenced job is active", () => {
+    const worker = new FakeProductWorker();
     const client = new FriendsGalaxyProductWorkerClient({
-      createWorker: () => {
-        const worker = new FakeProductWorker();
-        workers.push(worker);
-        return worker;
-      },
-      onSourceReady: (response) => sourceReady.push(response.sourceRevision),
+      createWorker: () => worker,
+      onSourceReady: () => undefined,
       onPresentationReady: () => undefined,
-      onFailure: (failure) => failures.push(failure),
+      onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput(1));
-    client.requestSource(sourceInput(2));
-    client.requestSource(sourceInput(3));
-    expect(workers).toHaveLength(1);
-    expect(workers[0]!.terminated).toBe(false);
-    expect(workers[0]!.messages).toHaveLength(1);
-
-    const service = new FriendsGalaxyProductWorkerService();
-    workers[0]!.emit(serviceResponse(service, workers[0]!, 0));
-    expect(sourceReady).toEqual([]);
-    expect(failures).toEqual([]);
-    expect(workers[0]!.messages).toHaveLength(2);
-    expect(workers[0]!.messages[1]).toMatchObject({ sourceRevision: 3 });
-    workers[0]!.emit(serviceResponse(service, workers[0]!, 1));
-    expect(sourceReady).toEqual([3]);
-    expect(client.droppedResponseCount).toBe(1);
+    expect(requestSource(client, 1)).toBe(1);
+    expect(requestSource(client, 2)).toBeNull();
+    expect(worker.messages).toHaveLength(1);
+    expect(worker.messages[0]).toMatchObject({ sourceRevision: 1 });
   });
 
   it("terminates a current generation response without a valid request id", () => {
@@ -330,7 +345,7 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: (failure) => failures.push(failure),
     });
 
-    client.requestSource(sourceInput());
+    requestSource(client);
     worker.onmessage?.({ data: { kind: "source-ready" } } as MessageEvent<unknown>);
 
     expect(worker.terminated).toBe(true);
@@ -350,7 +365,7 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: (failure) => failures.push(failure),
     });
 
-    client.requestSource(sourceInput());
+    requestSource(client);
     worker.onmessage?.({
       data: {
         protocolVersion: 1,
@@ -384,7 +399,7 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: (failure) => failures.push(failure),
     });
 
-    client.requestSource(sourceInput());
+    requestSource(client);
     now = 149;
     client.poll();
     expect(failures).toEqual([]);
@@ -404,7 +419,7 @@ describe("Friends Galaxy product worker client", () => {
       onFailure: () => undefined,
     });
 
-    client.requestSource(sourceInput(4));
+    requestSource(client, 4);
     expect(client.requestPresentation(presentationInput(1, 3))).toBeNull();
     expect(worker.messages).toHaveLength(1);
   });

@@ -52,6 +52,26 @@ const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "cha
 const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
 const SYNC_RECEIPT_PAYLOAD_KEYS: [&str; 1] = ["synced_at_ms"];
 const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
+const ANALYSIS_REPLACE_PAYLOAD_KEYS: [&str; 3] =
+    ["assigned_at_ms", "content_signals", "event_candidate"];
+const CONTENT_SIGNALS_KEYS: [&str; 4] = ["inferred_at_ms", "method", "scores", "version"];
+const CONTENT_SIGNAL_SCORE_KEYS: [&str; 3] = ["score_basis_points", "signal", "tagged"];
+const EVENT_CANDIDATE_KEYS: [&str; 12] = [
+    "confidence_basis_points",
+    "detected_at_ms",
+    "ends_at_ms",
+    "evidence",
+    "evidence_blob_digest",
+    "location_name",
+    "location_url",
+    "method",
+    "starts_at_ms",
+    "timezone",
+    "title",
+    "version",
+];
+const ANNOTATIONS_REPLACE_PAYLOAD_KEYS: [&str; 3] = ["assigned_at_ms", "highlights", "tags"];
+const HIGHLIGHT_KEYS: [&str; 4] = ["createdAt", "note", "text", "textBlobDigest"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
@@ -123,6 +143,33 @@ const MAX_PERSON_BYTES: usize = 262_144;
 const MAX_ACCOUNT_BYTES: usize = 262_144;
 const MAX_FRIEND_REPLACE_BYTES: usize = 98_304;
 const MAX_FRIEND_REPLACE_ACCOUNTS: usize = 64;
+const MAX_FEED_ITEM_TAGS: usize = 64;
+const MAX_FEED_ITEM_TAG_BYTES: usize = 512;
+const MAX_FEED_ITEM_HIGHLIGHTS: usize = 64;
+const MAX_FEED_ITEM_ANNOTATIONS_BYTES: usize = 98_304;
+const MAX_FEED_ITEM_ANALYSIS_BYTES: usize = 98_304;
+const CONTENT_SIGNAL_IDS: [&str; 20] = [
+    "event",
+    "deadline",
+    "opportunity",
+    "how_to",
+    "reference",
+    "transaction",
+    "product_update",
+    "alert",
+    "deal",
+    "place",
+    "media",
+    "essay",
+    "moment",
+    "life_update",
+    "announcement",
+    "recommendation",
+    "request",
+    "discussion",
+    "promotion",
+    "news",
+];
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationIdentity {
@@ -185,7 +232,7 @@ struct ParsedEnvelope {
     created_at_ms: i64,
     item_json: Option<String>,
     rss_feed_json: Option<String>,
-    preferences_patch_json: Option<String>,
+    structured_payload_json: Option<String>,
     person_json: Option<String>,
     account_json: Option<String>,
     read_at_ms: Option<i64>,
@@ -1142,7 +1189,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
     let (
         item_json,
         rss_feed_json,
-        preferences_patch_json,
+        structured_payload_json,
         person_json,
         account_json,
         read_at_ms,
@@ -1172,6 +1219,205 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
                 ),
                 None,
                 None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "feed_item_analysis_replace" => {
+            let payload_object =
+                exact_object(payload, &ANALYSIS_REPLACE_PAYLOAD_KEYS, index, "payload")?;
+            safe_integer(payload_object, "assigned_at_ms", index)?;
+            match payload_object.get("content_signals") {
+                Some(Value::Null) => {}
+                Some(signals_value) => {
+                    let signals = exact_object(
+                        signals_value,
+                        &CONTENT_SIGNALS_KEYS,
+                        index,
+                        "content_signals",
+                    )?;
+                    safe_integer(signals, "version", index)?;
+                    safe_integer(signals, "inferred_at_ms", index)?;
+                    if signals
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .is_none_or(|method| !matches!(method, "rules" | "ai" | "manual"))
+                    {
+                        return Err(invalid(index, "content_signals"));
+                    }
+                    let scores = signals
+                        .get("scores")
+                        .and_then(Value::as_array)
+                        .filter(|scores| scores.len() <= CONTENT_SIGNAL_IDS.len())
+                        .ok_or_else(|| invalid(index, "content_signals"))?;
+                    let mut prior_signal_index: Option<usize> = None;
+                    for score_value in scores {
+                        let score = exact_object(
+                            score_value,
+                            &CONTENT_SIGNAL_SCORE_KEYS,
+                            index,
+                            "content_signal_score",
+                        )?;
+                        let signal = score
+                            .get("signal")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| invalid(index, "content_signal_score"))?;
+                        let signal_index = CONTENT_SIGNAL_IDS
+                            .iter()
+                            .position(|candidate| *candidate == signal)
+                            .ok_or_else(|| invalid(index, "content_signal_score"))?;
+                        if prior_signal_index.is_some_and(|prior| prior >= signal_index)
+                            || score.get("tagged").and_then(Value::as_bool).is_none()
+                            || safe_integer(score, "score_basis_points", index)? > 10_000
+                        {
+                            return Err(invalid(index, "content_signal_score"));
+                        }
+                        prior_signal_index = Some(signal_index);
+                    }
+                }
+                _ => return Err(invalid(index, "content_signals")),
+            }
+            match payload_object.get("event_candidate") {
+                Some(Value::Null) => {}
+                Some(event_value) => {
+                    let event =
+                        exact_object(event_value, &EVENT_CANDIDATE_KEYS, index, "event_candidate")?;
+                    safe_integer(event, "version", index)?;
+                    safe_integer(event, "detected_at_ms", index)?;
+                    if safe_integer(event, "confidence_basis_points", index)? > 10_000
+                        || event
+                            .get("method")
+                            .and_then(Value::as_str)
+                            .is_none_or(|method| !matches!(method, "rules" | "ai" | "manual"))
+                    {
+                        return Err(invalid(index, "event_candidate"));
+                    }
+                    for field in ["starts_at_ms", "ends_at_ms"] {
+                        match event.get(field) {
+                            Some(Value::Null) => {}
+                            Some(_) => {
+                                safe_integer(event, field, index)?;
+                            }
+                            None => return Err(invalid(index, "event_candidate")),
+                        }
+                    }
+                    for (field, maximum) in [
+                        ("title", 4_096usize),
+                        ("timezone", 512),
+                        ("location_name", 4_096),
+                        ("location_url", 8_192),
+                        ("evidence", 65_536),
+                    ] {
+                        match event.get(field) {
+                            Some(Value::Null) => {}
+                            Some(Value::String(value)) if value.len() <= maximum => {}
+                            _ => return Err(invalid(index, "event_candidate")),
+                        }
+                    }
+                    let has_evidence = matches!(event.get("evidence"), Some(Value::String(_)));
+                    let has_digest = match event.get("evidence_blob_digest") {
+                        Some(Value::Null) => false,
+                        Some(Value::String(value))
+                            if value.len() == 64
+                                && value.bytes().all(|byte| {
+                                    byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+                                }) =>
+                        {
+                            true
+                        }
+                        _ => return Err(invalid(index, "event_candidate")),
+                    };
+                    if has_evidence && has_digest {
+                        return Err(invalid(index, "event_candidate"));
+                    }
+                }
+                _ => return Err(invalid(index, "event_candidate")),
+            }
+            let canonical = encode_canonical_value(payload, MAX_FEED_ITEM_ANALYSIS_BYTES)
+                .map_err(|_| invalid(index, "feed_item_analysis_replace"))?;
+            (
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "feed_item_annotations_replace" => {
+            let payload_object =
+                exact_object(payload, &ANNOTATIONS_REPLACE_PAYLOAD_KEYS, index, "payload")?;
+            safe_integer(payload_object, "assigned_at_ms", index)?;
+            let tags = payload_object
+                .get("tags")
+                .and_then(Value::as_array)
+                .filter(|tags| tags.len() <= MAX_FEED_ITEM_TAGS)
+                .ok_or_else(|| invalid(index, "tags"))?;
+            let mut previous: Option<&str> = None;
+            for tag in tags {
+                let tag = tag.as_str().ok_or_else(|| invalid(index, "tags"))?;
+                if tag.is_empty()
+                    || tag.len() > MAX_FEED_ITEM_TAG_BYTES
+                    || previous.is_some_and(|prior| prior >= tag)
+                {
+                    return Err(invalid(index, "tags"));
+                }
+                previous = Some(tag);
+            }
+            let highlights = payload_object
+                .get("highlights")
+                .and_then(Value::as_array)
+                .filter(|highlights| highlights.len() <= MAX_FEED_ITEM_HIGHLIGHTS)
+                .ok_or_else(|| invalid(index, "highlights"))?;
+            for highlight in highlights {
+                let record = highlight
+                    .as_object()
+                    .ok_or_else(|| invalid(index, "highlights"))?;
+                exact_object(highlight, &HIGHLIGHT_KEYS, index, "highlights")?;
+                safe_integer(record, "createdAt", index)?;
+                match record.get("note") {
+                    Some(Value::Null) => {}
+                    Some(Value::String(value)) if value.len() <= 8_192 => {}
+                    _ => return Err(invalid(index, "highlights")),
+                }
+                let has_text = match record.get("text") {
+                    Some(Value::String(value)) if !value.is_empty() && value.len() <= 65_536 => {
+                        true
+                    }
+                    Some(Value::Null) => false,
+                    _ => return Err(invalid(index, "highlights")),
+                };
+                let has_digest = match record.get("textBlobDigest") {
+                    Some(Value::String(value))
+                        if value.len() == 64
+                            && value.bytes().all(|byte| {
+                                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+                            }) =>
+                    {
+                        true
+                    }
+                    Some(Value::Null) => false,
+                    _ => return Err(invalid(index, "highlights")),
+                };
+                if has_text == has_digest {
+                    return Err(invalid(index, "highlights"));
+                }
+            }
+            let canonical = encode_canonical_value(payload, MAX_FEED_ITEM_ANNOTATIONS_BYTES)
+                .map_err(|_| invalid(index, "feed_item_annotations_replace"))?;
+            (
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
                 None,
                 None,
                 None,
@@ -1580,7 +1826,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
         created_at_ms,
         item_json,
         rss_feed_json,
-        preferences_patch_json,
+        structured_payload_json,
         person_json,
         account_json,
         read_at_ms,
@@ -1747,7 +1993,7 @@ where
             created_at_ms: member.created_at_ms,
             item_json: member.item_json.clone(),
             rss_feed_json: member.rss_feed_json.clone(),
-            preferences_patch_json: member.preferences_patch_json.clone(),
+            structured_payload_json: member.structured_payload_json.clone(),
             person_json: member.person_json.clone(),
             account_json: member.account_json.clone(),
             read_at_ms: member.read_at_ms,

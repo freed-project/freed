@@ -12,8 +12,26 @@ import {
   SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT,
   generateSampleLibraryData,
   hasSampleDataFingerprint,
-  personForAuthor,
 } from "@freed/shared";
+
+function linkedSampleAuthorKeys(
+  persons: readonly { id: string }[],
+  accounts: readonly {
+    externalId: string;
+    personId?: string;
+    provider: string;
+  }[],
+): Set<string> {
+  const personIds = new Set(persons.map((person) => person.id));
+  return new Set(
+    accounts
+      .filter(
+        (account) =>
+          account.personId !== undefined && personIds.has(account.personId),
+      )
+      .map((account) => `${account.provider}:${account.externalId}`),
+  );
+}
 
 describe("sample data batches", () => {
   it("appends unique friend, feed, and item ids across batches", () => {
@@ -45,11 +63,13 @@ describe("sample data batches", () => {
 
   it("keeps Person and Account links aligned with generated social posts", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-c", seed: 3 });
-    const persons = Object.fromEntries(batch.persons.map((person) => [person.id, person]));
-    const accounts = Object.fromEntries(batch.accounts.map((account) => [account.id, account]));
+    const linkedAuthorKeys = linkedSampleAuthorKeys(
+      batch.persons,
+      batch.accounts,
+    );
 
     const linkedItems = batch.items.filter((item) =>
-      personForAuthor(persons, accounts, item.platform, item.author.id)
+      linkedAuthorKeys.has(`${item.platform}:${item.author.id}`),
     );
 
     expect(linkedItems.length).toBeGreaterThan(0);
@@ -82,12 +102,14 @@ describe("sample data batches", () => {
 
   it("includes LinkedIn posts that are linked to sample friends", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-linkedin", seed: 9 });
-    const persons = Object.fromEntries(batch.persons.map((person) => [person.id, person]));
-    const accounts = Object.fromEntries(batch.accounts.map((account) => [account.id, account]));
+    const linkedAuthorKeys = linkedSampleAuthorKeys(
+      batch.persons,
+      batch.accounts,
+    );
 
     const linkedInItems = batch.items.filter((item) => item.platform === "linkedin");
     const linkedFriendItems = linkedInItems.filter((item) =>
-      personForAuthor(persons, accounts, item.platform, item.author.id)
+      linkedAuthorKeys.has(`${item.platform}:${item.author.id}`),
     );
 
     expect(linkedInItems.length).toBeGreaterThan(10);

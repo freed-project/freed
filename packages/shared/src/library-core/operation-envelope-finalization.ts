@@ -12,6 +12,8 @@ import {
 import {
   isLibraryCoreAssembledTransactionV1,
   type FeedItemCaptureUpsertSigningBodyV1,
+  type FeedItemAnalysisReplaceSigningBodyV1,
+  type FeedItemAnnotationsReplaceSigningBodyV1,
   type FeedItemReadAssignmentSigningBodyV1,
   type FeedItemRemoveSigningBodyV1,
   type FeedItemUserStateAssignmentSigningBodyV1,
@@ -41,6 +43,14 @@ export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignment
 }
 
 export interface FeedItemCaptureUpsertEnvelopeV1 extends FeedItemCaptureUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface FeedItemAnalysisReplaceEnvelopeV1 extends FeedItemAnalysisReplaceSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface FeedItemAnnotationsReplaceEnvelopeV1 extends FeedItemAnnotationsReplaceSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
@@ -94,6 +104,8 @@ export interface AccountPersonAssignmentEnvelopeV1 extends AccountPersonAssignme
 
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemCaptureUpsertEnvelopeV1
+  | FeedItemAnalysisReplaceEnvelopeV1
+  | FeedItemAnnotationsReplaceEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
   | FeedItemUserStateAssignmentEnvelopeV1
   | FeedItemRemoveEnvelopeV1

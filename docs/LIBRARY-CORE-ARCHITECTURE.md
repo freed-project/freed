@@ -472,26 +472,29 @@ Each mutation declares:
 - Replication disposition
 - Provider-side-effect classification
 
-The initial registry inventory is deliberately broad. It includes at least the
-following distinct semantic mutations, with separate versions where payload or
-merge meaning differs:
+The canonical registry contains exactly the mutation programs the product can
+execute:
 
-| family                        | mutation inventory                                                                                                                                                                                                                                                                                           |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| FeedItem identity and content | `feed_item_capture`, `feed_item_replace_content`, `feed_item_set_published_time`, `feed_item_set_author`, `feed_item_set_feed`, `feed_item_set_source`, `feed_item_set_story_kind`, `feed_item_add_media`, `feed_item_remove_media`, `feed_item_set_preserved_text`, `feed_item_remove`, `feed_item_restore` |
-| Reader state                  | `item_assign_read`, `item_assign_saved`, `item_assign_archived`, `item_assign_liked`, `item_set_read_position`, `item_set_playback_position`, `item_add_highlight`, `item_update_highlight`, `item_remove_highlight`, `item_add_note`, `item_update_note`, `item_remove_note`                                |
-| Organization                  | `item_add_tag`, `item_remove_tag`, `tag_create`, `tag_rename`, `tag_move`, `tag_remove`, `collection_create`, `collection_rename`, `collection_add_item`, `collection_remove_item`, `collection_remove`                                                                                                      |
-| Feeds and sources             | `feed_create`, `feed_update_identity`, `feed_rename`, `feed_set_enabled`, `feed_set_unread_tracking`, `feed_set_refresh_policy`, `feed_remove`, `feed_remove_with_items`, `source_set_capture_policy`, `source_set_ranking_policy`                                                                           |
-| People and accounts           | `person_create`, `person_update_profile`, `person_set_relationship`, `person_record_reach_out`, `person_remove`, `account_create`, `account_update_profile`, `account_link_person`, `account_unlink_person`, `account_remove`, `identity_merge`, `identity_split`                                            |
-| Preferences and ranking       | `preference_assign`, `ranking_weight_assign`, `ranking_rule_create`, `ranking_rule_update`, `ranking_rule_remove`, `accessibility_preference_assign`, `content_policy_assign`, `synced_hydration_intent_assign`                                                                                              |
-| Imports and maintenance       | `saved_link_capture`, `markdown_import_batch`, `sample_seed_batch`, `sample_clear_batch`, `bulk_mark_read`, `bulk_archive`, `bulk_unarchive`, `bulk_remove`, `duplicate_consolidate`, `repair_relationship`, `repair_content_reference`                                                                      |
-| Content plane                 | `content_descriptor_register`, `content_descriptor_replace`, `content_reference_attach`, `content_reference_detach`, `content_availability_confirm`, `content_tombstone`                                                                                                                                     |
-| Authority and actors          | `actor_enroll`, `actor_retire`, `actor_capability_replace`, `writer_epoch_transfer`, `intent_accept`, `intent_reject`, `quarantine_accept`, `quarantine_reject`, `repair_certificate_apply`, `compaction_commit`                                                                                             |
+| family | mutation programs |
+| ------ | ----------------- |
+| FeedItem capture and state | `feed_item_capture_upsert`, `feed_item_read_assignment`, `feed_item_saved_assignment`, `feed_item_archive_assignment`, `feed_item_like_assignment`, `feed_item_like_sync_receipt`, `feed_item_seen_sync_receipt`, `feed_item_remove` |
+| FeedItem annotations and analysis | `feed_item_annotations_replace`, `feed_item_analysis_replace` |
+| People, Accounts, and Friends | `person_upsert`, `person_reach_out_append`, `person_remove_and_accounts`, `person_remove_detach_accounts`, `account_upsert`, `account_person_assignment`, `account_remove`, `friend_replace` |
+| RSS and preferences | `rss_feed_upsert`, `rss_feed_title_assignment`, `rss_feed_remove_keep_items`, `rss_feed_remove_with_items`, `preferences_leaf_assignment` |
 
-This inventory is not a license to combine operations behind generic payloads.
-Contract generation must census every durable call site and fail until each
-one maps to a closed registered mutation or is deleted. Device-local interface
-state does not enter this registry.
+Every name maps one-to-one to a generated SQL program and at least one product
+caller. Contract generation rejects a name without a program. Tests inventory
+the final callers. Device-local layout and content policy use five separate
+typed local SQLite programs. Bulk scope staging, contact generations, content
+publication, actor administration, writer transition, checkpoint import, and
+recovery use separate closed protocols and cannot masquerade as canonical
+mutation members.
+
+Provider capture owns FeedItem source fields, media, and topics. It does not
+own user tags, highlights, content signals, or event candidates. Annotation and
+analysis replacements use independent deterministic field clocks, so a new
+capture cannot erase user or enrichment records and a stale follower result
+cannot replace a newer child set.
 
 The authority boundary forbids:
 
@@ -1330,6 +1333,14 @@ The final change deletes:
 - Historical imports, rebuilds, repair paths, flags, and exports with no final
   caller
 - Emergency rollback flags that revive the retired architecture
+- Full-corpus identity graph models, layout workers, renderers, and provisional
+  corpus repair passes superseded by the bounded SQLite Friends Galaxy source
+- Renderer Saved re-ranking and FeedItem tag-collection fallbacks superseded by
+  registered SQLite ordering and facet queries
+- Shared Friend, map, and graph-activity helpers that scan complete Person,
+  Account, or FeedItem dictionaries
+- Direct Friends Galaxy whole-source worker messages and caller-side source
+  queues superseded by source-fenced SQLite page staging
 - Tests that protect only deleted compatibility behavior
 
 Immutable migration receipts, source evidence, and backup provenance remain.

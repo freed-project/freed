@@ -16,9 +16,111 @@ import {
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
+  canonicalizeFeedItemAnalysisV1,
+  canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemTagsV1,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
+  it("canonicalizes annotations into one closed bounded assignment", () => {
+    const payload = {
+      assigned_at_ms: 1_783_000_000_000,
+      highlights: canonicalizeFeedItemHighlightsV1([
+        { createdAt: 2, note: "Remember", text: "Second passage" },
+        { createdAt: 1, text: "First passage" },
+      ]),
+      tags: canonicalizeFeedItemTagsV1(["zeta", "alpha", "zeta"]),
+    };
+
+    expect(payload.tags).toStrictEqual(["alpha", "zeta"]);
+    expect(FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate(payload))
+      .toMatchObject({ ok: true });
+    expect(
+      FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({
+        ...payload,
+        tags: ["zeta", "alpha"],
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(() =>
+      canonicalizeFeedItemHighlightsV1([
+        { createdAt: 1, text: "x".repeat(65_537) },
+      ]),
+    ).toThrow(/invalid or too large/);
+  });
+
+  it("canonicalizes analysis without losing tagged scores", () => {
+    const analysis = canonicalizeFeedItemAnalysisV1(
+      {
+        version: 1,
+        method: "rules",
+        inferredAt: 1_783_000_000_000,
+        scores: { event: 0.875, essay: 0.25 },
+        tags: ["event"],
+      },
+      {
+        version: 1,
+        method: "rules",
+        detectedAt: 1_783_000_000_001,
+        confidence: 0.8125,
+        title: "Meetup",
+        evidence: "Saturday at noon",
+      },
+    );
+    const payload = {
+      assigned_at_ms: 1_783_000_000_002,
+      ...analysis,
+    };
+
+    expect(analysis.content_signals?.scores).toStrictEqual([
+      { score_basis_points: 8_750, signal: "event", tagged: true },
+      { score_basis_points: 2_500, signal: "essay", tagged: false },
+    ]);
+    expect(FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate(payload))
+      .toMatchObject({ ok: true });
+    expect(() =>
+      canonicalizeFeedItemAnalysisV1(
+        {
+          version: 1,
+          method: "rules",
+          inferredAt: 1,
+          scores: {},
+          tags: ["event"],
+        },
+        undefined,
+      ),
+    ).toThrow(/tag must be unique and have a score/);
+    expect(() =>
+      canonicalizeFeedItemAnalysisV1(undefined, {
+        version: 1,
+        method: "rules",
+        detectedAt: 1,
+        confidence: Number.NaN,
+      }),
+    ).toThrow(/metadata is invalid/);
+    expect(
+      FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1,
+        content_signals: null,
+        event_candidate: {
+          confidence_basis_points: 5_000,
+          detected_at_ms: 1,
+          ends_at_ms: null,
+          evidence: null,
+          evidence_blob_digest: "ab".repeat(32),
+          location_name: null,
+          location_url: null,
+          method: "manual",
+          starts_at_ms: null,
+          timezone: null,
+          title: null,
+          version: 1,
+        },
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("bounds one canonical FeedItem capture below the logical wire-record ceiling", () => {
     expect(
       FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({

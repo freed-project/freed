@@ -101,7 +101,7 @@ pub(crate) fn validate_transaction(
         }
         let payload_slot_count = usize::from(member.item_json.is_some())
             + usize::from(member.rss_feed_json.is_some())
-            + usize::from(member.preferences_patch_json.is_some())
+            + usize::from(member.structured_payload_json.is_some())
             + usize::from(member.person_json.is_some())
             + usize::from(member.account_json.is_some())
             + usize::from(member.read_at_ms.is_some())
@@ -127,7 +127,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_none()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -136,11 +136,29 @@ pub(crate) fn validate_transaction(
                     return Err(LibraryCoreError::InvalidVerifiedInput { field: "item_json" });
                 }
             }
+            "feed_item_analysis_replace" | "feed_item_annotations_replace" => {
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.structured_payload_json.is_none()
+                    || member.person_json.is_some()
+                    || member.account_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.synced_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(LibraryCoreError::InvalidVerifiedInput {
+                        field: "structured_payload_json",
+                    });
+                }
+            }
             "feed_item_read_assignment" => {
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member
                         .read_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
@@ -159,7 +177,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_none()
                     || member
@@ -176,7 +194,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.account_json.is_some()
                     || member.read_at_ms.is_some()
@@ -196,7 +214,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -213,7 +231,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "RssFeed"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_none()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -228,7 +246,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "RssFeed"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -245,7 +263,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "RssFeed"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_none()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.account_json.is_some()
                     || member.read_at_ms.is_some()
@@ -263,14 +281,14 @@ pub(crate) fn validate_transaction(
                     || member.entity_id != "preferences"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_none()
+                    || member.structured_payload_json.is_none()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
                     || member.removed_at_ms.is_some()
                 {
                     return Err(LibraryCoreError::InvalidVerifiedInput {
-                        field: "preferences_patch_json",
+                        field: "structured_payload_json",
                     });
                 }
             }
@@ -278,7 +296,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_none()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
@@ -294,7 +312,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_none()
                     || member.account_json.is_some()
                     || member.read_at_ms.is_some()
@@ -311,7 +329,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
@@ -329,7 +347,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Account"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.account_json.is_none()
                     || member.read_at_ms.is_some()
@@ -346,7 +364,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Account"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.account_json.is_none()
                     || member.read_at_ms.is_some()
@@ -363,7 +381,7 @@ pub(crate) fn validate_transaction(
                 if member.entity_type != "Account"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
-                    || member.preferences_patch_json.is_some()
+                    || member.structured_payload_json.is_some()
                     || member.person_json.is_some()
                     || member.account_json.is_some()
                     || member.read_at_ms.is_some()

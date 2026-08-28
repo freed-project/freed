@@ -3,27 +3,22 @@ import { FriendsGalaxyProductPresentationIndex } from "../../src/lib/friends-gal
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   type FriendsGalaxyProductWorkerPresentationRequest,
-  type FriendsGalaxyProductWorkerSourceRequest,
 } from "../../src/lib/friends-galaxy-product-worker-protocol.js";
 import { FriendsGalaxyProductWorkerService } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
-import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
+import { buildFriendsGalaxyProductServiceSource } from "./product-sqlite-source-fixture.js";
 
-function sourceRequest(): FriendsGalaxyProductWorkerSourceRequest {
-  return {
-    kind: "source",
-    protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
-    requestId: 1,
-    sourceRevision: 1,
-    source: createFriendsGalaxyProductSource(120, 500),
+function buildSource(service: FriendsGalaxyProductWorkerService) {
+  return buildFriendsGalaxyProductServiceSource(service, {
+    accountCount: 500,
+    backgroundSeed: "product-presentation",
+    personCount: 120,
     viewport: {
       width: 390,
       height: 844,
       selectedAccountId: "product-account-2",
     },
-    backgroundStarCount: 1_000,
-    backgroundSeed: "product-presentation",
-  };
+  });
 }
 
 function presentationRequest(): FriendsGalaxyProductWorkerPresentationRequest {
@@ -45,8 +40,7 @@ function presentationRequest(): FriendsGalaxyProductWorkerPresentationRequest {
 describe("Friends Galaxy product presentation", () => {
   it("retains a selected linked channel and its parent identity", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = service.handle(sourceRequest());
-    if (source.kind !== "source-ready") throw new Error("Expected a source response.");
+    const source = buildSource(service);
     expect(source.rendererScene.atlas.nodes.slice(0, 2).map((node) => node.id)).toEqual([
       "account:product-account-2",
       "person:product-person-2",
@@ -64,8 +58,7 @@ describe("Friends Galaxy product presentation", () => {
 
   it("resolves real bounded metadata through one stable resolver", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = service.handle(sourceRequest());
-    if (source.kind !== "source-ready") throw new Error("Expected a source response.");
+    const source = buildSource(service);
     const presentation = service.handle(presentationRequest());
     if (presentation.kind !== "presentation-ready") {
       throw new Error("Expected a presentation response.");
@@ -91,8 +84,7 @@ describe("Friends Galaxy product presentation", () => {
 
   it("fails if product rendering requests identity copy outside admitted metadata", () => {
     const service = new FriendsGalaxyProductWorkerService();
-    const source = service.handle(sourceRequest());
-    if (source.kind !== "source-ready") throw new Error("Expected a source response.");
+    const source = buildSource(service);
     const admittedNodeIds = new Set(source.rendererScene.atlas.nodes.map((node) => node.id));
     const missingNodeIndex = source.rendererScene.scene.nodeIds.findIndex(
       (nodeId) => !admittedNodeIds.has(nodeId),

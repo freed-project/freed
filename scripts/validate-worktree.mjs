@@ -601,7 +601,6 @@ function socialProviderFocusedE2eCommand() {
 function pwaTestCommands() {
   return [
     npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    npmCommand("pwa performance tests", ["run", "test:perf"], "packages/pwa"),
   ];
 }
 

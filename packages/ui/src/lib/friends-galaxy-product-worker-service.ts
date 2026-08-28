@@ -25,7 +25,6 @@ import {
   type FriendsGalaxyProductWorkerPresentationResponse,
   type FriendsGalaxyProductWorkerRequest,
   type FriendsGalaxyProductWorkerResponse,
-  type FriendsGalaxyProductWorkerSourceRequest,
   type FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
 import { friendsGalaxyWorkerSceneReceipt } from "./friends-galaxy-worker-scene.js";
@@ -53,7 +52,19 @@ interface StagedFriendsGalaxySqliteSource {
   backgroundStarCount?: number;
   proceduralBackgroundStarCount?: number;
   sourceRevision: number;
-  viewport: FriendsGalaxyProductWorkerSourceRequest["viewport"];
+  viewport: Extract<
+    FriendsGalaxyProductWorkerRequest,
+    { kind: "normalized-source-begin" }
+  >["viewport"];
+}
+
+interface FriendsGalaxyProductCompileRequest {
+  backgroundSeed?: string;
+  backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
+  requestId: number;
+  sourceRevision: number;
+  viewport: StagedFriendsGalaxySqliteSource["viewport"];
 }
 
 interface FriendsGalaxyProductSourceIndexes {
@@ -168,7 +179,6 @@ export class FriendsGalaxyProductWorkerService {
       }
       requestInteger("request id", request.requestId);
       requestInteger("source revision", request.sourceRevision);
-      if (request.kind === "source") return this.buildSource(request, startedAt);
       if (request.kind === "normalized-source-begin") {
         return this.beginNormalizedSource(request, startedAt);
       }
@@ -189,8 +199,7 @@ export class FriendsGalaxyProductWorkerService {
         sourceRevision: Number.isSafeInteger(request?.sourceRevision)
           ? request.sourceRevision
           : 0,
-        requestKind: request?.kind === "source" ||
-          request?.kind === "normalized-source-begin" ||
+        requestKind: request?.kind === "normalized-source-begin" ||
           request?.kind === "normalized-source-page" ||
           request?.kind === "normalized-source-commit" ||
           request?.kind === "presentation" ||
@@ -204,24 +213,9 @@ export class FriendsGalaxyProductWorkerService {
     }
   }
 
-  private buildSource(
-    request: FriendsGalaxyProductWorkerSourceRequest,
-    startedAt: number,
-  ): FriendsGalaxyProductWorkerSourceResponse {
-    return this.compileSource(request.source, request, startedAt);
-  }
-
   private compileSource(
     source: BuildIdentityGraphAtlasModelInput,
-    request: Pick<
-      FriendsGalaxyProductWorkerSourceRequest,
-      | "backgroundSeed"
-      | "backgroundStarCount"
-      | "proceduralBackgroundStarCount"
-      | "requestId"
-      | "sourceRevision"
-      | "viewport"
-    >,
+    request: FriendsGalaxyProductCompileRequest,
     startedAt: number,
   ): FriendsGalaxyProductWorkerSourceResponse {
     const width = viewportDimension("viewport width", request.viewport.width);
