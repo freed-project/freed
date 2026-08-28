@@ -21,25 +21,30 @@ class MemoryRangeStorage implements PwaContentRangeStorageV1 {
   maximumWrite = 0;
 
   async create(_publicationId: string, storageKey: string) {
-    let bytes = new Uint8Array();
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
     let closed = false;
     return {
       storageKey,
       writer: {
         close: async () => {
           closed = true;
+          const bytes = new Uint8Array(byteLength);
+          let offset = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
           this.objects.set(storageKey, bytes);
         },
         flush: async () => {
           if (closed) throw new Error("test writer is closed");
         },
         write: async (next: Uint8Array, at: number) => {
-          if (closed || at !== bytes.byteLength) return 0;
+          if (closed || at !== byteLength) return 0;
           this.maximumWrite = Math.max(this.maximumWrite, next.byteLength);
-          const combined = new Uint8Array(bytes.byteLength + next.byteLength);
-          combined.set(bytes);
-          combined.set(next, bytes.byteLength);
-          bytes = combined;
+          chunks.push(next.slice());
+          byteLength += next.byteLength;
           return next.byteLength;
         },
       },
@@ -196,6 +201,36 @@ describe("PWA Library Core OPFS content vault", () => {
         verifiedBytes: bytes.byteLength,
       },
     });
+  });
+
+  it("keeps policy, reconciliation, completion, and eviction device local", async () => {
+    const bytes = Uint8Array.from([3, 22, 41, 60]);
+    const contentDigest = installRange(bytes);
+    const storage = new MemoryRangeStorage();
+    const vault = new PwaLibraryCoreOpfsContentVault(engine, storage);
+    const publicationId = "a".repeat(64);
+    await vault.begin({
+      contentDigest,
+      publicationId,
+      rangeIndex: 0,
+      schemaVersion: 1,
+    });
+    await vault.append({
+      bytes,
+      expectedOffset: 0,
+      publicationId,
+      schemaVersion: 1,
+    });
+    await vault.finalize({
+      publicationId,
+      schemaVersion: 1,
+      verifiedAt: 100,
+    });
+    const storageKey = createLibraryCoreContentRangeStorageKeyV1(
+      contentDigest,
+      0,
+      contentDigest,
+    );
     engine.mutateContentPolicy({
       contentDigest,
       policy: "pinned_offline",
