@@ -86,12 +86,6 @@ pub use library_core_desktop_binding::{
 };
 pub use library_core_error::LibraryCoreError;
 pub use library_core_hash::lower_hex;
-pub use library_core_journal::{
-    FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
-    FollowerRuntimeStatus, IntentResultOutboxEntry, JournalRuntimeStatus, LibraryCoreJournal,
-    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerAnchor,
-    VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
-};
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
 };

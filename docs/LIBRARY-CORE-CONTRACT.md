@@ -402,6 +402,13 @@ wraps those failures as protocol failures, never as journal failures. The
 former `JournalError`, `JournalResult`, and `NormalizedSqliteError::Journal`
 vocabulary is absent from the native core.
 
+The native crate exports no historical journal, follower outbox, follower
+overlay, follower anchor, or journal-status API. Those types are private to the
+fenced one-time migration source while it remains installed. Freed Desktop,
+the headless Primary, and every normalized caller can reach only the current
+SQLite authority, typed protocol, bounded query, mutation, checkpoint,
+snapshot, and selective-content surfaces.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

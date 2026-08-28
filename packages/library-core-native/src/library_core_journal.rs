@@ -24,7 +24,7 @@ mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
 mod enrollment_verifier;
 #[path = "library_core_journal_follower.rs"]
-mod follower;
+pub(crate) mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
 pub(crate) mod operation_verifier;
 
@@ -35,11 +35,7 @@ pub(crate) use crate::normalized_operation::{
     ActorState, VerifiedActorEnrollment, VerifiedOperation, VerifiedOperationTransaction,
 };
 
-pub use follower::{
-    FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
-    FollowerRuntimeStatus, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
-};
+use follower::{FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment};
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 12;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.

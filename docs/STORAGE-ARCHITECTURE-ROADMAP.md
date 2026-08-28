@@ -37,9 +37,10 @@ protocol types outside the historical journal as well. The historical source
 runtime consumes these sealed types but no longer defines them. Shared native
 authority and migration failures now use one `LibraryCoreError` model outside
 the journal, and normalized SQLite reports them as protocol failures. The
-verifier implementation is the next extraction seam before the historical
-journal implementation can be deleted without widening its private runtime
-API.
+native crate no longer exports the historical journal, follower outboxes,
+overlays, anchors, results, or status to any host. The verifier implementation
+is the next extraction seam before the remaining private historical journal
+implementation can be deleted.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent

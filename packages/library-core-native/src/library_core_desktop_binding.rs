@@ -12,6 +12,7 @@ use crate::library_core_bound_root::LibraryCoreBoundRoot;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_content_vault::LibraryCoreContentVault;
+use crate::library_core_journal::LibraryCoreJournal;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
@@ -22,10 +23,10 @@ use crate::{
     ContentEvictionRequestV1, ContentHydrationPolicyV1, ContentPolicyMutationReceiptV1,
     ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
     ContentRangeReadResponseV1, EvictionCandidatePageRequestV1, EvictionCandidatePageV1,
-    HydrationCandidatePageRequestV1, HydrationCandidatePageV1, LibraryCoreJournal,
-    LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
-    NormalizedDesktopAuthorityPreparedV1, NormalizedLocalSnapshotReasonV1,
-    NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
+    HydrationCandidatePageRequestV1, HydrationCandidatePageV1, LibraryCoreProcessLease,
+    LibraryCoreStore, LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1,
+    NormalizedLocalSnapshotReasonV1, NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity,
+    VerifiedContentRangeReceiptV1,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";

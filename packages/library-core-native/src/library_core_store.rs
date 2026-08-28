@@ -1,6 +1,6 @@
-use crate::{
-    upsert_item, FollowerOverlayReplayReceipt, LibraryCoreJournal, VerifiedFollowerAnchor,
-};
+use crate::library_core_journal::follower::{FollowerOverlayReplayReceipt, VerifiedFollowerAnchor};
+use crate::library_core_journal::LibraryCoreJournal;
+use crate::upsert_item;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

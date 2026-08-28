@@ -956,25 +956,27 @@ mod tests {
             .unwrap()
             .authority;
         journal
-            .install_follower_anchor(&crate::library_core_journal::VerifiedFollowerAnchor {
-                authority: accepted,
-                manifest_object_key: "manifest".to_string(),
-                manifest_transport_object_id: "drive-object".to_string(),
-                manifest_content_digest: "1".repeat(64),
-                generation: 1,
-                remote_ingest_sequence: 0,
-                remote_materialized_digest: "2".repeat(64),
-                writer_id: "3".repeat(64),
-                control_revision: "revision-1".to_string(),
-                checkpoint_actor: None,
-                installed_at_ms: 1_900,
-            })
+            .install_follower_anchor(
+                &crate::library_core_journal::follower::VerifiedFollowerAnchor {
+                    authority: accepted,
+                    manifest_object_key: "manifest".to_string(),
+                    manifest_transport_object_id: "drive-object".to_string(),
+                    manifest_content_digest: "1".repeat(64),
+                    generation: 1,
+                    remote_ingest_sequence: 0,
+                    remote_materialized_digest: "2".repeat(64),
+                    writer_id: "3".repeat(64),
+                    control_revision: "revision-1".to_string(),
+                    checkpoint_actor: None,
+                    installed_at_ms: 1_900,
+                },
+            )
             .unwrap();
         let store = MemoryActorKeyStore::default();
         let request = prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
         journal
             .store_follower_actor_request(
-                &crate::library_core_journal::StoredFollowerActorRequest {
+                &crate::library_core_journal::follower::StoredFollowerActorRequest {
                     library_id: authority.library_id.clone(),
                     epoch_id: authority.epoch_id.clone(),
                     actor_id: request.actor_id.clone(),
