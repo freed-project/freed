@@ -1751,6 +1751,24 @@ describe("PWA Library Core SQLite engine", () => {
       source: { projectionRevision: 1, transitionSequence: 1 },
     });
     expect(
+      engine.query({
+        entityIds: ["item-1"],
+        queryId: "optimistic_fields_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "optimistic_fields_v1",
+      rows: [
+        {
+          entityId: "item-1",
+          fieldPath: "read_at",
+          value: 1_400,
+          valueType: "integer",
+        },
+      ],
+      source: { projectionRevision: 7, transitionSequence: 1 },
+    });
+    expect(
       database.exec({
         sql: `SELECT next_counter, previous_operation_id
               FROM library_intent_actors WHERE actor_id = ?1;`,

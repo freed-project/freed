@@ -38,6 +38,7 @@ import {
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   clearPwaLibraryCoreSampleData,
+  drainPwaLibraryCoreLocalChanges,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
@@ -96,7 +97,10 @@ interface AppState extends BaseAppState {
   setSyncConnected: (connected: boolean) => void;
 }
 
-function applyDefinedUpdate<T extends object>(current: T, updates: Partial<T>): T {
+function applyDefinedUpdate<T extends object>(
+  current: T,
+  updates: Partial<T>,
+): T {
   const next: Record<string, unknown> = {
     ...(current as unknown as Record<string, unknown>),
   };
@@ -111,14 +115,20 @@ function isMergeableObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function mergePreferenceUpdate<T extends object>(current: T, update: Partial<T>): T {
+function mergePreferenceUpdate<T extends object>(
+  current: T,
+  update: Partial<T>,
+): T {
   const next = { ...current };
   for (const key of Object.keys(update) as Array<keyof T>) {
     const currentValue = current[key];
     const updateValue = update[key];
     next[key] = (
       isMergeableObject(currentValue) && isMergeableObject(updateValue)
-        ? mergePreferenceUpdate<Record<string, unknown>>(currentValue, updateValue)
+        ? mergePreferenceUpdate<Record<string, unknown>>(
+            currentValue,
+            updateValue,
+          )
         : updateValue
     ) as T[typeof key];
   }
@@ -165,7 +175,6 @@ function invalidateLibraryWindows(
   setState({
     libraryItemVersion: (current.libraryItemVersion ?? 0) + 1,
     savedFeedVersion: (current.savedFeedVersion ?? 0) + 1,
-    searchCorpusVersion: current.searchCorpusVersion + 1,
   });
 }
 
@@ -191,17 +200,18 @@ async function runSqliteMutation(
         throw testFailure;
       }
       await task();
+      try {
+        await drainPwaLibraryCoreLocalChanges(getState().searchCorpusVersion);
+      } catch {
+        // The SQLite mutation is already durable. The ordinary bounded window
+        // invalidation below is the fail-safe refresh path.
+      }
       invalidateLibraryWindows(getState, setState);
     } catch (error) {
       if (options.recordFailure !== false) {
         const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source, error, fatal: false });
-        recordBugReportEvent(
-          source,
-          "error",
-          "SQLite mutation failed",
-          detail,
-        );
+        recordBugReportEvent(source, "error", "SQLite mutation failed", detail);
       }
       throw error;
     }
@@ -291,9 +301,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         runtimeLifecycle.assertCurrent();
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribePwaLibraryCoreState(
-          (next) => {
+          (next, localChange) => {
             if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
-            set(next);
+            set((current) =>
+              localChange
+                ? {
+                    ...next,
+                    libraryItemVersion:
+                      (current.libraryItemVersion ??
+                        current.searchCorpusVersion) + 1,
+                    savedFeedVersion:
+                      (current.savedFeedVersion ??
+                        current.searchCorpusVersion) + 1,
+                  }
+                : next,
+            );
           },
         );
         set({
@@ -544,10 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:removeFeed",
       () =>
-        enqueuePwaLibraryCoreRssFeedRemove(
-          url,
-          options?.includeItems ?? false,
-        ),
+        enqueuePwaLibraryCoreRssFeedRemove(url, options?.includeItems ?? false),
       { allowLibraryCoreIntent: true },
     );
   },
@@ -585,7 +604,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
     if (Object.keys(syncedUpdate).length === 0) return;
     const currentPreferences = get().preferences;
-    const nextPreferences = mergePreferenceUpdate(currentPreferences, syncedUpdate);
+    const nextPreferences = mergePreferenceUpdate(
+      currentPreferences,
+      syncedUpdate,
+    );
     set({ preferences: nextPreferences });
     try {
       await runSqliteMutation(

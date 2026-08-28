@@ -1123,12 +1123,16 @@ pub fn enqueue_normalized_follower_intent_v1(
             };
             transaction.execute(
                 "INSERT INTO library_optimistic_fields
-                 (transaction_id, entity_type, entity_id, field_path,
-                  value_type, boolean_value, integer_value, real_value,
-                  text_value, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8);",
+                 (transaction_id, member_index, actor_id, actor_counter,
+                  entity_type, entity_id, field_path, value_type,
+                  boolean_value, integer_value, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);",
                 params![
                     verified.transaction_id,
+                    i64::try_from(index)
+                        .map_err(|_| invalid("normalized follower member index is invalid"))?,
+                    verified.actor_id,
+                    member.actor_sequence,
                     member.entity_type,
                     member.entity_id,
                     effect.field_path,
@@ -2436,6 +2440,38 @@ mod tests {
                 .map(|row| (row.revision, row.entity_id.as_deref()))
                 .collect::<Vec<_>>(),
             [(1, Some("rss:item:1")), (2, Some("rss:item:2"))]
+        );
+        let crate::NormalizedQueryResponseV1::OptimisticFields(optimistic) =
+            crate::query_normalized_v1(
+                &mut connection,
+                crate::NormalizedQueryRequestV1::OptimisticFields(
+                    crate::NormalizedOptimisticFieldsRequestV1 {
+                        entity_ids: vec!["rss:item:1".to_owned(), "rss:item:2".to_owned()],
+                        schema_version: 1,
+                    },
+                ),
+            )
+            .expect("query visible optimistic fields")
+        else {
+            panic!("optimistic-fields response");
+        };
+        assert_eq!(optimistic.query_id, "optimistic_fields_v1");
+        assert_eq!(optimistic.source.projection_revision, 1);
+        assert_eq!(optimistic.source.transition_sequence, 2);
+        assert_eq!(
+            optimistic
+                .rows
+                .iter()
+                .map(|row| (
+                    row.entity_id.as_str(),
+                    row.field_path.as_str(),
+                    row.value.as_i64()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("rss:item:1", "read_at", Some(900)),
+                ("rss:item:2", "read_at", Some(901)),
+            ]
         );
         let transport_context = normalized_follower_transport_context_v2(&connection)
             .expect("follower transport context");

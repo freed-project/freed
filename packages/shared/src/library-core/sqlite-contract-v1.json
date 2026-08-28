@@ -1398,6 +1398,11 @@
       "countSql": "SELECT sequence FROM library_local_change_state WHERE singleton_id = 1;",
       "sql": "SELECT sequence AS revision, 0 AS ordinal, topic, entity_id AS entityId, CASE WHEN sequence = (SELECT min(sequence) FROM library_local_invalidations) AND ?2 < sequence - 1 THEN 1 ELSE 0 END AS resetRequired FROM library_local_invalidations WHERE sequence > ?2 AND sequence <= ?1 ORDER BY sequence ASC LIMIT ?4;"
     },
+    "optimistic_fields_v1": {
+      "maximumScanRows": 449,
+      "countSql": "SELECT sequence FROM library_local_change_state WHERE singleton_id = 1;",
+      "sql": "WITH requested(entity_id) AS (SELECT value FROM json_each(?1) WHERE type = 'text'), ranked AS (SELECT optimistic.entity_id AS entityId, optimistic.field_path AS fieldPath, optimistic.value_type AS valueType, optimistic.boolean_value AS booleanValue, optimistic.integer_value AS integerValue, row_number() OVER (PARTITION BY optimistic.entity_id, optimistic.field_path ORDER BY optimistic.actor_counter DESC) AS fieldRank FROM requested JOIN library_follower_actor_request AS actor ON actor.singleton_id = 1 JOIN library_optimistic_fields AS optimistic INDEXED BY library_optimistic_fields_visible_lookup ON optimistic.actor_id = actor.actor_id AND optimistic.entity_type = 'FeedItem' AND optimistic.entity_id = requested.entity_id) SELECT entityId, fieldPath, valueType, booleanValue, integerValue FROM ranked WHERE fieldRank = 1 ORDER BY entityId COLLATE BINARY, fieldPath COLLATE BINARY LIMIT 449;"
+    },
     "map_markers_v1": {
       "maximumScanRows": 1001,
       "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = 0 AND item.hidden = 0 AND ((item.location_lat IS NOT NULL AND item.location_lng IS NOT NULL) OR item.location_name IS NOT NULL);",
@@ -1487,6 +1492,63 @@
     }
   },
   "queryRowModels": {
+    "optimistic_fields_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "booleanValue",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 2048,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "entityId",
+        "nullable": false
+      },
+      {
+        "enumValues": ["archived", "archived_at", "liked", "liked_at", "read_at", "saved", "saved_at"],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 11,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 5,
+        "name": "fieldPath",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "integerValue",
+        "nullable": true
+      },
+      {
+        "enumValues": ["boolean", "integer", "null"],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 7,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 4,
+        "name": "valueType",
+        "nullable": false
+      }
+    ],
     "account_link_candidates_v1": [
       {
         "enumValues": [],
@@ -2110,6 +2172,7 @@
     "library_facet_summary_v1",
     "local_change_feed_v1",
     "map_markers_v1",
+    "optimistic_fields_v1",
     "person_detail_v1",
     "person_graph_page_v1",
     "person_picker_page_v1",

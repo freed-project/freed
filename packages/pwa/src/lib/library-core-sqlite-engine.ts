@@ -106,6 +106,8 @@ import {
   parseLibraryCoreChangeFeedResponseV1,
   parseLibraryCoreLocalChangeFeedRequestV1,
   parseLibraryCoreLocalChangeFeedResponseV1,
+  parseLibraryCoreOptimisticFieldsRequestV1,
+  parseLibraryCoreOptimisticFieldsResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
   parseLibraryCoreSavedAnalyticsRequestV2,
@@ -245,6 +247,8 @@ import {
   type LibraryCoreChangeFeedResponseV1,
   type LibraryCoreLocalChangeFeedRequestV1,
   type LibraryCoreLocalChangeFeedResponseV1,
+  type LibraryCoreOptimisticFieldsRequestV1,
+  type LibraryCoreOptimisticFieldsResponseV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFeedBrowsePageRequestV3,
@@ -4612,8 +4616,10 @@ export class PwaLibraryCoreSqliteEngine {
         "follower intent transaction exceeds its registered mutation program",
       );
     }
-    const effects = verified.members.flatMap((member) =>
-      libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope),
+    const effects = verified.members.flatMap((member, memberIndex) =>
+      libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope).map((effect) =>
+        Object.freeze({ effect, member, memberIndex }),
+      ),
     );
     const canonicalTransaction = encodeLibraryCoreCanonicalValue(
       verified.transaction_body as unknown as LibraryCoreCanonicalValue,
@@ -4802,15 +4808,18 @@ export class PwaLibraryCoreSqliteEngine {
           ],
         });
       });
-      for (const effect of effects) {
+      for (const { effect, member, memberIndex } of effects) {
         this.#database.exec({
           sql: `INSERT INTO library_optimistic_fields
-                  (transaction_id, entity_type, entity_id, field_path,
-                   value_type, boolean_value, integer_value, real_value,
-                   text_value, created_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8);`,
+                  (transaction_id, member_index, actor_id, actor_counter,
+                   entity_type, entity_id, field_path, value_type,
+                   boolean_value, integer_value, created_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);`,
           bind: [
             verified.transaction_body.transaction_id,
+            memberIndex,
+            member.envelope.actor_id,
+            member.envelope.actor_sequence,
             effect.entityType,
             effect.entityId,
             effect.fieldPath,
@@ -7651,6 +7660,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryLocalChangeFeed(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "optimistic_fields_v1":
+        return this.#queryOptimisticFields(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "contact_match_v1":
         return this.#queryContactMatch(
           input,
@@ -7824,6 +7837,81 @@ export class PwaLibraryCoreSqliteEngine {
       input,
       true,
     ) as LibraryCoreLocalChangeFeedResponseV1;
+  }
+
+  #queryOptimisticFields(
+    input: LibraryCoreOptimisticFieldsRequestV1,
+  ): LibraryCoreOptimisticFieldsResponseV1 {
+    const request = parseLibraryCoreOptimisticFieldsRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.optimistic_fields_v1;
+    const localSequence = safeInteger(
+      this.#database.exec({
+        sql: program.countSql,
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "optimistic-fields local sequence",
+    );
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [JSON.stringify(request.value.entityIds)],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length >= program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite optimistic fields exceeded their row bound",
+      );
+    }
+    const rows = rawRows.map((row) => {
+      const generated = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "optimistic_fields_v1",
+        row,
+      );
+      if (!generated) {
+        throw new Error("PWA Library SQLite optimistic field row is invalid");
+      }
+      const value =
+        generated.valueType === "boolean"
+          ? generated.booleanValue
+          : generated.valueType === "integer"
+            ? generated.integerValue
+            : null;
+      if (
+        (generated.valueType === "boolean" &&
+          (value === null || generated.integerValue !== null)) ||
+        (generated.valueType === "integer" &&
+          (value === null || generated.booleanValue !== null)) ||
+        (generated.valueType === "null" &&
+          (generated.booleanValue !== null || generated.integerValue !== null))
+      ) {
+        throw new Error("PWA Library SQLite optimistic field value is invalid");
+      }
+      return Object.freeze({
+        entityId: generated.entityId,
+        fieldPath: generated.fieldPath,
+        value,
+        valueType: generated.valueType,
+      });
+    });
+    const response = {
+      queryId: "optimistic_fields_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: localSequence,
+      },
+    };
+    const parsed = parseLibraryCoreOptimisticFieldsResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
   }
 
   #queryChangeFeedProgram(

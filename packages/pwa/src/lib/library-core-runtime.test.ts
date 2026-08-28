@@ -115,6 +115,7 @@ import {
   enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   clearPwaLibraryCoreSampleData,
+  drainPwaLibraryCoreLocalChanges,
   initializePwaLibraryCoreState,
   openPwaLibraryCoreFriendsFeedReader,
   pinPwaLibraryCoreItemContent,
@@ -131,6 +132,40 @@ const SELECTED_SOURCE = Object.freeze({
   generationId: "45".repeat(32),
   selectionSequence: 7,
 });
+
+const QUERY_SOURCE = Object.freeze({
+  generationId: "45".repeat(32),
+  projectionRevision: 7,
+  transitionSequence: 0,
+});
+
+function emptyOptimisticFieldsResponse(
+  projectionRevision: number = QUERY_SOURCE.projectionRevision,
+  transitionSequence: number = QUERY_SOURCE.transitionSequence,
+) {
+  return {
+    queryId: "optimistic_fields_v1",
+    rows: [],
+    schemaVersion: 1,
+    source: {
+      ...QUERY_SOURCE,
+      projectionRevision,
+      transitionSequence,
+    },
+  };
+}
+
+function mockNormalizedQuery(
+  handler: (request: {
+    readonly queryId: string;
+  }) => unknown | Promise<unknown>,
+): void {
+  mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+    request.queryId === "optimistic_fields_v1"
+      ? emptyOptimisticFieldsResponse()
+      : handler(request),
+  );
+}
 
 function facetSummary(totalCount = 0) {
   return {
@@ -241,6 +276,7 @@ function normalizedItemDetail(
       mediaBlobDigests: [],
       preservedBody: { blobDigest: null, storage: "none" },
     },
+    source: QUERY_SOURCE,
   };
 }
 
@@ -446,7 +482,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
       receipt: { ...SELECTED_RECEIPT, libraryId, writerActorId: writerId },
     });
-    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+    mockNormalizedQuery(async (request) => {
       if (request.queryId === "feed_browse_page_v3") {
         return {
           nextCursor: null,
@@ -464,6 +500,15 @@ describe("PWA Library Core bounded scanner", () => {
           rows: [],
           schemaVersion: 1,
           source: SELECTED_SOURCE,
+        };
+      }
+      if (request.queryId === "local_change_feed_v1") {
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: 1,
+          source: QUERY_SOURCE,
         };
       }
       return {
@@ -502,14 +547,21 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
       receipt: SELECTED_RECEIPT,
     });
-    mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+    mockNormalizedQuery(async (request) =>
       request.queryId === "library_facet_summary_v1"
         ? {
+            source: QUERY_SOURCE,
             summary: facetSummary(),
           }
         : request.queryId === "preferences_snapshot_v1"
-          ? { rows: [] }
-          : { nextCursor: null, previousCursor: null, rows: [], totalCount: 0 },
+          ? { rows: [], source: QUERY_SOURCE }
+          : {
+              nextCursor: null,
+              previousCursor: null,
+              rows: [],
+              source: QUERY_SOURCE,
+              totalCount: 0,
+            },
     );
 
     const state = await initializePwaLibraryCoreState();
@@ -521,7 +573,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
       receipt: SELECTED_RECEIPT,
     });
-    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+    mockNormalizedQuery(async (request) => {
       if (request.queryId === "preferences_snapshot_v1") {
         return {
           rows: [
@@ -544,15 +596,17 @@ describe("PWA Library Core bounded scanner", () => {
               valueType: "text",
             },
           ],
+          source: QUERY_SOURCE,
         };
       }
       if (request.queryId === "library_facet_summary_v1") {
-        return { summary: facetSummary() };
+        return { source: QUERY_SOURCE, summary: facetSummary() };
       }
       return {
         nextCursor: null,
         previousCursor: null,
         rows: [],
+        source: QUERY_SOURCE,
         totalCount: 0,
       };
     });
@@ -568,6 +622,68 @@ describe("PWA Library Core bounded scanner", () => {
       queryId: "preferences_snapshot_v1",
       schemaVersion: 1,
     });
+  });
+
+  it("drains device-local optimistic invalidations without advancing canonical state", async () => {
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: SELECTED_RECEIPT,
+    });
+    let optimisticReadCount = 0;
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+      if (request.queryId === "preferences_snapshot_v1") {
+        return { rows: [], source: QUERY_SOURCE };
+      }
+      if (request.queryId === "library_facet_summary_v1") {
+        return { source: QUERY_SOURCE, summary: facetSummary(1) };
+      }
+      if (request.queryId === "optimistic_fields_v1") {
+        optimisticReadCount += 1;
+        return emptyOptimisticFieldsResponse(
+          SELECTED_RECEIPT.sourceRevision,
+          optimisticReadCount === 1 ? 3 : 4,
+        );
+      }
+      if (request.queryId === "local_change_feed_v1") {
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: [
+            {
+              entityId: "item-local",
+              ordinal: 0,
+              resetRequired: false,
+              revision: 4,
+              topic: "feed_item",
+            },
+          ],
+          schemaVersion: 1,
+          source: {
+            ...QUERY_SOURCE,
+            transitionSequence: 4,
+          },
+        };
+      }
+      throw new Error(`Unexpected query ${request.queryId}`);
+    });
+
+    const state = await initializePwaLibraryCoreState();
+    const localChange = await drainPwaLibraryCoreLocalChanges(
+      state.searchCorpusVersion,
+    );
+
+    expect(localChange).toEqual({
+      changedItemIds: ["item-local"],
+      localSequence: 4,
+      requiresFullScan: false,
+    });
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        afterRevision: 3,
+        cursor: null,
+        queryId: "local_change_feed_v1",
+      }),
+    );
+    expect(state.searchCorpusVersion).toBe(SELECTED_RECEIPT.sourceRevision);
   });
 
   it("pages OPFS SQLite and stops without issuing another query", async () => {
@@ -798,7 +914,8 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("reads one compact item through the normalized SQLite executor", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockNormalizedQuery(async () => ({
+      ...normalizedItemDetail("item-9"),
       item: {
         card: {
           archived: false,
@@ -834,7 +951,7 @@ describe("PWA Library Core bounded scanner", () => {
         mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
       },
-    });
+    }));
 
     await expect(readPwaLibraryCoreItemDetail("item-9")).resolves.toEqual(
       expect.objectContaining({ globalId: "item-9" }),
@@ -849,7 +966,7 @@ describe("PWA Library Core bounded scanner", () => {
   it("pins every distinct SQLite content descriptor for offline use", async () => {
     const bodyDigest = "a".repeat(64);
     const mediaDigest = "b".repeat(64);
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockNormalizedQuery(async () => ({
       ...normalizedItemDetail("item-pinned"),
       item: {
         ...normalizedItemDetail("item-pinned").item,
@@ -857,7 +974,7 @@ describe("PWA Library Core bounded scanner", () => {
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },
       },
-    });
+    }));
 
     await pinPwaLibraryCoreItemContent("item-pinned", 1_234);
 
@@ -882,12 +999,13 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("opens Friends through the normalized relational predicate", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockNormalizedQuery(async () => ({
       nextCursor: null,
       previousCursor: null,
       rows: [],
+      source: QUERY_SOURCE,
       totalCount: 0,
-    });
+    }));
 
     const reader = await openPwaLibraryCoreFriendsFeedReader({}, 100);
 
@@ -902,11 +1020,12 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("reads one Person timeline page through normalized SQLite", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockNormalizedQuery(async () => ({
       nextCursor: "cursor-2",
       rows: [],
+      source: QUERY_SOURCE,
       totalCount: 3,
-    });
+    }));
 
     await expect(
       readPwaLibraryCorePersonTimeline({
@@ -929,11 +1048,12 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("reads one unlinked Account timeline page through normalized SQLite", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockNormalizedQuery(async () => ({
       nextCursor: null,
       rows: [],
+      source: QUERY_SOURCE,
       totalCount: 1,
-    });
+    }));
 
     await expect(
       readPwaLibraryCorePersonTimeline({
@@ -959,7 +1079,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:assignment",
     });
-    mocks.queryNormalizedLibrary.mockResolvedValue(
+    mockNormalizedQuery(async () =>
       normalizedItemDetail("item-9", { liked: false }),
     );
 
@@ -1091,12 +1211,13 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:archive",
     });
-    mocks.queryNormalizedLibrary
-      .mockResolvedValueOnce(normalizedItemDetail("eligible", { readAt: 1 }))
-      .mockResolvedValueOnce(
-        normalizedItemDetail("saved", { readAt: 1, saved: true }),
-      )
-      .mockResolvedValueOnce(normalizedItemDetail("unread"));
+    const details = [
+      normalizedItemDetail("eligible", { readAt: 1 }),
+      normalizedItemDetail("saved", { readAt: 1, saved: true }),
+      normalizedItemDetail("unread"),
+    ];
+    let detailIndex = 0;
+    mockNormalizedQuery(async () => details[detailIndex++]);
 
     await enqueuePwaLibraryCoreArchiveItems([
       "eligible",

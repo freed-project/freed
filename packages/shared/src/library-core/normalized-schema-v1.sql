@@ -1833,18 +1833,35 @@ CREATE TABLE IF NOT EXISTS library_result_transport_segments (
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_optimistic_fields (
-  transaction_id TEXT NOT NULL REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL,
+  transaction_id TEXT NOT NULL,
+  member_index INTEGER NOT NULL CHECK (member_index BETWEEN 0 AND 999),
+  actor_id TEXT NOT NULL,
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  entity_type TEXT NOT NULL CHECK (entity_type = 'FeedItem'),
   entity_id TEXT NOT NULL,
-  field_path TEXT NOT NULL,
-  value_type TEXT NOT NULL CHECK (value_type IN ('boolean', 'integer', 'real', 'text', 'null')),
+  field_path TEXT NOT NULL CHECK (field_path IN (
+    'archived', 'archived_at', 'liked', 'liked_at', 'read_at', 'saved', 'saved_at'
+  )),
+  value_type TEXT NOT NULL CHECK (value_type IN ('boolean', 'integer', 'null')),
   boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0, 1)),
   integer_value INTEGER,
-  real_value REAL,
-  text_value TEXT CHECK (text_value IS NULL OR length(CAST(text_value AS BLOB)) <= 65536),
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  PRIMARY KEY (transaction_id, entity_type, entity_id, field_path)
+  PRIMARY KEY (transaction_id, member_index, field_path),
+  FOREIGN KEY (transaction_id, member_index)
+    REFERENCES library_intent_members(transaction_id, member_index) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id, actor_counter)
+    REFERENCES library_intent_members(actor_id, actor_counter) ON DELETE CASCADE,
+  CHECK (
+    (value_type = 'boolean' AND boolean_value IS NOT NULL AND integer_value IS NULL)
+    OR (value_type = 'integer' AND boolean_value IS NULL AND integer_value IS NOT NULL)
+    OR (value_type = 'null' AND boolean_value IS NULL AND integer_value IS NULL)
+  )
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_optimistic_fields_visible_lookup
+  ON library_optimistic_fields(
+    actor_id, entity_type, entity_id, field_path, actor_counter DESC
+  );
 
 CREATE TABLE IF NOT EXISTS library_local_change_state (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),

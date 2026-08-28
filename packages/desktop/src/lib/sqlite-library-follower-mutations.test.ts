@@ -189,6 +189,14 @@ describe("SQLite editable follower mutations", () => {
             source,
           };
         }
+        if (request.queryId === "optimistic_fields_v1") {
+          return {
+            queryId: request.queryId,
+            rows: [],
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
         if (request.queryId === "background_item_page_v1") {
           return {
             nextCursor: null,

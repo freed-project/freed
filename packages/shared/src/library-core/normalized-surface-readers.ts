@@ -30,6 +30,7 @@ import {
 } from "./item-detail-contracts.js";
 import type { LibraryCoreNormalizedReaderRuntime } from "./normalized-feed-readers.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
+import { applyLibraryCoreVisibleOptimisticFieldsV1 } from "./optimistic-field-contracts.js";
 import {
   LIBRARY_CORE_PERSON_TIMELINE_DEFAULT_LIMIT,
   LIBRARY_CORE_PERSON_TIMELINE_MAXIMUM_LIMIT,
@@ -310,21 +311,28 @@ export async function readLibraryCoreNormalizedItemContentV1(
     queryId: LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
     schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
   });
-  return response.item === null
-    ? null
-    : Object.freeze({
-        contentBody: response.item.contentBody,
-        item: libraryCoreFeedCardToItemV1(response.item.card),
-        mediaBlobDigests: response.item.mediaBlobDigests,
-        preservedBody: response.item.preservedBody,
-      });
+  if (response.item === null) return null;
+  const [item] = await applyLibraryCoreVisibleOptimisticFieldsV1(
+    runtime.query,
+    [libraryCoreFeedCardToItemV1(response.item.card)],
+    response.source.projectionRevision,
+  );
+  return Object.freeze({
+    contentBody: response.item.contentBody,
+    item: item!,
+    mediaBlobDigests: response.item.mediaBlobDigests,
+    preservedBody: response.item.preservedBody,
+  });
 }
 
 export async function readLibraryCoreNormalizedItemDetailV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   globalId: string,
 ): Promise<FeedItem | null> {
-  return (await readLibraryCoreNormalizedItemContentV1(runtime, globalId))?.item ?? null;
+  return (
+    (await readLibraryCoreNormalizedItemContentV1(runtime, globalId))?.item ??
+    null
+  );
 }
 
 function sampleDataFingerprint(
@@ -634,8 +642,13 @@ export async function readLibraryCoreNormalizedPersonTimelineV1(
     readerSessionId: operationId(runtime, "person-timeline-reader"),
     schemaVersion: LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
   });
+  const items = await applyLibraryCoreVisibleOptimisticFieldsV1(
+    runtime.query,
+    response.rows.map(libraryCoreFeedCardToItemV1),
+    response.source.projectionRevision,
+  );
   return Object.freeze({
-    items: response.rows.map(libraryCoreFeedCardToItemV1),
+    items,
     nextCursor: response.nextCursor,
     totalCount: response.totalCount,
   });
@@ -662,8 +675,13 @@ export async function readLibraryCoreNormalizedAccountTimelineV1(
     readerSessionId: operationId(runtime, "account-timeline-reader"),
     schemaVersion: LIBRARY_CORE_ACCOUNT_TIMELINE_SCHEMA_VERSION,
   });
+  const items = await applyLibraryCoreVisibleOptimisticFieldsV1(
+    runtime.query,
+    response.rows.map(libraryCoreFeedCardToItemV1),
+    response.source.projectionRevision,
+  );
   return Object.freeze({
-    items: response.rows.map(libraryCoreFeedCardToItemV1),
+    items,
     nextCursor: response.nextCursor,
     totalCount: response.totalCount,
   });
@@ -704,12 +722,18 @@ export async function searchLibraryCoreNormalizedItemsV1(
     if (
       response.rows.length > 0 &&
       (await visit(
-        response.rows.map((row) => ({
-          item: {
-            ...libraryCoreFeedCardToItemV1(row.card),
-            priority: row.priority,
-          },
-          score: row.score,
+        (
+          await applyLibraryCoreVisibleOptimisticFieldsV1(
+            runtime.query,
+            response.rows.map((row) => ({
+              ...libraryCoreFeedCardToItemV1(row.card),
+              priority: row.priority,
+            })),
+            response.source.projectionRevision,
+          )
+        ).map((item, index) => ({
+          item,
+          score: response.rows[index]!.score,
         })),
       )) === "stop"
     ) {

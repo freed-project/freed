@@ -6,6 +6,29 @@ const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
 }));
 
+const QUERY_SOURCE = Object.freeze({
+  generationId: "a".repeat(64),
+  projectionRevision: 7,
+  transitionSequence: 0,
+});
+
+function mockSurfaceQuery(
+  handler: (request: {
+    readonly queryId: string;
+  }) => unknown | Promise<unknown>,
+): void {
+  mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+    request.queryId === "optimistic_fields_v1"
+      ? {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: 1,
+          source: QUERY_SOURCE,
+        }
+      : handler(request),
+  );
+}
+
 vi.mock("./library-core-normalized-query-client", () => ({
   createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
   mutateNormalizedContentPolicy: mocks.mutateNormalizedContentPolicy,
@@ -60,7 +83,7 @@ describe("Freed Desktop normalized surface readers", () => {
   });
 
   it("reads detail, facets, and Saved analytics from typed SQLite queries", async () => {
-    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+    mockSurfaceQuery(async (request) => {
       if (request.queryId === "item_detail_v1") {
         return {
           item: {
@@ -69,6 +92,7 @@ describe("Freed Desktop normalized surface readers", () => {
             mediaBlobDigests: [],
             preservedBody: { blobDigest: null, storage: "none" },
           },
+          source: QUERY_SOURCE,
         };
       }
       if (request.queryId === "library_facet_summary_v1") {
@@ -145,6 +169,7 @@ describe("Freed Desktop normalized surface readers", () => {
       ),
     ).toEqual([
       "item_detail_v1",
+      "optimistic_fields_v1",
       "library_facet_summary_v1",
       "saved_analytics_v2",
     ]);
@@ -153,34 +178,42 @@ describe("Freed Desktop normalized surface readers", () => {
   it("pins distinct selected-item blob descriptors through native SQLite", async () => {
     const bodyDigest = "a".repeat(64);
     const mediaDigest = "b".repeat(64);
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockSurfaceQuery(async () => ({
       item: {
         card: {
           ...feedCard,
           mediaTypes: ["video", "image"],
-          mediaUrls: ["https://example.com/video.mp4", "https://example.com/image.jpg"],
+          mediaUrls: [
+            "https://example.com/video.mp4",
+            "https://example.com/image.jpg",
+          ],
         },
         contentBody: { blobDigest: bodyDigest, storage: "blob" },
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },
       },
-    });
+      source: QUERY_SOURCE,
+    }));
 
     await pinLibraryCoreItemContent("x:item-1", 1_234);
 
     expect(mocks.mutateNormalizedContentPolicy.mock.calls).toEqual([
-      [{
-        contentDigest: bodyDigest,
-        policy: "pinned_offline",
-        schemaVersion: 1,
-        updatedAt: 1_234,
-      }],
-      [{
-        contentDigest: mediaDigest,
-        policy: "pinned_offline",
-        schemaVersion: 1,
-        updatedAt: 1_234,
-      }],
+      [
+        {
+          contentDigest: bodyDigest,
+          policy: "pinned_offline",
+          schemaVersion: 1,
+          updatedAt: 1_234,
+        },
+      ],
+      [
+        {
+          contentDigest: mediaDigest,
+          policy: "pinned_offline",
+          schemaVersion: 1,
+          updatedAt: 1_234,
+        },
+      ],
     ]);
   });
 
@@ -259,11 +292,12 @@ describe("Freed Desktop normalized surface readers", () => {
   });
 
   it("reads one Person timeline through the closed normalized query", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockSurfaceQuery(async () => ({
       nextCursor: "cursor-2",
       rows: [feedCard],
+      source: QUERY_SOURCE,
       totalCount: 2,
-    });
+    }));
 
     await expect(
       readLibraryCorePersonTimeline({
@@ -286,11 +320,12 @@ describe("Freed Desktop normalized surface readers", () => {
   });
 
   it("reads one unlinked Account timeline through the closed normalized query", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockSurfaceQuery(async () => ({
       nextCursor: null,
       rows: [feedCard],
+      source: QUERY_SOURCE,
       totalCount: 1,
-    });
+    }));
 
     await expect(
       readLibraryCorePersonTimeline({

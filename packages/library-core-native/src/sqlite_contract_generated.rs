@@ -39,7 +39,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "82890d495098d7bb977370711db0d966a3134d6ef0bf793a11ac1412b8898857";
+    "5e2c118fdb57e21c7ec1425d1bac8a99388a6c06a907edec91eb2aec7880d1b5";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -743,6 +743,7 @@ pub const QUERY_IDS: &[&str] = &[
     "library_facet_summary_v1",
     "local_change_feed_v1",
     "map_markers_v1",
+    "optimistic_fields_v1",
     "person_detail_v1",
     "person_graph_page_v1",
     "person_picker_page_v1",
@@ -832,6 +833,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "local_change_feed_v1", maximum_scan_rows: 513, sql: "SELECT sequence AS revision, 0 AS ordinal, topic, entity_id AS entityId, CASE WHEN sequence = (SELECT min(sequence) FROM library_local_invalidations) AND ?2 < sequence - 1 THEN 1 ELSE 0 END AS resetRequired FROM library_local_invalidations WHERE sequence > ?2 AND sequence <= ?1 ORDER BY sequence ASC LIMIT ?4;", reverse_sql: None, count_sql: "SELECT sequence FROM library_local_change_state WHERE singleton_id = 1;", variants: &[
 
     ] },
+    SqliteQueryProgram { query_id: "optimistic_fields_v1", maximum_scan_rows: 449, sql: "WITH requested(entity_id) AS (SELECT value FROM json_each(?1) WHERE type = 'text'), ranked AS (SELECT optimistic.entity_id AS entityId, optimistic.field_path AS fieldPath, optimistic.value_type AS valueType, optimistic.boolean_value AS booleanValue, optimistic.integer_value AS integerValue, row_number() OVER (PARTITION BY optimistic.entity_id, optimistic.field_path ORDER BY optimistic.actor_counter DESC) AS fieldRank FROM requested JOIN library_follower_actor_request AS actor ON actor.singleton_id = 1 JOIN library_optimistic_fields AS optimistic INDEXED BY library_optimistic_fields_visible_lookup ON optimistic.actor_id = actor.actor_id AND optimistic.entity_type = 'FeedItem' AND optimistic.entity_id = requested.entity_id) SELECT entityId, fieldPath, valueType, booleanValue, integerValue FROM ranked WHERE fieldRank = 1 ORDER BY entityId COLLATE BINARY, fieldPath COLLATE BINARY LIMIT 449;", reverse_sql: None, count_sql: "SELECT sequence FROM library_local_change_state WHERE singleton_id = 1;", variants: &[
+
+    ] },
     SqliteQueryProgram { query_id: "map_markers_v1", maximum_scan_rows: 1001, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, substr(item.author_id, 1, 1024) AS authorId, substr(item.author_display_name, 1, 512) AS authorDisplayName, substr(item.author_handle, 1, 256) AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, substr(item.content_text, 1, 1500) AS contentText, map_account.id AS linkedAccountId, friend_person.id AS friendPersonId, substr(friend_person.name, 1, 512) AS friendName, substr(friend_person.avatar_url, 1, 2048) AS friendAvatarUrl, friend_person.relationship_status AS friendRelationshipStatus, substr(item.location_name, 1, 512) AS locationName, item.location_lat AS locationLat, item.location_lng AS locationLng, substr(item.location_url, 1, 2048) AS locationUrl, item.time_range_starts_at AS timeRangeStartsAt, item.time_range_ends_at AS timeRangeEndsAt FROM library_feed_items AS item INDEXED BY library_feed_items_browse LEFT JOIN library_accounts AS map_account ON map_account.provider = item.platform AND map_account.external_id = item.author_id LEFT JOIN library_persons AS friend_person ON friend_person.id = map_account.person_id WHERE item.archived = 0 AND item.hidden = 0 AND ((item.location_lat IS NOT NULL AND item.location_lng IS NOT NULL) OR item.location_name IS NOT NULL) ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = 0 AND item.hidden = 0 AND ((item.location_lat IS NOT NULL AND item.location_lng IS NOT NULL) OR item.location_name IS NOT NULL);", variants: &[
 
     ] },
@@ -907,6 +911,66 @@ pub struct SqliteQueryRowModel {
 
 #[rustfmt::skip]
 pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
+    SqliteQueryRowModel {
+        query_id: "optimistic_fields_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "booleanValue",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "entityId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "fieldPath",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(5),
+            maximum_utf8_bytes: Some(11),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["archived", "archived_at", "liked", "liked_at", "read_at", "saved", "saved_at"],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "integerValue",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "valueType",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(4),
+            maximum_utf8_bytes: Some(7),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["boolean", "integer", "null"],
+            integer_values: &[],
+        },
+        ],
+    },
     SqliteQueryRowModel {
         query_id: "account_link_candidates_v1",
         fields: &[

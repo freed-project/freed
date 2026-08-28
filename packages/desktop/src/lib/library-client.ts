@@ -29,9 +29,14 @@ import {
   LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
   LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
   LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+  LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   type LibraryCoreChangeFeedResponseV1,
+  type LibraryCoreLocalChangeFeedResponseV1,
+  type LibraryCoreOptimisticFieldsResponseV1,
   type LibraryCoreRuntimeStateV1,
 } from "@freed/shared/library-core";
 import {
@@ -64,6 +69,7 @@ const subscribers = new Set<Subscriber>();
 let lastState: LibraryCoreRuntimeStateV1 | null = null;
 let nextRequestId = 1;
 let mutationQueue: Promise<void> = Promise.resolve();
+let lastLocalChangeSequence = 0;
 
 function registerSqliteDebugAccessors(): void {
   registerLibraryAccessors(
@@ -152,6 +158,83 @@ async function publishCanonicalChangeFeed(
   return published;
 }
 
+async function readLocalChangeSequence(
+  expectedCanonicalRevision: number,
+): Promise<number> {
+  const response: LibraryCoreOptimisticFieldsResponseV1 =
+    await queryNormalizedLibrary({
+      entityIds: [],
+      queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+    });
+  if (response.source.projectionRevision !== expectedCanonicalRevision) {
+    throw new Error("SQLite Library changed while local sequence was loading");
+  }
+  return response.source.transitionSequence;
+}
+
+async function publishLocalChangeFeed(
+  state: LibraryCoreRuntimeStateV1,
+  afterSequence: number,
+  mutation?: LibraryMutationRequest["type"],
+): Promise<{ readonly published: boolean; readonly sequence: number }> {
+  const readerSessionId = createDesktopLibraryCoreOperationId(
+    "desktop-local-change-reader",
+  );
+  const cancellationId = createDesktopLibraryCoreOperationId(
+    "desktop-local-change-cancel",
+  );
+  let cursor: string | null = null;
+  let published = false;
+  let upperSequence = afterSequence;
+  do {
+    const response: LibraryCoreLocalChangeFeedResponseV1 =
+      await queryNormalizedLibrary({
+        afterRevision: afterSequence,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    if (response.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while local invalidations were loading",
+      );
+    }
+    upperSequence = response.source.transitionSequence;
+    const changedItemIds = [
+      ...new Set(
+        response.rows.flatMap((row) =>
+          row.topic === "feed_item" && row.entityId !== null
+            ? [row.entityId]
+            : [],
+        ),
+      ),
+    ];
+    const changedItems = await readSqliteItems(changedItemIds);
+    for (const event of libraryMutationEventsFromChangeFeed(
+      response.rows,
+      changedItems,
+      mutation,
+    )) {
+      publish(state, event);
+      published = true;
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
+  const currentSequence = await readLocalChangeSequence(
+    state.searchCorpusVersion,
+  );
+  if (currentSequence !== upperSequence) {
+    throw new Error(
+      "SQLite Library changed while local invalidation identities were resolving",
+    );
+  }
+  return Object.freeze({ published, sequence: currentSequence });
+}
+
 async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
   if (lastState) return lastState;
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
@@ -169,6 +252,9 @@ async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
     );
   }
   const state = await loadSqliteLibraryState();
+  lastLocalChangeSequence = await readLocalChangeSequence(
+    state.searchCorpusVersion,
+  );
   lastState = state;
   registerSqliteDebugAccessors();
   updateSqliteDebugSnapshot(state);
@@ -180,23 +266,34 @@ async function dispatch(message: LibraryMutationRequest): Promise<unknown> {
   const operation = mutationQueue.then(async () => {
     await ensureInitialized();
     const previousRevision = lastState?.searchCorpusVersion ?? 0;
+    const previousLocalSequence = lastLocalChangeSequence;
     const dispatched = await dispatchSqliteMutation(message);
     result = dispatched.result;
+    let published = false;
     if (dispatched.state.searchCorpusVersion > previousRevision) {
       try {
-        if (
-          await publishCanonicalChangeFeed(
-            dispatched.state,
-            previousRevision,
-            message.type,
-          )
-        ) {
-          return;
-        }
+        published = await publishCanonicalChangeFeed(
+          dispatched.state,
+          previousRevision,
+          message.type,
+        );
       } catch {
         // The mutation is already durable. Publish one bounded reset instead
         // of reporting a false mutation failure after an invalidation race.
       }
+    }
+    try {
+      const local = await publishLocalChangeFeed(
+        dispatched.state,
+        previousLocalSequence,
+        message.type,
+      );
+      lastLocalChangeSequence = local.sequence;
+      published = local.published || published;
+    } catch {
+      lastLocalChangeSequence = await readLocalChangeSequence(
+        dispatched.state.searchCorpusVersion,
+      );
       publish(dispatched.state, {
         source: "state_update",
         mutation: message.type,
@@ -205,6 +302,7 @@ async function dispatch(message: LibraryMutationRequest): Promise<unknown> {
       });
       return;
     }
+    if (published) return;
     // A pending follower intent does not advance canonical authority. Its
     // local optimistic hint remains device-local until an accepted result
     // enters the canonical change feed.
@@ -243,20 +341,30 @@ export function getDesktopLibraryRuntimeState(): LibraryCoreRuntimeStateV1 | nul
 
 export async function reloadDesktopLibraryRuntimeState(): Promise<LibraryCoreRuntimeStateV1> {
   const previousRevision = lastState?.searchCorpusVersion ?? null;
+  const previousLocalSequence = lastLocalChangeSequence;
   const state = await loadSqliteLibraryState();
+  let published = false;
   if (
     previousRevision !== null &&
     state.searchCorpusVersion > previousRevision
   ) {
     try {
-      if (await publishCanonicalChangeFeed(state, previousRevision)) {
-        return state;
-      }
+      published = await publishCanonicalChangeFeed(state, previousRevision);
     } catch {
       // This call still publishes a row-free reset from the authoritative
       // state, so every bounded reader reopens without a false sync failure.
     }
   }
+  try {
+    const local = await publishLocalChangeFeed(state, previousLocalSequence);
+    lastLocalChangeSequence = local.sequence;
+    published = local.published || published;
+  } catch {
+    lastLocalChangeSequence = await readLocalChangeSequence(
+      state.searchCorpusVersion,
+    );
+  }
+  if (published) return state;
   publish(state, {
     source: "state_update",
     mutation: undefined,
@@ -285,6 +393,7 @@ export async function getItemPreservedText(
 export async function resetLocalLibrary(): Promise<void> {
   await resetNormalizedLibrary();
   lastState = null;
+  lastLocalChangeSequence = 0;
 }
 
 export function quiesceDesktopLibraryForFactoryReset(): Promise<void> {

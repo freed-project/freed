@@ -60,6 +60,12 @@ const backgroundCard = (globalId: string) => ({
   sampleDataFingerprint: null,
 });
 
+const querySource = Object.freeze({
+  generationId: "a".repeat(64),
+  projectionRevision: 1,
+  transitionSequence: 1,
+});
+
 describe("cross-platform normalized feed readers", () => {
   it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
     const query = vi
@@ -300,8 +306,10 @@ describe("cross-platform normalized feed readers", () => {
       .mockResolvedValueOnce({ nextCursor: "person-next", rows: [person] })
       .mockResolvedValueOnce({ nextCursor: null, rows: [] })
       .mockResolvedValueOnce({ nextCursor: "account-next", rows: [account] })
-      .mockResolvedValueOnce({ nextCursor: null, rows: [] }) as unknown as
-      LibraryCoreNormalizedQueryExecutor;
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const persons: string[][] = [];
     const accounts: string[][] = [];
 
@@ -564,10 +572,18 @@ describe("cross-platform normalized feed readers", () => {
       .mockResolvedValueOnce({
         nextCursor: "opaque-search-next",
         rows: [{ card: feedCard("match"), priority: 91, score: 12 }],
+        source: querySource,
+      })
+      .mockResolvedValueOnce({
+        queryId: "optimistic_fields_v1",
+        rows: [],
+        schemaVersion: 1,
+        source: querySource,
       })
       .mockResolvedValueOnce({
         nextCursor: null,
         rows: [],
+        source: querySource,
       }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const visit = vi.fn(() => "continue" as const);
 
@@ -581,7 +597,7 @@ describe("cross-platform normalized feed readers", () => {
       visit,
     );
 
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(3);
     expect(query).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -591,7 +607,7 @@ describe("cross-platform normalized feed readers", () => {
       }),
     );
     expect(query).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.objectContaining({ cursor: "opaque-search-next" }),
     );
     expect(visit).toHaveBeenCalledWith([
@@ -603,12 +619,22 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("uses opaque bidirectional pages without platform storage logic", async () => {
-    const query = vi.fn(async () => ({
-      rows: [feedCard("first")],
-      nextCursor: "opaque-next",
-      previousCursor: null,
-      totalCount: 2,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [feedCard("first")],
+            nextCursor: "opaque-next",
+            previousCursor: null,
+            source: querySource,
+            totalCount: 2,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
     const reader = await openLibraryCoreNormalizedFeedReaderV1(
       { query, randomId: () => "test" },
       { platform: "rss" },
@@ -631,12 +657,22 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("binds Friends to the closed SQLite identity predicate", async () => {
-    const query = vi.fn(async () => ({
-      rows: [feedCard("friend")],
-      nextCursor: null,
-      previousCursor: null,
-      totalCount: 1,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [feedCard("friend")],
+            nextCursor: null,
+            previousCursor: null,
+            source: querySource,
+            totalCount: 1,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
 
     await openLibraryCoreNormalizedFeedReaderV1(
       { query, randomId: () => "test" },
@@ -655,12 +691,22 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("preserves Saved metadata through the shared reader", async () => {
-    const query = vi.fn(async () => ({
-      rows: [{ ...feedCard("saved"), saved: true, savedAt: 150 }],
-      nextCursor: null,
-      previousCursor: null,
-      totalCount: 1,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [{ ...feedCard("saved"), saved: true, savedAt: 150 }],
+            nextCursor: null,
+            previousCursor: null,
+            source: querySource,
+            totalCount: 1,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
     const reader = await openLibraryCoreNormalizedSavedFeedReaderV1(
       { query, randomId: () => "test" },
       {},

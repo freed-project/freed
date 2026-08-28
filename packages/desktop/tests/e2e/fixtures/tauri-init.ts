@@ -284,6 +284,14 @@ export function tauriInitScript(): string {
         projectionRevision: Math.max(0, state.revision || 0),
         transitionSequence: Math.max(0, state.sourceGeneration || 0),
       };
+      if (request.queryId === 'optimistic_fields_v1') {
+        return {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'contact_match_v1') {
         return {
           accountIds: [],

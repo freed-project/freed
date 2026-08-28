@@ -31,6 +31,9 @@ const PROVIDER_MEDIA_MAXIMUM_LIMIT: usize = 64;
 const PROVIDER_MEDIA_MAXIMUM_RESPONSE_BYTES: usize = 4 * 1_048_576;
 const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
 const CHANGE_FEED_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const OPTIMISTIC_FIELDS_MAXIMUM_ENTITY_IDS: usize = 64;
+const OPTIMISTIC_FIELDS_MAXIMUM_ROWS: usize = OPTIMISTIC_FIELDS_MAXIMUM_ENTITY_IDS * 7;
+const OPTIMISTIC_FIELDS_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
@@ -239,6 +242,13 @@ pub struct NormalizedChangeFeedRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedOptimisticFieldsRequestV1 {
+    pub entity_ids: Vec<String>,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFacetSummaryRequestV1 {
     pub schema_version: u32,
 }
@@ -439,6 +449,7 @@ pub enum NormalizedQueryRequestV1 {
     AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     LocalChangeFeed(NormalizedChangeFeedRequestV1),
+    OptimisticFields(NormalizedOptimisticFieldsRequestV1),
     ContactMatch(NormalizedContactMatchRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
@@ -773,6 +784,24 @@ pub struct NormalizedChangeFeedResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedChangeFeedRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedOptimisticFieldRowV1 {
+    pub entity_id: String,
+    pub field_path: String,
+    pub value: serde_json::Value,
+    pub value_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedOptimisticFieldsResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedOptimisticFieldRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -1355,6 +1384,7 @@ pub enum NormalizedQueryResponseV1 {
     AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     LocalChangeFeed(NormalizedChangeFeedResponseV1),
+    OptimisticFields(NormalizedOptimisticFieldsResponseV1),
     ContactMatch(NormalizedContactMatchResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
@@ -3728,6 +3758,119 @@ fn query_local_change_feed(
     request: NormalizedChangeFeedRequestV1,
 ) -> Result<NormalizedChangeFeedResponseV1, NormalizedSqliteError> {
     query_change_feed_program(connection, request, "local_change_feed_v1", false)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GeneratedOptimisticFieldRowV1 {
+    boolean_value: Option<bool>,
+    entity_id: String,
+    field_path: String,
+    integer_value: Option<i64>,
+    value_type: String,
+}
+
+fn query_optimistic_fields(
+    connection: &mut Connection,
+    request: NormalizedOptimisticFieldsRequestV1,
+) -> Result<NormalizedOptimisticFieldsResponseV1, NormalizedSqliteError> {
+    let unique_ids = request
+        .entity_ids
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if request.schema_version != 1
+        || request.entity_ids.len() > OPTIMISTIC_FIELDS_MAXIMUM_ENTITY_IDS
+        || unique_ids.len() != request.entity_ids.len()
+        || request
+            .entity_ids
+            .iter()
+            .any(|entity_id| entity_id.is_empty() || entity_id.len() > 2_048)
+    {
+        return Err(invalid("normalized optimistic-fields request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "optimistic_fields_v1")
+        .ok_or(invalid("normalized optimistic-fields program is missing"))?;
+    let entity_ids_json = serde_json::to_string(&request.entity_ids)
+        .map_err(|_| invalid("normalized optimistic-fields identities are invalid"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let local_sequence: i64 = transaction.query_row(program.count_sql, [], |row| row.get(0))?;
+    if !valid_safe_integer(local_sequence) {
+        return Err(invalid("normalized optimistic-fields sequence is invalid"));
+    }
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(params![entity_ids_json], |row| {
+        decode_generated_query_row::<GeneratedOptimisticFieldRowV1>(row, "optimistic_fields_v1")
+    })?;
+    let generated_rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if generated_rows.len() > OPTIMISTIC_FIELDS_MAXIMUM_ROWS
+        || generated_rows.len() >= program.maximum_scan_rows
+    {
+        return Err(invalid(
+            "normalized optimistic fields exceeded their row bound",
+        ));
+    }
+    let rows = generated_rows
+        .into_iter()
+        .map(|row| {
+            if !matches!(
+                row.field_path.as_str(),
+                "archived"
+                    | "archived_at"
+                    | "liked"
+                    | "liked_at"
+                    | "read_at"
+                    | "saved"
+                    | "saved_at"
+            ) {
+                return Err(invalid("normalized optimistic field path is invalid"));
+            }
+            let value = match row.value_type.as_str() {
+                "boolean" if row.boolean_value.is_some() && row.integer_value.is_none() => {
+                    serde_json::Value::Bool(row.boolean_value.expect("checked boolean value"))
+                }
+                "integer" if row.boolean_value.is_none() && row.integer_value.is_some() => {
+                    serde_json::Value::Number(
+                        row.integer_value.expect("checked integer value").into(),
+                    )
+                }
+                "null" if row.boolean_value.is_none() && row.integer_value.is_none() => {
+                    serde_json::Value::Null
+                }
+                _ => return Err(invalid("normalized optimistic field value is invalid")),
+            };
+            Ok(NormalizedOptimisticFieldRowV1 {
+                entity_id: row.entity_id,
+                field_path: row.field_path,
+                value,
+                value_type: row.value_type,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let response = NormalizedOptimisticFieldsResponseV1 {
+        query_id: "optimistic_fields_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: local_sequence,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized optimistic-fields response is invalid"))?
+        .len()
+        > OPTIMISTIC_FIELDS_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized optimistic-fields response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
 }
 
 fn query_change_feed_program(
@@ -6185,6 +6328,11 @@ pub fn query_normalized_v1(
                 query_local_change_feed(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::OptimisticFields(request) => {
+            Ok(NormalizedQueryResponseV1::OptimisticFields(
+                query_optimistic_fields(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ContactMatch(request) => Ok(
             NormalizedQueryResponseV1::ContactMatch(query_contact_match(connection, request)?),
         ),
@@ -6346,6 +6494,9 @@ pub fn query_normalized_json_v1(
         "local_change_feed_v1" => {
             decode_request!(NormalizedChangeFeedRequestV1, LocalChangeFeed)
         }
+        "optimistic_fields_v1" => {
+            decode_request!(NormalizedOptimisticFieldsRequestV1, OptimisticFields)
+        }
         "contact_match_v1" => decode_request!(NormalizedContactMatchRequestV1, ContactMatch),
         "library_facet_summary_v1" => {
             decode_request!(NormalizedFacetSummaryRequestV1, FacetSummary)
@@ -6439,6 +6590,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
         NormalizedQueryResponseV1::LocalChangeFeed(response) => encode_response!(response),
+        NormalizedQueryResponseV1::OptimisticFields(response) => encode_response!(response),
         NormalizedQueryResponseV1::ContactMatch(response) => encode_response!(response),
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),

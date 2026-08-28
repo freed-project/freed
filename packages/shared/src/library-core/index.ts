@@ -1,6 +1,7 @@
 export * from "./canonical-codec.js";
 export * from "./canonical-base64.js";
 export * from "./change-feed-contracts.js";
+export * from "./optimistic-field-contracts.js";
 export * from "./content-fetch-page-contracts.js";
 export * from "./sqlite-contract.generated.js";
 export * from "./normalized-checkpoint-contracts.js";

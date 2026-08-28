@@ -15,18 +15,36 @@ vi.mock("./library-core-desktop-role", () => ({
 
 vi.mock("./library-core-cloud-sync", () => ({
   readPersistedSqliteLibraryCloudIdentity: vi.fn(async () => {
-    throw new Error("fresh normalized startup must not read legacy authority hints");
+    throw new Error(
+      "fresh normalized startup must not read legacy authority hints",
+    );
   }),
+}));
+
+vi.mock("./library-core-normalized-query-client", () => ({
+  createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:id`,
+  queryNormalizedLibrary: vi.fn(async () => ({
+    queryId: "optimistic_fields_v1",
+    rows: [],
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64),
+      projectionRevision: 0,
+      transitionSequence: 0,
+    },
+  })),
 }));
 
 vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    ensureFreshNormalizedDesktopLibrary: vi.fn(async (historicalDataAbsent: boolean) => {
-      mocks.calls.push(`select:${String(historicalDataAbsent)}`);
-      return historicalDataAbsent;
-    }),
+    ensureFreshNormalizedDesktopLibrary: vi.fn(
+      async (historicalDataAbsent: boolean) => {
+        mocks.calls.push(`select:${String(historicalDataAbsent)}`);
+        return historicalDataAbsent;
+      },
+    ),
     loadSqliteLibraryState: vi.fn(async () => {
       mocks.calls.push("load");
       return {

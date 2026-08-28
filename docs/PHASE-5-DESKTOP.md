@@ -327,7 +327,7 @@
   - [x] Persist and page a separate device-local invalidation stream for
         pending follower optimistic fields. It must never advance canonical
         source revision or enter checkpoints and replication.
-  - [ ] Resolve each invalidated visible identity through the bounded
+  - [x] Resolve each invalidated visible identity through the bounded
         optimistic-field reader and merge only those sparse fields into the
         renderer's current visible window.
 - [x] Keep large content in a content-addressed vault with per-device hydration
@@ -734,6 +734,7 @@ export async function captureDomFeed(
 | 5.174 | Add the generated native version 2 operation export commands to the shared Library Core sidecar. Pin one export descriptor to the active Library, authority epoch, writer, and source frontier, emit authority acceptance before exact signed transaction members, validate semantic record digests and canonical bytes during every read, and keep both canonical pages and serialized native responses within their executable bounds | High       | ✓ Complete |
 | 5.175 | Persist native follower optimistic fields from the generated mutation registry. Read, saved, archived, and liked assignments now store the same sparse field projection as PWA OPFS SQLite in the intent transaction, report its exact count on first commit and replay, and clear it only when a verified Primary result resolves the transaction | High       | ✓ Complete |
 | 5.176 | Add a distinct native `local_change_feed_v1` for device-local follower projections. Schema-owned triggers emit bounded identities when optimistic fields enter or leave SQLite, retain only the newest 4,096 rows with an explicit reset marker for stale readers, and never advance canonical revisions or export the stream | High       | ✓ Complete |
+| 5.177 | Query follower overlays through `optimistic_fields_v1` for at most 64 visible FeedItem IDs and 448 sparse fields. Freed Desktop drains local changes after writes and reloads, resolves invalidated IDs through bounded detail, and leaves canonical revision identity unchanged | High       | ✓ Complete |
 
 ---
 

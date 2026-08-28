@@ -34,7 +34,6 @@ if (import.meta.env.DEV) {
       store.useAppStore.setState({
         libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
         savedFeedVersion: (state.savedFeedVersion ?? 0) + 1,
-        searchCorpusVersion: state.searchCorpusVersion + 1,
       })
     }
     w.__FREED_LIBRARY_CORE__ = {

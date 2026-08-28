@@ -4,6 +4,25 @@ const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
 }));
 
+const QUERY_SOURCE = Object.freeze({
+  generationId: "a".repeat(64),
+  projectionRevision: 7,
+  transitionSequence: 0,
+});
+
+function mockFeedQuery(response: Record<string, unknown>): void {
+  mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+    request.queryId === "optimistic_fields_v1"
+      ? {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: 1,
+          source: QUERY_SOURCE,
+        }
+      : { ...response, source: QUERY_SOURCE },
+  );
+}
+
 vi.mock("./library-core-normalized-query-client", () => ({
   createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
@@ -52,7 +71,7 @@ describe("normalized SQLite bounded feed reader", () => {
   });
 
   it("opens the ordinary feed through the typed normalized query boundary", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockFeedQuery({
       rows: [feedCard("first")],
       nextCursor: "opaque-next",
       previousCursor: null,
@@ -69,7 +88,6 @@ describe("normalized SQLite bounded feed reader", () => {
     );
 
     expect(reader.totalCount).toBe(20_085);
-    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledOnce();
     expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
       expect.objectContaining({
         cursor: null,
@@ -92,11 +110,11 @@ describe("normalized SQLite bounded feed reader", () => {
       nextCursor: "opaque-next",
       previousCursor: null,
     });
-    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledOnce();
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledTimes(2);
   });
 
   it("queries Friends through the normalized relational predicate", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockFeedQuery({
       rows: [feedCard("friend")],
       nextCursor: null,
       previousCursor: null,
@@ -118,7 +136,7 @@ describe("normalized SQLite bounded feed reader", () => {
   });
 
   it("reads Saved through its normalized keyset query", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
+    mockFeedQuery({
       rows: [{ ...feedCard("saved"), saved: true, savedAt: 150 }],
       nextCursor: null,
       previousCursor: null,

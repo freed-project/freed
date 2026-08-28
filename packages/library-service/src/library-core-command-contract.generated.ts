@@ -13,7 +13,7 @@ export const LIBRARY_CORE_SQLITE_APPLICATION_ID = 1179796804 as const;
 export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = 2 as const;
-export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "82890d495098d7bb977370711db0d966a3134d6ef0bf793a11ac1412b8898857" as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "5e2c118fdb57e21c7ec1425d1bac8a99388a6c06a907edec91eb2aec7880d1b5" as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "agent_query_v1",
   "append_checkpoint_stage_v2",

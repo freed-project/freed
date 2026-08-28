@@ -15,11 +15,8 @@ vi.mock("./library-core-normalized-query-client", () => ({
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 
-const {
-  dispatchSqliteMutation,
-  loadSqliteLibraryState,
-  readSqliteItems,
-} = await import("./sqlite-library");
+const { dispatchSqliteMutation, loadSqliteLibraryState, readSqliteItems } =
+  await import("./sqlite-library");
 
 function item(): FeedItem {
   return {
@@ -119,43 +116,58 @@ describe("Freed Desktop normalized bootstrap projection", () => {
   });
 
   it("reads exact items through normalized detail instead of historical rows", async () => {
-    mocks.queryNormalizedLibrary.mockResolvedValue({
-      item: {
-        card: {
-          archived: false,
-          authorAvatarUrl: null,
-          authorDisplayName: "Ada",
-          authorHandle: "ada",
-          authorId: "author-1",
-          capturedAt: 20,
-          contentSignalTags: [],
-          contentText: "Bounded",
-          contentType: "post",
-          engagementComments: null,
-          engagementLikes: null,
-          eventConfidenceBasisPoints: null,
-          eventStartsAt: null,
-          globalId: "x:item-1",
-          liked: false,
-          likedAt: null,
-          likedSyncedAt: null,
-          linkPreviewTitle: null,
-          locationName: null,
-          mediaTypes: [],
-          mediaUrls: [],
-          platform: "x",
-          publishedAt: 10,
-          readAt: null,
-          readingTimeMinutes: null,
-          saved: false,
-          sourceUrl: null,
-          tags: [],
-        },
-        contentBody: { blobDigest: null, storage: "inline" },
-        mediaBlobDigests: [],
-        preservedBody: { blobDigest: null, storage: "none" },
-      },
-    });
+    const source = {
+      generationId: "1".repeat(64),
+      projectionRevision: 7,
+      transitionSequence: 11,
+    };
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: request.queryId,
+            rows: [],
+            schemaVersion: 1,
+            source,
+          }
+        : {
+            item: {
+              card: {
+                archived: false,
+                authorAvatarUrl: null,
+                authorDisplayName: "Ada",
+                authorHandle: "ada",
+                authorId: "author-1",
+                capturedAt: 20,
+                contentSignalTags: [],
+                contentText: "Bounded",
+                contentType: "post",
+                engagementComments: null,
+                engagementLikes: null,
+                eventConfidenceBasisPoints: null,
+                eventStartsAt: null,
+                globalId: "x:item-1",
+                liked: false,
+                likedAt: null,
+                likedSyncedAt: null,
+                linkPreviewTitle: null,
+                locationName: null,
+                mediaTypes: [],
+                mediaUrls: [],
+                platform: "x",
+                publishedAt: 10,
+                readAt: null,
+                readingTimeMinutes: null,
+                saved: false,
+                sourceUrl: null,
+                tags: [],
+              },
+              contentBody: { blobDigest: null, storage: "inline" },
+              mediaBlobDigests: [],
+              preservedBody: { blobDigest: null, storage: "none" },
+            },
+            source,
+          },
+    );
 
     await expect(readSqliteItems(["x:item-1"])).resolves.toEqual([
       expect.objectContaining({ globalId: "x:item-1" }),
@@ -182,9 +194,9 @@ describe("Freed Desktop normalized bootstrap projection", () => {
     });
 
     await expect(
-      dispatchSqliteMutation(
-        { reqId: 1, type: "ADD_FEED_ITEM", item: item() },
-      ),
-    ).rejects.toThrow(/Normalized SQLite FeedItem mutation context is required/);
+      dispatchSqliteMutation({ reqId: 1, type: "ADD_FEED_ITEM", item: item() }),
+    ).rejects.toThrow(
+      /Normalized SQLite FeedItem mutation context is required/,
+    );
   });
 });

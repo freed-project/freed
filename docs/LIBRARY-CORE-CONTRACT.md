@@ -1273,6 +1273,19 @@ the affected bounded readers. A pending follower intent does not enter this
 canonical feed. Its device-local optimistic state remains separate until the
 Primary accepts or rejects it.
 
+`optimistic_fields_v1` is the only visible-row overlay query. A request carries
+at most 64 unique FeedItem IDs already present in the caller's visible SQLite
+window. SQLite selects only the current follower actor's newest pending value
+for each requested identity and one of the seven closed fields: `read_at`,
+`saved`, `saved_at`, `archived`, `archived_at`, `liked`, and `liked_at`. A
+response contains at most 448 sparse rows and 2 MiB. It carries both the
+canonical projection revision and the device-local transition sequence.
+Desktop and PWA reject foreign identities, duplicate fields, mixed source
+fences, unknown value shapes, and sequence movement across a multi-batch
+visible window. The shared transform merges these fields into the bounded
+cards already returned by SQLite. It never returns or reconstructs a complete
+FeedItem, Library shell, or renderer corpus.
+
 `local_change_feed_v1` is the separate device-local refresh payload. Sparse
 optimistic-field insertions and removals advance its monotonic sequence through
 schema-owned SQLite triggers in native and browser runtimes. Each row carries
@@ -1285,6 +1298,12 @@ reader starts behind that retained window, the first returned identity carries
 reopens bounded overlay queries. Full checkpoint replacement clears the local
 sequence only after proving that no unresolved intent or optimistic field
 exists.
+
+Freed Desktop and the PWA initialize one local sequence from
+`optimistic_fields_v1`, drain `local_change_feed_v1` after local intent writes
+and follower result imports, and reopen only affected bounded readers. A local
+intent may advance visible-window counters, but it cannot change the canonical
+projection revision used for checkpoint, query, or sync identity.
 
 ## 9. Normalized checkpoint v2
 

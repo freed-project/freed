@@ -16,6 +16,11 @@ import {
 } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+  LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
@@ -34,6 +39,7 @@ import {
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   collectLibraryCoreSampleRemovalPlanV1,
+  createLibraryCoreOperationInstanceId,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   searchLibraryCoreNormalizedItemsV1,
   executeLibraryCoreScopeActionV1,
@@ -46,6 +52,7 @@ import {
   sha256LowerHex,
   type FeedItemUserStateAssignmentFieldV1,
   type LibraryCoreFollowerTransportContextV2,
+  type LibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreRssFeedScopeActionKindV1,
@@ -105,10 +112,20 @@ import {
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
-type LibraryCoreStateListener = (state: LibraryCoreRuntimeStateV1) => void;
+export interface PwaLibraryCoreLocalChangeV1 {
+  readonly changedItemIds: readonly string[] | null;
+  readonly localSequence: number;
+  readonly requiresFullScan: boolean;
+}
+
+type LibraryCoreStateListener = (
+  state: LibraryCoreRuntimeStateV1,
+  localChange?: PwaLibraryCoreLocalChangeV1,
+) => void;
 
 const listeners = new Set<LibraryCoreStateListener>();
 let lastState: LibraryCoreRuntimeStateV1 | null = null;
+let lastLocalChangeSequence = 0;
 
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryPwaNormalizedLibrary,
@@ -217,9 +234,84 @@ async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
   );
 }
 
-function publishState(state: LibraryCoreRuntimeStateV1): void {
+function publishState(
+  state: LibraryCoreRuntimeStateV1,
+  localChange?: PwaLibraryCoreLocalChangeV1,
+): void {
   lastState = state;
-  for (const listener of listeners) listener(state);
+  for (const listener of listeners) listener(state, localChange);
+}
+
+async function readPwaLocalChangeSequence(
+  expectedCanonicalRevision: number,
+): Promise<number> {
+  const response = await queryPwaNormalizedLibrary({
+    entityIds: [],
+    queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+  });
+  if (response.source.projectionRevision !== expectedCanonicalRevision) {
+    throw new Error(
+      "PWA SQLite Library changed while local sequence was loading",
+    );
+  }
+  return response.source.transitionSequence;
+}
+
+/** Drain bounded device-local invalidations without advancing canonical state. */
+export async function drainPwaLibraryCoreLocalChanges(
+  expectedCanonicalRevision: number,
+): Promise<PwaLibraryCoreLocalChangeV1 | null> {
+  const afterRevision = lastLocalChangeSequence;
+  let cursor: string | null = null;
+  let upperSequence = afterRevision;
+  let requiresFullScan = false;
+  const changedItemIds = new Set<string>();
+  const cancellationId = createLibraryCoreOperationInstanceId(
+    "pwa-local-change-cancel",
+    crypto.randomUUID(),
+  );
+  const readerSessionId = createLibraryCoreOperationInstanceId(
+    "pwa-local-change-reader",
+    crypto.randomUUID(),
+  );
+  do {
+    const response: LibraryCoreLocalChangeFeedResponseV1 =
+      await queryPwaNormalizedLibrary({
+        afterRevision,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    upperSequence = response.source.transitionSequence;
+    for (const row of response.rows) {
+      requiresFullScan ||= row.resetRequired || row.topic !== "feed_item";
+      if (row.topic === "feed_item" && row.entityId !== null) {
+        changedItemIds.add(row.entityId);
+      }
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
+  const currentSequence = await readPwaLocalChangeSequence(
+    expectedCanonicalRevision,
+  );
+  if (currentSequence !== upperSequence) {
+    throw new Error(
+      "PWA SQLite Library changed while local invalidations were loading",
+    );
+  }
+  lastLocalChangeSequence = currentSequence;
+  if (currentSequence === afterRevision) return null;
+  return Object.freeze({
+    changedItemIds: requiresFullScan
+      ? null
+      : Object.freeze([...changedItemIds]),
+    localSequence: currentSequence,
+    requiresFullScan,
+  });
 }
 
 export function isPwaLibraryCoreEnabled(): boolean {
@@ -237,6 +329,10 @@ export function subscribePwaLibraryCoreState(
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
   const state =
     (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
+  lastLocalChangeSequence =
+    state.searchCorpusVersion === 0
+      ? 0
+      : await readPwaLocalChangeSequence(state.searchCorpusVersion);
   publishState(state);
   return state;
 }
@@ -1021,7 +1117,10 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRu
   if (!state) {
     throw new Error("Imported SQLite Library checkpoint is not selected");
   }
-  publishState(state);
+  const localChange = await drainPwaLibraryCoreLocalChanges(
+    state.searchCorpusVersion,
+  );
+  publishState(state, localChange ?? undefined);
   return state;
 }
 
@@ -1082,6 +1181,7 @@ registerPwaFactoryResetQuiesceHandler(
   async () => {
     await resetPwaNormalizedLibrary();
     lastState = null;
+    lastLocalChangeSequence = 0;
     const deleteDatabase = (databaseName: string) =>
       new Promise<void>((resolve, reject) => {
         const request = globalThis.indexedDB.deleteDatabase(databaseName);

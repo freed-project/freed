@@ -37,6 +37,7 @@ import {
 } from "./content-fetch-page-contracts.js";
 import { LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION } from "./feed-recommendation-order-contract.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
+import { applyLibraryCoreVisibleOptimisticFieldsV1 } from "./optimistic-field-contracts.js";
 import {
   LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
   LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
@@ -119,7 +120,9 @@ export async function scanLibraryCoreRssFeedsV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   visit: (
     feeds: readonly RssFeed[],
-  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+  ) =>
+    | LibraryCoreBackgroundScanDecision
+    | Promise<LibraryCoreBackgroundScanDecision>,
 ): Promise<void> {
   let cursor: string | null = null;
   const readerSessionId = createLibraryCoreOperationInstanceId(
@@ -151,7 +154,9 @@ export async function scanLibraryCorePersonRowsV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   visit: (
     rows: readonly LibraryCorePersonGraphRowV1[],
-  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+  ) =>
+    | LibraryCoreBackgroundScanDecision
+    | Promise<LibraryCoreBackgroundScanDecision>,
 ): Promise<void> {
   let cursor: string | null = null;
   const readerSessionId = createLibraryCoreOperationInstanceId(
@@ -170,7 +175,10 @@ export async function scanLibraryCorePersonRowsV1(
       readerSessionId,
       schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
     });
-    if ((await visit(response.rows)) === "stop" || response.nextCursor === null) {
+    if (
+      (await visit(response.rows)) === "stop" ||
+      response.nextCursor === null
+    ) {
       return;
     }
     cursor = response.nextCursor;
@@ -182,7 +190,9 @@ export async function scanLibraryCoreAccountRowsV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   visit: (
     rows: readonly LibraryCoreAccountGraphRowV1[],
-  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+  ) =>
+    | LibraryCoreBackgroundScanDecision
+    | Promise<LibraryCoreBackgroundScanDecision>,
 ): Promise<void> {
   let cursor: string | null = null;
   const readerSessionId = createLibraryCoreOperationInstanceId(
@@ -190,18 +200,23 @@ export async function scanLibraryCoreAccountRowsV1(
     runtime.randomId(),
   );
   for (;;) {
-    const response: LibraryCoreAccountGraphPageResponseV1 = await runtime.query({
-      cancellationId: createLibraryCoreOperationInstanceId(
-        "account-maintenance-cancel",
-        runtime.randomId(),
-      ),
-      cursor,
-      limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
-      queryId: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
-      readerSessionId,
-      schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
-    });
-    if ((await visit(response.rows)) === "stop" || response.nextCursor === null) {
+    const response: LibraryCoreAccountGraphPageResponseV1 = await runtime.query(
+      {
+        cancellationId: createLibraryCoreOperationInstanceId(
+          "account-maintenance-cancel",
+          runtime.randomId(),
+        ),
+        cursor,
+        limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
+      },
+    );
+    if (
+      (await visit(response.rows)) === "stop" ||
+      response.nextCursor === null
+    ) {
       return;
     }
     cursor = response.nextCursor;
@@ -323,8 +338,13 @@ export async function openLibraryCoreNormalizedFeedReaderV1(
         LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
       schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
     });
+    const items = await applyLibraryCoreVisibleOptimisticFieldsV1(
+      runtime.query,
+      page.rows.map(libraryCoreFeedCardToItemV1),
+      page.source.projectionRevision,
+    );
     return {
-      items: page.rows.map(libraryCoreFeedCardToItemV1),
+      items,
       nextCursor: page.nextCursor,
       previousCursor: page.previousCursor,
       totalCount: page.totalCount,
@@ -404,8 +424,13 @@ export async function openLibraryCoreNormalizedSavedFeedReaderV1(
       schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
       sortMode,
     });
+    const items = await applyLibraryCoreVisibleOptimisticFieldsV1(
+      runtime.query,
+      page.rows.map(toItem),
+      page.source.projectionRevision,
+    );
     return {
-      items: page.rows.map(toItem),
+      items,
       nextCursor: page.nextCursor,
       previousCursor: page.previousCursor,
       totalCount: page.totalCount,
