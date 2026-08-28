@@ -50,78 +50,11 @@ export type SyncWriteDisposition =
   | "compatibility-only"
   | "nested";
 
-/**
- * Where a field's bytes should physically live once storage is tiered.
- *
- * Measured motivation, from the owner's real 15,846-item document: `content`
- * is 52.1% of the serialized corpus and `preservedContent` a further 22.9%, so
- * three quarters of the CRDT is article prose. That prose is immutable once
- * captured and is never concurrently edited, so it gains nothing from being in
- * a merge structure and pays full freight for it.
- *
- * - `hot`    queried constantly; must be indexed and resident
- * - `warm`   queried on demand; indexed but not necessarily resident
- * - `cold`   rarely read; fetched explicitly
- * - `blob`   opaque bytes addressed by hash, never queried by content
- * - `device` never leaves this machine
- */
-export type StorageTier = "hot" | "warm" | "cold" | "blob" | "device";
-
-/**
- * What must happen to this field's storage when its owning record is deleted.
- *
- * This vocabulary exists because Freed currently has no deletion contract at
- * all. There are eight sites in `schema.ts` that do `delete doc.feedItems[id]`
- * (lines 1296, 1320, 1570, 1694, 1713, 1890, 1923, 2272) and no tombstone
- * concept anywhere in `packages/shared` or `packages/sync`.
- *
- * Automerge hides that today by propagating a delete as an operation. Under
- * row-level replication it stops being hidden: a device that misses the delete
- * keeps the row, and if it later syncs its copy upward the item RESURRECTS.
- * The gap is already visible in one direction, since PWA deletes
- * (`pruneArchivedItems`, `deleteAllArchivedItems`) never reach desktop because
- * PWA to desktop convergence does not exist.
- *
- * - `tombstone` record a durable marker so peers converge on the deletion
- * - `cascade`   delete the dependent storage along with the record
- * - `orphan`    intentionally leave the bytes; something else reclaims them
- * - `never`     this field is not deletable
- */
-export type DeleteBehavior = "tombstone" | "cascade" | "orphan" | "never";
-
-export interface FieldStoragePolicy {
-  readonly disposition: SyncWriteDisposition;
-  readonly tier: StorageTier;
-  readonly delete: DeleteBehavior;
-}
-
-/**
- * A bare disposition string remains valid so the 36 existing policy objects
- * keep compiling unchanged. Fields opt into the richer form as their tier and
- * deletion behavior are actually decided, rather than all at once with
- * placeholder answers nobody reviewed.
- */
-export type FieldPolicy = SyncWriteDisposition | FieldStoragePolicy;
+export type FieldPolicy = SyncWriteDisposition;
 
 export type ExhaustiveSyncWritePolicy<T extends object> = {
   readonly [K in keyof T]-?: FieldPolicy;
 };
-
-export function dispositionOf(policy: FieldPolicy): SyncWriteDisposition {
-  return typeof policy === "string" ? policy : policy.disposition;
-}
-
-/** Undecided until a field opts into the richer form. Not a default answer. */
-export function tierOf(policy: FieldPolicy): StorageTier | undefined {
-  return typeof policy === "string" ? undefined : policy.tier;
-}
-
-/** Undecided until a field opts into the richer form. Not a default answer. */
-export function deleteBehaviorOf(
-  policy: FieldPolicy,
-): DeleteBehavior | undefined {
-  return typeof policy === "string" ? undefined : policy.delete;
-}
 
 export const WEIGHT_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
 
@@ -292,7 +225,6 @@ export const RSS_SOURCE_INFO_WRITE_POLICY = {
 } as const satisfies ExhaustiveSyncWritePolicy<RssSourceInfo>;
 
 export const PRESERVED_CONTENT_WRITE_POLICY = {
-  html: "compatibility-only",
   text: "sync",
   author: "sync",
   publishedAt: "sync",
@@ -368,35 +300,20 @@ export const EVENT_CANDIDATE_WRITE_POLICY = {
 } as const satisfies ExhaustiveSyncWritePolicy<EventCandidate>;
 
 export const FEED_ITEM_WRITE_POLICY = {
-  // The identity every other tier keys off, and the thing a tombstone must
-  // name. Deleting an item means recording that THIS id is gone; without that
-  // marker a peer that missed the delete keeps the row and can resurrect it on
-  // its next upward sync.
-  globalId: { disposition: "sync", tier: "hot", delete: "tombstone" },
+  globalId: "sync",
   platform: "sync",
   contentType: "sync",
   capturedAt: "sync",
   publishedAt: "sync",
   author: "nested",
-  // Measured: 52.1% of the serialized corpus. Immutable once captured and never
-  // concurrently edited, so it gains nothing from merge semantics. The future
-  // blob store is content-addressed, so equal bytes may be shared by more than
-  // one item. Deleting one row therefore leaves the blob orphaned until a
-  // verified reachability pass proves that physical collection is safe.
-  content: { disposition: "nested", tier: "blob", delete: "orphan" },
+  content: "nested",
   engagement: "nested",
   location: "nested",
   timeRange: "nested",
   rssSource: "nested",
   fbGroup: "nested",
-  // Measured: a further 22.9%, present on 6,778 of 15,846 items, and its text
-  // does not overlap content.text. These are two independent bodies of prose,
-  // not a duplicate. Same reachability-verified collection rule as content.
-  preservedContent: { disposition: "nested", tier: "blob", delete: "orphan" },
-  // Read, saved, archived, tags. Small, edited from any device, and read on
-  // every feed query for filtering and counts, so it stays hot and resident
-  // even after the prose moves out.
-  userState: { disposition: "nested", tier: "hot", delete: "cascade" },
+  preservedContent: "nested",
+  userState: "nested",
   topics: "nested",
   contentSignals: "nested",
   eventCandidate: "nested",
@@ -475,7 +392,7 @@ function sanitizeByPolicy<
     // comparison falls through every branch and silently DROPS the field from
     // the sanitized result. That is data loss, not a typing detail, and it is
     // why this file's policy objects are runtime data rather than pure types.
-    const disposition = dispositionOf(policy[key as keyof P] as FieldPolicy);
+    const disposition = policy[key as keyof P] as SyncWriteDisposition;
 
     if (disposition === "sync") {
       if (value !== undefined || preserveUndefined) result[key] = value;

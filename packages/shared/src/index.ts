@@ -15,7 +15,6 @@ export * from "./content-signals";
 export * from "./feed-signal-filters";
 export * from "./preferences";
 export * from "./sync-write-policy";
-export * from "./device-local-graph";
 export * from "./local-ai";
 
 // Re-export OPML utilities.

@@ -1555,12 +1555,6 @@ function App() {
       getLocalContent: async (globalId) => {
         const cached = await contentCache.get(globalId);
         if (cached) return cached;
-        const item = await readLibraryCoreItemDetail(globalId);
-        const sqliteHtml = item?.preservedContent?.html;
-        if (sqliteHtml) {
-          await contentCache.set(globalId, sqliteHtml).catch(() => {});
-          return sqliteHtml;
-        }
         return null;
       },
       getLocalPreservedText: async (globalId) => {

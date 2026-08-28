@@ -177,18 +177,11 @@ export interface FbGroupInfo {
  * Preserved article content for reader view
  * Used by capture-save and optionally by capture-rss for full articles
  *
- * Architecture note: current clients keep HTML in the device content cache and
- * never add it to Automerge. Older documents may retain a read-only compatibility
- * copy so upgrades do not delete another device's only reader payload.
+ * Full HTML lives in the device content cache or content vault. Synchronized
+ * Library records retain bounded text and metadata only.
  */
 export interface PreservedContent {
-  /**
-   * @deprecated Read-only compatibility field for older synced documents.
-   * New content must use the device cache layer.
-   */
-  html?: string;
-
-  /** Plain text summary -- safe to sync via Automerge (keep < 10 KB) */
+  /** Bounded plain-text summary. */
   text: string;
 
   /** Extracted author */

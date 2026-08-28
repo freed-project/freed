@@ -25,7 +25,7 @@ export interface DeviceLocalPreferenceUpdates {
 
 /**
  * Extract legacy device-local fields so app stores can route them to local
- * persistence without ever forwarding them to Automerge.
+ * persistence without forwarding them to synchronized SQLite mutations.
  */
 export function getDeviceLocalPreferenceUpdates(
   updates: Partial<UserPreferences>,
@@ -71,8 +71,8 @@ export function getDeviceLocalPreferenceUpdates(
 }
 
 /**
- * Remove device-local and transient runtime fields before an Automerge mutation.
- * Existing documents retain legacy fields for schema compatibility.
+ * Remove device-local and transient runtime fields before a synchronized
+ * SQLite mutation.
  */
 export function stripDeviceLocalPreferenceUpdates(
   updates: Partial<UserPreferences>,

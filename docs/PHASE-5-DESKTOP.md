@@ -664,6 +664,8 @@ export async function captureDomFeed(
 | 5.135 | Delete the document-era Desktop mutation facade. The public client exposes only Library-named typed operations, its closed request union contains only executable SQLite mutations, identity E2E fixtures write through typed SQLite upserts, factory reset clears the Library, and diagnostics expose a row-free Library summary with no document binary accessor | High       | ✓ Complete |
 | 5.136 | Make the descriptor-bound Desktop process binding open the historical migration source only when it already exists. Fresh installations create and lease only normalized SQLite and the content vault, while existing installations retain the fenced one-time migration reader without creating a second authority on clean profiles | High       | ✓ Complete |
 | 5.137 | Delete the unused TypeScript shadow store, whole-FeedItem projection and reconstruction layer, historical merge-growth measurement, and their self-tests. Runtime queries, materialization, paging order, and idempotency are covered by the executable SQLite contract and native core rather than a second derived store model | High       | ✓ Complete |
+| 5.138 | Delete the unused device-local graph strip helper that existed only to keep viewport fields out of whole-document mutations. Graph layout now crosses the typed device-local SQLite mutation boundary directly | Medium     | ✓ Complete |
+| 5.139 | Remove synchronized reader HTML from the FeedItem model and delete the dead text-compaction and historical HTML fallback paths. Full article HTML lives only in the device content cache or selective content vault, while synchronized metadata retains bounded text and content descriptors | High       | ✓ Complete |
 
 ---
 

@@ -56,10 +56,7 @@ import {
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
 import { saveUrlInPwa } from "./lib/save-url";
-import {
-  cacheArticleHtml,
-  getCachedArticleHtml,
-} from "@freed/ui/lib/article-cache";
+import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
 import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
@@ -448,17 +445,7 @@ function App() {
         try {
           const cached = await getCachedArticleHtml(globalId);
           if (cached) return cached;
-          const item = await readPwaLibraryCoreItemDetail(globalId);
-          const html = item?.preservedContent?.html ?? null;
-          if (!html) return null;
-          const articleUrl =
-            item?.content.linkPreview?.url ??
-            item?.sourceUrl ??
-            `/reader-item/${encodeURIComponent(globalId)}`;
-          await cacheArticleHtml(articleUrl, globalId, html, {
-            pinned: item?.userState.saved ?? false,
-          }).catch(() => {});
-          return html;
+          return null;
         } catch {
           return null;
         }

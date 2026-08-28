@@ -163,8 +163,8 @@ export interface BaseAppState {
   /** Add a generated sample library in one persistence operation. */
   addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
   /**
-   * Record like intent in Automerge. On the desktop, the outbox processor
-   * drains this to the source platform. On the PWA, it syncs to desktop first.
+   * Record a typed like intent in SQLite. The Primary outbox processor drains
+   * it to the source platform, while follower clients submit a signed intent.
    * Optional — components should check for presence before rendering like buttons.
    */
   toggleLiked?: (id: string) => Promise<void>;

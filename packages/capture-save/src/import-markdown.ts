@@ -21,18 +21,18 @@
  * ```
  *
  * Stub files (no body, just a Sources section) are queued for background fetch.
- * Files with summary bodies store text in preservedContent.text for Automerge sync.
+ * Files with summary bodies store bounded text in synchronized Library metadata.
  */
 
 import { marked } from "marked";
 import type { FeedItem } from "@freed/shared";
 
 export interface ParsedArchiveFile {
-  /** The FeedItem ready to be written to Automerge (no html in preservedContent) */
+  /** The FeedItem ready for the typed SQLite import mutation. */
   item: FeedItem;
   /**
    * Full article HTML converted from the body markdown.
-   * Write to the device content cache (not Automerge).
+   * Write to the device content cache, outside synchronized metadata.
    * null for stub files with no body.
    */
   html: string | null;
@@ -172,7 +172,7 @@ export function parseMarkdownArchiveFile(
   // Stub files (no body) return null -- they'll be background-fetched later.
   const html = hasBody ? (marked.parse(bodyText) as string) : null;
 
-  // Plain text for Automerge (trim to reasonable size)
+  // Bounded plain text for synchronized Library metadata.
   const text = bodyText.slice(0, 10_000);
   const wordCount = wordCountRaw
     ? parseInt(wordCountRaw, 10)
@@ -193,7 +193,7 @@ export function parseMarkdownArchiveFile(
       id: sourceUrl ? new URL(sourceUrl).hostname : "unknown",
       handle: sourceUrl ? new URL(sourceUrl).hostname : "unknown",
       displayName: author ?? (sourceUrl ? new URL(sourceUrl).hostname : "Unknown"),
-      // avatarUrl intentionally omitted -- undefined is not valid in Automerge
+      // avatarUrl intentionally omitted because undefined is not a wire value.
     },
     content: {
       text: text.slice(0, 300),

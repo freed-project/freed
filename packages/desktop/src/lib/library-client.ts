@@ -170,11 +170,6 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
   return item?.preservedContent?.text ?? null;
 }
 
-export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
-  const [item] = await readSqliteItems([globalId]);
-  return item?.preservedContent?.html ?? null;
-}
-
 export async function clearLocalLibrary(): Promise<void> {
   await clearSqliteLibrary();
   lastState = null;
