@@ -618,7 +618,7 @@ async function waitForGraphPresentationSyncAfter(
 async function seedStressIdentityGraph(page: Page) {
   return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
       addLibraryRssFeed: (feed: unknown) => Promise<void>;
@@ -667,9 +667,9 @@ async function seedStressIdentityGraph(page: Page) {
       enabled: true,
       trackUnread: true,
     }));
-    await automerge.upsertLibraryPersons(persons);
-    await automerge.upsertLibraryAccounts(accounts);
-    await Promise.all(feeds.map((feed) => automerge.addLibraryRssFeed(feed)));
+    await libraryCore.upsertLibraryPersons(persons);
+    await libraryCore.upsertLibraryAccounts(accounts);
+    await Promise.all(feeds.map((feed) => libraryCore.addLibraryRssFeed(feed)));
     await store.getState().updatePreferences({
       display: {
         friendsMode: "all_content",
@@ -865,7 +865,7 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
-test("desktop sidebar mode stays local when Automerge replays an older display preference", async ({ app, page }) => {
+test("desktop sidebar mode stays local when synchronized preferences refresh with an older display value", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -2880,7 +2880,7 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as {
@@ -2933,7 +2933,7 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
       makeItem(`instagram:visible-saved:${index}`, "post", { saved: true, readAt: now - index })
     );
 
-    await automerge.importLibraryItems([
+    await libraryCore.importLibraryItems([
       ...archiveCandidates,
       ...storyItems,
       ...unreadPosts,
@@ -3018,7 +3018,7 @@ test("feed toolbar title describes active content filters", async ({ app, page }
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as
@@ -3030,7 +3030,7 @@ test("feed toolbar title describes active content filters", async ({ app, page }
         }
       | undefined;
 
-    await automerge.importLibraryItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "context-title-facebook-story",
         platform: "facebook",
@@ -3245,7 +3245,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   const { page } = app;
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPerson: (person: unknown) => Promise<void>;
       upsertLibraryAccount: (account: unknown) => Promise<void>;
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
@@ -3262,7 +3262,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       | undefined;
 
     const now = Date.now();
-    await automerge.upsertLibraryPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "friend-ada",
       name: "Ada Lovelace",
       relationshipStatus: "friend",
@@ -3271,7 +3271,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.upsertLibraryAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "friend-ada:instagram:ada-ig",
       personId: "friend-ada",
       kind: "social",
@@ -3285,7 +3285,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:ada:paris",
         platform: "instagram",
@@ -3691,7 +3691,7 @@ test("map time range defaults to all available location windows", async ({ app, 
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -3701,7 +3701,7 @@ test("map time range defaults to all available location windows", async ({ app, 
     };
 
     const now = Date.now();
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:grace:rome-memory",
         platform: "instagram",
@@ -3861,7 +3861,7 @@ test("map range slider narrows future and historical markers", async ({ app, pag
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -3871,7 +3871,7 @@ test("map range slider narrows future and historical markers", async ({ app, pag
     };
 
     const now = Date.now();
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:ada:rome-history",
         platform: "instagram",
@@ -4584,7 +4584,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
       addLibraryRssFeed: (feed: unknown) => Promise<void>;
@@ -4598,7 +4598,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -4624,7 +4624,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
         updatedAt: now,
       },
     ]);
-    await automerge.upsertLibraryAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:ada-ig",
         personId: "friend-ada",
@@ -4681,13 +4681,13 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
         updatedAt: now,
       },
     ]);
-    await automerge.addLibraryRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: "https://example.com/feed.xml",
       title: "Example Feed",
       enabled: true,
       trackUnread: true,
     });
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "rss:example-feed:item-1",
         platform: "rss",
@@ -4742,7 +4742,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPerson: (person: unknown) => Promise<void>;
       upsertLibraryAccount: (account: unknown) => Promise<void>;
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
@@ -4755,7 +4755,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "connection-maya-suggestion",
       name: "Maya Chen",
       relationshipStatus: "connection",
@@ -4763,7 +4763,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.upsertLibraryAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:maya-suggestion",
       personId: "connection-maya-suggestion",
       kind: "social",
@@ -4777,7 +4777,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "instagram:maya-suggestion:1",
         platform: "instagram",
@@ -4870,7 +4870,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccount: (account: unknown) => Promise<void>;
     };
@@ -4883,7 +4883,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "connection-linked-account",
         name: "Linked Maya",
@@ -4893,7 +4893,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
         updatedAt: now,
       },
     ]);
-    await automerge.upsertLibraryAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:linked-maya",
       personId: "connection-linked-account",
       kind: "social",
@@ -4951,7 +4951,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPerson: (person: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -4963,7 +4963,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "tier-slider-person",
       name: "Tier Slider Person",
       relationshipStatus: "connection",
@@ -5023,7 +5023,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryAccount: (account: unknown) => Promise<void>;
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
@@ -5035,7 +5035,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:ida-suggestion",
       kind: "social",
       provider: "instagram",
@@ -5048,7 +5048,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.addLibraryFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "instagram:ida-suggestion:1",
         platform: "instagram",
@@ -5118,7 +5118,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5130,7 +5130,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -5148,7 +5148,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
         updatedAt: now,
       },
     ]);
-    await automerge.upsertLibraryAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:nora-ig",
         kind: "social",
@@ -5246,7 +5246,7 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5258,7 +5258,7 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-pinned",
         name: "Pinned Friend",
@@ -5276,7 +5276,7 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
         updatedAt: now,
       },
     ]);
-    await automerge.upsertLibraryAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:pinned",
         personId: "friend-pinned",
@@ -5408,7 +5408,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5420,7 +5420,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -5438,7 +5438,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
         updatedAt: now,
       },
     ]);
-    await automerge.upsertLibraryAccounts(
+    await libraryCore.upsertLibraryAccounts(
       Array.from({ length: 10 }, (_, index) => ({
         id: `social:instagram:dense-${index}`,
         personId: index < 4 ? "friend-ada" : index < 7 ? "connection-maya" : undefined,
@@ -5994,7 +5994,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
       addLibraryRssFeed: (feed: unknown) => Promise<void>;
@@ -6007,14 +6007,14 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
     };
 
     const now = Date.now();
-    await automerge.upsertLibraryPersons([
+    await libraryCore.upsertLibraryPersons([
       { id: "friend-ada", name: "Ada Lovelace", relationshipStatus: "friend", careLevel: 5, createdAt: now, updatedAt: now },
       { id: "friend-grace", name: "Grace Hopper", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
       { id: "friend-katherine", name: "Katherine Johnson", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
       { id: "connection-maya", name: "Maya Angelou", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
       { id: "connection-james", name: "James Baldwin", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
     ]);
-    await automerge.upsertLibraryAccounts([
+    await libraryCore.upsertLibraryAccounts([
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `social:instagram:ada-${index}`,
         personId: "friend-ada",
@@ -6073,7 +6073,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
     ]);
     await Promise.all(
       Array.from({ length: 6 }, (_, index) =>
-        automerge.addLibraryRssFeed({
+        libraryCore.addLibraryRssFeed({
           url: `https://example.com/feed-${index}.xml`,
           title: `Feed ${index}`,
           enabled: true,

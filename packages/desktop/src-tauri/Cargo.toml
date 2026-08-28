@@ -81,12 +81,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
 tauri = { version = "=2.11.5", features = ["test"] }
-
-[[bench]]
-name = "relay"
-harness = false
 
 [features]
 default = ["custom-protocol"]

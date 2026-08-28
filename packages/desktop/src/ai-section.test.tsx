@@ -47,7 +47,7 @@ describe("AISection device-local transaction", () => {
       model: "qwen2.5:1.5b",
       ollamaUrl: "http://localhost:11434",
     })).toBe(true);
-    const persistenceError = new Error("Automerge worker unavailable");
+    const persistenceError = new Error("Library mutation unavailable");
     const updatePreferences = vi.fn(async () => {
       throw persistenceError;
     });

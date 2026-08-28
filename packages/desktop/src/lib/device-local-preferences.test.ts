@@ -42,7 +42,7 @@ describe("device-local preferences", () => {
     vi.restoreAllMocks();
   });
 
-  it("imports legacy Automerge display state once", () => {
+  it("imports retired synchronized display state once", () => {
     const display = createDefaultPreferences().display;
     const migrated = migrateLegacyDeviceDisplayPreferences({
       ...display,
@@ -93,7 +93,7 @@ describe("device-local preferences", () => {
     });
   });
 
-  it("imports the legacy Automerge theme once and keeps later choices device-local", () => {
+  it("imports the retired synchronized theme once and keeps later choices device-local", () => {
     expect(migrateLegacyThemePreference("ember")).toBe(true);
     expect(getStoredThemeId()).toBe("ember");
 

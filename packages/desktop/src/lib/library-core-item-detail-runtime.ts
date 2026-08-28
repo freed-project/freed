@@ -32,13 +32,6 @@ import {
 
 let activeItemScan: Promise<void> | null = null;
 
-export const LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY =
-  "freed.libraryCore.itemDetailReaderV1.disabled";
-export const LIBRARY_CORE_FRIENDS_READER_DISABLED_KEY =
-  "freed.libraryCore.friendsReaderV1.disabled";
-export const LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY =
-  "freed.libraryCore.savedAnalyticsReaderV1.disabled";
-
 export type LibraryCoreFacetSummary = LibraryCoreFacetSummaryV1;
 
 export interface LibraryFriendsSource {

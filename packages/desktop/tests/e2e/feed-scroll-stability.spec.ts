@@ -48,7 +48,7 @@ async function setCardDensity(page: import("@playwright/test").Page, density: De
 async function injectMixedFeedItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
     async ({ delayedMediaUrl, brokenMediaUrl }) => {
-      const automerge = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
+      const libraryCore = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
         importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
       const now = Date.now();
@@ -122,7 +122,7 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page): Prom
         };
       });
 
-      await automerge.importLibraryItems(items);
+      await libraryCore.importLibraryItems(items);
     },
     { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL },
   );

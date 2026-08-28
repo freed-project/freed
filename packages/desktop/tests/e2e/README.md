@@ -20,8 +20,8 @@ converted into a durable user-flow assertion or an explicit visual snapshot.
 Keep a Playwright test when it protects one of these surfaces:
 
 - Startup, legal gate, crash recovery, updater, or renderer health.
-- A complete user workflow across React state, Automerge state, and the Tauri
-  mock boundary.
+- A complete user workflow across visible React state, bounded SQLite queries,
+  and the Tauri mock boundary.
 - Provider auth, sync, pause, reconnect, or diagnostics behavior that cannot be
   proved with a unit test.
 - Reader hydration, navigation history, read state, social memory, Friends, Map,

@@ -68,7 +68,7 @@ async function injectLinkedInItems(
 ) {
   await page.evaluate(async (itemCount) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
@@ -98,7 +98,7 @@ async function injectLinkedInItems(
       topics: [],
     }));
 
-    await automerge.importLibraryItems(items);
+    await libraryCore.importLibraryItems(items);
   }, count);
 
   await page.waitForFunction(

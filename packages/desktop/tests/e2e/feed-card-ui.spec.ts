@@ -30,11 +30,11 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
     }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
         importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
 
-      await automerge.importLibraryItems([
+      await libraryCore.importLibraryItems([
         {
           globalId: "test-facebook-card-ui-overhaul",
           platform: "facebook",
@@ -180,11 +180,11 @@ async function injectXLikeRetentionItem(page: import("@playwright/test").Page): 
     async ({ title, sourceUrl }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
         importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
 
-      await automerge.importLibraryItems([
+      await libraryCore.importLibraryItems([
         {
           globalId: "x:2049705418436600244",
           platform: "x",
@@ -1090,11 +1090,11 @@ test("feed cards show compact event metadata from semantic enrichment", async ({
 
   await app.page.evaluate(async () => {
     const publishedAt = Date.parse("2026-04-25T12:00:00Z");
-    const automerge = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
+    const libraryCore = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
-    await automerge.importLibraryItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "test-semantic-event-card",
         platform: "rss",

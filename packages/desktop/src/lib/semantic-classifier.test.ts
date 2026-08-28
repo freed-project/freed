@@ -184,7 +184,7 @@ describe("semantic classifier", () => {
   it("replays the five-second feedback loop when a health write is broadcast as a lifecycle change", async () => {
     vi.useFakeTimers();
     const enabled = { current: true };
-    const replay = localAIHealthFeedbackReplay.automergeLoop;
+    const replay = localAIHealthFeedbackReplay.legacyRuntimeLoop;
     const terminalSummary = replay.semanticClassifier.terminalSummary;
     expect(localAIHealthFeedbackReplay.networkBoundary.providerTraffic).toBe(false);
     expect(replay.semanticClassifier.runtimeSummaryObserved).toBe(false);
@@ -218,7 +218,7 @@ describe("semantic classifier", () => {
   it("does not rearm a terminal batch when health persistence is not a lifecycle change", async () => {
     vi.useFakeTimers();
     const enabled = { current: true };
-    const replay = localAIHealthFeedbackReplay.automergeLoop;
+    const replay = localAIHealthFeedbackReplay.legacyRuntimeLoop;
     const terminalSummary = replay.semanticClassifier.terminalSummary;
     const { mockBackfillLibraryContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({

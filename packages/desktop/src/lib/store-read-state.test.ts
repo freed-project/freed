@@ -110,7 +110,7 @@ describe("store read-state batching", () => {
 
   it("records non-fatal diagnostics when a batched read update rejects", async () => {
     const useAppStore = await loadStore();
-    const error = new Error("[automerge-worker] request TIMEOUT op=MARK_AS_READ reqId=305 pending=93");
+    const error = new Error("[library-core] request TIMEOUT op=MARK_AS_READ reqId=305 pending=93");
     mockMarkLibraryItemsAsRead.mockRejectedValueOnce(error);
 
     const markAsReadPromise = useAppStore.getState().markAsRead("item-a");

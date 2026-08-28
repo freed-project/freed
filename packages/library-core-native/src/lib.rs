@@ -3,7 +3,7 @@
 //! This crate owns the signed SQLite journal, its verifiers, authority epochs,
 //! actor enrollment, and deterministic product projection. Hosts supply an
 //! explicit database path, key stores, and signed timestamps. It has no Tauri,
-//! Google Drive, provider, or Automerge dependency.
+//! Google Drive, provider, or historical migration-source dependency.
 
 mod device_contact_sync;
 mod device_graph_layout;

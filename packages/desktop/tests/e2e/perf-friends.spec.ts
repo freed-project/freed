@@ -170,7 +170,7 @@ async function waitForGraphContractSettle(
 async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ personCount, accountCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
       upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
@@ -228,9 +228,9 @@ async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
       };
     });
 
-    await automerge.upsertLibraryPersons(persons);
-    await automerge.upsertLibraryAccounts(accounts);
-    await automerge.importLibraryItems(items);
+    await libraryCore.upsertLibraryPersons(persons);
+    await libraryCore.upsertLibraryAccounts(accounts);
+    await libraryCore.importLibraryItems(items);
   }, { personCount: PERSON_COUNT, accountCount: ACCOUNT_COUNT, itemCount: ITEM_COUNT });
 }
 

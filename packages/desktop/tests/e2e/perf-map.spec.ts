@@ -13,7 +13,7 @@ const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
@@ -50,7 +50,7 @@ async function seedLargeMapWorkspace(page: Page): Promise<void> {
       };
     });
 
-    await automerge.importLibraryItems(items);
+    await libraryCore.importLibraryItems(items);
   }, { authorCount: MAP_AUTHOR_COUNT, itemCount: MAP_ITEM_COUNT });
 }
 

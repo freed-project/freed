@@ -4,11 +4,11 @@ async function injectInstagramItems(page: import("@playwright/test").Page): Prom
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
-    await automerge.importLibraryItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "test-instagram-filter-post",
         platform: "instagram",

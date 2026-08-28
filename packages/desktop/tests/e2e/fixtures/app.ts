@@ -129,7 +129,7 @@ export class AppFixture {
   /**
    * Block until the app store reports isInitialized = true and the first
    * render of <main> is visible. Typically resolves in under 500 ms with an
-   * empty Automerge doc.
+   * empty SQLite Library.
    */
   async waitForReady(timeout = 15_000): Promise<void> {
     await this.acceptLegalGateIfPresent();
@@ -158,16 +158,16 @@ export class AppFixture {
   }
 
   /**
-   * Generate and inject `count` mock RSS feed items into the live Automerge doc
-   * via importLibraryItems(). Items are chunked at 500 per the existing helper.
+   * Generate and inject `count` mock RSS feed items through the typed SQLite
+   * import mutation.
    *
-   * Call waitForReady() before this so the doc is initialised.
+   * Call waitForReady() before this so the Library is initialized.
    */
   async injectRssItems(count: number, feedUrl = "https://bench.example/feed.xml"): Promise<void> {
     await this.page.evaluate(
       async ({ count, feedUrl }) => {
         const w = window as Record<string, unknown>;
-        const automerge = w.__FREED_LIBRARY_CORE__ as {
+        const libraryCore = w.__FREED_LIBRARY_CORE__ as {
           importLibraryItems: (items: unknown[]) => Promise<unknown>;
         };
 
@@ -201,14 +201,13 @@ export class AppFixture {
           },
         }));
 
-        // importLibraryItems chunks at 500 items per Automerge change.
-        await automerge.importLibraryItems(items);
+        await libraryCore.importLibraryItems(items);
       },
       { count, feedUrl },
     );
 
-    // SQLite keeps the corpus out of Zustand. Wait for either the SQLite mock
-    // row store or the legacy fallback store, depending on the active engine.
+    // SQLite keeps the corpus out of Zustand. Wait for the native mock rows and
+    // the bounded aggregate consumed by the visible store.
     await this.page.waitForFunction(
       (expectedCount: number) => {
         const w = window as Record<string, unknown>;
@@ -230,7 +229,7 @@ export class AppFixture {
             (store?.getState().itemCountByPlatform.rss ?? 0) >= expectedCount
           );
         }
-        return (store?.getState().items.length ?? 0) >= expectedCount;
+        return false;
       },
       count,
       { timeout: 30_000 },
@@ -240,7 +239,7 @@ export class AppFixture {
   async seedFriendLocation(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
         upsertLibraryPerson: (person: unknown) => Promise<void>;
         upsertLibraryAccount: (account: unknown) => Promise<void>;
         addLibraryFeedItems: (items: unknown[]) => Promise<void>;
@@ -256,7 +255,7 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.upsertLibraryPerson({
+      await libraryCore.upsertLibraryPerson({
         id: "friend-ada",
         name: "Ada Lovelace",
         relationshipStatus: "friend",
@@ -264,7 +263,7 @@ export class AppFixture {
         createdAt: now,
         updatedAt: now,
       });
-      await automerge.upsertLibraryAccount({
+      await libraryCore.upsertLibraryAccount({
         id: "friend-ada:instagram:ada-ig",
         personId: "friend-ada",
         kind: "social",
@@ -279,7 +278,7 @@ export class AppFixture {
         updatedAt: now,
       });
 
-      await automerge.addLibraryFeedItems([
+      await libraryCore.addLibraryFeedItems([
         {
           globalId: "ig:ada:paris",
           platform: "instagram",
@@ -342,7 +341,7 @@ export class AppFixture {
   async seedAllContentLocationsWithoutFriends(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
         addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
@@ -353,7 +352,7 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.addLibraryFeedItems([
+      await libraryCore.addLibraryFeedItems([
         {
           globalId: "ig:nora:paris",
           platform: "instagram",

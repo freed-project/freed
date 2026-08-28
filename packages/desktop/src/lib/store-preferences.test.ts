@@ -73,7 +73,7 @@ describe("store.updatePreferences", () => {
     useAppStore.setState({ preferences: createDefaultPreferences() });
   });
 
-  it("does not send device-local display preferences to Automerge", async () => {
+  it("does not send device-local display preferences to synchronized Library state", async () => {
     await useAppStore.getState().updatePreferences({
       display: {
         reading: {
@@ -151,7 +151,7 @@ describe("store.updatePreferences", () => {
   });
 
   it("records non-fatal diagnostics when persistence rejects", async () => {
-    const error = new Error("[automerge-worker] request TIMEOUT op=UPDATE_PREFERENCES reqId=126");
+    const error = new Error("[library-core] request TIMEOUT op=UPDATE_PREFERENCES reqId=126");
     mockUpdateLibraryPreferences.mockRejectedValueOnce(error);
 
     await expect(

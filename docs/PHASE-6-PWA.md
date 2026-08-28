@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, final-protocol development preview, selective content range publication, bounded range reads, startup reconciliation, and IndexedDB Library deletion are implemented; recovery UI and physical iPhone proof remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -24,7 +24,7 @@
       replaced.
 - [x] Generate the exact final normalized SQLite schema bytes and schema digest
       for both browser TypeScript and native Rust from the shared contract.
-- [ ] Prove the iOS 17 durability floor through
+- [ ] Prove the supported iPhone Safari durability floor through
       physical iPhone storage, suspension, recovery, quota, and playback tests.
 - [x] Run official SQLite WebAssembly through one dedicated Library worker over
       the high-performance `opfs-sahpool` VFS, with one bounded protocol, one
@@ -57,8 +57,9 @@
       bounded OPFS SQLite `item_detail_v1` query. Reader pinning deduplicates
       those descriptors and commits `pinned_offline` through the worker before
       retaining local reader cache bytes.
-- [ ] Add the explicit recovery route and complete physical OPFS lifecycle
-      verification in Chromium, WebKit, and iPhone Safari.
+- [x] Add the explicit recovery route and complete automated OPFS lifecycle
+      verification in Chromium and WebKit. Physical iPhone Safari acceptance
+      remains the separate device-proof item above.
   - [x] When OPFS SQLite cannot initialize, expose a two-step local Library
         replacement action beside retry and report export. The coordinated
         cross-tab barrier stops sync and writers, deletes only this device's
@@ -165,7 +166,8 @@
         changed identity, time before transaction creation, missing row, or
         resolved transaction fails without altering SQLite.
   - [x] Include the generated FeedItem removal and tombstone program in the
-        shared browser contract. Browser execution and restore remain open.
+        shared browser contract and execute accepted removals through the sole
+        normalized operation importer.
   - [x] Include the generated normalized FeedItem capture program in the shared
         browser contract with a 32-member transaction bound, 131,072-byte
         canonical item ceiling, typed root and child SQL, refresh-safe user
@@ -201,7 +203,7 @@
         Successful follower activation installs the exact checkpoint,
         manifest, writer, control, source revision, and installation receipt,
         which is readable through one closed worker response.
-- [ ] Serve every product surface through bounded named SQLite queries without
+- [x] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.
   - [x] `feed_page_v1` executes the generated normalized SQL in SQLite
         WebAssembly with a source-fenced keyset cursor, at most 129 scanned
@@ -631,6 +633,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.98 | Replace the PWA engine's private optimistic-field switch with the shared generated transform selected by each mutation program. OPFS SQLite and native Rust now derive identical sparse read, saved, archived, and liked projections from verified signed envelopes, while every other mutation remains row-free until Primary acceptance                                                                                                                                                                                                                                                                                                                                                                                                                                                      | High       | ✓ Complete                                                                                       |
 | 6.99 | Add the closed `local_change_feed_v1` query to OPFS SQLite. Schema triggers emit one device-local identity whenever a sparse optimistic field enters or leaves the database, the worker pages at most 512 rows against a pinned local sequence, and stale readers receive an explicit reset without changing canonical revision or cloud state                                                                                                                                                                                                                                                                                                                                                                                                                                                 | High       | ✓ Complete                                                                                       |
 | 6.100 | Execute `optimistic_fields_v1` through OPFS SQLite for at most 64 visible FeedItem IDs and 448 sparse fields with native parity. Local writes and follower sync drain device-local changes and refresh bounded UI windows without fabricating a canonical revision | High       | ✓ Complete                                                                                       |
+| 6.101 | Make the shared browser harness answer Saved analytics from its bounded typed SQLite fixture, and remove remaining test vocabulary that treated a renderer collection or retired document runtime as the source of truth | Medium     | ✓ Complete                                                                                       |
 
 ---
 

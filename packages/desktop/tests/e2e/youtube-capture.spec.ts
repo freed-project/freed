@@ -422,10 +422,10 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
     store.setState({
       ytAuth: { isAuthenticated: true, lastCheckedAt: Date.now() },
     });
-    const automerge = globals.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = globals.__FREED_LIBRARY_CORE__ as {
       addLibraryFeedItem: (item: unknown) => Promise<void>;
     };
-    await automerge.addLibraryFeedItem({
+    await libraryCore.addLibraryFeedItem({
       globalId: "saved:youtube:dQw4w9WgXcQ",
       platform: "saved",
       contentType: "article",

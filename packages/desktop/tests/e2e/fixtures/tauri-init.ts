@@ -618,6 +618,48 @@ export function tauriInitScript(): string {
           },
         };
       }
+      if (request.queryId === 'saved_analytics_v2') {
+        var savedRows = Object.values(state.items || {}).filter(function(item) {
+          return !item.__deleted && !!sqliteItemState(item).saved;
+        }).map(function(item) {
+          var user = sqliteItemState(item);
+          return {
+            contentType: String(item.contentType || ''),
+            effectiveSavedAt: user.savedAt || user.readAt || item.capturedAt || 0,
+            platform: String(item.platform || ''),
+          };
+        });
+        function countLabels(key) {
+          var counts = {};
+          savedRows.forEach(function(row) {
+            var label = row[key];
+            counts[label] = (counts[label] || 0) + 1;
+          });
+          return Object.keys(counts).sort().map(function(label) {
+            return { count: counts[label], label: label };
+          });
+        }
+        function countWindows(windows) {
+          return (windows || []).map(function(window) {
+            return savedRows.filter(function(row) {
+              return row.effectiveSavedAt >= window.startMs && row.effectiveSavedAt < window.endMs;
+            }).length;
+          });
+        }
+        return {
+          contentMix: countLabels('contentType'),
+          dailyCounts: countWindows(request.dailyWindows),
+          hourlyCounts: countWindows(request.hourlyWindows),
+          latestSavedAt: savedRows.reduce(function(latest, row) {
+            return Math.max(latest, row.effectiveSavedAt);
+          }, 0) || null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          sourceCounts: countLabels('platform'),
+          totalCount: savedRows.length,
+        };
+      }
       if (request.queryId === 'filter_scope_summary_v1') {
         var account = Object.values(state.accounts || {}).find(function(candidate) {
           return request.feedUrl == null &&

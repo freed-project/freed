@@ -124,11 +124,11 @@ async function readContactSyncState(page: import("@playwright/test").Page) {
 async function injectAuthor(page: import("@playwright/test").Page, displayName: string, handle = "author-handle") {
   await page.evaluate(async ({ displayName, handle }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       importLibraryItems: (items: unknown[]) => Promise<void>;
     };
     const now = Date.now();
-    await automerge.importLibraryItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: `x:${displayName}`,
         platform: "x",
@@ -147,11 +147,11 @@ async function injectAuthor(page: import("@playwright/test").Page, displayName: 
 async function injectFriend(page: import("@playwright/test").Page, friendName: string) {
   await page.evaluate(async (friendName) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       upsertLibraryPerson: (person: unknown) => Promise<void>;
     };
     const now = Date.now();
-    await automerge.upsertLibraryPerson({
+    await libraryCore.upsertLibraryPerson({
       id: `friend:${friendName}`,
       name: friendName,
       relationshipStatus: "friend",

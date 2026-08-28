@@ -626,7 +626,7 @@ describe("outbox processor", () => {
     teardown();
   });
 
-  it("retries a failed Automerge acknowledgement without repeating the provider action", async () => {
+  it("retries a failed SQLite acknowledgement without repeating the provider action", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(11_000);
     const { startOutboxProcessor } = await loadOutbox();

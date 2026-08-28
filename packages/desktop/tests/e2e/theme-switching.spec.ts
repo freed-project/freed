@@ -108,7 +108,7 @@ test("committing a hovered settings theme does not restore the old theme", async
   expect(committedThemeSequence).not.toContain("scriptorium");
 });
 
-test("a later Automerge snapshot cannot overwrite the device-local theme", async ({ app, page }) => {
+test("a later synchronized preference refresh cannot overwrite the device-local theme", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -174,7 +174,7 @@ test("a later Automerge snapshot cannot overwrite the device-local theme", async
   );
 });
 
-test("rapid theme browsing stays local and never writes theme into Automerge", async ({ app, page }) => {
+test("rapid theme browsing stays local and never writes theme into synchronized Library preferences", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 

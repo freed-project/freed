@@ -1,4 +1,4 @@
-# Phase 5: Desktop & Mobile App (Tauri)
+# Phase 5: Freed Desktop (Tauri)
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
@@ -28,8 +28,8 @@
       outside this database and receives no mirrored normalized writes. A fresh
       installation creates only the normalized database and never creates the
       historical directory, process lease, backup directory, store, or shell.
-- [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 40 bounded query IDs for Rust and TypeScript from one executable
+- [x] Generate the shared checkpoint registry, protocol limits, 40 mutation
+      IDs, and 33 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
       defines the 18-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
@@ -112,7 +112,7 @@
       checkpoint registry. Activation fails atomically when the header has no
       matching accepted authority, an active actor has no capability, or a
       capability names an unregistered mutation.
-- [ ] Extend the executable contract across field schemas, payload codecs,
+- [x] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
   - [x] Make the public query registry equal the generated SQLite program
         registry. Eleven unexecutable query names from retired export,
@@ -123,14 +123,14 @@
         carries at most 32 capture members. Each item is capped at 131,072
         canonical bytes, root, media, and topic rows commit atomically, refresh
         preserves user-owned state, and tombstones prevent resurrection.
-- [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
+- [x] Route feed, Saved, search, item detail, Friends, map, analytics, Story
       Wall, settings, exports, and diagnostics through bounded named queries.
   - [x] The native core now dispatches `feed_page_v1` as a typed request and
         response over the generated SQL program. One deferred SQLite snapshot
         pins source identity, keyset paging, visible count, row limit, and the
         2 MiB response budget. Its opaque cursor matches the TypeScript codec
         byte for byte and fails closed after the source revision changes.
-        Freed Desktop command and product view wiring remain open.
+        Freed Desktop consumes this contract through its bounded feed window.
   - [x] `library_facet_summary_v1` now computes counts and the bounded tag set
         from SQLite trigger-maintained counters and refcounts through the same
         browser and native dispatch. It returns one source-fenced typed
@@ -141,15 +141,15 @@
   - [x] `saved_analytics_v2` now computes the Saved overview through one
         generated native SQLite aggregate. It returns exact totals, latest
         time, fixed day and hour buckets, and bounded binary-ordered source and
-        content counts in one source-fenced response under 2 MiB. Final
-        Freed Desktop view wiring and historical reader deletion remain open.
+        content counts in one source-fenced response under 2 MiB. Saved
+        settings consumes this aggregate directly.
   - [x] `saved_feed_page_v2` now executes all four Saved orders through closed
         generated native SQLite variants. Date saved, date published,
         recommendation priority, and shortest read each use a matching
         expression index in both directions without a temporary sort. Filters
         and exact counts stay in SQLite, each request reads at most 129 rows,
         and edge cursors bind the filter, sort, generation, revision, and full
-        order key. Final Freed Desktop view wiring and V1 deletion remain open.
+        order key. The Saved view consumes this query directly.
   - [x] `preferences_snapshot_v1` now returns normalized preference nodes
         through the native core in exact SQLite binary path order. The closed
         response preserves boolean, integer, real, text, and null values,
@@ -175,7 +175,7 @@
         generated query reads at most eleven result rows, returns ten rows
         under 512 KiB, and filters exact evidence-bound dismissals before the
         renderer receives them. Friends retains only that visible window.
-        Freed Desktop view wiring remains open.
+        The Friends review surface retains only this result window.
   - [x] `rss_feed_detail_v1` now performs one primary-key SQLite lookup through
         the shared native and PWA dispatch and returns every synchronized RSS
         Feed field under a 64 KiB ceiling. Freed Desktop uses it when a partial
@@ -195,7 +195,7 @@
         replication. The extracted native core executes generated one-row set
         and clear programs with exact-retry no-op behavior and no canonical
         revision or outbox effect. Freed Desktop graph-worker and product
-        store wiring remain open.
+        store consume these pages directly.
   - [x] The shared Friends graph engine accepts a bounded SQLite query
         function and pumps Person, Account, and RSS pages into worker-owned
         compact source state one page at a time. Freed Desktop supplies the
@@ -227,7 +227,7 @@
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past
-        the body fail closed. Freed Desktop view wiring remains open.
+        the body fail closed. ReaderView pages the body through this query.
   - [x] `background_item_page_v1` now traverses compact metadata in binary
         global ID order through a source-fenced primary-key cursor. Each native
         request returns at most 64 rows, reads at most 65, includes hidden and
@@ -262,10 +262,10 @@
         129 rows for a 128-row result, and bind both edge cursors to the exact
         generation and revision. The final tie-break is the normalized global
         ID, so no renderer source-enumeration sequence enters SQLite or the
-        cursor. Freed Desktop product view wiring remains open.
-- [ ] Route the exhaustive mutation registry through atomic native
+        cursor. Freed Desktop uses this query for ranked feed windows.
+- [x] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
-  - [x] The dormant `feed_item_read_assignment` core path now uses its
+  - [x] The `feed_item_read_assignment` core path uses its
         generated SQLite program and the extracted native verifier to
         atomically commit the signed
         transaction, actor tip, normalized FeedItem value, field clock,
@@ -273,12 +273,12 @@
         retry returns the stored receipt only while writer admission and the
         signed capability remain valid. The old source-text locator test was
         deleted because executable native tests now prove this contract.
-  - [x] The dormant saved, archived, and liked assignment paths now consume
+  - [x] The saved, archived, and liked assignment paths consume
         generated programs through the same native transaction executor.
         Saved and archived share one deterministic clock and always clear the
         opposing state. Like state uses an independent clock and clears its
         obsolete provider receipt. No path performs provider traffic.
-  - [x] The dormant FeedItem removal path now atomically writes a typed
+  - [x] The FeedItem removal path atomically writes a typed
         convergent tombstone and deletes the normalized root through generated
         SQL. Owned child rows cascade, while stale removals remain journaled
         without replacing the winning tombstone.
@@ -317,7 +317,7 @@
         closed nullable person ID, resolves concurrent edits with a
         deterministic field clock, and relies on SQLite foreign keys to refuse
         links to missing People without partial writes.
-- [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
+- [x] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
   - [x] Replace synthetic accepted-revision events with native
         `change_feed_v1` pages. One page carries only compact identities and
@@ -360,7 +360,7 @@
         bounded native `item_detail_v1` query. Reader pinning deduplicates those
         descriptors and commits `pinned_offline` through the selected native
         SQLite authority before retaining local reader cache bytes.
-- [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
+- [x] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.
 
@@ -593,7 +593,7 @@ export async function captureDomFeed(
 | 5.33  | Public-safe bundles and private GitHub vulnerability reports                                                                                                                                                                                                                                                                                                                                    | Medium     |
 | 5.34  | Native startup recovery window outside the React tree                                                                                                                                                                                                                                                                                                                                           | Medium     |
 | 5.35  | Hot-path side-effect scheduling for persistence, sync, and outbox work                                                                                                                                                                                                                                                                                                                          | Medium     |
-| 5.36  | Event-aware Automerge subscription metadata for item-patch outbox drains                                                                                                                                                                                                                                                                                                                        | Medium     |
+| 5.36  | Event-aware bounded invalidation metadata for provider outbox drains                                                                                                                                                                                                                                                                                                                            | Medium     |
 | 5.37  | Incremental main-thread item-patch state updates                                                                                                                                                                                                                                                                                                                                                | Medium     |
 | 5.38  | Renderer recovery safe mode and deep local WebKit diagnostics                                                                                                                                                                                                                                                                                                                                   | Medium     |
 | 5.39  | Visible cloud transfer diagnostics, manual sync, and activity timeline                                                                                                                                                                                                                                                                                                                          | Medium     |
@@ -735,6 +735,7 @@ export async function captureDomFeed(
 | 5.175 | Persist native follower optimistic fields from the generated mutation registry. Read, saved, archived, and liked assignments now store the same sparse field projection as PWA OPFS SQLite in the intent transaction, report its exact count on first commit and replay, and clear it only when a verified Primary result resolves the transaction | High       | ✓ Complete |
 | 5.176 | Add a distinct native `local_change_feed_v1` for device-local follower projections. Schema-owned triggers emit bounded identities when optimistic fields enter or leave SQLite, retain only the newest 4,096 rows with an explicit reset marker for stale readers, and never advance canonical revisions or export the stream | High       | ✓ Complete |
 | 5.177 | Query follower overlays through `optimistic_fields_v1` for at most 64 visible FeedItem IDs and 448 sparse fields. Freed Desktop drains local changes after writes and reloads, resolves invalidated IDs through bounded detail, and leaves canonical revision identity unchanged | High       | ✓ Complete |
+| 5.178 | Delete the whole-document relay benchmark and its Criterion dependency, remove seven uncalled historical bootstrap digest domains, and replace Desktop browser fixtures that still modeled document debounce, corpus hydration, fake zero-valued runtime telemetry, or renderer arrays as Library authority | Medium     | ✓ Complete |
 
 ---
 
@@ -900,26 +901,15 @@ export async function captureDomFeed(
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
-> Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical document storage remains fenced migration input until the one-epoch cutover is accepted, then it is deleted.
+> Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical storage is available only to the fenced one-time source reader. It is never runtime authority or fallback and is erased after successful cutover.
 >
 > Release builds use the governed signing, notarization, updater, and channel promotion paths described in the release documentation. Runtime memory telemetry measures native and WebKit processes, authoritative SQLite Library readiness, visible content work, and pressure controls without document-relay counters or whole-corpus payloads.
 
-### Mobile
-
-- [ ] iOS app builds and runs
-- [ ] Android app builds and runs
-- [ ] Syncs with Desktop when on same network
-- [ ] Falls back to cloud sync when away
-- [ ] Background refresh works (iOS)
-- [ ] Background service works (Android)
-- [ ] App Store approved
-- [ ] Play Store approved
-
----
-
 ## Deliverable
 
-Native apps for **macOS, Windows, Linux, iOS, and Android** with capture, sync, and reader UI. No CLI or technical setup required.
+Freed Desktop for macOS, Windows, and Linux with capture, SQLite Library
+authority, synchronized followers, and reader UI. Mobile reading and editing
+run through the SQLite WebAssembly PWA described in Phase 6.
 
 ---
 
