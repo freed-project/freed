@@ -6,7 +6,7 @@ export const LIBRARY_CORE_SQLITE_APPLICATION_ID = 1179796804 as const;
 export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = 2 as const;
-export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "910cbb6597f354de594d4ff6bc96a4c8d175828aa9bee403edbfb1a67921c71a" as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "7fdfd3a0f09cb28e6026bbf23410a40418170bcb24b4c7ce818ae3e14a1953d9" as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "append_checkpoint_stage_v2",
   "begin_checkpoint_stage_v2",
@@ -26,6 +26,7 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "primary_mutation_context_v1",
   "query_v1",
   "reassign_writer_epoch_v2",
+  "retire_actor_v1",
   "sign_operation_v1",
 ] as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES = [

@@ -27,6 +27,7 @@ mod library_core_hash;
 mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;
+mod normalized_actor_retirement;
 mod normalized_authority;
 mod normalized_authority_credentials;
 mod normalized_checkpoint;
@@ -89,6 +90,10 @@ pub use library_core_process_lease::{
 };
 #[cfg(unix)]
 pub use library_core_sidecar::run_library_authority_sidecar;
+pub use normalized_actor_retirement::{
+    apply_normalized_actor_retirement_v1, NormalizedActorRetirementBodyV1,
+    NormalizedActorRetirementCertificateV1, NormalizedActorRetirementReceiptV1,
+};
 pub use normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 pub use normalized_authority_credentials::{
     load_established_authority_key_pair, AuthorityKeyStore,

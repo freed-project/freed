@@ -21,10 +21,11 @@ use crate::sqlite_contract_generated::{
 };
 use crate::{
     accept_normalized_operation_transaction_v1, append_normalized_checkpoint_stage_page_v2,
-    begin_normalized_checkpoint_stage_v2, describe_normalized_checkpoint_export_v2,
-    export_normalized_follower_result_page_v1, export_pinned_normalized_checkpoint_page_v2,
-    finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
-    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
+    apply_normalized_actor_retirement_v1, begin_normalized_checkpoint_stage_v2,
+    describe_normalized_checkpoint_export_v2, export_normalized_follower_result_page_v1,
+    export_pinned_normalized_checkpoint_page_v2, finalize_normalized_checkpoint_stage_v2,
+    get_content_state_v1, ingest_normalized_follower_intent_page_v1,
+    load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
     reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
@@ -281,6 +282,14 @@ struct ReassignWriterEpochCommandV2 {
     canonical_source_control_json: String,
     installation_witness: String,
     target_writer_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RetireActorCommandV1 {
+    actor_id: String,
+    reason: String,
+    retired_at_ms: i64,
 }
 
 #[derive(Serialize)]
@@ -748,6 +757,26 @@ fn execute_native_command_v1(
                 canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
                 transition_certificate_digest: reassigned.transition_certificate_digest,
             })
+        }
+        "retire_actor_v1" => {
+            let command: RetireActorCommandV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            let authority_store = MountedAuthorityKeyStore(credentials);
+            let authority_key_pair = crate::load_established_authority_key_pair(
+                &authority_store,
+                &credentials.library_id,
+            )
+            .map_err(|_| "credential_invalid")?;
+            encode_command_result(
+                apply_normalized_actor_retirement_v1(
+                    connection,
+                    &command.actor_id,
+                    &command.reason,
+                    command.retired_at_ms,
+                    &authority_key_pair,
+                )
+                .map_err(normalized_command_error)?,
+            )
         }
         "sign_operation_v1" => {
             let command: SignOperationCommandV1 =

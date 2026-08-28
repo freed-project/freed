@@ -16,6 +16,12 @@
 - [x] Consume the same generated normalized checkpoint registry, typed primary
       key identity, protocol ceilings, and content chunk transforms as the
       native core. The browser transform has no `00_library_shell` record.
+- [x] Verify every staged `93_actor_retirement` record against the exact
+      checkpoint authority key before activation. The signed certificate and
+      normalized actor and capability rows must agree exactly, including the
+      stable retirement identity, reason, time, and original committed
+      revision. Changed canonical bytes fail before selected SQLite state is
+      replaced.
 - [x] Generate the exact final normalized SQLite schema bytes and schema digest
       for both browser TypeScript and native Rust from the shared contract.
 - [ ] Prove the iOS 17 durability floor through
@@ -619,6 +625,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
 - [x] PWA Settings surfaces one exact OPFS SQLite cloud receipt with the selected checkpoint, Primary writer, follower actor, storage epoch, next intent and result sequences, and immutable segment heads. A receipt crossing Library or storage epoch authority fails closed, and the complete typed local receipt can be copied as JSON.
 - [x] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated normalized Library Core generation into OPFS SQLite and never synchronize a SQLite database, WAL, or SHM file. Normalized enrollment, intent publication, and result reconciliation run through the same provider-neutral follower coordinator without reviving the portable store.
+- [x] PWA checkpoint import verifies authority-signed actor retirement certificates before activation, then atomically materializes the exact retired actor, capability, certificate, and committed revision with no IndexedDB or unsigned fallback.
 - [x] PWA control, intent head, and result head adapters sample the shared bounded strong Drive v2 JSON ETag around each v3 media read and use exact v2 media PUT with If-Match for mutable updates. All immutable, list, create, media read, multipart, and resumable traffic remains on Drive v3. The request count and 60-second cadence are unchanged, and a stale ETag fails as `412` before exact current readback.
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
 - [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude device-local ranking fields

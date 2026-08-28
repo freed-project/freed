@@ -1438,6 +1438,22 @@ CREATE TABLE IF NOT EXISTS library_actor_capability_mutations (
   PRIMARY KEY (capability_id, mutation_id)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_actor_retirements (
+  retirement_identity TEXT PRIMARY KEY CHECK (length(retirement_identity) = 64 AND retirement_identity NOT GLOB '*[^0-9a-f]*'),
+  actor_id TEXT NOT NULL REFERENCES library_actors(actor_id) ON DELETE CASCADE,
+  capability_id TEXT NOT NULL REFERENCES library_actor_capabilities(capability_id) ON DELETE CASCADE,
+  authority_epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id) ON DELETE CASCADE,
+  capability_certificate_digest TEXT NOT NULL CHECK (length(capability_certificate_digest) = 64 AND capability_certificate_digest NOT GLOB '*[^0-9a-f]*'),
+  reason TEXT NOT NULL CHECK (reason IN ('device_removed', 'key_compromised', 'role_reassigned', 'user_requested')),
+  retired_at INTEGER NOT NULL CHECK (retired_at >= 0),
+  certificate_digest TEXT NOT NULL UNIQUE CHECK (length(certificate_digest) = 64 AND certificate_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_certificate TEXT NOT NULL CHECK (length(CAST(canonical_certificate AS BLOB)) BETWEEN 1 AND 65536),
+  committed_revision INTEGER NOT NULL CHECK (committed_revision >= 1),
+  UNIQUE (actor_id),
+  UNIQUE (capability_id),
+  CHECK (capability_id = capability_certificate_digest)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_receipts (
   actor_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
@@ -2102,6 +2118,20 @@ UNION ALL
 SELECT '92_actor_capability_mutation', json_array(capability_id, mutation_id),
   json_object('mutationId', mutation_id), NULL
 FROM library_actor_capability_mutations
+UNION ALL
+SELECT '93_actor_retirement', json_quote(retirement_identity),
+  json_object(
+    'actorId', actor_id,
+    'authorityEpochId', authority_epoch_id,
+    'canonicalCertificate', canonical_certificate,
+    'capabilityCertificateDigest', capability_certificate_digest,
+    'capabilityId', capability_id,
+    'certificateDigest', certificate_digest,
+    'committedRevision', committed_revision,
+    'reason', reason,
+    'retiredAt', retired_at
+  ), NULL
+FROM library_actor_retirements
 UNION ALL
 SELECT 'a0_receipt', json_array(actor_id, operation_id),
   json_object('acceptedAt', accepted_at, 'digest', digest, 'resultBlobDigest', result_blob_digest, 'resultText', result_text, 'status', status), NULL

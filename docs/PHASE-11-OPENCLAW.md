@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination, production v2 retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -319,6 +319,16 @@ Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
 retirement mechanism.
 
+The active Primary applies retirement through the generated native command.
+One immediate SQLite transaction writes the closed authority-signed
+certificate, retires the exact actor and version 2 capability, advances the
+canonical revision, and emits an actor-retirement reset invalidation. Exact
+replay returns the original committed revision and certificate. Changed replay
+identity fails without a write. Normalized checkpoints carry the closed
+`93_actor_retirement` row, and native plus PWA activation verify its canonical
+bytes and Ed25519 signature against the checkpoint authority key before the
+retired state becomes visible.
+
 The reusable native core enforces v2 certificates before ingestion and
 rechecks the exact signed capability under the immediate commit transaction.
 Scraper certificates can name only FeedItem capture. A bounded
@@ -343,10 +353,9 @@ actor capability into the selected generation.
 
 Production v2 issuance remains dormant. No production entry point exports the
 certificate constructor, and neither Freed Desktop nor the headless service
-publishes v2 certificates. Authority-signed retirement application and
-checkpoint propagation remain task 11.9. The PWA importer must ship before a
-later reviewed slice enables issuance, because an older PWA cannot import a v2
-certificate that has entered production sync.
+publishes v2 certificates. The retirement consumer and checkpoint verifier ship
+with the schema before issuance is enabled, so every participating client can
+reject a changed certificate and materialize an authority-signed retirement.
 
 Schema v12 also has an installed release prerequisite. Once the authoritative
 Primary migrates a Library, the v26.8.1900 schema v11 binary cannot reopen it.
@@ -461,7 +470,7 @@ review before implementation.
 | 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next |
 | 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
-| 11.9 | Open | Add signed retirement application and checkpoint propagation |
+| 11.9 | Complete | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
 | 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
 | 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
@@ -496,6 +505,10 @@ review before implementation.
   with zero writes. An exact response-loss retry returns the old receipt only
   for a currently admitted writer, active epoch, active actor, and unchanged
   capability, with zero new writes or results.
+- [x] Authority-signed actor retirement atomically retires the exact actor and
+  capability, returns the original receipt on exact replay, survives normalized
+  checkpoint export and import, and rejects changed certificate bytes in native
+  and PWA SQLite.
 - [ ] Crash and response-loss injection covers SQLite commit, object upload,
   manifest upload, control compare and swap, result publication, and backup.
 - [ ] Secret scans find no key or token in arguments, environment values, logs,

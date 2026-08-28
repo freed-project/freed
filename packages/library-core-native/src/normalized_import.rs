@@ -469,6 +469,66 @@ fn verify_authority_rows(
             "checkpoint active actor does not have an active capability",
         ));
     }
+    let retirement_state_mismatch: i64 = transaction.query_row(
+        "SELECT count(*)
+         FROM library_actors AS actor
+         JOIN library_actor_capabilities AS capability
+           ON capability.actor_id = actor.actor_id
+         LEFT JOIN library_actor_retirements AS retirement
+           ON retirement.actor_id = actor.actor_id
+          AND retirement.capability_id = capability.capability_id
+         WHERE (actor.retired_at IS NULL) <> (capability.retired_at IS NULL)
+            OR (actor.retired_at IS NULL) <> (retirement.actor_id IS NULL)
+            OR (actor.retired_at IS NOT NULL AND (
+                 actor.retired_at IS NOT capability.retired_at
+              OR capability.retirement_certificate_digest IS NOT retirement.certificate_digest
+              OR capability.retirement_identity IS NOT retirement.retirement_identity
+              OR capability.certificate_digest IS NOT retirement.capability_certificate_digest
+              OR actor.authority_epoch_id IS NOT retirement.authority_epoch_id
+              OR retirement.committed_revision < 1
+              OR retirement.committed_revision > (SELECT source_revision FROM library_meta WHERE singleton_id = 1)
+            ));",
+        [],
+        |row| row.get(0),
+    )?;
+    if retirement_state_mismatch != 0 {
+        return Err(invalid("checkpoint actor retirement state is inconsistent"));
+    }
+    let mut retirement_statement = transaction.prepare(
+        "SELECT retirement.canonical_certificate, epoch.authority_public_key,
+                retirement.actor_id, retirement.capability_id,
+                retirement.retirement_identity, retirement.certificate_digest,
+                retirement.reason, retirement.retired_at,
+                epoch.library_id, epoch.epoch_number, epoch.epoch_id,
+                epoch.authority_key_id
+         FROM library_actor_retirements AS retirement
+         JOIN library_authority_epochs AS epoch
+           ON epoch.epoch_id = retirement.authority_epoch_id
+         ORDER BY retirement.retirement_identity;",
+    )?;
+    let mut retirements = retirement_statement.query([])?;
+    while let Some(row) = retirements.next()? {
+        let canonical: String = row.get(0)?;
+        let certificate =
+            crate::normalized_actor_retirement::verify_normalized_actor_retirement_certificate_v1(
+                canonical.as_bytes(),
+                &row.get::<_, String>(1)?,
+            )?;
+        let body = certificate.retirement_body;
+        if body.actor_id != row.get::<_, String>(2)?
+            || body.capability_id != row.get::<_, String>(3)?
+            || body.retirement_identity != row.get::<_, String>(4)?
+            || certificate.certificate_digest != row.get::<_, String>(5)?
+            || body.reason != row.get::<_, String>(6)?
+            || body.retired_at_ms != row.get::<_, i64>(7)?
+            || body.library_id != row.get::<_, String>(8)?
+            || body.epoch != row.get::<_, i64>(9)?
+            || body.epoch_id != row.get::<_, String>(10)?
+            || body.authority_key_id != row.get::<_, String>(11)?
+        {
+            return Err(invalid("checkpoint actor retirement certificate changed"));
+        }
+    }
     let mut statement = transaction.prepare(
         "SELECT DISTINCT mutation_id FROM library_actor_capability_mutations
          ORDER BY mutation_id;",
@@ -549,6 +609,7 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_person_tags;
          DELETE FROM library_persons;
          DELETE FROM library_preferences;
+         DELETE FROM library_actor_retirements;
          DELETE FROM library_actor_capability_mutations;
          DELETE FROM library_actor_capabilities;
          DELETE FROM library_actors;
@@ -963,6 +1024,7 @@ fn activate_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_actors) +
            (SELECT count(*) FROM library_actor_capabilities) +
            (SELECT count(*) FROM library_actor_capability_mutations) +
+           (SELECT count(*) FROM library_actor_retirements) +
            (SELECT count(*) FROM library_receipts) +
            (SELECT count(*) FROM library_blobs) +
            (SELECT count(*) FROM library_content_ranges) +

@@ -133,8 +133,7 @@ type WorkerRequest<K extends LibraryCoreSqliteWorkerRequest["kind"]> = Extract<
 type WorkerCommand = Readonly<{
   closeAfterResponse: boolean;
   execute: () =>
-    | LibraryCoreSqliteWorkerResponse
-    | Promise<LibraryCoreSqliteWorkerResponse>;
+    LibraryCoreSqliteWorkerResponse | Promise<LibraryCoreSqliteWorkerResponse>;
   requestId: string;
 }>;
 
@@ -159,7 +158,8 @@ function bindCommand<K extends LibraryCoreSqliteWorkerRequest["kind"]>(
   request: WorkerRequest<K>,
   execute: (
     request: WorkerRequest<K>,
-  ) => LibraryCoreSqliteWorkerResponse | Promise<LibraryCoreSqliteWorkerResponse>,
+  ) =>
+    LibraryCoreSqliteWorkerResponse | Promise<LibraryCoreSqliteWorkerResponse>,
   closeAfterResponse = false,
 ): WorkerCommand {
   return {
@@ -202,12 +202,16 @@ async function executeClose(
   return { ok: true, requestId: request.requestId, status };
 }
 
-function executeActivateCheckpoint(
+async function executeActivateCheckpoint(
   request: WorkerRequest<"activate_normalized_checkpoint_stage">,
-): LibraryCoreSqliteWorkerResponse {
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  const active = requireEngine();
+  await active.verifyNormalizedCheckpointActorRetirements(
+    request.activation.stageId,
+  );
   return result(
     request.requestId,
-    requireEngine().activateNormalizedCheckpointStage(request.activation),
+    active.activateNormalizedCheckpointStage(request.activation),
   );
 }
 
@@ -511,7 +515,9 @@ async function executeImportNormalizedResultTransport(
 ): Promise<LibraryCoreSqliteWorkerResponse> {
   return result(
     request.requestId,
-    await requireEngine().importNormalizedFollowerResultTransport(request.import),
+    await requireEngine().importNormalizedFollowerResultTransport(
+      request.import,
+    ),
   );
 }
 
@@ -552,7 +558,9 @@ function assertNever(value: never): never {
  * invoked. The executable command has no request-controlled permission check or
  * dynamic method lookup.
  */
-function compileCommand(request: LibraryCoreSqliteWorkerRequest): WorkerCommand {
+function compileCommand(
+  request: LibraryCoreSqliteWorkerRequest,
+): WorkerCommand {
   switch (request.kind) {
     case "open":
       return bindCommand(request, executeOpen);

@@ -409,6 +409,20 @@ reassignment, enrollment, and verification all consume this one policy
 directly. The frozen version 1 editor policy remains available only to the
 historical source reader and cannot be parsed into normalized SQLite.
 
+Actor retirement is an authority-signed normalized protocol action. The
+certificate binds the Library, authority epoch and key, actor, version 2
+capability certificate, stable retirement identity, closed reason, and exact
+retirement time. The admitted Primary writes the certificate, retires the actor
+and capability, advances the canonical revision, and emits one reset
+invalidation inside the same SQLite transaction. Exact replay returns the
+original certificate and original committed revision. A changed reason, time,
+identity, capability, authority, or signature fails without a write.
+`93_actor_retirement` carries the typed row in every normalized checkpoint.
+Native and PWA activation verify the original canonical certificate against the
+checkpoint authority key before accepting the retired actor and capability
+state. Checkpoints contain no unsigned retirement hint and no client may infer
+retirement from a missing actor or local cache edit.
+
 Normalized authority and operation identities are also native protocol
 primitives. `NormalizedAuthorityStateV2` owns the exact Library, epoch,
 authority key, and ordered causal frontier. `NormalizedCausalTipV1` owns each

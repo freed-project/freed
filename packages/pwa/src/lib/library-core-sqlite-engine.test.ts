@@ -49,6 +49,7 @@ import {
   constructLibraryCoreActorEnrollmentBodyV1,
   constructLibraryCoreActorCapabilityCertificateV2,
   constructLibraryCoreActorCapabilityRequestV2,
+  constructLibraryCoreActorRetirementCertificateV1,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
@@ -560,13 +561,22 @@ describe("PWA Library Core SQLite engine", () => {
     engine: PwaLibraryCoreSqliteEngine,
     records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
     stageId: string,
-  ): void {
-    engine.beginNormalizedCheckpointStage({
+    identity: {
+      readonly authorityEpoch: string;
+      readonly libraryId: string;
+      readonly sourceRevision: number;
+    } = {
       authorityEpoch: "epoch-1",
-      createdAt: 1_000,
-      expectedRecordCount: records.length,
       libraryId: "library-1",
       sourceRevision: 7,
+    },
+  ): void {
+    engine.beginNormalizedCheckpointStage({
+      authorityEpoch: identity.authorityEpoch,
+      createdAt: 1_000,
+      expectedRecordCount: records.length,
+      libraryId: identity.libraryId,
+      sourceRevision: identity.sourceRevision,
       stageId,
     });
     let page: LibraryCoreNormalizedCheckpointRecordV2[] = [];
@@ -591,6 +601,184 @@ describe("PWA Library Core SQLite engine", () => {
       engine.appendNormalizedCheckpointStagePage({ records: page, stageId });
     }
   }
+
+  it("verifies and activates authority-signed actor retirement records", async () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const capabilityId = "44".repeat(32);
+    const retirementIdentity = "55".repeat(32);
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityKeyId = coreDigest("authority-key", {
+      authority_public_key: authorityPublicKey,
+      signature_algorithm: "ed25519",
+    });
+    const certificate = await constructLibraryCoreActorRetirementCertificateV1(
+      {
+        authority_key_id: authorityKeyId,
+        authority_public_key: authorityPublicKey,
+        epoch: 1,
+        epoch_id: epochId,
+        library_id: libraryId,
+      } as never,
+      {
+        actor_id: actorId,
+        capability_certificate_digest: capabilityId,
+        capability_id: capabilityId,
+        retirement_identity: retirementIdentity,
+      } as never,
+      "device_removed",
+      1_234,
+      {
+        digest: coreDigest as never,
+        async signAuthority(message) {
+          return sign(null, message, authorityKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const canonicalCertificate = new TextDecoder().decode(
+      encodeLibraryCoreCanonicalValue(certificate as never),
+    );
+    const header = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: epochId,
+        checkpointId: `${libraryId}:${epochId}:7`,
+        createdAtMs: 1_234,
+        libraryId,
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    const records = [
+      header,
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "01_authority_epoch",
+        primaryKey: epochId,
+        payload: {
+          acceptedAt: 1,
+          acceptedManifestGeneration: 0,
+          authorityKeyId,
+          authorityPublicKey,
+          canonicalTransitionCertificate: "{}",
+          checkpointFrontierDigest: "66".repeat(32),
+          epochNumber: 1,
+          libraryId,
+          materializedStateDigest: "77".repeat(32),
+          transitionCertificateDigest: "88".repeat(32),
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "03_active_authority",
+        primaryKey: "active",
+        payload: {
+          acceptedManifestGeneration: 0,
+          activatedAt: 1,
+          activeKey: "active",
+          epochId,
+          libraryId,
+          writerId: "writer-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "90_actor_state",
+        primaryKey: actorId,
+        payload: {
+          acceptedChainDigest: "99".repeat(32),
+          acceptedCounter: 0,
+          acceptedOperationId: null,
+          actorKind: "pwa",
+          authorityEpochId: epochId,
+          canonicalEnrollmentCertificate: "{}",
+          chainGenesisDigest: "99".repeat(32),
+          createdAt: 1,
+          enrollmentCertificateDigest: "aa".repeat(32),
+          enrollmentOperationId: "enroll-1",
+          publicKey: "bb".repeat(32),
+          retiredAt: 1_234,
+          updatedAt: 1_234,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "91_actor_capability",
+        primaryKey: capabilityId,
+        payload: {
+          actorClass: "editor",
+          actorId,
+          canonicalCertificate: "{}",
+          certificateDigest: capabilityId,
+          certificateVersion: 2,
+          issuanceIdentity: capabilityId,
+          issuedAt: 1,
+          retiredAt: 1_234,
+          retirementCertificateDigest: certificate.certificate_digest,
+          retirementIdentity,
+          scopeId: null,
+          scopeKind: null,
+          scopeMode: "library_wide",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "93_actor_retirement",
+        primaryKey: retirementIdentity,
+        payload: {
+          actorId,
+          authorityEpochId: epochId,
+          canonicalCertificate,
+          capabilityCertificateDigest: capabilityId,
+          capabilityId,
+          certificateDigest: certificate.certificate_digest,
+          committedRevision: 6,
+          reason: "device_removed",
+          retiredAt: 1_234,
+        },
+      }),
+    ];
+    const identity = { authorityEpoch: epochId, libraryId, sourceRevision: 7 };
+    stageRecords(engine, records, "signed-retirement", identity);
+    await expect(
+      engine.verifyNormalizedCheckpointActorRetirements("signed-retirement"),
+    ).resolves.toBeUndefined();
+    expect(
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "signed-retirement",
+      }),
+    ).toMatchObject({ recordCount: records.length, sourceRevision: 7 });
+    expect(
+      database.exec({
+        sql: `SELECT canonical_certificate, certificate_digest, committed_revision
+              FROM library_actor_retirements WHERE retirement_identity = ?1;`,
+        bind: [retirementIdentity],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[canonicalCertificate, certificate.certificate_digest, 6]]);
+
+    const changed = records.map((record) =>
+      record.registryKey === "93_actor_retirement"
+        ? createLibraryCoreNormalizedCheckpointRecordV2({
+            ...record,
+            payload: { ...record.payload, reason: "key_compromised" },
+          })
+        : record,
+    );
+    stageRecords(engine, changed, "changed-retirement", identity);
+    await expect(
+      engine.verifyNormalizedCheckpointActorRetirements("changed-retirement"),
+    ).rejects.toThrow(/certificate changed/);
+  });
 
   it("installs and verifies the exact generated normalized schema", () => {
     const engine = new PwaLibraryCoreSqliteEngine(

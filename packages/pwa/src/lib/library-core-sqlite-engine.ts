@@ -75,6 +75,7 @@ import {
   verifyLibraryCoreOperationTransactionV1,
   verifyLibraryCoreFollowerResultV1,
   verifyLibraryCoreActorCapabilityCertificateV2,
+  verifyLibraryCoreActorRetirementCertificateV1,
   decodeLibraryCoreFeedPageCursorV1,
   decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
@@ -364,7 +365,7 @@ function validateCheckpointHeader(
   }
 }
 
-function safeInteger(value: SqlValue | undefined, label: string): number {
+function safeInteger(value: unknown, label: string): number {
   const number = typeof value === "bigint" ? Number(value) : value;
   if (typeof number !== "number" || !Number.isSafeInteger(number)) {
     throw new Error(`${label} is not a safe SQLite integer`);
@@ -372,7 +373,7 @@ function safeInteger(value: SqlValue | undefined, label: string): number {
   return number;
 }
 
-function text(value: SqlValue | undefined, label: string): string {
+function text(value: unknown, label: string): string {
   if (typeof value !== "string") {
     throw new Error(`${label} is not SQLite text`);
   }
@@ -1013,6 +1014,132 @@ export class PwaLibraryCoreSqliteEngine {
     return this.#checkpointStageStatus(page.stageId);
   }
 
+  async verifyNormalizedCheckpointActorRetirements(
+    stageId: string,
+  ): Promise<void> {
+    if (
+      typeof stageId !== "string" ||
+      stageId.length === 0 ||
+      stageId.length > 255
+    ) {
+      throw new Error("normalized checkpoint stage identity is invalid");
+    }
+    const statement = this.#database.prepare(
+      `SELECT record_canonical FROM library_checkpoint_stage_records
+       WHERE stage_id = ?1 AND registry_key IN ('01_authority_epoch', '93_actor_retirement')
+       ORDER BY registry_key, primary_key_canonical;`,
+    );
+    const authorities = new Map<string, Record<string, unknown>>();
+    const retirements: Array<{
+      readonly primaryKey: unknown;
+      readonly payload: Record<string, unknown>;
+    }> = [];
+    try {
+      statement.bind([stageId]);
+      while (statement.step()) {
+        const canonical = Uint8Array.from(
+          statement.getBlob(0) ??
+            (() => {
+              throw new Error(
+                "normalized checkpoint retirement record is missing",
+              );
+            })(),
+        );
+        const record = parseLibraryCoreNormalizedCheckpointRecordV2(
+          decodeLibraryCoreCanonicalValue(canonical, {
+            maximumBytes:
+              LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+          }),
+        );
+        const payload = record.payload as Record<string, unknown>;
+        if (record.registryKey === "01_authority_epoch") {
+          if (typeof record.primaryKey !== "string") {
+            throw new Error(
+              "checkpoint retirement authority identity is invalid",
+            );
+          }
+          authorities.set(record.primaryKey, payload);
+        } else if (record.registryKey === "93_actor_retirement") {
+          retirements.push({ primaryKey: record.primaryKey, payload });
+        }
+      }
+    } finally {
+      statement.finalize();
+    }
+    for (const retirement of retirements) {
+      const epochId = text(
+        retirement.payload.authorityEpochId,
+        "checkpoint retirement authority epoch",
+      );
+      const authority = authorities.get(epochId);
+      if (!authority) {
+        throw new Error("checkpoint retirement authority is missing");
+      }
+      const canonicalCertificateText = text(
+        retirement.payload.canonicalCertificate,
+        "checkpoint retirement certificate",
+      );
+      let certificateValue: LibraryCoreCanonicalValue;
+      try {
+        certificateValue = JSON.parse(
+          canonicalCertificateText,
+        ) as LibraryCoreCanonicalValue;
+      } catch {
+        throw new Error("checkpoint retirement certificate is not JSON");
+      }
+      const canonicalCertificate = encodeLibraryCoreCanonicalValue(
+        certificateValue,
+        { maximumBytes: 65_536 },
+      );
+      if (
+        new TextDecoder().decode(canonicalCertificate) !==
+        canonicalCertificateText
+      ) {
+        throw new Error("checkpoint retirement certificate is not canonical");
+      }
+      const verified = await verifyLibraryCoreActorRetirementCertificateV1(
+        canonicalCertificate,
+        {
+          library_id: text(
+            authority.libraryId,
+            "checkpoint retirement Library identity",
+          ),
+          epoch: safeInteger(
+            authority.epochNumber,
+            "checkpoint retirement epoch number",
+          ),
+          epoch_id: epochId,
+          authority_key_id: text(
+            authority.authorityKeyId,
+            "checkpoint retirement authority key identity",
+          ),
+          authority_public_key: text(
+            authority.authorityPublicKey,
+            "checkpoint retirement authority public key",
+          ),
+        } as never,
+        {
+          digest: coreDigest,
+          verifySignature: verifyLibraryCoreEd25519WithWebCrypto,
+        },
+      );
+      const body = verified.certificate.retirement_body;
+      if (
+        retirement.primaryKey !== body.retirement_identity ||
+        retirement.payload.actorId !== body.actor_id ||
+        retirement.payload.capabilityId !== body.capability_id ||
+        retirement.payload.capabilityCertificateDigest !==
+          body.capability_certificate_digest ||
+        retirement.payload.certificateDigest !==
+          verified.certificate.certificate_digest ||
+        retirement.payload.reason !== body.reason ||
+        retirement.payload.retiredAt !== body.retired_at_ms
+      ) {
+        throw new Error("checkpoint retirement certificate changed");
+      }
+    }
+  }
+
   activateNormalizedCheckpointStage(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
@@ -1104,6 +1231,7 @@ export class PwaLibraryCoreSqliteEngine {
           DELETE FROM library_person_tags;
           DELETE FROM library_persons;
           DELETE FROM library_preferences;
+          DELETE FROM library_actor_retirements;
           DELETE FROM library_actor_capability_mutations;
           DELETE FROM library_actor_capabilities;
           DELETE FROM library_actors;
@@ -1144,6 +1272,7 @@ export class PwaLibraryCoreSqliteEngine {
                   UNION ALL SELECT count(*) FROM library_actors
                   UNION ALL SELECT count(*) FROM library_actor_capabilities
                   UNION ALL SELECT count(*) FROM library_actor_capability_mutations
+                  UNION ALL SELECT count(*) FROM library_actor_retirements
                   UNION ALL SELECT count(*) FROM library_receipts
                   UNION ALL SELECT count(*) FROM library_blobs
                   UNION ALL SELECT count(*) FROM library_content_ranges
@@ -1631,10 +1760,9 @@ export class PwaLibraryCoreSqliteEngine {
     const revision = safeInteger(state[0]![1], "device contact revision");
     const maximumBytes = LIBRARY_CORE_DEVICE_CONTACT_MAXIMUM_RESPONSE_BYTES;
     const encodedBytes = (value: unknown) =>
-      encodeLibraryCoreCanonicalValue(
-        value as LibraryCoreCanonicalValue,
-        { maximumBytes },
-      ).byteLength + 1;
+      encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue, {
+        maximumBytes,
+      }).byteLength + 1;
     if (request.queryId === "device_contact_match_page_v1") {
       const generationState = this.#database.exec({
         sql: `SELECT state FROM library_device_contact_generations WHERE generation_id = ?1 COLLATE BINARY;`,
@@ -1890,10 +2018,7 @@ export class PwaLibraryCoreSqliteEngine {
               sql: `DELETE FROM library_device_contact_generations
                     WHERE generation_id = ?1 COLLATE BINARY AND state = 'building';`,
               bind: [
-                text(
-                  buildingRows[0]![0],
-                  "building device contact generation",
-                ),
+                text(buildingRows[0]![0], "building device contact generation"),
               ],
             });
             buildingRows.length = 0;
@@ -9257,6 +9382,34 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error(
         "checkpoint active actor does not have an active capability",
       );
+    }
+    const retirementStateMismatch = safeInteger(
+      this.#database.exec({
+        sql: `SELECT count(*)
+              FROM library_actors AS actor
+              JOIN library_actor_capabilities AS capability
+                ON capability.actor_id = actor.actor_id
+              LEFT JOIN library_actor_retirements AS retirement
+                ON retirement.actor_id = actor.actor_id
+               AND retirement.capability_id = capability.capability_id
+              WHERE (actor.retired_at IS NULL) <> (capability.retired_at IS NULL)
+                 OR (actor.retired_at IS NULL) <> (retirement.actor_id IS NULL)
+                 OR (actor.retired_at IS NOT NULL AND (
+                      actor.retired_at IS NOT capability.retired_at
+                   OR capability.retirement_certificate_digest IS NOT retirement.certificate_digest
+                   OR capability.retirement_identity IS NOT retirement.retirement_identity
+                   OR capability.certificate_digest IS NOT retirement.capability_certificate_digest
+                   OR actor.authority_epoch_id IS NOT retirement.authority_epoch_id
+                   OR retirement.committed_revision < 1
+                   OR retirement.committed_revision > (SELECT source_revision FROM library_meta WHERE singleton_id = 1)
+                 ));`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "checkpoint actor retirement consistency",
+    );
+    if (retirementStateMismatch !== 0) {
+      throw new Error("checkpoint actor retirement state is inconsistent");
     }
     const knownMutations = new Set<string>(LIBRARY_CORE_OPERATION_IDS);
     const mutations = this.#database.exec({

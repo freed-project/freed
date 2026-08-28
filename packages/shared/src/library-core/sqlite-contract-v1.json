@@ -204,6 +204,7 @@
     "primary_mutation_context_v1",
     "query_v1",
     "reassign_writer_epoch_v2",
+    "retire_actor_v1",
     "sign_operation_v1"
   ],
   "fractionalFields": {
@@ -352,6 +353,10 @@
       "identityPayloadFields": {
         "mutationId": 1
       }
+    },
+    "93_actor_retirement": {
+      "table": "library_actor_retirements",
+      "primaryKeyColumns": ["retirement_identity"]
     },
     "a0_receipt": {
       "table": "library_receipts",
@@ -728,6 +733,22 @@
       "primaryKey": "pair",
       "payload": "actor_capability_mutation",
       "fields": ["mutationId"]
+    },
+    {
+      "registryKey": "93_actor_retirement",
+      "primaryKey": "text",
+      "payload": "actor_retirement",
+      "fields": [
+        "actorId",
+        "authorityEpochId",
+        "canonicalCertificate",
+        "capabilityCertificateDigest",
+        "capabilityId",
+        "certificateDigest",
+        "committedRevision",
+        "reason",
+        "retiredAt"
+      ]
     },
     {
       "registryKey": "a0_receipt",
