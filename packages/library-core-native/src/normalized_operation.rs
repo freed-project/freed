@@ -49,6 +49,7 @@ pub(crate) struct VerifiedOperation {
     pub(crate) entity_id: String,
     pub(crate) entity_type: String,
     pub(crate) operation_type: String,
+    pub(crate) created_at_ms: i64,
     pub(crate) item_json: Option<String>,
     pub(crate) rss_feed_json: Option<String>,
     pub(crate) preferences_patch_json: Option<String>,

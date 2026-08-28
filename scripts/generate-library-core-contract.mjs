@@ -340,6 +340,7 @@ function assertContract(contract) {
     "invalidationTopic",
     "materializeSql",
     "maximumMembers",
+    "optimisticEffectKind",
     "payloadKind",
     "requiresExistingTarget",
     "targetExistsSql",
@@ -382,6 +383,13 @@ function assertContract(contract) {
       !Number.isSafeInteger(program.maximumMembers) ||
       program.maximumMembers < 1 ||
       program.maximumMembers > 256 ||
+      ![
+        "archive_assignment",
+        "like_assignment",
+        "none",
+        "read_assignment",
+        "saved_assignment",
+      ].includes(program.optimisticEffectKind) ||
       [
         program.clockReadSql,
         program.clockWriteSql,
@@ -1132,7 +1140,7 @@ ${rows}
   const mutationPrograms = Object.entries(contract.mutationPrograms)
     .map(
       ([mutationId, program]) =>
-        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, payload_kind: ${JSON.stringify(program.payloadKind)}, requires_existing_target: ${program.requiresExistingTarget}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, clock_read_sql: ${JSON.stringify(program.clockReadSql)}, dependent_delete_sql: &[${program.dependentDeleteSql.map((sql) => JSON.stringify(sql)).join(", ")}], dependent_insert_sql: &[${program.dependentInsertSql.map((sql) => JSON.stringify(sql)).join(", ")}], materialize_sql: ${JSON.stringify(program.materializeSql)}, clock_write_sql: ${JSON.stringify(program.clockWriteSql)} },`,
+        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, optimistic_effect_kind: ${JSON.stringify(program.optimisticEffectKind)}, payload_kind: ${JSON.stringify(program.payloadKind)}, requires_existing_target: ${program.requiresExistingTarget}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, clock_read_sql: ${JSON.stringify(program.clockReadSql)}, dependent_delete_sql: &[${program.dependentDeleteSql.map((sql) => JSON.stringify(sql)).join(", ")}], dependent_insert_sql: &[${program.dependentInsertSql.map((sql) => JSON.stringify(sql)).join(", ")}], materialize_sql: ${JSON.stringify(program.materializeSql)}, clock_write_sql: ${JSON.stringify(program.clockWriteSql)} },`,
     )
     .join("\n");
   const localMutationPrograms = Object.entries(contract.localMutationPrograms)
@@ -1297,6 +1305,7 @@ pub struct SqliteMutationProgram {
     pub maximum_members: usize,
     pub entity_type: &'static str,
     pub invalidation_topic: &'static str,
+    pub optimistic_effect_kind: &'static str,
     pub payload_kind: &'static str,
     pub requires_existing_target: bool,
     pub target_exists_sql: &'static str,

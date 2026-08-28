@@ -15,6 +15,7 @@ import {
   LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
+  libraryCoreOptimisticFieldsForEnvelopeV1,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
@@ -4605,80 +4606,9 @@ export class PwaLibraryCoreSqliteEngine {
         "follower intent transaction exceeds its registered mutation program",
       );
     }
-    const effects = verified.members.flatMap((member) => {
-      const envelope = member.envelope;
-      const payload = envelope.payload as Readonly<
-        Record<string, LibraryCoreCanonicalValue>
-      >;
-      const effect = (
-        fieldPath: string,
-        valueType: "boolean" | "integer" | "null",
-        value: boolean | number | null,
-      ) => ({
-        createdAt: envelope.created_at_ms,
-        entityId: envelope.entity_id,
-        entityType: envelope.entity_type,
-        fieldPath,
-        value,
-        valueType,
-      });
-      if (envelope.operation_type === "feed_item_read_assignment") {
-        return [effect("read_at", "integer", payload.read_at_ms as number)];
-      }
-      if (envelope.operation_type === "feed_item_saved_assignment") {
-        return payload.assigned === true
-          ? [
-              effect("saved", "boolean", true),
-              effect("saved_at", "integer", payload.assigned_at_ms as number),
-              effect("archived", "boolean", false),
-              effect("archived_at", "null", null),
-            ]
-          : [
-              effect("saved", "boolean", false),
-              effect("saved_at", "null", null),
-            ];
-      }
-      if (envelope.operation_type === "feed_item_archive_assignment") {
-        return payload.assigned === true
-          ? [
-              effect("archived", "boolean", true),
-              effect(
-                "archived_at",
-                "integer",
-                payload.assigned_at_ms as number,
-              ),
-              effect("saved", "boolean", false),
-              effect("saved_at", "null", null),
-            ]
-          : [
-              effect("archived", "boolean", false),
-              effect("archived_at", "null", null),
-            ];
-      }
-      if (envelope.operation_type === "feed_item_like_assignment") {
-        return [
-          effect("liked", "boolean", payload.assigned as boolean),
-          effect(
-            "liked_at",
-            payload.assigned === true ? "integer" : "null",
-            payload.assigned === true
-              ? (payload.assigned_at_ms as number)
-              : null,
-          ),
-        ];
-      }
-      if (
-        Object.hasOwn(
-          LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
-          envelope.operation_type,
-        )
-      ) {
-        return [];
-      }
-      throw new TypeError(
-        `follower optimistic materialization does not support ${envelope.operation_type}`,
-      );
-    });
+    const effects = verified.members.flatMap((member) =>
+      libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope),
+    );
     const canonicalTransaction = encodeLibraryCoreCanonicalValue(
       verified.transaction_body as unknown as LibraryCoreCanonicalValue,
       { maximumBytes: 131_072 },

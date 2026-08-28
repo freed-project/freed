@@ -1,4 +1,5 @@
 use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::sqlite_contract_generated::SQLITE_MUTATION_PROGRAMS;
 use crate::{
     countersign_actor_enrollment_request_bytes,
     library_core_actor_enrollment::{
@@ -14,7 +15,7 @@ use crate::{
     normalized_mutation::{
         actor_state_at, NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1,
     },
-    normalized_operation::VerifiedActorEnrollment,
+    normalized_operation::{VerifiedActorEnrollment, VerifiedOperation},
     normalized_operation_verifier::verify_operation_transaction,
     normalized_primary_mutation_context_v1,
     normalized_writer_reassignment::current_authority,
@@ -32,6 +33,101 @@ const FOLLOWER_INTENT_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 1_048_576;
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OptimisticValue {
+    Boolean(bool),
+    Integer(i64),
+    Null,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OptimisticField {
+    field_path: &'static str,
+    value: OptimisticValue,
+}
+
+fn optimistic_fields_for_member(
+    member: &VerifiedOperation,
+) -> Result<Vec<OptimisticField>, NormalizedSqliteError> {
+    let program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|program| program.mutation_id == member.operation_type)
+        .ok_or(invalid("normalized follower mutation program is absent"))?;
+    let boolean = |field_path, value| OptimisticField {
+        field_path,
+        value: OptimisticValue::Boolean(value),
+    };
+    let integer = |field_path, value| OptimisticField {
+        field_path,
+        value: OptimisticValue::Integer(value),
+    };
+    let null = |field_path| OptimisticField {
+        field_path,
+        value: OptimisticValue::Null,
+    };
+    match program.optimistic_effect_kind {
+        "none" => Ok(Vec::new()),
+        "read_assignment" => Ok(vec![integer(
+            "read_at",
+            member
+                .read_at_ms
+                .ok_or(invalid("normalized follower read effect is invalid"))?,
+        )]),
+        "saved_assignment" => match member
+            .assigned
+            .ok_or(invalid("normalized follower saved effect is invalid"))?
+        {
+            true => Ok(vec![
+                boolean("saved", true),
+                integer(
+                    "saved_at",
+                    member
+                        .assigned_at_ms
+                        .ok_or(invalid("normalized follower saved timestamp is invalid"))?,
+                ),
+                boolean("archived", false),
+                null("archived_at"),
+            ]),
+            false => Ok(vec![boolean("saved", false), null("saved_at")]),
+        },
+        "archive_assignment" => match member
+            .assigned
+            .ok_or(invalid("normalized follower archive effect is invalid"))?
+        {
+            true => Ok(vec![
+                boolean("archived", true),
+                integer(
+                    "archived_at",
+                    member
+                        .assigned_at_ms
+                        .ok_or(invalid("normalized follower archive timestamp is invalid"))?,
+                ),
+                boolean("saved", false),
+                null("saved_at"),
+            ]),
+            false => Ok(vec![boolean("archived", false), null("archived_at")]),
+        },
+        "like_assignment" => match member
+            .assigned
+            .ok_or(invalid("normalized follower like effect is invalid"))?
+        {
+            true => Ok(vec![
+                boolean("liked", true),
+                integer(
+                    "liked_at",
+                    member
+                        .assigned_at_ms
+                        .ok_or(invalid("normalized follower like timestamp is invalid"))?,
+                ),
+            ]),
+            false => Ok(vec![boolean("liked", false), null("liked_at")]),
+        },
+        _ => Err(invalid(
+            "normalized follower optimistic effect kind is invalid",
+        )),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -879,13 +975,19 @@ pub fn enqueue_normalized_follower_intent_v1(
         .members
         .last()
         .ok_or(invalid("normalized follower intent has no last member"))?;
+    let optimistic_fields = verified
+        .members
+        .iter()
+        .map(optimistic_fields_for_member)
+        .collect::<Result<Vec<_>, _>>()?;
+    let optimistic_field_count = optimistic_fields.iter().map(Vec::len).sum();
     let receipt = |state| NormalizedFollowerIntentCommitReceiptV1 {
         transaction_id: verified.transaction_id.clone(),
         actor_id: verified.actor_id.clone(),
         first_counter: first.actor_sequence,
         last_counter: last.actor_sequence,
         member_count: verified.members.len(),
-        optimistic_field_count: 0,
+        optimistic_field_count,
         state,
     };
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -938,6 +1040,15 @@ pub fn enqueue_normalized_follower_intent_v1(
             if !exact {
                 return Err(invalid("normalized follower transaction replay changed"));
             }
+        }
+        let stored_optimistic_field_count: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_optimistic_fields
+             WHERE transaction_id = ?1;",
+            [&verified.transaction_id],
+            |row| row.get(0),
+        )?;
+        if usize::try_from(stored_optimistic_field_count).ok() != Some(optimistic_field_count) {
+            return Err(invalid("normalized follower optimistic replay changed"));
         }
         transaction.commit()?;
         return Ok(receipt("pending"));
@@ -1002,6 +1113,32 @@ pub fn enqueue_normalized_follower_intent_v1(
                 member.member_digest,
             ],
         )?;
+        for effect in &optimistic_fields[index] {
+            let (value_type, boolean_value, integer_value) = match effect.value {
+                OptimisticValue::Boolean(value) => {
+                    ("boolean", Some(if value { 1_i64 } else { 0_i64 }), None)
+                }
+                OptimisticValue::Integer(value) => ("integer", None, Some(value)),
+                OptimisticValue::Null => ("null", None, None),
+            };
+            transaction.execute(
+                "INSERT INTO library_optimistic_fields
+                 (transaction_id, entity_type, entity_id, field_path,
+                  value_type, boolean_value, integer_value, real_value,
+                  text_value, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8);",
+                params![
+                    verified.transaction_id,
+                    member.entity_type,
+                    member.entity_id,
+                    effect.field_path,
+                    value_type,
+                    boolean_value,
+                    integer_value,
+                    member.created_at_ms,
+                ],
+            )?;
+        }
     }
     let updated = transaction.execute(
         "UPDATE library_intent_actors
@@ -2233,6 +2370,45 @@ mod tests {
             .expect("enqueue follower intent");
         assert_eq!(intent.first_counter, 1);
         assert_eq!(intent.last_counter, 2);
+        assert_eq!(intent.optimistic_field_count, 2);
+        let optimistic_rows = connection
+            .prepare(
+                "SELECT entity_id, field_path, value_type, integer_value, created_at
+                 FROM library_optimistic_fields
+                 WHERE transaction_id = ?1 ORDER BY entity_id;",
+            )
+            .expect("prepare optimistic rows")
+            .query_map([&intent.transaction_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .expect("query optimistic rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect optimistic rows");
+        assert_eq!(
+            optimistic_rows,
+            vec![
+                (
+                    "rss:item:1".to_owned(),
+                    "read_at".to_owned(),
+                    "integer".to_owned(),
+                    900,
+                    1_000,
+                ),
+                (
+                    "rss:item:2".to_owned(),
+                    "read_at".to_owned(),
+                    "integer".to_owned(),
+                    901,
+                    1_001,
+                ),
+            ]
+        );
         let transport_context = normalized_follower_transport_context_v2(&connection)
             .expect("follower transport context");
         assert_eq!(transport_context.actor_id, accepted.actor_id);
@@ -2400,6 +2576,17 @@ mod tests {
         )
         .expect("import follower result transport segment");
         assert_eq!(imported.result_count, 1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_optimistic_fields
+                     WHERE transaction_id = ?1;",
+                    [&intent.transaction_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("resolved optimistic count"),
+            0
+        );
         assert_eq!(
             import_normalized_follower_result_transport_segment_v2(
                 &mut connection,

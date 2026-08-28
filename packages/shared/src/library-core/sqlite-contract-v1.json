@@ -915,6 +915,7 @@
       "invalidationTopic": "account",
       "materializeSql": "UPDATE library_accounts SET person_id = ?1, updated_at = ?2 WHERE id = ?3;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "nullable_text_assignment",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1);"
@@ -933,6 +934,7 @@
       "invalidationTopic": "account",
       "materializeSql": "INSERT INTO library_accounts (id, person_id, kind, provider, external_id, handle, display_name, avatar_url, profile_url, email, phone, address, imported_at, first_seen_at, last_seen_at, discovered_from, follow_roster_active, follow_roster_synced_at, sample_batch_id, sample_generated_at, sample_generator_version, created_at, updated_at) SELECT ?1, json_extract(?2, '$.personId'), json_extract(?2, '$.kind'), json_extract(?2, '$.provider'), json_extract(?2, '$.externalId'), json_extract(?2, '$.handle'), json_extract(?2, '$.displayName'), json_extract(?2, '$.avatarUrl'), json_extract(?2, '$.profileUrl'), json_extract(?2, '$.email'), json_extract(?2, '$.phone'), json_extract(?2, '$.address'), json_extract(?2, '$.importedAt'), json_extract(?2, '$.firstSeenAt'), json_extract(?2, '$.lastSeenAt'), json_extract(?2, '$.discoveredFrom'), json_extract(?2, '$.followRosterActive'), json_extract(?2, '$.followRosterSyncedAt'), json_extract(?2, '$.sampleDataFingerprint.batchId'), json_extract(?2, '$.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.sampleDataFingerprint.generatorVersion'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.updatedAt') WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1) ON CONFLICT(id) DO UPDATE SET person_id = excluded.person_id, kind = excluded.kind, provider = excluded.provider, external_id = excluded.external_id, handle = excluded.handle, display_name = excluded.display_name, avatar_url = excluded.avatar_url, profile_url = excluded.profile_url, email = excluded.email, phone = excluded.phone, address = excluded.address, imported_at = excluded.imported_at, first_seen_at = excluded.first_seen_at, last_seen_at = excluded.last_seen_at, discovered_from = excluded.discovered_from, follow_roster_active = excluded.follow_roster_active, follow_roster_synced_at = excluded.follow_roster_synced_at, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, created_at = excluded.created_at, updated_at = excluded.updated_at;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "account_upsert",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
@@ -947,6 +949,7 @@
       "invalidationTopic": "account",
       "materializeSql": "DELETE FROM library_accounts WHERE id = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1);"
@@ -961,6 +964,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET saved = 0, saved_at = NULL, archived = ?1, archived_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, updated_at = ?3 WHERE global_id = ?4;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "archive_assignment",
       "payloadKind": "boolean_assignment",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
@@ -981,6 +985,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, author_id, author_handle, author_display_name, author_avatar_url, content_text, link_url, link_title, link_description, engagement_likes, engagement_reposts, engagement_comments, engagement_views, location_name, location_lat, location_lng, location_url, location_source, time_range_starts_at, time_range_ends_at, time_range_kind, rss_feed_url, rss_feed_title, rss_site_url, fb_group_id, fb_group_name, fb_group_url, preserved_text, preserved_author, preserved_published_at, preserved_word_count, preserved_reading_time, preserved_at, hidden, read_at, saved, saved_at, archived, archived_at, liked, liked_at, liked_synced_at, seen_synced_at, source_url, sample_batch_id, sample_generated_at, sample_generator_version, updated_at) SELECT ?1, json_extract(?2, '$.platform'), json_extract(?2, '$.contentType'), json_extract(?2, '$.capturedAt'), json_extract(?2, '$.publishedAt'), json_extract(?2, '$.author.id'), json_extract(?2, '$.author.handle'), json_extract(?2, '$.author.displayName'), json_extract(?2, '$.author.avatarUrl'), json_extract(?2, '$.content.text'), json_extract(?2, '$.content.linkPreview.url'), json_extract(?2, '$.content.linkPreview.title'), json_extract(?2, '$.content.linkPreview.description'), json_extract(?2, '$.engagement.likes'), json_extract(?2, '$.engagement.reposts'), json_extract(?2, '$.engagement.comments'), json_extract(?2, '$.engagement.views'), json_extract(?2, '$.location.name'), json_extract(?2, '$.location.coordinates.lat'), json_extract(?2, '$.location.coordinates.lng'), json_extract(?2, '$.location.url'), json_extract(?2, '$.location.source'), json_extract(?2, '$.timeRange.startsAt'), json_extract(?2, '$.timeRange.endsAt'), json_extract(?2, '$.timeRange.kind'), json_extract(?2, '$.rssSource.feedUrl'), json_extract(?2, '$.rssSource.feedTitle'), json_extract(?2, '$.rssSource.siteUrl'), json_extract(?2, '$.fbGroup.id'), json_extract(?2, '$.fbGroup.name'), json_extract(?2, '$.fbGroup.url'), json_extract(?2, '$.preservedContent.text'), json_extract(?2, '$.preservedContent.author'), json_extract(?2, '$.preservedContent.publishedAt'), json_extract(?2, '$.preservedContent.wordCount'), json_extract(?2, '$.preservedContent.readingTime'), json_extract(?2, '$.preservedContent.preservedAt'), COALESCE(json_extract(?2, '$.userState.hidden'), 0), json_extract(?2, '$.userState.readAt'), COALESCE(json_extract(?2, '$.userState.saved'), 0), json_extract(?2, '$.userState.savedAt'), COALESCE(json_extract(?2, '$.userState.archived'), 0), json_extract(?2, '$.userState.archivedAt'), json_extract(?2, '$.userState.liked'), json_extract(?2, '$.userState.likedAt'), json_extract(?2, '$.userState.likedSyncedAt'), json_extract(?2, '$.userState.seenSyncedAt'), json_extract(?2, '$.sourceUrl'), json_extract(?2, '$.sampleDataFingerprint.batchId'), json_extract(?2, '$.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.sampleDataFingerprint.generatorVersion'), ?3 WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1) ON CONFLICT(global_id) DO UPDATE SET platform = excluded.platform, content_type = excluded.content_type, captured_at = excluded.captured_at, published_at = excluded.published_at, author_id = excluded.author_id, author_handle = excluded.author_handle, author_display_name = excluded.author_display_name, author_avatar_url = excluded.author_avatar_url, content_text = excluded.content_text, content_text_blob_digest = NULL, link_url = excluded.link_url, link_title = excluded.link_title, link_description = excluded.link_description, engagement_likes = excluded.engagement_likes, engagement_reposts = excluded.engagement_reposts, engagement_comments = excluded.engagement_comments, engagement_views = excluded.engagement_views, location_name = excluded.location_name, location_lat = excluded.location_lat, location_lng = excluded.location_lng, location_url = excluded.location_url, location_source = excluded.location_source, time_range_starts_at = excluded.time_range_starts_at, time_range_ends_at = excluded.time_range_ends_at, time_range_kind = excluded.time_range_kind, rss_feed_url = excluded.rss_feed_url, rss_feed_title = excluded.rss_feed_title, rss_site_url = excluded.rss_site_url, fb_group_id = excluded.fb_group_id, fb_group_name = excluded.fb_group_name, fb_group_url = excluded.fb_group_url, preserved_text = excluded.preserved_text, preserved_text_blob_digest = NULL, preserved_author = excluded.preserved_author, preserved_published_at = excluded.preserved_published_at, preserved_word_count = excluded.preserved_word_count, preserved_reading_time = excluded.preserved_reading_time, preserved_at = excluded.preserved_at, source_url = excluded.source_url, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, updated_at = excluded.updated_at;",
       "maximumMembers": 32,
+      "optimisticEffectKind": "none",
       "payloadKind": "feed_item_capture_upsert",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
@@ -995,6 +1000,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET liked = ?1, liked_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, liked_synced_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "like_assignment",
       "payloadKind": "boolean_assignment",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
@@ -1009,6 +1015,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET liked_synced_at = ?1, updated_at = ?2 WHERE global_id = ?3 AND liked = 1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "sync_receipt",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1 AND liked = 1);"
@@ -1023,6 +1030,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET read_at = ?1, updated_at = ?3 WHERE global_id = ?4;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "read_assignment",
       "payloadKind": "read_at",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
@@ -1037,6 +1045,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "DELETE FROM library_feed_items WHERE global_id = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1);"
@@ -1051,6 +1060,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET saved = ?1, saved_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, archived = 0, archived_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "saved_assignment",
       "payloadKind": "boolean_assignment",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
@@ -1065,6 +1075,7 @@
       "invalidationTopic": "feed_item",
       "materializeSql": "UPDATE library_feed_items SET seen_synced_at = ?1, updated_at = ?2 WHERE global_id = ?3;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "sync_receipt",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
@@ -1082,6 +1093,7 @@
       "invalidationTopic": "person",
       "materializeSql": "INSERT INTO library_persons (id, name, avatar_url, bio, relationship_status, care_level, reach_out_interval_days, notes, sample_batch_id, sample_generated_at, sample_generator_version, created_at, updated_at) SELECT ?1, json_extract(?2, '$.person.name'), json_extract(?2, '$.person.avatarUrl'), json_extract(?2, '$.person.bio'), json_extract(?2, '$.person.relationshipStatus'), json_extract(?2, '$.person.careLevel'), json_extract(?2, '$.person.reachOutIntervalDays'), json_extract(?2, '$.person.notes'), json_extract(?2, '$.person.sampleDataFingerprint.batchId'), json_extract(?2, '$.person.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.person.sampleDataFingerprint.generatorVersion'), json_extract(?2, '$.person.createdAt'), json_extract(?2, '$.person.updatedAt') WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url, bio = excluded.bio, relationship_status = excluded.relationship_status, care_level = excluded.care_level, reach_out_interval_days = excluded.reach_out_interval_days, notes = excluded.notes, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, created_at = excluded.created_at, updated_at = excluded.updated_at;",
       "maximumMembers": 1,
+      "optimisticEffectKind": "none",
       "payloadKind": "friend_replace",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
@@ -1100,6 +1112,7 @@
       "invalidationTopic": "person",
       "materializeSql": "INSERT INTO library_persons (id, name, avatar_url, bio, relationship_status, care_level, reach_out_interval_days, notes, sample_batch_id, sample_generated_at, sample_generator_version, created_at, updated_at) SELECT ?1, json_extract(?2, '$.name'), json_extract(?2, '$.avatarUrl'), json_extract(?2, '$.bio'), json_extract(?2, '$.relationshipStatus'), json_extract(?2, '$.careLevel'), json_extract(?2, '$.reachOutIntervalDays'), json_extract(?2, '$.notes'), json_extract(?2, '$.sampleDataFingerprint.batchId'), json_extract(?2, '$.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.sampleDataFingerprint.generatorVersion'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.updatedAt') WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url, bio = excluded.bio, relationship_status = excluded.relationship_status, care_level = excluded.care_level, reach_out_interval_days = excluded.reach_out_interval_days, notes = excluded.notes, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, created_at = excluded.created_at, updated_at = excluded.updated_at;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "person_upsert",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
@@ -1116,6 +1129,7 @@
       "invalidationTopic": "person",
       "materializeSql": "INSERT OR IGNORE INTO library_person_reach_outs (person_id, reach_out_id, logged_at, channel, notes) VALUES (?1, ?2, ?3, ?4, ?5);",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "person_reach_out_append",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1);"
@@ -1132,6 +1146,7 @@
       "invalidationTopic": "person",
       "materializeSql": "DELETE FROM library_persons WHERE id = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
@@ -1146,6 +1161,7 @@
       "invalidationTopic": "person",
       "materializeSql": "DELETE FROM library_persons WHERE id = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
@@ -1162,6 +1178,7 @@
       "invalidationTopic": "preferences",
       "materializeSql": "INSERT INTO library_preferences (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at) SELECT CASE type WHEN 'object' THEN 'o:' WHEN 'array' THEN 'a:' ELSE 'v:' END || fullkey, CASE WHEN type IN ('true', 'false') THEN 'boolean' WHEN type IN ('integer', 'array') THEN 'integer' WHEN type = 'real' THEN 'real' WHEN type = 'text' THEN 'text' ELSE 'null' END, CASE WHEN type IN ('true', 'false') THEN atom ELSE NULL END, CASE WHEN type = 'integer' THEN atom WHEN type = 'array' THEN json_array_length(value) ELSE NULL END, CASE WHEN type = 'real' THEN atom ELSE NULL END, CASE WHEN type = 'text' THEN atom ELSE NULL END, ?2 FROM json_tree(?1) WHERE fullkey <> '$' ON CONFLICT(path) DO UPDATE SET value_type = excluded.value_type, boolean_value = excluded.boolean_value, integer_value = excluded.integer_value, real_value = excluded.real_value, text_value = excluded.text_value, updated_at = excluded.updated_at;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "preferences_leaf_assignment",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
@@ -1176,6 +1193,7 @@
       "invalidationTopic": "rss_feed",
       "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
@@ -1192,6 +1210,7 @@
       "invalidationTopic": "rss_feed",
       "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
@@ -1206,6 +1225,7 @@
       "invalidationTopic": "rss_feed",
       "materializeSql": "UPDATE library_rss_feeds SET title = ?1, updated_at = ?2 WHERE url = ?3;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "text_assignment",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1);"
@@ -1220,6 +1240,7 @@
       "invalidationTopic": "rss_feed",
       "materializeSql": "INSERT INTO library_rss_feeds (url, title, site_url, last_fetched, image_url, enabled, poll_interval, track_unread, folder, sample_batch_id, sample_generated_at, sample_generator_version, updated_at) SELECT ?1, json_extract(?2, '$.title'), json_extract(?2, '$.siteUrl'), json_extract(?2, '$.lastFetched'), json_extract(?2, '$.imageUrl'), json_extract(?2, '$.enabled'), json_extract(?2, '$.pollInterval'), json_extract(?2, '$.trackUnread'), json_extract(?2, '$.folder'), json_extract(?2, '$.sampleDataFingerprint.batchId'), json_extract(?2, '$.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.sampleDataFingerprint.generatorVersion'), ?3 WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_url, last_fetched = excluded.last_fetched, image_url = excluded.image_url, enabled = excluded.enabled, poll_interval = excluded.poll_interval, track_unread = excluded.track_unread, folder = excluded.folder, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, updated_at = excluded.updated_at;",
       "maximumMembers": 256,
+      "optimisticEffectKind": "none",
       "payloadKind": "rss_feed_upsert",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"

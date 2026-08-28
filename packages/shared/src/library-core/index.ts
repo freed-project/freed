@@ -41,6 +41,7 @@ export * from "./immutable-transport-contracts.js";
 export * from "./media-blob-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
 export * from "./follower-intent-contracts.js";
+export * from "./follower-optimistic-effects.js";
 export * from "./follower-mutation-context-contracts.js";
 export * from "./follower-actor-enrollment-contracts.js";
 export * from "./follower-result-contracts.js";

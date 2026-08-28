@@ -182,6 +182,7 @@ struct ParsedEnvelope {
     entity_id: String,
     entity_type: String,
     operation_type: String,
+    created_at_ms: i64,
     item_json: Option<String>,
     rss_feed_json: Option<String>,
     preferences_patch_json: Option<String>,
@@ -1525,7 +1526,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
     if payload_digest != expected_payload_digest {
         return Err(invalid(index, "payload_digest"));
     }
-    safe_integer(object, "created_at_ms", index)?;
+    let created_at_ms = safe_integer(object, "created_at_ms", index)?;
     let previous_actor_chain_digest =
         required_string(object, "previous_actor_chain_digest", index)?;
     let actor_chain_digest = required_string(object, "actor_chain_digest", index)?;
@@ -1576,6 +1577,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
         entity_id,
         entity_type: entity_type.to_owned(),
         operation_type,
+        created_at_ms,
         item_json,
         rss_feed_json,
         preferences_patch_json,
@@ -1742,6 +1744,7 @@ where
             entity_id: member.entity_id.clone(),
             entity_type: member.entity_type.clone(),
             operation_type: member.operation_type.clone(),
+            created_at_ms: member.created_at_ms,
             item_json: member.item_json.clone(),
             rss_feed_json: member.rss_feed_json.clone(),
             preferences_patch_json: member.preferences_patch_json.clone(),
