@@ -109,6 +109,40 @@ frames, oversized frames, response identity drift, and transport closure fail
 closed. This command protocol never carries raw SQL, SQLite files, shell JSON,
 whole-item JSON, Drive credentials, or authority private keys.
 
+Local actor protocol 1 is generated from the same executable contract source.
+Its first and only method is `submit_signed_intent_page_v1`. The service maps
+that method directly to `ingest_follower_intent_page_v1` on the one native
+command client. Local actors cannot submit SQL, select native commands, bypass
+capability verification, or receive an unregistered result shape. Native
+SQLite verifies every signed intent, actor, capability, storage epoch, causal
+frontier, and transaction before an authoritative write. The actor submits
+only the signed page. The Primary supplies the authoritative receipt time from
+its own service clock.
+
+Each local actor connection accepts one newline-terminated UTF-8 JSON request
+and returns one newline-terminated closed response. A request frame is at most
+1 MiB, a response frame is at most 1 MiB, at most 32 connections are active,
+at most 120 new requests are admitted in one rolling minute, and the request
+deadline is 5 seconds. The service retains at most 256 replay identities.
+Exact request ID and byte replay coalesces onto the original response. Reusing
+a request ID with changed bytes fails. Replay remains available while new work
+is rate limited. Malformed frames, unknown methods, backend detail, oversized
+results, transport loss, and exhausted capacity produce only closed protocol
+errors.
+
+On macOS and Linux, the service binds an owner-only mode `0600` Unix socket.
+It proves the descriptor-bound state root before and after binding, validates
+socket ownership and identity, removes only an owned private stale socket, and
+never replaces a foreign path. A state root whose path exceeds the Unix socket
+limit uses a stable owner-specific endpoint under `/tmp`, derived from the
+canonical state-root identity and protected by the same ownership checks.
+Shutdown closes every connection and removes only the exact socket inode it
+created. Listener failure fences the Primary and kills the native sidecar.
+The private service status record reports the active endpoint while the
+listener is available.
+Windows fails closed until service packaging supplies a named pipe with a
+verifiable service-account ACL.
+
 The headless Primary mounted credential is one closed
 `freed_library_primary_credentials_v1` record. It binds one lowercase
 hexadecimal Library ID to one Ed25519 authority PKCS#8 key and one Ed25519

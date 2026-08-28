@@ -369,10 +369,28 @@ activation has happened.
 
 ## Agent and capture boundary
 
-The first ingress API uses a private Unix socket or Windows named pipe that is
-restricted to the service account. Requests are bounded, signed, replay
-protected, and mapped to Library Core operations. Signature verification does
-not replace transport limits or rate limits.
+Local actor protocol 1 is generated from the SQLite contract. It contains one
+method, `submit_signed_intent_page_v1`, which maps directly to the native
+`ingest_follower_intent_page_v1` command. It exposes neither SQL nor a generic
+native-command selector. Native SQLite remains responsible for signature,
+capability, actor, epoch, causal, and transaction verification. The actor sends
+only the signed page. The Primary supplies its receipt time from the service
+clock.
+
+The macOS and Linux service binds an owner-only mode `0600` Unix socket. Each
+connection carries one newline-terminated request and one closed response.
+Requests and responses are capped at 1 MiB. The service admits at most 32
+active connections and 120 new requests per rolling minute, retains at most
+256 exact replay identities, and closes a request after 5 seconds. Exact byte
+replay coalesces. Changed request-ID reuse, multiple frames, malformed UTF-8,
+unknown methods, oversized results, and native detail fail closed. The
+supervisor proves the state root around socket creation, refuses foreign path
+replacement, removes only its exact owned socket, and fences the Primary if
+the listener fails.
+
+Windows remains fail closed. Task 11.14 supplies the service-account named
+pipe and proves its ACL before the shared protocol processor can accept a
+request. Signature verification does not replace those transport controls.
 
 The first useful agent surface provides:
 
@@ -471,7 +489,7 @@ review before implementation.
 | 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Complete | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation |
-| 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
+| 11.10 | In Progress | Bind the generated one-method actor protocol to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14. |
 | 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
 | 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
 | 11.13 | Blocked | Add social capture workers after provider-specific owner approval |

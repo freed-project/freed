@@ -25,6 +25,11 @@ import {
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
 } from "../library-core-command-contract.generated.js";
+import type {
+  LibraryServiceLocalActorIngressPortV1,
+  LibraryServiceLocalActorListenerV1,
+  LibraryServiceLocalActorProcessorV1,
+} from "../local-actor-transport.js";
 
 export class Deferred<T> {
   readonly promise: Promise<T>;
@@ -44,6 +49,42 @@ export class Deferred<T> {
 
   reject(error: unknown): void {
     this.#reject(error);
+  }
+}
+
+export class FakeLocalActorIngress implements LibraryServiceLocalActorIngressPortV1 {
+  readonly starts: Array<{
+    readonly stateRoot: LibraryServiceBoundPath;
+    readonly expectedUserId: number;
+    readonly processor: LibraryServiceLocalActorProcessorV1;
+  }> = [];
+  readonly listener: LibraryServiceLocalActorListenerV1;
+  stopCalls = 0;
+  failure: unknown = null;
+  readonly #failed = new Deferred<never>();
+
+  constructor(readonly endpoint = "/safe/state/library-actor-v1.sock") {
+    this.listener = {
+      endpoint,
+      failure: this.#failed.promise,
+      stop: async () => {
+        this.stopCalls += 1;
+      },
+    };
+  }
+
+  async start(input: {
+    readonly stateRoot: LibraryServiceBoundPath;
+    readonly expectedUserId: number;
+    readonly processor: LibraryServiceLocalActorProcessorV1;
+  }): Promise<LibraryServiceLocalActorListenerV1> {
+    this.starts.push(input);
+    if (this.failure !== null) throw this.failure;
+    return this.listener;
+  }
+
+  reject(error: unknown): void {
+    this.#failed.reject(error);
   }
 }
 
@@ -434,9 +475,21 @@ export class FakeSidecarProcess implements LibraryServiceSidecarProcess {
     };
     this.commandRequests.push(parsed);
     if (
-      parsed.protocolVersion !== LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION ||
-      parsed.commandId !== "inspect_storage_v1"
+      parsed.protocolVersion !== LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION
     ) {
+      throw new LibraryServiceFailure("command_channel_failed");
+    }
+    if (parsed.commandId === "ingest_follower_intent_page_v1") {
+      return Buffer.from(
+        JSON.stringify({
+          protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+          requestId: parsed.requestId,
+          ok: true,
+          result: { acceptedTransactions: 1 },
+        }),
+      );
+    }
+    if (parsed.commandId !== "inspect_storage_v1") {
       throw new LibraryServiceFailure("command_channel_failed");
     }
     return Buffer.from(

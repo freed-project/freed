@@ -2,6 +2,13 @@
 
 export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = 4194304 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_PROTOCOL_VERSION = 1 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_REQUEST_FRAME_BYTES = 1048576 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_RESPONSE_FRAME_BYTES = 1048576 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_ACTIVE_CONNECTIONS = 32 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_REPLAY_ENTRIES = 256 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_REQUESTS_PER_MINUTE = 120 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_REQUEST_TIMEOUT_MS = 5000 as const;
 export const LIBRARY_CORE_SQLITE_APPLICATION_ID = 1179796804 as const;
 export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
@@ -37,5 +44,18 @@ export const LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES = [
   "response_invalid",
   "storage_unavailable",
 ] as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_METHODS = [
+  "submit_signed_intent_page_v1",
+] as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_ERROR_CODES = [
+  "busy",
+  "frame_invalid",
+  "method_unknown",
+  "request_conflict",
+  "request_failed",
+  "response_invalid",
+] as const;
 export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];
 export type LibraryCoreNativeCommandErrorCode = (typeof LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES)[number];
+export type LibraryCoreLocalActorMethod = (typeof LIBRARY_CORE_LOCAL_ACTOR_METHODS)[number];
+export type LibraryCoreLocalActorErrorCode = (typeof LIBRARY_CORE_LOCAL_ACTOR_ERROR_CODES)[number];

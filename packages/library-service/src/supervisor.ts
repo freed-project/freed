@@ -31,7 +31,15 @@ import {
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
 } from "./library-core-command-contract.generated.js";
-import { createLibraryCoreNativeCommandClientV1 } from "./native-command.js";
+import {
+  createLibraryCoreNativeCommandClientV1,
+  type LibraryCoreNativeCommandClientV1,
+} from "./native-command.js";
+import {
+  createLibraryServiceLocalActorProcessorV1,
+  type LibraryServiceLocalActorIngressPortV1,
+  type LibraryServiceLocalActorListenerV1,
+} from "./local-actor-transport.js";
 import {
   assertLibraryServiceBindingsStable,
   bindLibraryServiceConfig,
@@ -77,6 +85,7 @@ export interface LibraryServiceSupervisorDependencies {
   process: LibraryServiceProcessPort;
   clock: LibraryServiceClockPort;
   entropy: LibraryServiceEntropyPort;
+  localActorIngress: LibraryServiceLocalActorIngressPortV1;
 }
 
 export interface LibraryServiceStartResult {
@@ -84,6 +93,7 @@ export interface LibraryServiceStartResult {
   phase: "running";
   sidecarPid: number;
   startedAt: string;
+  localActorEndpoint: string;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -200,13 +210,9 @@ function parseReadyRecord(bytes: Uint8Array): LibraryServiceReadyRecord {
 }
 
 async function inspectNormalizedCommandStorage(
-  child: LibraryServiceSidecarProcess,
-  entropy: LibraryServiceEntropyPort,
+  client: LibraryCoreNativeCommandClientV1,
 ): Promise<void> {
-  const response = await createLibraryCoreNativeCommandClientV1(
-    child,
-    entropy,
-  ).execute("inspect_storage_v1", {});
+  const response = await client.execute("inspect_storage_v1", {});
   if (!isObject(response)) {
     throw new LibraryServiceFailure("command_response_invalid");
   }
@@ -257,6 +263,7 @@ export class LibraryServiceSupervisor {
   readonly #processPort: LibraryServiceProcessPort;
   readonly #clock: LibraryServiceClockPort;
   readonly #entropy: LibraryServiceEntropyPort;
+  readonly #localActorIngress: LibraryServiceLocalActorIngressPortV1;
   #config: LibraryServiceConfig | null = null;
   #state: SupervisorState = "idle";
   #child: LibraryServiceSidecarProcess | null = null;
@@ -267,6 +274,7 @@ export class LibraryServiceSupervisor {
   #stopPromise: Promise<void> | null = null;
   #startupCommitted = false;
   #statusTail: Promise<void> = Promise.resolve();
+  #localActor: LibraryServiceLocalActorListenerV1 | null = null;
 
   constructor(dependencies: LibraryServiceSupervisorDependencies) {
     this.#configPath = dependencies.configPath;
@@ -276,6 +284,7 @@ export class LibraryServiceSupervisor {
     this.#processPort = dependencies.process;
     this.#clock = dependencies.clock;
     this.#entropy = dependencies.entropy;
+    this.#localActorIngress = dependencies.localActorIngress;
   }
 
   #requireConfig(): LibraryServiceConfig {
@@ -298,6 +307,7 @@ export class LibraryServiceSupervisor {
           nowMs: this.#clock.nowMs(),
           startedAt: this.#startedAt,
           sidecarPid: this.#child?.pid ?? null,
+          localActorEndpoint: this.#localActor?.endpoint ?? null,
           reasonCode,
         }),
       ),
@@ -480,6 +490,9 @@ export class LibraryServiceSupervisor {
 
   async #failStart(error: unknown): Promise<never> {
     const failure = toFailure(error, "spawn_failed");
+    const localActorSettlement =
+      this.#localActor?.stop().catch(() => undefined) ?? Promise.resolve();
+    this.#localActor = null;
     const child = this.#child;
     const settlement =
       child === null
@@ -506,6 +519,7 @@ export class LibraryServiceSupervisor {
         throw settlementFailure;
       }
     }
+    await localActorSettlement;
     this.#state = "settled";
     await status;
     throw failure;
@@ -664,16 +678,64 @@ export class LibraryServiceSupervisor {
       }
       const ready = parseReadyRecord(readiness.bytes);
       assertReadyBinding(ready, child, bound, parentNonce);
-      await inspectNormalizedCommandStorage(child, this.#entropy);
+      const commandClient = createLibraryCoreNativeCommandClientV1(
+        child,
+        this.#entropy,
+      );
+      await inspectNormalizedCommandStorage(commandClient);
+      throwIfAborted(signal);
+
+      const expectedUserId = this.#identity.currentUserId();
+      if (expectedUserId === null) {
+        throw new LibraryServiceFailure("local_actor_unavailable");
+      }
+      try {
+        this.#localActor = await this.#localActorIngress.start({
+          stateRoot: bound.bindings.stateRoot,
+          expectedUserId,
+          processor: createLibraryServiceLocalActorProcessorV1(
+            {
+              submitSignedIntentPage: (payload) =>
+                commandClient.execute(
+                  "ingest_follower_intent_page_v1",
+                  payload,
+                ),
+            },
+            this.#clock,
+          ),
+        });
+      } catch {
+        throw new LibraryServiceFailure("local_actor_unavailable");
+      }
+      const localActor = this.#localActor;
+      let localActorFailed = false;
+      void localActor.failure.catch(async () => {
+        localActorFailed = true;
+        if (this.#state !== "running") return;
+        this.#state = "stopping";
+        try {
+          child.terminate("SIGKILL");
+        } catch {
+          // The sidecar exit path still fences the service.
+        }
+        child.closeLifetime();
+        await this.#writeStatusBounded("failed", "local_actor_failed");
+      });
       throwIfAborted(signal);
 
       this.#state = "running";
+      if (localActorFailed) {
+        throw new LibraryServiceFailure("local_actor_failed");
+      }
       this.#settledExit = child.exit.then(async (exit) => {
         const unexpectedExit = this.#state === "running";
         const unownedForcedExit =
           this.#state === "stopping" && this.#stopPromise === null;
         if (unexpectedExit || unownedForcedExit) {
           this.#state = "settled";
+          const localActorAtExit = this.#localActor;
+          this.#localActor = null;
+          await localActorAtExit?.stop().catch(() => undefined);
           try {
             await this.#settleAfterKill(
               child,
@@ -702,6 +764,9 @@ export class LibraryServiceSupervisor {
       }
       await this.#writeStatusRequired("running", signal);
       throwIfAborted(signal);
+      if (localActorFailed) {
+        throw new LibraryServiceFailure("local_actor_failed");
+      }
       if (this.#state !== "running" || !child.isRunning()) {
         throw new LibraryServiceFailure("sidecar_exited");
       }
@@ -715,6 +780,7 @@ export class LibraryServiceSupervisor {
         phase: "running",
         sidecarPid: ready.pid,
         startedAt: this.#startedAt,
+        localActorEndpoint: localActor.endpoint,
       };
     } catch (error) {
       if (this.#config === null) {
@@ -757,16 +823,30 @@ export class LibraryServiceSupervisor {
 
     this.#state = "stopping";
     const child = this.#child;
+    const localActor = this.#localActor;
+    this.#localActor = null;
+    const localActorSettlement = localActor?.stop() ?? Promise.resolve();
     const settlement = this.#settleAfterTerm(
       child,
       this.#requireConfig().sidecar.shutdownTimeoutMs,
     );
     void this.#writeStatusBounded("stopping", "requested_stop");
     this.#stopPromise = (async () => {
+      let localActorFailed = false;
       try {
+        await localActorSettlement.catch(() => {
+          localActorFailed = true;
+        });
         await settlement;
       } catch (error) {
         const failure = toFailure(error, "sidecar_settlement_timeout");
+        this.#state = "settled";
+        await this.#writeStatusBounded("failed", failure.code);
+        await this.#closeRuntimeBindings();
+        throw failure;
+      }
+      if (localActorFailed) {
+        const failure = new LibraryServiceFailure("local_actor_failed");
         this.#state = "settled";
         await this.#writeStatusBounded("failed", failure.code);
         await this.#closeRuntimeBindings();
@@ -783,6 +863,9 @@ export class LibraryServiceSupervisor {
     const child = this.#child;
     if (child === null) return;
     this.#state = "stopping";
+    const localActor = this.#localActor;
+    this.#localActor = null;
+    void localActor?.stop().catch(() => undefined);
     try {
       child.terminate("SIGKILL");
     } catch {

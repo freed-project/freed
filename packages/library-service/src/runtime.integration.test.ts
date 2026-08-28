@@ -13,6 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
+import net from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -330,15 +331,19 @@ async function createHarnessFixture(
   };
 }
 
-async function createNativeSidecarFixture(input: {
-  backend?: "mounted-credential" | "os-vault";
-  admissionDigestOverride?: string;
-} = {}): Promise<{
+async function createNativeSidecarFixture(
+  input: {
+    backend?: "mounted-credential" | "os-vault";
+    admissionDigestOverride?: string;
+  } = {},
+): Promise<{
   dataRoot: string;
   stateRoot: string;
   supervisorArgs: string[];
 }> {
-  const fixtureRoot = await privateTemporaryRoot("freed-library-native-sidecar-");
+  const fixtureRoot = await privateTemporaryRoot(
+    "freed-library-native-sidecar-",
+  );
   const dataRoot = path.join(fixtureRoot, "data");
   const stateRoot = path.join(fixtureRoot, "state");
   const mountedRoot = path.join(stateRoot, "mounted-credentials");
@@ -505,7 +510,7 @@ async function runHarnessOnce(args: readonly string[]): Promise<{
 
 function launchSupervisorHarness(args: readonly string[]): {
   child: ChildProcess;
-  ready: Promise<{ sidecarPid: number }>;
+  ready: Promise<{ sidecarPid: number; localActorEndpoint: string }>;
 } {
   const harnessPath = path.resolve(
     "src/testing/fixtures/supervisor-runtime-harness.mjs",
@@ -516,7 +521,10 @@ function launchSupervisorHarness(args: readonly string[]): {
   });
   child.stdout!.setEncoding("utf8");
   child.stderr!.setEncoding("utf8");
-  const ready = new Promise<{ sidecarPid: number }>((resolve, reject) => {
+  const ready = new Promise<{
+    sidecarPid: number;
+    localActorEndpoint: string;
+  }>((resolve, reject) => {
     let stdout = "";
     let stderr = "";
     child.stderr!.on("data", (chunk: string) => {
@@ -529,12 +537,16 @@ function launchSupervisorHarness(args: readonly string[]): {
       const report = JSON.parse(stdout.slice(0, newline)) as {
         type: string;
         sidecarPid: number;
+        localActorEndpoint: string;
       };
       if (report.type !== "supervisor-ready") {
         reject(new Error("unexpected supervisor harness report"));
         return;
       }
-      resolve({ sidecarPid: report.sidecarPid });
+      resolve({
+        sidecarPid: report.sidecarPid,
+        localActorEndpoint: report.localActorEndpoint,
+      });
     });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
@@ -547,6 +559,23 @@ function launchSupervisorHarness(args: readonly string[]): {
     });
   });
   return { child, ready };
+}
+
+async function exchangeLocalActor(
+  endpoint: string,
+  request: Readonly<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const socket = net.createConnection(endpoint);
+    socket.once("error", reject);
+    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.once("end", () => resolve(Buffer.concat(chunks)));
+    socket.once("connect", () =>
+      socket.end(`${JSON.stringify(request)}\n`, "utf8"),
+    );
+  });
+  return JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
 }
 
 async function runSupervisorHarnessOnce(args: readonly string[]): Promise<{
@@ -634,19 +663,35 @@ describe("compiled freed-library runtime", () => {
       const { dataRoot, stateRoot, supervisorArgs } =
         await createNativeSidecarFixture();
       const { child, ready } = launchSupervisorHarness(supervisorArgs);
-      const { sidecarPid } = await ready;
+      const { sidecarPid, localActorEndpoint } = await ready;
       expect(sidecarPid).toBeGreaterThan(0);
+      await expect(
+        exchangeLocalActor(localActorEndpoint, {
+          method: "submit_signed_intent_page_v1",
+          payload: { page: { records: [] } },
+          protocolVersion: 1,
+          requestId: "1".repeat(64),
+        }),
+      ).resolves.toMatchObject({
+        errorCode: "request_failed",
+        ok: false,
+        requestId: "1".repeat(64),
+      });
       expect(
         await stat(
           path.join(dataRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
-      await expect(stat(path.join(dataRoot, "library-core"))).rejects.toMatchObject({
+      await expect(
+        stat(path.join(dataRoot, "library-core")),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
       const stateFiles = await readdir(stateRoot, { recursive: true });
       expect(
-        stateFiles.filter((file) => /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file)),
+        stateFiles.filter((file) =>
+          /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file),
+        ),
       ).toEqual([]);
 
       const competitor = await runSupervisorHarnessOnce(supervisorArgs);
@@ -681,10 +726,14 @@ describe("compiled freed-library runtime", () => {
           path.join(movedRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
-      await expect(stat(path.join(dataRoot, "process.lock"))).rejects.toMatchObject({
+      await expect(
+        stat(path.join(dataRoot, "process.lock")),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
-      await expect(stat(path.join(dataRoot, "library-sqlite"))).rejects.toMatchObject({
+      await expect(
+        stat(path.join(dataRoot, "library-sqlite")),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
 
@@ -800,6 +849,7 @@ describe("compiled freed-library runtime", () => {
           nowMs: Date.parse("2026-08-19T00:00:00.000Z"),
           startedAt: "2026-08-19T00:00:00.000Z",
           sidecarPid: 4_242,
+          localActorEndpoint: null,
           reasonCode: null,
         });
         await writeLibraryServiceStatus(statusFile!, ports.fileSystem, status);

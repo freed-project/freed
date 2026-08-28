@@ -18,6 +18,13 @@ export {
   type LibraryCoreNativeCommandClientV1,
 } from "./native-command.js";
 export {
+  createLibraryServiceLocalActorProcessorV1,
+  type LibraryServiceLocalActorBackendV1,
+  type LibraryServiceLocalActorIngressPortV1,
+  type LibraryServiceLocalActorListenerV1,
+  type LibraryServiceLocalActorProcessorV1,
+} from "./local-actor-transport.js";
+export {
   createLibraryServicePrimaryRuntimeV1,
   type LibraryCorePrimaryCoordinatorDiagnosticV1,
   type LibraryServicePrimaryPublicationPortV1,

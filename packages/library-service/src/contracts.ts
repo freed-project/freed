@@ -34,6 +34,8 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "data_root_invalid",
   "data_root_not_private",
   "filesystem_failure",
+  "local_actor_failed",
+  "local_actor_unavailable",
   "admission_missing",
   "admission_not_private",
   "ready_malformed",
@@ -259,6 +261,7 @@ export interface LibraryServiceStatusRecord {
   updatedAt: string;
   startedAt: string | null;
   sidecarPid: number | null;
+  localActorEndpoint: string | null;
   reasonCode: LibraryServiceFailureCode | "requested_stop" | null;
 }
 

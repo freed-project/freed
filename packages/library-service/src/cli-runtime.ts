@@ -56,6 +56,7 @@ async function serve(configPath: string): Promise<number> {
     process: ports.process,
     clock: ports.clock,
     entropy: ports.entropy,
+    localActorIngress: ports.localActorIngress,
   });
   const startup = new AbortController();
   let signalCount = 0;

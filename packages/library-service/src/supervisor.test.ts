@@ -8,6 +8,7 @@ import {
   FakeClock,
   FakeEntropy,
   FakeFileSystem,
+  FakeLocalActorIngress,
   FakeProcessPort,
   FakeSidecarProcess,
   readyBytes,
@@ -20,6 +21,7 @@ function createSupervisor(
     clock?: FakeClock;
     fileSystem?: FakeFileSystem;
     aclProof?: FakeAclProof;
+    localActorIngress?: FakeLocalActorIngress;
   } = {},
 ) {
   const child = input.child ?? new FakeSidecarProcess();
@@ -27,6 +29,8 @@ function createSupervisor(
   const fileSystem = input.fileSystem ?? validConfigFileSystem();
   const clock = input.clock ?? new FakeClock();
   const aclProof = input.aclProof ?? new FakeAclProof();
+  const localActorIngress =
+    input.localActorIngress ?? new FakeLocalActorIngress();
   const supervisor = new LibraryServiceSupervisor({
     configPath: "/safe/config.json",
     fileSystem,
@@ -35,8 +39,17 @@ function createSupervisor(
     process,
     clock,
     entropy: new FakeEntropy(),
+    localActorIngress,
   });
-  return { child, process, fileSystem, aclProof, clock, supervisor };
+  return {
+    child,
+    process,
+    fileSystem,
+    aclProof,
+    clock,
+    localActorIngress,
+    supervisor,
+  };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -84,7 +97,8 @@ const EQUAL_LENGTH_INPUT_REWRITES: ReadonlyArray<
 
 describe("LibraryServiceSupervisor", () => {
   it("starts exactly one pinned sidecar through an empty argv and environment", async () => {
-    const { child, process, fileSystem, supervisor } = createSupervisor();
+    const { child, process, fileSystem, localActorIngress, supervisor } =
+      createSupervisor();
 
     const result = await supervisor.start();
 
@@ -92,7 +106,10 @@ describe("LibraryServiceSupervisor", () => {
       role: "primary",
       phase: "running",
       sidecarPid: 4_242,
+      localActorEndpoint: "/safe/state/library-actor-v1.sock",
     });
+    expect(localActorIngress.starts).toHaveLength(1);
+    expect(localActorIngress.starts[0]).toMatchObject({ expectedUserId: 501 });
     expect(process.requests).toHaveLength(1);
     expect(process.requests[0]).toMatchObject({ args: [], env: {} });
     expect(process.requests[0].bindings.executable.path).toBe(
@@ -132,6 +149,31 @@ describe("LibraryServiceSupervisor", () => {
     expect(statuses.map(({ phase }) => phase)).toEqual(["starting", "running"]);
   });
 
+  it("maps the sole local actor method into the signed native intent command", async () => {
+    const { child, clock, localActorIngress, supervisor } = createSupervisor();
+    await supervisor.start();
+
+    const response = await localActorIngress.starts[0]!.processor.executeFrame(
+      Buffer.from(
+        JSON.stringify({
+          method: "submit_signed_intent_page_v1",
+          payload: { page: { records: [] } },
+          protocolVersion: 1,
+          requestId: "2".repeat(64),
+        }),
+      ),
+    );
+
+    expect(JSON.parse(Buffer.from(response).toString("utf8"))).toMatchObject({
+      ok: true,
+      result: { acceptedTransactions: 1 },
+    });
+    expect(child.commandRequests.at(-1)).toMatchObject({
+      commandId: "ingest_follower_intent_page_v1",
+      payload: { page: { records: [] }, receivedAt: clock.nowMs() },
+    });
+  });
+
   it("refuses a second start without spawning another sidecar", async () => {
     const { process, supervisor } = createSupervisor();
     await supervisor.start();
@@ -140,6 +182,33 @@ describe("LibraryServiceSupervisor", () => {
       code: "already_started",
     });
     expect(process.requests).toHaveLength(1);
+  });
+
+  it("fails startup and settles the sidecar when actor ingress cannot bind", async () => {
+    const localActorIngress = new FakeLocalActorIngress();
+    localActorIngress.failure = new Error("bind refused");
+    const { child, supervisor } = createSupervisor({ localActorIngress });
+
+    await expectStartFailure(supervisor, "local_actor_unavailable");
+
+    expect(child.signals).toEqual(["SIGTERM"]);
+  });
+
+  it("fences the Primary when actor ingress fails after startup", async () => {
+    const { child, fileSystem, localActorIngress, supervisor } =
+      createSupervisor();
+    await supervisor.start();
+
+    localActorIngress.reject(new Error("listener failed"));
+    await waitFor(() => child.signals.includes("SIGKILL"));
+    await supervisor.waitForExit();
+
+    expect(
+      fileSystem.writes.map(({ contents }) => JSON.parse(contents)).at(-1),
+    ).toMatchObject({
+      phase: "failed",
+      reasonCode: "local_actor_failed",
+    });
   });
 
   it("revalidates private admission at start and never spawns on refusal", async () => {
@@ -271,12 +340,14 @@ describe("LibraryServiceSupervisor", () => {
   });
 
   it("settles a requested stop with SIGTERM", async () => {
-    const { child, fileSystem, supervisor } = createSupervisor();
+    const { child, fileSystem, localActorIngress, supervisor } =
+      createSupervisor();
     await supervisor.start();
 
     await supervisor.stop();
 
     expect(child.signals).toEqual(["SIGTERM"]);
+    expect(localActorIngress.stopCalls).toBe(1);
     const statuses = fileSystem.writes.map(({ contents }) =>
       JSON.parse(contents),
     );

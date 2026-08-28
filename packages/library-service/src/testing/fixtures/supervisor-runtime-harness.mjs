@@ -202,12 +202,17 @@ const supervisor = new LibraryServiceSupervisor({
   process: nodePorts.process,
   clock: nodePorts.clock,
   entropy: nodePorts.entropy,
+  localActorIngress: nodePorts.localActorIngress,
 });
 
 try {
   const started = await supervisor.start();
   process.stdout.write(
-    `${JSON.stringify({ type: "supervisor-ready", sidecarPid: started.sidecarPid })}\n`,
+    `${JSON.stringify({
+      type: "supervisor-ready",
+      sidecarPid: started.sidecarPid,
+      localActorEndpoint: started.localActorEndpoint,
+    })}\n`,
   );
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => {
