@@ -118,16 +118,6 @@ import type { LibraryMutationEvent, LibraryMutationRequest } from "./library-typ
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
-export interface SqliteStatus {
-  active: boolean;
-  revision: number;
-  expectedItemCount: number;
-  importedItemCount: number;
-  sourceGeneration: number;
-  sourceRevision: number;
-  sourceDigest: string;
-}
-
 export type SqliteLibraryAcceptedAuthority =
   LibraryCoreAcceptedAuthorityStateV1;
 
@@ -1602,26 +1592,6 @@ export async function sqliteLibraryCloudWriterAdmissionStatus(): Promise<SqliteL
   );
 }
 
-export interface SqliteLibraryFacetSummary {
-  archivedCount: number;
-  sampleItemCount: number;
-  savedArchivedCount: number;
-  savedCount: number;
-  savedPlatformCount: number;
-  tags: string[];
-  totalCount: number;
-}
-
-export async function readSqliteLibraryFacetSummary(): Promise<SqliteLibraryFacetSummary> {
-  const summary = await invoke<SqliteLibraryFacetSummary>(
-    "read_sqlite_library_facet_summary",
-  );
-  return {
-    ...summary,
-    tags: [...summary.tags].sort((left, right) => left.localeCompare(right)),
-  };
-}
-
 export interface NormalizedLocalSnapshotSummary {
   snapshotId: string;
   createdAtMs: number;
@@ -1645,13 +1615,6 @@ let sqliteActive = false;
 
 export function isSqliteLibraryActive(): boolean {
   return sqliteActive;
-}
-
-export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
-  if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return null;
-  const status = await invoke<SqliteStatus | null>("sqlite_library_status");
-  sqliteActive = status?.active === true;
-  return status;
 }
 
 export async function ensureFreshNormalizedDesktopLibrary(

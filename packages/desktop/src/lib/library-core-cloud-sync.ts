@@ -65,7 +65,6 @@ import {
   reassignNormalizedLibraryWriterEpoch,
   recordNormalizedLibraryFollowerIntentTransportPublication,
   setSqliteLibraryCloudWriterAdmission,
-  sqliteLibraryStatus,
   type NormalizedLibraryCloudIdentity,
   type SqliteLibraryActorCheckpointState,
   type SqliteLibraryIntentResultOutboxEntry,
@@ -1527,12 +1526,12 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
     },
     durableState: {
       async read() {
-        const status = await sqliteLibraryStatus();
+        const identity = await describeNormalizedLibraryCloudIdentity();
         const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
-        if (status?.active !== true || !isCloudState(state)) return null;
+        if (!isCloudState(state)) return null;
         return {
           active: true,
-          localRevision: status.revision,
+          localRevision: identity.sourceRevision,
           lastPublishedRevision: state.lastPublishedRevision,
         };
       },

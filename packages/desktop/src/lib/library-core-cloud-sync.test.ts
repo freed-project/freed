@@ -153,7 +153,6 @@ vi.mock("./sqlite-library", () => ({
     mocks.importNormalizedResultTransport,
   reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
-  sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
 }));
 
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {

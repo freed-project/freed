@@ -7,8 +7,8 @@
 
 use freed_library_core::{
     accept_normalized_operation_transaction_v1, load_or_create_normalized_actor_id_v2,
-    normalized_primary_mutation_context_v1, LibraryCoreStore, LibraryCoreStoreStatus,
-    NormalizedMutationContextV1, NormalizedMutationReceiptV1,
+    normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
+    NormalizedMutationReceiptV1,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -34,32 +34,6 @@ const JOURNAL_FILE: &str = "library-core.sqlite";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 #[cfg(not(unix))]
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryStatus {
-    active: bool,
-    revision: i64,
-    expected_item_count: i64,
-    imported_item_count: i64,
-    source_generation: i64,
-    source_revision: i64,
-    source_digest: String,
-}
-
-impl From<LibraryCoreStoreStatus> for DesktopLibraryStatus {
-    fn from(status: LibraryCoreStoreStatus) -> Self {
-        Self {
-            active: status.active,
-            revision: status.revision,
-            expected_item_count: status.expected_item_count,
-            imported_item_count: status.imported_item_count,
-            source_generation: status.source_generation,
-            source_revision: status.source_revision,
-            source_digest: status.source_digest,
-        }
-    }
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,18 +247,6 @@ pub(super) struct DesktopNormalizedWriterEpochReassignment {
     canonical_epoch_certificate_json: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryFacetSummary {
-    archived_count: i64,
-    sample_item_count: i64,
-    saved_archived_count: i64,
-    saved_count: i64,
-    saved_platform_count: i64,
-    tags: Vec<String>,
-    total_count: i64,
-}
-
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
@@ -361,18 +323,6 @@ fn open_journal_at(root: &Path) -> Result<LibraryCoreJournal, String> {
         return binding.open_journal().map_err(|error| error.to_string());
     }
     LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())
-}
-
-fn open_store_at(root: &Path) -> Result<LibraryCoreStore, String> {
-    #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding.store().cloned().map_err(|error| error.to_string());
-    }
-    LibraryCoreStore::open(root).map_err(|error| error.to_string())
-}
-
-fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
-    open_database_at(&app_root(app)?)
 }
 
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -1381,26 +1331,6 @@ fn require_active(connection: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub(super) fn sqlite_library_status(
-    app: tauri::AppHandle,
-) -> Result<Option<DesktopLibraryStatus>, String> {
-    let status: Option<DesktopLibraryStatus> = open_store_at(&app_root(&app)?)?
-        .status()
-        .map_err(|error| error.to_string())?
-        .map(Into::into);
-    if let Some(status) = &status {
-        log::info!(
-            "[library-core] SQLite Library status active={} revision={} items={}/{}",
-            status.active,
-            status.revision,
-            status.imported_item_count,
-            status.expected_item_count
-        );
-    }
-    Ok(status)
-}
-
 fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissionStatus, String> {
     let stored = connection
         .query_row(
@@ -1613,73 +1543,6 @@ pub(super) fn list_sqlite_library_actor_enrollments(
             })
         })
         .collect()
-}
-
-#[tauri::command]
-pub(super) fn read_sqlite_library_facet_summary(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibraryFacetSummary, String> {
-    const MAXIMUM_TAGS: usize = 4_096;
-    const MAXIMUM_TAG_BYTES: usize = 1_024;
-
-    let connection = open_database(&app)?;
-    require_active(&connection)?;
-    let (
-        total_count,
-        archived_count,
-        sample_item_count,
-        saved_count,
-        saved_archived_count,
-        saved_platform_count,
-    ): (i64, i64, i64, i64, i64, i64) = connection
-        .query_row(
-            "SELECT COUNT(*),
-                    COALESCE(SUM(archived = 1), 0),
-                    COALESCE(SUM(sampleData = 1), 0),
-                    COALESCE(SUM(saved = 1), 0),
-                    COALESCE(SUM(saved = 1 AND archived = 1), 0),
-                    COUNT(DISTINCT CASE WHEN saved = 1 THEN platform END)
-             FROM library_core_feed_items
-             WHERE deletedAt IS NULL;",
-            [],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT tag.value
-             FROM library_core_feed_items AS item,
-                  json_each(json_extract(item.payloadJson, '$.userState.tags')) AS tag
-             WHERE item.deletedAt IS NULL AND typeof(tag.value) = 'text'
-             LIMIT 4097;",
-        )
-        .map_err(|error| error.to_string())?;
-    let tags = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    if tags.len() > MAXIMUM_TAGS || tags.iter().any(|tag| tag.len() > MAXIMUM_TAG_BYTES) {
-        return Err("SQLite Library facet tags exceed their bound".into());
-    }
-    Ok(DesktopLibraryFacetSummary {
-        archived_count,
-        sample_item_count,
-        saved_archived_count,
-        saved_count,
-        saved_platform_count,
-        tags,
-        total_count,
-    })
 }
 
 #[cfg(not(unix))]

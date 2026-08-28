@@ -10,7 +10,6 @@ vi.mock("./library-core-desktop-role", () => ({
 
 vi.mock("./legacy-library-presence", () => ({
   hasLegacyLibraryData: vi.fn(async () => true),
-  shouldBlockForLegacyLibrary: vi.fn(() => true),
 }));
 
 vi.mock("./library-core-cloud-sync", () => ({

@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  hasLegacyLibraryData,
-  shouldBlockForLegacyLibrary,
-} from "./legacy-library-presence";
-import type { SqliteStatus } from "./sqlite-library";
+import { hasLegacyLibraryData } from "./legacy-library-presence";
 
 function resultRequest<T>(result: T): IDBRequest<T> {
   const request = { result, error: null } as unknown as IDBRequest<T>;
@@ -36,19 +32,6 @@ function existingDatabase(input: {
     }),
   } as unknown as IDBFactory;
   return { close, factory, get, getKey };
-}
-
-function status(overrides: Partial<SqliteStatus> = {}): SqliteStatus {
-  return {
-    active: true,
-    revision: 1,
-    expectedItemCount: 0,
-    importedItemCount: 0,
-    sourceGeneration: 0,
-    sourceRevision: 0,
-    sourceDigest: "0".repeat(64),
-    ...overrides,
-  };
 }
 
 describe("legacy Library presence", () => {
@@ -85,17 +68,5 @@ describe("legacy Library presence", () => {
     await expect(hasLegacyLibraryData(factory)).resolves.toBe(false);
     expect(abort).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
-  });
-
-  it("blocks both first initialization and a synthetic empty cutover", () => {
-    expect(shouldBlockForLegacyLibrary(null, true)).toBe(true);
-    expect(shouldBlockForLegacyLibrary(status(), true)).toBe(true);
-    expect(
-      shouldBlockForLegacyLibrary(
-        status({ expectedItemCount: 14_510, importedItemCount: 14_510 }),
-        true,
-      ),
-    ).toBe(false);
-    expect(shouldBlockForLegacyLibrary(status(), false)).toBe(false);
   });
 });

@@ -204,38 +204,6 @@ function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
   return item.userState;
 }
 
-function sqliteFacetSummary() {
-  const items = Object.values(sqliteLibrary().items).filter(
-    (item) => !item.__deleted,
-  );
-  const tags = new Set<string>();
-  for (const item of items) {
-    for (const tag of (sqliteItemUserState(item).tags as
-      string[] | undefined) ?? []) {
-      tags.add(tag);
-    }
-  }
-  return {
-    archivedCount: items.filter((item) =>
-      Boolean(sqliteItemUserState(item).archived),
-    ).length,
-    sampleItemCount: items.filter((item) => Boolean(item.sampleData)).length,
-    savedArchivedCount: items.filter((item) => {
-      const user = sqliteItemUserState(item);
-      return Boolean(user.saved) && Boolean(user.archived);
-    }).length,
-    savedCount: items.filter((item) => Boolean(sqliteItemUserState(item).saved))
-      .length,
-    savedPlatformCount: new Set(
-      items
-        .filter((item) => Boolean(sqliteItemUserState(item).saved))
-        .map((item) => item.platform),
-    ).size,
-    tags: [...tags].sort(),
-    totalCount: items.length,
-  };
-}
-
 function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
@@ -259,22 +227,7 @@ const handlers: Record<string, Handler> = {
     sqliteLibrary().active = true;
     return true;
   },
-  sqlite_library_status: () => {
-    const state = sqliteLibrary();
-    return state.active
-      ? {
-          active: true,
-          revision: state.revision,
-          expectedItemCount: state.expectedItemCount,
-          importedItemCount: Object.keys(state.items).length,
-          sourceGeneration: state.sourceGeneration,
-          sourceRevision: state.sourceRevision,
-          sourceDigest: state.sourceDigest,
-        }
-      : null;
-  },
   describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
-  read_sqlite_library_facet_summary: sqliteFacetSummary,
   set_sqlite_library_cloud_writer_admission: (
     args: Record<string, unknown>,
   ) => {

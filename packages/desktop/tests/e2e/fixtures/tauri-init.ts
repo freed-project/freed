@@ -70,27 +70,6 @@ export function tauriInitScript(): string {
         localActorId: '6'.repeat(64),
       };
     }
-    function sqliteFacetSummary() {
-      var items = Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; });
-      var tags = new Set();
-      items.forEach(function(item) {
-        (sqliteItemState(item).tags || []).forEach(function(tag) { tags.add(tag); });
-      });
-      return {
-        archivedCount: items.filter(function(item) { return !!sqliteItemState(item).archived; }).length,
-        sampleItemCount: items.filter(function(item) { return !!item.sampleData; }).length,
-        savedArchivedCount: items.filter(function(item) {
-          var user = sqliteItemState(item);
-          return !!user.saved && !!user.archived;
-        }).length,
-        savedCount: items.filter(function(item) { return !!sqliteItemState(item).saved; }).length,
-        savedPlatformCount: new Set(items.filter(function(item) {
-          return !!sqliteItemState(item).saved;
-        }).map(function(item) { return item.platform; })).size,
-        tags: Array.from(tags).sort(),
-        totalCount: items.length,
-      };
-    }
     function normalizedPrimaryMutationContext() {
       return {
         libraryId: '2'.repeat(64),
@@ -951,20 +930,7 @@ export function tauriInitScript(): string {
         persistSqliteState();
         return true;
       },
-      sqlite_library_status: () => {
-        var state = sqliteState();
-        return state.active ? {
-          active: true,
-          revision: state.revision,
-          expectedItemCount: state.expectedItemCount,
-          importedItemCount: Object.keys(state.items).length,
-          sourceGeneration: state.sourceGeneration,
-          sourceRevision: state.sourceRevision,
-          sourceDigest: state.sourceDigest,
-        } : null;
-      },
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
-      read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
       normalized_library_follower_mutation_context: () => null,

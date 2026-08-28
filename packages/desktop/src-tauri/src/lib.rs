@@ -14200,8 +14200,6 @@ pub fn run() {
             library_core_desktop_runtime::finalize_normalized_scope_action,
             library_core_desktop_runtime::page_normalized_scope_action,
             library_core_desktop_runtime::close_normalized_scope_action,
-            library_core_desktop_runtime::sqlite_library_status,
-            library_core_desktop_runtime::read_sqlite_library_facet_summary,
             library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
             library_core_desktop_runtime::accept_pwa_intent_transaction,
             library_core_desktop_runtime::read_pwa_intent_result_outbox,
