@@ -99,6 +99,7 @@ import {
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
   type LibraryCoreNormalizedIntentTransportPublicationV2,
+  type LibraryCoreNormalizedIntentEnvelopeRecordV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
   type LibraryCoreNormalizedResultTransportImportV2,
   type LibraryCoreOperationInstanceId,
@@ -121,15 +122,6 @@ import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 export type SqliteLibraryAcceptedAuthority =
   LibraryCoreAcceptedAuthorityStateV1;
 
-export interface SqliteLibraryActorEnrollment {
-  readonly actor_id: string;
-  readonly actor_public_key: string;
-  readonly enrollment_operation_id: string;
-  readonly enrollment_certificate_digest: string;
-  readonly canonical_enrollment_certificate_json: string;
-  readonly actor_chain_genesis: string;
-}
-
 export interface SqliteLibraryPersistedCloudIdentity {
   readonly libraryId: string;
   readonly storageEpoch: string;
@@ -143,28 +135,6 @@ export interface NormalizedLibraryCloudIdentity extends LibraryCoreNormalizedChe
 export interface NormalizedLibraryWriterEpochReassignment {
   readonly authority: SqliteLibraryAcceptedAuthority;
   readonly canonicalEpochCertificateJson: string;
-}
-
-export interface SqliteLibraryActorCheckpointState {
-  readonly actor_id: string;
-  readonly accepted_sequence: number;
-  readonly accepted_operation_id: string | null;
-  readonly accepted_chain_digest: string;
-  readonly enrollment_certificate_digest: string;
-  readonly retired: false;
-  readonly retirement_certificate_digest: null;
-  readonly canonical_enrollment_certificate_json: string;
-}
-
-export interface SqliteLibraryIntentResultOutboxEntry {
-  readonly resultOperationId: string;
-  readonly actorId: string;
-  readonly resultSequence: number;
-  readonly intentOperationId: string;
-  readonly intentSequence: number;
-  readonly status: "accepted" | "provider_completed" | "provider_failed";
-  readonly providerReceiptDigest: string | null;
-  readonly enqueuedAtMs: number;
 }
 
 export interface SqliteLibraryCloudWriterAdmissionStatus {
@@ -378,6 +348,116 @@ export async function importNormalizedLibraryFollowerResultTransport(
         storageEpochId: publication.header.storage_epoch_id,
         storedSegmentDigest: publication.reference.descriptor.contentDigest,
         transportObjectId: publication.reference.transportObjectId,
+      },
+    },
+  );
+}
+
+export async function countersignNormalizedLibraryFollowerActorRequest(
+  canonicalEnrollmentRequestJson: string,
+): Promise<NormalizedLibraryFollowerActorEnrollment> {
+  return invoke<NormalizedLibraryFollowerActorEnrollment>(
+    "countersign_normalized_library_follower_actor_request",
+    { canonicalEnrollmentRequestJson, acceptedAt: Date.now() },
+  );
+}
+
+export interface NormalizedPrimaryFollowerActorTransportState {
+  readonly actorId: string;
+  readonly libraryId: string;
+  readonly storageEpochId: string;
+  readonly nextActorCounter: number;
+}
+
+export async function readNormalizedPrimaryFollowerActorTransportState(
+  actorId: string,
+): Promise<NormalizedPrimaryFollowerActorTransportState> {
+  return invoke<NormalizedPrimaryFollowerActorTransportState>(
+    "normalized_library_primary_follower_actor_transport_state",
+    { actorId },
+  );
+}
+
+export interface NormalizedPrimaryFollowerIntentStageReceipt {
+  readonly exactRetries: number;
+  readonly pendingTransactions: number;
+  readonly resolvedRecords: number;
+  readonly resolvedTransactions: number;
+  readonly stagedRecords: number;
+}
+
+export async function ingestNormalizedLibraryFollowerIntentPage(
+  envelopes: readonly LibraryCoreNormalizedIntentEnvelopeRecordV2[],
+  canonicalEnvelopes: readonly Uint8Array[],
+): Promise<NormalizedPrimaryFollowerIntentStageReceipt> {
+  if (
+    envelopes.length < 1 ||
+    envelopes.length > 128 ||
+    canonicalEnvelopes.length !== envelopes.length
+  ) {
+    throw new RangeError("normalized follower intent page is outside its bound");
+  }
+  const records = envelopes.map((envelope, index) => ({
+    actorCounter: envelope.actor_sequence,
+    actorId: envelope.actor_id,
+    canonicalEnvelopeJson: new TextDecoder("utf-8", { fatal: true }).decode(
+      canonicalEnvelopes[index]!,
+    ),
+    intentEpoch: envelope.epoch,
+    intentEpochId: envelope.epoch_id,
+    memberCount: envelope.transaction_member_count,
+    memberIndex: envelope.transaction_member_index,
+    operationId: envelope.operation_id,
+    state: "published",
+    transactionDigest: envelope.transaction_digest,
+    transactionId: envelope.transaction_id,
+  }));
+  return invoke<NormalizedPrimaryFollowerIntentStageReceipt>(
+    "ingest_normalized_library_follower_intent_page",
+    { page: { records }, receivedAt: Date.now() },
+  );
+}
+
+export interface NormalizedPrimaryFollowerResultRecord {
+  readonly transactionId: string;
+  readonly transactionDigest: string;
+  readonly actorId: string;
+  readonly authorityEpochId: string;
+  readonly intentEpochId: string;
+  readonly resultSequence: number;
+  readonly previousResultDigest: string | null;
+  readonly resultDigest: string;
+  readonly status: "accepted" | "rejected" | "already_applied";
+  readonly rejectionReason: string | null;
+  readonly originalResultDigest: string | null;
+  readonly authoritativeSourceRevision: number;
+  readonly canonicalResultJson: string;
+  readonly enqueuedAt: number;
+}
+
+export interface NormalizedPrimaryFollowerResultPage {
+  readonly records: readonly NormalizedPrimaryFollowerResultRecord[];
+  readonly nextCursor: Readonly<{
+    actorId: string;
+    resultSequence: number;
+    resultDigest: string;
+  }> | null;
+  readonly done: boolean;
+  readonly canonicalRecordBytes: number;
+}
+
+export async function readNormalizedPrimaryFollowerResultPage(input: {
+  readonly actorId: string;
+  readonly after: NormalizedPrimaryFollowerResultPage["nextCursor"];
+}): Promise<NormalizedPrimaryFollowerResultPage> {
+  return invoke<NormalizedPrimaryFollowerResultPage>(
+    "read_normalized_library_follower_result_page",
+    {
+      request: {
+        actorId: input.actorId,
+        after: input.after,
+        maximumRecords: 128,
+        maximumResponseBytes: 1_048_576,
       },
     },
   );
@@ -1757,85 +1837,6 @@ export async function reassignNormalizedLibraryWriterEpoch(input: {
 }
 
 const HEX_64 = /^[a-f0-9]{64}$/;
-/** Countersign and enroll one proof-only PWA actor request in native SQLite. */
-export async function acceptPwaActorEnrollmentRequest(
-  canonicalRequestBytes: Uint8Array,
-): Promise<SqliteLibraryActorEnrollment> {
-  if (
-    canonicalRequestBytes.byteLength === 0 ||
-    canonicalRequestBytes.byteLength > 65_536
-  ) {
-    throw new RangeError("PWA actor enrollment request has an invalid size");
-  }
-  return invoke<SqliteLibraryActorEnrollment>(
-    "accept_pwa_actor_enrollment_request",
-    {
-      request: {
-        canonicalRequestJson: new TextDecoder("utf-8", { fatal: true }).decode(
-          canonicalRequestBytes,
-        ),
-      },
-    },
-  );
-}
-
-/** Admit one complete signed PWA intent transaction into SQLite. */
-export async function acceptPwaIntentTransaction(
-  canonicalEnvelopeJson: readonly string[],
-): Promise<readonly SqliteLibraryIntentResultOutboxEntry[]> {
-  if (
-    canonicalEnvelopeJson.length === 0 ||
-    canonicalEnvelopeJson.length > 1_000
-  ) {
-    throw new RangeError("PWA intent transaction has an invalid member count");
-  }
-  return invoke<SqliteLibraryIntentResultOutboxEntry[]>(
-    "accept_pwa_intent_transaction",
-    {
-      request: {
-        canonicalEnvelopeJson: [...canonicalEnvelopeJson],
-        committedAtMs: Date.now(),
-      },
-    },
-  );
-}
-
-export async function readPwaIntentResultOutbox(
-  input: Readonly<{ libraryId: string; epochId: string }>,
-  limit = 256,
-): Promise<readonly SqliteLibraryIntentResultOutboxEntry[]> {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) {
-    throw new RangeError("PWA result outbox page limit is invalid");
-  }
-  return invoke<SqliteLibraryIntentResultOutboxEntry[]>(
-    "read_pwa_intent_result_outbox",
-    { request: { ...input, limit } },
-  );
-}
-
-export async function acknowledgePwaIntentResultOutbox(
-  resultOperationIds: readonly string[],
-): Promise<void> {
-  if (resultOperationIds.length < 1 || resultOperationIds.length > 256) {
-    throw new RangeError("PWA result acknowledgement count is invalid");
-  }
-  return invoke("acknowledge_pwa_intent_result_outbox", {
-    request: {
-      resultOperationIds: [...resultOperationIds],
-      acknowledgedAtMs: Date.now(),
-    },
-  });
-}
-
-export async function listSqliteLibraryActorEnrollments(input: {
-  readonly libraryId: string;
-  readonly epochId: string;
-}): Promise<readonly SqliteLibraryActorCheckpointState[]> {
-  return invoke<SqliteLibraryActorCheckpointState[]>(
-    "list_sqlite_library_actor_enrollments",
-    { request: input },
-  );
-}
 
 export async function loadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
   const [facets, preferences] = await Promise.all([

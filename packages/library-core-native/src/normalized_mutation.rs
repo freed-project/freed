@@ -379,6 +379,63 @@ pub struct NormalizedFollowerIntentStageReceiptV1 {
     pub staged_records: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPrimaryFollowerActorTransportStateV1 {
+    pub actor_id: String,
+    pub library_id: String,
+    pub storage_epoch_id: String,
+    pub next_actor_counter: i64,
+}
+
+pub fn normalized_primary_follower_actor_transport_state_v1(
+    connection: &Connection,
+    actor_id: &str,
+) -> Result<NormalizedPrimaryFollowerActorTransportStateV1, NormalizedSqliteError> {
+    if !is_lower_sha256(actor_id) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized Primary follower actor identity is invalid",
+        ));
+    }
+    let state = connection
+        .query_row(
+            "SELECT actor.actor_id, meta.library_id, active.epoch_id,
+                    MAX(actor.accepted_counter + 1, COALESCE((
+                      SELECT MAX(member.actor_counter) + 1
+                      FROM library_primary_intent_stage_members AS member
+                      WHERE member.actor_id = actor.actor_id
+                    ), actor.accepted_counter + 1))
+             FROM library_meta AS meta
+             JOIN library_active_authority AS active
+               ON active.library_id = meta.library_id
+             JOIN library_actors AS actor
+              ON actor.authority_epoch_id = active.epoch_id
+              AND actor.actor_id = ?1
+              AND actor.actor_id <> active.writer_id
+              AND actor.retired_at IS NULL
+             WHERE meta.singleton_id = 1;",
+            [actor_id],
+            |row| {
+                Ok(NormalizedPrimaryFollowerActorTransportStateV1 {
+                    actor_id: row.get(0)?,
+                    library_id: row.get(1)?,
+                    storage_epoch_id: row.get(2)?,
+                    next_actor_counter: row.get(3)?,
+                })
+            },
+        )
+        .optional()?
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Primary follower actor is not enrolled",
+        ))?;
+    if !(1..=MAX_SAFE_INTEGER).contains(&state.next_actor_counter) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized Primary follower actor counter is invalid",
+        ));
+    }
+    Ok(state)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FollowerResultOutcome<'a> {
     Accepted,
@@ -2889,6 +2946,12 @@ mod tests {
         let (mut connection, key_pair, enrollment) = fixture();
         let envelopes = signed_envelopes(&key_pair, &enrollment);
         let records = stage_records(&envelopes);
+        let initial_transport =
+            normalized_primary_follower_actor_transport_state_v1(&connection, &enrollment.actor_id)
+                .expect("initial follower transport frontier");
+        assert_eq!(initial_transport.library_id, enrollment.library_id);
+        assert_eq!(initial_transport.storage_epoch_id, enrollment.epoch_id);
+        assert_eq!(initial_transport.next_actor_counter, 1);
         let first = ingest_normalized_follower_intent_page_v1(
             &mut connection,
             &NormalizedFollowerIntentStagePageV1 {
@@ -2916,6 +2979,16 @@ mod tests {
                 ))
                 .expect("no early authority transaction"),
             0
+        );
+        assert_eq!(
+            normalized_primary_follower_actor_transport_state_v1(
+                &connection,
+                &enrollment.actor_id,
+            )
+            .expect("staged follower transport frontier")
+            .next_actor_counter,
+            records[0].actor_counter + 1,
+            "a response-loss retry resumes after the exact staged member",
         );
         let retry = ingest_normalized_follower_intent_page_v1(
             &mut connection,
@@ -2954,6 +3027,15 @@ mod tests {
         assert_eq!(completed.staged_records, 1);
         assert_eq!(completed.resolved_transactions, 1);
         assert_eq!(completed.pending_transactions, 0);
+        assert_eq!(
+            normalized_primary_follower_actor_transport_state_v1(
+                &connection,
+                &enrollment.actor_id,
+            )
+            .expect("committed follower transport frontier")
+            .next_actor_counter,
+            records[1].actor_counter + 1,
+        );
         assert_eq!(
             connection
                 .query_row("SELECT count(*) FROM library_transactions;", [], |row| row

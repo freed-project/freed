@@ -133,12 +133,14 @@ pub use normalized_migration::{
 };
 pub use normalized_mutation::{
     accept_normalized_operation_transaction_v1, export_normalized_follower_result_page_v1,
-    ingest_normalized_follower_intent_page_v1, normalized_primary_mutation_context_v1,
+    ingest_normalized_follower_intent_page_v1,
+    normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerIntentStageReceiptV1,
     NormalizedFollowerIntentStageRecordV1, NormalizedFollowerResultCursorV1,
     NormalizedFollowerResultPageRequestV1, NormalizedFollowerResultPageV1,
     NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1, NormalizedMutationContextV1,
     NormalizedMutationInvalidationV1, NormalizedMutationReceiptV1,
+    NormalizedPrimaryFollowerActorTransportStateV1,
 };
 pub use normalized_query::{
     query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,

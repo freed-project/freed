@@ -5,35 +5,37 @@ import {
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreFollowerActorRequestReceiptV2,
   parseLibraryCoreControlPointerV1,
-  parseLibraryCoreResultHeadV1,
+  parseLibraryCoreNormalizedIntentHeadV2,
+  parseLibraryCoreNormalizedResultHeadV2,
   sha256LowerHex,
   type LibraryCoreCanonicalValue,
   type LibraryCoreControlPointerV1,
+  type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
-  type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
+  createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
+  createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
   createLibraryCorePrimaryCoordinatorV1,
-  createGoogleDriveLibraryCoreIntentAdapterV1,
-  createGoogleDriveLibraryCoreResultAdapterV1,
   createLibraryCoreNormalizedCheckpointWriterV2,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
+  discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
   discoverGoogleDriveLibraryCoreResultHeadV1,
   discoverGoogleDriveLibraryCoreResultSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
-  importLibraryCoreIntentSegmentV1,
-  importLibraryCoreResultSegmentV1,
+  importLibraryCoreNormalizedIntentSegmentV2,
+  importLibraryCoreNormalizedResultSegmentV2,
   importLibraryCoreNormalizedCheckpointV2,
   provisionGoogleDriveLibraryCoreControlV1,
-  provisionGoogleDriveLibraryCoreResultHeadV1,
+  provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   publishLibraryCoreNormalizedCheckpointV2,
-  publishLibraryCoreResultEntriesV1,
+  publishLibraryCoreNormalizedResultSegmentV2,
   syncLibraryCoreNormalizedFollowerV2,
   reassignLibraryCoreNormalizedCheckpointV2,
   type LibraryCoreControlReadV1,
@@ -47,17 +49,16 @@ import { log } from "./logger";
 import {
   activateNormalizedLibraryCheckpointImport,
   appendNormalizedLibraryCheckpointImportPage,
-  acknowledgePwaIntentResultOutbox,
-  acceptPwaActorEnrollmentRequest,
-  acceptPwaIntentTransaction,
   beginNormalizedLibraryCheckpointImport,
   describeNormalizedLibraryCloudIdentity,
   describeNormalizedLibraryCheckpoint,
   installNormalizedLibraryFollowerActorEnrollment,
   importNormalizedLibraryFollowerResultTransport,
-  listSqliteLibraryActorEnrollments,
+  countersignNormalizedLibraryFollowerActorRequest,
+  ingestNormalizedLibraryFollowerIntentPage,
   readNormalizedLibraryCheckpointPage,
-  readPwaIntentResultOutbox,
+  readNormalizedPrimaryFollowerActorTransportState,
+  readNormalizedPrimaryFollowerResultPage,
   prepareNormalizedLibraryFollowerActorRequest,
   pageNormalizedLibraryFollowerTransport,
   readNormalizedLibraryFollowerRuntimeStatus,
@@ -66,8 +67,6 @@ import {
   recordNormalizedLibraryFollowerIntentTransportPublication,
   setSqliteLibraryCloudWriterAdmission,
   type NormalizedLibraryCloudIdentity,
-  type SqliteLibraryActorCheckpointState,
-  type SqliteLibraryIntentResultOutboxEntry,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
@@ -471,139 +470,150 @@ async function prepareWriterEpochCertificate(input: {
   return Object.freeze(prepared);
 }
 
-async function actorStateDigest(
-  actors: readonly SqliteLibraryActorCheckpointState[],
-): Promise<string> {
-  return sha256Bytes(
-    encodeLibraryCoreCanonicalValue(
-      actors.map((actor) => ({
-        accepted_chain_digest: actor.accepted_chain_digest,
-        accepted_operation_id: actor.accepted_operation_id,
-        accepted_sequence: actor.accepted_sequence,
-        actor_id: actor.actor_id,
-        enrollment_certificate_digest: actor.enrollment_certificate_digest,
-      })),
-    ),
+function normalizedEnrollmentIdentity(bytes: Uint8Array): Readonly<{
+  actorId: string;
+  libraryId: string;
+  storageEpochId: string;
+}> | null {
+  const value = decodeLibraryCoreCanonicalValue(bytes);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const certificateBody = (
+    value as Readonly<Record<string, LibraryCoreCanonicalValue>>
+  ).certificate_body;
+  if (
+    certificateBody === null ||
+    typeof certificateBody !== "object" ||
+    Array.isArray(certificateBody)
+  ) {
+    return null;
+  }
+  const enrollmentBody = (
+    certificateBody as Readonly<Record<string, LibraryCoreCanonicalValue>>
+  ).actor_enrollment_body;
+  if (
+    enrollmentBody === null ||
+    typeof enrollmentBody !== "object" ||
+    Array.isArray(enrollmentBody)
+  ) {
+    return null;
+  }
+  const normalizedEnrollmentBody = enrollmentBody as Readonly<
+    Record<string, LibraryCoreCanonicalValue>
+  >;
+  const actorId = normalizedEnrollmentBody.actor_id;
+  const libraryId = normalizedEnrollmentBody.library_id;
+  const storageEpochId = normalizedEnrollmentBody.epoch_id;
+  return typeof actorId === "string" &&
+    typeof libraryId === "string" &&
+    typeof storageEpochId === "string"
+    ? Object.freeze({ actorId, libraryId, storageEpochId })
+    : null;
+}
+
+function immutableReferenceEquals(
+  left: LibraryCoreImmutableObjectReferenceV1,
+  right: LibraryCoreImmutableObjectReferenceV1,
+): boolean {
+  return (
+    left.transportObjectId === right.transportObjectId &&
+    left.descriptor.byteLength === right.descriptor.byteLength &&
+    left.descriptor.contentDigest === right.descriptor.contentDigest &&
+    left.descriptor.objectKey === right.descriptor.objectKey
   );
 }
 
-async function publishActorEnrollmentCertificates(input: {
-  readonly actors: readonly SqliteLibraryActorCheckpointState[];
+async function publishNormalizedActorEnrollment(input: {
   readonly adapter: ReturnType<typeof createGoogleDriveLibraryCoreAdapterV1>;
-  readonly epochId: string;
-  readonly libraryId: string;
+  readonly enrollment: Awaited<
+    ReturnType<typeof countersignNormalizedLibraryFollowerActorRequest>
+  >;
 }): Promise<void> {
-  for (const actor of input.actors) {
-    const source = new TextEncoder().encode(
-      actor.canonical_enrollment_certificate_json,
-    );
-    const contentDigest = await sha256Bytes(source);
-    const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
-      byteLength: source.byteLength,
-      contentDigest,
-      objectKey: createLibraryCoreImmutableObjectKey({
-        actorId: actor.actor_id,
-        digest: contentDigest,
-        epochId: input.epochId,
-        kind: "actor_enrollment",
-        libraryId: input.libraryId,
-      }),
-    });
-    const uploaded = await input.adapter.putImmutable({ descriptor, source });
-    await input.adapter.verifyImmutable({
-      descriptor,
-      transportObjectId: uploaded.transportObjectId,
-    });
-  }
+  const source = new TextEncoder().encode(
+    input.enrollment.canonicalEnrollmentCertificateJson,
+  );
+  const contentDigest = await sha256Bytes(source);
+  const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
+    byteLength: source.byteLength,
+    contentDigest,
+    objectKey: createLibraryCoreImmutableObjectKey({
+      actorId: input.enrollment.actorId,
+      digest: contentDigest,
+      epochId: input.enrollment.authorityEpochId,
+      kind: "actor_enrollment",
+      libraryId: input.enrollment.libraryId,
+    }),
+  });
+  const uploaded = await input.adapter.putImmutable({ descriptor, source });
+  await input.adapter.verifyImmutable({
+    descriptor,
+    transportObjectId: uploaded.transportObjectId,
+  });
 }
 
-async function acceptPendingPwaActorEnrollments(input: {
+async function acceptPendingNormalizedFollowerEnrollments(input: {
   readonly accessToken: string;
+  readonly adapter: ReturnType<typeof createGoogleDriveLibraryCoreAdapterV1>;
   readonly epochId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly libraryId: string;
   readonly signal?: AbortSignal;
-}): Promise<void> {
+}): Promise<readonly string[]> {
   const requests =
     await discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input);
   for (const request of requests) {
-    await acceptPwaActorEnrollmentRequest(request.bytes);
-  }
-}
-
-function canonicalIntentTransactions(
-  entries: readonly Readonly<{
-    readonly canonical_envelope: Readonly<
-      Record<string, LibraryCoreCanonicalValue>
-    >;
-  }>[],
-): readonly (readonly string[])[] {
-  const transactions: string[][] = [];
-  for (let index = 0; index < entries.length;) {
-    const first = entries[index]!.canonical_envelope;
-    const transactionId = first.transaction_id;
-    const memberCount = first.transaction_member_count;
-    if (
-      typeof transactionId !== "string" ||
-      !Number.isSafeInteger(memberCount) ||
-      typeof memberCount !== "number" ||
-      memberCount < 1 ||
-      index + memberCount > entries.length ||
-      first.transaction_member_index !== 0
-    ) {
-      throw new Error("PWA intent segment splits a canonical transaction");
-    }
-    const members = entries.slice(index, index + memberCount);
-    for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
-      const envelope = members[memberIndex]!.canonical_envelope;
-      if (
-        envelope.transaction_id !== transactionId ||
-        envelope.transaction_member_count !== memberCount ||
-        envelope.transaction_member_index !== memberIndex
-      ) {
-        throw new Error("PWA intent transaction members are reordered");
-      }
-    }
-    transactions.push(
-      members.map((member) =>
-        new TextDecoder("utf-8", { fatal: true }).decode(
-          encodeLibraryCoreCanonicalValue(
-            member.canonical_envelope as LibraryCoreCanonicalValue,
-          ),
-        ),
-      ),
+    const canonical = new TextDecoder("utf-8", { fatal: true }).decode(
+      request.bytes,
     );
-    index += memberCount;
+    const enrollment =
+      await countersignNormalizedLibraryFollowerActorRequest(canonical);
+    await publishNormalizedActorEnrollment({
+      adapter: input.adapter,
+      enrollment,
+    });
   }
-  return Object.freeze(
-    transactions.map((transaction) => Object.freeze(transaction)),
-  );
+  const certificates =
+    await discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input);
+  const actorIds = new Set<string>();
+  for (const certificate of certificates) {
+    const identity = normalizedEnrollmentIdentity(certificate.bytes);
+    if (
+      identity?.libraryId === input.libraryId &&
+      identity.storageEpochId === input.epochId
+    ) {
+      actorIds.add(identity.actorId);
+    }
+  }
+  return Object.freeze([...actorIds].sort());
 }
 
-async function acceptPendingPwaReadIntents(input: {
+async function ingestPendingNormalizedFollowerIntents(input: {
   readonly accessToken: string;
-  readonly actors: readonly SqliteLibraryActorCheckpointState[];
+  readonly actorIds: readonly string[];
   readonly controlFileId: string;
-  readonly desktopActorId: string;
   readonly epochId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly libraryId: string;
   readonly signal?: AbortSignal;
 }): Promise<void> {
-  for (const actor of input.actors) {
-    if (actor.actor_id === input.desktopActorId || actor.retired) continue;
+  for (const actorId of input.actorIds) {
+    const state =
+      await readNormalizedPrimaryFollowerActorTransportState(actorId);
+    if (
+      state.libraryId !== input.libraryId ||
+      state.storageEpochId !== input.epochId
+    ) {
+      throw new Error("normalized follower actor authority changed");
+    }
     const locator = await discoverGoogleDriveLibraryCoreIntentHeadV1({
-      accessToken: input.accessToken,
-      actorId: actor.actor_id,
-      epochId: input.epochId,
-      googleFetch: input.googleFetch,
-      libraryId: input.libraryId,
-      signal: input.signal,
+      ...input,
+      actorId,
     });
     if (locator === null) continue;
-    const adapter = createGoogleDriveLibraryCoreIntentAdapterV1({
+    const adapter = createGoogleDriveLibraryCoreNormalizedIntentAdapterV2({
       accessToken: input.accessToken,
-      actorId: actor.actor_id,
+      actorId,
       controlFileId: input.controlFileId,
       epochId: input.epochId,
       googleFetch: input.googleFetch,
@@ -611,75 +621,63 @@ async function acceptPendingPwaReadIntents(input: {
       libraryId: input.libraryId,
       signal: input.signal,
     });
-    const head = await adapter.readIntentHead();
-    if (head.head.epoch_id !== input.epochId) {
-      throw new Error("PWA intent head belongs to a retired writer epoch");
+    const headRead = await adapter.readHead();
+    const head = parseLibraryCoreNormalizedIntentHeadV2(headRead.head);
+    if (head.next_actor_counter <= state.nextActorCounter) continue;
+    if (head.latest_segment === null) {
+      throw new Error("normalized intent head references a missing segment");
     }
-    const publishedThrough = head.head.next_intent_sequence - 1;
-    if (publishedThrough <= actor.accepted_sequence) continue;
     const segments = await discoverGoogleDriveLibraryCoreIntentSegmentsV1({
-      accessToken: input.accessToken,
-      actorId: actor.actor_id,
-      epochId: input.epochId,
-      googleFetch: input.googleFetch,
-      libraryId: input.libraryId,
-      signal: input.signal,
+      ...input,
+      actorId,
     });
-    if (segments.length === 0 || head.head.latest_segment === null) {
-      throw new Error("PWA intent head references a missing immutable segment");
+    const latestIndex = segments.findIndex(
+      (segment) => immutableReferenceEquals(segment.reference, head.latest_segment!),
+    );
+    if (latestIndex < 0) {
+      throw new Error("normalized intent head references a missing segment");
     }
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index]!;
-      const previous = segments[index - 1];
+    const committedSegments = segments.slice(0, latestIndex + 1);
+    for (let index = 0; index < committedSegments.length; index += 1) {
+      const segment = committedSegments[index]!;
+      const previous = committedSegments[index - 1];
       if (
         segment.firstIntentSequence !==
           (previous?.lastIntentSequence ?? 0) + 1 ||
-        segment.lastIntentSequence >= head.head.next_intent_sequence
+        segment.lastIntentSequence >= head.next_actor_counter
       ) {
-        throw new Error("PWA intent segment chain has a gap or overlap");
+        throw new Error("normalized intent segment chain has a gap or overlap");
       }
     }
-    const latest = segments.at(-1)!;
-    if (
-      latest.lastIntentSequence !== publishedThrough ||
-      latest.reference.descriptor.contentDigest !==
-        head.head.latest_segment.descriptor.contentDigest ||
-      latest.reference.descriptor.objectKey !==
-        head.head.latest_segment.descriptor.objectKey ||
-      latest.reference.transportObjectId !==
-        head.head.latest_segment.transportObjectId
-    ) {
-      throw new Error("PWA intent segments do not match the actor head");
+    const latest = committedSegments.at(-1)!;
+    if (latest.lastIntentSequence + 1 !== head.next_actor_counter) {
+      throw new Error("normalized intent segments do not match their head");
     }
-    const firstPendingIndex = segments.findIndex(
-      (segment) => segment.lastIntentSequence > actor.accepted_sequence,
+    const firstPending = committedSegments.findIndex(
+      (segment) => segment.lastIntentSequence >= state.nextActorCounter,
     );
-    if (firstPendingIndex < 0) continue;
-    for (let index = firstPendingIndex; index < segments.length; index += 1) {
-      const segment = segments[index]!;
-      const previous = segments[index - 1];
-      await importLibraryCoreIntentSegmentV1({
-        actorId: actor.actor_id,
+    if (firstPending < 0) {
+      throw new Error("normalized intent head references a missing segment");
+    }
+    for (let index = firstPending; index < committedSegments.length; index += 1) {
+      const segment = committedSegments[index]!;
+      const previous = committedSegments[index - 1];
+      await importLibraryCoreNormalizedIntentSegmentV2({
+        actorId,
         adapter,
-        expectedFirstIntentSequence: segment.firstIntentSequence,
+        expectedFirstActorCounter: segment.firstIntentSequence,
         expectedPreviousSegmentDigest:
           previous?.reference.descriptor.contentDigest ?? null,
         libraryId: input.libraryId,
         reference: segment.reference,
-        storageEpoch: input.epochId,
+        storageEpochId: input.epochId,
         subtle: crypto.subtle,
         writer: {
-          async appendIntentSegment({ entries, header }) {
-            for (const transaction of canonicalIntentTransactions(entries)) {
-              await acceptPwaIntentTransaction(transaction);
-            }
-            return Object.freeze({
-              actorId: header.actor_id,
-              firstIntentSequence: header.first_intent_sequence,
-              importedOperationCount: header.operation_count,
-              lastIntentSequence: header.last_intent_sequence,
-              segmentDigest: header.segment_digest,
-            });
+          async stageNormalizedIntentSegment({ canonicalEnvelopes, envelopes }) {
+            await ingestNormalizedLibraryFollowerIntentPage(
+              envelopes,
+              canonicalEnvelopes,
+            );
           },
         },
       });
@@ -687,212 +685,137 @@ async function acceptPendingPwaReadIntents(input: {
   }
 }
 
-function resultEntryMatches(
-  local: SqliteLibraryIntentResultOutboxEntry,
-  remote: Readonly<{
-    actor_id: string;
-    intent_operation_id: string;
-    intent_sequence: number;
-    provider_receipt_digest: string | null;
-    result_operation_id: string;
-    result_sequence: number;
-    status: "accepted" | "provider_completed" | "provider_failed";
-  }>,
-): boolean {
-  return (
-    local.actorId === remote.actor_id &&
-    local.intentOperationId === remote.intent_operation_id &&
-    local.intentSequence === remote.intent_sequence &&
-    local.providerReceiptDigest === remote.provider_receipt_digest &&
-    local.resultOperationId === remote.result_operation_id &&
-    local.resultSequence === remote.result_sequence &&
-    local.status === remote.status
-  );
-}
-
-async function verifyPublishedResultPrefix(input: {
+async function flushNormalizedFollowerResults(input: {
   readonly accessToken: string;
-  readonly actorId: string;
-  readonly adapter: ReturnType<
-    typeof createGoogleDriveLibraryCoreResultAdapterV1
-  >;
-  readonly epochId: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly head: LibraryCoreResultHeadV1;
-  readonly libraryId: string;
-  readonly pending: readonly SqliteLibraryIntentResultOutboxEntry[];
-  readonly signal?: AbortSignal;
-}): Promise<readonly string[]> {
-  if (input.head.next_result_sequence === 1) return Object.freeze([]);
-  const segments = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
-    accessToken: input.accessToken,
-    actorId: input.actorId,
-    epochId: input.epochId,
-    googleFetch: input.googleFetch,
-    libraryId: input.libraryId,
-    signal: input.signal,
-  });
-  const pendingBySequence = new Map(
-    input.pending.map((entry) => [entry.resultSequence, entry] as const),
-  );
-  const confirmed = new Set<string>();
-  let nextSequence = 1;
-  let previousDigest: LibraryCoreResultHeadV1["latest_segment_digest"] = null;
-  for (const segment of segments) {
-    if (segment.firstResultSequence !== nextSequence) {
-      throw new Error("PWA result segment chain has a gap or overlap");
-    }
-    await importLibraryCoreResultSegmentV1({
-      actorId: input.actorId,
-      adapter: input.adapter,
-      expectedFirstResultSequence: nextSequence,
-      expectedPreviousSegmentDigest: previousDigest,
-      libraryId: input.libraryId,
-      reference: segment.reference,
-      storageEpoch: input.epochId,
-      subtle: crypto.subtle,
-      writer: {
-        async appendResultSegment({ entries }) {
-          for (const remote of entries) {
-            const local = pendingBySequence.get(remote.result_sequence);
-            if (local && !resultEntryMatches(local, remote)) {
-              throw new Error(
-                "published PWA result differs from the durable SQLite receipt",
-              );
-            }
-            if (local) confirmed.add(local.resultOperationId);
-          }
-        },
-      },
-    });
-    nextSequence = segment.lastResultSequence + 1;
-    previousDigest = segment.reference.descriptor.contentDigest;
-    if (nextSequence >= input.head.next_result_sequence) break;
-  }
-  if (
-    nextSequence !== input.head.next_result_sequence ||
-    previousDigest !== input.head.latest_segment_digest
-  ) {
-    throw new Error("PWA result objects do not match the actor result head");
-  }
-  for (const local of input.pending) {
-    if (
-      local.resultSequence < input.head.next_result_sequence &&
-      !confirmed.has(local.resultOperationId)
-    ) {
-      throw new Error(
-        "published PWA result head omits a durable SQLite receipt",
-      );
-    }
-  }
-  return Object.freeze([...confirmed]);
-}
-
-async function flushPwaIntentResultOutbox(input: {
-  readonly accessToken: string;
+  readonly actorIds: readonly string[];
   readonly controlFileId: string;
   readonly epochId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly libraryId: string;
   readonly signal?: AbortSignal;
 }): Promise<void> {
-  for (let page = 0; page < 100; page += 1) {
-    const pending = await readPwaIntentResultOutbox(
-      {
-        epochId: input.epochId,
-        libraryId: input.libraryId,
-      },
-      256,
-    );
-    if (pending.length === 0) return;
-    const actorIds = [...new Set(pending.map((entry) => entry.actorId))].sort();
-    for (const actorId of actorIds) {
-      const actorEntries = pending
-        .filter((entry) => entry.actorId === actorId)
-        .sort((left, right) => left.resultSequence - right.resultSequence);
-      let locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
+  for (const actorId of input.actorIds) {
+    let locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
+      ...input,
+      actorId,
+    });
+    if (locator === null) {
+      locator = await provisionGoogleDriveLibraryCoreNormalizedResultHeadV2({
         accessToken: input.accessToken,
-        actorId,
-        epochId: input.epochId,
         googleFetch: input.googleFetch,
-        libraryId: input.libraryId,
+        head: parseLibraryCoreNormalizedResultHeadV2({
+          actor_id: actorId,
+          latest_segment: null,
+          latest_segment_digest: null,
+          library_id: input.libraryId,
+          next_result_sequence: 1,
+          protocol: "normalized_result_head_v2",
+          protocol_version: 2,
+          storage_epoch_id: input.epochId,
+        }),
         signal: input.signal,
       });
-      if (locator === null) {
-        locator = await provisionGoogleDriveLibraryCoreResultHeadV1({
-          accessToken: input.accessToken,
-          googleFetch: input.googleFetch,
-          head: parseLibraryCoreResultHeadV1({
-            actor_id: actorId,
-            epoch_id: input.epochId,
-            latest_segment: null,
-            latest_segment_digest: null,
-            library_id: input.libraryId,
-            next_result_sequence: 1,
-            protocol: "result_head_v1",
-            protocol_version: 1,
-            schema_version: 1,
-          }),
-          signal: input.signal,
-        });
-      }
-      const adapter = createGoogleDriveLibraryCoreResultAdapterV1({
-        accessToken: input.accessToken,
-        actorId,
-        controlFileId: input.controlFileId,
-        epochId: input.epochId,
-        googleFetch: input.googleFetch,
-        libraryId: input.libraryId,
-        resultHeadFileId: locator.resultHeadFileId,
-        signal: input.signal,
-      });
-      let head = (await adapter.readResultHead()).head;
-      if (head.epoch_id !== input.epochId) {
-        throw new Error("PWA result head belongs to a retired writer epoch");
-      }
-      const recovered = await verifyPublishedResultPrefix({
-        accessToken: input.accessToken,
-        actorId,
-        adapter,
-        epochId: input.epochId,
-        googleFetch: input.googleFetch,
-        head,
-        libraryId: input.libraryId,
-        pending: actorEntries,
-        signal: input.signal,
-      });
-      if (recovered.length > 0) {
-        await acknowledgePwaIntentResultOutbox(recovered);
-      }
-      const unpublished = actorEntries.filter(
-        (entry) => entry.resultSequence >= head.next_result_sequence,
+    }
+    const adapter = createGoogleDriveLibraryCoreNormalizedResultAdapterV2({
+      accessToken: input.accessToken,
+      actorId,
+      controlFileId: input.controlFileId,
+      epochId: input.epochId,
+      googleFetch: input.googleFetch,
+      libraryId: input.libraryId,
+      resultHeadFileId: locator.resultHeadFileId,
+      signal: input.signal,
+    });
+    for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+      const head = parseLibraryCoreNormalizedResultHeadV2(
+        (await adapter.readHead()).head,
       );
-      if (unpublished.length === 0) continue;
-      if (unpublished[0]!.resultSequence !== head.next_result_sequence) {
-        throw new Error(
-          "durable PWA result outbox does not extend the cloud result head",
+      let after: Readonly<{
+        actorId: string;
+        resultSequence: number;
+        resultDigest: string;
+      }> | null = null;
+      if (head.next_result_sequence > 1) {
+        if (head.latest_segment === null) {
+          throw new Error("normalized result head references a missing segment");
+        }
+        const segments = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
+          ...input,
+          actorId,
+        });
+        const latestIndex = segments.findIndex(
+          (segment) =>
+            immutableReferenceEquals(segment.reference, head.latest_segment!),
         );
+        if (latestIndex < 0) {
+          throw new Error("normalized result head references a missing segment");
+        }
+        const committedSegments = segments.slice(0, latestIndex + 1);
+        for (let index = 0; index < committedSegments.length; index += 1) {
+          const segment = committedSegments[index]!;
+          const previous = committedSegments[index - 1];
+          if (
+            segment.firstResultSequence !==
+              (previous?.lastResultSequence ?? 0) + 1 ||
+            segment.lastResultSequence >= head.next_result_sequence
+          ) {
+            throw new Error(
+              "normalized result segment chain has a gap or overlap",
+            );
+          }
+        }
+        const latest = segments[latestIndex]!;
+        const previous = segments[latestIndex - 1];
+        let resultDigest: string | null = null;
+        await importLibraryCoreNormalizedResultSegmentV2({
+          actorId,
+          adapter,
+          expectedFirstResultSequence: latest.firstResultSequence,
+          expectedPreviousSegmentDigest:
+            previous?.reference.descriptor.contentDigest ?? null,
+          libraryId: input.libraryId,
+          reference: latest.reference,
+          storageEpochId: input.epochId,
+          subtle: crypto.subtle,
+          writer: {
+            async appendNormalizedResultSegment({ results }) {
+              resultDigest = results.at(-1)?.result_body_digest ?? null;
+            },
+          },
+        });
+        if (
+          latest.lastResultSequence + 1 !== head.next_result_sequence ||
+          resultDigest === null
+        ) {
+          throw new Error("normalized result segment does not match its head");
+        }
+        after = {
+          actorId,
+          resultSequence: latest.lastResultSequence,
+          resultDigest,
+        };
       }
-      await publishLibraryCoreResultEntriesV1({
+      const page = await readNormalizedPrimaryFollowerResultPage({
+        actorId,
+        after,
+      });
+      if (page.records.length === 0) break;
+      const published = await publishLibraryCoreNormalizedResultSegmentV2({
         adapter,
-        entries: unpublished,
+        canonicalResults: page.records.map((record) =>
+          new TextEncoder().encode(record.canonicalResultJson),
+        ),
         subtle: crypto.subtle,
       });
-      await acknowledgePwaIntentResultOutbox(
-        unpublished.map((entry) => entry.resultOperationId),
-      );
-      head = (await adapter.readResultHead()).head;
       if (
-        head.next_result_sequence !==
-        unpublished.at(-1)!.resultSequence + 1
+        published.segmentHeader.first_result_sequence !==
+        head.next_result_sequence
       ) {
-        throw new Error(
-          "PWA result head did not advance through published receipts",
-        );
+        throw new Error("normalized result publication changed sequence");
       }
+      if (page.done) break;
     }
   }
-  throw new Error("PWA result outbox exceeded the bounded flush budget");
 }
 
 async function bootstrapCloudCheckpointIntoSqlite(input: {
@@ -1178,38 +1101,31 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       revision: controlRead.revision,
     });
   }
-  await acceptPendingPwaActorEnrollments({
+  const actorIds = await acceptPendingNormalizedFollowerEnrollments({
     accessToken: input.accessToken,
+    adapter,
     epochId: loaded.identity.authorityEpoch,
     googleFetch: input.googleFetch,
     libraryId: state.libraryId,
     signal: input.signal,
   });
-  const actors = await listSqliteLibraryActorEnrollments({
-    epochId: loaded.identity.authorityEpoch,
-    libraryId: loaded.identity.libraryId,
-  });
-  await acceptPendingPwaReadIntents({
+  await ingestPendingNormalizedFollowerIntents({
     accessToken: input.accessToken,
-    actors,
-    controlFileId: provisioned.controlFileId,
-    desktopActorId: loaded.currentWriterId,
-    epochId: loaded.identity.authorityEpoch,
-    googleFetch: input.googleFetch,
-    libraryId: state.libraryId,
-    signal: input.signal,
-  });
-  await flushPwaIntentResultOutbox({
-    accessToken: input.accessToken,
+    actorIds,
     controlFileId: provisioned.controlFileId,
     epochId: loaded.identity.authorityEpoch,
     googleFetch: input.googleFetch,
     libraryId: state.libraryId,
     signal: input.signal,
   });
-  const updatedActors = await listSqliteLibraryActorEnrollments({
+  await flushNormalizedFollowerResults({
+    accessToken: input.accessToken,
+    actorIds,
+    controlFileId: provisioned.controlFileId,
     epochId: loaded.identity.authorityEpoch,
-    libraryId: loaded.identity.libraryId,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
   });
   const normalizedCheckpoint = await describeNormalizedLibraryCheckpoint();
   if (
@@ -1221,19 +1137,11 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       "Normalized SQLite checkpoint authority conflicts with cloud state",
     );
   }
-  const publishedActorDigest = await actorStateDigest(updatedActors);
   if (
-    state.lastPublishedRevision === normalizedCheckpoint.sourceRevision &&
-    state.lastPublishedActorDigest === publishedActorDigest
+    state.lastPublishedRevision === normalizedCheckpoint.sourceRevision
   ) {
     return { status: "current", revision: normalizedCheckpoint.sourceRevision };
   }
-  await publishActorEnrollmentCertificates({
-    actors: updatedActors,
-    adapter,
-    epochId: state.storageEpoch,
-    libraryId: state.libraryId,
-  });
   const generation = pointer === null ? 0 : pointer.generation + 1;
   const result = await publishLibraryCoreNormalizedCheckpointV2({
     activeTransport: "google_drive_app_data_v1",
@@ -1255,7 +1163,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   });
   state = Object.freeze({
     ...state,
-    lastPublishedActorDigest: publishedActorDigest,
+    lastPublishedActorDigest: null,
     lastPublishedCheckpoint: checkpointPublicationReceipt({
       localRevision: normalizedCheckpoint.sourceRevision,
       itemCount: normalizedCheckpoint.itemCount,

@@ -557,6 +557,31 @@ transaction and no partial Library state. Acceptance or signed rejection
 deletes staging after the authoritative transaction commits. Replayed records
 then resolve against the immutable result outbox instead of recreating staging.
 
+The Primary cloud coordinator accepts only normalized actor certificates and
+protocol version 2 intent records. It countersigns each discovered enrollment
+request through the selected normalized authority, publishes the resulting
+immutable certificate, and derives the actor set from typed certificate
+identities for the active Library and storage epoch. For each actor, one native
+query returns the next unprocessed counter as the greater of the accepted
+authority tip plus one and the greatest durable staged member plus one. This
+frontier never reads a follower device's local intent outbox cursor.
+
+Before staging any remote intent record, the coordinator locates the exact
+immutable segment committed by the normalized v2 intent head. It validates the
+complete committed prefix for counter continuity, overlap, active epoch, and
+head agreement. Immutable objects beyond the committed head are ignored. Each
+verified segment enters the bounded native staging command, where exact replay
+is harmless and changed identity reuse fails closed.
+
+Primary results leave SQLite only through the bounded native result page. The
+coordinator publishes those canonical signed rows through the normalized v2
+result head. On restart or response loss, it verifies the latest committed
+immutable result segment and recovers the logical result digest before asking
+SQLite for the next page. The mutable head stores the immutable segment digest,
+while the native cursor stores the last logical result digest. Neither value is
+substituted for the other. The superseded Desktop follower journal, its outbox,
+and its version 1 intent and result adapters are not part of this path.
+
 After immutable intent publication and control compare-and-swap succeed, the
 follower records that fact through one closed SQLite mutation. The request
 binds actor ID, transaction ID, transaction digest, and publication time. It

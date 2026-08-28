@@ -42,9 +42,6 @@ const mocks = vi.hoisted(() => ({
     sourceRevision: 9,
     stageId: input.stageId,
   })),
-  acceptActorEnrollment: vi.fn(async () => ({})),
-  acknowledgeIntentResults: vi.fn(async () => {}),
-  readIntentResults: vi.fn(async () => []),
   reassignNative: vi.fn(async () => ({
     authority: {
       library_id: "ab".repeat(32),
@@ -82,11 +79,13 @@ const mocks = vi.hoisted(() => ({
   reassign: vi.fn(),
   importCheckpoint: vi.fn(),
   discoverPublishedControl: vi.fn(),
-  discoverActorEnrollments: vi.fn(async () => []),
+  discoverEnrollmentRequests: vi.fn(async (): Promise<unknown[]> => []),
+  discoverActorEnrollments: vi.fn(async (): Promise<unknown[]> => []),
   followerRuntimeStatus: vi.fn(),
   prepareFollowerActorRequest: vi.fn(),
   installFollowerActorEnrollment: vi.fn(),
   discoverIntentHead: vi.fn(),
+  discoverIntentSegments: vi.fn(async (): Promise<unknown[]> => []),
   provisionIntentHead: vi.fn(),
   readIntentHead: vi.fn(),
   publishFollowerIntent: vi.fn(),
@@ -102,7 +101,20 @@ const mocks = vi.hoisted(() => ({
   importNormalizedResultTransport: vi.fn(),
   createNormalizedFollowerTransport: vi.fn(),
   createNormalizedIntentAdapter: vi.fn(),
+  createNormalizedResultAdapter: vi.fn(),
   provisionNormalizedIntentHead: vi.fn(),
+  provisionNormalizedResultHead: vi.fn(),
+  countersignNormalizedEnrollment: vi.fn(),
+  readPrimaryFollowerTransportState: vi.fn(),
+  ingestNormalizedFollowerIntents: vi.fn(),
+  readPrimaryFollowerResults: vi.fn(),
+  importNormalizedIntent: vi.fn(),
+  importNormalizedResult: vi.fn(),
+  publishNormalizedResult: vi.fn(),
+  putImmutable: vi.fn(async () => ({ transportObjectId: "immutable-1" })),
+  verifyImmutable: vi.fn(async (reference: { descriptor: unknown }) =>
+    reference.descriptor
+  ),
 }));
 
 vi.mock("./native-json-store", () => ({
@@ -117,30 +129,21 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
-  acknowledgePwaIntentResultOutbox: mocks.acknowledgeIntentResults,
-  acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
   describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
+  countersignNormalizedLibraryFollowerActorRequest:
+    mocks.countersignNormalizedEnrollment,
+  ingestNormalizedLibraryFollowerIntentPage:
+    mocks.ingestNormalizedFollowerIntents,
   installNormalizedLibraryFollowerActorEnrollment:
     mocks.installFollowerActorEnrollment,
-  listSqliteLibraryActorEnrollments: vi.fn(async () => [
-    {
-      actor_id: mocks.bootstrapAuthority.actor.actor_id,
-      accepted_sequence: 0,
-      accepted_operation_id: null,
-      accepted_chain_digest: mocks.bootstrapAuthority.actor.actor_chain_genesis,
-      enrollment_certificate_digest:
-        mocks.bootstrapAuthority.actor.enrollment_certificate_digest,
-      retired: false,
-      retirement_certificate_digest: null,
-      canonical_enrollment_certificate_json: "{}",
-    },
-  ]),
   readNormalizedLibraryCheckpointPage: mocks.readNormalizedCheckpointPage,
-  readPwaIntentResultOutbox: mocks.readIntentResults,
+  readNormalizedPrimaryFollowerActorTransportState:
+    mocks.readPrimaryFollowerTransportState,
+  readNormalizedPrimaryFollowerResultPage: mocks.readPrimaryFollowerResults,
   prepareNormalizedLibraryFollowerActorRequest:
     mocks.prepareFollowerActorRequest,
   pageNormalizedLibraryFollowerTransport: mocks.pageFollowerTransport,
@@ -202,14 +205,15 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
   };
   return {
     ...actual,
-    discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1: vi.fn(
-      async () => [],
-    ),
+    discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1:
+      mocks.discoverEnrollmentRequests,
     discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
       mocks.discoverActorEnrollments,
     discoverPublishedGoogleDriveLibraryCoreControlV1:
       mocks.discoverPublishedControl,
     discoverGoogleDriveLibraryCoreIntentHeadV1: mocks.discoverIntentHead,
+    discoverGoogleDriveLibraryCoreIntentSegmentsV1:
+      mocks.discoverIntentSegments,
     provisionGoogleDriveLibraryCoreIntentHeadV1: mocks.provisionIntentHead,
     provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2:
       mocks.provisionNormalizedIntentHead,
@@ -218,6 +222,8 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
     })),
     createGoogleDriveLibraryCoreNormalizedIntentAdapterV2:
       mocks.createNormalizedIntentAdapter,
+    createGoogleDriveLibraryCoreNormalizedResultAdapterV2:
+      mocks.createNormalizedResultAdapter,
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2:
       mocks.createNormalizedFollowerTransport,
     publishLibraryCoreIntentCandidateV1: mocks.publishFollowerIntent,
@@ -229,16 +235,20 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
       readResultHead: mocks.readResultHead,
     })),
     importLibraryCoreResultSegmentV1: mocks.importFollowerResult,
+    importLibraryCoreNormalizedIntentSegmentV2: mocks.importNormalizedIntent,
+    importLibraryCoreNormalizedResultSegmentV2: mocks.importNormalizedResult,
+    provisionGoogleDriveLibraryCoreNormalizedResultHeadV2:
+      mocks.provisionNormalizedResultHead,
+    publishLibraryCoreNormalizedResultSegmentV2:
+      mocks.publishNormalizedResult,
     provisionGoogleDriveLibraryCoreControlV1: vi.fn(async () => ({
       controlFileId: "control-1",
       created: true,
     })),
     createGoogleDriveLibraryCoreAdapterV1: vi.fn(() => ({
       readControl: vi.fn(async () => mocks.controlRead),
-      putImmutable: vi.fn(async () => ({ transportObjectId: "immutable-1" })),
-      verifyImmutable: vi.fn(
-        async (reference: { descriptor: unknown }) => reference.descriptor,
-      ),
+      putImmutable: mocks.putImmutable,
+      verifyImmutable: mocks.verifyImmutable,
     })),
     publishLibraryCoreNormalizedCheckpointV2: mocks.publish.mockImplementation(
       async (request: Record<string, unknown>) => {
@@ -407,11 +417,13 @@ describe("SQLite Library Google Drive production wiring", () => {
       .mockImplementation(async () => mocks.nativeState);
     mocks.setWriterAdmission.mockClear();
     mocks.discoverPublishedControl.mockReset();
+    mocks.discoverEnrollmentRequests.mockReset().mockResolvedValue([]);
     mocks.discoverActorEnrollments.mockReset().mockResolvedValue([]);
     mocks.followerRuntimeStatus.mockReset();
     mocks.prepareFollowerActorRequest.mockReset();
     mocks.installFollowerActorEnrollment.mockReset();
     mocks.discoverIntentHead.mockReset();
+    mocks.discoverIntentSegments.mockReset().mockResolvedValue([]);
     mocks.provisionIntentHead.mockReset();
     mocks.readIntentHead.mockReset();
     mocks.publishFollowerIntent.mockReset();
@@ -520,7 +532,29 @@ describe("SQLite Library Google Drive production wiring", () => {
       }),
     );
     mocks.createNormalizedIntentAdapter.mockReset();
+    mocks.createNormalizedResultAdapter.mockReset();
     mocks.provisionNormalizedIntentHead.mockReset();
+    mocks.provisionNormalizedResultHead.mockReset();
+    mocks.countersignNormalizedEnrollment.mockReset();
+    mocks.readPrimaryFollowerTransportState.mockReset();
+    mocks.ingestNormalizedFollowerIntents.mockReset();
+    mocks.readPrimaryFollowerResults.mockReset().mockResolvedValue({
+      canonicalRecordBytes: 0,
+      done: true,
+      nextCursor: null,
+      records: [],
+    });
+    mocks.importNormalizedIntent.mockReset();
+    mocks.importNormalizedResult.mockReset();
+    mocks.publishNormalizedResult.mockReset();
+    mocks.putImmutable
+      .mockReset()
+      .mockResolvedValue({ transportObjectId: "immutable-1" });
+    mocks.verifyImmutable
+      .mockReset()
+      .mockImplementation(async (reference: { descriptor: unknown }) =>
+        reference.descriptor
+      );
     mocks.describeCloudIdentity.mockReset().mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
       protocolVersion: 2,
@@ -557,6 +591,167 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     expect(resolveAccessToken).not.toHaveBeenCalled();
     stopSqliteLibraryCloudSync();
+  });
+
+  it("admits normalized follower transport and publishes signed results without the retired journal", async () => {
+    const libraryId = "ab".repeat(32);
+    const storageEpochId = "cd".repeat(32);
+    const actorId = "34".repeat(32);
+    const segmentDigest = "56".repeat(32);
+    const intentReference = {
+      descriptor: {
+        byteLength: 128,
+        contentDigest: segmentDigest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          actorId,
+          digest: segmentDigest,
+          epochId: storageEpochId,
+          firstSequence: 1,
+          kind: "intent_segment",
+          lastSequence: 1,
+          libraryId,
+        }),
+      },
+      transportObjectId: "intent-segment-1",
+    };
+    mocks.discoverEnrollmentRequests.mockResolvedValue([
+      { bytes: new TextEncoder().encode("enrollment-request") },
+    ]);
+    mocks.countersignNormalizedEnrollment.mockResolvedValue({
+      actorId,
+      authorityEpochId: storageEpochId,
+      canonicalEnrollmentCertificateJson: "{}",
+      libraryId,
+    });
+    mocks.discoverActorEnrollments.mockResolvedValue([
+      {
+        bytes: encodeLibraryCoreCanonicalValue({
+          certificate_body: {
+            actor_enrollment_body: {
+              actor_id: actorId,
+              epoch_id: storageEpochId,
+              library_id: libraryId,
+            },
+          },
+        }),
+      },
+    ]);
+    mocks.readPrimaryFollowerTransportState.mockResolvedValue({
+      actorId,
+      libraryId,
+      nextActorCounter: 1,
+      storageEpochId,
+    });
+    mocks.discoverIntentHead.mockResolvedValue({
+      intentHeadFileId: "intent-head-1",
+    });
+    mocks.createNormalizedIntentAdapter.mockReturnValue({
+      readHead: vi.fn(async () => ({
+        head: {
+          actor_id: actorId,
+          latest_segment: intentReference,
+          latest_segment_digest: segmentDigest,
+          library_id: libraryId,
+          next_actor_counter: 2,
+          protocol: "normalized_intent_head_v2",
+          protocol_version: 2,
+          storage_epoch_id: storageEpochId,
+        },
+        revision: '"intent-etag-1"',
+      })),
+    });
+    mocks.discoverIntentSegments.mockResolvedValue([
+      {
+        firstIntentSequence: 1,
+        lastIntentSequence: 1,
+        reference: intentReference,
+      },
+    ]);
+    const stagedEnvelope = { actorCounter: 1, canonicalEnvelopeJson: "{}" };
+    mocks.importNormalizedIntent.mockImplementation(
+      async (request: Record<string, unknown>) => {
+        const writer = request.writer as {
+          stageNormalizedIntentSegment(input: {
+            canonicalEnvelopes: readonly Uint8Array[];
+            envelopes: readonly unknown[];
+          }): Promise<void>;
+        };
+        await writer.stageNormalizedIntentSegment({
+          canonicalEnvelopes: [new TextEncoder().encode("{}")],
+          envelopes: [stagedEnvelope],
+        });
+      },
+    );
+    mocks.discoverResultHead.mockResolvedValue({
+      resultHeadFileId: "result-head-1",
+    });
+    mocks.createNormalizedResultAdapter.mockReturnValue({
+      readHead: vi.fn(async () => ({
+        head: {
+          actor_id: actorId,
+          latest_segment: null,
+          latest_segment_digest: null,
+          library_id: libraryId,
+          next_result_sequence: 1,
+          protocol: "normalized_result_head_v2",
+          protocol_version: 2,
+          storage_epoch_id: storageEpochId,
+        },
+        revision: '"result-etag-1"',
+      })),
+    });
+    mocks.readPrimaryFollowerResults.mockResolvedValue({
+      canonicalRecordBytes: 2,
+      done: true,
+      nextCursor: {
+        actorId,
+        resultDigest: "78".repeat(32),
+        resultSequence: 1,
+      },
+      records: [{ canonicalResultJson: "{}" }],
+    });
+    mocks.publishNormalizedResult.mockResolvedValue({
+      segmentHeader: { first_result_sequence: 1 },
+      status: "recovered_after_response_loss",
+    });
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+
+    expect(mocks.countersignNormalizedEnrollment).toHaveBeenCalledWith(
+      "enrollment-request",
+    );
+    expect(mocks.putImmutable).toHaveBeenCalledTimes(1);
+    expect(mocks.ingestNormalizedFollowerIntents).toHaveBeenCalledWith(
+      [stagedEnvelope],
+      [new TextEncoder().encode("{}")],
+    );
+    expect(mocks.publishNormalizedResult).toHaveBeenCalledTimes(1);
+
+    mocks.ingestNormalizedFollowerIntents.mockClear();
+    mocks.createNormalizedIntentAdapter.mockReturnValue({
+      readHead: vi.fn(async () => ({
+        head: {
+          actor_id: actorId,
+          latest_segment: {
+            ...intentReference,
+            transportObjectId: "uncommitted-duplicate",
+          },
+          latest_segment_digest: segmentDigest,
+          library_id: libraryId,
+          next_actor_counter: 2,
+          protocol: "normalized_intent_head_v2",
+          protocol_version: 2,
+          storage_epoch_id: storageEpochId,
+        },
+        revision: '"intent-etag-2"',
+      })),
+    });
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow("normalized intent head references a missing segment");
+    expect(mocks.ingestNormalizedFollowerIntents).not.toHaveBeenCalled();
   });
 
   it("replaces a failed initial Primary coordinator without leaving a stale timer", async () => {

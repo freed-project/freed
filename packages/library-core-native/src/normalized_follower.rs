@@ -2178,6 +2178,15 @@ mod tests {
         )
         .expect("countersign follower");
         assert_eq!(accepted.actor_id, request.actor_id);
+        assert_eq!(
+            crate::normalized_primary_follower_actor_transport_state_v1(
+                &connection,
+                &accepted.actor_id,
+            )
+            .expect("Primary follower transport frontier")
+            .next_actor_counter,
+            1,
+        );
         let installed = install_normalized_follower_actor_enrollment_v2(
             &mut connection,
             accepted.canonical_enrollment_certificate_json.as_bytes(),

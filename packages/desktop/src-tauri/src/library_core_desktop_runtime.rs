@@ -1,9 +1,4 @@
-//! Freed Desktop native Library routing during the SQLite-only cutover.
-//!
-//! Final product reads enter the normalized native core through closed typed
-//! commands. The legacy commands in this module remain only until the one-time
-//! migration and caller cut remove them. They are not part of the final
-//! Library contract.
+//! Freed Desktop native routing for the normalized SQLite Library Core.
 
 use freed_library_core::{
     accept_normalized_operation_transaction_v1, load_or_create_normalized_actor_id_v2,
@@ -18,18 +13,15 @@ use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 use super::library_core_actor_enrollment::{
-    countersign_pwa_actor_enrollment_request, sign_library_core_operation_digest,
-    PlatformActorKeyStore,
+    sign_library_core_operation_digest, PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
-use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
 #[cfg(not(unix))]
 const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 #[cfg(not(unix))]
 const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
-const JOURNAL_DIRECTORY: &str = "library-core";
 const JOURNAL_FILE: &str = "library-core.sqlite";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 #[cfg(not(unix))]
@@ -45,46 +37,11 @@ pub(super) struct DesktopNormalizedLibraryCloudIdentity {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AcceptPwaActorEnrollmentRequest {
-    canonical_request_json: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AcceptPwaIntentRequest {
-    canonical_envelope_json: Vec<String>,
-    committed_at_ms: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReadPwaIntentResultOutboxRequest {
-    library_id: String,
-    epoch_id: String,
-    limit: usize,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AcknowledgePwaIntentResultOutboxRequest {
-    result_operation_ids: Vec<String>,
-    acknowledged_at_ms: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ReassignNormalizedWriterEpochRequest {
     canonical_source_control_json: String,
     target_writer_id: String,
     installation_witness: String,
     accepted_at_ms: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ListActorEnrollmentsRequest {
-    library_id: String,
-    epoch_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,30 +84,6 @@ pub(super) struct DesktopLibraryAcceptedAuthority {
     authority_key_id: String,
     authority_public_key: String,
     observed_frontier: Vec<DesktopLibraryCausalTip>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryActorEnrollment {
-    actor_id: String,
-    actor_public_key: String,
-    enrollment_operation_id: String,
-    enrollment_certificate_digest: String,
-    canonical_enrollment_certificate_json: String,
-    actor_chain_genesis: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryActorCheckpointState {
-    actor_id: String,
-    accepted_sequence: i64,
-    accepted_operation_id: Option<String>,
-    accepted_chain_digest: String,
-    enrollment_certificate_digest: String,
-    retired: bool,
-    retirement_certificate_digest: Option<String>,
-    canonical_enrollment_certificate_json: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,10 +184,6 @@ fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
 
-fn journal_path(root: &Path) -> PathBuf {
-    root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE)
-}
-
 #[cfg(unix)]
 fn create_private_directory(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
@@ -296,33 +225,6 @@ fn create_private_directory(path: &Path) -> std::io::Result<()> {
 #[cfg(not(unix))]
 fn create_private_directory(path: &Path) -> std::io::Result<()> {
     fs::create_dir_all(path)
-}
-
-fn open_database_at(root: &Path) -> Result<Connection, String> {
-    #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding.connect().map_err(|error| error.to_string());
-    }
-    create_private_directory(&root.join(JOURNAL_DIRECTORY)).map_err(|error| error.to_string())?;
-    let path = journal_path(root);
-    drop(LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?);
-    let connection = Connection::open(path).map_err(|error| error.to_string())?;
-    connection
-        .execute_batch(
-            "PRAGMA foreign_keys = ON;
-             PRAGMA trusted_schema = OFF;
-             PRAGMA busy_timeout = 5000;",
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(connection)
-}
-
-fn open_journal_at(root: &Path) -> Result<LibraryCoreJournal, String> {
-    #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding.open_journal().map_err(|error| error.to_string());
-    }
-    LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())
 }
 
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -867,6 +769,16 @@ pub(super) fn ingest_normalized_library_follower_intent_page(
 }
 
 #[tauri::command]
+pub(super) fn normalized_library_primary_follower_actor_transport_state(
+    app: tauri::AppHandle,
+    actor_id: String,
+) -> Result<freed_library_core::NormalizedPrimaryFollowerActorTransportStateV1, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::normalized_primary_follower_actor_transport_state_v1(&connection, &actor_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn read_normalized_library_follower_result_page(
     app: tauri::AppHandle,
     request: freed_library_core::NormalizedFollowerResultPageRequestV1,
@@ -1316,21 +1228,6 @@ fn validate_hex_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn require_active(connection: &Connection) -> Result<(), String> {
-    let active = connection
-        .query_row(
-            "SELECT active FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    if active != Some(1) {
-        return Err("SQLite Library is not active".into());
-    }
-    Ok(())
-}
-
 fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissionStatus, String> {
     let stored = connection
         .query_row(
@@ -1422,127 +1319,6 @@ pub(super) fn sqlite_library_cloud_writer_admission_status(
 ) -> Result<CloudWriterAdmissionStatus, String> {
     let connection = open_selected_normalized_database(&app)?;
     writer_admission_status(&connection)
-}
-
-/// Countersign and atomically enroll one PWA actor under the active epoch.
-#[tauri::command]
-pub(super) fn accept_pwa_actor_enrollment_request(
-    app: tauri::AppHandle,
-    request: AcceptPwaActorEnrollmentRequest,
-) -> Result<DesktopLibraryActorEnrollment, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    let actor = countersign_pwa_actor_enrollment_request(
-        &mut journal,
-        request.canonical_request_json.as_bytes(),
-    )?;
-    Ok(DesktopLibraryActorEnrollment {
-        actor_id: actor.actor_id,
-        actor_public_key: actor.actor_public_key,
-        enrollment_operation_id: actor.enrollment_operation_id,
-        enrollment_certificate_digest: actor.enrollment_certificate_digest,
-        canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
-        actor_chain_genesis: actor.actor_chain_genesis,
-    })
-}
-
-/// Verify and commit one complete signed PWA intent transaction.
-#[tauri::command]
-pub(super) fn accept_pwa_intent_transaction(
-    app: tauri::AppHandle,
-    request: AcceptPwaIntentRequest,
-) -> Result<Vec<IntentResultOutboxEntry>, String> {
-    if request.canonical_envelope_json.is_empty()
-        || request.canonical_envelope_json.len() > 1_000
-        || request.committed_at_ms < 0
-    {
-        return Err("SQLite Library PWA intent request is invalid".into());
-    }
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let canonical_envelopes = request
-        .canonical_envelope_json
-        .iter()
-        .map(|value| value.as_bytes().to_vec())
-        .collect::<Vec<_>>();
-    let mut journal = open_journal_at(&root)?;
-    journal
-        .accept_operation_transaction(&canonical_envelopes, request.committed_at_ms)
-        .map_err(|error| error.to_string())
-}
-
-/// Read a bounded page of durable PWA acceptance/provider result receipts.
-#[tauri::command]
-pub(super) fn read_pwa_intent_result_outbox(
-    app: tauri::AppHandle,
-    request: ReadPwaIntentResultOutboxRequest,
-) -> Result<Vec<IntentResultOutboxEntry>, String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    journal
-        .pending_intent_results(&request.library_id, &request.epoch_id, request.limit)
-        .map_err(|error| error.to_string())
-}
-
-/// Mark only receipts whose exact immutable result segment is cloud-visible.
-#[tauri::command]
-pub(super) fn acknowledge_pwa_intent_result_outbox(
-    app: tauri::AppHandle,
-    request: AcknowledgePwaIntentResultOutboxRequest,
-) -> Result<(), String> {
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    journal
-        .acknowledge_intent_results(&request.result_operation_ids, request.acknowledged_at_ms)
-        .map_err(|error| error.to_string())
-}
-
-/// Read the deterministic actor set used by the next portable checkpoint.
-#[tauri::command]
-pub(super) fn list_sqlite_library_actor_enrollments(
-    app: tauri::AppHandle,
-    request: ListActorEnrollmentsRequest,
-) -> Result<Vec<DesktopLibraryActorCheckpointState>, String> {
-    if !validate_hex_digest(&request.library_id) || !validate_hex_digest(&request.epoch_id) {
-        return Err("SQLite Library actor checkpoint request is invalid".into());
-    }
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let journal = open_journal_at(&root)?;
-    journal
-        .actor_states(&request.library_id, &request.epoch_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|actor| {
-            let accepted_sequence = actor
-                .next_sequence
-                .checked_sub(1)
-                .ok_or_else(|| "SQLite Library actor sequence is invalid".to_string())?;
-            Ok(DesktopLibraryActorCheckpointState {
-                actor_id: actor.actor_id,
-                accepted_sequence,
-                accepted_operation_id: actor.previous_operation_id,
-                accepted_chain_digest: actor.previous_chain_digest,
-                enrollment_certificate_digest: actor.enrollment_certificate_digest,
-                retired: false,
-                retirement_certificate_digest: None,
-                canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
-            })
-        })
-        .collect()
 }
 
 #[cfg(not(unix))]
@@ -1659,7 +1435,7 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
     {
         let root = app_root(&app)?;
         for directory in [
-            JOURNAL_DIRECTORY,
+            "library-core",
             NORMALIZED_LIBRARY_DIRECTORY,
             CONTENT_VAULT_DIRECTORY,
             SNAPSHOT_DIRECTORY,
@@ -1682,92 +1458,6 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temporary_root(label: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos();
-        std::env::temp_dir().join(format!("freed-{label}-{}-{nonce}", std::process::id()))
-    }
-
-    #[test]
-    fn database_path_stays_under_the_private_library_directory() {
-        let root = temporary_root("sqlite-library-private-root");
-        fs::create_dir_all(&root).expect("create temporary root");
-        let connection = open_database_at(&root).expect("open Library database");
-        drop(connection);
-
-        let path = journal_path(&root);
-        assert_eq!(
-            path,
-            root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE),
-            "the sole Desktop runtime must own the canonical database path",
-        );
-        assert!(path.is_file());
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(path.parent().expect("Library directory"))
-                .expect("Library directory metadata")
-                .permissions()
-                .mode()
-                & 0o777;
-            assert_eq!(mode, 0o700);
-        }
-
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn existing_library_directory_is_corrected_to_private_mode() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let root = temporary_root("sqlite-library-existing-permissions");
-        let directory = root.join(JOURNAL_DIRECTORY);
-        fs::create_dir_all(&directory).expect("create existing Library directory");
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))
-            .expect("make existing Library directory permissive");
-
-        let connection = open_database_at(&root).expect("open Library database");
-        drop(connection);
-
-        let mode = fs::metadata(&directory)
-            .expect("Library directory metadata")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o700);
-        fs::remove_dir_all(root).expect("remove temporary root");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn library_directory_symlink_is_rejected_without_touching_its_target() {
-        use std::os::unix::fs::symlink;
-
-        let root = temporary_root("sqlite-library-symlink-root");
-        let target = temporary_root("sqlite-library-symlink-target");
-        fs::create_dir_all(&root).expect("create temporary root");
-        fs::create_dir_all(&target).expect("create symlink target");
-        let sentinel = target.join("sentinel");
-        fs::write(&sentinel, b"unchanged").expect("write target sentinel");
-        symlink(&target, root.join(JOURNAL_DIRECTORY)).expect("link Library directory");
-
-        let error = open_database_at(&root).expect_err("symlink must be rejected");
-        assert!(!error.is_empty());
-        assert_eq!(
-            fs::read(&sentinel).expect("read target sentinel"),
-            b"unchanged"
-        );
-        assert!(!target.join(JOURNAL_FILE).exists());
-
-        fs::remove_dir_all(root).expect("remove temporary root");
-        fs::remove_dir_all(target).expect("remove symlink target");
-    }
 
     #[test]
     fn cloud_writer_admission_is_device_local_normalized_sqlite_state() {

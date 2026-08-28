@@ -10,7 +10,6 @@ mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
 #[cfg_attr(not(test), allow(dead_code))]
-mod library_core_journal;
 mod library_core_platform_key;
 mod youtube;
 
@@ -14187,6 +14186,7 @@ pub fn run() {
             library_core_desktop_runtime::record_normalized_library_follower_intent_publication,
             library_core_desktop_runtime::record_normalized_library_follower_intent_transport_publication,
             library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
+            library_core_desktop_runtime::normalized_library_primary_follower_actor_transport_state,
             library_core_desktop_runtime::read_normalized_library_follower_result_page,
             library_core_desktop_runtime::import_normalized_library_follower_result_page,
             library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
@@ -14200,11 +14200,6 @@ pub fn run() {
             library_core_desktop_runtime::finalize_normalized_scope_action,
             library_core_desktop_runtime::page_normalized_scope_action,
             library_core_desktop_runtime::close_normalized_scope_action,
-            library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
-            library_core_desktop_runtime::accept_pwa_intent_transaction,
-            library_core_desktop_runtime::read_pwa_intent_result_outbox,
-            library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
-            library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
             library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
             library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
             library_core_desktop_runtime::create_normalized_local_snapshot,

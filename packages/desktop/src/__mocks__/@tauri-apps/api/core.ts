@@ -199,11 +199,6 @@ function sqliteLibrary(): MockSqliteLibrary {
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
 }
 
-function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
-  item.userState ??= {};
-  return item.userState;
-}
-
 function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
