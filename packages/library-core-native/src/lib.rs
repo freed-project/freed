@@ -24,8 +24,6 @@ mod library_core_desktop_binding;
 mod library_core_ed25519;
 mod library_core_error;
 mod library_core_hash;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_journal;
 mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;

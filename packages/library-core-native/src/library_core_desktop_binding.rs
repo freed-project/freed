@@ -13,7 +13,6 @@ use crate::library_core_bound_root::LibraryCoreBoundRoot;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_content_vault::LibraryCoreContentVault;
-use crate::library_core_journal::LibraryCoreJournal;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
@@ -140,7 +139,7 @@ impl LibraryCoreDesktopBinding {
                 let historical_migration_source =
                     HistoricalMigrationSource::open_bound_directory(historical_directory)?;
                 (
-                    Some(historical_migration_source),
+                    historical_migration_source,
                     Some(historical_lease),
                     Some(historical_root),
                 )
@@ -369,10 +368,6 @@ impl LibraryCoreDesktopBinding {
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         Ok(self.authority_selection()?.is_some())
-    }
-
-    pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStorageError> {
-        self.require_historical_source()?.open_bound_journal()
     }
 
     #[cfg(test)]
@@ -704,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn library_replacement_after_lease_cannot_split_sqlite_from_the_lock() {
+    fn empty_historical_directory_after_lease_never_creates_a_database() {
         let fixture = tempfile::TempDir::new().expect("create Desktop binding fixture");
         let app_root = fixture.path().join("app-data");
         fs::create_dir(&app_root).expect("create app root");
@@ -727,8 +722,9 @@ mod tests {
                     .expect("write replacement sentinel");
             })
             .expect("open bound Desktop authority");
-        drop(binding.connect().expect("open bound Desktop database"));
-        assert!(moved_library.join("library-core.sqlite").is_file());
+        assert!(!binding.historical_source_is_present_v1());
+        assert!(binding.connect().is_err());
+        assert!(!moved_library.join("library-core.sqlite").exists());
         assert_eq!(
             fs::read(visible_library.join("sentinel")).expect("replacement sentinel"),
             b"replacement"
@@ -824,7 +820,6 @@ mod tests {
             .expect("replay exact selector");
 
         assert!(binding.connect().is_err());
-        assert!(binding.open_journal().is_err());
         assert!(binding.historical_source_for_test().is_err());
         drop(
             binding
