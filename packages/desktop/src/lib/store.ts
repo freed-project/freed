@@ -11,7 +11,6 @@ import { isTauri } from "@tauri-apps/api/core";
 import type {
   FeedItem,
   FilterOptions,
-  Friend,
   RemoveFeedOptions,
   RssFeed,
   SampleDataClearSummary,
@@ -24,7 +23,6 @@ import {
   applyFeedSignalModesToFilter,
   createDefaultPreferences,
   getDeviceLocalPreferenceUpdates,
-  personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
 import {
@@ -1081,7 +1079,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await addSampleLibraryData({
       feeds: data.feeds,
       items: data.items,
-      persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
+      persons: data.persons,
       accounts: data.accounts,
     });
   },

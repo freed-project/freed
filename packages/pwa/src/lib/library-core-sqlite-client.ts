@@ -127,10 +127,23 @@ export class PwaLibraryCoreSqliteClient {
   #closed = false;
 
   constructor() {
-    this.#worker = new Worker(
-      new URL("./library-core-sqlite-worker.ts", import.meta.url),
-      { name: "freed-library-core-sqlite", type: "module" },
-    );
+    const memoryE2eRequested = (
+      globalThis as typeof globalThis & {
+        __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean;
+      }
+    ).__FREED_PWA_SQLITE_MEMORY_E2E__ === true;
+    const useMemoryE2eWorker =
+      import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
+      memoryE2eRequested;
+    this.#worker = useMemoryE2eWorker
+      ? new Worker(
+          new URL("./library-core-sqlite-worker.ts", import.meta.url),
+          { name: "freed-library-core-sqlite-memory-e2e", type: "module" },
+        )
+      : new Worker(
+          new URL("./library-core-sqlite-worker.ts", import.meta.url),
+          { name: "freed-library-core-sqlite", type: "module" },
+        );
     this.#worker.addEventListener("message", (event: MessageEvent<unknown>) => {
       this.#receive(event.data);
     });

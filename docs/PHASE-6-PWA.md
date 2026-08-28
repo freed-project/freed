@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, selective content range publication, bounded range reads, startup reconciliation, and IndexedDB Library deletion are implemented; Google Drive adapter binding, recovery UI, and physical iPhone proof remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, final-protocol development preview, selective content range publication, bounded range reads, startup reconciliation, and IndexedDB Library deletion are implemented; recovery UI and physical iPhone proof remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -104,6 +104,20 @@
         Exact retries return the durable receipt. Changed bytes, result-chain
         gaps, incomplete projections, stale authority, and a late cursor fault
         cannot partially settle the result.
+  - [x] Materialize accepted `friend_replace` results atomically in browser
+        SQLite with native Rust parity. The complete desired Person, Person
+        tags, linked Account set, Account follow roles, detached social
+        Accounts, replaced contact Account, Person invalidation, and Account
+        reset invalidation commit in the same result transaction. Fractional
+        binary64 wrappers are decoded only after canonical signature
+        verification and before strict SQLite REAL columns are written.
+  - [x] Seed local development and feature previews through normalized
+        checkpoint records, an authority-signed follower enrollment, exact
+        signed intents, and authority-signed accepted results. The preview
+        settler accumulates a legal transaction across bounded 128-record
+        pages up to the generated 1,000-member and 4,194,304-byte ceilings. It
+        never creates a shell, Automerge document, IndexedDB Library, or
+        renderer corpus.
   - [x] Import one closed normalized v2 result transport segment through OPFS
         SQLite. The browser reconstructs and verifies the semantic segment
         digest from its direct canonical signed result records before opening
@@ -587,6 +601,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.90 | Connect the shipping Google Drive sync loop to the normalized follower coordinator and its OPFS SQLite runtime. Initial, OAuth callback, 60-second, and manual passes import typed checkpoints, publish stable enrollment and bounded signed intents, reconcile signed results atomically, and report the complete Library sync rather than checkpoint download alone | High       | ✓ Complete                                                                                      |
 | 6.91 | Surface one exact OPFS SQLite cloud receipt in PWA Sync settings. Bind the selected checkpoint, Primary writer, follower actor, storage epoch, next intent and result sequences, and immutable segment heads to one authority. Reject a mixed receipt and copy the complete typed local receipt as JSON | High       | ✓ Complete                                                                                      |
 | 6.92 | Bind PWA reader pinning to OPFS SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the worker before retaining local reader cache bytes | High       | ✓ Complete                                                                                      |
+| 6.93 | Replace PWA sample and preview compatibility state with normalized Person and Account records plus exact signed follower results. Materialize atomic Friend replacement with native parity, decode signed fractional values for strict SQLite columns, and delete the unused renderer Friend graph and corpus-scan fixtures | High       | ✓ Complete                                                                                      |
 
 ---
 

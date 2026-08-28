@@ -126,6 +126,12 @@ export type LibraryCoreCanonicalValue =
   | readonly LibraryCoreCanonicalValue[]
   | { readonly [key: string]: LibraryCoreCanonicalValue };
 
+export function isLibraryCoreCanonicalRecord(
+  value: LibraryCoreCanonicalValue,
+): value is Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export interface LibraryCoreCanonicalEncodingOptions {
   readonly maximumBytes?: number;
 }

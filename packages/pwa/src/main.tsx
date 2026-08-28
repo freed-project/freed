@@ -2,10 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { bootstrapDocumentTheme } from '@freed/ui/lib/theme'
 import {
-  accountsFromLegacyFriend,
-  personFromLegacyFriend,
   type Account,
-  type Friend,
+  type Person,
+  type ReachOutLog,
 } from '@freed/shared'
 import './index.css'
 import App from './App.tsx'
@@ -29,15 +28,28 @@ if (import.meta.env.DEV) {
     const run = async (action: () => Promise<void>) => {
       await libraryCore.ensurePwaLibraryCoreLocalSampleState()
       await action()
+      const preview = await import("./lib/library-core-preview-bootstrap")
+      await preview.settlePwaLibraryCorePreviewIntents()
+      const state = store.useAppStore.getState()
+      store.useAppStore.setState({
+        libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
+        savedFeedVersion: (state.savedFeedVersion ?? 0) + 1,
+        searchCorpusVersion: state.searchCorpusVersion + 1,
+      })
     }
     w.__FREED_LIBRARY_CORE__ = {
-      addFriend: (friend: unknown) =>
+      replacePerson: (person: Person, accounts: readonly Account[]) =>
         run(() => libraryCore.replacePwaLibraryCoreFriend(
-          personFromLegacyFriend(friend as Friend),
-          accountsFromLegacyFriend(friend as Friend),
+          person,
+          accounts,
         )),
       addAccount: (account: unknown) =>
         run(() => libraryCore.upsertPwaLibraryCoreAccount(account as Account)),
+      appendReachOut: (personId: string, entry: ReachOutLog) =>
+        run(() => libraryCore.appendPwaLibraryCorePersonReachOut(
+          personId,
+          entry,
+        )),
       addItems: (items: unknown) =>
         run(() => store.useAppStore.getState().addItems(items as never)),
       addFeed: (feed: unknown) =>

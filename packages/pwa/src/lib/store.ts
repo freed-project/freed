@@ -9,12 +9,10 @@ import {
   applyFeedSignalModesToFilter,
   createDefaultPreferences,
   getDeviceLocalPreferenceUpdates,
-  personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
 import type {
   BaseAppState,
-  Friend,
   RemoveFeedOptions,
   SampleLibraryData,
 } from "@freed/shared";
@@ -520,16 +518,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
     await ensurePwaLibraryCoreLocalSampleState();
-    const persons = data.friends.map((friend) =>
-      personFromLegacyFriend(friend as Friend),
-    );
-    const accounts = data.accounts;
     for (const feed of data.feeds) {
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }
     await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
-    await enqueuePwaLibraryCorePersonUpserts(persons);
-    await enqueuePwaLibraryCoreAccountUpserts(accounts);
+    await enqueuePwaLibraryCorePersonUpserts(data.persons);
+    await enqueuePwaLibraryCoreAccountUpserts(data.accounts);
     invalidateLibraryWindows(get, set);
   },
 
@@ -575,7 +569,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
-    assertPwaStoreWritable();
+    assertPwaStoreWritable({ allowLibraryCoreIntent: true });
     const localUpdate = getDeviceLocalPreferenceUpdates(update);
     if (
       localUpdate.display &&

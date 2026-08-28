@@ -196,6 +196,10 @@ export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntim
 
 /** Establish the isolated signed Library used by local sample-data previews. */
 export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
+  if (import.meta.env.DEV || import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1") {
+    const preview = await import("./library-core-preview-bootstrap");
+    await preview.ensurePwaLibraryCorePreviewState();
+  }
   const state = await readSelectedState();
   if (state) publishState(state);
 }

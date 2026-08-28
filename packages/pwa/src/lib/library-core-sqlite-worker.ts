@@ -6,7 +6,10 @@ import {
   type LibraryCoreSqliteWorkerResult,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
-import { PwaLibraryCoreOpfsContentVault } from "./library-core-opfs-content-vault";
+import {
+  PwaLibraryCoreOpfsContentVault,
+  type PwaContentRangeStorageV1,
+} from "./library-core-opfs-content-vault";
 import {
   PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
   PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
@@ -16,15 +19,33 @@ import {
 interface WorkerScope {
   close(): void;
   readonly location: Location;
+  readonly name: string;
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   postMessage(message: LibraryCoreSqliteWorkerResponse): void;
 }
 
 const scope = globalThis as unknown as WorkerScope;
+const useMemoryE2eStorage =
+  import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
+  scope.name === "freed-library-core-sqlite-memory-e2e";
 let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
+
+const emptyE2eContentRangeStorage: PwaContentRangeStorageV1 = {
+  create: () =>
+    Promise.reject(
+      new Error("content publication is unavailable in the memory E2E store"),
+    ),
+  read: () =>
+    Promise.reject(
+      new Error("content reads are unavailable in the memory E2E store"),
+    ),
+  remove: () => Promise.resolve(),
+  scan: () => Promise.resolve(),
+  stat: () => Promise.resolve(null),
+};
 
 /**
  * A dedicated worker has no ambient message bus. Its creator owns the only
@@ -75,21 +96,25 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
   let openingEngine: PwaLibraryCoreSqliteEngine | null = null;
   try {
     const sqlite3 = await sqlite3InitModule();
-    const pool = await sqlite3.installOpfsSAHPoolVfs({
-      directory: PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
-      initialCapacity: 6,
-      name: "freed-opfs-sahpool-v1",
-    });
-    const database = new pool.OpfsSAHPoolDb(
-      PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
-    );
+    const database = useMemoryE2eStorage
+      ? new sqlite3.oo1.DB(":memory:", "c")
+      : new (
+          await sqlite3.installOpfsSAHPoolVfs({
+            directory: PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
+            initialCapacity: 6,
+            name: "freed-opfs-sahpool-v1",
+          })
+        ).OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME);
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
     );
     openingEngine = next;
     next.initialize();
-    const nextContentVault = new PwaLibraryCoreOpfsContentVault(next);
+    const nextContentVault = new PwaLibraryCoreOpfsContentVault(
+      next,
+      useMemoryE2eStorage ? emptyE2eContentRangeStorage : undefined,
+    );
     await nextContentVault.reconcile();
     engine = next;
     contentVault = nextContentVault;

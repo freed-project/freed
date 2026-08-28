@@ -1,125 +1,44 @@
 import { describe, expect, it } from "vitest";
-import type { Account, FeedItem, Person } from "@freed/shared";
+import type { Friend } from "@freed/shared";
 import {
-  buildFriendOverviewEntries,
   buildFriendOverviewEntriesFromActivity,
-  buildFriendsById,
-  buildFriendsWorkspaceIndexes,
   friendActivitySourceKey,
-  friendFromPersonWithIndexes,
 } from "./friends-workspace";
 import { createLibraryFriendsGraphRequest } from "./friends-library-read-model";
 
-function feedItem(id: string, authorId: string, publishedAt: number): FeedItem {
+function friend(
+  id: string,
+  sources: Friend["sources"],
+  now: number,
+): Friend {
   return {
-    globalId: id,
-    platform: "instagram",
-    contentType: "post",
-    capturedAt: publishedAt,
-    publishedAt,
-    author: {
-      id: authorId,
-      handle: authorId,
-      displayName: authorId,
-    },
-    content: { text: "", mediaUrls: [], mediaTypes: [] },
-    topics: [],
-    userState: { hidden: false, saved: false, archived: false, tags: [] },
+    id,
+    name: id,
+    relationshipStatus: "friend",
+    careLevel: 4,
+    sources,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
-describe("Friends workspace indexes", () => {
-  it("builds friends and overview rows without repeated global scans", () => {
+describe("Friends SQLite activity projection", () => {
+  it("builds overview rows from compact activity aggregates", () => {
     const now = 10_000;
-    const ada: Person = {
-      id: "ada",
-      name: "Ada Lovelace",
-      relationshipStatus: "friend",
-      careLevel: 5,
-      createdAt: now,
-      updatedAt: now,
+    const friends = {
+      ada: friend(
+        "ada",
+        [{ platform: "instagram", authorId: "ada", handle: "ada" }],
+        now,
+      ),
+      maya: friend(
+        "maya",
+        [{ platform: "instagram", authorId: "maya", handle: "maya" }],
+        now,
+      ),
     };
-    const maya: Person = {
-      id: "maya",
-      name: "Maya Angelou",
-      relationshipStatus: "friend",
-      careLevel: 3,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const accounts: Record<string, Account> = {
-      "ada-ig": {
-        id: "ada-ig",
-        personId: ada.id,
-        kind: "social",
-        provider: "instagram",
-        externalId: "ada",
-        handle: "ada",
-        displayName: "Ada",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-      "ada-contact": {
-        id: "ada-contact",
-        personId: ada.id,
-        kind: "contact",
-        provider: "google_contacts",
-        externalId: "people/ada",
-        displayName: "Ada L.",
-        email: "ada@example.com",
-        importedAt: now,
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "contact_import",
-        createdAt: now,
-        updatedAt: now,
-      },
-      "maya-ig": {
-        id: "maya-ig",
-        personId: maya.id,
-        kind: "social",
-        provider: "instagram",
-        externalId: "maya",
-        handle: "maya",
-        displayName: "Maya",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-    };
-    const feedItems: Record<string, FeedItem> = {
-      "older-ada": feedItem("older-ada", "ada", now - 2_000),
-      "newer-ada": feedItem("newer-ada", "ada", now - 100),
-      "maya-post": feedItem("maya-post", "maya", now - 500),
-    };
-
-    const indexes = buildFriendsWorkspaceIndexes(accounts, feedItems);
-    const adaFriend = friendFromPersonWithIndexes(ada, indexes);
-    const friendsById = buildFriendsById([ada, maya], indexes);
-    const overview = buildFriendOverviewEntries(friendsById, feedItems, {
-      indexes,
-      now,
-    });
-
-    expect(adaFriend.sources).toHaveLength(1);
-    expect(adaFriend.contact?.email).toBe("ada@example.com");
-    expect(
-      overview.find((entry) => entry.friend.id === "ada")?.avatarUrlCandidates,
-    ).toEqual([]);
-    expect(
-      overview.find((entry) => entry.friend.id === "ada")?.lastPostAt,
-    ).toBe(now - 100);
-    expect(
-      overview.find((entry) => entry.friend.id === "maya")?.lastPostAt,
-    ).toBe(now - 500);
-
-    const nativeOverview = buildFriendOverviewEntriesFromActivity(
-      friendsById,
+    const overview = buildFriendOverviewEntriesFromActivity(
+      friends,
       {
         [friendActivitySourceKey("instagram", "ada")]: {
           avatarUrl: "https://example.com/ada.jpg",
@@ -138,87 +57,29 @@ describe("Friends workspace indexes", () => {
       },
       now,
     );
-    expect(
-      nativeOverview.find((entry) => entry.friend.id === "ada"),
-    ).toMatchObject({
+
+    expect(overview.find((entry) => entry.friend.id === "ada")).toMatchObject({
       avatarUrlCandidates: ["https://example.com/ada.jpg"],
       hasLocation: true,
       isRecentlyActive: true,
       lastPostAt: now - 100,
     });
+    expect(overview.find((entry) => entry.friend.id === "maya")?.lastPostAt)
+      .toBe(now - 500);
   });
 
-  it("orders compact avatar evidence exactly like fallback items across sources", () => {
+  it("orders compact avatar evidence by activity and binary identity", () => {
     const now = 10_000;
-    const person: Person = {
-      id: "ada",
-      name: "Ada Lovelace",
-      relationshipStatus: "friend",
-      careLevel: 5,
-      createdAt: now,
-      updatedAt: now,
+    const friends = {
+      ada: friend(
+        "ada",
+        [
+          { platform: "instagram", authorId: "ada-instagram" },
+          { platform: "x", authorId: "ada-x" },
+        ],
+        now,
+      ),
     };
-    const accounts: Record<string, Account> = {
-      instagram: {
-        id: "ada-instagram",
-        personId: person.id,
-        kind: "social",
-        provider: "instagram",
-        externalId: "ada-instagram",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-      x: {
-        id: "ada-x",
-        personId: person.id,
-        kind: "social",
-        provider: "x",
-        externalId: "ada-x",
-        firstSeenAt: now,
-        lastSeenAt: now,
-        discoveredFrom: "captured_item",
-        createdAt: now,
-        updatedAt: now,
-      },
-    };
-    const instagramAvatar = {
-      ...feedItem("é-avatar", "ada-instagram", now - 1_000),
-      author: {
-        id: "ada-instagram",
-        handle: "ada-instagram",
-        displayName: "Ada Instagram",
-        avatarUrl: "https://example.com/instagram.jpg",
-      },
-    } satisfies FeedItem;
-    const instagramNewerWithoutAvatar = feedItem(
-      "instagram-newer",
-      "ada-instagram",
-      now - 100,
-    );
-    const xAvatar = {
-      ...feedItem("z-avatar", "ada-x", now - 1_000),
-      platform: "x",
-      author: {
-        id: "ada-x",
-        handle: "ada-x",
-        displayName: "Ada X",
-        avatarUrl: "https://example.com/x.jpg",
-      },
-    } satisfies FeedItem;
-    const feedItems = {
-      [instagramAvatar.globalId]: instagramAvatar,
-      [instagramNewerWithoutAvatar.globalId]: instagramNewerWithoutAvatar,
-      [xAvatar.globalId]: xAvatar,
-    };
-    const indexes = buildFriendsWorkspaceIndexes(accounts, feedItems);
-    const friends = buildFriendsById([person], indexes);
-    const fallback = buildFriendOverviewEntries(friends, feedItems, {
-      indexes,
-      now,
-    });
     const compact = buildFriendOverviewEntriesFromActivity(
       friends,
       {
@@ -245,9 +106,6 @@ describe("Friends workspace indexes", () => {
       "https://example.com/x.jpg",
       "https://example.com/instagram.jpg",
     ]);
-    expect(compact[0]?.avatarUrlCandidates).toEqual(
-      fallback[0]?.avatarUrlCandidates,
-    );
   });
 
   it("pins the 45-day graph window", () => {

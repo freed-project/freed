@@ -188,106 +188,6 @@ export function personForAuthor(
   return persons[account.personId] ?? null;
 }
 
-export function isFriendAuthoredItem(
-  item: FeedItem,
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  friends: Record<string, Friend>,
-): boolean {
-  const person = personForAuthor(persons, accounts, item.platform, item.author.id);
-  if (person) return person.relationshipStatus === "friend";
-  return friendForAuthor(friends, item.platform, item.author.id) !== null;
-}
-
-/**
- * Compiled form of the current Person-first Friends author predicate.
- *
- * Account source order matters. The first matching social Account owns the
- * decision when it resolves an existing Person. Missing or unlinked Persons
- * retain the legacy Friend-source fallback, and later duplicate Accounts are
- * ignored exactly as they are by socialAccountForAuthor().
- */
-export interface CompiledFriendAuthorIndex {
-  has(platform: Platform, authorId: string): boolean;
-  entries(): readonly Readonly<{ platform: Platform; authorId: string }>[];
-}
-
-export function compileFriendAuthorIndex(
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  friends: Record<string, Friend>,
-): CompiledFriendAuthorIndex {
-  const includedAuthorIds = new Map<string, Set<string>>();
-  const seenAccountAuthorIds = new Map<string, Set<string>>();
-
-  const authorIdsFor = (
-    index: Map<string, Set<string>>,
-    platform: string,
-  ): Set<string> => {
-    const existing = index.get(platform);
-    if (existing) return existing;
-    const created = new Set<string>();
-    index.set(platform, created);
-    return created;
-  };
-
-  for (const friend of Object.values(friends)) {
-    for (const source of friend.sources) {
-      authorIdsFor(includedAuthorIds, source.platform).add(source.authorId);
-    }
-  }
-
-  for (const account of Object.values(accounts)) {
-    if (account.kind !== "social") continue;
-    const seenAuthorIds = authorIdsFor(
-      seenAccountAuthorIds,
-      account.provider,
-    );
-    if (seenAuthorIds.has(account.externalId)) continue;
-    seenAuthorIds.add(account.externalId);
-
-    const person = account.personId ? persons[account.personId] : undefined;
-    if (!person) continue;
-    const authorIds = authorIdsFor(includedAuthorIds, account.provider);
-    if (person.relationshipStatus === "friend") {
-      authorIds.add(account.externalId);
-    } else {
-      authorIds.delete(account.externalId);
-    }
-  }
-
-  const entries = Object.freeze(
-    [...includedAuthorIds.entries()]
-      .flatMap(([platform, authorIds]) =>
-        [...authorIds].map((authorId) => Object.freeze({
-          platform: platform as Platform,
-          authorId,
-        })),
-      )
-      .sort((left, right) =>
-        left.platform.localeCompare(right.platform) ||
-        left.authorId.localeCompare(right.authorId),
-      ),
-  );
-
-  return Object.freeze({
-    has(platform: Platform, authorId: string): boolean {
-      return includedAuthorIds.get(platform)?.has(authorId) ?? false;
-    },
-    entries() {
-      return entries;
-    },
-  });
-}
-
-function legacySourceKeys(friend: Pick<Friend, "sources">): Set<string> {
-  return new Set(friend.sources.map((source) => `${source.platform}:${source.authorId}`));
-}
-
-function asPerson(person: Person | Friend): Person {
-  return "sources" in person ? personFromLegacyFriend(person) : person;
-}
-
 export function feedItemsForPerson(
   feedItems: Record<string, FeedItem>,
   accounts: Record<string, Account>,
@@ -304,42 +204,24 @@ export function feedItemsForPerson(
   );
 }
 
-export function feedItemsForFriend(
-  feedItems: Record<string, FeedItem>,
-  friend: Friend,
-  accounts?: Record<string, Account>
-): FeedItem[] {
-  if (!accounts) {
-    const sourceKeys = legacySourceKeys(friend);
-    return Object.values(feedItems).filter((item) =>
-      sourceKeys.has(`${item.platform}:${item.author.id}`)
-    );
-  }
-  return feedItemsForPerson(feedItems, accounts, asPerson(friend));
-}
-
 export function lastPostAt(
   feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account> | Person | Friend,
-  person?: Person | Friend
+  accounts: Record<string, Account>,
+  person: Person,
 ): number | null {
-  const items = person
-    ? feedItemsForPerson(feedItems, accounts as Record<string, Account>, asPerson(person))
-    : feedItemsForFriend(feedItems, accounts as Friend);
+  const items = feedItemsForPerson(feedItems, accounts, person);
   if (items.length === 0) return null;
   return Math.max(...items.map((item) => item.publishedAt));
 }
 
 export function recentPostCount(
   feedItems: Record<string, FeedItem>,
-  accounts: Record<string, Account> | Person | Friend,
-  person?: Person | Friend,
+  accounts: Record<string, Account>,
+  person: Person,
   windowMs: number = 7 * 24 * 60 * 60 * 1000
 ): number {
   const cutoff = Date.now() - windowMs;
-  const items = person
-    ? feedItemsForPerson(feedItems, accounts as Record<string, Account>, asPerson(person))
-    : feedItemsForFriend(feedItems, accounts as Friend);
+  const items = feedItemsForPerson(feedItems, accounts, person);
   return items.filter(
     (item) => item.publishedAt >= cutoff
   ).length;
@@ -371,9 +253,9 @@ export function isInReconnectZone(person: Person, now: number = Date.now()): boo
 }
 
 export function nodeRadius(
-  person: Person | Friend,
+  person: Person,
   feedItems: Record<string, FeedItem>,
-  accounts?: Record<string, Account>
+  accounts: Record<string, Account>,
 ): number {
   const BASE: Record<1 | 2 | 3 | 4 | 5, number> = {
     1: 16,
@@ -383,22 +265,18 @@ export function nodeRadius(
     5: 32,
   };
   const base = BASE[person.careLevel];
-  const activity = accounts
-    ? recentPostCount(feedItems, accounts, person)
-    : recentPostCount(feedItems, person as Friend);
+  const activity = recentPostCount(feedItems, accounts, person);
   const scaled = base * Math.log2(activity + 2);
   return Math.min(scaled, 48);
 }
 
 export function nodeOpacity(
-  person: Person | Friend,
+  person: Person,
   feedItems: Record<string, FeedItem>,
-  accounts?: Record<string, Account>,
+  accounts: Record<string, Account>,
   now: number = Date.now()
 ): number {
-  const last = accounts
-    ? lastPostAt(feedItems, accounts, person)
-    : lastPostAt(feedItems, person as Friend);
+  const last = lastPostAt(feedItems, accounts, person);
   if (last === null) return 0.5;
 
   const hours = (now - last) / (1000 * 60 * 60);
@@ -406,90 +284,6 @@ export function nodeOpacity(
   if (hours < 24 * 7) return 0.85;
   if (hours < 24 * 30) return 0.7;
   return 0.5;
-}
-
-export function friendForAuthor(
-  friends: Record<string, Friend>,
-  platform: Platform,
-  authorId: string
-): Friend | null {
-  for (const friend of Object.values(friends)) {
-    for (const source of friend.sources) {
-      if (source.platform === platform && source.authorId === authorId) {
-        return friend;
-      }
-    }
-  }
-  return null;
-}
-
-/** @deprecated Use feedItemsForPerson. */
-export const personFromLegacyFriend = (friend: Friend): Person => ({
-  id: friend.id,
-  name: friend.name,
-  avatarUrl: friend.avatarUrl,
-  bio: friend.bio,
-  relationshipStatus: friend.relationshipStatus ?? "friend",
-  careLevel: friend.careLevel,
-  reachOutIntervalDays: friend.reachOutIntervalDays,
-  reachOutLog: friend.reachOutLog,
-  tags: friend.tags,
-  notes: friend.notes,
-  sampleDataFingerprint: friend.sampleDataFingerprint,
-  createdAt: friend.createdAt,
-  updatedAt: friend.updatedAt,
-});
-
-export function accountsFromLegacyFriend(friend: Friend): Account[] {
-  const socialAccounts: Account[] = friend.sources.map((source) => ({
-    id: `social:${source.platform}:${source.authorId}`,
-    personId: friend.id,
-    kind: "social",
-    provider: source.platform,
-    externalId: source.authorId,
-    handle: source.handle,
-    displayName: source.displayName,
-    avatarUrl: source.avatarUrl,
-    profileUrl: source.profileUrl,
-    sampleDataFingerprint: friend.sampleDataFingerprint,
-    firstSeenAt: friend.createdAt,
-    lastSeenAt: friend.updatedAt,
-    discoveredFrom: "captured_item",
-    createdAt: friend.createdAt,
-    updatedAt: friend.updatedAt,
-  }));
-
-  if (!friend.contact) return socialAccounts;
-
-  const contactProvider: Account["provider"] =
-    friend.contact.importedFrom === "google"
-      ? "google_contacts"
-      : friend.contact.importedFrom === "macos"
-        ? "macos_contacts"
-        : friend.contact.importedFrom === "ios"
-          ? "ios_contacts"
-          : friend.contact.importedFrom === "android"
-            ? "android_contacts"
-            : "web_contact";
-
-  return socialAccounts.concat({
-    id: `contact:${contactProvider}:${friend.contact.nativeId ?? friend.id}`,
-    personId: friend.id,
-    kind: "contact",
-    provider: contactProvider,
-    externalId: friend.contact.nativeId ?? friend.contact.name,
-    displayName: friend.contact.name,
-    email: friend.contact.email,
-    phone: friend.contact.phone,
-    address: friend.contact.address,
-    importedAt: friend.contact.importedAt,
-    sampleDataFingerprint: friend.sampleDataFingerprint,
-    firstSeenAt: friend.contact.importedAt,
-    lastSeenAt: friend.updatedAt,
-    discoveredFrom: "contact_import",
-    createdAt: friend.createdAt,
-    updatedAt: friend.updatedAt,
-  });
 }
 
 export function friendFromPerson(

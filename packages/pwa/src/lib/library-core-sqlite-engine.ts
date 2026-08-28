@@ -51,6 +51,7 @@ import {
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreSignatureInput,
   constructLibraryCoreActorEnrollmentBodyV1,
+  isLibraryCoreCanonicalRecord,
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreLowercaseHex64,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
@@ -77,6 +78,7 @@ import {
   verifyLibraryCoreFollowerResultV1,
   verifyLibraryCoreActorCapabilityCertificateV2,
   verifyLibraryCoreActorRetirementCertificateV1,
+  decodeLibraryCoreFractionalNumbersV1,
   decodeLibraryCoreFeedPageCursorV1,
   decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
@@ -5234,6 +5236,66 @@ export class PwaLibraryCoreSqliteEngine {
         });
       };
 
+      if (program.payloadKind === "friend_replace") {
+        const person = payload.person;
+        const accounts = payload.accounts;
+        if (
+          !isLibraryCoreCanonicalRecord(person) ||
+          person.id !== entityId ||
+          !Array.isArray(accounts) ||
+          accounts.some(
+            (account) =>
+              account === null ||
+              typeof account !== "object" ||
+              Array.isArray(account) ||
+              typeof account.id !== "string" ||
+              account.personId !== entityId,
+          ) ||
+          new Set(accounts.map((account) => String(account.id))).size !==
+            accounts.length
+        ) {
+          throw new Error("accepted follower Friend payload is invalid");
+        }
+        const payloadJson = JSON.stringify(payload);
+        const personJson = JSON.stringify(person);
+        this.#database.exec({
+          sql: program.materializeSql,
+          bind: [entityId, payloadJson],
+        });
+        if (changed() !== 0) {
+          const personProgram = sqliteMutationProgram("person_upsert");
+          for (const sql of personProgram.dependentDeleteSql) {
+            this.#database.exec({ sql, bind: [entityId] });
+          }
+          for (const sql of personProgram.dependentInsertSql) {
+            this.#database.exec({ sql, bind: [entityId, personJson] });
+          }
+          for (const sql of program.dependentDeleteSql) {
+            this.#database.exec({ sql, bind: [entityId, payloadJson] });
+          }
+          const accountProgram = sqliteMutationProgram("account_upsert");
+          for (const account of accounts) {
+            const accountId = String(account.id);
+            const accountJson = JSON.stringify(account);
+            this.#database.exec({
+              sql: accountProgram.materializeSql,
+              bind: [accountId, accountJson],
+            });
+            if (changed() === 0) continue;
+            for (const sql of accountProgram.dependentDeleteSql) {
+              this.#database.exec({ sql, bind: [accountId] });
+            }
+            for (const sql of accountProgram.dependentInsertSql) {
+              this.#database.exec({
+                sql,
+                bind: [accountId, accountJson],
+              });
+            }
+          }
+        }
+        continue;
+      }
+
       if (
         program.payloadKind === "account_upsert" ||
         program.payloadKind === "feed_item_capture_upsert" ||
@@ -5248,7 +5310,13 @@ export class PwaLibraryCoreSqliteEngine {
               : program.payloadKind === "person_upsert"
                 ? "person"
                 : "feed";
-        const recordJson = objectJson(payload[property], property);
+        const canonicalRecord = payload[property];
+        const recordJson =
+          program.payloadKind === "feed_item_capture_upsert"
+            ? JSON.stringify(
+                decodeLibraryCoreFractionalNumbersV1(canonicalRecord),
+              )
+            : objectJson(canonicalRecord, property);
         this.#database.exec({
           sql: program.materializeSql,
           bind:
@@ -5949,8 +6017,12 @@ export class PwaLibraryCoreSqliteEngine {
           returnValue: "resultRows",
         });
         invalidations.forEach((row, ordinal) => {
+          const mutationId = text(
+            row[0],
+            "follower invalidation mutation ID",
+          );
           const program = sqliteMutationProgram(
-            text(row[0], "follower invalidation mutation ID"),
+            mutationId,
           );
           this.#database.exec({
             sql: `INSERT INTO library_invalidations
@@ -5963,6 +6035,17 @@ export class PwaLibraryCoreSqliteEngine {
               text(row[1], "follower invalidation entity ID"),
             ],
           });
+          if (mutationId === "friend_replace") {
+            this.#database.exec({
+              sql: `INSERT INTO library_invalidations
+                      (revision, ordinal, topic, entity_id, reset_required)
+                    VALUES (?1, ?2, 'account', NULL, 1);`,
+              bind: [
+                envelope.authoritative_source_revision,
+                invalidations.length + ordinal,
+              ],
+            });
+          }
         });
       }
 

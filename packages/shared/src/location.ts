@@ -4,8 +4,8 @@
  * Pure functions only, no side effects, no network calls.
  */
 
-import { friendForAuthor, personForAuthor } from "./friends.js";
-import type { Account, FeedItem, Friend, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
+import { personForAuthor } from "./friends.js";
+import type { Account, FeedItem, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
 
 // =============================================================================
 // Types
@@ -565,8 +565,8 @@ export function getLastSeenLocationForFriend(
 
 export function countFriendsWithRecentLocationUpdates(
   items: FeedItem[],
-  personsOrFriends: Record<string, Person> | Record<string, Friend>,
-  accounts?: Record<string, Account>,
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
   windowMs: number = 7 * 24 * 60 * 60 * 1000,
   now: number = Date.now()
 ): number {
@@ -577,18 +577,12 @@ export function countFriendsWithRecentLocationUpdates(
     if (item.publishedAt < cutoff) continue;
     if (!extractLocationFromItem(item)) continue;
 
-    const friend = accounts
-      ? personForAuthor(
-          personsOrFriends as Record<string, Person>,
-          accounts,
-          item.platform,
-          item.author.id,
-        )
-      : friendForAuthor(
-          personsOrFriends as Record<string, Friend>,
-          item.platform,
-          item.author.id,
-        );
+    const friend = personForAuthor(
+      persons,
+      accounts,
+      item.platform,
+      item.author.id,
+    );
     if (friend?.relationshipStatus === "friend") {
       friendIds.add(friend.id);
     }

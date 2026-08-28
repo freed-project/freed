@@ -34,6 +34,7 @@ import {
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -2176,6 +2177,274 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([[1, 1, 0, "accepted", 3]]);
+  });
+
+  it("atomically materializes an accepted signed Friend replacement", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 400 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-friend', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('friend-capability', ?1, 2, 'editor', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [
+        actorId,
+        "cc".repeat(32),
+        "dd".repeat(32),
+        "ee".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES ('friend-capability', 'friend_replace');`,
+    });
+    database.exec(`INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:friend', 'Before', 'friend', 3, 100, 100);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, display_name,
+         first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+      VALUES
+        ('account:keep', 'person:friend', 'social', 'instagram', 'keep', 'Keep',
+         100, 200, 'captured_item', 100, 200),
+        ('account:remove', 'person:friend', 'social', 'facebook', 'remove', 'Remove',
+         100, 200, 'captured_item', 100, 200),
+        ('contact:old', 'person:friend', 'contact', 'web_contact', 'old', 'Old',
+         100, 200, 'contact_import', 100, 200);`);
+
+    const person = {
+      id: "person:friend",
+      name: "After",
+      relationshipStatus: "friend" as const,
+      careLevel: 5,
+      tags: ["family"],
+      createdAt: 100,
+      updatedAt: 300,
+    };
+    const accounts = [
+      {
+        id: "account:keep",
+        personId: person.id,
+        kind: "social" as const,
+        provider: "instagram" as const,
+        externalId: "keep",
+        displayName: "Kept and updated",
+        followRosterRoles: ["follower", "following"] as const,
+        firstSeenAt: 100,
+        lastSeenAt: 300,
+        discoveredFrom: "captured_item" as const,
+        createdAt: 100,
+        updatedAt: 300,
+      },
+      {
+        id: "contact:new",
+        personId: person.id,
+        kind: "contact" as const,
+        provider: "web_contact" as const,
+        externalId: "new",
+        displayName: "New Contact",
+        firstSeenAt: 300,
+        lastSeenAt: 300,
+        discoveredFrom: "contact_import" as const,
+        createdAt: 300,
+        updatedAt: 300,
+      },
+    ];
+    const member = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 300,
+        entity_id: person.id,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 300,
+        library_id: libraryId,
+        operation_id: "friend-operation-1",
+        payload: { accounts, person },
+        previous_actor_operation_id: null,
+        transaction_id: "friend-transaction-1",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], chainGenesis, {
+        digest: coreDigest,
+      }),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: finalized.members.map(({ envelope }) =>
+        encodeLibraryCoreCanonicalValue(
+          envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 1,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["canonical-friend-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: ["friend-receipt-1"],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 500,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "friend-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    await engine.applyFollowerResult({
+      canonicalResultBytes: encodeLibraryCoreCanonicalValue({
+        ...unsignedResult,
+        result_body_digest: resultDigest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: resultDigest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue),
+    });
+
+    expect(
+      database.exec({
+        sql: `SELECT name, care_level,
+                     (SELECT group_concat(tag, ',') FROM library_person_tags
+                      WHERE person_id = 'person:friend')
+              FROM library_persons WHERE id = 'person:friend';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["After", 5, "family"]]);
+    expect(
+      database.exec({
+        sql: `SELECT id, person_id, display_name, last_seen_at
+              FROM library_accounts
+              WHERE id IN ('account:keep', 'account:remove', 'contact:old', 'contact:new')
+              ORDER BY id;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["account:keep", "person:friend", "Kept and updated", 300],
+      ["account:remove", null, "Remove", 200],
+      ["contact:new", "person:friend", "New Contact", 300],
+    ]);
+    expect(
+      database.exec({
+        sql: `SELECT role FROM library_account_follow_roles
+              WHERE account_id = 'account:keep' ORDER BY role;`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["follower", "following"]);
+    expect(
+      database.exec({
+        sql: `SELECT topic, entity_id, reset_required
+              FROM library_invalidations WHERE revision = 1 ORDER BY ordinal;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["person", "person:friend", 0],
+      ["account", null, 1],
+    ]);
   });
 
   it("materializes an accepted signed RSS lifecycle through generated programs", async () => {

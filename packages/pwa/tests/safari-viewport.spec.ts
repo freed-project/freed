@@ -18,6 +18,16 @@
 
 import { test, expect, Page } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (
+      globalThis as typeof globalThis & {
+        __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean;
+      }
+    ).__FREED_PWA_SQLITE_MEMORY_E2E__ = true;
+  });
+});
+
 type PaintedBackgroundSample = {
   r: number;
   g: number;
@@ -57,7 +67,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     await page.evaluate(async ({ id, name }) => {
       const runtime = window as unknown as Record<string, unknown>;
       const libraryCore = runtime.__FREED_LIBRARY_CORE__ as {
-        addFriend: (friend: unknown) => Promise<void>;
+        replacePerson: (person: unknown, accounts: unknown[]) => Promise<void>;
       };
       const store = runtime.__FREED_STORE__ as {
         getState: () => {
@@ -65,14 +75,14 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
         };
       };
       const now = Date.now();
-      await libraryCore.addFriend({
+      await libraryCore.replacePerson({
         id,
         name,
+        relationshipStatus: "friend",
         careLevel: 5,
-        sources: [],
         createdAt: now,
         updatedAt: now,
-      });
+      }, []);
       store.getState().setActiveView("friends");
     }, { id: friendId, name: friendName });
   }

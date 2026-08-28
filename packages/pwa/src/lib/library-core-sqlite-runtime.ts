@@ -7,6 +7,8 @@ import type {
   LibraryCoreScopeActionStageStatusV1,
   LibraryCoreFollowerIntentCommitResultV1,
   LibraryCoreFollowerIntentCommitV1,
+  LibraryCoreFollowerResultApplyReceiptV1,
+  LibraryCoreFollowerResultApplyV1,
   LibraryCoreFollowerMutationContextV1,
   LibraryCoreFollowerTransportContextV2,
   LibraryCoreFollowerTransportPageRequestV2,
@@ -160,6 +162,13 @@ export async function commitPwaFollowerIntent(
 ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
   const active = await openClient();
   return active.commitFollowerIntent(commit);
+}
+
+export async function applyPwaFollowerResult(
+  apply: LibraryCoreFollowerResultApplyV1,
+): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
+  const active = await openClient();
+  return active.applyFollowerResult(apply);
 }
 
 export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {

@@ -92,6 +92,23 @@ editor profile. Normalized SQLite constraints, checkpoint activation, and
 native mutation admission reject historical actor rows. The frozen source
 operation list remains confined to the one-time migration verifier.
 
+The PWA development and feature-preview path now creates an isolated normalized
+SQLite Library from typed checkpoint records, installs the exact signed
+follower enrollment, submits final signed mutation envelopes, and applies
+authority-signed accepted results. Transactions may span bounded 128-record
+transport pages and remain capped by the generated 1,000-member and 4,194,304
+byte limits. Accepted `friend_replace` results now materialize the Person,
+Person tags, complete desired Account set, Account follow roles, detached
+social Accounts, contact replacement, and both Person and Account
+invalidations with native Rust parity. Canonical binary64 wrappers are decoded
+after signature verification before strict SQLite numeric writes.
+
+Sample Library generation now emits normalized Person and Account records at
+its source. Freed Desktop and the PWA consume those records directly. The
+deprecated Friend-to-Person and Friend-to-Account converters, test-only
+renderer graph implementation, global FeedItem scans, and corpus-backed Friend
+author fallbacks are deleted.
+
 The executable contract now declares closed query row models as well as query
 SQL. Its generator emits TypeScript row types, wire validators, browser SQLite
 coercers, Rust row descriptors, and drift-checked outputs from the same field
@@ -292,13 +309,13 @@ hours.
 
 ### 6. PWA SQLite and editable follower behavior
 
-Complete the official SQLite WebAssembly worker and persist the whole Library in
-OPFS. The engine, exact schema identity, typed worker dispatch, and shared feed
-query adapter are implemented. Ordinary feed, Saved feed, and signal counts
-already call the OPFS SQLite worker through the same orchestration as Freed
-Desktop. Normalized checkpoint activation from synchronized records, remaining
-product views, recovery, and final removal of IndexedDB Library state remain in
-progress.
+The official SQLite WebAssembly worker persists the complete Library in OPFS.
+The engine, exact schema identity, typed worker dispatch, normalized checkpoint
+activation, signed follower protocols, and bounded query adapters are
+implemented. Every PWA product view reads bounded SQLite windows through the
+same generated contracts as Freed Desktop. IndexedDB Library state and
+renderer corpus fallbacks are deleted. Recovery UI and physical iPhone
+lifecycle proof remain in progress.
 Use the generated schema, SQL, result DTOs, mutations, codecs, and vectors.
 
 Store canonical replica rows, indexes, search, intent outbox, result receipts,
