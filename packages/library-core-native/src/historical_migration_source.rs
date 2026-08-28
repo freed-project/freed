@@ -15,39 +15,39 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 const LIBRARY_DIRECTORY: &str = "library-core";
 const LIBRARY_FILE: &str = "library-core.sqlite";
 const RESET_LOCK_FILE: &str = "migration-reset.lock";
-pub(crate) type LibraryCoreStoreResult<T> = Result<T, LibraryCoreStoreError>;
+pub(crate) type LibraryCoreStorageResult<T> = Result<T, LibraryCoreStorageError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryCoreStoreError(String);
+pub struct LibraryCoreStorageError(String);
 
-impl std::fmt::Display for LibraryCoreStoreError {
+impl std::fmt::Display for LibraryCoreStorageError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(&self.0)
     }
 }
 
-impl std::error::Error for LibraryCoreStoreError {}
+impl std::error::Error for LibraryCoreStorageError {}
 
-impl From<String> for LibraryCoreStoreError {
+impl From<String> for LibraryCoreStorageError {
     fn from(value: String) -> Self {
         Self(value)
     }
 }
 
-impl From<rusqlite::Error> for LibraryCoreStoreError {
+impl From<rusqlite::Error> for LibraryCoreStorageError {
     fn from(value: rusqlite::Error) -> Self {
         Self(value.to_string())
     }
 }
 
-impl From<std::io::Error> for LibraryCoreStoreError {
+impl From<std::io::Error> for LibraryCoreStorageError {
     fn from(value: std::io::Error) -> Self {
         Self(value.to_string())
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LibraryCoreStore {
+pub(crate) struct HistoricalMigrationSource {
     root: PathBuf,
     #[cfg(unix)]
     bound: Option<Arc<BoundStoreRoot>>,
@@ -60,9 +60,11 @@ struct BoundStoreRoot {
     database: BoundSqliteDatabase,
 }
 
-impl LibraryCoreStore {
+impl HistoricalMigrationSource {
     #[cfg(unix)]
-    pub(crate) fn open_bound_directory(library_directory: OwnedFd) -> LibraryCoreStoreResult<Self> {
+    pub(crate) fn open_bound_directory(
+        library_directory: OwnedFd,
+    ) -> LibraryCoreStorageResult<Self> {
         let database = BoundSqliteDatabase::from_directory(library_directory.try_clone()?)?;
         let bound = Arc::new(BoundStoreRoot {
             library_directory,
@@ -70,7 +72,7 @@ impl LibraryCoreStore {
         });
         drop(
             LibraryCoreJournal::open_bound(&bound.database)
-                .map_err(|error| LibraryCoreStoreError(error.to_string()))?,
+                .map_err(|error| LibraryCoreStorageError(error.to_string()))?,
         );
         Ok(Self {
             root: PathBuf::from("."),
@@ -78,7 +80,7 @@ impl LibraryCoreStore {
         })
     }
 
-    pub(crate) fn connect(&self) -> LibraryCoreStoreResult<Connection> {
+    pub(crate) fn connect(&self) -> LibraryCoreStorageResult<Connection> {
         #[cfg(unix)]
         let connection = if let Some(bound) = &self.bound {
             bound.database.open(
@@ -102,14 +104,14 @@ impl LibraryCoreStore {
     }
 
     #[cfg(unix)]
-    pub(crate) fn open_bound_journal(&self) -> LibraryCoreStoreResult<LibraryCoreJournal> {
+    pub(crate) fn open_bound_journal(&self) -> LibraryCoreStorageResult<LibraryCoreJournal> {
         let bound = self.require_bound()?;
         LibraryCoreJournal::open_bound(&bound.database)
-            .map_err(|error| LibraryCoreStoreError(error.to_string()))
+            .map_err(|error| LibraryCoreStorageError(error.to_string()))
     }
 
     #[cfg(unix)]
-    pub(crate) fn clear_bound_library(&self) -> LibraryCoreStoreResult<()> {
+    pub(crate) fn clear_bound_library(&self) -> LibraryCoreStorageResult<()> {
         let bound = self.require_bound()?;
         let _reset_lock =
             BoundFileLock::acquire(bound.library_directory.as_raw_fd(), RESET_LOCK_FILE)?;
@@ -117,7 +119,7 @@ impl LibraryCoreStore {
     }
 
     #[cfg(unix)]
-    fn clear_bound_library_locked(&self, bound: &BoundStoreRoot) -> LibraryCoreStoreResult<()> {
+    fn clear_bound_library_locked(&self, bound: &BoundStoreRoot) -> LibraryCoreStorageResult<()> {
         for leaf in [
             LIBRARY_FILE,
             "library-core.sqlite-wal",
@@ -136,15 +138,15 @@ impl LibraryCoreStore {
     }
 
     #[cfg(unix)]
-    pub(crate) fn clear_bound_all(&self) -> LibraryCoreStoreResult<()> {
+    pub(crate) fn clear_bound_all(&self) -> LibraryCoreStorageResult<()> {
         self.clear_bound_library()
     }
 
     #[cfg(unix)]
-    fn require_bound(&self) -> LibraryCoreStoreResult<&BoundStoreRoot> {
-        self.bound
-            .as_deref()
-            .ok_or_else(|| LibraryCoreStoreError("descriptor-bound Library root is absent".into()))
+    fn require_bound(&self) -> LibraryCoreStorageResult<&BoundStoreRoot> {
+        self.bound.as_deref().ok_or_else(|| {
+            LibraryCoreStorageError("descriptor-bound Library root is absent".into())
+        })
     }
 }
 
@@ -159,13 +161,13 @@ struct BoundFileLock {
 
 #[cfg(unix)]
 impl BoundFileLock {
-    fn acquire(directory: RawFd, name: &str) -> LibraryCoreStoreResult<Self> {
+    fn acquire(directory: RawFd, name: &str) -> LibraryCoreStorageResult<Self> {
         let file = open_private_lock_file_at(directory, name)?;
         let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         if result < 0 {
             let error = std::io::Error::last_os_error();
             if error.kind() == std::io::ErrorKind::WouldBlock {
-                return Err(LibraryCoreStoreError(
+                return Err(LibraryCoreStorageError(
                     "SQLite Library reset is already in progress".into(),
                 ));
             }
@@ -185,9 +187,9 @@ impl Drop for BoundFileLock {
 }
 
 #[cfg(unix)]
-fn open_private_lock_file_at(parent: RawFd, name: &str) -> LibraryCoreStoreResult<File> {
+fn open_private_lock_file_at(parent: RawFd, name: &str) -> LibraryCoreStorageResult<File> {
     let name = std::ffi::CString::new(name)
-        .map_err(|_| LibraryCoreStoreError("invalid bound lock name".into()))?;
+        .map_err(|_| LibraryCoreStorageError("invalid bound lock name".into()))?;
     let descriptor = unsafe {
         libc::openat(
             parent,
@@ -206,7 +208,7 @@ fn open_private_lock_file_at(parent: RawFd, name: &str) -> LibraryCoreStoreResul
         || metadata.mode() & 0o7777 != 0o600
         || metadata.nlink() != 1
     {
-        return Err(LibraryCoreStoreError(
+        return Err(LibraryCoreStorageError(
             "descriptor-bound lock file is not private".into(),
         ));
     }

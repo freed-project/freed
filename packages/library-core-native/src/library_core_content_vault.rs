@@ -13,7 +13,7 @@ use crate::sqlite_contract_generated::{
 use crate::{
     ContentCompletionReceiptV1, ContentCompletionRequestV1, ContentEvictionReceiptV1,
     ContentEvictionRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
-    DurableContentRangeObjectV1, LibraryCoreStoreError,
+    DurableContentRangeObjectV1, LibraryCoreStorageError,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
@@ -26,10 +26,10 @@ pub(crate) struct LibraryCoreContentVault {
 }
 
 impl LibraryCoreContentVault {
-    pub(crate) fn from_directory(directory: OwnedFd) -> Result<Self, LibraryCoreStoreError> {
+    pub(crate) fn from_directory(directory: OwnedFd) -> Result<Self, LibraryCoreStorageError> {
         let metadata = File::from(directory.try_clone()?).metadata()?;
         if !metadata.is_dir() || metadata.mode() & 0o7777 != 0o700 {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content vault directory is not private".to_string(),
             ));
         }
@@ -45,13 +45,13 @@ impl LibraryCoreContentVault {
         content_digest: &str,
         range_index: i64,
         range_digest: &str,
-    ) -> Result<LibraryCoreContentRangeObject, LibraryCoreStoreError> {
+    ) -> Result<LibraryCoreContentRangeObject, LibraryCoreStorageError> {
         if !valid_digest(publication_id)
             || !valid_digest(content_digest)
             || !valid_digest(range_digest)
             || range_index < 0
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content vault range identity is invalid".to_string(),
             ));
         }
@@ -59,7 +59,7 @@ impl LibraryCoreContentVault {
         let storage_key = content_range_storage_key(content_digest, range_index, range_digest)?;
         let storage_name = c_name(&storage_key)?;
         if leaf_exists(self.directory.as_raw_fd(), &storage_name)? {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content vault range object already exists".to_string(),
             ));
         }
@@ -90,7 +90,7 @@ impl LibraryCoreContentVault {
     pub(crate) fn reconcile_v1(
         &self,
         connection: &mut Connection,
-    ) -> Result<(), LibraryCoreStoreError> {
+    ) -> Result<(), LibraryCoreStorageError> {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(store_error)?;
@@ -155,7 +155,7 @@ impl LibraryCoreContentVault {
             .iter()
             .find(|program| program.0 == "content_checkpoint_reconcile_v1")
             .ok_or_else(|| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "content checkpoint reconciliation program is missing".to_string(),
                 )
             })?;
@@ -173,7 +173,7 @@ impl LibraryCoreContentVault {
                 )
                 .map_err(store_error)?;
             if advanced != 1 {
-                return Err(LibraryCoreStoreError::from(
+                return Err(LibraryCoreStorageError::from(
                     "selective content revision cannot advance".to_string(),
                 ));
             }
@@ -185,7 +185,7 @@ impl LibraryCoreContentVault {
         &self,
         connection: &Connection,
         request: &ContentRangeReadRequestV1,
-    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
+    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStorageError> {
         if request.schema_version != 1
             || !valid_digest(&request.content_digest)
             || request.accessed_at < 0
@@ -195,7 +195,7 @@ impl LibraryCoreContentVault {
             || !(1..=i64::try_from(CONTENT_RANGE_MAXIMUM_APPEND_BYTES).expect("append bound"))
                 .contains(&request.maximum_bytes)
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content range read request is invalid".to_string(),
             ));
         }
@@ -218,10 +218,10 @@ impl LibraryCoreContentVault {
             .optional()
             .map_err(store_error)?
             .ok_or_else(|| {
-                LibraryCoreStoreError::from("verified content range is unavailable".to_string())
+                LibraryCoreStorageError::from("verified content range is unavailable".to_string())
             })?;
         if request.range_offset >= proof.0 {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content range read offset is outside the range".to_string(),
             ));
         }
@@ -244,18 +244,20 @@ impl LibraryCoreContentVault {
             || metadata.nlink() != 1
             || i64::try_from(metadata.len()).ok() != Some(proof.0)
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "verified content range object is invalid".to_string(),
             ));
         }
-        let byte_count =
-            usize::try_from((proof.0 - request.range_offset).min(request.maximum_bytes)).map_err(
-                |_| LibraryCoreStoreError::from("content range read length is invalid".to_string()),
-            )?;
+        let byte_count = usize::try_from(
+            (proof.0 - request.range_offset).min(request.maximum_bytes),
+        )
+        .map_err(|_| {
+            LibraryCoreStorageError::from("content range read length is invalid".to_string())
+        })?;
         let mut bytes = vec![0u8; byte_count];
         file.seek(SeekFrom::Start(
             u64::try_from(request.range_offset).map_err(|_| {
-                LibraryCoreStoreError::from("content range read offset is invalid".to_string())
+                LibraryCoreStorageError::from("content range read offset is invalid".to_string())
             })?,
         ))?;
         file.read_exact(&mut bytes)?;
@@ -286,9 +288,9 @@ impl LibraryCoreContentVault {
         &self,
         connection: &mut Connection,
         request: &ContentCompletionRequestV1,
-    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStorageError> {
         if request.schema_version != 1 || !valid_digest(&request.content_digest) {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content completion request is invalid".to_string(),
             ));
         }
@@ -303,7 +305,7 @@ impl LibraryCoreContentVault {
             .optional()
             .map_err(store_error)?
             .ok_or_else(|| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "content completion descriptor is unavailable".to_string(),
                 )
             })?;
@@ -337,8 +339,8 @@ impl LibraryCoreContentVault {
                 &request.content_digest,
                 request.verified_at,
             )
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
-            return Err(LibraryCoreStoreError::from(
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
+            return Err(LibraryCoreStorageError::from(
                 "complete content digest is invalid".to_string(),
             ));
         }
@@ -347,14 +349,14 @@ impl LibraryCoreContentVault {
             request,
             "content_vault",
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     pub(crate) fn evict_v1(
         &self,
         connection: &mut Connection,
         request: &ContentEvictionRequestV1,
-    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStorageError> {
         if request.schema_version != 1
             || !valid_digest(&request.content_digest)
             || request.evicted_at < 0
@@ -368,7 +370,7 @@ impl LibraryCoreContentVault {
             )
             || (request.reason == "cache_pressure") != request.expected_last_accessed_at.is_some()
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content eviction request is invalid".to_string(),
             ));
         }
@@ -389,19 +391,19 @@ impl LibraryCoreContentVault {
             .optional()
             .map_err(store_error)?
             .ok_or_else(|| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "content eviction descriptor is unavailable".to_string(),
                 )
             })?;
         if policy == "pinned_offline" {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "pinned offline content must be unpinned before eviction".to_string(),
             ));
         }
         if request.reason == "cache_pressure"
             && last_accessed_at != request.expected_last_accessed_at
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "content eviction candidate is stale".to_string(),
             ));
         }
@@ -455,15 +457,17 @@ impl LibraryCoreContentVault {
                     )
                     .map_err(store_error)?;
                 if deleted != 1 {
-                    return Err(LibraryCoreStoreError::from(
+                    return Err(LibraryCoreStorageError::from(
                         "content eviction proof changed during deletion".to_string(),
                     ));
                 }
                 evicted_ranges = evicted_ranges.checked_add(1).ok_or_else(|| {
-                    LibraryCoreStoreError::from("content eviction count overflow".to_string())
+                    LibraryCoreStorageError::from("content eviction count overflow".to_string())
                 })?;
                 released_bytes = released_bytes.checked_add(*byte_length).ok_or_else(|| {
-                    LibraryCoreStoreError::from("content eviction byte count overflow".to_string())
+                    LibraryCoreStorageError::from(
+                        "content eviction byte count overflow".to_string(),
+                    )
                 })?;
             }
             after_range_index = page.last().expect("nonempty eviction page").0;
@@ -486,7 +490,7 @@ impl LibraryCoreContentVault {
                 .map_err(store_error)?
                 != 1
             {
-                return Err(LibraryCoreStoreError::from(
+                return Err(LibraryCoreStorageError::from(
                     "selective content revision cannot advance".to_string(),
                 ));
             }
@@ -512,7 +516,7 @@ impl LibraryCoreContentVault {
     fn reconcile_directory_entries(
         &self,
         transaction: &rusqlite::Transaction<'_>,
-    ) -> Result<bool, LibraryCoreStoreError> {
+    ) -> Result<bool, LibraryCoreStorageError> {
         let mut physical_changed = false;
         let descriptor = self.open_independent_directory()?;
         let stream = unsafe { libc::fdopendir(descriptor) };
@@ -587,7 +591,7 @@ impl LibraryCoreContentVault {
         &self,
         name: &CStr,
         expected_bytes: i64,
-    ) -> Result<bool, LibraryCoreStoreError> {
+    ) -> Result<bool, LibraryCoreStorageError> {
         let mut metadata = std::mem::MaybeUninit::<libc::stat>::zeroed();
         if unsafe {
             libc::fstatat(
@@ -612,7 +616,7 @@ impl LibraryCoreContentVault {
             && metadata.st_size == expected_bytes)
     }
 
-    fn unlink_if_present(&self, name: &CStr) -> Result<bool, LibraryCoreStoreError> {
+    fn unlink_if_present(&self, name: &CStr) -> Result<bool, LibraryCoreStorageError> {
         if unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) } < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::NotFound {
@@ -623,7 +627,7 @@ impl LibraryCoreContentVault {
         Ok(true)
     }
 
-    pub(crate) fn clear_all_v1(&self) -> Result<(), LibraryCoreStoreError> {
+    pub(crate) fn clear_all_v1(&self) -> Result<(), LibraryCoreStorageError> {
         let descriptor = self.open_independent_directory()?;
         let stream = unsafe { libc::fdopendir(descriptor) };
         if stream.is_null() {
@@ -651,7 +655,7 @@ impl LibraryCoreContentVault {
         }
     }
 
-    fn open_independent_directory(&self) -> Result<i32, LibraryCoreStoreError> {
+    fn open_independent_directory(&self) -> Result<i32, LibraryCoreStorageError> {
         let current = c".";
         let descriptor = unsafe {
             libc::openat(
@@ -773,9 +777,9 @@ fn content_range_storage_key(
     content_digest: &str,
     range_index: i64,
     range_digest: &str,
-) -> Result<String, LibraryCoreStoreError> {
+) -> Result<String, LibraryCoreStorageError> {
     if !valid_digest(content_digest) || range_index < 0 || !valid_digest(range_digest) {
-        return Err(LibraryCoreStoreError::from(
+        return Err(LibraryCoreStorageError::from(
             "content vault range identity is invalid".to_string(),
         ));
     }
@@ -783,25 +787,25 @@ fn content_range_storage_key(
         "{CONTENT_RANGE_STORAGE_KEY_PREFIX}{content_digest}-{range_index}-{range_digest}{CONTENT_RANGE_STORAGE_KEY_SUFFIX}"
     );
     if storage_key.len() > CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES {
-        return Err(LibraryCoreStoreError::from(
+        return Err(LibraryCoreStorageError::from(
             "content vault object name exceeds its bound".to_string(),
         ));
     }
     Ok(storage_key)
 }
 
-fn c_name(value: &str) -> Result<CString, LibraryCoreStoreError> {
+fn c_name(value: &str) -> Result<CString, LibraryCoreStorageError> {
     if value.is_empty() || value.as_bytes().contains(&b'/') || value.len() > 255 {
-        return Err(LibraryCoreStoreError::from(
+        return Err(LibraryCoreStorageError::from(
             "content vault object name is invalid".to_string(),
         ));
     }
     CString::new(value).map_err(|_| {
-        LibraryCoreStoreError::from("content vault object name is invalid".to_string())
+        LibraryCoreStorageError::from("content vault object name is invalid".to_string())
     })
 }
 
-fn leaf_exists(directory: i32, name: &CString) -> Result<bool, LibraryCoreStoreError> {
+fn leaf_exists(directory: i32, name: &CString) -> Result<bool, LibraryCoreStorageError> {
     let descriptor = unsafe {
         libc::openat(
             directory,
@@ -826,8 +830,8 @@ fn sync_directory(directory: i32) -> io::Result<()> {
         .sync_all()
 }
 
-fn store_error(error: rusqlite::Error) -> LibraryCoreStoreError {
-    LibraryCoreStoreError::from(error.to_string())
+fn store_error(error: rusqlite::Error) -> LibraryCoreStorageError {
+    LibraryCoreStorageError::from(error.to_string())
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]

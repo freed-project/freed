@@ -7,6 +7,7 @@
 
 mod device_contact_sync;
 mod device_graph_layout;
+mod historical_migration_source;
 mod library_core_actor_capability;
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
@@ -29,7 +30,6 @@ mod library_core_journal;
 mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;
-mod library_core_store;
 mod normalized_authority;
 mod normalized_checkpoint;
 mod normalized_enrollment_verifier;
@@ -70,6 +70,7 @@ pub use device_graph_layout::{
     mutate_device_graph_layout_v1, DeviceGraphLayoutError, DeviceGraphLayoutMutationResultV1,
     DeviceGraphLayoutMutationV1,
 };
+pub use historical_migration_source::LibraryCoreStorageError;
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request, countersign_actor_enrollment_request_bytes,
     enroll_desktop_actor, load_or_create_normalized_actor_id_v2,
@@ -94,7 +95,6 @@ pub use library_core_process_lease::{
 };
 #[cfg(unix)]
 pub use library_core_sidecar::run_library_authority_sidecar;
-pub use library_core_store::LibraryCoreStoreError;
 pub use normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,

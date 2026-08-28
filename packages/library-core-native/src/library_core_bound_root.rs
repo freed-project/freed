@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
-use crate::LibraryCoreStoreError;
+use crate::LibraryCoreStorageError;
 
 /// One directory reached only through a duplicated inherited descriptor.
 ///
@@ -20,24 +20,24 @@ pub(crate) struct LibraryCoreBoundRoot {
 impl LibraryCoreBoundRoot {
     pub(crate) fn from_inherited_descriptor(
         descriptor: RawFd,
-    ) -> Result<Self, LibraryCoreStoreError> {
+    ) -> Result<Self, LibraryCoreStorageError> {
         if descriptor < 0 {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "invalid inherited Library Core directory descriptor".to_string(),
             ));
         }
         let borrowed = unsafe { BorrowedFd::borrow_raw(descriptor) };
         let owned = borrowed
             .try_clone_to_owned()
-            .map_err(LibraryCoreStoreError::from)?;
-        let metadata = File::from(owned.try_clone().map_err(LibraryCoreStoreError::from)?)
+            .map_err(LibraryCoreStorageError::from)?;
+        let metadata = File::from(owned.try_clone().map_err(LibraryCoreStorageError::from)?)
             .metadata()
-            .map_err(LibraryCoreStoreError::from)?;
+            .map_err(LibraryCoreStorageError::from)?;
         if !metadata.file_type().is_dir()
             || metadata.file_type().is_symlink()
             || metadata.file_type().is_socket()
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "inherited Library Core descriptor is not a directory".to_string(),
             ));
         }
@@ -73,16 +73,16 @@ impl LibraryCoreBoundRoot {
     pub(crate) fn open_or_create_private_directory(
         &self,
         name: &str,
-    ) -> Result<OwnedFd, LibraryCoreStoreError> {
+    ) -> Result<OwnedFd, LibraryCoreStorageError> {
         self.open_private_directory(name, true)?.ok_or_else(|| {
-            LibraryCoreStoreError::from("bound directory was not created".to_string())
+            LibraryCoreStorageError::from("bound directory was not created".to_string())
         })
     }
 
     pub(crate) fn open_private_directory_if_present(
         &self,
         name: &str,
-    ) -> Result<Option<OwnedFd>, LibraryCoreStoreError> {
+    ) -> Result<Option<OwnedFd>, LibraryCoreStorageError> {
         self.open_private_directory(name, false)
     }
 
@@ -90,14 +90,15 @@ impl LibraryCoreBoundRoot {
         &self,
         name: &str,
         create: bool,
-    ) -> Result<Option<OwnedFd>, LibraryCoreStoreError> {
+    ) -> Result<Option<OwnedFd>, LibraryCoreStorageError> {
         if name.is_empty() || matches!(name, "." | "..") || name.as_bytes().contains(&b'/') {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "invalid bound directory leaf".to_string(),
             ));
         }
-        let name = CString::new(name)
-            .map_err(|_| LibraryCoreStoreError::from("invalid bound directory name".to_string()))?;
+        let name = CString::new(name).map_err(|_| {
+            LibraryCoreStorageError::from("invalid bound directory name".to_string())
+        })?;
         let mut descriptor = unsafe {
             libc::openat(
                 self.descriptor(),
@@ -115,7 +116,7 @@ impl LibraryCoreBoundRoot {
         {
             let created = unsafe { libc::mkdirat(self.descriptor(), name.as_ptr(), 0o700) };
             if created < 0 {
-                return Err(LibraryCoreStoreError::from(
+                return Err(LibraryCoreStorageError::from(
                     std::io::Error::last_os_error().to_string(),
                 ));
             }
@@ -128,16 +129,16 @@ impl LibraryCoreBoundRoot {
             };
         }
         if descriptor < 0 {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 std::io::Error::last_os_error().to_string(),
             ));
         }
         let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor) };
         let metadata = File::from(descriptor.try_clone()?)
             .metadata()
-            .map_err(LibraryCoreStoreError::from)?;
+            .map_err(LibraryCoreStorageError::from)?;
         if !metadata.file_type().is_dir() || metadata.uid() != self.owner {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "bound directory is not private".to_string(),
             ));
         }
@@ -150,7 +151,7 @@ impl LibraryCoreBoundRoot {
                 || corrected.ino() != metadata.ino()
                 || corrected.mode() & 0o7777 != 0o700
             {
-                return Err(LibraryCoreStoreError::from(
+                return Err(LibraryCoreStorageError::from(
                     "bound directory is not private".to_string(),
                 ));
             }
@@ -162,18 +163,18 @@ impl LibraryCoreBoundRoot {
         &self,
         name: &str,
         maximum_bytes: usize,
-    ) -> Result<Option<Vec<u8>>, LibraryCoreStoreError> {
+    ) -> Result<Option<Vec<u8>>, LibraryCoreStorageError> {
         if name.is_empty()
             || matches!(name, "." | "..")
             || name.as_bytes().contains(&b'/')
             || maximum_bytes == 0
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "invalid bound file request".to_string(),
             ));
         }
         let name = CString::new(name)
-            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+            .map_err(|_| LibraryCoreStorageError::from("invalid bound file name".to_string()))?;
         let descriptor = unsafe {
             libc::openat(
                 self.descriptor(),
@@ -199,14 +200,14 @@ impl LibraryCoreBoundRoot {
             || metadata.len() == 0
             || metadata.len() > maximum_bytes as u64
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "bound control file is invalid".to_string(),
             ));
         }
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
         file.read_to_end(&mut bytes)?;
         if bytes.len() != metadata.len() as usize || bytes.len() > maximum_bytes {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "bound control file changed while reading".to_string(),
             ));
         }
@@ -220,7 +221,7 @@ impl LibraryCoreBoundRoot {
         pending_name: &str,
         bytes: &[u8],
         maximum_bytes: usize,
-    ) -> Result<(), LibraryCoreStoreError> {
+    ) -> Result<(), LibraryCoreStorageError> {
         if name.is_empty()
             || pending_name.is_empty()
             || name == pending_name
@@ -231,7 +232,7 @@ impl LibraryCoreBoundRoot {
             || bytes.is_empty()
             || bytes.len() > maximum_bytes
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "invalid bound atomic file request".to_string(),
             ));
         }
@@ -239,14 +240,14 @@ impl LibraryCoreBoundRoot {
             if existing == bytes {
                 return Ok(());
             }
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "bound atomic file already exists with different bytes".to_string(),
             ));
         }
         let name = CString::new(name)
-            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+            .map_err(|_| LibraryCoreStorageError::from("invalid bound file name".to_string()))?;
         let pending_name = CString::new(pending_name).map_err(|_| {
-            LibraryCoreStoreError::from("invalid bound pending file name".to_string())
+            LibraryCoreStorageError::from("invalid bound pending file name".to_string())
         })?;
         unsafe {
             libc::unlinkat(self.descriptor(), pending_name.as_ptr(), 0);
@@ -264,7 +265,7 @@ impl LibraryCoreBoundRoot {
         }
         let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor) };
         let mut file = File::from(descriptor);
-        let write_result = (|| -> Result<(), LibraryCoreStoreError> {
+        let write_result = (|| -> Result<(), LibraryCoreStorageError> {
             file.write_all(bytes)?;
             file.sync_all()?;
             if unsafe {
@@ -290,14 +291,14 @@ impl LibraryCoreBoundRoot {
         write_result
     }
 
-    pub(crate) fn remove_private_file(&self, name: &str) -> Result<bool, LibraryCoreStoreError> {
+    pub(crate) fn remove_private_file(&self, name: &str) -> Result<bool, LibraryCoreStorageError> {
         if name.is_empty() || matches!(name, "." | "..") || name.as_bytes().contains(&b'/') {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "invalid bound file removal request".to_string(),
             ));
         }
         let name = CString::new(name)
-            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+            .map_err(|_| LibraryCoreStorageError::from("invalid bound file name".to_string()))?;
         if unsafe { libc::unlinkat(self.descriptor(), name.as_ptr(), 0) } < 0 {
             let error = std::io::Error::last_os_error();
             if error.kind() == std::io::ErrorKind::NotFound {
@@ -312,10 +313,10 @@ impl LibraryCoreBoundRoot {
 
 pub(crate) fn file_from_duplicated_descriptor(
     descriptor: RawFd,
-) -> Result<File, LibraryCoreStoreError> {
+) -> Result<File, LibraryCoreStorageError> {
     let duplicated = unsafe { libc::fcntl(descriptor, libc::F_DUPFD_CLOEXEC, 0) };
     if duplicated < 0 {
-        return Err(LibraryCoreStoreError::from(
+        return Err(LibraryCoreStorageError::from(
             std::io::Error::last_os_error().to_string(),
         ));
     }

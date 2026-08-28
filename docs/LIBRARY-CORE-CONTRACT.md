@@ -412,10 +412,12 @@ snapshot, and selective-content surfaces.
 The native crate exports no historical store, shell importer, import status,
 whole-item staging DTO, checkpoint reference, activation receipt, or overlay
 replay surface. The dead shell-based importer and its self-tests are deleted.
-The remaining private descriptor wrapper can only open the fenced historical
-database for one-time migration, provide its connection to that migration, or
-erase the held files during normalized factory reset. It cannot stage or
-activate another Library authority.
+The remaining private `HistoricalMigrationSource` can only open the fenced
+historical database for one-time migration, provide its connection to that
+migration, or erase the held files during normalized factory reset. It cannot
+stage or activate another Library authority. Native storage failures use the
+general `LibraryCoreStorageError`; no runtime type suggests that a second
+Library Core store exists.
 
 Canonical operation verification is owned by the normalized protocol layer,
 not by the historical journal. One crate-level verifier parses the original

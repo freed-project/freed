@@ -18,7 +18,7 @@ use std::sync::{Arc, OnceLock, RwLock, Weak};
 use ring::rand::{SecureRandom, SystemRandom};
 use rusqlite::{ffi, Connection, OpenFlags};
 
-use crate::LibraryCoreStoreError;
+use crate::LibraryCoreStorageError;
 
 const PREFIX: &str = "/__freed_bound_v1/";
 const DATABASE_FILE: &str = "library-core.sqlite";
@@ -65,7 +65,7 @@ pub(crate) struct BoundSqliteDatabase {
 }
 
 impl BoundSqliteDatabase {
-    pub(crate) fn from_directory(directory: OwnedFd) -> Result<Self, LibraryCoreStoreError> {
+    pub(crate) fn from_directory(directory: OwnedFd) -> Result<Self, LibraryCoreStorageError> {
         install_shim()?;
         let metadata = std::fs::File::from(directory.try_clone()?).metadata()?;
         if !metadata.file_type().is_dir()
@@ -74,13 +74,13 @@ impl BoundSqliteDatabase {
             || metadata.uid() != unsafe { libc::geteuid() }
             || metadata.mode() & 0o7777 != 0o700
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "bound SQLite directory is not private".to_string(),
             ));
         }
         let mut random = [0_u8; 32];
         SystemRandom::new().fill(&mut random).map_err(|_| {
-            LibraryCoreStoreError::from("bound SQLite token unavailable".to_string())
+            LibraryCoreStorageError::from("bound SQLite token unavailable".to_string())
         })?;
         let token = crate::lower_hex(&random);
         let binding = Arc::new(Binding {
@@ -91,7 +91,9 @@ impl BoundSqliteDatabase {
         REGISTRY
             .get_or_init(|| RwLock::new(HashMap::new()))
             .write()
-            .map_err(|_| LibraryCoreStoreError::from("bound SQLite registry poisoned".to_string()))?
+            .map_err(|_| {
+                LibraryCoreStorageError::from("bound SQLite registry poisoned".to_string())
+            })?
             .insert(token, Arc::downgrade(&binding));
         Ok(Self { binding })
     }
@@ -108,7 +110,7 @@ impl BoundSqliteDatabase {
         Connection::open_with_flags_and_vfs(self.logical_path(), flags, "unix-excl")
     }
 
-    pub(crate) fn clear_files(&self) -> Result<(), LibraryCoreStoreError> {
+    pub(crate) fn clear_files(&self) -> Result<(), LibraryCoreStorageError> {
         for leaf in DATABASE_FILES {
             let leaf = CString::new(*leaf).expect("static SQLite leaf");
             if unsafe { libc::unlinkat(self.binding.directory.as_raw_fd(), leaf.as_ptr(), 0) } < 0 {
@@ -123,7 +125,7 @@ impl BoundSqliteDatabase {
     }
 }
 
-fn install_shim() -> Result<(), LibraryCoreStoreError> {
+fn install_shim() -> Result<(), LibraryCoreStorageError> {
     SHIM.get_or_init(|| unsafe {
         let name = CString::new("unix").expect("static VFS name");
         let vfs = ffi::sqlite3_vfs_find(name.as_ptr());
@@ -153,7 +155,7 @@ fn install_shim() -> Result<(), LibraryCoreStoreError> {
         Ok(())
     })
     .clone()
-    .map_err(LibraryCoreStoreError::from)
+    .map_err(LibraryCoreStorageError::from)
 }
 
 enum Route {

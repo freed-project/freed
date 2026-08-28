@@ -8,12 +8,12 @@ use std::sync::{Mutex, OnceLock};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::historical_migration_source::HistoricalMigrationSource;
 use crate::library_core_bound_root::LibraryCoreBoundRoot;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_content_vault::LibraryCoreContentVault;
 use crate::library_core_journal::LibraryCoreJournal;
-use crate::library_core_store::LibraryCoreStore;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
@@ -25,7 +25,7 @@ use crate::{
     ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
     ContentRangeReadResponseV1, EvictionCandidatePageRequestV1, EvictionCandidatePageV1,
     HydrationCandidatePageRequestV1, HydrationCandidatePageV1, LibraryCoreProcessLease,
-    LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1, NormalizedLocalSnapshotReasonV1,
+    LibraryCoreStorageError, NormalizedDesktopAuthorityPreparedV1, NormalizedLocalSnapshotReasonV1,
     NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
 
@@ -57,7 +57,7 @@ struct DesktopAuthoritySelectionV1 {
 pub struct LibraryCoreDesktopBinding {
     content_vault: LibraryCoreContentVault,
     snapshot_directory: OwnedFd,
-    historical_store: Option<LibraryCoreStore>,
+    historical_migration_source: Option<HistoricalMigrationSource>,
     normalized_database: BoundSqliteDatabase,
     _historical_lease: Option<LibraryCoreProcessLease>,
     _normalized_lease: LibraryCoreProcessLease,
@@ -71,15 +71,15 @@ static DESKTOP_BINDING: OnceLock<LibraryCoreDesktopBinding> = OnceLock::new();
 
 pub fn install_desktop_binding(
     binding: LibraryCoreDesktopBinding,
-) -> Result<(), LibraryCoreStoreError> {
+) -> Result<(), LibraryCoreStorageError> {
     DESKTOP_BINDING.set(binding).map_err(|_| {
-        LibraryCoreStoreError::from("Desktop Library Core binding already installed".to_string())
+        LibraryCoreStorageError::from("Desktop Library Core binding already installed".to_string())
     })
 }
 
-pub fn desktop_binding() -> Result<&'static LibraryCoreDesktopBinding, LibraryCoreStoreError> {
+pub fn desktop_binding() -> Result<&'static LibraryCoreDesktopBinding, LibraryCoreStorageError> {
     DESKTOP_BINDING.get().ok_or_else(|| {
-        LibraryCoreStoreError::from("Desktop Library Core binding is absent".to_string())
+        LibraryCoreStorageError::from("Desktop Library Core binding is absent".to_string())
     })
 }
 
@@ -87,7 +87,7 @@ impl LibraryCoreDesktopBinding {
     pub fn open(
         app_root: &Path,
         identity: ProcessLeaseIdentity<'static>,
-    ) -> Result<Self, LibraryCoreStoreError> {
+    ) -> Result<Self, LibraryCoreStorageError> {
         Self::open_with_after_lease(app_root, identity, || {})
     }
 
@@ -95,18 +95,18 @@ impl LibraryCoreDesktopBinding {
         app_root: &Path,
         identity: ProcessLeaseIdentity<'static>,
         after_lease: F,
-    ) -> Result<Self, LibraryCoreStoreError>
+    ) -> Result<Self, LibraryCoreStorageError>
     where
         F: FnOnce(),
     {
         let app_parent = app_root.parent().ok_or_else(|| {
-            LibraryCoreStoreError::from("Desktop Library Core app root has no parent".to_string())
+            LibraryCoreStorageError::from("Desktop Library Core app root has no parent".to_string())
         })?;
         let app_leaf = app_root
             .file_name()
             .and_then(|value| value.to_str())
             .ok_or_else(|| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "Desktop Library Core app root leaf is invalid".to_string(),
                 )
             })?;
@@ -128,19 +128,19 @@ impl LibraryCoreDesktopBinding {
         } else {
             app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?
         };
-        let (historical_store, historical_lease, historical_root) =
+        let (historical_migration_source, historical_lease, historical_root) =
             if let Some(historical_directory) = historical_directory {
                 let historical_root = LibraryCoreBoundRoot::from_inherited_descriptor(
                     historical_directory.as_raw_fd(),
                 )?;
                 let historical_lease =
                     LibraryCoreProcessLease::acquire_bound(&historical_root, identity)
-                        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+                        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
                 after_lease();
-                let historical_store =
-                    LibraryCoreStore::open_bound_directory(historical_directory)?;
+                let historical_migration_source =
+                    HistoricalMigrationSource::open_bound_directory(historical_directory)?;
                 (
-                    Some(historical_store),
+                    Some(historical_migration_source),
                     Some(historical_lease),
                     Some(historical_root),
                 )
@@ -152,7 +152,7 @@ impl LibraryCoreDesktopBinding {
         let normalized_root =
             LibraryCoreBoundRoot::from_inherited_descriptor(normalized_directory.as_raw_fd())?;
         let normalized_lease = LibraryCoreProcessLease::acquire_bound(&normalized_root, identity)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         let normalized_database =
             BoundSqliteDatabase::from_directory(normalized_directory.try_clone()?)?;
         let content_vault_directory =
@@ -162,7 +162,7 @@ impl LibraryCoreDesktopBinding {
         let binding = Self {
             content_vault,
             snapshot_directory,
-            historical_store,
+            historical_migration_source,
             normalized_database,
             _historical_lease: historical_lease,
             _normalized_lease: normalized_lease,
@@ -178,7 +178,7 @@ impl LibraryCoreDesktopBinding {
             .normalized_database
             .open(normalized_sqlite_open_flags(true))?;
         configure_normalized_sqlite_connection(&normalized_connection)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         binding
             .content_vault
             .reconcile_v1(&mut normalized_connection)?;
@@ -186,27 +186,27 @@ impl LibraryCoreDesktopBinding {
         Ok(binding)
     }
 
-    pub fn connect(&self) -> Result<Connection, LibraryCoreStoreError> {
+    pub fn connect(&self) -> Result<Connection, LibraryCoreStorageError> {
         self.require_historical_source()?.connect()
     }
 
     /// Opens Freed Desktop's final normalized SQLite authority.
-    pub fn connect_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+    pub fn connect_normalized(&self) -> Result<Connection, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         self.authority_selection()?;
         let connection = self
             .normalized_database
             .open(normalized_sqlite_open_flags(false))?;
         configure_normalized_sqlite_connection(&connection)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         Ok(connection)
     }
 
     /// Opens normalized SQLite only after its authority selector is verified.
-    pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+    pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         if self.authority_selection()?.is_none() {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "normalized SQLite authority is not selected".to_string(),
             ));
         }
@@ -214,7 +214,7 @@ impl LibraryCoreDesktopBinding {
             .normalized_database
             .open(normalized_sqlite_open_flags(false))?;
         configure_normalized_sqlite_connection(&connection)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         Ok(connection)
     }
 
@@ -223,7 +223,7 @@ impl LibraryCoreDesktopBinding {
         publication_id: &str,
         request: &ContentRangePublicationRequestV1,
         reader: &mut R,
-    ) -> Result<VerifiedContentRangeReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<VerifiedContentRangeReceiptV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         let range_digest = connection
             .query_row(
@@ -232,7 +232,7 @@ impl LibraryCoreDesktopBinding {
                 rusqlite::params![request.content_digest, request.range_index],
                 |row| row.get::<_, String>(0),
             )
-            .map_err(LibraryCoreStoreError::from)?;
+            .map_err(LibraryCoreStorageError::from)?;
         let mut object = self.content_vault.create_range_object_v1(
             publication_id,
             &request.content_digest,
@@ -240,13 +240,13 @@ impl LibraryCoreDesktopBinding {
             &range_digest,
         )?;
         publish_content_range_from_reader_v1(&mut connection, request, reader, &mut object)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     pub fn read_content_range_v1(
         &self,
         request: &ContentRangeReadRequestV1,
-    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
+    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStorageError> {
         let connection = self.connect_selected_normalized()?;
         self.content_vault.read_range_v1(&connection, request)
     }
@@ -254,7 +254,7 @@ impl LibraryCoreDesktopBinding {
     pub fn verify_complete_content_v1(
         &self,
         request: &ContentCompletionRequestV1,
-    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         self.content_vault
             .verify_complete_v1(&mut connection, request)
@@ -263,7 +263,7 @@ impl LibraryCoreDesktopBinding {
     pub fn evict_content_v1(
         &self,
         request: &ContentEvictionRequestV1,
-    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         self.content_vault.evict_v1(&mut connection, request)
     }
@@ -271,28 +271,28 @@ impl LibraryCoreDesktopBinding {
     pub fn page_hydration_candidates_v1(
         &self,
         request: &HydrationCandidatePageRequestV1,
-    ) -> Result<HydrationCandidatePageV1, LibraryCoreStoreError> {
+    ) -> Result<HydrationCandidatePageV1, LibraryCoreStorageError> {
         let connection = self.connect_selected_normalized()?;
         page_hydration_candidates_v1(&connection, request)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     pub fn page_eviction_candidates_v1(
         &self,
         request: &EvictionCandidatePageRequestV1,
-    ) -> Result<EvictionCandidatePageV1, LibraryCoreStoreError> {
+    ) -> Result<EvictionCandidatePageV1, LibraryCoreStorageError> {
         let connection = self.connect_selected_normalized()?;
         page_eviction_candidates_v1(&connection, request)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     pub fn mutate_content_policy_v1(
         &self,
         mutation: &ContentPolicyMutationV1,
-    ) -> Result<ContentPolicyMutationReceiptV1, LibraryCoreStoreError> {
+    ) -> Result<ContentPolicyMutationReceiptV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         let mut receipt = set_content_policy_v1(&mut connection, mutation)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         if mutation.policy == ContentHydrationPolicyV1::Excluded {
             receipt.content_revision = self
                 .content_vault
@@ -315,7 +315,7 @@ impl LibraryCoreDesktopBinding {
         &self,
         created_at_ms: u64,
         reason: NormalizedLocalSnapshotReasonV1,
-    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStoreError> {
+    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         crate::normalized_snapshot::create_normalized_local_snapshot_bound_v1(
             &mut connection,
@@ -323,16 +323,16 @@ impl LibraryCoreDesktopBinding {
             created_at_ms,
             reason,
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     pub fn list_normalized_local_snapshots_v1(
         &self,
-    ) -> Result<Vec<NormalizedLocalSnapshotSummaryV1>, LibraryCoreStoreError> {
+    ) -> Result<Vec<NormalizedLocalSnapshotSummaryV1>, LibraryCoreStorageError> {
         crate::normalized_snapshot::list_normalized_local_snapshots_bound_v1(
             self.snapshot_directory.as_raw_fd(),
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -344,7 +344,7 @@ impl LibraryCoreDesktopBinding {
         authority_store: &dyn AuthorityKeyStore,
         operation_id: &str,
         restored_at_ms: u64,
-    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStoreError> {
+    ) -> Result<NormalizedLocalSnapshotSummaryV1, LibraryCoreStorageError> {
         let mut connection = self.connect_selected_normalized()?;
         crate::normalized_snapshot::restore_normalized_local_snapshot_bound_v1(
             &mut connection,
@@ -356,57 +356,63 @@ impl LibraryCoreDesktopBinding {
             operation_id,
             restored_at_ms,
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
-    pub fn clear_normalized_local_snapshots_v1(&self) -> Result<(), LibraryCoreStoreError> {
+    pub fn clear_normalized_local_snapshots_v1(&self) -> Result<(), LibraryCoreStorageError> {
         crate::normalized_snapshot::clear_normalized_local_snapshots_bound_v1(
             self.snapshot_directory.as_raw_fd(),
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
-    pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+    pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         Ok(self.authority_selection()?.is_some())
     }
 
-    pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
+    pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStorageError> {
         self.require_historical_source()?.open_bound_journal()
     }
 
     #[cfg(test)]
-    fn store(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
+    fn historical_source_for_test(
+        &self,
+    ) -> Result<&HistoricalMigrationSource, LibraryCoreStorageError> {
         self.require_historical_source()
     }
 
     pub fn historical_source_is_present_v1(&self) -> bool {
-        self.historical_store.is_some()
+        self.historical_migration_source.is_some()
             && self
                 .historical_import_is_retired_v1()
                 .is_ok_and(|retired| !retired)
     }
 
-    fn require_historical_source(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
+    fn require_historical_source(
+        &self,
+    ) -> Result<&HistoricalMigrationSource, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         if self.historical_import_is_retired_v1()? {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "historical Desktop migration source is retired".to_string(),
             ));
         }
         if self.authority_selection()?.is_some() {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "historical Desktop migration source is fenced after SQLite selection".to_string(),
             ));
         }
-        self.historical_store.as_ref().ok_or_else(|| {
-            LibraryCoreStoreError::from("historical Desktop migration source is absent".to_string())
+        self.historical_migration_source.as_ref().ok_or_else(|| {
+            LibraryCoreStorageError::from(
+                "historical Desktop migration source is absent".to_string(),
+            )
         })
     }
 
-    pub fn reset_normalized_library_v1(&self) -> Result<(), LibraryCoreStoreError> {
+    pub fn reset_normalized_library_v1(&self) -> Result<(), LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
-            LibraryCoreStoreError::from("Desktop Library reset gate is poisoned".to_string())
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
         self.app_root.write_new_private_file_atomically(
             FACTORY_RESET_PENDING_FILE,
@@ -417,23 +423,23 @@ impl LibraryCoreDesktopBinding {
         self.complete_pending_factory_reset_v1()
     }
 
-    fn complete_pending_factory_reset_v1(&self) -> Result<(), LibraryCoreStoreError> {
+    fn complete_pending_factory_reset_v1(&self) -> Result<(), LibraryCoreStorageError> {
         if !self.factory_reset_is_pending_v1()? {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop Library factory reset marker is absent".to_string(),
             ));
         }
         self.app_root
             .remove_private_file(AUTHORITY_SELECTION_FILE)?;
-        if let Some(store) = &self.historical_store {
-            store.clear_bound_all()?;
+        if let Some(source) = &self.historical_migration_source {
+            source.clear_bound_all()?;
         }
         self.normalized_database.clear_files()?;
         self.content_vault.clear_all_v1()?;
         crate::normalized_snapshot::clear_normalized_local_snapshots_bound_v1(
             self.snapshot_directory.as_raw_fd(),
         )
-        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         self.app_root.write_new_private_file_atomically(
             HISTORICAL_IMPORT_RETIRED_FILE,
             ".library-historical-import-retired-v1.pending",
@@ -445,7 +451,7 @@ impl LibraryCoreDesktopBinding {
         Ok(())
     }
 
-    fn factory_reset_is_pending_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+    fn factory_reset_is_pending_v1(&self) -> Result<bool, LibraryCoreStorageError> {
         exact_control_file_is_present(
             &self.app_root,
             FACTORY_RESET_PENDING_FILE,
@@ -453,7 +459,7 @@ impl LibraryCoreDesktopBinding {
         )
     }
 
-    fn historical_import_is_retired_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+    fn historical_import_is_retired_v1(&self) -> Result<bool, LibraryCoreStorageError> {
         exact_control_file_is_present(
             &self.app_root,
             HISTORICAL_IMPORT_RETIRED_FILE,
@@ -461,9 +467,9 @@ impl LibraryCoreDesktopBinding {
         )
     }
 
-    fn require_factory_reset_complete_v1(&self) -> Result<(), LibraryCoreStoreError> {
+    fn require_factory_reset_complete_v1(&self) -> Result<(), LibraryCoreStorageError> {
         if self.factory_reset_is_pending_v1()? {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop Library factory reset is pending".to_string(),
             ));
         }
@@ -472,7 +478,7 @@ impl LibraryCoreDesktopBinding {
 
     fn authority_selection(
         &self,
-    ) -> Result<Option<DesktopAuthoritySelectionV1>, LibraryCoreStoreError> {
+    ) -> Result<Option<DesktopAuthoritySelectionV1>, LibraryCoreStorageError> {
         let Some(bytes) = self.app_root.read_bounded_private_file(
             AUTHORITY_SELECTION_FILE,
             AUTHORITY_SELECTION_MAXIMUM_BYTES,
@@ -481,22 +487,22 @@ impl LibraryCoreDesktopBinding {
             return Ok(None);
         };
         let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
-            LibraryCoreStoreError::from("Desktop authority selection is invalid JSON".to_string())
+            LibraryCoreStorageError::from("Desktop authority selection is invalid JSON".to_string())
         })?;
         let canonical =
             encode_canonical_value(&value, AUTHORITY_SELECTION_MAXIMUM_BYTES).map_err(|_| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "Desktop authority selection is not canonical".to_string(),
                 )
             })?;
         if canonical != bytes {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop authority selection is not canonical".to_string(),
             ));
         }
         let selection: DesktopAuthoritySelectionV1 =
             serde_json::from_value(value).map_err(|_| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "Desktop authority selection has an invalid field set".to_string(),
                 )
             })?;
@@ -507,7 +513,7 @@ impl LibraryCoreDesktopBinding {
     fn verify_authority_selection(
         &self,
         selection: &DesktopAuthoritySelectionV1,
-    ) -> Result<(), LibraryCoreStoreError> {
+    ) -> Result<(), LibraryCoreStorageError> {
         let valid_digest = |value: &str| {
             value.len() == 64
                 && value
@@ -517,7 +523,7 @@ impl LibraryCoreDesktopBinding {
         if selection.format != "freed_desktop_sqlite_authority_selection_v1"
             || !valid_digest(&selection.library_id)
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop authority selection identity is invalid".to_string(),
             ));
         }
@@ -525,7 +531,7 @@ impl LibraryCoreDesktopBinding {
             .normalized_database
             .open(normalized_sqlite_open_flags(false))?;
         configure_normalized_sqlite_connection(&connection)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         let matches: i64 = connection.query_row(
             "SELECT count(*)
              FROM library_active_authority AS active
@@ -542,7 +548,7 @@ impl LibraryCoreDesktopBinding {
             |row| row.get(0),
         )?;
         if matches != 1 {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop authority selection does not match normalized SQLite".to_string(),
             ));
         }
@@ -552,22 +558,22 @@ impl LibraryCoreDesktopBinding {
     fn write_authority_selection(
         &self,
         selection: &DesktopAuthoritySelectionV1,
-    ) -> Result<(), LibraryCoreStoreError> {
+    ) -> Result<(), LibraryCoreStorageError> {
         if let Some(existing) = self.authority_selection()? {
             if existing == *selection {
                 return Ok(());
             }
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop authority selection already names another epoch".to_string(),
             ));
         }
         self.verify_authority_selection(selection)?;
         let value = serde_json::to_value(selection).map_err(|_| {
-            LibraryCoreStoreError::from("Desktop authority selection is invalid".to_string())
+            LibraryCoreStorageError::from("Desktop authority selection is invalid".to_string())
         })?;
         let canonical =
             encode_canonical_value(&value, AUTHORITY_SELECTION_MAXIMUM_BYTES).map_err(|_| {
-                LibraryCoreStoreError::from(
+                LibraryCoreStorageError::from(
                     "Desktop authority selection cannot be canonicalized".to_string(),
                 )
             })?;
@@ -578,7 +584,7 @@ impl LibraryCoreDesktopBinding {
             AUTHORITY_SELECTION_MAXIMUM_BYTES,
         )?;
         if self.authority_selection()?.as_ref() != Some(selection) {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop authority selection did not read back exactly".to_string(),
             ));
         }
@@ -588,11 +594,11 @@ impl LibraryCoreDesktopBinding {
     pub fn publish_normalized_authority_selection_v1(
         &self,
         prepared: &NormalizedDesktopAuthorityPreparedV1,
-    ) -> Result<(), LibraryCoreStoreError> {
+    ) -> Result<(), LibraryCoreStorageError> {
         if prepared.format != "freed_normalized_desktop_authority_prepared_v1"
             || prepared.primary_actor_id.is_empty()
         {
-            return Err(LibraryCoreStoreError::from(
+            return Err(LibraryCoreStorageError::from(
                 "Desktop normalized cutover receipt is invalid".to_string(),
             ));
         }
@@ -607,12 +613,12 @@ fn exact_control_file_is_present(
     root: &LibraryCoreBoundRoot,
     name: &str,
     expected: &[u8],
-) -> Result<bool, LibraryCoreStoreError> {
+) -> Result<bool, LibraryCoreStorageError> {
     let Some(bytes) = root.read_bounded_private_file(name, CONTROL_FILE_MAXIMUM_BYTES)? else {
         return Ok(false);
     };
     if bytes != expected {
-        return Err(LibraryCoreStoreError::from(
+        return Err(LibraryCoreStorageError::from(
             "Desktop Library control file has unexpected bytes".to_string(),
         ));
     }
@@ -819,7 +825,7 @@ mod tests {
 
         assert!(binding.connect().is_err());
         assert!(binding.open_journal().is_err());
-        assert!(binding.store().is_err());
+        assert!(binding.historical_source_for_test().is_err());
         drop(
             binding
                 .connect_normalized()

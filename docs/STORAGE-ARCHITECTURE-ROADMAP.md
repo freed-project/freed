@@ -51,10 +51,12 @@ now the next deletion seam.
 The native crate no longer exports the historical store, import status,
 checkpoint reference, shell importer, whole-item staging, activation receipt,
 or overlay replay API. That uncalled compatibility importer and its six
-self-tests are deleted. The remaining 224-line private descriptor wrapper can
-only open the fenced migration database, provide its connection to the
-one-time normalized migration, or erase its held files during normalized
-factory reset.
+self-tests are deleted. The remaining 224-line private
+`HistoricalMigrationSource` can only open the fenced migration database,
+provide its connection to the one-time normalized migration, or erase its held
+files during normalized factory reset. Shared native storage failures now use
+`LibraryCoreStorageError`; the obsolete `LibraryCoreStore` type, module, error,
+result, field, and filename vocabulary is absent.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent
