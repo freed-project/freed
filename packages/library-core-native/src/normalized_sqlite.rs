@@ -852,6 +852,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn normalized_schema_rejects_historical_actor_capabilities() {
+        let connection = fixture();
+        install_test_authority(&connection, 0);
+        connection
+            .execute(
+                "INSERT INTO library_actors
+                 (actor_id, authority_epoch_id, actor_kind, public_key,
+                  enrollment_operation_id, enrollment_certificate_digest,
+                  canonical_enrollment_certificate, chain_genesis_digest,
+                  accepted_counter, accepted_operation_id, accepted_chain_digest,
+                  created_at, updated_at)
+                 VALUES ('actor-2', 'epoch-1', 'pwa', ?1, 'enroll-2', ?2,
+                         '{}', ?3, 0, NULL, ?3, 500, 500);",
+                params!["7".repeat(64), "8".repeat(64), "9".repeat(64)],
+            )
+            .expect("second actor");
+        let result = connection.execute(
+            "INSERT INTO library_actor_capabilities
+             (capability_id, actor_id, certificate_version, actor_class,
+              scope_mode, certificate_digest, canonical_certificate, issued_at)
+             VALUES ('historical-capability', 'actor-2', 1, 'legacy_editor',
+                     'legacy_editor', ?1, '{}', 500);",
+            ["a".repeat(64)],
+        );
+        assert!(result.is_err());
+    }
+
     fn begin_stage(
         connection: &Connection,
         stage_id: &str,

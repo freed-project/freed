@@ -20,7 +20,6 @@ import {
 } from "./operation-envelope-contracts.js";
 import {
   LIBRARY_CORE_CAPABILITY_OPERATION_IDS,
-  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS,
   LIBRARY_CORE_SCRAPER_OPERATION_IDS,
   type LibraryCoreCapabilityOperationId,
@@ -43,9 +42,6 @@ export const LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2 =
 
 export type LibraryCoreActorCapabilityOperationTypeV2 =
   LibraryCoreCapabilityOperationId;
-
-export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
-  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS;
 
 export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS;

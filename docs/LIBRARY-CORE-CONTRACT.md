@@ -197,6 +197,13 @@ assembly, signing-body, and final-envelope path before the native verifier and
 materializer. No supported program can bypass canonical transaction bounds by
 falling out of a handwritten transform union.
 
+The normalized schema accepts version 2 capabilities only. Editor, scraper,
+and agent rows must carry an explicit scope plus mandatory issuance and
+retirement identities. SQLite constraints, checkpoint activation, and native
+mutation admission all reject version 1 legacy editor rows. The frozen
+historical operation list lives only in the one-time source verifier and is
+not part of the executable normalized contract.
+
 Each mutation definition binds:
 
 - stable mutation ID and payload version

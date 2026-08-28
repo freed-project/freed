@@ -86,11 +86,11 @@ The current product already provides the protocol foundation:
   actor enrollment, authority epochs, exact product projection, bounded typed
   queries and mutations, normalized checkpoint activation, process lease, and
   fixed-fd authority sidecar without importing Tauri or contacting a provider.
-- Native schema v12 binds every actor to an explicit operation capability.
-  Existing v1 actors receive one fixed 14-operation legacy editor policy. New
-  v2 editor, scraper, and agent certificates bind an exact operation subset,
-  explicit scope, issuance identity, and retirement identity to the authority
-  signature.
+- Normalized SQLite binds every actor to an authority-signed version 2
+  capability. Editor, scraper, and agent certificates bind an exact operation
+  subset, explicit scope, issuance identity, and retirement identity. The
+  final schema rejects version 1 actors. Historical actor policy is readable
+  only inside the fenced one-time source verifier.
 - Freed Desktop preserves its existing command DTOs and behavior through thin
   data-root and platform-vault adapters around that reusable native package.
 - `@freed/library-service` validates one explicit Primary role, private roots,
@@ -276,10 +276,6 @@ The capability certificate binds:
 - issuance identity and retirement identity
 - size bounds and canonical signature domain
 
-Existing version 1 editable actors map to a fixed legacy editor policy. That
-policy contains the existing editable operation set and never grows when a new
-canonical operation type is added.
-
 New actors use explicit classes:
 
 - `editor` may perform the exact user-edit operations listed in its
@@ -297,10 +293,9 @@ Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
 retirement mechanism.
 
-The reusable native journal now enforces v2 certificates before ingestion and
+The reusable native core enforces v2 certificates before ingestion and
 rechecks the exact signed capability under the immediate commit transaction.
-The frozen v1 legacy editor list does not grow when the canonical operation
-registry grows. Scraper certificates can name only FeedItem capture. A bounded
+Scraper certificates can name only FeedItem capture. A bounded
 provider or source scope fails closed because the current operation envelope
 has no canonical scope field, and the verifier never infers scope from entity
 payloads. Same-actor causal tips, stale epochs, retired actors, missing
@@ -312,16 +307,13 @@ capability remains unchanged and authorizes every operation. Those conditions
 are rechecked under the immediate commit transaction before the receipt is
 returned, and retrieval creates no new outbox result.
 
-The PWA now consumes the shared production v2 verifier, stores the exact
-certificate bytes and signed capability fields in IndexedDB schema v9, and
-reverifies them before local intent admission and imported operation admission.
-Existing IndexedDB v8 enrollment rows keep their exact v1 shape and frozen
-legacy editor policy. Changed persistence, a stale epoch, a retired actor,
-bounded scope without an envelope binding, and operations outside the signed
-set all fail before an IndexedDB write. A mixed v1 and v2 checkpoint remains
-readable across restart. Opening the migrated database with schema v8 fails at
-the explicit browser rollback boundary instead of silently discarding v2
-state.
+The PWA consumes the shared production v2 verifier and stores exact
+certificate bytes and signed capability fields in OPFS SQLite. It reverifies
+them before local intent admission and imported operation admission. Changed
+persistence, a stale epoch, a retired actor, bounded scope without an envelope
+binding, version 1 capability rows, and operations outside the signed set all
+fail before a SQLite write. Checkpoint activation cannot import a historical
+actor capability into the selected generation.
 
 Production v2 issuance remains dormant. No production entry point exports the
 certificate constructor, and neither Freed Desktop nor the headless service

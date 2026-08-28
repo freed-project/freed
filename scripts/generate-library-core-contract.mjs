@@ -253,9 +253,7 @@ function assertContract(contract) {
     }
   }
   const capabilityProfileKeys = Object.keys(contract.capabilityProfiles).sort();
-  if (
-    capabilityProfileKeys.join(",") !== "legacyEditor,primaryWriter,scraper"
-  ) {
+  if (capabilityProfileKeys.join(",") !== "primaryWriter,scraper") {
     throw new TypeError("SQLite contract capability profiles are invalid");
   }
   for (const [profile, mutations] of Object.entries(
@@ -783,10 +781,6 @@ ${stringTuple(capabilityOperationIds)}
 ] as const);
 export type LibraryCoreCapabilityOperationId = (typeof LIBRARY_CORE_CAPABILITY_OPERATION_IDS)[number];
 
-export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS = Object.freeze([
-${stringTuple(contract.capabilityProfiles.legacyEditor)}
-] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
-
 export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS = Object.freeze([
 ${stringTuple(contract.capabilityProfiles.primaryWriter)}
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
@@ -1181,10 +1175,6 @@ ${rustStringSlice(contract.nativeCommands)}
 
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
 ${rustStringSlice(capabilityOperationIds)}
-];
-
-pub const LEGACY_EDITOR_OPERATION_IDS: &[&str] = &[
-${rustStringSlice(contract.capabilityProfiles.legacyEditor)}
 ];
 
 pub const PRIMARY_WRITER_OPERATION_IDS: &[&str] = &[

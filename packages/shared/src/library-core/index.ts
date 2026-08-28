@@ -16,7 +16,6 @@ export * from "./actor-enrollment-contracts.js";
 export * from "./actor-enrollment-certificate.js";
 export * from "./actor-enrollment-request.js";
 export {
-  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
   constructLibraryCoreActorCapabilityRequestV2,
   constructLibraryCoreActorCapabilityCertificateV2,

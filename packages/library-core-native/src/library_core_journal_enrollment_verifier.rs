@@ -561,7 +561,7 @@ pub(super) fn verify_actor_enrollment(
         }),
     )?;
     let capability = capability.take().unwrap_or_else(|| {
-        super::actor_capability::ActorCapabilityState::legacy_editor(
+        super::actor_capability::ActorCapabilityState::historical_editor(
             certificate_digest.clone(),
             created_at_ms,
         )

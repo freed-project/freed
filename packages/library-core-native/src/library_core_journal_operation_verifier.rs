@@ -2141,7 +2141,7 @@ pub(crate) mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_owned(),
             actor_chain_genesis: "5".repeat(64),
             enrolled_at_ms: 1_000,
-            capability: super::super::actor_capability::ActorCapabilityState::legacy_editor(
+            capability: super::super::actor_capability::ActorCapabilityState::historical_editor(
                 "4".repeat(64),
                 1_000,
             ),
@@ -2258,7 +2258,7 @@ pub(crate) mod tests {
             super::super::actor_capability::ActorCapabilityScope::Bounded { kind, scope_id } => {
                 json!({ "mode": "bounded", "scope_kind": kind, "scope_id": scope_id })
             }
-            super::super::actor_capability::ActorCapabilityScope::LegacyEditor => {
+            super::super::actor_capability::ActorCapabilityScope::HistoricalEditor => {
                 panic!("v2 test capability cannot use legacy scope")
             }
         };

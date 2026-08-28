@@ -2,7 +2,7 @@ use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::actor_capability::parse_stored_capability;
+use crate::library_core_journal::actor_capability::parse_normalized_stored_capability;
 #[cfg(test)]
 use crate::library_core_journal::operation_verifier::verify_operation_transaction;
 use crate::library_core_journal::operation_verifier::{
@@ -210,7 +210,7 @@ pub(crate) fn actor_state_at(
     let allowed_operation_types = statement
         .query_map([&row.22], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let capability = parse_stored_capability(
+    let capability = parse_normalized_stored_capability(
         row.11,
         row.12,
         serde_json::to_string(&allowed_operation_types).map_err(|_| {

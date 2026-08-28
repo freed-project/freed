@@ -3377,7 +3377,10 @@ mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_string(),
             actor_chain_genesis: digest("6"),
             enrolled_at_ms: 1_000,
-            capability: actor_capability::ActorCapabilityState::legacy_editor(digest("5"), 1_000),
+            capability: actor_capability::ActorCapabilityState::historical_editor(
+                digest("5"),
+                1_000,
+            ),
         }
     }
 
@@ -3392,7 +3395,7 @@ mod tests {
                 "{{\"certificate\":\"{operation_suffix}\"}}"
             ),
             actor_chain_genesis: digest(if hex_digit == "b" { "a" } else { "b" }),
-            capability: actor_capability::ActorCapabilityState::legacy_editor(
+            capability: actor_capability::ActorCapabilityState::historical_editor(
                 certificate_digest,
                 1_000,
             ),
@@ -5375,7 +5378,7 @@ mod tests {
             "op:actor:enroll:foreign-library".to_string();
         foreign_library_enrollment.enrollment_certificate_digest = digest("c");
         foreign_library_enrollment.capability =
-            actor_capability::ActorCapabilityState::legacy_editor(
+            actor_capability::ActorCapabilityState::historical_editor(
                 foreign_library_enrollment
                     .enrollment_certificate_digest
                     .clone(),
@@ -5449,12 +5452,13 @@ mod tests {
         foreign_epoch_enrollment.enrollment_operation_id =
             "op:actor:enroll:foreign-epoch".to_string();
         foreign_epoch_enrollment.enrollment_certificate_digest = digest("e");
-        foreign_epoch_enrollment.capability = actor_capability::ActorCapabilityState::legacy_editor(
-            foreign_epoch_enrollment
-                .enrollment_certificate_digest
-                .clone(),
-            foreign_epoch_enrollment.enrolled_at_ms,
-        );
+        foreign_epoch_enrollment.capability =
+            actor_capability::ActorCapabilityState::historical_editor(
+                foreign_epoch_enrollment
+                    .enrollment_certificate_digest
+                    .clone(),
+                foreign_epoch_enrollment.enrolled_at_ms,
+            );
         epoch_journal
             .install_fixture_authority(
                 &foreign_epoch_enrollment.library_id,
@@ -5518,7 +5522,10 @@ mod tests {
             enrollment_certificate_digest: digest("9"),
             actor_chain_genesis: digest("a"),
             enrolled_at_ms: 1_200,
-            capability: actor_capability::ActorCapabilityState::legacy_editor(digest("9"), 1_200),
+            capability: actor_capability::ActorCapabilityState::historical_editor(
+                digest("9"),
+                1_200,
+            ),
             ..first_enrollment
         };
         journal

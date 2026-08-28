@@ -23,7 +23,6 @@ import {
   isLibraryCoreActorCapabilityRequestConstructionV2,
   isLibraryCoreVerifiedActorCapabilityCertificateV2,
   LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
-  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
   LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2,
   type LibraryCoreActorCapabilityAuthorityStateV2,
   verifyLibraryCoreActorCapabilityCertificateV2,
@@ -222,16 +221,11 @@ describe("Library Core actor capability certificate v2", () => {
       actor_chain_genesis: result.actor_chain_genesis,
     });
   });
-  it("keeps legacy and scraper authority frozen outside the extensible canonical registry", () => {
+  it("keeps scraper authority frozen outside the extensible canonical registry", () => {
     expect(
       Object.isFrozen(LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2),
     ).toBe(true);
-    expect(Object.isFrozen(LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1)).toBe(
-      true,
-    );
-    expect(LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1).not.toBe(
-      LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
-    );
+    expect(Object.isFrozen(LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2)).toBe(true);
     expect(LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2).toStrictEqual([
       "feed_item_capture_upsert",
     ]);
@@ -240,9 +234,6 @@ describe("Library Core actor capability certificate v2", () => {
       "future_operation",
     ];
     expect(hypotheticalFutureRegistry).toContain("future_operation");
-    expect(LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1).not.toContain(
-      "future_operation",
-    );
     expect(LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2).not.toContain(
       "future_operation",
     );

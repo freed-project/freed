@@ -666,6 +666,7 @@ export async function captureDomFeed(
 | 5.137 | Delete the unused TypeScript shadow store, whole-FeedItem projection and reconstruction layer, historical merge-growth measurement, and their self-tests. Runtime queries, materialization, paging order, and idempotency are covered by the executable SQLite contract and native core rather than a second derived store model | High       | ✓ Complete |
 | 5.138 | Delete the unused device-local graph strip helper that existed only to keep viewport fields out of whole-document mutations. Graph layout now crosses the typed device-local SQLite mutation boundary directly | Medium     | ✓ Complete |
 | 5.139 | Remove synchronized reader HTML from the FeedItem model and delete the dead text-compaction and historical HTML fallback paths. Full article HTML lives only in the device content cache or selective content vault, while synchronized metadata retains bounded text and content descriptors | High       | ✓ Complete |
+| 5.140 | Reject historical version 1 actor capabilities at the normalized SQLite schema and native mutation boundaries. Fresh Primary and Desktop actors use exact authority-signed version 2 capabilities only, while the frozen historical editor policy remains confined to the one-time source verifier and cannot enter a normalized checkpoint | High       | ✓ Complete |
 
 ---
 

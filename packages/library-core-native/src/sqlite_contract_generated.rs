@@ -39,7 +39,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "6a14d992f4fff3be801373a536b20bc5a0df7c3ba54228aafd73979e8f7ac5e8";
+    "910cbb6597f354de594d4ff6bc96a4c8d175828aa9bee403edbfb1a67921c71a";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -560,23 +560,6 @@ pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
     "rss_feed_remove_keep_items",
     "rss_feed_remove_with_items",
     "rss_feed_title_assignment",
-    "rss_feed_upsert",
-];
-
-pub const LEGACY_EDITOR_OPERATION_IDS: &[&str] = &[
-    "account_remove",
-    "account_upsert",
-    "feed_item_archive_assignment",
-    "feed_item_capture_upsert",
-    "feed_item_like_assignment",
-    "feed_item_read_assignment",
-    "feed_item_remove",
-    "feed_item_saved_assignment",
-    "person_remove_and_accounts",
-    "person_upsert",
-    "preferences_leaf_assignment",
-    "rss_feed_remove_keep_items",
-    "rss_feed_remove_with_items",
     "rss_feed_upsert",
 ];
 

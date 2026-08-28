@@ -1,22 +1,39 @@
 //! Closed actor capability policy shared by enrollment and operation checks.
 //!
 //! The operation lists are generated from the executable SQLite contract for
-//! both Rust and TypeScript. A v1 actor receives only the frozen legacy-editor list. A v2
-//! actor must name every allowed operation and an explicit scope. Bounded
+//! both Rust and TypeScript. The historical source reader retains its frozen
+//! version 1 editor list locally. Every normalized actor must name every
+//! allowed operation and an explicit version 2 scope. Bounded
 //! scopes remain unusable until an operation envelope carries a canonical
 //! scope binding. Nothing infers provider or source authority from payloads.
 
 use crate::sqlite_contract_generated::{
-    CAPABILITY_OPERATION_IDS, LEGACY_EDITOR_OPERATION_IDS, PRIMARY_WRITER_OPERATION_IDS,
-    SCRAPER_OPERATION_IDS,
+    CAPABILITY_OPERATION_IDS, PRIMARY_WRITER_OPERATION_IDS, SCRAPER_OPERATION_IDS,
 };
+
+const HISTORICAL_EDITOR_OPERATION_IDS: &[&str] = &[
+    "account_remove",
+    "account_upsert",
+    "feed_item_archive_assignment",
+    "feed_item_capture_upsert",
+    "feed_item_like_assignment",
+    "feed_item_read_assignment",
+    "feed_item_remove",
+    "feed_item_saved_assignment",
+    "person_remove_and_accounts",
+    "person_upsert",
+    "preferences_leaf_assignment",
+    "rss_feed_remove_keep_items",
+    "rss_feed_remove_with_items",
+    "rss_feed_upsert",
+];
 
 pub(super) const fn canonical_operation_types() -> &'static [&'static str] {
     CAPABILITY_OPERATION_IDS
 }
 
-pub(crate) const fn legacy_editor_operation_types() -> &'static [&'static str] {
-    LEGACY_EDITOR_OPERATION_IDS
+pub(crate) const fn historical_editor_operation_types() -> &'static [&'static str] {
+    HISTORICAL_EDITOR_OPERATION_IDS
 }
 
 pub(crate) const fn primary_writer_operation_types() -> &'static [&'static str] {
@@ -35,7 +52,7 @@ pub(super) fn is_registered_operation(operation: &str) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActorCapabilityScope {
-    LegacyEditor,
+    HistoricalEditor,
     LibraryWide,
     Bounded { kind: String, scope_id: String },
 }
@@ -55,15 +72,15 @@ pub(crate) struct ActorCapabilityState {
 }
 
 impl ActorCapabilityState {
-    pub(super) fn legacy_editor(certificate_digest: String, issued_at_ms: i64) -> Self {
+    pub(super) fn historical_editor(certificate_digest: String, issued_at_ms: i64) -> Self {
         Self {
             certificate_version: 1,
             actor_class: "legacy_editor".to_owned(),
-            allowed_operation_types: legacy_editor_operation_types()
+            allowed_operation_types: historical_editor_operation_types()
                 .iter()
                 .map(|operation| (*operation).to_owned())
                 .collect(),
-            scope: ActorCapabilityScope::LegacyEditor,
+            scope: ActorCapabilityScope::HistoricalEditor,
             issuance_identity: None,
             retirement_identity: None,
             capability_certificate_digest: certificate_digest,
@@ -89,7 +106,7 @@ impl ActorCapabilityState {
 
     pub(crate) fn stored_scope(&self) -> (&str, Option<&str>, Option<&str>) {
         match &self.scope {
-            ActorCapabilityScope::LegacyEditor => ("legacy_editor", None, None),
+            ActorCapabilityScope::HistoricalEditor => ("legacy_editor", None, None),
             ActorCapabilityScope::LibraryWide => ("library_wide", None, None),
             ActorCapabilityScope::Bounded { kind, scope_id } => {
                 ("bounded", Some(kind.as_str()), Some(scope_id.as_str()))
@@ -176,9 +193,9 @@ pub(crate) fn parse_stored_capability(
             if allowed_operation_types
                 .iter()
                 .map(String::as_str)
-                .eq(legacy_editor_operation_types().iter().copied()) =>
+                .eq(historical_editor_operation_types().iter().copied()) =>
         {
-            ActorCapabilityScope::LegacyEditor
+            ActorCapabilityScope::HistoricalEditor
         }
         (
             2,
@@ -244,15 +261,51 @@ pub(super) fn validate_capability_state(
     .map(|_| ())
 }
 
+pub(crate) fn parse_normalized_stored_capability(
+    certificate_version: i64,
+    actor_class: String,
+    allowed_operation_types_json: String,
+    scope_mode: String,
+    scope_kind: Option<String>,
+    scope_id: Option<String>,
+    issuance_identity: Option<String>,
+    retirement_identity: Option<String>,
+    capability_certificate_digest: String,
+    issued_at_ms: i64,
+    retired: i64,
+    retirement_certificate_digest: Option<String>,
+) -> Result<ActorCapabilityState, &'static str> {
+    let capability = parse_stored_capability(
+        certificate_version,
+        actor_class,
+        allowed_operation_types_json,
+        scope_mode,
+        scope_kind,
+        scope_id,
+        issuance_identity,
+        retirement_identity,
+        capability_certificate_digest,
+        issued_at_ms,
+        retired,
+        retirement_certificate_digest,
+    )?;
+    if capability.certificate_version != 2
+        || matches!(capability.scope, ActorCapabilityScope::HistoricalEditor)
+    {
+        return Err("capability_state");
+    }
+    Ok(capability)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn shared_registry_is_sorted_and_legacy_policy_cannot_grow_implicitly() {
+    fn executable_registry_is_sorted_and_historical_policy_is_source_local() {
         assert_eq!(canonical_operation_types().len(), 21);
         assert_eq!(
-            legacy_editor_operation_types(),
+            historical_editor_operation_types(),
             [
                 "account_remove",
                 "account_upsert",
@@ -272,20 +325,20 @@ mod tests {
         );
         assert_eq!(primary_writer_operation_types().len(), 21);
         assert!(primary_writer_operation_types().contains(&"friend_replace"));
-        assert!(!legacy_editor_operation_types().contains(&"friend_replace"));
+        assert!(!historical_editor_operation_types().contains(&"friend_replace"));
         assert!(primary_writer_operation_types().contains(&"person_reach_out_append"));
         assert!(primary_writer_operation_types().contains(&"feed_item_like_sync_receipt"));
         assert!(primary_writer_operation_types().contains(&"feed_item_seen_sync_receipt"));
-        assert!(!legacy_editor_operation_types().contains(&"person_reach_out_append"));
-        assert!(!legacy_editor_operation_types().contains(&"feed_item_like_sync_receipt"));
-        assert!(!legacy_editor_operation_types().contains(&"feed_item_seen_sync_receipt"));
+        assert!(!historical_editor_operation_types().contains(&"person_reach_out_append"));
+        assert!(!historical_editor_operation_types().contains(&"feed_item_like_sync_receipt"));
+        assert!(!historical_editor_operation_types().contains(&"feed_item_seen_sync_receipt"));
         assert!(primary_writer_operation_types().contains(&"person_remove_detach_accounts"));
-        assert!(!legacy_editor_operation_types().contains(&"person_remove_detach_accounts"));
+        assert!(!historical_editor_operation_types().contains(&"person_remove_detach_accounts"));
         assert!(primary_writer_operation_types().contains(&"rss_feed_title_assignment"));
-        assert!(!legacy_editor_operation_types().contains(&"rss_feed_title_assignment"));
+        assert!(!historical_editor_operation_types().contains(&"rss_feed_title_assignment"));
         assert_eq!(scraper_operation_types(), ["feed_item_capture_upsert"]);
         assert!(!is_registered_operation("future_operation"));
-        assert!(!legacy_editor_operation_types().contains(&"future_operation"));
+        assert!(!historical_editor_operation_types().contains(&"future_operation"));
         assert!(!scraper_operation_types().contains(&"future_operation"));
     }
 
@@ -311,5 +364,43 @@ mod tests {
         capability.retired = true;
         capability.retirement_certificate_digest = Some("4".repeat(64));
         assert!(!capability.allows_operation("feed_item_read_assignment"));
+    }
+
+    #[test]
+    fn normalized_parser_rejects_the_historical_editor_capability() {
+        let operations = serde_json::to_string(historical_editor_operation_types())
+            .expect("historical operations");
+        assert!(parse_stored_capability(
+            1,
+            "legacy_editor".to_owned(),
+            operations.clone(),
+            "legacy_editor".to_owned(),
+            None,
+            None,
+            None,
+            None,
+            "3".repeat(64),
+            1,
+            0,
+            None,
+        )
+        .is_ok());
+        assert_eq!(
+            parse_normalized_stored_capability(
+                1,
+                "legacy_editor".to_owned(),
+                operations,
+                "legacy_editor".to_owned(),
+                None,
+                None,
+                None,
+                None,
+                "3".repeat(64),
+                1,
+                0,
+                None,
+            ),
+            Err("capability_state")
+        );
     }
 }
