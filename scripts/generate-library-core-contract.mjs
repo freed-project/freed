@@ -217,7 +217,6 @@ function assertContract(contract) {
     "storyWall",
     "storyWallPublishTarget",
     "storyWallStyle",
-    "sync",
     "ulysses",
     "user",
     "weights",
@@ -230,7 +229,6 @@ function assertContract(contract) {
     throw new TypeError("SQLite preference write policy registry is invalid");
   }
   const preferenceDispositions = new Set([
-    "compatibility-only",
     "device-local",
     "nested",
     "sync",

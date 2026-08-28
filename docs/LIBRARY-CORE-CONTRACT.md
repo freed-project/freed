@@ -1337,7 +1337,7 @@ before Accounts and refuses a dangling Person reference. Reach-out rows use a
 deterministic content-bound migration identity and retain the source order and
 exact optional fields. Preference ownership lives in the executable SQLite
 contract source consumed by both TypeScript and Rust. Device-local fields and
-compatibility-only fields are excluded before `json_tree` creates canonical
+unknown obsolete fields are excluded before `json_tree` creates canonical
 preference nodes. The decomposer never stores or hashes the source shell.
 Historical Friend objects are derived compatibility projections. They are
 excluded when their canonical Person and Account sources are present, and they

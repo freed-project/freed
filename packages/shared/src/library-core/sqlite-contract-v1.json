@@ -38,8 +38,6 @@
       "extractTopics": "sync"
     },
     "display": {
-      "itemsPerPage": "compatibility-only",
-      "compactMode": "compatibility-only",
       "themeId": "device-local",
       "showEngagementCounts": "sync",
       "animationIntensity": "sync",
@@ -49,7 +47,6 @@
       "friendsSidebarWidth": "device-local",
       "friendsSidebarOpen": "device-local",
       "friendsMode": "device-local",
-      "friendAvatarTint": "compatibility-only",
       "debugPanelWidth": "device-local",
       "mapMode": "device-local",
       "mapTimeMode": "device-local",
@@ -105,11 +102,6 @@
       "dateGroupingEnabled": "sync",
       "motionLevel": "sync"
     },
-    "sync": {
-      "cloudProvider": "compatibility-only",
-      "autoBackup": "compatibility-only",
-      "backupFrequency": "compatibility-only"
-    },
     "ulysses": {
       "enabled": "sync",
       "blockedPlatforms": "nested",
@@ -118,7 +110,6 @@
     "user": {
       "weights": "nested",
       "ulysses": "nested",
-      "sync": "compatibility-only",
       "display": "nested",
       "xCapture": "nested",
       "fbCapture": "nested",

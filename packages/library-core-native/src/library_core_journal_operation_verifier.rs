@@ -579,15 +579,12 @@ fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> Jou
         (
             "display",
             [
-                "itemsPerPage",
-                "compactMode",
                 "themeId",
                 "sidebarWidth",
                 "sidebarMode",
                 "friendsSidebarWidth",
                 "friendsSidebarOpen",
                 "friendsMode",
-                "friendAvatarTint",
                 "debugPanelWidth",
                 "mapMode",
                 "mapTimeMode",

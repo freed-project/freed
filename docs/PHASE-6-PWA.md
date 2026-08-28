@@ -203,7 +203,7 @@
   - [x] `rss_feed_detail_v1` performs one primary-key lookup in browser SQLite
         and returns the same complete synchronized RSS Feed record as native
         Rust under a 64 KiB source-fenced response ceiling. Device-local
-        scheduler state and compatibility-only HTTP validators never enter the
+        scheduler state and obsolete HTTP validators never enter the
         query result.
   - [x] `item_reader_body_v1` returns exact bounded byte ranges from inline
         SQLite text or content-addressed chunks through the same closed worker
@@ -572,6 +572,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.85 | Route Friends graph pin set and clear actions through the closed OPFS SQLite worker mutation boundary. Startup imports valid historical graph positions into foreign-keyed device-local SQLite rows once, drops missing entities, deletes the retired localStorage key only after a successful import, and preserves the source when a query or mutation fails. React retains only the visible graph and a query invalidation counter | High       | ✓ Complete                                                                                      |
 | 6.86 | Remove the synchronized reader HTML compatibility field and worker fallback. The PWA reads full article HTML only from its local cache or selective content vault, and synchronized OPFS SQLite metadata carries bounded text and content descriptors only | High       | ✓ Complete                                                                                      |
 | 6.87 | Require every OPFS SQLite actor capability to use the authority-signed version 2 contract. The schema and checkpoint importer reject version 1 legacy editor rows, so a PWA can never reactivate retired actor authority from an old checkpoint or browser database | High       | ✓ Complete                                                                                      |
+| 6.88 | Remove portable document metadata, unused sync and display preferences, RSS validator fields, and the `compatibility-only` disposition from the PWA contract. OPFS SQLite stores current normalized preference nodes only and ignores unknown historical fields during one-time source migration | High       | ✓ Complete                                                                                      |
 
 ---
 

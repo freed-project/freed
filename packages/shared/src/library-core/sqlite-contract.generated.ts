@@ -47,8 +47,6 @@ export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = {
     "extractTopics": "sync"
   },
   "display": {
-    "itemsPerPage": "compatibility-only",
-    "compactMode": "compatibility-only",
     "themeId": "device-local",
     "showEngagementCounts": "sync",
     "animationIntensity": "sync",
@@ -58,7 +56,6 @@ export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = {
     "friendsSidebarWidth": "device-local",
     "friendsSidebarOpen": "device-local",
     "friendsMode": "device-local",
-    "friendAvatarTint": "compatibility-only",
     "debugPanelWidth": "device-local",
     "mapMode": "device-local",
     "mapTimeMode": "device-local",
@@ -114,11 +111,6 @@ export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = {
     "dateGroupingEnabled": "sync",
     "motionLevel": "sync"
   },
-  "sync": {
-    "cloudProvider": "compatibility-only",
-    "autoBackup": "compatibility-only",
-    "backupFrequency": "compatibility-only"
-  },
   "ulysses": {
     "enabled": "sync",
     "blockedPlatforms": "nested",
@@ -127,7 +119,6 @@ export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = {
   "user": {
     "weights": "nested",
     "ulysses": "nested",
-    "sync": "compatibility-only",
     "display": "nested",
     "xCapture": "nested",
     "fbCapture": "nested",

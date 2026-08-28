@@ -7,7 +7,6 @@ import type {
   ContentSignals,
   DesktopClientRegistration,
   DisplayPreferences,
-  DocumentMeta,
   Engagement,
   EventCandidate,
   FacebookCapturePreferences,
@@ -27,7 +26,6 @@ import type {
   StoryWallPreferences,
   StoryWallPublishTarget,
   StoryWallStylePreferences,
-  SyncPreferences,
   TimeRange,
   UlyssesPreferences,
   UserPreferences,
@@ -47,7 +45,6 @@ export type SyncWriteDisposition =
   | "sync"
   | "positive-sync"
   | "device-local"
-  | "compatibility-only"
   | "nested";
 
 export type FieldPolicy = SyncWriteDisposition;
@@ -59,8 +56,6 @@ export type ExhaustiveSyncWritePolicy<T extends object> = {
 export const WEIGHT_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
 
 export const ULYSSES_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ulysses satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
-
-export const SYNC_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.sync satisfies ExhaustiveSyncWritePolicy<SyncPreferences>;
 
 export const READING_ENHANCEMENTS_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.reading satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
 
@@ -161,8 +156,6 @@ export const RSS_FEED_WRITE_POLICY = {
   nextFetchAfter: "device-local",
   consecutiveFailures: "device-local",
   lastFetchError: "device-local",
-  etag: "compatibility-only",
-  lastModified: "compatibility-only",
   imageUrl: "sync",
   enabled: "sync",
   pollInterval: "sync",
@@ -335,32 +328,16 @@ export const FEED_ITEM_WRITE_POLICY = {
   sampleDataFingerprint: "nested",
 } as const satisfies ExhaustiveSyncWritePolicy<FeedItem>;
 
-export const DOCUMENT_META_WRITE_POLICY = {
-  documentId: "sync",
-  deviceId: "compatibility-only",
-  lastSync: "compatibility-only",
-  version: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<DocumentMeta>;
-
 export const DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY = {
   id: "sync",
   registeredAt: "sync",
 } as const satisfies ExhaustiveSyncWritePolicy<DesktopClientRegistration>;
 
 /**
- * Keys whose disposition is "nested", in either policy form.
- *
- * This has to see through the richer `{disposition, tier, delete}` shape as
- * well as the bare string, or a field gains a tier and silently stops being
- * treated as nested — which drops its sanitizer and lets unsanitized nested
- * values through. That is a correctness hole, not a typing inconvenience.
+ * Keys whose disposition is "nested".
  */
 type NestedPolicyKeys<P> = {
-  [K in keyof P]-?: P[K] extends "nested"
-    ? K
-    : P[K] extends { readonly disposition: "nested" }
-      ? K
-      : never;
+  [K in keyof P]-?: P[K] extends "nested" ? K : never;
 }[keyof P];
 
 type NestedSanitizers<P> = {
@@ -387,11 +364,6 @@ function sanitizeByPolicy<
   for (const key of Object.keys(policy)) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
     const value = source[key];
-    // Normalize, do not compare the raw policy entry. A field written in the
-    // richer {disposition, tier, delete} form is an object, so a direct string
-    // comparison falls through every branch and silently DROPS the field from
-    // the sanitized result. That is data loss, not a typing detail, and it is
-    // why this file's policy objects are runtime data rather than pure types.
     const disposition = policy[key as keyof P] as SyncWriteDisposition;
 
     if (disposition === "sync") {

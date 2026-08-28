@@ -908,7 +908,7 @@ fn sanitize_preference_object(
                     result.insert(field.clone(), value);
                 }
             }
-            Some("device-local" | "compatibility-only") => {}
+            Some("device-local") => {}
             _ => return Err(invalid("generated preference disposition is invalid")),
         }
     }
@@ -3168,7 +3168,7 @@ mod tests {
     }
 
     #[test]
-    fn decomposes_the_shell_and_excludes_local_and_compatibility_preferences() {
+    fn decomposes_the_historical_source_and_excludes_non_synchronized_preferences() {
         let mut connection = Connection::open_in_memory().unwrap();
         install_normalized_schema_v1(&connection).unwrap();
         let shell = json!({

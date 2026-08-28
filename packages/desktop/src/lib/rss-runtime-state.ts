@@ -41,8 +41,6 @@ function withoutLegacySyncedRuntimeState(feed: RssFeed): RssFeed {
   delete clean.nextFetchAfter;
   delete clean.consecutiveFailures;
   delete clean.lastFetchError;
-  delete clean.etag;
-  delete clean.lastModified;
   return clean;
 }
 

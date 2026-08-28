@@ -662,12 +662,6 @@ export interface RssFeed {
   /** @deprecated Device-local RSS diagnostics state. */
   lastFetchError?: string;
 
-  /** @deprecated Device-local HTTP cache validator. */
-  etag?: string;
-
-  /** @deprecated Device-local HTTP cache validator. */
-  lastModified?: string;
-
   /** Feed image URL */
   imageUrl?: string;
 
@@ -720,20 +714,6 @@ export interface UlyssesPreferences {
 
   /** Allowed paths per platform (e.g., /messages, /notifications) */
   allowedPaths: Record<string, string[]>;
-}
-
-/**
- * Sync preferences
- */
-export interface SyncPreferences {
-  /** Cloud backup provider */
-  cloudProvider?: "gdrive" | "icloud" | "dropbox";
-
-  /** Whether auto-backup is enabled */
-  autoBackup: boolean;
-
-  /** Backup frequency */
-  backupFrequency?: "hourly" | "daily" | "manual";
 }
 
 /**
@@ -791,12 +771,6 @@ export type FeedSignalMode = "all" | "inspiring" | "events" | "personal" | "conv
 export type SavedContentSortMode = "date_saved" | "date_published" | "recommended" | "shortest_read";
 
 export interface DisplayPreferences {
-  /** @deprecated Unused device-local pagination setting. */
-  itemsPerPage?: number;
-
-  /** @deprecated Unused device-local density setting. */
-  compactMode?: boolean;
-
   /** Active visual theme */
   themeId: ThemeId;
 
@@ -823,9 +797,6 @@ export interface DisplayPreferences {
 
   /** @deprecated Device-local. Use the device display preference store. */
   friendsMode?: MapMode;
-
-  /** @deprecated Friend avatar tint is now derived from the active theme. */
-  friendAvatarTint?: string;
 
   /** @deprecated Device-local. Use the device display preference store. */
   debugPanelWidth?: number;
@@ -855,8 +826,6 @@ export interface DisplayPreferences {
 export interface UserPreferences {
   weights: WeightPreferences;
   ulysses: UlyssesPreferences;
-  /** @deprecated Cloud connection and scheduling state is device-local. */
-  sync?: SyncPreferences;
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
   fbCapture: FacebookCapturePreferences;
@@ -1035,11 +1004,11 @@ export type FriendSource = LegacyFriendSource;
 export type DeviceContact = LegacyDeviceContact;
 
 // =============================================================================
-// Document Metadata
+// Library client registration
 // =============================================================================
 
 /**
- * One Freed Desktop installation registered with a synchronized library.
+ * One Freed Desktop installation registered with a synchronized Library.
  *
  * This is intentionally durable coordination metadata, not online presence.
  * Runtime heartbeats, connection status, and provider scheduling remain local.
@@ -1050,33 +1019,6 @@ export interface DesktopClientRegistration {
 
   /** First time this installation registered with the library. */
   registeredAt: number;
-}
-
-/**
- * Document metadata
- */
-export interface DocumentMeta {
-  /** Stable identifier for this synchronized document. */
-  documentId?: string;
-
-  /** @deprecated This value identifies the document, not a device. */
-  deviceId?: string;
-
-  /** @deprecated Sync timestamps are device-local runtime diagnostics. */
-  lastSync?: number;
-
-  /** Document version for migrations */
-  version: number;
-}
-
-/** Portable Library shell imported into native SQLite. */
-export interface FreedDoc {
-  feedItems: Record<string, FeedItem>;
-  rssFeeds: Record<string, RssFeed>;
-  persons: Record<string, Person>;
-  accounts: Record<string, Account>;
-  preferences: UserPreferences;
-  meta: DocumentMeta;
 }
 
 // =============================================================================
@@ -1322,18 +1264,4 @@ export interface IdentitySuggestion {
   label: string;
   reason?: string;
   createdAt: number;
-}
-
-/**
- * Create default document metadata
- */
-export function createDefaultMeta(): DocumentMeta {
-  return {
-    documentId: crypto.randomUUID(),
-    version: 1,
-  };
-}
-
-export function resolveDocumentId(meta: DocumentMeta | null | undefined): string {
-  return meta?.documentId ?? meta?.deviceId ?? "unknown";
 }

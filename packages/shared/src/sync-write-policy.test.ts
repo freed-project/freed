@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeFeedItemWrite } from "./sync-write-policy.js";
+import {
+  sanitizeFeedItemWrite,
+  sanitizeRssFeedWrite,
+  sanitizeUserPreferenceWrite,
+} from "./sync-write-policy.js";
+import type { RssFeed, UserPreferences } from "./types.js";
 
 describe("synchronized write policy", () => {
   it("retains normalized nested content and excludes device-local ranking", () => {
@@ -20,5 +25,27 @@ describe("synchronized write policy", () => {
     expect(sanitized.preservedContent).toBeDefined();
     expect(sanitized).not.toHaveProperty("priority");
     expect(sanitized).not.toHaveProperty("priorityComputedAt");
+  });
+
+  it("drops obsolete document-era preference and RSS fields", () => {
+    const preferences = sanitizeUserPreferenceWrite({
+      display: {
+        itemsPerPage: 500,
+        compactMode: true,
+        friendAvatarTint: "red",
+        showEngagementCounts: true,
+      },
+      sync: { cloudProvider: "gdrive", autoBackup: true },
+    } as unknown as Partial<UserPreferences>);
+    const feed = sanitizeRssFeedWrite({
+      url: "https://example.com/feed.xml",
+      etag: "retired-etag",
+      lastModified: "yesterday",
+    } as unknown as Partial<RssFeed>);
+
+    expect(preferences).toStrictEqual({
+      display: { showEngagementCounts: true },
+    });
+    expect(feed).toStrictEqual({ url: "https://example.com/feed.xml" });
   });
 });
