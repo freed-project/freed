@@ -10,6 +10,7 @@ import {
 
 const generationId = "a".repeat(64);
 const request = {
+  analysisVersion: null,
   cancellationId: "cancel-scan-1",
   cursor: null,
   limit: 2,
@@ -71,6 +72,11 @@ describe("Library Core background item scan", () => {
 
   it("accepts only closed bounded requests and binary ordered responses", () => {
     expect(parseLibraryCoreItemScanRequestV1(request).ok).toBe(true);
+    expect(
+      parseLibraryCoreItemScanRequestV1({ ...request, analysisVersion: 3 }).ok,
+    ).toBe(true);
+    const { analysisVersion: _analysisVersion, ...missingSelector } = request;
+    expect(parseLibraryCoreItemScanRequestV1(missingSelector).ok).toBe(false);
     expect(
       parseLibraryCoreItemScanRequestV1({ ...request, limit: 65 }).ok,
     ).toBe(false);

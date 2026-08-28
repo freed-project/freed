@@ -58,8 +58,6 @@ import {
   deleteAllArchivedLibraryItems,
   pruneArchivedLibraryItems,
   updateLibraryPreferences,
-  backfillLibraryContentSignals,
-  deduplicateLibraryFeedItems,
   healUntitledLibraryFeedTitles,
   toggleLibraryItemLiked,
   confirmLibraryItemLikedSynced,
@@ -73,7 +71,6 @@ import {
   readLibraryCoreItemDetail,
   scanLibraryCoreItems,
 } from "./library-core-item-detail-runtime";
-import { isSqliteLibraryActive } from "./sqlite-library";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -83,10 +80,6 @@ import {
   startBackgroundActivity,
 } from "@freed/ui/lib/background-activity-store";
 import { pinReaderItem } from "./content-fetcher";
-import {
-  isBackgroundRuntimeDeferredError,
-  runBackgroundJob,
-} from "./background-runtime-coordinator";
 import {
   scanLibraryCoreRssFeedsV1,
   type LibraryCoreRuntimeStateV1,
@@ -116,8 +109,6 @@ import {
 
 let outboxTeardown: (() => void) | null = null;
 let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
-let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
-let startupContentSignalBackfillRunning = false;
 let appInitializationPromise: Promise<void> | null = null;
 let librarySubscriptionTeardown: (() => void) | null = null;
 let storeAcceptingResetSensitiveWork = true;
@@ -528,29 +519,20 @@ async function runStoreMutation(
  * Run idempotent startup migrations after the app survives launch.
  * The SQLite runtime subscription is already wired up at call time, so
  * mutation invalidations propagate to the UI automatically. Errors are
- * swallowed because all three operations are non-fatal. Delaying maintenance
+ * swallowed because archive maintenance is non-fatal. Delaying maintenance
  * keeps startup work away from first paint.
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
-  if (!isSqliteLibraryActive()) {
-    try {
-      await healUntitledLibraryFeedTitles();
-    } catch { /* non-fatal */ }
-    if (!storeAcceptingResetSensitiveWork) return;
-    try {
-      await deduplicateLibraryFeedItems();
-    } catch { /* non-fatal */ }
-  }
+  try {
+    await healUntitledLibraryFeedTitles();
+  } catch { /* non-fatal */ }
   if (!storeAcceptingResetSensitiveWork) return;
   try {
     if (archivePruneDays > 0) {
       await pruneArchivedLibraryItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
-  if (!isSqliteLibraryActive()) {
-    scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
-  }
 }
 
 const STARTUP_MAINTENANCE_INITIAL_DELAY_MS = 15 * 60 * 1000;
@@ -597,63 +579,12 @@ function recordReadStateInfo(message: string, detail: Record<string, unknown>): 
   );
 }
 
-const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 10 * 60 * 1000;
-const STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS = 30 * 1000;
-const STARTUP_CONTENT_SIGNAL_INTERVAL_MS = 60 * 1000;
-const STARTUP_CONTENT_SIGNAL_BATCH_SIZE = 50;
-
 function scheduleStartupMigrations(archivePruneDays: number): void {
   if (!storeAcceptingResetSensitiveWork || startupMaintenanceTimer) return;
   startupMaintenanceTimer = setTimeout(() => {
     startupMaintenanceTimer = null;
     void trackResetSensitiveStoreOperation(runStartupMigrations(archivePruneDays));
   }, STARTUP_MAINTENANCE_INITIAL_DELAY_MS);
-}
-
-function scheduleStartupContentSignalBackfill(delayMs: number): void {
-  if (!storeAcceptingResetSensitiveWork || startupContentSignalTimer) return;
-  startupContentSignalTimer = setTimeout(() => {
-    startupContentSignalTimer = null;
-    void trackResetSensitiveStoreOperation(runStartupContentSignalBackfill());
-  }, delayMs);
-}
-
-async function runStartupContentSignalBackfill(): Promise<void> {
-  if (!storeAcceptingResetSensitiveWork || startupContentSignalBackfillRunning) return;
-  startupContentSignalBackfillRunning = true;
-
-  try {
-    const summary = await runBackgroundJob({
-      kind: "content-signal-backfill",
-      source: "startup-migration",
-      blocking: false,
-      timeoutMs: 120_000,
-      run: () => trackResetSensitiveStoreOperation(
-        backfillLibraryContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
-      ),
-    });
-
-    if (summary.updated > 0) {
-      log.info(
-        `[content-signals] startup backfilled ${summary.updated.toLocaleString()} item${summary.updated === 1 ? "" : "s"}, ${summary.remaining.toLocaleString()} remaining`,
-      );
-    }
-
-    if (summary.remaining > 0) {
-      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INTERVAL_MS);
-    }
-  } catch (error) {
-    if (isBackgroundRuntimeDeferredError(error)) {
-      log.info(`[content-signals] startup backfill deferred reason=${error.reason}`);
-      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS);
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    log.warn(`[content-signals] startup backfill failed err=${message}`);
-  } finally {
-    startupContentSignalBackfillRunning = false;
-  }
 }
 
 async function flushPendingReadMarks(): Promise<void> {
@@ -1247,10 +1178,6 @@ export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   if (startupMaintenanceTimer) {
     clearTimeout(startupMaintenanceTimer);
     startupMaintenanceTimer = null;
-  }
-  if (startupContentSignalTimer) {
-    clearTimeout(startupContentSignalTimer);
-    startupContentSignalTimer = null;
   }
   if (readMarkBatchTimer) {
     clearTimeout(readMarkBatchTimer);

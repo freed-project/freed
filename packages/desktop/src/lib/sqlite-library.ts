@@ -1144,6 +1144,19 @@ async function maybeSubmitFeedItemAnalysisSets(
   return true;
 }
 
+export async function commitDesktopLibraryFeedItemAnalysisSets(
+  assignments: readonly Readonly<{
+    contentSignals: FeedItem["contentSignals"];
+    entityId: string;
+    eventCandidate: FeedItem["eventCandidate"];
+  }>[],
+  assignedAtMs: number,
+): Promise<void> {
+  if (!(await maybeSubmitFeedItemAnalysisSets(assignments, assignedAtMs))) {
+    throw new Error("Normalized SQLite FeedItem analysis context is required");
+  }
+}
+
 async function maybeSubmitFeedItemRemoves(
   entityIds: readonly string[],
   removedAtMs: number,
@@ -2956,9 +2969,6 @@ export async function dispatchSqliteMutation(
       );
       break;
     }
-    case "DEDUPLICATE_ITEMS":
-    case "BACKFILL_CONTENT_SIGNALS":
-      break;
   }
 
   const { state, changedItems } =

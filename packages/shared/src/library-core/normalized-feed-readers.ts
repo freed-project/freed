@@ -95,6 +95,12 @@ export interface LibraryCoreNormalizedReaderRuntime {
 
 export type LibraryCoreBackgroundScanDecision = "continue" | "stop";
 
+export interface LibraryCoreAnalysisCandidateBatchV1 {
+  readonly items: readonly FeedItem[];
+  readonly remaining: boolean;
+  readonly sourceRevision: number;
+}
+
 /** Read one exact synchronized RSS Feed without consulting renderer state. */
 export async function readLibraryCoreRssFeedV1(
   query: LibraryCoreNormalizedQueryExecutor,
@@ -242,6 +248,7 @@ export async function scanLibraryCoreNormalizedBackgroundItemsV1(
   let cursor: string | null = null;
   do {
     const page: LibraryCoreItemScanResponseV1 = await runtime.query({
+      analysisVersion: null,
       cancellationId: operationId(runtime, "background-page"),
       cursor,
       limit: LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
@@ -249,25 +256,87 @@ export async function scanLibraryCoreNormalizedBackgroundItemsV1(
       readerSessionId,
       schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
     });
-    const items = Object.freeze(
-      page.rows.map((row) => {
-        const item = libraryCoreFeedCardToItemV1(row);
-        return Object.freeze({
-          ...item,
-          ...(row.rssSource === null ? {} : { rssSource: row.rssSource }),
-          ...(row.sampleDataFingerprint === null
-            ? {}
-            : { sampleDataFingerprint: row.sampleDataFingerprint }),
-          userState: Object.freeze({
-            ...item.userState,
-            hidden: row.hidden,
-          }),
-        });
-      }),
-    );
+    const items = itemScanRowsToFeedItems(page.rows);
     if (items.length > 0 && (await visit(items)) === "stop") return;
     cursor = page.nextCursor;
   } while (cursor !== null);
+}
+
+function itemScanRowsToFeedItems(
+  rows: LibraryCoreItemScanResponseV1["rows"],
+): readonly FeedItem[] {
+  return Object.freeze(
+    rows.map((row) => {
+      const item = libraryCoreFeedCardToItemV1(row);
+      return Object.freeze({
+        ...item,
+        ...(row.rssSource === null ? {} : { rssSource: row.rssSource }),
+        ...(row.sampleDataFingerprint === null
+          ? {}
+          : { sampleDataFingerprint: row.sampleDataFingerprint }),
+        userState: Object.freeze({
+          ...item.userState,
+          hidden: row.hidden,
+        }),
+      });
+    }),
+  );
+}
+
+/**
+ * Read one bounded batch whose normalized analysis row is missing or stale.
+ * The selector runs inside SQLite, so repeated batches never rescan current
+ * rows or retain a renderer corpus.
+ */
+export async function readLibraryCoreNormalizedAnalysisCandidateBatchV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  analysisVersion: number,
+  maximumItems: number,
+): Promise<LibraryCoreAnalysisCandidateBatchV1> {
+  if (
+    !Number.isSafeInteger(analysisVersion) ||
+    analysisVersion < 1 ||
+    !Number.isSafeInteger(maximumItems) ||
+    maximumItems < 1 ||
+    maximumItems > 1_000
+  ) {
+    throw new TypeError("analysis candidate batch bounds are invalid");
+  }
+  const readerSessionId = operationId(runtime, "analysis-reader");
+  const items: FeedItem[] = [];
+  let cursor: string | null = null;
+  let sourceRevision: number | null = null;
+  let remaining = false;
+  do {
+    const pageLimit = Math.min(
+      LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
+      maximumItems - items.length,
+    );
+    const page: LibraryCoreItemScanResponseV1 = await runtime.query({
+      analysisVersion,
+      cancellationId: operationId(runtime, "analysis-page"),
+      cursor,
+      limit: pageLimit,
+      queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
+    });
+    sourceRevision ??= page.source.projectionRevision;
+    if (page.source.projectionRevision !== sourceRevision) {
+      throw new Error("analysis candidate source revision changed");
+    }
+    items.push(...itemScanRowsToFeedItems(page.rows));
+    cursor = page.nextCursor;
+    if (items.length >= maximumItems) {
+      remaining = cursor !== null;
+      break;
+    }
+  } while (cursor !== null);
+  return Object.freeze({
+    items: Object.freeze(items),
+    remaining,
+    sourceRevision: sourceRevision ?? 0,
+  });
 }
 
 /** Visit content fetch candidates without materializing FeedItem records. */

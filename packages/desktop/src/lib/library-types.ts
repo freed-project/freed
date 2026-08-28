@@ -98,9 +98,7 @@ export type LibraryMutationRequest =
       items: FeedItem[];
     }
   | { reqId: number; type: "BATCH_IMPORT_ITEMS"; items: FeedItem[] }
-  | { reqId: number; type: "HEAL_UNTITLED_FEEDS" }
-  | { reqId: number; type: "DEDUPLICATE_ITEMS" }
-  | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number };
+  | { reqId: number; type: "HEAL_UNTITLED_FEEDS" };
 
 export type LibraryMutationEvent =
   | {

@@ -9612,7 +9612,11 @@ export class PwaLibraryCoreSqliteEngine {
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.background_item_page_v1;
     const rows = this.#database.exec({
       sql: program.sql,
-      bind: [afterGlobalId, request.value.limit + 1],
+      bind: [
+        afterGlobalId,
+        request.value.limit + 1,
+        request.value.analysisVersion,
+      ],
       rowMode: "object",
       returnValue: "resultRows",
     });

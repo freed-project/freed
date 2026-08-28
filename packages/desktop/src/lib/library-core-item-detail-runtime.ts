@@ -20,9 +20,11 @@ import {
   readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
+  readLibraryCoreNormalizedAnalysisCandidateBatchV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   scanLibraryCoreContentFetchCandidatesV1,
   type LibraryCoreContentFetchCandidateV1,
+  type LibraryCoreAnalysisCandidateBatchV1,
   type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
 import {
@@ -275,6 +277,17 @@ export async function scanLibraryCoreBackgroundItems(
   return scanLibraryCoreNormalizedBackgroundItemsV1(
     NORMALIZED_READER_RUNTIME,
     visitPage,
+  );
+}
+
+export async function readLibraryCoreAnalysisCandidateBatch(
+  analysisVersion: number,
+  maximumItems: number,
+): Promise<LibraryCoreAnalysisCandidateBatchV1> {
+  return readLibraryCoreNormalizedAnalysisCandidateBatchV1(
+    NORMALIZED_READER_RUNTIME,
+    analysisVersion,
+    maximumItems,
   );
 }
 

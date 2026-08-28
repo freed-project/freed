@@ -34,7 +34,6 @@ const libraryRuntime = vi.hoisted(() => {
     pruneArchivedLibraryItems: resolved(),
     updateLibraryPreferences: resolved(),
     backfillLibraryContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
-    deduplicateLibraryFeedItems: resolved(),
     healUntitledLibraryFeedTitles: resolved(),
     toggleLibraryItemLiked: resolved(),
     confirmLibraryItemLikedSynced: resolved(),

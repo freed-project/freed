@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
+  readLibraryCoreNormalizedAnalysisCandidateBatchV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreRssFeedV1,
   scanLibraryCoreContentFetchCandidatesV1,
@@ -379,6 +380,7 @@ describe("cross-platform normalized feed readers", () => {
 
     expect(visited).toEqual([["first"], ["second"]]);
     expect(query).toHaveBeenNthCalledWith(1, {
+      analysisVersion: null,
       cancellationId: "background-page:test",
       cursor: null,
       limit: 64,
@@ -407,6 +409,42 @@ describe("cross-platform normalized feed readers", () => {
     );
 
     expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("reads only one bounded stale-analysis batch under one source fence", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "more-stale-analysis",
+      rows: [backgroundCard("first"), backgroundCard("second")],
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 17,
+        transitionSequence: 17,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const batch = await readLibraryCoreNormalizedAnalysisCandidateBatchV1(
+      { query, randomId: () => "test" },
+      3,
+      2,
+    );
+
+    expect(batch).toEqual({
+      items: [
+        expect.objectContaining({ globalId: "first" }),
+        expect.objectContaining({ globalId: "second" }),
+      ],
+      remaining: true,
+      sourceRevision: 17,
+    });
+    expect(query).toHaveBeenCalledWith({
+      analysisVersion: 3,
+      cancellationId: "analysis-page:test",
+      cursor: null,
+      limit: 2,
+      queryId: "background_item_page_v1",
+      readerSessionId: "analysis-reader:test",
+      schemaVersion: 1,
+    });
   });
 
   it("streams compact content fetch candidates without reconstructing items", async () => {

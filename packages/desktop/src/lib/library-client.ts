@@ -10,6 +10,8 @@ import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
   collectSavedYouTubeVideoUrls,
+  inferContentSignals,
+  inferEventCandidate,
   type Account,
   type ContentSignal,
   type ContentSignalBackfillSummary,
@@ -45,12 +47,16 @@ import {
 } from "@freed/ui/lib/debug-store";
 import {
   dispatchSqliteMutation,
+  commitDesktopLibraryFeedItemAnalysisSets,
   ensureFreshNormalizedDesktopLibrary,
   loadSqliteLibraryState,
   readSqliteItems,
   resetNormalizedLibrary,
 } from "./sqlite-library";
-import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
+import {
+  readLibraryCoreAnalysisCandidateBatch,
+  scanLibraryCoreBackgroundItems,
+} from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
 import {
   createDesktopLibraryCoreOperationId,
@@ -517,25 +523,83 @@ export async function importLibraryItems(
 
 export const healUntitledLibraryFeedTitles = () =>
   request({ type: "HEAL_UNTITLED_FEEDS" }).then(() => {});
-export const deduplicateLibraryFeedItems = () =>
-  request({ type: "DEDUPLICATE_ITEMS" }).then(() => {});
 
 export async function backfillLibraryContentSignals(
-  _batchSize = 200,
+  batchSize = 200,
 ): Promise<ContentSignalBackfillSummary> {
-  return {
-    version: CONTENT_SIGNAL_VERSION,
-    total: lastState?.totalItemCount ?? 0,
-    scanned: 0,
-    updated: 0,
-    remaining: 0,
-    counts: Object.fromEntries(
-      CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0]),
-    ) as Record<ContentSignal, number>,
-    multiSignalCount: 0,
-    untaggedCount: 0,
-    samples: {},
-  };
+  if (
+    !Number.isSafeInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > 1_000
+  ) {
+    throw new TypeError("content signal batch size is invalid");
+  }
+  let summary!: ContentSignalBackfillSummary;
+  const operation = mutationQueue.then(async () => {
+    await ensureInitialized();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let batch: Awaited<
+        ReturnType<typeof readLibraryCoreAnalysisCandidateBatch>
+      >;
+      try {
+        batch = await readLibraryCoreAnalysisCandidateBatch(
+          CONTENT_SIGNAL_VERSION,
+          batchSize,
+        );
+      } catch (error) {
+        if (attempt === 0) continue;
+        throw error;
+      }
+      const beforeCommit = await loadSqliteLibraryState();
+      if (beforeCommit.searchCorpusVersion !== batch.sourceRevision) {
+        if (attempt === 0) continue;
+        throw new Error(
+          "Library source changed while selecting semantic analysis candidates",
+        );
+      }
+      const inferredAt = Date.now();
+      const analyses = batch.items.map((item) => {
+        const contentSignals = inferContentSignals(item, inferredAt);
+        return {
+          contentSignals,
+          entityId: item.globalId,
+          eventCandidate:
+            inferEventCandidate(item, contentSignals, inferredAt) ?? undefined,
+        };
+      });
+      await commitDesktopLibraryFeedItemAnalysisSets(analyses, inferredAt);
+      const state = await reloadDesktopLibraryRuntimeState();
+      const counts = Object.fromEntries(
+        CONTENT_SIGNAL_KEYS.map((signal) => [
+          signal,
+          analyses.reduce(
+            (count, analysis) =>
+              count + Number(analysis.contentSignals.tags.includes(signal)),
+            0,
+          ),
+        ]),
+      ) as Record<ContentSignal, number>;
+      summary = {
+        version: CONTENT_SIGNAL_VERSION,
+        total: state.totalItemCount,
+        scanned: batch.items.length,
+        updated: batch.items.length,
+        remaining: batch.remaining ? 1 : 0,
+        counts,
+        multiSignalCount: analyses.filter(
+          (analysis) => analysis.contentSignals.tags.length > 1,
+        ).length,
+        untaggedCount: analyses.filter(
+          (analysis) => analysis.contentSignals.tags.length === 0,
+        ).length,
+        samples: {},
+      };
+      return;
+    }
+  });
+  mutationQueue = operation.catch(() => undefined);
+  await operation;
+  return summary;
 }
 
 export async function addLibraryStubItem(

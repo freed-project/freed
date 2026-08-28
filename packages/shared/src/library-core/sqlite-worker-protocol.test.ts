@@ -237,6 +237,7 @@ describe("Library Core SQLite worker protocol", () => {
     ).toBe("query");
     expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-item-scan", {
+        analysisVersion: null,
         cancellationId: "cancel-scan-1",
         cursor: null,
         limit: 64,

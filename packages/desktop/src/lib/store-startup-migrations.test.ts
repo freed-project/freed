@@ -13,28 +13,22 @@ import {
 } from "./facebook-group-discovery";
 
 const {
-  mockBackfillLibraryContentSignals,
-  mockDeduplicateLibraryFeedItems,
   mockHealUntitledLibraryFeedTitles,
   mockPruneArchivedLibraryItems,
   mockCapturePreLibraryMemoryBaseline,
   mockInitializeLibrary,
   mockRecordLibraryRuntimeReady,
   mockRecordLibraryRuntimeLoadStarted,
-  mockRunBackgroundJob,
   mockStartOutboxProcessor,
   mockSubscribe,
   mockUnsubscribe,
 } = vi.hoisted(() => ({
-  mockBackfillLibraryContentSignals: vi.fn(),
-  mockDeduplicateLibraryFeedItems: vi.fn(),
   mockHealUntitledLibraryFeedTitles: vi.fn(),
   mockPruneArchivedLibraryItems: vi.fn(),
   mockCapturePreLibraryMemoryBaseline: vi.fn(),
   mockInitializeLibrary: vi.fn(),
   mockRecordLibraryRuntimeReady: vi.fn(),
   mockRecordLibraryRuntimeLoadStarted: vi.fn(),
-  mockRunBackgroundJob: vi.fn(),
   mockStartOutboxProcessor: vi.fn(),
   mockSubscribe: vi.fn(),
   mockUnsubscribe: vi.fn(),
@@ -64,17 +58,10 @@ vi.mock("./library-client", () => ({
   deleteAllArchivedLibraryItems: vi.fn(),
   pruneArchivedLibraryItems: mockPruneArchivedLibraryItems,
   updateLibraryPreferences: vi.fn(),
-  backfillLibraryContentSignals: mockBackfillLibraryContentSignals,
-  deduplicateLibraryFeedItems: mockDeduplicateLibraryFeedItems,
   healUntitledLibraryFeedTitles: mockHealUntitledLibraryFeedTitles,
   toggleLibraryItemLiked: vi.fn(),
   confirmLibraryItemLikedSynced: vi.fn(),
   confirmLibraryItemSeenSynced: vi.fn(),
-}));
-
-vi.mock("./background-runtime-coordinator", () => ({
-  isBackgroundRuntimeDeferredError: () => false,
-  runBackgroundJob: mockRunBackgroundJob,
 }));
 
 vi.mock("./platform-actions", () => ({
@@ -170,10 +157,6 @@ describe("store startup migrations", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
-    mockBackfillLibraryContentSignals.mockReset();
-    mockBackfillLibraryContentSignals.mockResolvedValue({ updated: 50, remaining: 0, total: 50 });
-    mockDeduplicateLibraryFeedItems.mockReset();
-    mockDeduplicateLibraryFeedItems.mockResolvedValue(undefined);
     mockHealUntitledLibraryFeedTitles.mockReset();
     mockHealUntitledLibraryFeedTitles.mockResolvedValue(undefined);
     mockPruneArchivedLibraryItems.mockReset();
@@ -182,8 +165,6 @@ describe("store startup migrations", () => {
     mockCapturePreLibraryMemoryBaseline.mockResolvedValue(true);
     mockInitializeLibrary.mockReset();
     mockInitializeLibrary.mockResolvedValue(createLibraryState());
-    mockRunBackgroundJob.mockReset();
-    mockRunBackgroundJob.mockImplementation(async (task) => task.run());
     mockStartOutboxProcessor.mockReset();
     mockStartOutboxProcessor.mockReturnValue(() => {});
     mockSubscribe.mockReset();
@@ -251,36 +232,16 @@ describe("store startup migrations", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
-    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
     expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
-    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
-    expect(mockRunBackgroundJob).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 1);
     expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
-    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
     expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
 
     expect(mockHealUntitledLibraryFeedTitles).toHaveBeenCalledTimes(1);
-    expect(mockDeduplicateLibraryFeedItems).toHaveBeenCalledTimes(1);
     expect(mockPruneArchivedLibraryItems).toHaveBeenCalledTimes(1);
-    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
-    expect(mockRunBackgroundJob).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 - 1);
-    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1);
-
-    expect(mockRunBackgroundJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "content-signal-backfill",
-        source: "startup-migration",
-      }),
-    );
-    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledWith(50);
   });
 
   it("does not run cleanup migrations before cloud sync catches up", async () => {
@@ -294,9 +255,7 @@ describe("store startup migrations", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
-    expect(mockDeduplicateLibraryFeedItems).not.toHaveBeenCalled();
     expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
-    expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
   });
 
   it("imports the legacy sidebar mode before initialization completes", async () => {

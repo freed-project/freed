@@ -496,6 +496,15 @@ analysis replacements use independent deterministic field clocks, so a new
 capture cannot erase user or enrichment records and a stale follower result
 cannot replace a newer child set.
 
+Local semantic enrichment uses the same authority boundary. SQLite selects
+only missing or stale analysis rows through the version-filtered
+`background_item_page_v1` contract in 64-row source-fenced pages. Shared code
+retains one bounded candidate batch. Freed Desktop infers signals and event
+candidates locally, rechecks the source revision, and submits the batch through
+the signed `feed_item_analysis_replace` program. OPFS SQLite implements the
+same selector and response contract. No document command, renderer scan, or
+fake zero-result maintenance path exists.
+
 The authority boundary forbids:
 
 - Generic JSON patch

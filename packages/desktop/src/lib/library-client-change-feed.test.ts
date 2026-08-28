@@ -3,6 +3,8 @@ import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  analysisCandidates: vi.fn(),
+  commitAnalysis: vi.fn(),
   dispatch: vi.fn(),
   query: vi.fn(),
   readItems: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock("./legacy-library-presence", () => ({
 }));
 
 vi.mock("./library-core-item-detail-runtime", () => ({
+  readLibraryCoreAnalysisCandidateBatch: mocks.analysisCandidates,
   scanLibraryCoreBackgroundItems: vi.fn(),
 }));
 
@@ -40,6 +43,7 @@ vi.mock("./library-core-normalized-query-client", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  commitDesktopLibraryFeedItemAnalysisSets: mocks.commitAnalysis,
   dispatchSqliteMutation: mocks.dispatch,
   ensureFreshNormalizedDesktopLibrary: vi.fn(async () => true),
   loadSqliteLibraryState: vi.fn(async () => state(1)),
@@ -48,6 +52,7 @@ vi.mock("./sqlite-library", () => ({
 }));
 
 import {
+  backfillLibraryContentSignals,
   initializeDesktopLibraryRuntime,
   markLibraryItemAsRead,
   resetLocalLibrary,
@@ -58,8 +63,100 @@ describe("Desktop Library client canonical invalidations", () => {
   beforeEach(async () => {
     await resetLocalLibrary();
     mocks.dispatch.mockReset();
+    mocks.analysisCandidates.mockReset();
+    mocks.commitAnalysis.mockReset();
     mocks.query.mockReset();
     mocks.readItems.mockReset();
+  });
+
+  it("infers one source-fenced SQLite analysis batch and commits it once", async () => {
+    const item: FeedItem = {
+      author: { displayName: "Ada", handle: "ada", id: "ada" },
+      capturedAt: 100,
+      content: {
+        mediaTypes: [],
+        mediaUrls: [],
+        text: "Join the community workshop tomorrow at 10am.",
+      },
+      contentType: "post",
+      globalId: "item-1",
+      platform: "saved",
+      publishedAt: 100,
+      topics: [],
+      userState: { archived: false, hidden: false, saved: false, tags: [] },
+    };
+    mocks.analysisCandidates.mockResolvedValue({
+      items: [item],
+      remaining: true,
+      sourceRevision: 1,
+    });
+    mocks.commitAnalysis.mockResolvedValue(undefined);
+    mocks.query.mockResolvedValue({
+      nextCursor: null,
+      queryId: "local_change_feed_v1",
+      rows: [],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 1,
+        transitionSequence: 0,
+      },
+    });
+
+    const summary = await backfillLibraryContentSignals(100);
+
+    expect(mocks.analysisCandidates).toHaveBeenCalledWith(3, 100);
+    expect(mocks.commitAnalysis).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          contentSignals: expect.objectContaining({
+            method: "rules",
+            version: 3,
+          }),
+          entityId: "item-1",
+        }),
+      ],
+      expect.any(Number),
+    );
+    expect(summary).toMatchObject({
+      remaining: 1,
+      scanned: 1,
+      total: 1,
+      updated: 1,
+      version: 3,
+    });
+  });
+
+  it("restarts candidate selection once when the SQLite source fence moves", async () => {
+    mocks.analysisCandidates
+      .mockResolvedValueOnce({
+        items: [],
+        remaining: false,
+        sourceRevision: 0,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        remaining: false,
+        sourceRevision: 1,
+      });
+    mocks.commitAnalysis.mockResolvedValue(undefined);
+    mocks.query.mockResolvedValue({
+      nextCursor: null,
+      queryId: "local_change_feed_v1",
+      rows: [],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 1,
+        transitionSequence: 0,
+      },
+    });
+
+    const summary = await backfillLibraryContentSignals(100);
+
+    expect(mocks.analysisCandidates).toHaveBeenCalledTimes(2);
+    expect(mocks.commitAnalysis).toHaveBeenCalledWith([], expect.any(Number));
+    expect(summary).toMatchObject({ remaining: 0, scanned: 0, updated: 0 });
   });
 
   it("publishes a bounded SQLite change-feed page instead of the synthetic mutation row", async () => {

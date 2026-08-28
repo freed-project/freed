@@ -1835,7 +1835,15 @@ only the active scope result and visible feed windows.
 
 Exact item lookups use `item_detail_v1`. Background enumeration uses
 `background_item_page_v1` with an opaque source-fenced cursor and a 64-row
-window. Mutation target discovery applies its product predicate while each
+window. Its closed nullable `analysisVersion` selector makes SQLite return
+only items whose normalized analysis row is missing or uses a different
+version. The shared batch reader retains at most 1,000 candidates, pins every
+page to one source revision, and reports only whether another bounded batch
+exists. Freed Desktop's local semantic classifier infers content signals and
+event candidates for that batch, rechecks the source revision, and commits one
+or more bounded signed `feed_item_analysis_replace` transactions. It never
+receives a corpus, fabricates a completion summary, or writes through a generic
+maintenance command. Mutation target discovery applies its product predicate while each
 page is visible and never invokes the historical offset reader. Workflows that
 still collect a complete identity or URL set must move to durable scope staging
 or a narrower aggregate before the final memory gate. The same page contract

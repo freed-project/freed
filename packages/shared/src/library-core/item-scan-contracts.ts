@@ -33,6 +33,7 @@ export const LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA = Object.freeze({
   schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
   canonicalKeys: Object.freeze([
+    "analysisVersion",
     "cancellationId",
     "cursor",
     "limit",
@@ -83,6 +84,7 @@ export const LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS =
   LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS;
 
 export interface LibraryCoreItemScanRequestV1 {
+  readonly analysisVersion: number | null;
   readonly cancellationId: string;
   readonly cursor: string | null;
   readonly limit: number;
@@ -263,6 +265,9 @@ export function parseLibraryCoreItemScanRequestV1(
     !record ||
     record.queryId !== LIBRARY_CORE_ITEM_SCAN_QUERY_ID ||
     record.schemaVersion !== LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION ||
+    (record.analysisVersion !== null &&
+      (!Number.isSafeInteger(record.analysisVersion) ||
+        (record.analysisVersion as number) < 1)) ||
     !isLibraryCoreOperationInstanceId(record.cancellationId) ||
     !isLibraryCoreOperationInstanceId(record.readerSessionId) ||
     !Number.isSafeInteger(record.limit) ||
@@ -281,6 +286,7 @@ export function parseLibraryCoreItemScanRequestV1(
   return Object.freeze({
     ok: true,
     value: Object.freeze({
+      analysisVersion: record.analysisVersion,
       cancellationId: record.cancellationId,
       cursor: record.cursor,
       limit: record.limit,

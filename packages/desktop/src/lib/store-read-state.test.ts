@@ -34,7 +34,6 @@ vi.mock("./library-client", () => ({
   pruneArchivedLibraryItems: vi.fn(),
   updateLibraryPreferences: vi.fn(),
   backfillLibraryContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
-  deduplicateLibraryFeedItems: vi.fn(),
   healUntitledLibraryFeedTitles: vi.fn(),
   toggleLibraryItemLiked: vi.fn(),
   confirmLibraryItemLikedSynced: vi.fn(),

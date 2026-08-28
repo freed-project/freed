@@ -200,6 +200,7 @@ pub struct NormalizedStoryWallCandidatesRequestV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemScanRequestV1 {
+    pub analysis_version: Option<i64>,
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
@@ -3387,6 +3388,9 @@ fn query_item_scan(
     request: NormalizedItemScanRequestV1,
 ) -> Result<NormalizedItemScanResponseV1, NormalizedSqliteError> {
     if request.schema_version != 1
+        || request
+            .analysis_version
+            .is_some_and(|version| !(1..=MAX_SAFE_INTEGER).contains(&version))
         || !(1..=ITEM_SCAN_MAXIMUM_LIMIT).contains(&request.limit)
         || !valid_operation_instance_id(&request.cancellation_id)
         || !valid_operation_instance_id(&request.reader_session_id)
@@ -3413,6 +3417,7 @@ fn query_item_scan(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
             i64::try_from(request.limit + 1).expect("bounded item scan limit"),
+            request.analysis_version,
         ],
         background_item_row,
     )?;
@@ -6668,6 +6673,7 @@ mod tests {
         let scan = query_normalized_json_v1(
             &mut connection,
             serde_json::json!({
+                "analysisVersion": null,
                 "cancellationId": "cancel-scan-1",
                 "cursor": null,
                 "limit": 1,
@@ -8019,9 +8025,10 @@ mod tests {
             .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
             .expect("item scan plan");
         let plan = plan_statement
-            .query_map(params![Option::<String>::None, 3], |row| {
-                row.get::<_, String>(3)
-            })
+            .query_map(
+                params![Option::<String>::None, 3, Option::<i64>::None],
+                |row| row.get::<_, String>(3),
+            )
             .expect("plan rows")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("plan");
@@ -8056,6 +8063,7 @@ mod tests {
             ))
             .expect("fixture");
         let request = NormalizedItemScanRequestV1 {
+            analysis_version: None,
             cancellation_id: "cancel-scan-1".to_owned(),
             cursor: None,
             limit: 2,
@@ -8092,6 +8100,35 @@ mod tests {
         assert_eq!(second.rows[0].card.global_id, "item-2");
         assert_eq!(second.rows[0].card.archived, Some(true));
         assert!(second.next_cursor.is_none());
+
+        connection
+            .execute_batch(
+                "INSERT INTO library_feed_item_signals
+                   (global_id, version, method, inferred_at)
+                 VALUES ('item-1', 3, 'rules', 400),
+                        ('item-2', 2, 'rules', 400);",
+            )
+            .expect("analysis fixtures");
+        let NormalizedQueryResponseV1::ItemScan(stale_analysis) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemScan(NormalizedItemScanRequestV1 {
+                analysis_version: Some(3),
+                cursor: None,
+                limit: ITEM_SCAN_MAXIMUM_LIMIT,
+                ..request.clone()
+            }),
+        )
+        .expect("stale analysis scan") else {
+            panic!("stale analysis response");
+        };
+        assert_eq!(
+            stale_analysis
+                .rows
+                .iter()
+                .map(|row| row.card.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["hidden", "item-2"]
+        );
 
         connection
             .execute_batch(

@@ -4204,6 +4204,7 @@ describe("PWA Library Core SQLite engine", () => {
     ]);
     expect(storyCandidates.rows[0]).not.toHaveProperty("contentType");
     const scanRequest = {
+      analysisVersion: null,
       cancellationId: operationId("cancel-scan-1"),
       cursor: null,
       limit: 2,
@@ -4223,6 +4224,24 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(secondScan.rows.map((row) => row.globalId)).toEqual(["item-2"]);
     expect(secondScan.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_feed_item_signals
+        (global_id, version, method, inferred_at)
+      VALUES
+        ('item-1', 3, 'rules', 400),
+        ('item-2', 2, 'rules', 400);
+    `);
+    const staleAnalysisScan = engine.query({
+      ...scanRequest,
+      analysisVersion: 3,
+      cursor: null,
+      limit: 64,
+    });
+    expect(staleAnalysisScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-2",
+    ]);
+    expect(staleAnalysisScan.nextCursor).toBeNull();
     const contentFetchRequest = {
       cancellationId: operationId("cancel-content-fetch-1"),
       cursor: null,
