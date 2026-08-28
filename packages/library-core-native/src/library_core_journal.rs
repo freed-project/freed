@@ -222,18 +222,6 @@ pub(crate) struct VerifiedAuthorityEpoch {
     pub(crate) accepted_at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct VerifiedAuthorityProtocolTransition {
-    pub(crate) library_id: String,
-    pub(crate) source_epoch: i64,
-    pub(crate) source_epoch_id: String,
-    pub(crate) source_transition_certificate_digest: String,
-    pub(crate) protocol_transition_certificate_digest: String,
-    pub(crate) canonical_protocol_transition_certificate_json: String,
-    pub(crate) source_manifest_digest: String,
-    pub(crate) accepted_at_ms: i64,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct TransactionReceipt {
     transaction_id: String,
@@ -799,13 +787,6 @@ pub(crate) fn validate_transaction(
 }
 
 impl LibraryCoreJournal {
-    /// Read access for tests in sibling modules that assert what a
-    /// production write actually put in the authoritative tables.
-    #[cfg(test)]
-    pub(crate) fn connection_for_test(&self) -> &Connection {
-        &self.connection
-    }
-
     pub fn open(path: &Path) -> LibraryCoreResult<Self> {
         let file_name = path
             .file_name()

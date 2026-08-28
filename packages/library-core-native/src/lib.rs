@@ -10,7 +10,6 @@ mod device_graph_layout;
 mod historical_migration_source;
 mod library_core_actor_capability;
 mod library_core_actor_enrollment;
-mod library_core_authority_genesis;
 #[cfg(unix)]
 mod library_core_bound_root;
 #[cfg(unix)]
@@ -77,10 +76,6 @@ pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request_bytes, load_or_create_normalized_actor_id_v2,
     prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
     ActorKeyStore, PreparedActorEnrollmentRequest,
-};
-pub use library_core_authority_genesis::{
-    establish_or_transition_sqlite_authority, EstablishedSqliteAuthority,
-    NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, SqliteAuthorityProtocolReceipt,
 };
 #[cfg(unix)]
 pub use library_core_desktop_binding::{
