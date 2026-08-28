@@ -38,9 +38,12 @@ runtime consumes these sealed types but no longer defines them. Shared native
 authority and migration failures now use one `LibraryCoreError` model outside
 the journal, and normalized SQLite reports them as protocol failures. The
 native crate no longer exports the historical journal, follower outboxes,
-overlays, anchors, results, or status to any host. The verifier implementation
-is the next extraction seam before the remaining private historical journal
-implementation can be deleted.
+overlays, anchors, results, or status to any host. Canonical operation
+verification and its closed protocol limits now live in normalized crate-level
+modules consumed directly by Primary mutation and follower admission. The
+historical journal retains only private materialization and test fixtures.
+Enrollment verification is the next extraction seam before those remaining
+private historical modules can be deleted.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent
@@ -49,9 +52,9 @@ coordinator validates the exact committed intent and result segment prefixes,
 recovers response-lost result publication from immutable records, and leaves
 Google Drive request behavior unchanged. The Desktop follower journal module,
 its five native commands, renderer DTOs, openers, and mocks are deleted. The
-next runtime-deletion proof is removal of the remaining historical journal
-implementation and Automerge-era verifier vocabulary after their current
-normalized security primitives have been extracted.
+next runtime-deletion proof is extraction of normalized enrollment verification,
+followed by removal of the remaining historical journal implementation and its
+Automerge-era materialization vocabulary.
 
 The final normalized actor boundary accepts authority-signed version 2
 capabilities only. The executable contract generates Primary writer and

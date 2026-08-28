@@ -39,6 +39,8 @@ mod normalized_migration;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
 mod normalized_operation;
+mod normalized_operation_verifier;
+mod normalized_protocol_limits;
 mod normalized_query;
 #[cfg(unix)]
 mod normalized_snapshot;

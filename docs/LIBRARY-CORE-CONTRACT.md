@@ -409,6 +409,17 @@ the headless Primary, and every normalized caller can reach only the current
 SQLite authority, typed protocol, bounded query, mutation, checkpoint,
 snapshot, and selective-content surfaces.
 
+Canonical operation verification is owned by the normalized protocol layer,
+not by the historical journal. One crate-level verifier parses the original
+canonical bytes, closes every payload, reconstructs transaction and actor-chain
+digests, checks capability admission, verifies Ed25519 signatures, and returns
+sealed normalized operations. Its transaction, envelope, causal-frontier,
+entity-ID, operation-ID, and safe-integer limits live in one normalized
+protocol-limits module shared with storage admission. Normalized follower and
+Primary mutation paths call that verifier directly. Historical atomic
+materialization fixtures remain inside the private journal test subtree only
+until the historical materializer is deleted.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

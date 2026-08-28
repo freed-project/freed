@@ -22,17 +22,23 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 #[path = "library_core_journal_authority.rs"]
 mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
-mod enrollment_verifier;
+pub(crate) mod enrollment_verifier;
 #[path = "library_core_journal_follower.rs"]
 pub(crate) mod follower;
-#[path = "library_core_journal_operation_verifier.rs"]
-pub(crate) mod operation_verifier;
+#[cfg(test)]
+#[path = "library_core_journal_operation_tests.rs"]
+pub(crate) mod operation_tests;
 
 use crate::library_core_actor_capability as actor_capability;
 pub(crate) use crate::library_core_error::{LibraryCoreError, LibraryCoreResult};
 pub(crate) use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 pub(crate) use crate::normalized_operation::{
     ActorState, VerifiedActorEnrollment, VerifiedOperation, VerifiedOperationTransaction,
+};
+use crate::normalized_operation_verifier as operation_verifier;
+use crate::normalized_protocol_limits::{
+    MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES, MAX_OPERATION_ID_BYTES, MAX_SAFE_INTEGER,
+    MAX_TRANSACTION_ENVELOPE_BYTES, MAX_TRANSACTION_MEMBERS,
 };
 
 use follower::{FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment};
@@ -106,12 +112,6 @@ fn apply_schema_range(
 }
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
-const MAX_TRANSACTION_MEMBERS: usize = 1_000;
-const MAX_TRANSACTION_ENVELOPE_BYTES: usize = 4_194_304;
-const MAX_CAUSAL_TIPS_PER_OPERATION: usize = 4_096;
-const MAX_ENTITY_ID_BYTES: usize = 4_096;
-const MAX_OPERATION_ID_BYTES: usize = 128;
-const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const MAX_OUTBOX_PAGE_ENTRIES: usize = 256;
 const MAX_OUTBOX_PAGE_BYTES: usize = 4_194_304;
 const MAX_SCHEMA_CATALOG_ENTRIES: usize = 256;

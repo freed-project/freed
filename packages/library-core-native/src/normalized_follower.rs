@@ -10,13 +10,12 @@ use crate::{
     },
     library_core_ed25519::verify_library_core_ed25519,
     library_core_hash::lower_hex,
-    library_core_journal::{
-        operation_verifier::verify_operation_transaction, verify_actor_enrollment_certificate,
-    },
+    library_core_journal::verify_actor_enrollment_certificate,
     normalized_mutation::{
         actor_state_at, NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1,
     },
     normalized_operation::VerifiedActorEnrollment,
+    normalized_operation_verifier::verify_operation_transaction,
     normalized_primary_mutation_context_v1,
     normalized_writer_reassignment::current_authority,
     NormalizedMutationContextV1,
@@ -2095,7 +2094,7 @@ pub fn normalized_follower_runtime_status_v2(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_journal::operation_verifier::tests::signed_envelopes;
+    use crate::library_core_journal::operation_tests::tests::signed_envelopes;
     use crate::{
         describe_normalized_checkpoint_export_v2, install_normalized_schema_v1,
         prepare_fresh_normalized_desktop_library_v1,
