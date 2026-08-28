@@ -65,6 +65,7 @@ function assertSortedUniqueFields(values, label) {
 
 function assertContract(contract) {
   const expectedKeys = [
+    "agentQueryProfile",
     "applicationId",
     "capabilityProfiles",
     "checkpointDatasetSchemaId",
@@ -245,11 +246,7 @@ function assertContract(contract) {
   ) {
     throw new TypeError("SQLite preference write policy registry is invalid");
   }
-  const preferenceDispositions = new Set([
-    "device-local",
-    "nested",
-    "sync",
-  ]);
+  const preferenceDispositions = new Set(["device-local", "nested", "sync"]);
   for (const [policyName, policy] of Object.entries(
     contract.preferenceWritePolicies,
   )) {
@@ -280,6 +277,15 @@ function assertContract(contract) {
         `${profile} capability includes an undeclared SQLite mutation`,
       );
     }
+  }
+  assertSortedUnique(contract.agentQueryProfile, "agent capability queries");
+  if (
+    contract.agentQueryProfile.length === 0 ||
+    contract.agentQueryProfile.some(
+      (query) => !contract.queries.includes(query),
+    )
+  ) {
+    throw new TypeError("agent capability includes an undeclared SQLite query");
   }
   const mutationProgramFields = [
     "clockReadSql",
@@ -808,6 +814,11 @@ export const LIBRARY_CORE_SCRAPER_OPERATION_IDS = Object.freeze([
 ${stringTuple(contract.capabilityProfiles.scraper)}
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
 
+export const LIBRARY_CORE_AGENT_QUERY_IDS = Object.freeze([
+${stringTuple(contract.agentQueryProfile)}
+] as const);
+export type LibraryCoreAgentQueryId = (typeof LIBRARY_CORE_AGENT_QUERY_IDS)[number];
+
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.mutationPrograms, null, 2)} as const;
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
 
@@ -1205,6 +1216,10 @@ ${rustStringSlice(contract.capabilityProfiles.primaryWriter)}
 ];
 
 pub const SCRAPER_OPERATION_IDS: &[&str] = &[${contract.capabilityProfiles.scraper.map((value) => JSON.stringify(value)).join(", ")}];
+
+pub const AGENT_QUERY_IDS: &[&str] = &[
+${rustStringSlice(contract.agentQueryProfile)}
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteMutationProgram {

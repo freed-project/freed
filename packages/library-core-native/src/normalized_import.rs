@@ -545,6 +545,20 @@ fn verify_authority_rows(
             ));
         }
     }
+    let mut statement = transaction.prepare(
+        "SELECT DISTINCT query_id FROM library_actor_capability_queries
+         ORDER BY query_id;",
+    )?;
+    let queries = statement.query_map([], |row| row.get::<_, String>(0))?;
+    for query_id in queries {
+        let query_id = query_id?;
+        if crate::sqlite_contract_generated::AGENT_QUERY_IDS
+            .binary_search(&query_id.as_str())
+            .is_err()
+        {
+            return Err(invalid("checkpoint actor capability query is unknown"));
+        }
+    }
     Ok(())
 }
 
@@ -610,6 +624,7 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_persons;
          DELETE FROM library_preferences;
          DELETE FROM library_actor_retirements;
+         DELETE FROM library_actor_capability_queries;
          DELETE FROM library_actor_capability_mutations;
          DELETE FROM library_actor_capabilities;
          DELETE FROM library_actors;
@@ -909,6 +924,16 @@ fn install_normalized_restore_transition_v1(
             ],
         )?;
     }
+    for query_id in &restore.enrollment.capability.allowed_query_ids {
+        transaction.execute(
+            "INSERT INTO library_actor_capability_queries
+             (capability_id, query_id) VALUES (?1, ?2);",
+            params![
+                restore.enrollment.capability.capability_certificate_digest,
+                query_id,
+            ],
+        )?;
+    }
     transaction.execute("DELETE FROM library_writer_admission;", [])?;
     transaction.execute(
         "INSERT INTO library_writer_admission
@@ -1024,6 +1049,7 @@ fn activate_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_actors) +
            (SELECT count(*) FROM library_actor_capabilities) +
            (SELECT count(*) FROM library_actor_capability_mutations) +
+           (SELECT count(*) FROM library_actor_capability_queries) +
            (SELECT count(*) FROM library_actor_retirements) +
            (SELECT count(*) FROM library_receipts) +
            (SELECT count(*) FROM library_blobs) +

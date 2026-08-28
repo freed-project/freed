@@ -437,6 +437,13 @@ Stores subscribe only to a compact change feed containing revision, bounded
 changed IDs, invalidation keys, and `resetRequired`. The feed contains no
 hydrated entity rows.
 
+Actor capabilities bind mutation and query authority separately. The query
+grant is a sorted subset of the generated agent read profile and is stored in
+normalized SQLite beside the mutation grant. Read-only agents need no
+synthetic mutation. A local socket, service account, or successful process
+connection is transport identity only and never substitutes for a signed
+query grant checked inside the native authority boundary.
+
 ## 8. Exhaustive mutation architecture
 
 The mutation registry is exhaustive. The existing set of canonical operations

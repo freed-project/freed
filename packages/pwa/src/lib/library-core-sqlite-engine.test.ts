@@ -927,6 +927,7 @@ describe("PWA Library Core SQLite engine", () => {
     const capabilityInput = {
       actor_class: "editor" as const,
       allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      allowed_query_ids: [],
       scope: { mode: "library_wide" as const },
     };
     const signActorProof = async (message: Uint8Array) =>

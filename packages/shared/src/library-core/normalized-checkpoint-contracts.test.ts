@@ -104,6 +104,14 @@ describe("normalized SQLite checkpoint contract", () => {
     expect(libraryCoreNormalizedCheckpointRecordIdentityV2(record)).toBe(
       '13_feed_item_tag:["item:one","favorite"]',
     );
+    const queryGrant = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "92_actor_capability_query",
+      primaryKey: ["a".repeat(64), "search_page_v1"],
+      payload: { queryId: "search_page_v1" },
+    });
+    expect(libraryCoreNormalizedCheckpointRecordIdentityV2(queryGrant)).toBe(
+      `92_actor_capability_query:["${"a".repeat(64)}","search_page_v1"]`,
+    );
   });
 
   it("represents a legal maximum-sized item as bounded content records", () => {

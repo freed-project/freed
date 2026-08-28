@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; signed agent query admission, installed Drive coordination, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -298,6 +298,7 @@ The capability certificate binds:
 - Library ID and writer epoch
 - actor ID and actor class
 - exact allowed operation types
+- exact allowed bounded query IDs
 - optional source or provider scope
 - issuance identity and retirement identity
 - size bounds and canonical signature domain
@@ -314,6 +315,16 @@ New actors use explicit classes:
 Source-scoped ingestion remains disabled until the signed operation envelope
 contains one canonical source field. The verifier must not infer scope from
 inconsistent entity payloads.
+
+The executable contract currently registers five agent read grants:
+`friends_directory_page_v1`, `item_detail_v1`, `item_reader_body_v1`,
+`saved_feed_page_v2`, and `search_page_v1`. Version 2 certificates bind query
+grants separately from mutation grants, so a read-only agent has no synthetic
+mutation authority. Native SQLite and PWA OPFS SQLite store and checkpoint the
+grant set as normalized child rows. Unknown queries, unsorted or duplicate
+grants, query grants on non-agent actors, and an empty agent capability all
+fail closed. The local transport still exposes no read method until the signed
+query envelope and native admission path land.
 
 Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
@@ -490,7 +501,7 @@ review before implementation.
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Complete | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation |
 | 11.10 | In Progress | Bind the generated one-method actor protocol to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14. |
-| 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
+| 11.11 | In Progress | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Add the signed query envelope and native read admission next; signed edits already use the local intent method. |
 | 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
 | 11.13 | Blocked | Add social capture workers after provider-specific owner approval |
 | 11.14 | Open | Package Linux services, macOS launch agents, and Windows services |

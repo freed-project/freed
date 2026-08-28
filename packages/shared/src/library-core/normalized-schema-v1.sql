@@ -1438,6 +1438,12 @@ CREATE TABLE IF NOT EXISTS library_actor_capability_mutations (
   PRIMARY KEY (capability_id, mutation_id)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_actor_capability_queries (
+  capability_id TEXT NOT NULL REFERENCES library_actor_capabilities(capability_id) ON DELETE CASCADE,
+  query_id TEXT NOT NULL,
+  PRIMARY KEY (capability_id, query_id)
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_actor_retirements (
   retirement_identity TEXT PRIMARY KEY CHECK (length(retirement_identity) = 64 AND retirement_identity NOT GLOB '*[^0-9a-f]*'),
   actor_id TEXT NOT NULL REFERENCES library_actors(actor_id) ON DELETE CASCADE,
@@ -2118,6 +2124,10 @@ UNION ALL
 SELECT '92_actor_capability_mutation', json_array(capability_id, mutation_id),
   json_object('mutationId', mutation_id), NULL
 FROM library_actor_capability_mutations
+UNION ALL
+SELECT '92_actor_capability_query', json_array(capability_id, query_id),
+  json_object('queryId', query_id), NULL
+FROM library_actor_capability_queries
 UNION ALL
 SELECT '93_actor_retirement', json_quote(retirement_identity),
   json_object(

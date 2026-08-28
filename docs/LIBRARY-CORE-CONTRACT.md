@@ -252,6 +252,18 @@ assembly, signing-body, and final-envelope path before the native verifier and
 materializer. No supported program can bypass canonical transaction bounds by
 falling out of a handwritten transform union.
 
+The same executable contract defines the initial agent read profile. It grants
+only `friends_directory_page_v1`, `item_detail_v1`,
+`item_reader_body_v1`, `saved_feed_page_v2`, and `search_page_v1`. A version 2
+capability carries separate sorted `allowed_operation_types` and
+`allowed_query_ids` arrays. An agent may be read-only, but every capability
+must grant at least one mutation or query. Editor and scraper certificates
+must carry an empty query array. Unknown, duplicate, unsorted, or
+class-incompatible grants fail before either signature is accepted. The signed
+grant set is stored in normalized child tables and checkpointed as stable
+`92_actor_capability_mutation` and `92_actor_capability_query` records. Socket
+access does not grant read access.
+
 The normalized schema accepts version 2 capabilities only. Editor, scraper,
 and agent rows must carry an explicit scope plus mandatory issuance and
 retirement identities. SQLite constraints, checkpoint activation, and native

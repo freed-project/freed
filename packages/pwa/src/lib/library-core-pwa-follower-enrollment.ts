@@ -110,6 +110,7 @@ export async function preparePwaLibraryCoreFollowerEnrollment(
     {
       actor_class: "editor",
       allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      allowed_query_ids: [],
       scope: { mode: "library_wide" },
     },
     {

@@ -210,10 +210,23 @@ pub(crate) fn actor_state_at(
     let allowed_operation_types = statement
         .query_map([&row.22], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut statement = connection.prepare(
+        "SELECT query_id FROM library_actor_capability_queries
+         WHERE capability_id = ?1
+         ORDER BY query_id;",
+    )?;
+    let allowed_query_ids = statement
+        .query_map([&row.22], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let capability = parse_normalized_stored_capability(
         row.11,
         row.12,
         serde_json::to_string(&allowed_operation_types).map_err(|_| {
+            LibraryCoreError::InvalidVerifiedInput {
+                field: "actor_capability",
+            }
+        })?,
+        serde_json::to_string(&allowed_query_ids).map_err(|_| {
             LibraryCoreError::InvalidVerifiedInput {
                 field: "actor_capability",
             }

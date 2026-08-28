@@ -175,6 +175,13 @@
     ],
     "scraper": ["feed_item_capture_upsert"]
   },
+  "agentQueryProfile": [
+    "friends_directory_page_v1",
+    "item_detail_v1",
+    "item_reader_body_v1",
+    "saved_feed_page_v2",
+    "search_page_v1"
+  ],
   "limits": {
     "checkpointRecordCanonicalBytes": 131072,
     "checkpointPageDecodedBytes": 2097152,
@@ -368,6 +375,13 @@
       "primaryKeyColumns": ["capability_id", "mutation_id"],
       "identityPayloadFields": {
         "mutationId": 1
+      }
+    },
+    "92_actor_capability_query": {
+      "table": "library_actor_capability_queries",
+      "primaryKeyColumns": ["capability_id", "query_id"],
+      "identityPayloadFields": {
+        "queryId": 1
       }
     },
     "93_actor_retirement": {
@@ -749,6 +763,12 @@
       "primaryKey": "pair",
       "payload": "actor_capability_mutation",
       "fields": ["mutationId"]
+    },
+    {
+      "registryKey": "92_actor_capability_query",
+      "primaryKey": "pair",
+      "payload": "actor_capability_query",
+      "fields": ["queryId"]
     },
     {
       "registryKey": "93_actor_retirement",

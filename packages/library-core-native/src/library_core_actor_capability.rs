@@ -8,7 +8,7 @@
 //! scope binding. Nothing infers provider or source authority from payloads.
 
 use crate::sqlite_contract_generated::{
-    CAPABILITY_OPERATION_IDS, PRIMARY_WRITER_OPERATION_IDS, SCRAPER_OPERATION_IDS,
+    AGENT_QUERY_IDS, CAPABILITY_OPERATION_IDS, PRIMARY_WRITER_OPERATION_IDS, SCRAPER_OPERATION_IDS,
 };
 
 const HISTORICAL_EDITOR_OPERATION_IDS: &[&str] = &[
@@ -44,6 +44,10 @@ pub(crate) const fn scraper_operation_types() -> &'static [&'static str] {
     SCRAPER_OPERATION_IDS
 }
 
+pub(crate) const fn agent_query_ids() -> &'static [&'static str] {
+    AGENT_QUERY_IDS
+}
+
 pub(crate) fn is_registered_operation(operation: &str) -> bool {
     canonical_operation_types()
         .binary_search(&operation)
@@ -62,6 +66,7 @@ pub(crate) struct ActorCapabilityState {
     pub(crate) certificate_version: i64,
     pub(crate) actor_class: String,
     pub(crate) allowed_operation_types: Vec<String>,
+    pub(crate) allowed_query_ids: Vec<String>,
     pub(crate) scope: ActorCapabilityScope,
     pub(crate) issuance_identity: Option<String>,
     pub(crate) retirement_identity: Option<String>,
@@ -80,6 +85,7 @@ impl ActorCapabilityState {
                 .iter()
                 .map(|operation| (*operation).to_owned())
                 .collect(),
+            allowed_query_ids: Vec::new(),
             scope: ActorCapabilityScope::HistoricalEditor,
             issuance_identity: None,
             retirement_identity: None,
@@ -104,6 +110,11 @@ impl ActorCapabilityState {
             .expect("validated actor capability operations serialize")
     }
 
+    pub(crate) fn allowed_query_ids_json(&self) -> String {
+        serde_json::to_string(&self.allowed_query_ids)
+            .expect("validated actor capability queries serialize")
+    }
+
     pub(crate) fn stored_scope(&self) -> (&str, Option<&str>, Option<&str>) {
         match &self.scope {
             ActorCapabilityScope::HistoricalEditor => ("legacy_editor", None, None),
@@ -119,7 +130,7 @@ pub(crate) fn validate_allowed_operation_types(
     actor_class: &str,
     operations: &[String],
 ) -> Result<(), &'static str> {
-    if operations.is_empty()
+    if (operations.is_empty() && actor_class != "agent")
         || operations.len() > canonical_operation_types().len()
         || !operations.windows(2).all(|pair| pair[0] < pair[1])
         || operations
@@ -140,6 +151,22 @@ pub(crate) fn validate_allowed_operation_types(
     Ok(())
 }
 
+pub(crate) fn validate_allowed_query_ids(
+    actor_class: &str,
+    query_ids: &[String],
+) -> Result<(), &'static str> {
+    if query_ids.len() > agent_query_ids().len()
+        || !query_ids.windows(2).all(|pair| pair[0] < pair[1])
+        || query_ids
+            .iter()
+            .any(|query_id| agent_query_ids().binary_search(&query_id.as_str()).is_err())
+        || (actor_class != "agent" && !query_ids.is_empty())
+    {
+        return Err("allowed_query_ids");
+    }
+    Ok(())
+}
+
 fn is_lower_hex_64(value: &str) -> bool {
     value.len() == 64
         && value
@@ -152,6 +179,7 @@ pub(crate) fn parse_stored_capability(
     certificate_version: i64,
     actor_class: String,
     allowed_operation_types_json: String,
+    allowed_query_ids_json: String,
     scope_mode: String,
     scope_kind: Option<String>,
     scope_id: Option<String>,
@@ -170,6 +198,17 @@ pub(crate) fn parse_stored_capability(
         return Err("allowed_operation_types");
     }
     validate_allowed_operation_types(&actor_class, &allowed_operation_types)?;
+    let allowed_query_ids: Vec<String> =
+        serde_json::from_str(&allowed_query_ids_json).map_err(|_| "allowed_query_ids")?;
+    if serde_json::to_string(&allowed_query_ids).map_err(|_| "allowed_query_ids")?
+        != allowed_query_ids_json
+    {
+        return Err("allowed_query_ids");
+    }
+    validate_allowed_query_ids(&actor_class, &allowed_query_ids)?;
+    if allowed_operation_types.is_empty() && allowed_query_ids.is_empty() {
+        return Err("capability_grants");
+    }
     if !is_lower_hex_64(&capability_certificate_digest)
         || !(0..=9_007_199_254_740_991).contains(&issued_at_ms)
         || !matches!(retired, 0 | 1)
@@ -230,6 +269,7 @@ pub(crate) fn parse_stored_capability(
         certificate_version,
         actor_class,
         allowed_operation_types,
+        allowed_query_ids,
         scope,
         issuance_identity,
         retirement_identity,
@@ -248,6 +288,7 @@ pub(crate) fn validate_capability_state(
         capability.certificate_version,
         capability.actor_class.clone(),
         capability.allowed_operation_types_json(),
+        capability.allowed_query_ids_json(),
         scope_mode.to_owned(),
         scope_kind.map(str::to_owned),
         scope_id.map(str::to_owned),
@@ -266,6 +307,7 @@ pub(crate) fn parse_normalized_stored_capability(
     certificate_version: i64,
     actor_class: String,
     allowed_operation_types_json: String,
+    allowed_query_ids_json: String,
     scope_mode: String,
     scope_kind: Option<String>,
     scope_id: Option<String>,
@@ -280,6 +322,7 @@ pub(crate) fn parse_normalized_stored_capability(
         certificate_version,
         actor_class,
         allowed_operation_types_json,
+        allowed_query_ids_json,
         scope_mode,
         scope_kind,
         scope_id,
@@ -349,6 +392,7 @@ mod tests {
             certificate_version: 2,
             actor_class: "agent".to_owned(),
             allowed_operation_types: vec!["feed_item_read_assignment".to_owned()],
+            allowed_query_ids: vec!["search_page_v1".to_owned()],
             scope: ActorCapabilityScope::Bounded {
                 kind: "provider".to_owned(),
                 scope_id: "instagram".to_owned(),
@@ -368,6 +412,48 @@ mod tests {
     }
 
     #[test]
+    fn read_only_agent_queries_are_closed_and_class_bound() {
+        let agent = parse_normalized_stored_capability(
+            2,
+            "agent".to_owned(),
+            "[]".to_owned(),
+            "[\"item_detail_v1\",\"search_page_v1\"]".to_owned(),
+            "library_wide".to_owned(),
+            None,
+            None,
+            Some("1".repeat(64)),
+            Some("2".repeat(64)),
+            "3".repeat(64),
+            1,
+            0,
+            None,
+        )
+        .expect("read-only agent capability");
+        assert_eq!(
+            agent.allowed_query_ids,
+            ["item_detail_v1", "search_page_v1"]
+        );
+        assert_eq!(
+            parse_normalized_stored_capability(
+                2,
+                "editor".to_owned(),
+                "[\"feed_item_read_assignment\"]".to_owned(),
+                "[\"search_page_v1\"]".to_owned(),
+                "library_wide".to_owned(),
+                None,
+                None,
+                Some("1".repeat(64)),
+                Some("2".repeat(64)),
+                "3".repeat(64),
+                1,
+                0,
+                None,
+            ),
+            Err("allowed_query_ids")
+        );
+    }
+
+    #[test]
     fn normalized_parser_rejects_the_historical_editor_capability() {
         let operations = serde_json::to_string(historical_editor_operation_types())
             .expect("historical operations");
@@ -375,6 +461,7 @@ mod tests {
             1,
             "legacy_editor".to_owned(),
             operations.clone(),
+            "[]".to_owned(),
             "legacy_editor".to_owned(),
             None,
             None,
@@ -391,6 +478,7 @@ mod tests {
                 1,
                 "legacy_editor".to_owned(),
                 operations,
+                "[]".to_owned(),
                 "legacy_editor".to_owned(),
                 None,
                 None,

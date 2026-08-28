@@ -1823,6 +1823,12 @@ fn install_normalized_primary_actor_v2(
             [&enrollment.capability.capability_certificate_digest],
             |row| row.get(0),
         )?;
+        let stored_queries: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_actor_capability_queries
+             WHERE capability_id = ?1;",
+            [&enrollment.capability.capability_certificate_digest],
+            |row| row.get(0),
+        )?;
         let mut matching_mutations = 0_i64;
         for mutation_id in &enrollment.capability.allowed_operation_types {
             matching_mutations += transaction.query_row(
@@ -1835,6 +1841,18 @@ fn install_normalized_primary_actor_v2(
                 |row| row.get::<_, i64>(0),
             )?;
         }
+        let mut matching_queries = 0_i64;
+        for query_id in &enrollment.capability.allowed_query_ids {
+            matching_queries += transaction.query_row(
+                "SELECT count(*) FROM library_actor_capability_queries
+                 WHERE capability_id = ?1 AND query_id = ?2;",
+                params![
+                    enrollment.capability.capability_certificate_digest,
+                    query_id
+                ],
+                |row| row.get::<_, i64>(0),
+            )?;
+        }
         if actor_rows != 1
             || matching_actor != 1
             || matching_capability != 1
@@ -1842,6 +1860,10 @@ fn install_normalized_primary_actor_v2(
                 != i64::try_from(enrollment.capability.allowed_operation_types.len())
                     .map_err(|_| invalid("normalized Primary actor capability is invalid"))?
             || matching_mutations != stored_mutations
+            || stored_queries
+                != i64::try_from(enrollment.capability.allowed_query_ids.len())
+                    .map_err(|_| invalid("normalized Primary actor capability is invalid"))?
+            || matching_queries != stored_queries
         {
             return Err(invalid("normalized Primary actor enrollment changed"));
         }
@@ -1897,6 +1919,16 @@ fn install_normalized_primary_actor_v2(
             params![
                 enrollment.capability.capability_certificate_digest,
                 mutation_id
+            ],
+        )?;
+    }
+    for query_id in &enrollment.capability.allowed_query_ids {
+        transaction.execute(
+            "INSERT INTO library_actor_capability_queries
+             (capability_id, query_id) VALUES (?1, ?2);",
+            params![
+                enrollment.capability.capability_certificate_digest,
+                query_id
             ],
         )?;
     }

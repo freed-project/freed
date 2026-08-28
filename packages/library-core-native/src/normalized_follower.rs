@@ -457,6 +457,13 @@ fn install_verified_actor(
             params![capability_id, mutation_id],
         )?;
     }
+    for query_id in &enrollment.capability.allowed_query_ids {
+        transaction.execute(
+            "INSERT OR IGNORE INTO library_actor_capability_queries
+             (capability_id, query_id) VALUES (?1, ?2);",
+            params![capability_id, query_id],
+        )?;
+    }
     let mutation_count: i64 = transaction.query_row(
         "SELECT count(*) FROM library_actor_capability_mutations
          WHERE capability_id = ?1;",
@@ -469,6 +476,15 @@ fn install_verified_actor(
         return Err(invalid(
             "normalized follower capability mutation set changed",
         ));
+    }
+    let query_count: i64 = transaction.query_row(
+        "SELECT count(*) FROM library_actor_capability_queries
+         WHERE capability_id = ?1;",
+        [capability_id],
+        |row| row.get(0),
+    )?;
+    if usize::try_from(query_count).ok() != Some(enrollment.capability.allowed_query_ids.len()) {
+        return Err(invalid("normalized follower capability query set changed"));
     }
     Ok(inserted)
 }

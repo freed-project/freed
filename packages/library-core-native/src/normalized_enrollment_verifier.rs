@@ -35,7 +35,7 @@ const CERTIFICATE_BODY_V2_KEYS: [&str; 5] = [
     "actor_capability_body",
     "actor_capability_body_digest",
 ];
-const CAPABILITY_BODY_V2_KEYS: [&str; 14] = [
+const CAPABILITY_BODY_V2_KEYS: [&str; 15] = [
     "format",
     "library_id",
     "epoch",
@@ -45,6 +45,7 @@ const CAPABILITY_BODY_V2_KEYS: [&str; 14] = [
     "actor_public_key",
     "actor_class",
     "allowed_operation_types",
+    "allowed_query_ids",
     "scope",
     "issuance_identity",
     "retirement_identity",
@@ -315,6 +316,23 @@ fn verify_capability_body_v2(
         &operations,
     )
     .map_err(invalid)?;
+    let query_ids = capability
+        .get("allowed_query_ids")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("allowed_query_ids"))?
+        .iter()
+        .map(|query_id| {
+            query_id
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| invalid("allowed_query_ids"))
+        })
+        .collect::<LibraryCoreResult<Vec<_>>>()?;
+    crate::library_core_actor_capability::validate_allowed_query_ids(&actor_class, &query_ids)
+        .map_err(invalid)?;
+    if operations.is_empty() && query_ids.is_empty() {
+        return Err(invalid("capability_grants"));
+    }
 
     let scope_value = capability.get("scope").ok_or_else(|| invalid("scope"))?;
     let scope_object = scope_value.as_object().ok_or_else(|| invalid("scope"))?;
@@ -373,6 +391,7 @@ fn verify_capability_body_v2(
         certificate_version: 2,
         actor_class,
         allowed_operation_types: operations,
+        allowed_query_ids: query_ids,
         scope,
         issuance_identity: Some(issuance_identity),
         retirement_identity: Some(retirement_identity),

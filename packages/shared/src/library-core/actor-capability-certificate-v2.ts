@@ -19,9 +19,11 @@ import {
   type LibraryCoreCausalTipV1,
 } from "./operation-envelope-contracts.js";
 import {
+  LIBRARY_CORE_AGENT_QUERY_IDS,
   LIBRARY_CORE_CAPABILITY_OPERATION_IDS,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS,
   LIBRARY_CORE_SCRAPER_OPERATION_IDS,
+  type LibraryCoreAgentQueryId,
   type LibraryCoreCapabilityOperationId,
 } from "./sqlite-contract.generated.js";
 import {
@@ -49,6 +51,9 @@ export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2: readonly LibraryCor
 export const LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
   LIBRARY_CORE_SCRAPER_OPERATION_IDS;
 
+export const LIBRARY_CORE_AGENT_QUERY_TYPES_V2 = LIBRARY_CORE_AGENT_QUERY_IDS;
+export type LibraryCoreActorCapabilityQueryTypeV2 = LibraryCoreAgentQueryId;
+
 export type LibraryCoreActorClassV2 = "editor" | "scraper" | "agent";
 
 export type LibraryCoreActorScopeV2 =
@@ -69,6 +74,7 @@ export interface LibraryCoreActorCapabilityBodyV2 {
   readonly actor_public_key: LibraryCoreEd25519PublicKeyHex;
   readonly actor_class: LibraryCoreActorClassV2;
   readonly allowed_operation_types: readonly LibraryCoreActorCapabilityOperationTypeV2[];
+  readonly allowed_query_ids: readonly LibraryCoreActorCapabilityQueryTypeV2[];
   readonly scope: LibraryCoreActorScopeV2;
   readonly issuance_identity: LibraryCoreLowercaseHex64;
   readonly retirement_identity: LibraryCoreLowercaseHex64;
@@ -108,6 +114,7 @@ export interface LibraryCoreActorCapabilityCertificateConstructionV2 {
 export interface LibraryCoreActorCapabilityCertificateInputV2 {
   readonly actor_class: LibraryCoreActorClassV2;
   readonly allowed_operation_types: readonly LibraryCoreActorCapabilityOperationTypeV2[];
+  readonly allowed_query_ids: readonly LibraryCoreActorCapabilityQueryTypeV2[];
   readonly scope: LibraryCoreActorScopeV2;
 }
 
@@ -175,8 +182,10 @@ function snapshotAllowedOperations(
   value: unknown,
   actorClass: LibraryCoreActorClassV2,
 ): readonly LibraryCoreActorCapabilityOperationTypeV2[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new TypeError("allowed operation types must be a nonempty array");
+  if (!Array.isArray(value) || (value.length === 0 && actorClass !== "agent")) {
+    throw new TypeError(
+      "allowed operation types must be nonempty unless the actor is an agent",
+    );
   }
   const known = new Set<string>(
     LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
@@ -201,6 +210,35 @@ function snapshotAllowedOperations(
     }
     result.push(operation as LibraryCoreActorCapabilityOperationTypeV2);
     previous = operation;
+  }
+  return Object.freeze(result);
+}
+
+function snapshotAllowedQueries(
+  value: unknown,
+  actorClass: LibraryCoreActorClassV2,
+): readonly LibraryCoreActorCapabilityQueryTypeV2[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("allowed query IDs must be an array");
+  }
+  const known = new Set<string>(LIBRARY_CORE_AGENT_QUERY_TYPES_V2);
+  const result: LibraryCoreActorCapabilityQueryTypeV2[] = [];
+  let previous: string | undefined;
+  for (const queryId of value) {
+    if (
+      typeof queryId !== "string" ||
+      !known.has(queryId) ||
+      (previous !== undefined && previous >= queryId)
+    ) {
+      throw new TypeError(
+        "allowed query IDs must be known, unique, and sorted",
+      );
+    }
+    result.push(queryId as LibraryCoreActorCapabilityQueryTypeV2);
+    previous = queryId;
+  }
+  if (actorClass !== "agent" && result.length !== 0) {
+    throw new TypeError("only agent capabilities may grant query IDs");
   }
   return Object.freeze(result);
 }
@@ -338,6 +376,13 @@ function constructCapabilityBody(
     input.allowed_operation_types,
     selectedClass,
   );
+  const queries = snapshotAllowedQueries(
+    input.allowed_query_ids,
+    selectedClass,
+  );
+  if (operations.length === 0 && queries.length === 0) {
+    throw new TypeError("agent capability must grant a mutation or query");
+  }
   const scope = snapshotScope(input.scope);
   const body = enrollment.body;
   const issuanceIdentity = digest(
@@ -371,6 +416,7 @@ function constructCapabilityBody(
     actor_public_key: body.actor_public_key,
     actor_class: selectedClass,
     allowed_operation_types: operations,
+    allowed_query_ids: queries,
     scope,
     issuance_identity: issuanceIdentity,
     retirement_identity: retirementIdentity,
@@ -642,6 +688,7 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
       "actor_public_key",
       "actor_class",
       "allowed_operation_types",
+      "allowed_query_ids",
       "scope",
       "issuance_identity",
       "retirement_identity",
@@ -657,6 +704,10 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
       actor_class: selectedClass,
       allowed_operation_types: snapshotAllowedOperations(
         capabilityInput.allowed_operation_types,
+        selectedClass,
+      ),
+      allowed_query_ids: snapshotAllowedQueries(
+        capabilityInput.allowed_query_ids,
         selectedClass,
       ),
       scope: snapshotScope(capabilityInput.scope),

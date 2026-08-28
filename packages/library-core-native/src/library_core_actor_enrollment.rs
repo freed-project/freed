@@ -269,6 +269,7 @@ pub fn prepare_normalized_follower_actor_enrollment_request_v2(
         "actor_public_key": identity.actor_public_key,
         "actor_class": "editor",
         "allowed_operation_types": allowed_operation_types,
+        "allowed_query_ids": [],
         "scope": { "mode": "library_wide" },
         "issuance_identity": issuance_identity,
         "retirement_identity": retirement_identity,

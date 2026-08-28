@@ -39,7 +39,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "7fdfd3a0f09cb28e6026bbf23410a40418170bcb24b4c7ce818ae3e14a1953d9";
+    "e38a724f67d5d240759f4b673527297acd6f3ec3d150ca60a93bbc28049751b7";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -73,6 +73,7 @@ pub enum CheckpointRecordKind {
     ActorState,
     ActorCapability,
     ActorCapabilityMutation,
+    ActorCapabilityQuery,
     ActorRetirement,
     Receipt,
     BlobDescriptor,
@@ -109,6 +110,7 @@ impl CheckpointRecordKind {
             "90_actor_state" => Some(Self::ActorState),
             "91_actor_capability" => Some(Self::ActorCapability),
             "92_actor_capability_mutation" => Some(Self::ActorCapabilityMutation),
+            "92_actor_capability_query" => Some(Self::ActorCapabilityQuery),
             "93_actor_retirement" => Some(Self::ActorRetirement),
             "a0_receipt" => Some(Self::Receipt),
             "b0_blob_descriptor" => Some(Self::BlobDescriptor),
@@ -146,6 +148,7 @@ impl CheckpointRecordKind {
             ActorState => "90_actor_state",
             ActorCapability => "91_actor_capability",
             ActorCapabilityMutation => "92_actor_capability_mutation",
+            ActorCapabilityQuery => "92_actor_capability_query",
             ActorRetirement => "93_actor_retirement",
             Receipt => "a0_receipt",
             BlobDescriptor => "b0_blob_descriptor",
@@ -411,6 +414,9 @@ impl CheckpointRecordKind {
             ActorCapabilityMutation => &[
                 "mutationId",
             ],
+            ActorCapabilityQuery => &[
+                "queryId",
+            ],
             ActorRetirement => &[
                 "actorId",
                 "authorityEpochId",
@@ -488,6 +494,7 @@ impl CheckpointRecordKind {
             ActorState => &[],
             ActorCapability => &[],
             ActorCapabilityMutation => &[],
+            ActorCapabilityQuery => &[],
             ActorRetirement => &[],
             Receipt => &[],
             BlobDescriptor => &[],
@@ -621,6 +628,14 @@ pub const PRIMARY_WRITER_OPERATION_IDS: &[&str] = &[
 ];
 
 pub const SCRAPER_OPERATION_IDS: &[&str] = &["feed_item_capture_upsert"];
+
+pub const AGENT_QUERY_IDS: &[&str] = &[
+    "friends_directory_page_v1",
+    "item_detail_v1",
+    "item_reader_body_v1",
+    "saved_feed_page_v2",
+    "search_page_v1",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteMutationProgram {
@@ -1517,6 +1532,7 @@ pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[
     ("90_actor_state", 1, false, "INSERT INTO library_actors (actor_id, accepted_chain_digest, accepted_counter, accepted_operation_id, actor_kind, authority_epoch_id, canonical_enrollment_certificate, chain_genesis_digest, created_at, enrollment_certificate_digest, enrollment_operation_id, public_key, retired_at, updated_at) SELECT json_extract(?1, '$'), json_extract(?2, '$.acceptedChainDigest'), json_extract(?2, '$.acceptedCounter'), json_extract(?2, '$.acceptedOperationId'), json_extract(?2, '$.actorKind'), json_extract(?2, '$.authorityEpochId'), json_extract(?2, '$.canonicalEnrollmentCertificate'), json_extract(?2, '$.chainGenesisDigest'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.enrollmentCertificateDigest'), json_extract(?2, '$.enrollmentOperationId'), json_extract(?2, '$.publicKey'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.updatedAt');"),
     ("91_actor_capability", 1, false, "INSERT INTO library_actor_capabilities (capability_id, actor_class, actor_id, canonical_certificate, certificate_digest, certificate_version, issuance_identity, issued_at, retired_at, retirement_certificate_digest, retirement_identity, scope_id, scope_kind, scope_mode) SELECT json_extract(?1, '$'), json_extract(?2, '$.actorClass'), json_extract(?2, '$.actorId'), json_extract(?2, '$.canonicalCertificate'), json_extract(?2, '$.certificateDigest'), json_extract(?2, '$.certificateVersion'), json_extract(?2, '$.issuanceIdentity'), json_extract(?2, '$.issuedAt'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.retirementCertificateDigest'), json_extract(?2, '$.retirementIdentity'), json_extract(?2, '$.scopeId'), json_extract(?2, '$.scopeKind'), json_extract(?2, '$.scopeMode');"),
     ("92_actor_capability_mutation", 2, false, "INSERT INTO library_actor_capability_mutations (capability_id, mutation_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]') WHERE json_extract(?2, '$.mutationId') = json_extract(?1, '$[1]');"),
+    ("92_actor_capability_query", 2, false, "INSERT INTO library_actor_capability_queries (capability_id, query_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]') WHERE json_extract(?2, '$.queryId') = json_extract(?1, '$[1]');"),
     ("93_actor_retirement", 1, false, "INSERT INTO library_actor_retirements (retirement_identity, actor_id, authority_epoch_id, canonical_certificate, capability_certificate_digest, capability_id, certificate_digest, committed_revision, reason, retired_at) SELECT json_extract(?1, '$'), json_extract(?2, '$.actorId'), json_extract(?2, '$.authorityEpochId'), json_extract(?2, '$.canonicalCertificate'), json_extract(?2, '$.capabilityCertificateDigest'), json_extract(?2, '$.capabilityId'), json_extract(?2, '$.certificateDigest'), json_extract(?2, '$.committedRevision'), json_extract(?2, '$.reason'), json_extract(?2, '$.retiredAt');"),
     ("a0_receipt", 2, false, "INSERT INTO library_receipts (actor_id, operation_id, accepted_at, digest, result_blob_digest, result_text, status) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.acceptedAt'), json_extract(?2, '$.digest'), json_extract(?2, '$.resultBlobDigest'), json_extract(?2, '$.resultText'), json_extract(?2, '$.status');"),
     ("b0_blob_descriptor", 1, false, "INSERT INTO library_blobs (content_digest, byte_length, chunk_bytes, chunk_count, cloud_availability_commitment, encoding, media_type, range_count, range_granularity, range_index_root_digest, rendition_id, storage_layout) SELECT json_extract(?1, '$'), json_extract(?2, '$.byteLength'), json_extract(?2, '$.chunkBytes'), json_extract(?2, '$.chunkCount'), json_extract(?2, '$.cloudAvailabilityCommitment'), json_extract(?2, '$.encoding'), json_extract(?2, '$.mediaType'), json_extract(?2, '$.rangeCount'), json_extract(?2, '$.rangeGranularity'), json_extract(?2, '$.rangeIndexRootDigest'), json_extract(?2, '$.renditionId'), json_extract(?2, '$.storageLayout') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$');"),

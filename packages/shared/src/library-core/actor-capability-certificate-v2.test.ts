@@ -131,6 +131,7 @@ async function certificate(
         "feed_item_read_assignment",
         "feed_item_saved_assignment",
       ],
+      allowed_query_ids: ["search_page_v1"],
       scope,
     },
     {
@@ -155,6 +156,7 @@ describe("Library Core actor capability certificate v2", () => {
           "feed_item_read_assignment",
           "feed_item_saved_assignment",
         ],
+        allowed_query_ids: ["search_page_v1"],
         scope: { mode: "library_wide" },
       },
       {
@@ -191,6 +193,7 @@ describe("Library Core actor capability certificate v2", () => {
           "feed_item_read_assignment",
           "feed_item_saved_assignment",
         ],
+        allowed_query_ids: ["search_page_v1"],
         scope: { mode: "library_wide" },
       },
       {
@@ -249,6 +252,7 @@ describe("Library Core actor capability certificate v2", () => {
         "feed_item_read_assignment",
         "feed_item_saved_assignment",
       ],
+      allowed_query_ids: ["search_page_v1"],
       scope: { mode: "library_wide" },
       issued_at_ms: 1_234,
     });
@@ -260,7 +264,53 @@ describe("Library Core actor capability certificate v2", () => {
     );
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(body.allowed_operation_types)).toBe(true);
+    expect(body.allowed_query_ids).toStrictEqual(["search_page_v1"]);
+    expect(Object.isFrozen(body.allowed_query_ids)).toBe(true);
     expect(Object.isFrozen(body.scope)).toBe(true);
+  });
+
+  it("supports closed read-only agent grants and rejects query grants for other classes", async () => {
+    await expect(
+      constructLibraryCoreActorCapabilityCertificateV2(
+        enrollment(),
+        {
+          actor_class: "agent",
+          allowed_operation_types: [],
+          allowed_query_ids: ["item_detail_v1", "search_page_v1"],
+          scope: { mode: "library_wide" },
+        },
+        {
+          digest,
+          signActorProof: async () => HEX.actorProof,
+          signAuthorityCertificate: async () => HEX.authoritySignature,
+        },
+      ),
+    ).resolves.toMatchObject({
+      certificate: {
+        certificate_body: {
+          actor_capability_body: {
+            allowed_operation_types: [],
+            allowed_query_ids: ["item_detail_v1", "search_page_v1"],
+          },
+        },
+      },
+    });
+    await expect(
+      constructLibraryCoreActorCapabilityCertificateV2(
+        enrollment(),
+        {
+          actor_class: "editor",
+          allowed_operation_types: ["feed_item_read_assignment"],
+          allowed_query_ids: ["search_page_v1"],
+          scope: { mode: "library_wide" },
+        },
+        {
+          digest,
+          signActorProof: async () => HEX.actorProof,
+          signAuthorityCertificate: async () => HEX.authoritySignature,
+        },
+      ),
+    ).rejects.toThrow(/only agent capabilities/);
   });
 
   it("verifies the exact v2 body before both signatures and rejects changed bytes", async () => {
@@ -370,6 +420,7 @@ describe("Library Core actor capability certificate v2", () => {
         {
           actor_class: "agent",
           allowed_operation_types: ["feed_item_read_assignment"],
+          allowed_query_ids: ["search_page_v1"],
         } as never,
         {
           digest,
@@ -384,6 +435,7 @@ describe("Library Core actor capability certificate v2", () => {
         {
           actor_class: "scraper",
           allowed_operation_types: ["account_upsert"],
+          allowed_query_ids: [],
           scope: { mode: "library_wide" },
         },
         {

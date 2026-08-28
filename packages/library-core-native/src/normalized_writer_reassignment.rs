@@ -406,6 +406,16 @@ pub fn reassign_normalized_writer_epoch_v2(
                 ],
             )?;
         }
+        for query_id in &enrollment.capability.allowed_query_ids {
+            transaction.execute(
+                "INSERT INTO library_actor_capability_queries
+                 (capability_id, query_id) VALUES (?1, ?2);",
+                params![
+                    enrollment.capability.capability_certificate_digest,
+                    query_id
+                ],
+            )?;
+        }
     }
     let selected: (String, String, String) = transaction.query_row(
         "SELECT active.epoch_id, actor.actor_id, epoch.canonical_transition_certificate

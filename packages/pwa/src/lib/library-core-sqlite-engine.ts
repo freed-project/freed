@@ -18,6 +18,7 @@ import {
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_OPERATION_IDS,
+  LIBRARY_CORE_AGENT_QUERY_IDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
@@ -1232,6 +1233,7 @@ export class PwaLibraryCoreSqliteEngine {
           DELETE FROM library_persons;
           DELETE FROM library_preferences;
           DELETE FROM library_actor_retirements;
+          DELETE FROM library_actor_capability_queries;
           DELETE FROM library_actor_capability_mutations;
           DELETE FROM library_actor_capabilities;
           DELETE FROM library_actors;
@@ -1272,6 +1274,7 @@ export class PwaLibraryCoreSqliteEngine {
                   UNION ALL SELECT count(*) FROM library_actors
                   UNION ALL SELECT count(*) FROM library_actor_capabilities
                   UNION ALL SELECT count(*) FROM library_actor_capability_mutations
+                  UNION ALL SELECT count(*) FROM library_actor_capability_queries
                   UNION ALL SELECT count(*) FROM library_actor_retirements
                   UNION ALL SELECT count(*) FROM library_receipts
                   UNION ALL SELECT count(*) FROM library_blobs
@@ -3791,6 +3794,7 @@ export class PwaLibraryCoreSqliteEngine {
         "actor_public_key",
         "actor_class",
         "allowed_operation_types",
+        "allowed_query_ids",
         "scope",
         "issuance_identity",
         "retirement_identity",
@@ -3819,6 +3823,7 @@ export class PwaLibraryCoreSqliteEngine {
       JSON.stringify(capability.scope) !== '{"mode":"library_wide"}' ||
       JSON.stringify(capability.allowed_operation_types) !==
         JSON.stringify(LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2) ||
+      JSON.stringify(capability.allowed_query_ids) !== "[]" ||
       !isLibraryCoreLowercaseHex64(requestDigest) ||
       typeof actorProof !== "string" ||
       !(await verifyLibraryCoreEd25519WithWebCrypto(
@@ -3979,6 +3984,13 @@ export class PwaLibraryCoreSqliteEngine {
           sql: `INSERT OR IGNORE INTO library_actor_capability_mutations
                   (capability_id, mutation_id) VALUES (?1, ?2);`,
           bind: [capability.issuance_identity, mutationId],
+        });
+      }
+      for (const queryId of capability.allowed_query_ids) {
+        this.#database.exec({
+          sql: `INSERT OR IGNORE INTO library_actor_capability_queries
+                  (capability_id, query_id) VALUES (?1, ?2);`,
+          bind: [capability.issuance_identity, queryId],
         });
       }
       this.#database.exec({
@@ -9424,6 +9436,19 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error(
           "checkpoint actor capability names an unknown mutation",
         );
+      }
+    }
+    const knownAgentQueries = new Set<string>(LIBRARY_CORE_AGENT_QUERY_IDS);
+    const capabilityQueries = this.#database.exec({
+      sql: `SELECT DISTINCT query_id
+            FROM library_actor_capability_queries
+            ORDER BY query_id;`,
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    for (const queryId of capabilityQueries) {
+      if (!knownAgentQueries.has(text(queryId, "capability query"))) {
+        throw new Error("checkpoint actor capability names an unknown query");
       }
     }
   }
