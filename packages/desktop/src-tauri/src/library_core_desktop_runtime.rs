@@ -281,6 +281,9 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, Str
     {
         return Ok(false);
     }
+    if !binding.historical_source_is_present_v1() {
+        return Ok(false);
+    }
     let mut source = binding.connect().map_err(|error| error.to_string())?;
     let source_state: Option<(i64, i64, i64, Option<i64>)> = source
         .query_row(
