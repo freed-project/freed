@@ -250,8 +250,12 @@
         core in revision and ordinal primary-key order. One cursor pins the
         upper revision while later commits continue, responses contain no
         entity rows, and missing revisions fail closed. Normalized checkpoint
-        activation emits one explicit Library reset notice. Freed Desktop view
-        subscription wiring remains open.
+        activation emits one explicit Library reset notice. Freed Desktop now
+        drains accepted local and imported revisions through this feed in
+        512-row pages. FeedItem identities rerun bounded point queries, while
+        preferences, RSS, broad identity, authority, and reset topics reopen
+        their bounded readers. Pending follower intent hints remain
+        device-local and do not advance canonical change revisions.
   - [x] `feed_browse_page_v3` now executes the complete ranked-feed filter and
         bidirectional keyset order in the extracted native core. Forward and
         reverse reads share one registered expression index, inspect at most
@@ -315,6 +319,14 @@
         links to missing People without partial writes.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
+  - [x] Replace synthetic accepted-revision events with native
+        `change_feed_v1` pages. One page carries only compact identities and
+        resolves at most 512 FeedItems through exact point queries. A query
+        race publishes one row-free reset instead of reporting a durable
+        mutation as failed.
+  - [ ] Persist and page a separate device-local invalidation stream for
+        pending follower optimistic fields. It must never advance canonical
+        source revision or enter checkpoints and replication.
 - [x] Keep large content in a content-addressed vault with per-device hydration
       policy and verified range reads.
   - [x] Store metadata-only, stream-on-demand, partial-cache, complete-cache,

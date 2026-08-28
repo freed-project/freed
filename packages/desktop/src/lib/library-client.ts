@@ -25,7 +25,15 @@ import type {
   RssFeedRefreshUpdate,
   LibraryMutationRequest,
 } from "./library-types";
-import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
+import {
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  type LibraryCoreChangeFeedResponseV1,
+  type LibraryCoreRuntimeStateV1,
+} from "@freed/shared/library-core";
 import {
   registerLibraryAccessors,
   setLibrarySnapshot,
@@ -39,6 +47,11 @@ import {
 } from "./sqlite-library";
 import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
+import {
+  createDesktopLibraryCoreOperationId,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
+import { libraryMutationEventsFromChangeFeed } from "./library-core-change-feed-runtime";
 
 export type { LibraryMutationEvent } from "./library-types";
 
@@ -77,6 +90,68 @@ function publish(
   for (const subscriber of subscribers) subscriber(state, event);
 }
 
+async function publishCanonicalChangeFeed(
+  state: LibraryCoreRuntimeStateV1,
+  afterRevision: number,
+  mutation?: LibraryMutationRequest["type"],
+): Promise<boolean> {
+  if (state.searchCorpusVersion <= afterRevision) return false;
+  const readerSessionId = createDesktopLibraryCoreOperationId(
+    "desktop-change-feed-reader",
+  );
+  const cancellationId = createDesktopLibraryCoreOperationId(
+    "desktop-change-feed-cancel",
+  );
+  let cursor: string | null = null;
+  let published = false;
+  do {
+    const response: LibraryCoreChangeFeedResponseV1 =
+      await queryNormalizedLibrary({
+        afterRevision,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    if (response.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while invalidations were loading",
+      );
+    }
+    const changedItemIds = [
+      ...new Set(
+        response.rows.flatMap((row) =>
+          row.topic === "feed_item" && row.entityId !== null
+            ? [row.entityId]
+            : [],
+        ),
+      ),
+    ];
+    const changedItems = await readSqliteItems(changedItemIds);
+    const sourceCheck = await queryNormalizedLibrary({
+      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    });
+    if (sourceCheck.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while invalidation identities were resolving",
+      );
+    }
+    for (const event of libraryMutationEventsFromChangeFeed(
+      response.rows,
+      changedItems,
+      mutation,
+    )) {
+      publish(state, event);
+      published = true;
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
+  return published;
+}
+
 async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
   if (lastState) return lastState;
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
@@ -104,8 +179,35 @@ async function dispatch(message: LibraryMutationRequest): Promise<unknown> {
   let result: unknown;
   const operation = mutationQueue.then(async () => {
     await ensureInitialized();
+    const previousRevision = lastState?.searchCorpusVersion ?? 0;
     const dispatched = await dispatchSqliteMutation(message);
     result = dispatched.result;
+    if (dispatched.state.searchCorpusVersion > previousRevision) {
+      try {
+        if (
+          await publishCanonicalChangeFeed(
+            dispatched.state,
+            previousRevision,
+            message.type,
+          )
+        ) {
+          return;
+        }
+      } catch {
+        // The mutation is already durable. Publish one bounded reset instead
+        // of reporting a false mutation failure after an invalidation race.
+      }
+      publish(dispatched.state, {
+        source: "state_update",
+        mutation: message.type,
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
+      return;
+    }
+    // A pending follower intent does not advance canonical authority. Its
+    // local optimistic hint remains device-local until an accepted result
+    // enters the canonical change feed.
     publish(dispatched.state, dispatched.event);
   });
   mutationQueue = operation.catch(() => undefined);
@@ -140,7 +242,21 @@ export function getDesktopLibraryRuntimeState(): LibraryCoreRuntimeStateV1 | nul
 }
 
 export async function reloadDesktopLibraryRuntimeState(): Promise<LibraryCoreRuntimeStateV1> {
+  const previousRevision = lastState?.searchCorpusVersion ?? null;
   const state = await loadSqliteLibraryState();
+  if (
+    previousRevision !== null &&
+    state.searchCorpusVersion > previousRevision
+  ) {
+    try {
+      if (await publishCanonicalChangeFeed(state, previousRevision)) {
+        return state;
+      }
+    } catch {
+      // This call still publishes a row-free reset from the authoritative
+      // state, so every bounded reader reopens without a false sync failure.
+    }
+  }
   publish(state, {
     source: "state_update",
     mutation: undefined,

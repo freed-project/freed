@@ -1258,6 +1258,15 @@ discarded range. Checkpoint activation emits one Library-wide reset
 invalidation at its accepted source revision. No invalidation carries an
 entity projection or reader content.
 
+Freed Desktop drains this query after each accepted local transaction and
+after each imported follower revision. It resolves only the FeedItem
+identities present in one page through bounded point queries, then publishes
+those compact results to interested views. Preferences and RSS identities
+rerun their named readers. Broad identity, authority, or reset topics reopen
+the affected bounded readers. A pending follower intent does not enter this
+canonical feed. Its device-local optimistic state remains separate until the
+Primary accepts or rejects it.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version 2. The append-only registry begins with:
