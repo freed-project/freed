@@ -27,7 +27,9 @@
 > verify, and apply complete revisions atomically. React retains visible windows
 > and sparse optimistic fields only. Retired document runtime, Library IndexedDB,
 > shell, shadow-store, rollback-switch, and whole-corpus paths are absent from
-> shipping artifacts. Installed-device acceptance remains open.
+> shipping artifacts. The version 2 release activation manifest declares one
+> SQLite storage epoch and permits only fail-closed roll-forward recovery.
+> Installed-device acceptance remains open.
 
 ## Current SQLite sync work
 

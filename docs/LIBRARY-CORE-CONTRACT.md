@@ -1935,10 +1935,12 @@ Activation requires deterministic evidence for:
   patches, whole-document queries, and fallback flags from runtime bundles and
   callers
 
-Tests that skip on their executing platform are not proof. The release
-activation manifest records the exact transition and evidence expectations for
-the SQLite-only storage epoch. Release approval does not itself execute a
-migration, contact a provider, install a build, or change live data.
+Tests that skip on their executing platform are not proof. The version 2
+release activation manifest records one exact SQLite storage-epoch transition
+and one retired-engine boundary. It binds the immutable digest of the
+superseded version 1 audit history, but current declarations accept only
+fail-closed, roll-forward recovery semantics. Release approval does not itself
+execute a migration, contact a provider, install a build, or change live data.
 
 ## 18. Explicit deletion requirement
 

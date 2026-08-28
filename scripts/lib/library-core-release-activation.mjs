@@ -18,7 +18,8 @@ export const LIBRARY_CORE_ACTIVATION_MANIFEST_PATH =
   "docs/library-core-activation-manifest.json";
 
 const LIBRARY_CORE_RELEASE_ACTIVATION_SCHEMA_VERSION = 1;
-const LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION = 1;
+const LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION = 1;
+const LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION = 2;
 const MAX_MANIFEST_TRANSITIONS = 4_096;
 
 export const LIBRARY_CORE_ACTIVATION_DECISION_STATES = Object.freeze({
@@ -63,7 +64,9 @@ export function withReleaseArtifactWriteLock(filePath, operation) {
   }
 }
 
-const LIBRARY_CORE_TRANSITION_KINDS_BY_GATE = Object.freeze({
+// Version 1 declarations remain readable only so immutable published release
+// evidence can be verified. They are not accepted in the current manifest.
+const LEGACY_LIBRARY_CORE_TRANSITION_KINDS_BY_GATE = Object.freeze({
   C: Object.freeze([
     "migration_candidate_claim",
     "migration_candidate_execution",
@@ -88,7 +91,19 @@ const LIBRARY_CORE_TRANSITION_KINDS_BY_GATE = Object.freeze({
   H: Object.freeze(["legacy_engine_retirement"]),
 });
 
-const LIBRARY_CORE_RECEIPT_EXPECTATIONS = Object.freeze([
+const LIBRARY_CORE_TRANSITION_KINDS_BY_GATE = Object.freeze({
+  E: Object.freeze(["replication_protocol_activation"]),
+  F: Object.freeze([
+    "authority_key_rotation",
+    "recovery_activation",
+    "schema_version_activation",
+    "storage_epoch_cutover",
+  ]),
+  G: Object.freeze(["installed_soak_activation"]),
+  H: Object.freeze(["legacy_engine_retirement"]),
+});
+
+const LEGACY_LIBRARY_CORE_RECEIPT_EXPECTATIONS = Object.freeze([
   "authority_transition_certificate",
   "authority_rotation_receipt",
   "installed_soak_verdict",
@@ -104,7 +119,18 @@ const LIBRARY_CORE_RECEIPT_EXPECTATIONS = Object.freeze([
   "same_frontier_rollback_receipt",
 ]);
 
-const PRIMARY_RECEIPT_BY_TRANSITION_KIND = Object.freeze({
+const LIBRARY_CORE_RECEIPT_EXPECTATIONS = Object.freeze([
+  "authority_rotation_receipt",
+  "authority_transition_certificate",
+  "installed_soak_verdict",
+  "recovery_receipt",
+  "replication_convergence",
+  "retirement_receipt",
+  "roll_forward_recovery_receipt",
+  "schema_migration_receipt",
+]);
+
+const LEGACY_PRIMARY_RECEIPT_BY_TRANSITION_KIND = Object.freeze({
   migration_candidate_claim: "migration_claim_lifecycle",
   migration_candidate_execution: "migration_receipt",
   source_admission_fencing: "migration_receipt",
@@ -117,6 +143,16 @@ const PRIMARY_RECEIPT_BY_TRANSITION_KIND = Object.freeze({
   storage_epoch_cutover: "authority_transition_certificate",
   rollback_execution: "rollback_receipt",
   restore_execution: "restore_receipt",
+  authority_key_rotation: "authority_rotation_receipt",
+  recovery_activation: "recovery_receipt",
+  installed_soak_activation: "installed_soak_verdict",
+  legacy_engine_retirement: "retirement_receipt",
+});
+
+const PRIMARY_RECEIPT_BY_TRANSITION_KIND = Object.freeze({
+  replication_protocol_activation: "replication_convergence",
+  storage_epoch_cutover: "authority_transition_certificate",
+  schema_version_activation: "schema_migration_receipt",
   authority_key_rotation: "authority_rotation_receipt",
   recovery_activation: "recovery_receipt",
   installed_soak_activation: "installed_soak_verdict",
@@ -235,6 +271,74 @@ function validateRange(range) {
   };
 }
 
+function validateLegacyReceiptExpectations(values, transitionKind) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(
+      "Library Core transition receipt expectations must be a nonempty array.",
+    );
+  }
+  const allowed = new Set(LEGACY_LIBRARY_CORE_RECEIPT_EXPECTATIONS);
+  const normalized = values.map((value) => {
+    if (typeof value !== "string" || !allowed.has(value)) {
+      throw new Error(
+        `Unsupported Library Core receipt expectation: ${String(value)}.`,
+      );
+    }
+    return value;
+  });
+  const sorted = [...new Set(normalized)].sort(compareAscii);
+  if (JSON.stringify(sorted) !== JSON.stringify(normalized)) {
+    throw new Error(
+      "Library Core receipt expectations must be unique and ASCII sorted.",
+    );
+  }
+  const primary = LEGACY_PRIMARY_RECEIPT_BY_TRANSITION_KIND[transitionKind];
+  if (!normalized.includes(primary)) {
+    throw new Error(
+      `Library Core transition ${transitionKind} requires ${primary}.`,
+    );
+  }
+  if (!normalized.some((value) => ROLLBACK_RECEIPT_EXPECTATIONS.has(value))) {
+    throw new Error(
+      "Library Core transitions require a same-frontier rollback or roll-forward recovery receipt expectation.",
+    );
+  }
+  return normalized;
+}
+
+function validateLegacyTransition(transition) {
+  exactKeys(
+    transition,
+    ["activationId", "gate", "kind", "rollbackTrigger", "receiptExpectations"],
+    "Library Core transition declaration",
+  );
+  if (
+    typeof transition.activationId !== "string" ||
+    !ACTIVATION_ID_PATTERN.test(transition.activationId)
+  ) {
+    throw new Error("Library Core activation ID is invalid.");
+  }
+  const gateKinds = LEGACY_LIBRARY_CORE_TRANSITION_KINDS_BY_GATE[transition.gate];
+  if (!gateKinds || !gateKinds.includes(transition.kind)) {
+    throw new Error(
+      `Library Core transition ${String(transition.kind)} is invalid for Gate ${String(transition.gate)}.`,
+    );
+  }
+  return {
+    activationId: transition.activationId,
+    gate: transition.gate,
+    kind: transition.kind,
+    rollbackTrigger: requireCanonicalText(
+      transition.rollbackTrigger,
+      "Library Core rollback trigger",
+    ),
+    receiptExpectations: validateLegacyReceiptExpectations(
+      transition.receiptExpectations,
+      transition.kind,
+    ),
+  };
+}
+
 function validateReceiptExpectations(values, transitionKind) {
   if (!Array.isArray(values) || values.length === 0) {
     throw new Error(
@@ -262,9 +366,9 @@ function validateReceiptExpectations(values, transitionKind) {
       `Library Core transition ${transitionKind} requires ${primary}.`,
     );
   }
-  if (!normalized.some((value) => ROLLBACK_RECEIPT_EXPECTATIONS.has(value))) {
+  if (!normalized.includes("roll_forward_recovery_receipt")) {
     throw new Error(
-      "Library Core transitions require a same-frontier rollback or roll-forward recovery receipt expectation.",
+      "Library Core transitions require a roll-forward recovery receipt expectation.",
     );
   }
   return normalized;
@@ -273,7 +377,7 @@ function validateReceiptExpectations(values, transitionKind) {
 function validateTransition(transition) {
   exactKeys(
     transition,
-    ["activationId", "gate", "kind", "rollbackTrigger", "receiptExpectations"],
+    ["activationId", "gate", "kind", "failureResponse", "receiptExpectations"],
     "Library Core transition declaration",
   );
   if (
@@ -292,9 +396,9 @@ function validateTransition(transition) {
     activationId: transition.activationId,
     gate: transition.gate,
     kind: transition.kind,
-    rollbackTrigger: requireCanonicalText(
-      transition.rollbackTrigger,
-      "Library Core rollback trigger",
+    failureResponse: requireCanonicalText(
+      transition.failureResponse,
+      "Library Core failure response",
     ),
     receiptExpectations: validateReceiptExpectations(
       transition.receiptExpectations,
@@ -303,13 +407,19 @@ function validateTransition(transition) {
   };
 }
 
+function validateTransitionDeclaration(transition) {
+  return Object.hasOwn(transition ?? {}, "failureResponse")
+    ? validateTransition(transition)
+    : validateLegacyTransition(transition);
+}
+
 function validateTransitions(transitions) {
   if (!Array.isArray(transitions) || transitions.length > 64) {
     throw new Error(
       "Library Core transition declarations must be an array of at most 64 entries.",
     );
   }
-  const normalized = transitions.map(validateTransition);
+  const normalized = transitions.map(validateTransitionDeclaration);
   const activationIds = normalized.map((entry) => entry.activationId);
   const sortedIds = [...new Set(activationIds)].sort(compareAscii);
   if (JSON.stringify(activationIds) !== JSON.stringify(sortedIds)) {
@@ -322,8 +432,33 @@ function validateTransitions(transitions) {
 
 function emptyActivationManifest() {
   return {
-    schemaVersion: LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION,
+    schemaVersion: LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION,
     transitions: [],
+  };
+}
+
+function validateSupersededManifest(value) {
+  exactKeys(
+    value,
+    ["schemaVersion", "digest"],
+    "Superseded Library Core activation manifest",
+  );
+  if (
+    value.schemaVersion !==
+    LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      "Superseded Library Core activation manifest schema is invalid.",
+    );
+  }
+  if (typeof value.digest !== "string" || !DIGEST_PATTERN.test(value.digest)) {
+    throw new Error(
+      "Superseded Library Core activation manifest digest is invalid.",
+    );
+  }
+  return {
+    schemaVersion: value.schemaVersion,
+    digest: value.digest,
   };
 }
 
@@ -343,14 +478,23 @@ function parseActivationManifest(contents, { allowAbsent, label }) {
   } catch {
     throw new Error(`${label} is not valid JSON.`);
   }
-  exactKeys(
-    value,
-    ["schemaVersion", "transitions"],
-    "Library Core activation manifest",
-  );
-  if (value.schemaVersion !== LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION) {
+  if (
+    value.schemaVersion !==
+      LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION &&
+    value.schemaVersion !== LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION
+  ) {
     throw new Error("Library Core activation manifest schema is invalid.");
   }
+  const isLegacy =
+    value.schemaVersion ===
+    LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION;
+  exactKeys(
+    value,
+    isLegacy
+      ? ["schemaVersion", "transitions"]
+      : ["schemaVersion", "supersedes", "transitions"],
+    "Library Core activation manifest",
+  );
   if (
     !Array.isArray(value.transitions) ||
     value.transitions.length > MAX_MANIFEST_TRANSITIONS
@@ -359,7 +503,11 @@ function parseActivationManifest(contents, { allowAbsent, label }) {
       `Library Core activation manifest transitions must contain at most ${MAX_MANIFEST_TRANSITIONS.toLocaleString()} entries.`,
     );
   }
-  const transitions = value.transitions.map(validateTransition);
+  const transitions = value.transitions.map((transition) =>
+    isLegacy
+      ? validateLegacyTransition(transition)
+      : validateTransition(transition),
+  );
   const activationIds = new Set();
   for (const transition of transitions) {
     if (activationIds.has(transition.activationId)) {
@@ -369,10 +517,16 @@ function parseActivationManifest(contents, { allowAbsent, label }) {
     }
     activationIds.add(transition.activationId);
   }
-  return {
-    schemaVersion: LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION,
-    transitions,
-  };
+  return isLegacy
+    ? {
+        schemaVersion: LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION,
+        transitions,
+      }
+    : {
+        schemaVersion: LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION,
+        supersedes: validateSupersededManifest(value.supersedes),
+        transitions,
+      };
 }
 
 function inspectionDigest(body) {
@@ -486,24 +640,48 @@ export function inspectLibraryCoreActivationManifest({
     label: "Current Library Core activation manifest",
   });
 
-  if (current.transitions.length < previous.transitions.length) {
-    throw new Error(
-      "Library Core activation manifest history cannot delete transitions.",
-    );
-  }
-  for (let index = 0; index < previous.transitions.length; index += 1) {
-    if (
-      canonicalJson(previous.transitions[index]) !==
-      canonicalJson(current.transitions[index])
-    ) {
+  if (previous.schemaVersion === current.schemaVersion) {
+    if (current.transitions.length < previous.transitions.length) {
       throw new Error(
-        "Library Core activation manifest history cannot modify or reorder prior transitions.",
+        "Library Core activation manifest history cannot delete transitions.",
       );
     }
+    for (let index = 0; index < previous.transitions.length; index += 1) {
+      if (
+        canonicalJson(previous.transitions[index]) !==
+        canonicalJson(current.transitions[index])
+      ) {
+        throw new Error(
+          "Library Core activation manifest history cannot modify or reorder prior transitions.",
+        );
+      }
+    }
+  } else if (
+    previous.schemaVersion ===
+      LEGACY_LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION &&
+    current.schemaVersion === LIBRARY_CORE_ACTIVATION_MANIFEST_SCHEMA_VERSION
+  ) {
+    const previousDigest = inspectionDigest(previous);
+    if (
+      current.supersedes.schemaVersion !== previous.schemaVersion ||
+      current.supersedes.digest !== previousDigest
+    ) {
+      throw new Error(
+        "Library Core activation manifest v2 must bind the exact superseded v1 history.",
+      );
+    }
+  } else {
+    throw new Error(
+      "Library Core activation manifest schema history cannot move backwards or skip a version.",
+    );
   }
 
   const transitions = current.transitions
-    .slice(previous.transitions.length)
+    .slice(
+      previous.schemaVersion === current.schemaVersion
+        ? previous.transitions.length
+        : 0,
+    )
     .sort((left, right) => compareAscii(left.activationId, right.activationId));
   if (transitions.length > 64) {
     throw new Error(

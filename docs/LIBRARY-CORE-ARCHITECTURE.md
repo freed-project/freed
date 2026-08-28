@@ -27,8 +27,10 @@ as follows:
   contract.
 - [TURSO-EVALUATION.md](TURSO-EVALUATION.md) records the measured database
   engine decision.
-- `library-core-activation-manifest.json` records release activation gates. It
-  must describe the SQLite-only storage epoch before that epoch is activated.
+- `library-core-activation-manifest.json` records the one SQLite storage-epoch
+  release gate and retired-engine proof. Its version 2 declaration binds the
+  immutable digest of the superseded incremental-cutover history without
+  carrying those fallback instructions into the current architecture.
 - `roadmap-status.json` is the machine-readable status mirror for product
   phases. The public website roadmap remains in its separate `www` lane.
 
@@ -1192,13 +1194,15 @@ Cutover:
 
 There is no period in which both stores acknowledge authoritative writes.
 
-### 16.3 Rollback
+### 16.3 Failure and recovery
 
-The old source remains immutable until the rollback window closes. Rollback is
-valid only to an exact same-frontier receipt. Once accepted new-epoch writes
-advance beyond that frontier, recovery rolls forward.
+Before the first accepted new-epoch mutation, a failed cutover aborts and
+leaves the historical source immutable. After the first accepted new-epoch
+mutation, SQLite remains authoritative. Recovery uses verified roll-forward
+repair or a normalized snapshot restore into a successor authority epoch.
 
-The historical shell is never rollback evidence.
+No release flag, receipt, historical shell, or retained source can reactivate
+a retired Library engine.
 
 ## 17. Failure semantics
 
@@ -1500,7 +1504,8 @@ The Library Core follows these decisions:
    logical-record size.
 7. Migration moves directly into the final schema with no dual write or
    compatibility authority.
-8. Same-frontier rollback is the only rollback. Later recovery rolls forward.
+8. A cutover may abort only before the first accepted new-epoch mutation.
+   Later recovery always rolls forward with SQLite authoritative.
 9. Historical runtime paths and emergency fallbacks are deleted after verified
    cutover.
 10. The program prioritizes the shortest path to complete replacement, even

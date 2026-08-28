@@ -70,6 +70,39 @@ function manifestContents(transitions = []) {
   return `${JSON.stringify({ schemaVersion: 1, transitions }, null, 2)}\n`;
 }
 
+function sqliteEpochTransition(overrides = {}) {
+  return {
+    activationId: "sqlite-normalized-storage-epoch-v1",
+    gate: "F",
+    kind: "storage_epoch_cutover",
+    failureResponse:
+      "Abort before the first new-epoch mutation, then recover only by roll-forward repair.",
+    receiptExpectations: [
+      "authority_transition_certificate",
+      "roll_forward_recovery_receipt",
+    ],
+    ...overrides,
+  };
+}
+
+function manifestV2Contents({ previousTransitions = [], transitions = [] }) {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 2,
+      supersedes: {
+        schemaVersion: 1,
+        digest: sha256Digest({
+          schemaVersion: 1,
+          transitions: previousTransitions,
+        }),
+      },
+      transitions,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 const EMPTY_MANIFEST_INSPECTION = inspectLibraryCoreActivationManifest({
   currentContents: manifestContents(),
 });
@@ -762,6 +795,80 @@ test("release declarations must equal the exact manifest delta", () => {
         requireReviewed: false,
       }),
     /manifest evidence does not match/,
+  );
+});
+
+test("v2 replaces compatibility cutovers with one bound SQLite epoch", () => {
+  const legacyTransitions = [migrationTransition()];
+  const epoch = sqliteEpochTransition();
+  const inspection = inspectLibraryCoreActivationManifest({
+    previousContents: manifestContents(legacyTransitions),
+    currentContents: manifestV2Contents({
+      previousTransitions: legacyTransitions,
+      transitions: [epoch],
+    }),
+  });
+
+  assert.deepEqual(inspection.transitions, [epoch]);
+  assert.throws(
+    () =>
+      inspectLibraryCoreActivationManifest({
+        previousContents: manifestContents(legacyTransitions),
+        currentContents: manifestV2Contents({ transitions: [epoch] }),
+      }),
+    /must bind the exact superseded v1 history/,
+  );
+});
+
+test("v2 permits only fail-closed roll-forward transition declarations", () => {
+  const legacyTransitions = [migrationTransition()];
+  const previousContents = manifestContents(legacyTransitions);
+  assert.throws(
+    () =>
+      inspectLibraryCoreActivationManifest({
+        previousContents,
+        currentContents: manifestV2Contents({
+          previousTransitions: legacyTransitions,
+          transitions: [
+            {
+              ...sqliteEpochTransition(),
+              rollbackTrigger: "Restore the retired engine.",
+            },
+          ],
+        }),
+      }),
+    /unsupported or missing fields/,
+  );
+  assert.throws(
+    () =>
+      inspectLibraryCoreActivationManifest({
+        previousContents,
+        currentContents: manifestV2Contents({
+          previousTransitions: legacyTransitions,
+          transitions: [
+            sqliteEpochTransition({
+              receiptExpectations: ["authority_transition_certificate"],
+            }),
+          ],
+        }),
+      }),
+    /require a roll-forward recovery receipt expectation/,
+  );
+  assert.throws(
+    () =>
+      inspectLibraryCoreActivationManifest({
+        previousContents,
+        currentContents: manifestV2Contents({
+          previousTransitions: legacyTransitions,
+          transitions: [
+            sqliteEpochTransition({
+              gate: "D",
+              kind: "sql_read_cutover",
+            }),
+          ],
+        }),
+      }),
+    /invalid for Gate D/,
   );
 });
 

@@ -736,6 +736,7 @@ export async function captureDomFeed(
 | 5.176 | Add a distinct native `local_change_feed_v1` for device-local follower projections. Schema-owned triggers emit bounded identities when optimistic fields enter or leave SQLite, retain only the newest 4,096 rows with an explicit reset marker for stale readers, and never advance canonical revisions or export the stream | High       | ✓ Complete |
 | 5.177 | Query follower overlays through `optimistic_fields_v1` for at most 64 visible FeedItem IDs and 448 sparse fields. Freed Desktop drains local changes after writes and reloads, resolves invalidated IDs through bounded detail, and leaves canonical revision identity unchanged | High       | ✓ Complete |
 | 5.178 | Delete the whole-document relay benchmark and its Criterion dependency, remove seven uncalled historical bootstrap digest domains, and replace Desktop browser fixtures that still modeled document debounce, corpus hydration, fake zero-valued runtime telemetry, or renderer arrays as Library authority | Medium     | ✓ Complete |
+| 5.179 | Replace the incremental reader-cutover activation catalog with one version 2 SQLite storage-epoch declaration and one retired-engine boundary. Bind the immutable version 1 audit digest, remove current rollback instructions and same-frontier fallback receipts, require roll-forward recovery, and preserve exact release identity plus owner approval gates | High       | ✓ Complete |
 
 ---
 
