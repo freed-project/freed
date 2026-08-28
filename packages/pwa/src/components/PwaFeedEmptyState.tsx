@@ -30,10 +30,8 @@ export function PwaFeedEmptyState() {
     searchCorpusVersion,
   );
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
-  const activeCloudProvider = cloudProviders?.gdrive?.status !== "idle" ? "gdrive" : cloudProviders?.dropbox?.status !== "idle" ? "dropbox" : "gdrive";
-  const cloudState = activeCloudProvider === "gdrive" ? cloudProviders?.gdrive ?? null : cloudProviders?.dropbox ?? null;
-  const cloudProviderName = activeCloudProvider === "gdrive" ? "Google Drive" : "Dropbox";
-  const cloudActivity = useCloudSyncActivity(cloudState, cloudProviderName);
+  const cloudState = cloudProviders?.gdrive ?? null;
+  const cloudActivity = useCloudSyncActivity(cloudState);
   const cloudError = cloudState?.error;
   const syncBlocked = syncConnected && isMergeBlocked(cloudError);
   const cloudStage = cloudState?.stage;

@@ -249,44 +249,10 @@ function scheduleRefresh(generation: number, signal: AbortSignal): void {
   }, LIBRARY_CORE_REFRESH_INTERVAL_MS);
 }
 
-/** Mutable-document broadcasting is retired. */
-export function broadcastDoc(): void {}
-
-/** The old LAN relay accepted mutable documents and is no longer available. */
-export function connect(url: string): void {
-  void url;
-  disconnect();
-}
-
-export function disconnect(): void {
-  notifyStatus();
-}
-
-export function isRelayConnected(): boolean {
-  return false;
-}
-
 export function onStatusChange(listener: StatusListener): () => void {
   statusListeners.add(listener);
   listener(cloudConnected);
   return () => statusListeners.delete(listener);
-}
-
-export function getStoredRelayUrl(): string | null {
-  return null;
-}
-
-export function storeRelayUrl(url: string): void {
-  void url;
-  localStorage.removeItem("freed_relay_url");
-}
-
-export function clearStoredRelayUrl(): void {
-  localStorage.removeItem("freed_relay_url");
-}
-
-export function clearStoredRelayUrlForFactoryReset(): void {
-  localStorage.removeItem("freed_relay_url");
 }
 
 export function captureCloudLifecycle(): CloudLifecycleGuard {
@@ -323,7 +289,7 @@ export async function getValidCloudToken(
 
 export function getCloudProvider(): CloudProvider | null {
   const provider = localStorage.getItem(CLOUD_PROVIDER_KEY);
-  return provider === "gdrive" || provider === "dropbox" ? provider : null;
+  return provider === "gdrive" ? provider : null;
 }
 
 export function clearCloudSync(provider: CloudProvider): void {

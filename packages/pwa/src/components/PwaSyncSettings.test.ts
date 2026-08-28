@@ -9,8 +9,6 @@ import { PwaSyncSettings } from "./PwaSyncSettings";
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(async () => {}),
   clearCloudSync: vi.fn(),
-  clearStoredRelayUrl: vi.fn(),
-  disconnect: vi.fn(),
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
@@ -66,8 +64,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../lib/sync", () => ({
   clearCloudSync: mocks.clearCloudSync,
-  clearStoredRelayUrl: mocks.clearStoredRelayUrl,
-  disconnect: mocks.disconnect,
   getCloudProvider: mocks.getCloudProvider,
   stopCloudSync: mocks.stopCloudSync,
   syncCloudProviderNow: mocks.syncCloudProviderNow,
@@ -391,7 +387,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
 
     expect(container.textContent).toContain("Merging 30s");
     expect(activeCounter?.textContent).toContain(
-      "Merging Google Drive data into this library",
+      "Applying Google Drive records to this Library",
     );
     expect(activeCounter?.textContent).toContain("30s");
     expect(activeCounter?.querySelector("[aria-label='Syncing']")).toBeTruthy();

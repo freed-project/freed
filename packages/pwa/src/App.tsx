@@ -15,9 +15,7 @@ import {
 } from "@freed/ui/context";
 import { quiescePwaStartupMigrations, useAppStore } from "./lib/store";
 import {
-  disconnect,
   onStatusChange,
-  clearStoredRelayUrlForFactoryReset,
   startCloudSync,
   stopCloudSync,
   getCloudProvider,
@@ -275,7 +273,6 @@ function App() {
 
     return () => {
       unsubscribe();
-      disconnect();
       stopCloudSync();
     };
   }, [isInitialized, legalAccepted, setSyncConnected]);
@@ -340,7 +337,6 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         await runCoordinatedPwaFactoryReset(async () => {
-          disconnect();
           stopCloudSync();
           await runFactoryResetOperations({
             quiesceLocalWriters: [quiescePwaStartupMigrations],
@@ -358,7 +354,6 @@ function App() {
             clearProviderDataAndConnections: async () => {
               stopCloudSync();
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
-              clearStoredRelayUrlForFactoryReset();
             },
             clearLibrary: async () => {},
           });
@@ -429,12 +424,8 @@ function App() {
       releaseChannel,
       setReleaseChannel,
       factoryReset: handleFactoryReset,
-      activeCloudProviderLabel: () => {
-        const p = getCloudProvider();
-        if (p === "gdrive") return "Google Drive";
-        if (p === "dropbox") return "Dropbox";
-        return null;
-      },
+      activeCloudProviderLabel: () =>
+        getCloudProvider() === "gdrive" ? "Google Drive" : null,
       // PWA save URL: fetches and caches article content when possible, then
       // falls back to a desktop-healed stub for sites that refuse extraction.
       saveUrl: async (url, options) => {

@@ -24,7 +24,6 @@
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "@tanstack/react-virtual": "^3.14.8",
     "date-fns": "^4.4.0",
-    "jsqr": "^1.4.0",
     "jszip": "^3.10.1",
     "ipaddr.js": "^2.4.0",
     "react": "^19.2.8",
