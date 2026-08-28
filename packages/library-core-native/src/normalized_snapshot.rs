@@ -1,9 +1,6 @@
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
-use crate::library_core_authority_genesis::{
-    prepare_writer_epoch_reassignment, WriterEpochReassignment,
-};
 use crate::library_core_canonical::{decode_canonical_value, encode_canonical_value};
 use crate::library_core_hash::lower_hex;
 use crate::normalized_authority_credentials::AuthorityKeyStore;
@@ -19,6 +16,9 @@ use crate::normalized_sqlite::{
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
+};
+use crate::normalized_writer_certificate::{
+    prepare_writer_epoch_reassignment, WriterEpochReassignment,
 };
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,

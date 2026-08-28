@@ -47,6 +47,7 @@ mod normalized_query;
 #[cfg(unix)]
 mod normalized_snapshot;
 mod normalized_sqlite;
+mod normalized_writer_certificate;
 mod normalized_writer_reassignment;
 mod product_projection;
 mod selective_content;
@@ -78,9 +79,8 @@ pub use library_core_actor_enrollment::{
     ActorKeyStore, PreparedActorEnrollmentRequest,
 };
 pub use library_core_authority_genesis::{
-    establish_or_transition_sqlite_authority, prepare_writer_epoch_reassignment,
-    EstablishedSqliteAuthority, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
-    SqliteAuthorityProtocolReceipt, WriterEpochReassignment,
+    establish_or_transition_sqlite_authority, EstablishedSqliteAuthority,
+    NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, SqliteAuthorityProtocolReceipt,
 };
 #[cfg(unix)]
 pub use library_core_desktop_binding::{
@@ -178,6 +178,9 @@ pub use normalized_sqlite::{
     NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
     NormalizedCheckpointExportRequestV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
+};
+pub use normalized_writer_certificate::{
+    prepare_writer_epoch_reassignment, WriterEpochReassignment,
 };
 pub use normalized_writer_reassignment::reassign_normalized_writer_epoch_v2;
 pub use product_projection::upsert_item;
