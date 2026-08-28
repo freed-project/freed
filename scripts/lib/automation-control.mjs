@@ -27706,8 +27706,20 @@ function readStrandedEventHistoryAuthorityWitness(paths) {
 export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
   requireIdentifier(taskId, "taskId");
   const paths = automationControlPaths(stateRoot);
-  const cutover = requireAutomationKernelGuardCutover(paths);
+  requireAutomationKernelGuardCutover(paths);
   return withFilesystemGuard(paths, "events", () => {
+    const cutover = requireAutomationKernelGuardCutover(paths);
+    const kernelGuardReceipt = readAutomationAuthorityFileSnapshot(
+      cutover.paths.globalReceipt,
+      {
+        allowEmpty: false,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Event-history witness repair kernel-guard receipt",
+        invalidCode: "authority_generation_conflict",
+      },
+    );
     const candidate = readStrandedEventHistoryAuthorityWitness(paths);
     const healthy = requireHealthyEventHistoryWitnessRepairState(
       paths,
@@ -27718,6 +27730,9 @@ export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
       policy: EVENT_HISTORY_WITNESS_REPAIR_POLICY,
       stateRoot: paths.stateRoot,
       filesystemType: cutover.receipt?.filesystemType ?? null,
+      kernelGuard: {
+        receipt: authorityWitnessRepairSnapshotDescriptor(kernelGuardReceipt),
+      },
       canonical: {
         recordCount: candidate.current.recordCount,
         snapshot: authorityWitnessRepairSnapshotDescriptor(candidate.current),
@@ -27792,10 +27807,25 @@ export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
       label: "Event-history witness repair task manifest",
       invalidCode: "authority_generation_conflict",
     });
+    const kernelGuardAfter = readAutomationAuthorityFileSnapshot(
+      cutover.paths.globalReceipt,
+      {
+        allowEmpty: false,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Event-history witness repair kernel-guard receipt",
+        invalidCode: "authority_generation_conflict",
+      },
+    );
     if (
       !automationAuthoritySnapshotMatches(currentAfter, candidate.current) ||
       !automationAuthoritySnapshotMatches(stageAfter, candidate.stage) ||
-      !automationAuthoritySnapshotMatches(taskAfter, healthy.taskSnapshot)
+      !automationAuthoritySnapshotMatches(taskAfter, healthy.taskSnapshot) ||
+      !automationAuthoritySnapshotMatches(
+        kernelGuardAfter,
+        kernelGuardReceipt,
+      )
     ) {
       throw new AutomationControlError(
         "authority_generation_conflict",
@@ -27833,6 +27863,7 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
       "canonical",
       "eventId",
       "filesystemType",
+      "kernelGuard",
       "lineage",
       "operationId",
       "policy",
@@ -27849,6 +27880,7 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
       (typeof parameters.filesystemType === "string" &&
         parameters.filesystemType.length > 0)
     ) ||
+    !exactObjectKeys(parameters.kernelGuard, ["receipt"]) ||
     !SHA256_PATTERN.test(String(parameters.operationId ?? "")) ||
     parameters.eventId !==
       `event-history-witness-repaired:${parameters.operationId}` ||
@@ -27909,6 +27941,19 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
     throw new AutomationControlError(
       "invalid_argument",
       "Event-history witness repair plan parameters are not canonical.",
+    );
+  }
+  requireAuthorityWitnessRepairSnapshotDescriptor(
+    parameters.kernelGuard.receipt,
+    "Event-history witness repair kernel-guard receipt",
+  );
+  if (
+    parameters.kernelGuard.receipt.filePath !==
+    automationKernelGuardCutoverPaths(paths.stateRoot).globalReceipt
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Event-history witness repair plan does not bind the canonical kernel-guard receipt.",
     );
   }
   requireAuthorityWitnessRepairSnapshotDescriptor(
@@ -28140,6 +28185,29 @@ export function repairEventHistoryAuthorityWitness(
       nowMs: now(),
     });
   return withActiveAutomationEventsGuard(paths, () => {
+    const lockedCutover = requireAutomationKernelGuardCutover(paths);
+    const kernelGuardReceipt = readAutomationAuthorityFileSnapshot(
+      lockedCutover.paths.globalReceipt,
+      {
+        allowEmpty: false,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Event-history witness repair kernel-guard receipt",
+        invalidCode: "authority_generation_conflict",
+      },
+    );
+    if (
+      !authorityWitnessRepairSnapshotMatches(
+        kernelGuardReceipt,
+        parameters.kernelGuard.receipt,
+      )
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Kernel-guard receipt changed after event-history witness planning.",
+      );
+    }
     const taskSnapshot = readAutomationAuthorityFileSnapshot(
       paths.taskManifest,
       {

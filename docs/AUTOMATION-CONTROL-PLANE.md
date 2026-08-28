@@ -457,10 +457,11 @@ node scripts/authority-witness-repair.mjs plan-events \
 
 It requires one complete ready witness, a canonical history containing exactly
 one additional event, healthy lease, task, task-manifest, and outcome history,
-an unchanged task manifest, the permanent filesystem kernel guard, and no
-second event witness. It records both physical generations, the exact witness
-bytes, semantic event lineage, task-manifest generation, original opaque
-namespace, and a content-derived operation and owner-intent digest.
+an unchanged task manifest, one exact permanent kernel-guard receipt generation,
+and no second event witness. It records both event-history generations, the
+exact witness bytes, semantic event lineage, task-manifest generation,
+kernel-guard receipt generation, original opaque namespace, and a
+content-derived operation and owner-intent digest.
 
 The planner cannot reconstruct the original staging namespace. That namespace
 includes the predecessor inode as it existed before publication. Once another
@@ -492,8 +493,8 @@ after authorization, after retirement, or after the audit append. A retry does
 not need a still-live owner confirmation after that record exists. It proves
 the unchanged authorization, exact retirement receipt, canonical byte prefix,
 and single audit event instead. A changed plan, canonical history, witness,
-task manifest, authorization record, semantic lineage, ambiguous stage set, or
-foreign audit event fails closed. The command never alters the planned
+task manifest, kernel-guard receipt, authorization record, semantic lineage,
+ambiguous stage set, or foreign audit event fails closed. The command never alters the planned
 `events.jsonl` byte prefix, deletes a witness, acquires a lease through the
 broken history, contacts a provider, or grants publication authority.
 

@@ -21805,6 +21805,10 @@ test("stranded event history witness repair records durable authority before exa
   assert.equal(plan.parameters.canonical.recordCount, 3);
   assert.equal(plan.parameters.witness.recordCount, 2);
   assert.equal(plan.parameters.lineage.eventType, "lease_released");
+  assert.equal(
+    plan.parameters.kernelGuard.receipt.filePath,
+    path.join(fixture.paths.controlRoot, "kernel-guard-cutover.json"),
+  );
   assert.ok(Buffer.byteLength(JSON.stringify(plan.intent), "utf8") < 4_096);
   assert.deepEqual(
     Buffer.from(plan.parameters.witness.snapshot.bytesBase64, "base64"),
@@ -21939,7 +21943,12 @@ test("stranded event history witness repair records durable authority before exa
 });
 
 test("stranded event history witness repair fails closed on changed generations and owner intent", async (t) => {
-  for (const variant of ["canonical", "witness", "confirmation"]) {
+  for (const variant of [
+    "canonical",
+    "witness",
+    "kernel-guard",
+    "confirmation",
+  ]) {
     await t.test(variant, () => {
       const fixture = strandedEventHistoryAuthorityWitnessFixture(variant);
       const plan = planEventHistoryAuthorityWitnessRepair({
@@ -21958,6 +21967,16 @@ test("stranded event history witness repair fails closed on changed generations 
         appendFileSync(fixture.paths.events, "\n", { mode: 0o600 });
       } else if (variant === "witness") {
         appendFileSync(fixture.witnessPath, "\n", { mode: 0o600 });
+      } else if (variant === "kernel-guard") {
+        const receiptPath = plan.parameters.kernelGuard.receipt.filePath;
+        const receiptBytes = readFileSync(receiptPath);
+        const displacedPath = path.join(
+          fixture.stateRoot,
+          "kernel-guard-receipt-pre-drift.json",
+        );
+        renameSync(receiptPath, displacedPath);
+        writeFileSync(receiptPath, receiptBytes, { mode: 0o600 });
+        rmSync(displacedPath);
       }
       assert.throws(
         () =>
