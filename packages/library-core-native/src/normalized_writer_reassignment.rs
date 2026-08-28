@@ -5,7 +5,7 @@ use crate::library_core_actor_enrollment::{
 use crate::library_core_authority_genesis::{
     prepare_writer_epoch_reassignment, AuthorityKeyStore, WriterEpochReassignment,
 };
-use crate::library_core_journal::{AcceptedAuthorityState, VerifiedCausalTip};
+use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 use crate::normalized_sqlite::{describe_normalized_checkpoint_export_v2, NormalizedSqliteError};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
@@ -28,7 +28,7 @@ fn source_control_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 
 pub(crate) fn current_authority(
     connection: &Connection,
-) -> Result<(AcceptedAuthorityState, String, String, i64), NormalizedSqliteError> {
+) -> Result<(NormalizedAuthorityStateV2, String, String, i64), NormalizedSqliteError> {
     let (
         library_id,
         epoch,
@@ -66,13 +66,13 @@ pub(crate) fn current_authority(
             ))
         },
     )?;
-    let mut frontier = BTreeMap::<String, VerifiedCausalTip>::new();
+    let mut frontier = BTreeMap::<String, NormalizedCausalTipV1>::new();
     let mut statement = connection.prepare(
         "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
          FROM library_authority_frontier WHERE epoch_id = ?1 ORDER BY actor_id;",
     )?;
     let rows = statement.query_map([&epoch_id], |row| {
-        Ok(VerifiedCausalTip {
+        Ok(NormalizedCausalTipV1 {
             actor_id: row.get(0)?,
             sequence: row.get(1)?,
             operation_id: row.get(2)?,
@@ -91,7 +91,7 @@ pub(crate) fn current_authority(
          ORDER BY actor_id;",
     )?;
     let rows = statement.query_map([&epoch_id], |row| {
-        Ok(VerifiedCausalTip {
+        Ok(NormalizedCausalTipV1 {
             actor_id: row.get(0)?,
             sequence: row.get(1)?,
             operation_id: row.get(2)?,
@@ -103,7 +103,7 @@ pub(crate) fn current_authority(
         frontier.insert(tip.actor_id.clone(), tip);
     }
     Ok((
-        AcceptedAuthorityState {
+        NormalizedAuthorityStateV2 {
             library_id,
             epoch,
             epoch_id,

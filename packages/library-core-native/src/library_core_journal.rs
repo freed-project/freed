@@ -30,7 +30,10 @@ mod follower;
 pub(crate) mod operation_verifier;
 
 use crate::library_core_actor_capability as actor_capability;
-use actor_capability::ActorCapabilityState;
+pub(crate) use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
+pub(crate) use crate::normalized_operation::{
+    ActorState, VerifiedActorEnrollment, VerifiedOperation, VerifiedOperationTransaction,
+};
 
 pub use follower::{
     FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
@@ -301,42 +304,9 @@ impl std::error::Error for JournalError {}
 
 pub type JournalResult<T> = std::result::Result<T, JournalError>;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ActorState {
-    pub library_id: String,
-    pub epoch: i64,
-    pub epoch_id: String,
-    pub actor_id: String,
-    pub actor_public_key: String,
-    pub enrollment_operation_id: String,
-    pub enrollment_certificate_digest: String,
-    pub canonical_enrollment_certificate_json: String,
-    pub actor_chain_genesis: String,
-    pub next_sequence: i64,
-    pub previous_operation_id: Option<String>,
-    pub previous_chain_digest: String,
-    pub(crate) retired: bool,
-    pub(crate) capability: ActorCapabilityState,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct VerifiedActorEnrollment {
-    pub(crate) library_id: String,
-    pub(crate) epoch: i64,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) actor_public_key: String,
-    pub(crate) enrollment_operation_id: String,
-    pub(crate) enrollment_certificate_digest: String,
-    pub(crate) canonical_enrollment_certificate_json: String,
-    pub(crate) actor_chain_genesis: String,
-    pub(crate) enrolled_at_ms: i64,
-    pub(crate) capability: ActorCapabilityState,
-}
-
 pub(crate) fn verify_actor_enrollment_certificate(
     canonical_certificate: &[u8],
-    authority: &AcceptedAuthorityState,
+    authority: &NormalizedAuthorityStateV2,
 ) -> JournalResult<VerifiedActorEnrollment> {
     enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
 }
@@ -373,27 +343,9 @@ struct StoredActorCapabilityRow {
     retirement_certificate_digest: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifiedCausalTip {
-    pub actor_id: String,
-    pub sequence: i64,
-    pub operation_id: String,
-    pub chain_digest: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcceptedAuthorityState {
-    pub library_id: String,
-    pub epoch: i64,
-    pub epoch_id: String,
-    pub authority_key_id: String,
-    pub authority_public_key: String,
-    pub observed_frontier: Vec<VerifiedCausalTip>,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct VerifiedAuthorityEpoch {
-    pub(crate) authority: AcceptedAuthorityState,
+    pub(crate) authority: NormalizedAuthorityStateV2,
     pub(crate) transition_certificate_digest: String,
     pub(crate) canonical_transition_certificate_json: String,
     pub(crate) accepted_at_ms: i64,
@@ -409,46 +361,6 @@ pub(crate) struct VerifiedAuthorityProtocolTransition {
     pub(crate) canonical_protocol_transition_certificate_json: String,
     pub(crate) source_manifest_digest: String,
     pub(crate) accepted_at_ms: i64,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct VerifiedOperation {
-    pub(crate) operation_id: String,
-    pub(crate) actor_sequence: i64,
-    pub(crate) previous_actor_operation_id: Option<String>,
-    pub(crate) previous_actor_chain_digest: String,
-    pub(crate) actor_chain_digest: String,
-    pub(crate) member_digest: String,
-    pub(crate) signing_body_digest: String,
-    pub(crate) envelope_digest: String,
-    pub(crate) entity_id: String,
-    pub(crate) entity_type: String,
-    pub(crate) operation_type: String,
-    pub(crate) item_json: Option<String>,
-    pub(crate) rss_feed_json: Option<String>,
-    pub(crate) preferences_patch_json: Option<String>,
-    pub(crate) person_json: Option<String>,
-    pub(crate) account_json: Option<String>,
-    pub(crate) read_at_ms: Option<i64>,
-    pub(crate) assigned: Option<bool>,
-    pub(crate) assigned_at_ms: Option<i64>,
-    pub(crate) synced_at_ms: Option<i64>,
-    pub(crate) removed_at_ms: Option<i64>,
-    pub(crate) canonical_envelope_json: String,
-    pub(crate) causal_tips: Vec<VerifiedCausalTip>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct VerifiedOperationTransaction {
-    pub(crate) transaction_id: String,
-    pub(crate) transaction_digest: String,
-    pub(crate) library_id: String,
-    pub(crate) epoch: i64,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) actor_capability: ActorCapabilityState,
-    pub(crate) canonical_envelope_bytes: usize,
-    pub(crate) members: Vec<VerifiedOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1804,7 +1716,7 @@ impl LibraryCoreJournal {
     fn enroll_actor_under_authority(
         &mut self,
         enrollment: &VerifiedActorEnrollment,
-        expected_authority: &AcceptedAuthorityState,
+        expected_authority: &NormalizedAuthorityStateV2,
         allow_missing_admission_for_first_actor: bool,
     ) -> JournalResult<ActorState> {
         validate_actor_enrollment(enrollment)?;
@@ -1879,7 +1791,7 @@ impl LibraryCoreJournal {
     fn verify_actor_enrollment(
         &self,
         canonical_certificate: &[u8],
-        authority: &AcceptedAuthorityState,
+        authority: &NormalizedAuthorityStateV2,
     ) -> JournalResult<VerifiedActorEnrollment> {
         enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
     }
@@ -1944,9 +1856,9 @@ impl LibraryCoreJournal {
         library_id: &str,
         epoch: i64,
         epoch_id: &str,
-    ) -> JournalResult<AcceptedAuthorityState> {
+    ) -> JournalResult<NormalizedAuthorityStateV2> {
         let authority = self.install_authority_epoch(&VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id: library_id.to_owned(),
                 epoch,
                 epoch_id: epoch_id.to_owned(),
@@ -2014,7 +1926,7 @@ impl LibraryCoreJournal {
         transaction: &Transaction<'_>,
         library_id: &str,
         epoch_id: &str,
-        tip: &VerifiedCausalTip,
+        tip: &NormalizedCausalTipV1,
     ) -> SqlResult<bool> {
         transaction.query_row(
             "SELECT EXISTS(
@@ -3647,20 +3559,20 @@ mod tests {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         let actor_id = digest("1");
         let epoch = VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id: digest("2"),
                 epoch: 1,
                 epoch_id: digest("3"),
                 authority_key_id: digest("4"),
                 authority_public_key: digest("5"),
                 observed_frontier: vec![
-                    VerifiedCausalTip {
+                    NormalizedCausalTipV1 {
                         actor_id: actor_id.clone(),
                         sequence: 1,
                         operation_id: "op:frontier:one".to_owned(),
                         chain_digest: digest("6"),
                     },
-                    VerifiedCausalTip {
+                    NormalizedCausalTipV1 {
                         actor_id,
                         sequence: 2,
                         operation_id: "op:frontier:two".to_owned(),
@@ -5341,7 +5253,7 @@ mod tests {
             &first_member.actor_chain_digest,
             &[("rss:item:2", 901)],
         );
-        unknown.members[0].causal_tips.push(VerifiedCausalTip {
+        unknown.members[0].causal_tips.push(NormalizedCausalTipV1 {
             actor_id: digest("9"),
             sequence: 1,
             operation_id: "op:missing".to_string(),
@@ -5351,7 +5263,7 @@ mod tests {
             journal.commit_read_transaction(&unknown, 1_200),
             Err(JournalError::UnknownCausalTip { .. })
         ));
-        unknown.members[0].causal_tips[0] = VerifiedCausalTip {
+        unknown.members[0].causal_tips[0] = NormalizedCausalTipV1 {
             actor_id: enrollment.actor_id,
             sequence: 1,
             operation_id: first_member.operation_id.clone(),
@@ -5417,7 +5329,7 @@ mod tests {
         );
         local_with_foreign_library_tip.members[0]
             .causal_tips
-            .push(VerifiedCausalTip {
+            .push(NormalizedCausalTipV1 {
                 actor_id: foreign_library_enrollment.actor_id.clone(),
                 sequence: foreign_library_member.actor_sequence,
                 operation_id: foreign_library_member.operation_id.clone(),
@@ -5481,7 +5393,7 @@ mod tests {
         let epoch_one_member = &epoch_one_transaction.members[0];
         epoch_two_transaction.members[0]
             .causal_tips
-            .push(VerifiedCausalTip {
+            .push(NormalizedCausalTipV1 {
                 actor_id: epoch_one_enrollment.actor_id,
                 sequence: epoch_one_member.actor_sequence,
                 operation_id: epoch_one_member.operation_id.clone(),

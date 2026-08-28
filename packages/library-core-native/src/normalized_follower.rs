@@ -12,11 +12,11 @@ use crate::{
     library_core_hash::lower_hex,
     library_core_journal::{
         operation_verifier::verify_operation_transaction, verify_actor_enrollment_certificate,
-        VerifiedActorEnrollment,
     },
     normalized_mutation::{
         actor_state_at, NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1,
     },
+    normalized_operation::VerifiedActorEnrollment,
     normalized_primary_mutation_context_v1,
     normalized_writer_reassignment::current_authority,
     NormalizedMutationContextV1,

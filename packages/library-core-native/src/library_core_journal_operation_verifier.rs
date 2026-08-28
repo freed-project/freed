@@ -6,7 +6,7 @@
 //! enter the authoritative log by merely matching a Rust struct's shape.
 
 use super::{
-    ActorState, JournalError, JournalResult, VerifiedCausalTip, VerifiedOperation,
+    ActorState, JournalError, JournalResult, NormalizedCausalTipV1, VerifiedOperation,
     VerifiedOperationTransaction, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
     MAX_OPERATION_ID_BYTES, MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES,
     MAX_TRANSACTION_MEMBERS,
@@ -175,7 +175,7 @@ struct ParsedEnvelope {
     actor_id: String,
     actor_sequence: i64,
     previous_actor_operation_id: Option<String>,
-    causal_tips: Vec<VerifiedCausalTip>,
+    causal_tips: Vec<NormalizedCausalTipV1>,
     transaction_id: String,
     transaction_member_index: i64,
     transaction_member_count: i64,
@@ -1003,7 +1003,7 @@ fn digest_hex(domain: &str, value: &Value, index: usize) -> JournalResult<String
     Ok(encoded)
 }
 
-fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<VerifiedCausalTip>> {
+fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<NormalizedCausalTipV1>> {
     let tips = value
         .as_array()
         .ok_or_else(|| invalid(index, "causal_frontier"))?;
@@ -1034,7 +1034,7 @@ fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<VerifiedC
             return Err(invalid(index, "causal_frontier"));
         }
         previous = Some(key);
-        parsed.push(VerifiedCausalTip {
+        parsed.push(NormalizedCausalTipV1 {
             actor_id,
             sequence,
             operation_id,
@@ -2152,7 +2152,7 @@ pub(crate) mod tests {
         allowed_operation_types: &[&str],
         scope: crate::library_core_actor_capability::ActorCapabilityScope,
     ) -> (
-        super::super::AcceptedAuthorityState,
+        super::super::NormalizedAuthorityStateV2,
         Vec<u8>,
         VerifiedActorEnrollment,
     ) {
@@ -2168,7 +2168,7 @@ pub(crate) mod tests {
             0,
         )
         .expect("authority key ID");
-        let authority = super::super::AcceptedAuthorityState {
+        let authority = super::super::NormalizedAuthorityStateV2 {
             library_id: "1".repeat(64),
             epoch: 1,
             epoch_id: "2".repeat(64),
@@ -2314,7 +2314,7 @@ pub(crate) mod tests {
     fn signed_v1_enrollment(
         actor_key: &Ed25519KeyPair,
     ) -> (
-        super::super::AcceptedAuthorityState,
+        super::super::NormalizedAuthorityStateV2,
         Vec<u8>,
         VerifiedActorEnrollment,
     ) {

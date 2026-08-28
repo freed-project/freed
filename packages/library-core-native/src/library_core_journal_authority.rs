@@ -7,8 +7,8 @@
 //! the one certificate a fresh installation can mint for itself.
 
 use super::{
-    is_lower_hex, is_operation_id, AcceptedAuthorityState, JournalError, JournalResult,
-    VerifiedCausalTip, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
+    is_lower_hex, is_operation_id, JournalError, JournalResult, NormalizedAuthorityStateV2,
+    NormalizedCausalTipV1, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use super::{
     LibraryCoreJournal, VerifiedAuthorityEpoch, VerifiedAuthorityProtocolTransition,
@@ -21,7 +21,7 @@ fn invalid(field: &'static str) -> JournalError {
     JournalError::InvalidVerifiedInput { field }
 }
 
-fn validate_authority_state(authority: &AcceptedAuthorityState) -> JournalResult<()> {
+fn validate_authority_state(authority: &NormalizedAuthorityStateV2) -> JournalResult<()> {
     if !is_lower_hex(&authority.library_id, 32) {
         return Err(invalid("authority.library_id"));
     }
@@ -112,7 +112,7 @@ fn observed_frontier(
     connection: &Connection,
     library_id: &str,
     epoch_id: &str,
-) -> JournalResult<Vec<VerifiedCausalTip>> {
+) -> JournalResult<Vec<NormalizedCausalTipV1>> {
     let mut statement = connection.prepare(
         "SELECT tipIndex, actorId, sequence, operationId, chainDigest
          FROM library_core_authority_frontier
@@ -123,7 +123,7 @@ fn observed_frontier(
         .query_map(params![library_id, epoch_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                VerifiedCausalTip {
+                NormalizedCausalTipV1 {
                     actor_id: row.get(1)?,
                     sequence: row.get(2)?,
                     operation_id: row.get(3)?,
@@ -146,7 +146,7 @@ fn observed_frontier(
 pub(crate) fn active_authority(
     connection: &Connection,
     library_id: &str,
-) -> JournalResult<Option<AcceptedAuthorityState>> {
+) -> JournalResult<Option<NormalizedAuthorityStateV2>> {
     let row = connection
         .query_row(
             "SELECT epochs.libraryId, epochs.epoch, epochs.epochId,
@@ -161,7 +161,7 @@ pub(crate) fn active_authority(
              WHERE active.libraryId = ?1;",
             [library_id],
             |row| {
-                Ok(AcceptedAuthorityState {
+                Ok(NormalizedAuthorityStateV2 {
                     library_id: row.get(0)?,
                     epoch: row.get(1)?,
                     epoch_id: row.get(2)?,
@@ -186,7 +186,7 @@ pub(super) fn authority_epoch_state(
     library_id: &str,
     epoch: i64,
     epoch_id: &str,
-) -> JournalResult<Option<AcceptedAuthorityState>> {
+) -> JournalResult<Option<NormalizedAuthorityStateV2>> {
     let row = connection
         .query_row(
             "SELECT libraryId, epoch, epochId, authorityKeyId, authorityPublicKey
@@ -194,7 +194,7 @@ pub(super) fn authority_epoch_state(
              WHERE libraryId = ?1 AND epoch = ?2 AND epochId = ?3;",
             params![library_id, epoch, epoch_id],
             |row| {
-                Ok(AcceptedAuthorityState {
+                Ok(NormalizedAuthorityStateV2 {
                     library_id: row.get(0)?,
                     epoch: row.get(1)?,
                     epoch_id: row.get(2)?,
@@ -216,7 +216,7 @@ pub(super) fn authority_epoch_state(
 
 pub(crate) fn require_active_authority(
     connection: &Connection,
-    expected: &AcceptedAuthorityState,
+    expected: &NormalizedAuthorityStateV2,
 ) -> JournalResult<()> {
     let actual = active_authority(connection, &expected.library_id)?.ok_or_else(|| {
         JournalError::AuthorityNotFound {
@@ -328,7 +328,7 @@ impl LibraryCoreJournal {
         ) = stored;
         let frontier = observed_frontier(&self.connection, library_id, &stored_epoch_id)?;
         let verified = VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id: stored_library_id,
                 epoch: stored_epoch,
                 epoch_id: stored_epoch_id,
@@ -522,7 +522,7 @@ impl LibraryCoreJournal {
     pub(crate) fn install_authority_epoch(
         &mut self,
         epoch: &VerifiedAuthorityEpoch,
-    ) -> JournalResult<AcceptedAuthorityState> {
+    ) -> JournalResult<NormalizedAuthorityStateV2> {
         validate_verified_epoch(epoch)?;
         let transaction = self
             .connection

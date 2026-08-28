@@ -29,6 +29,7 @@ mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;
 mod library_core_store;
+mod normalized_authority;
 mod normalized_checkpoint;
 mod normalized_follower;
 mod normalized_import;
@@ -36,6 +37,7 @@ mod normalized_import;
 mod normalized_migration;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
+mod normalized_operation;
 mod normalized_query;
 #[cfg(unix)]
 mod normalized_snapshot;
@@ -83,11 +85,10 @@ pub use library_core_desktop_binding::{
 };
 pub use library_core_hash::lower_hex;
 pub use library_core_journal::{
-    AcceptedAuthorityState, ActorState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry,
-    FollowerOverlayReplayReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry, JournalError,
-    JournalRuntimeStatus, LibraryCoreJournal, StoredFollowerActorEnrollment,
-    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
-    VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
+    FollowerIntentEnqueueReceipt, FollowerIntentOutboxEntry, FollowerOverlayReplayReceipt,
+    FollowerRuntimeStatus, IntentResultOutboxEntry, JournalError, JournalRuntimeStatus,
+    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor, VerifiedFollowerIntentResult,
 };
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
@@ -99,6 +100,7 @@ pub use library_core_store::{
     LibraryCoreImportItem, LibraryCoreStore, LibraryCoreStoreError, LibraryCoreStoreResult,
     LibraryCoreStoreStatus,
 };
+pub use normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
     NormalizedCheckpointRecordV2,
@@ -143,6 +145,7 @@ pub use normalized_mutation::{
     NormalizedMutationInvalidationV1, NormalizedMutationReceiptV1,
     NormalizedPrimaryFollowerActorTransportStateV1,
 };
+pub use normalized_operation::ActorState;
 pub use normalized_query::{
     query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,
     NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,

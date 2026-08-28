@@ -388,6 +388,14 @@ reassignment, enrollment, and verification all consume this one policy
 directly. The frozen version 1 editor policy remains available only to the
 historical source reader and cannot be parsed into normalized SQLite.
 
+Normalized authority and operation identities are also native protocol
+primitives. `NormalizedAuthorityStateV2` owns the exact Library, epoch,
+authority key, and ordered causal frontier. `NormalizedCausalTipV1` owns each
+actor sequence, operation, and chain digest. Sealed actor enrollment,
+operation, and transaction values live beside those normalized identities.
+The historical source journal consumes these types but does not define them,
+and the former unversioned authority and causal-tip type names are absent.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

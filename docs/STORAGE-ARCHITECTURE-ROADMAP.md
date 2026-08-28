@@ -31,10 +31,13 @@ Last updated: 2026-08-27
 The generated actor-capability policy is now independent of the historical
 journal namespace. Normalized enrollment, checkpoint import, migration,
 mutation admission, writer reassignment, and both native verifiers consume the
-same crate-level policy directly. This leaves the sealed verified operation,
-enrollment, authority, causal-tip, and error types as the next extraction seam
-before the historical journal implementation can be deleted without widening
-its private runtime API.
+same crate-level policy directly. Normalized authority, causal-tip, actor,
+enrollment, operation, and transaction identities are now versioned native
+protocol types outside the historical journal as well. The historical source
+runtime consumes these sealed types but no longer defines them. The shared
+error model and verifier implementation are the next extraction seams before
+the historical journal implementation can be deleted without widening its
+private runtime API.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent

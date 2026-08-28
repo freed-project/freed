@@ -6,12 +6,12 @@ use crate::library_core_authority_genesis::{
 };
 use crate::library_core_canonical::{decode_canonical_value, encode_canonical_value};
 use crate::library_core_hash::lower_hex;
-use crate::library_core_journal::VerifiedActorEnrollment;
 use crate::normalized_checkpoint::NormalizedCheckpointRecordV2;
 use crate::normalized_import::{
     restore_normalized_checkpoint_stage_v1, NormalizedCheckpointDigestAccumulatorV2,
     NormalizedRestoreTransitionV1,
 };
+use crate::normalized_operation::VerifiedActorEnrollment;
 use crate::normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_pinned_normalized_checkpoint_page_v2,

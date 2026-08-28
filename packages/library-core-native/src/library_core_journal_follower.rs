@@ -7,7 +7,7 @@
 //! capture, or advance the cloud control pointer.
 
 use super::{
-    is_lower_hex, AcceptedAuthorityState, JournalError, JournalResult, LibraryCoreJournal,
+    is_lower_hex, JournalError, JournalResult, LibraryCoreJournal, NormalizedAuthorityStateV2,
     MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use crate::library_core_canonical::encode_canonical_value;
@@ -33,7 +33,7 @@ pub struct VerifiedFollowerCheckpointActor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedFollowerAnchor {
-    pub authority: AcceptedAuthorityState,
+    pub authority: NormalizedAuthorityStateV2,
     pub manifest_object_key: String,
     pub manifest_transport_object_id: String,
     pub manifest_content_digest: String,
@@ -179,7 +179,7 @@ pub struct FollowerOverlayReplayReceipt {
     pub revision_advanced: bool,
 }
 
-fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
+fn canonical_frontier(authority: &NormalizedAuthorityStateV2) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
     }
@@ -260,7 +260,7 @@ fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
     canonical_frontier(authority)
 }
 
-fn parse_frontier(value: &str) -> JournalResult<Vec<super::VerifiedCausalTip>> {
+fn parse_frontier(value: &str) -> JournalResult<Vec<super::NormalizedCausalTipV1>> {
     let parsed: Value =
         serde_json::from_str(value).map_err(|_| invalid("follower_anchor.observed_frontier"))?;
     let entries = parsed
@@ -278,7 +278,7 @@ fn parse_frontier(value: &str) -> JournalResult<Vec<super::VerifiedCausalTip>> {
                     && object.contains_key("chain_digest")
             })
             .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?;
-        tips.push(super::VerifiedCausalTip {
+        tips.push(super::NormalizedCausalTipV1 {
             actor_id: object
                 .get("actor_id")
                 .and_then(Value::as_str)
@@ -485,7 +485,7 @@ impl LibraryCoreJournal {
             return Ok(None);
         };
         let anchor = VerifiedFollowerAnchor {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id: stored.0,
                 epoch: stored.1,
                 epoch_id: stored.2,
@@ -2025,18 +2025,18 @@ impl LibraryCoreJournal {
 mod tests {
     use super::*;
     use crate::library_core_journal::{
-        VerifiedCausalTip, VerifiedOperation, VerifiedOperationTransaction,
+        NormalizedCausalTipV1, VerifiedOperation, VerifiedOperationTransaction,
     };
 
     fn anchor(generation: i64, ingest_sequence: i64) -> VerifiedFollowerAnchor {
         VerifiedFollowerAnchor {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id: "a".repeat(64),
                 epoch: 3,
                 epoch_id: "b".repeat(64),
                 authority_key_id: "c".repeat(64),
                 authority_public_key: "d".repeat(64),
-                observed_frontier: vec![VerifiedCausalTip {
+                observed_frontier: vec![NormalizedCausalTipV1 {
                     actor_id: "e".repeat(64),
                     sequence: 7,
                     operation_id: "operation-7".to_string(),

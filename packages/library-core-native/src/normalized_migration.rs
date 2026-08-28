@@ -10,7 +10,7 @@ use crate::library_core_canonical::{
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::lower_hex;
-use crate::library_core_journal::{AcceptedAuthorityState, VerifiedCausalTip};
+use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
 use crate::normalized_checkpoint::blob_digest;
 use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
 use crate::normalized_sqlite::{
@@ -1712,7 +1712,7 @@ fn install_normalized_primary_actor_v2(
     )?;
     let observed_frontier = statement
         .query_map([&epoch_id], |row| {
-            Ok(VerifiedCausalTip {
+            Ok(NormalizedCausalTipV1 {
                 actor_id: row.get(0)?,
                 sequence: row.get(1)?,
                 operation_id: row.get(2)?,
@@ -1721,7 +1721,7 @@ fn install_normalized_primary_actor_v2(
         })?
         .collect::<Result<Vec<_>, _>>()?;
     drop(statement);
-    let authority = AcceptedAuthorityState {
+    let authority = NormalizedAuthorityStateV2 {
         library_id,
         epoch,
         epoch_id: epoch_id.clone(),

@@ -8,9 +8,9 @@
 #[cfg(test)]
 use super::VerifiedAuthorityEpoch;
 use super::{
-    is_lower_hex, is_operation_id, AcceptedAuthorityState, JournalError, JournalResult,
-    VerifiedActorEnrollment, VerifiedCausalTip, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
-    MAX_TRANSACTION_ENVELOPE_BYTES,
+    is_lower_hex, is_operation_id, JournalError, JournalResult, NormalizedAuthorityStateV2,
+    NormalizedCausalTipV1, VerifiedActorEnrollment, MAX_CAUSAL_TIPS_PER_OPERATION,
+    MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES,
 };
 use crate::library_core_canonical::{
     decode_canonical_value, encode_operation_digest_input, encode_signature_input,
@@ -157,7 +157,7 @@ fn digest_hex(domain: &str, value: &Value) -> JournalResult<String> {
     Ok(encoded)
 }
 
-fn parse_causal_tips(value: &Value) -> JournalResult<Vec<VerifiedCausalTip>> {
+fn parse_causal_tips(value: &Value) -> JournalResult<Vec<NormalizedCausalTipV1>> {
     let tips = value
         .as_array()
         .ok_or_else(|| invalid("observed_frontier"))?;
@@ -190,7 +190,7 @@ fn parse_causal_tips(value: &Value) -> JournalResult<Vec<VerifiedCausalTip>> {
             return Err(invalid("observed_frontier"));
         }
         previous = Some(key);
-        parsed.push(VerifiedCausalTip {
+        parsed.push(NormalizedCausalTipV1 {
             actor_id,
             sequence,
             operation_id,
@@ -200,7 +200,7 @@ fn parse_causal_tips(value: &Value) -> JournalResult<Vec<VerifiedCausalTip>> {
     Ok(parsed)
 }
 
-fn validate_authority(authority: &AcceptedAuthorityState) -> JournalResult<()> {
+fn validate_authority(authority: &NormalizedAuthorityStateV2) -> JournalResult<()> {
     require_hex(&authority.library_id, 32, "authority.library_id")?;
     if !(1..=MAX_SAFE_INTEGER).contains(&authority.epoch) {
         return Err(invalid("authority.epoch"));
@@ -380,7 +380,7 @@ fn verify_capability_body_v2(
 
 pub(super) fn verify_actor_enrollment(
     canonical_certificate: &[u8],
-    authority: &AcceptedAuthorityState,
+    authority: &NormalizedAuthorityStateV2,
 ) -> JournalResult<VerifiedActorEnrollment> {
     validate_authority(authority)?;
     let decoded = decode_canonical_value(canonical_certificate, MAX_TRANSACTION_ENVELOPE_BYTES)
@@ -608,11 +608,11 @@ mod tests {
         .expect("cross-runtime actor capability vectors must parse")
     }
 
-    fn vector_authority(vector: &Value) -> AcceptedAuthorityState {
+    fn vector_authority(vector: &Value) -> NormalizedAuthorityStateV2 {
         let authority = vector["authority_state"]
             .as_object()
             .expect("vector authority state");
-        AcceptedAuthorityState {
+        NormalizedAuthorityStateV2 {
             library_id: required_string(authority, "library_id").expect("library ID"),
             epoch: positive_safe_integer(authority, "epoch").expect("epoch"),
             epoch_id: required_string(authority, "epoch_id").expect("epoch ID"),
@@ -634,9 +634,9 @@ mod tests {
         encoded
     }
 
-    fn authority(key_pair: &Ed25519KeyPair) -> AcceptedAuthorityState {
+    fn authority(key_pair: &Ed25519KeyPair) -> NormalizedAuthorityStateV2 {
         let public_key = hex(key_pair.public_key().as_ref());
-        AcceptedAuthorityState {
+        NormalizedAuthorityStateV2 {
             library_id: "1".repeat(64),
             epoch: 1,
             epoch_id: "2".repeat(64),
@@ -656,7 +656,7 @@ mod tests {
     fn certificate(
         actor_key: &Ed25519KeyPair,
         authority_key: &Ed25519KeyPair,
-        authority: &AcceptedAuthorityState,
+        authority: &NormalizedAuthorityStateV2,
     ) -> Vec<u8> {
         let actor_public_key = hex(actor_key.public_key().as_ref());
         let installation_incarnation = "3".repeat(64);
@@ -729,7 +729,7 @@ mod tests {
         .expect("canonical certificate")
     }
 
-    fn install_authority(journal: &mut LibraryCoreJournal, authority: &AcceptedAuthorityState) {
+    fn install_authority(journal: &mut LibraryCoreJournal, authority: &NormalizedAuthorityStateV2) {
         journal
             .install_authority_epoch(&VerifiedAuthorityEpoch {
                 authority: authority.clone(),
@@ -885,13 +885,13 @@ mod tests {
             Ed25519KeyPair::from_seed_unchecked(&[14_u8; 32]).expect("authority key");
         let mut accepted = authority(&authority_key);
         accepted.observed_frontier = vec![
-            VerifiedCausalTip {
+            NormalizedCausalTipV1 {
                 actor_id: actor_id.clone(),
                 sequence: 1,
                 operation_id: "op:frontier:one".to_owned(),
                 chain_digest: "2".repeat(64),
             },
-            VerifiedCausalTip {
+            NormalizedCausalTipV1 {
                 actor_id,
                 sequence: 2,
                 operation_id: "op:frontier:two".to_owned(),

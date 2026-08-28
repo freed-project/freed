@@ -9,9 +9,8 @@ use crate::library_core_journal::operation_verifier::{
     operation_admission_verdict, verify_operation_transaction_for_resolution,
     OperationAdmissionVerdict, OperationIdentity,
 };
-use crate::library_core_journal::{
-    validate_transaction, ActorState, JournalError, JournalResult, VerifiedOperationTransaction,
-};
+use crate::library_core_journal::{validate_transaction, JournalError, JournalResult};
+use crate::normalized_operation::{ActorState, VerifiedOperationTransaction};
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::{
     SqliteMutationProgram, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
@@ -2739,7 +2738,7 @@ mod tests {
     fn fixture() -> (
         Connection,
         Ed25519KeyPair,
-        crate::library_core_journal::VerifiedActorEnrollment,
+        crate::normalized_operation::VerifiedActorEnrollment,
     ) {
         let key_pair = Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("actor key");
         let enrollment = enrollment(&key_pair);

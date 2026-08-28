@@ -31,10 +31,9 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::{
-    verify_actor_enrollment_certificate, AcceptedAuthorityState, ActorState, LibraryCoreJournal,
-    VerifiedActorEnrollment,
-};
+use crate::library_core_journal::{verify_actor_enrollment_certificate, LibraryCoreJournal};
+use crate::normalized_authority::NormalizedAuthorityStateV2;
+use crate::normalized_operation::{ActorState, VerifiedActorEnrollment};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
@@ -234,7 +233,7 @@ fn build_certificate_body(
 }
 
 pub fn prepare_normalized_follower_actor_enrollment_request_v2(
-    authority: &AcceptedAuthorityState,
+    authority: &NormalizedAuthorityStateV2,
     installation_witness: &str,
     actor_store: &dyn ActorKeyStore,
     created_at_ms: i64,
@@ -352,7 +351,7 @@ pub fn prepare_normalized_follower_actor_enrollment_request_v2(
 }
 
 pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
-    authority: &AcceptedAuthorityState,
+    authority: &NormalizedAuthorityStateV2,
     installation_witness: &str,
     actor_store: &dyn ActorKeyStore,
     authority_store: &dyn AuthorityKeyStore,

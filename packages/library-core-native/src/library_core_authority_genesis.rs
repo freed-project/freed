@@ -26,9 +26,9 @@ use crate::library_core_canonical::{
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_journal::{
-    AcceptedAuthorityState, LibraryCoreJournal, VerifiedAuthorityEpoch,
-    VerifiedAuthorityProtocolTransition,
+    LibraryCoreJournal, VerifiedAuthorityEpoch, VerifiedAuthorityProtocolTransition,
 };
+use crate::normalized_authority::NormalizedAuthorityStateV2;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde::{Deserialize, Serialize};
@@ -115,7 +115,7 @@ pub struct SqliteAuthorityProtocolReceipt {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EstablishedSqliteAuthority {
-    pub authority: AcceptedAuthorityState,
+    pub authority: NormalizedAuthorityStateV2,
     pub protocol: SqliteAuthorityProtocolReceipt,
 }
 
@@ -242,7 +242,7 @@ struct WriterEpochReassignmentCertificateV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WriterEpochReassignment {
-    pub authority: AcceptedAuthorityState,
+    pub authority: NormalizedAuthorityStateV2,
     pub canonical_certificate_json: String,
     pub transition_certificate_digest: String,
 }
@@ -867,7 +867,7 @@ pub(crate) fn establish_with_key_pair_for_test(
     revision: &LegacySourceRevision,
     key_pair: &Ed25519KeyPair,
     accepted_at_ms: i64,
-) -> Result<AcceptedAuthorityState, String> {
+) -> Result<NormalizedAuthorityStateV2, String> {
     establish_with_key_pair(journal, revision, key_pair, accepted_at_ms)
 }
 
@@ -923,7 +923,7 @@ fn establish_native_with_store(
     let source_manifest_digest = certificate.certificate_body.source_manifest_digest.clone();
     let authority = journal
         .install_authority_epoch(&VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id,
                 epoch: GENESIS_EPOCH,
                 epoch_id: certificate.epoch_id,
@@ -1022,7 +1022,7 @@ fn establish_or_load_legacy_protocol_transition(
 fn reconcile_persisted_hint(
     hint: &PersistedCloudAuthorityHint,
     snapshot: &NativeSqliteSourceSnapshot,
-    active: &AcceptedAuthorityState,
+    active: &NormalizedAuthorityStateV2,
 ) -> Result<(), String> {
     if !is_lower_sha256(&hint.library_id)
         || !is_lower_sha256(&hint.storage_epoch)
@@ -1187,7 +1187,7 @@ fn establish_with_key_pair(
     revision: &LegacySourceRevision,
     key_pair: &Ed25519KeyPair,
     accepted_at_ms: i64,
-) -> Result<AcceptedAuthorityState, String> {
+) -> Result<NormalizedAuthorityStateV2, String> {
     validate_revision(revision)?;
     if accepted_at_ms < 0 {
         return Err("Library Core genesis acceptance time is invalid".to_string());
@@ -1207,7 +1207,7 @@ fn establish_with_key_pair(
 
     journal
         .install_authority_epoch(&VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
+            authority: NormalizedAuthorityStateV2 {
                 library_id,
                 epoch: GENESIS_EPOCH,
                 epoch_id: certificate.epoch_id.clone(),
@@ -1303,7 +1303,7 @@ fn verify_writer_reassignment_certificate(
 }
 
 pub fn prepare_writer_epoch_reassignment(
-    current: &AcceptedAuthorityState,
+    current: &NormalizedAuthorityStateV2,
     current_canonical_transition_certificate: &str,
     canonical_source_control_json: &str,
     target_writer_id: &str,
@@ -1384,7 +1384,7 @@ pub fn prepare_writer_epoch_reassignment(
     let transition_certificate_digest =
         digest_value("epoch-transition-certificate", &certificate_value)?;
     Ok(WriterEpochReassignment {
-        authority: AcceptedAuthorityState {
+        authority: NormalizedAuthorityStateV2 {
             library_id: current.library_id.clone(),
             epoch: target_epoch,
             epoch_id,
@@ -1868,7 +1868,7 @@ mod tests {
             digest_value("epoch-transition-certificate", &certificate_value).unwrap();
         journal
             .install_authority_epoch(&VerifiedAuthorityEpoch {
-                authority: AcceptedAuthorityState {
+                authority: NormalizedAuthorityStateV2 {
                     library_id: library_id.clone(),
                     epoch: GENESIS_EPOCH,
                     epoch_id: certificate.epoch_id.clone(),
@@ -2113,7 +2113,7 @@ mod tests {
 
     fn seed_legacy_replication_state(
         journal: &LibraryCoreJournal,
-        authority: &AcceptedAuthorityState,
+        authority: &NormalizedAuthorityStateV2,
     ) {
         let actor_id = "4".repeat(64);
         let actor_public_key = "5".repeat(64);
