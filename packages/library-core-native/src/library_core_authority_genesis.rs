@@ -29,6 +29,10 @@ use crate::library_core_journal::{
     LibraryCoreJournal, VerifiedAuthorityEpoch, VerifiedAuthorityProtocolTransition,
 };
 use crate::normalized_authority::NormalizedAuthorityStateV2;
+use crate::normalized_authority_credentials::{
+    load_or_create_authority_key_pair, normalized_native_library_id, AuthorityKeyStore,
+};
+#[cfg(test)]
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde::{Deserialize, Serialize};
@@ -268,22 +272,6 @@ fn legacy_library_id(document_id: &str) -> Result<String, String> {
         &json!({
             "source_document_id": document_id,
             "source_kind": SOURCE_KIND,
-        }),
-    )
-}
-
-pub(crate) fn native_library_id(
-    source_digest: &str,
-    installation_witness: &str,
-) -> Result<String, String> {
-    if !is_lower_sha256(source_digest) || !is_lower_sha256(installation_witness) {
-        return Err("Library Core native Library identity input is invalid".to_string());
-    }
-    digest_value(
-        "native-sqlite-library-identity",
-        &json!({
-            "installation_witness": installation_witness,
-            "source_digest": source_digest,
         }),
     )
 }
@@ -689,38 +677,6 @@ fn verify_native_protocol_transition(
     )
 }
 
-/// Host-supplied storage for the authority signing key. The reusable core has
-/// no default credential backend, so a missing store remains an explicit error.
-pub trait AuthorityKeyStore {
-    fn load(&self, library_id: &str) -> Result<Option<Vec<u8>>, String>;
-    fn store(&self, library_id: &str, bytes: &[u8]) -> Result<(), String>;
-}
-
-pub(crate) fn load_or_create_authority_key_pair(
-    store: &dyn AuthorityKeyStore,
-    library_id: &str,
-) -> Result<Ed25519KeyPair, String> {
-    if let Some(bytes) = store.load(library_id)? {
-        return Ed25519KeyPair::from_pkcs8(&bytes)
-            .map_err(|_| "Library Core authority signing key is corrupt".to_string());
-    }
-
-    let generated = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
-        .map_err(|_| "Library Core could not generate an authority signing key".to_string())?;
-    store.store(library_id, generated.as_ref())?;
-    // Read the key back through the store before signing anything with it. A
-    // store that accepted the write but kept something else would otherwise
-    // produce an authority chain nobody can continue after the next restart.
-    let readback = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core authority signing key readback is missing".to_string())?;
-    if readback.as_slice() != generated.as_ref() {
-        return Err("Library Core authority signing key readback changed".to_string());
-    }
-    Ed25519KeyPair::from_pkcs8(&readback)
-        .map_err(|_| "Library Core authority signing key readback is corrupt".to_string())
-}
-
 fn load_authority_key_pair(
     store: &dyn AuthorityKeyStore,
     library_id: &str,
@@ -857,24 +813,6 @@ fn verify_writer_epoch_record(record: &VerifiedAuthorityEpoch) -> Result<(), Str
     Ok(())
 }
 
-/// Load the authority key this installation already minted.
-///
-/// Deliberately never mints one. An authority key that did not sign the active
-/// epoch cannot countersign anything the journal will accept, so a caller that
-/// needs the key for enrollment must fail rather than quietly create a second
-/// identity.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn load_established_authority_key_pair(
-    store: &dyn AuthorityKeyStore,
-    library_id: &str,
-) -> Result<Ed25519KeyPair, String> {
-    let bytes = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core has no established authority signing key".to_string())?;
-    Ed25519KeyPair::from_pkcs8(&bytes)
-        .map_err(|_| "Library Core authority signing key is corrupt".to_string())
-}
-
 fn stored_certificate_format(canonical_json: &str) -> Result<String, String> {
     let value: Value = serde_json::from_str(canonical_json)
         .map_err(|_| "Library Core stored authority certificate is invalid".to_string())?;
@@ -898,7 +836,7 @@ fn establish_native_with_store(
     if accepted_at_ms < 0 {
         return Err("Library Core native genesis acceptance time is invalid".to_string());
     }
-    let library_id = native_library_id(&snapshot.source_digest, installation_witness)?;
+    let library_id = normalized_native_library_id(&snapshot.source_digest, installation_witness)?;
     let key_pair = load_or_create_authority_key_pair(store, &library_id)?;
     let certificate = build_native_genesis_certificate(&library_id, snapshot, &key_pair)?;
     verify_native_genesis_certificate(&certificate)?;
@@ -1672,53 +1610,6 @@ mod tests {
     }
 
     #[test]
-    fn an_authority_key_is_minted_once_and_reused_afterwards() {
-        let store = MemoryKeyStore::default();
-
-        let first = load_or_create_authority_key_pair(&store, "library-a").unwrap();
-        let minted = store.stored.borrow().clone();
-        let second = load_or_create_authority_key_pair(&store, "library-a").unwrap();
-
-        assert_eq!(
-            lower_hex(first.public_key().as_ref()),
-            lower_hex(second.public_key().as_ref()),
-            "a second call must reuse the stored key, not mint a new one"
-        );
-        assert_eq!(
-            *store.stored.borrow(),
-            minted,
-            "a second call must not overwrite the stored key"
-        );
-    }
-
-    /// A store that keeps something other than what was written would produce
-    /// an authority chain that no later restart could continue.
-    #[test]
-    fn a_key_that_does_not_read_back_is_refused_before_it_signs_anything() {
-        let store = MemoryKeyStore {
-            substitute_on_readback: Some(vec![9_u8; 32]),
-            ..MemoryKeyStore::default()
-        };
-
-        let error = load_or_create_authority_key_pair(&store, "library-a").unwrap_err();
-
-        assert!(error.contains("readback changed"), "{error}");
-    }
-
-    #[test]
-    fn a_corrupt_stored_key_is_refused_rather_than_replaced() {
-        let store = MemoryKeyStore::default();
-        store.store("library-a", b"not a pkcs8 key").unwrap();
-
-        let error = load_or_create_authority_key_pair(&store, "library-a").unwrap_err();
-
-        assert!(error.contains("key is corrupt"), "{error}");
-        // Refusing must not silently mint a replacement over the top of a key
-        // that some other epoch may already have been signed with.
-        assert_eq!(*store.stored.borrow(), Some(b"not a pkcs8 key".to_vec()));
-    }
-
-    #[test]
     fn the_stored_certificate_is_the_canonical_encoding_of_what_was_verified() {
         let (_directory, mut journal) = open_journal();
         establish_with_key_pair(&mut journal, &revision(), &key_pair(), 1_700).unwrap();
@@ -1840,7 +1731,8 @@ mod tests {
         let (key_pair, store) = generated_key_store();
         let snapshot = native_snapshot();
         let installation_witness = "3".repeat(64);
-        let library_id = native_library_id(&snapshot.source_digest, &installation_witness).unwrap();
+        let library_id =
+            normalized_native_library_id(&snapshot.source_digest, &installation_witness).unwrap();
         let certificate = native_genesis_for_schema(
             &library_id,
             &snapshot,

@@ -31,6 +31,7 @@ mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;
 mod normalized_authority;
+mod normalized_authority_credentials;
 mod normalized_checkpoint;
 mod normalized_enrollment_verifier;
 mod normalized_follower;
@@ -77,10 +78,9 @@ pub use library_core_actor_enrollment::{
     ActorKeyStore, PreparedActorEnrollmentRequest,
 };
 pub use library_core_authority_genesis::{
-    establish_or_transition_sqlite_authority, load_established_authority_key_pair,
-    prepare_writer_epoch_reassignment, AuthorityKeyStore, EstablishedSqliteAuthority,
-    NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, SqliteAuthorityProtocolReceipt,
-    WriterEpochReassignment,
+    establish_or_transition_sqlite_authority, prepare_writer_epoch_reassignment,
+    EstablishedSqliteAuthority, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
+    SqliteAuthorityProtocolReceipt, WriterEpochReassignment,
 };
 #[cfg(unix)]
 pub use library_core_desktop_binding::{
@@ -94,6 +94,9 @@ pub use library_core_process_lease::{
 #[cfg(unix)]
 pub use library_core_sidecar::run_library_authority_sidecar;
 pub use normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
+pub use normalized_authority_credentials::{
+    load_established_authority_key_pair, AuthorityKeyStore,
+};
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
     NormalizedCheckpointRecordV2,

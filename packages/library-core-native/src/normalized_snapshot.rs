@@ -2,10 +2,11 @@ use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
 use crate::library_core_authority_genesis::{
-    prepare_writer_epoch_reassignment, AuthorityKeyStore, WriterEpochReassignment,
+    prepare_writer_epoch_reassignment, WriterEpochReassignment,
 };
 use crate::library_core_canonical::{decode_canonical_value, encode_canonical_value};
 use crate::library_core_hash::lower_hex;
+use crate::normalized_authority_credentials::AuthorityKeyStore;
 use crate::normalized_checkpoint::NormalizedCheckpointRecordV2;
 use crate::normalized_import::{
     restore_normalized_checkpoint_stage_v1, NormalizedCheckpointDigestAccumulatorV2,

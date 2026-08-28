@@ -4,12 +4,12 @@ use crate::{
     library_core_actor_enrollment::{
         prepare_normalized_follower_actor_enrollment_request_v2, ActorKeyStore,
     },
-    library_core_authority_genesis::AuthorityKeyStore,
     library_core_canonical::{
         encode_canonical_value, encode_operation_digest_input, encode_signature_input,
     },
     library_core_ed25519::verify_library_core_ed25519,
     library_core_hash::lower_hex,
+    normalized_authority_credentials::AuthorityKeyStore,
     normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate,
     normalized_mutation::{
         actor_state_at, NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1,

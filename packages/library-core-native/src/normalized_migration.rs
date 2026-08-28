@@ -2,15 +2,15 @@ use crate::library_core_actor_capability::ActorCapabilityScope;
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
-use crate::library_core_authority_genesis::{
-    load_or_create_authority_key_pair, native_library_id, AuthorityKeyStore,
-};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::lower_hex;
 use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
+use crate::normalized_authority_credentials::{
+    load_or_create_authority_key_pair, normalized_native_library_id, AuthorityKeyStore,
+};
 use crate::normalized_checkpoint::blob_digest;
 use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
 use crate::normalized_sqlite::{
@@ -2033,7 +2033,7 @@ pub fn prepare_fresh_normalized_desktop_library_v1(
             "normalized fresh Library conflicts with a migration candidate",
         ));
     }
-    let library_id = native_library_id(&product_digest, installation_witness)
+    let library_id = normalized_native_library_id(&product_digest, installation_witness)
         .map_err(|_| invalid("normalized fresh Library identity is invalid"))?;
 
     let signed = if authority_rows == 0 {

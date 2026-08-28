@@ -23,15 +23,15 @@
 //! from storage without rebuilding anything.
 
 use crate::library_core_actor_capability::primary_writer_operation_types;
-use crate::library_core_authority_genesis::{
-    load_established_authority_key_pair, AuthorityKeyStore,
-};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_operation_signature_input,
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::normalized_authority::NormalizedAuthorityStateV2;
+use crate::normalized_authority_credentials::{
+    load_established_authority_key_pair, AuthorityKeyStore,
+};
 use crate::normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate;
 use crate::normalized_operation::VerifiedActorEnrollment;
 use ring::rand::SystemRandom;
