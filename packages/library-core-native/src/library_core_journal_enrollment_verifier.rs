@@ -264,7 +264,7 @@ fn verify_capability_body_v2(
     actor_id: &str,
     actor_public_key: &str,
     created_at_ms: i64,
-) -> JournalResult<super::actor_capability::ActorCapabilityState> {
+) -> JournalResult<crate::library_core_actor_capability::ActorCapabilityState> {
     let capability_value = certificate_body
         .get("actor_capability_body")
         .ok_or_else(|| invalid("actor_capability_body"))?;
@@ -305,15 +305,18 @@ fn verify_capability_body_v2(
                 .ok_or_else(|| invalid("allowed_operation_types"))
         })
         .collect::<JournalResult<Vec<_>>>()?;
-    super::actor_capability::validate_allowed_operation_types(&actor_class, &operations)
-        .map_err(invalid)?;
+    crate::library_core_actor_capability::validate_allowed_operation_types(
+        &actor_class,
+        &operations,
+    )
+    .map_err(invalid)?;
 
     let scope_value = capability.get("scope").ok_or_else(|| invalid("scope"))?;
     let scope_object = scope_value.as_object().ok_or_else(|| invalid("scope"))?;
     let scope = match scope_object.get("mode").and_then(Value::as_str) {
         Some("library_wide") => {
             exact_object(scope_value, &LIBRARY_WIDE_SCOPE_KEYS, "scope")?;
-            super::actor_capability::ActorCapabilityScope::LibraryWide
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide
         }
         Some("bounded") => {
             let scope = exact_object(scope_value, &BOUNDED_SCOPE_KEYS, "scope")?;
@@ -325,7 +328,7 @@ fn verify_capability_body_v2(
             if scope_id.is_empty() || scope_id.len() > 4_096 {
                 return Err(invalid("scope_id"));
             }
-            super::actor_capability::ActorCapabilityScope::Bounded { kind, scope_id }
+            crate::library_core_actor_capability::ActorCapabilityScope::Bounded { kind, scope_id }
         }
         _ => return Err(invalid("scope")),
     };
@@ -361,7 +364,7 @@ fn verify_capability_body_v2(
     if capability_body_digest != digest_hex("actor-capability-body", capability_value)? {
         return Err(invalid("actor_capability_body_digest"));
     }
-    Ok(super::actor_capability::ActorCapabilityState {
+    Ok(crate::library_core_actor_capability::ActorCapabilityState {
         certificate_version: 2,
         actor_class,
         allowed_operation_types: operations,
@@ -561,13 +564,13 @@ pub(super) fn verify_actor_enrollment(
         }),
     )?;
     let capability = capability.take().unwrap_or_else(|| {
-        super::actor_capability::ActorCapabilityState::historical_editor(
+        crate::library_core_actor_capability::ActorCapabilityState::historical_editor(
             certificate_digest.clone(),
             created_at_ms,
         )
     });
     let capability = if certificate_version == 2 {
-        super::actor_capability::ActorCapabilityState {
+        crate::library_core_actor_capability::ActorCapabilityState {
             capability_certificate_digest: certificate_digest.clone(),
             ..capability
         }
@@ -808,7 +811,7 @@ mod tests {
         );
         assert!(matches!(
             verified.capability.scope,
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide
         ));
 
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");

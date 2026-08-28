@@ -1,8 +1,8 @@
+use crate::library_core_actor_capability::parse_normalized_stored_capability;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::actor_capability::parse_normalized_stored_capability;
 #[cfg(test)]
 use crate::library_core_journal::operation_verifier::verify_operation_transaction;
 use crate::library_core_journal::operation_verifier::{
@@ -2718,7 +2718,7 @@ pub fn accept_normalized_operation_transaction_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_journal::actor_capability::primary_writer_operation_types;
+    use crate::library_core_actor_capability::primary_writer_operation_types;
     use crate::library_core_journal::operation_verifier::tests::{
         enrollment, signed_envelopes, signed_envelopes_from_tip,
         signed_envelopes_from_tip_with_payload,

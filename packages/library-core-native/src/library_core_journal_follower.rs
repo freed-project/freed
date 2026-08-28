@@ -622,7 +622,7 @@ impl LibraryCoreJournal {
                         previous_chain_digest: row.get(11)?,
                         retired: false,
                         capability:
-                            super::actor_capability::ActorCapabilityState::historical_editor(
+                            crate::library_core_actor_capability::ActorCapabilityState::historical_editor(
                                 row.get(6)?,
                                 row.get(12)?,
                             ),
@@ -2195,7 +2195,7 @@ mod tests {
             epoch_id: "b".repeat(64),
             actor_id: "6".repeat(64),
             actor_capability:
-                super::super::actor_capability::ActorCapabilityState::historical_editor(
+                crate::library_core_actor_capability::ActorCapabilityState::historical_editor(
                     "5".repeat(64),
                     2_000,
                 ),

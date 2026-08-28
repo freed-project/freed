@@ -380,6 +380,14 @@ canonical signed follower result. Exact response-loss replay returns the same
 invalidation list from SQLite. React invalidates only affected visible query
 windows and never reconstructs a state shell to discover what changed.
 
+Actor capability policy is a crate-level native protocol primitive. The
+generated canonical, Primary, and scraper operation sets, normalized stored
+capability parser, scope model, and admission predicates do not live beneath
+the historical journal module. Normalized import, migration, mutation, writer
+reassignment, enrollment, and verification all consume this one policy
+directly. The frozen version 1 editor policy remains available only to the
+historical source reader and cannot be parsed into normalized SQLite.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

@@ -28,7 +28,7 @@ const HISTORICAL_EDITOR_OPERATION_IDS: &[&str] = &[
     "rss_feed_upsert",
 ];
 
-pub(super) const fn canonical_operation_types() -> &'static [&'static str] {
+pub(crate) const fn canonical_operation_types() -> &'static [&'static str] {
     CAPABILITY_OPERATION_IDS
 }
 
@@ -40,11 +40,11 @@ pub(crate) const fn primary_writer_operation_types() -> &'static [&'static str] 
     PRIMARY_WRITER_OPERATION_IDS
 }
 
-pub(super) const fn scraper_operation_types() -> &'static [&'static str] {
+pub(crate) const fn scraper_operation_types() -> &'static [&'static str] {
     SCRAPER_OPERATION_IDS
 }
 
-pub(super) fn is_registered_operation(operation: &str) -> bool {
+pub(crate) fn is_registered_operation(operation: &str) -> bool {
     canonical_operation_types()
         .binary_search(&operation)
         .is_ok()
@@ -72,7 +72,7 @@ pub(crate) struct ActorCapabilityState {
 }
 
 impl ActorCapabilityState {
-    pub(super) fn historical_editor(certificate_digest: String, issued_at_ms: i64) -> Self {
+    pub(crate) fn historical_editor(certificate_digest: String, issued_at_ms: i64) -> Self {
         Self {
             certificate_version: 1,
             actor_class: "legacy_editor".to_owned(),
@@ -90,7 +90,7 @@ impl ActorCapabilityState {
         }
     }
 
-    pub(super) fn allows_operation(&self, operation: &str) -> bool {
+    pub(crate) fn allows_operation(&self, operation: &str) -> bool {
         if self.retired || matches!(self.scope, ActorCapabilityScope::Bounded { .. }) {
             return false;
         }
@@ -99,7 +99,7 @@ impl ActorCapabilityState {
             .is_ok()
     }
 
-    pub(super) fn allowed_operation_types_json(&self) -> String {
+    pub(crate) fn allowed_operation_types_json(&self) -> String {
         serde_json::to_string(&self.allowed_operation_types)
             .expect("validated actor capability operations serialize")
     }
@@ -115,7 +115,7 @@ impl ActorCapabilityState {
     }
 }
 
-pub(super) fn validate_allowed_operation_types(
+pub(crate) fn validate_allowed_operation_types(
     actor_class: &str,
     operations: &[String],
 ) -> Result<(), &'static str> {
@@ -240,7 +240,7 @@ pub(crate) fn parse_stored_capability(
     })
 }
 
-pub(super) fn validate_capability_state(
+pub(crate) fn validate_capability_state(
     capability: &ActorCapabilityState,
 ) -> Result<(), &'static str> {
     let (scope_mode, scope_kind, scope_id) = capability.stored_scope();

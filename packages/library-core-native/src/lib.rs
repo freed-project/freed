@@ -7,6 +7,7 @@
 
 mod device_contact_sync;
 mod device_graph_layout;
+mod library_core_actor_capability;
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg(unix)]

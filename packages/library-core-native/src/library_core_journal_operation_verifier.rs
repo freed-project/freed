@@ -150,7 +150,7 @@ pub(crate) fn operation_admission_verdict(
             Some("actor_capability_retired")
         } else if matches!(
             actor.capability.scope,
-            super::actor_capability::ActorCapabilityScope::Bounded { .. }
+            crate::library_core_actor_capability::ActorCapabilityScope::Bounded { .. }
         ) {
             Some("actor_capability_scope")
         } else if !actor.capability.allows_operation(&member.operation_type) {
@@ -1055,7 +1055,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
 
     require_integer_literal(object, "schema_version", 1, index)?;
     let operation_type = required_string(object, "operation_type", index)?;
-    if !super::actor_capability::is_registered_operation(&operation_type) {
+    if !crate::library_core_actor_capability::is_registered_operation(&operation_type) {
         return Err(invalid(index, "operation_type"));
     }
     let entity_type = if operation_type.starts_with("rss_feed_") {
@@ -2138,10 +2138,11 @@ pub(crate) mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_owned(),
             actor_chain_genesis: "5".repeat(64),
             enrolled_at_ms: 1_000,
-            capability: super::super::actor_capability::ActorCapabilityState::historical_editor(
-                "4".repeat(64),
-                1_000,
-            ),
+            capability:
+                crate::library_core_actor_capability::ActorCapabilityState::historical_editor(
+                    "4".repeat(64),
+                    1_000,
+                ),
         }
     }
 
@@ -2149,7 +2150,7 @@ pub(crate) mod tests {
         actor_key: &Ed25519KeyPair,
         actor_class: &str,
         allowed_operation_types: &[&str],
-        scope: super::super::actor_capability::ActorCapabilityScope,
+        scope: crate::library_core_actor_capability::ActorCapabilityScope,
     ) -> (
         super::super::AcceptedAuthorityState,
         Vec<u8>,
@@ -2249,13 +2250,16 @@ pub(crate) mod tests {
         )
         .expect("retirement identity");
         let scope = match scope {
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide => {
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide => {
                 json!({ "mode": "library_wide" })
             }
-            super::super::actor_capability::ActorCapabilityScope::Bounded { kind, scope_id } => {
+            crate::library_core_actor_capability::ActorCapabilityScope::Bounded {
+                kind,
+                scope_id,
+            } => {
                 json!({ "mode": "bounded", "scope_kind": kind, "scope_id": scope_id })
             }
-            super::super::actor_capability::ActorCapabilityScope::HistoricalEditor => {
+            crate::library_core_actor_capability::ActorCapabilityScope::HistoricalEditor => {
                 panic!("v2 test capability cannot use legacy scope")
             }
         };
@@ -2318,7 +2322,7 @@ pub(crate) mod tests {
             actor_key,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let v2_value = decode_canonical_value(&v2_certificate, MAX_TRANSACTION_ENVELOPE_BYTES)
             .expect("decode v2 source certificate")
@@ -2361,7 +2365,7 @@ pub(crate) mod tests {
         actor_key: &Ed25519KeyPair,
         actor_class: &str,
         allowed_operation_types: &[&str],
-        scope: super::super::actor_capability::ActorCapabilityScope,
+        scope: crate::library_core_actor_capability::ActorCapabilityScope,
     ) -> VerifiedActorEnrollment {
         let (authority, certificate, enrollment) =
             signed_v2_enrollment(actor_key, actor_class, allowed_operation_types, scope);
@@ -2562,7 +2566,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let envelopes = signed_envelopes_from_tip(
             &key_pair,
@@ -2610,7 +2614,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let envelopes = signed_envelopes_from_tip(
             &key_pair,
@@ -2649,7 +2653,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let envelopes = signed_envelopes_from_tip(
             &key_pair,
@@ -2694,7 +2698,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let transaction_id = "tx:agent:reused-id";
         let allowed = signed_envelopes_from_tip(
@@ -2784,7 +2788,7 @@ pub(crate) mod tests {
             &key_pair,
             "scraper",
             &["feed_item_capture_upsert"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let capture = signed_envelopes_from_tip(
             &key_pair,
@@ -2815,7 +2819,7 @@ pub(crate) mod tests {
             .expect("replay exact allowed scraper capture");
         assert_eq!(replay, receipt);
 
-        for operation_type in super::super::actor_capability::canonical_operation_types()
+        for operation_type in crate::library_core_actor_capability::canonical_operation_types()
             .iter()
             .filter(|operation| **operation != "feed_item_capture_upsert")
         {
@@ -2825,7 +2829,7 @@ pub(crate) mod tests {
                 &key_pair,
                 "scraper",
                 &["feed_item_capture_upsert"],
-                super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+                crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
             );
             let transaction_id = format!("tx:scraper:deny:{operation_type}");
             let denied = signed_envelopes_from_tip(
@@ -2864,7 +2868,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::Bounded {
+            crate::library_core_actor_capability::ActorCapabilityScope::Bounded {
                 kind: "provider".to_owned(),
                 scope_id: "instagram".to_owned(),
             },
@@ -2893,7 +2897,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let active_envelope = signed_envelopes_from_tip(
             &key_pair,
@@ -2938,7 +2942,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         stale_journal
             .install_fixture_authority(&active.library_id, 2, &"9".repeat(64))
@@ -2977,7 +2981,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let removal = signed_envelopes_from_tip(
             &key_pair,
@@ -3043,7 +3047,7 @@ pub(crate) mod tests {
             &key_pair,
             "agent",
             &["feed_item_read_assignment"],
-            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            crate::library_core_actor_capability::ActorCapabilityScope::LibraryWide,
         );
         let removal = signed_envelopes_from_tip(
             &key_pair,

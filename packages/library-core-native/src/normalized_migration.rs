@@ -1,3 +1,4 @@
+use crate::library_core_actor_capability::ActorCapabilityScope;
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
@@ -9,7 +10,6 @@ use crate::library_core_canonical::{
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::lower_hex;
-use crate::library_core_journal::actor_capability::ActorCapabilityScope;
 use crate::library_core_journal::{AcceptedAuthorityState, VerifiedCausalTip};
 use crate::normalized_checkpoint::blob_digest;
 use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
@@ -2837,7 +2837,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            crate::library_core_journal::actor_capability::primary_writer_operation_types().len()
+            crate::library_core_actor_capability::primary_writer_operation_types().len()
         );
         assert_eq!(
             target
@@ -2848,8 +2848,7 @@ mod tests {
                 )
                 .unwrap(),
             i64::try_from(
-                crate::library_core_journal::actor_capability::primary_writer_operation_types()
-                    .len()
+                crate::library_core_actor_capability::primary_writer_operation_types().len()
             )
             .unwrap()
         );

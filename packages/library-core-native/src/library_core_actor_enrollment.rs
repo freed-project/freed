@@ -22,6 +22,7 @@
 //! recognized as a replay. An already-enrolled actor is therefore returned
 //! from storage without rebuilding anything.
 
+use crate::library_core_actor_capability::primary_writer_operation_types;
 use crate::library_core_authority_genesis::{
     load_established_authority_key_pair, AuthorityKeyStore,
 };
@@ -30,7 +31,6 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::actor_capability::primary_writer_operation_types;
 use crate::library_core_journal::{
     verify_actor_enrollment_certificate, AcceptedAuthorityState, ActorState, LibraryCoreJournal,
     VerifiedActorEnrollment,

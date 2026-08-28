@@ -1,12 +1,11 @@
+use crate::library_core_actor_capability::ActorCapabilityScope;
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
 use crate::library_core_authority_genesis::{
     prepare_writer_epoch_reassignment, AuthorityKeyStore, WriterEpochReassignment,
 };
-use crate::library_core_journal::{
-    actor_capability::ActorCapabilityScope, AcceptedAuthorityState, VerifiedCausalTip,
-};
+use crate::library_core_journal::{AcceptedAuthorityState, VerifiedCausalTip};
 use crate::normalized_sqlite::{describe_normalized_checkpoint_export_v2, NormalizedSqliteError};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;

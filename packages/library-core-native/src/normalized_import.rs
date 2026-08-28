@@ -1,9 +1,8 @@
+use crate::library_core_actor_capability::ActorCapabilityScope;
 use crate::library_core_authority_genesis::WriterEpochReassignment;
 use crate::library_core_canonical::decode_canonical_value;
 use crate::library_core_hash::lower_hex;
-use crate::library_core_journal::{
-    actor_capability::ActorCapabilityScope, VerifiedActorEnrollment,
-};
+use crate::library_core_journal::VerifiedActorEnrollment;
 use crate::normalized_checkpoint::{
     checked_record, decode_fractional_payload, NormalizedCheckpointRecordV2,
 };

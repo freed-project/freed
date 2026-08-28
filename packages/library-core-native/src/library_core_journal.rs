@@ -20,8 +20,6 @@ use std::time::Duration;
 #[cfg(unix)]
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 
-#[path = "library_core_actor_capability.rs"]
-pub(crate) mod actor_capability;
 #[path = "library_core_journal_authority.rs"]
 mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
@@ -31,6 +29,7 @@ mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
 pub(crate) mod operation_verifier;
 
+use crate::library_core_actor_capability as actor_capability;
 use actor_capability::ActorCapabilityState;
 
 pub use follower::{
