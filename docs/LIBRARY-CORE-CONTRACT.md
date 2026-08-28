@@ -1912,6 +1912,9 @@ The implementation is incomplete while any runtime caller can reach:
 - version 1 operation-segment records, preparation and import helpers, the
   dormant browser operation-segment bridge, or its retired canonical digest
   domain
+- retired shadow-generation registries, version 1 Saved analytics or generic
+  surface-item contracts, and descriptive merge-algebra exports without a
+  final runtime caller
 - unused migration, repair, export, test, or authority vocabulary with no final
   product requirement
 

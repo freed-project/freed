@@ -30,7 +30,7 @@
 > after a checkpoint frontier as bounded version 2 records directly from the
 > signed SQLite journal. Browser SQLite now stages those records across page
 > boundaries and atomically applies only a complete verified next revision.
-> The version 1 operation-segment runtime and canonical digest domain are deleted. Broader retired-runtime
+> The version 1 operation-segment runtime and canonical digest domain are deleted. Uncalled shadow-generation, generic surface-item, version 1 Saved analytics, and descriptive legacy merge-algebra exports are also removed. Broader retired-runtime
 > deletion and physical-device acceptance remain open.
 
 ## Current SQLite sync work

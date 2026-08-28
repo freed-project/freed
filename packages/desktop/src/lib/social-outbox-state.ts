@@ -206,9 +206,9 @@ function withoutOlderIntents(
 }
 
 /**
- * Remember a like intent created on this Desktop. A legacy -1 value can then
- * remain terminal for old intent while this exact new intent proceeds even if
- * a stale Automerge merge briefly reintroduces the old sentinel.
+ * Remember one exact provider-action intent created on this installation.
+ * Older intent identities stay terminal while a new signed Library operation
+ * proceeds independently.
  */
 export function recordExplicitSocialOutboxIntent(
   intent: SocialOutboxIntent,
@@ -296,7 +296,7 @@ export function beginSocialOutboxAttempt(
   };
 }
 
-/** Persist a positive provider result until its Automerge acknowledgement lands. */
+/** Persist a positive provider result until its SQLite receipt lands. */
 export function markSocialOutboxPlatformConfirmed(
   intent: SocialOutboxIntent,
   confirmedAt: number = Date.now(),

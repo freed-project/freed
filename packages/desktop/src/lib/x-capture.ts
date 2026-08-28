@@ -483,7 +483,7 @@ export async function unfavoriteTweet(
 // =============================================================================
 
 /**
- * Capture the X timeline and persist new items to the Automerge store.
+ * Capture the X timeline and persist new items through typed SQLite mutations.
  * Returns the full sync result including per-stage diagnostics.
  *
  * @param cookies   Valid X session cookies.

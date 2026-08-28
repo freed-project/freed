@@ -301,7 +301,7 @@ export async function enqueuePwaLibraryCoreMarkAllAsRead(
   await enqueuePwaLibraryCoreReadAssignments(pending);
 }
 
-/** Queue explicit item archives without waking the legacy worker. */
+/** Queue explicit item archives through bounded normalized SQLite reads. */
 export async function enqueuePwaLibraryCoreArchiveItems(
   globalIds: readonly string[],
 ): Promise<void> {

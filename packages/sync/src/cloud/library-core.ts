@@ -1,10 +1,9 @@
 /**
  * Browser-safe Library Core cloud surface.
  *
- * This entry point intentionally excludes the retired mutable Automerge file
- * adapters and their dynamic merge runtime. PWA production code must import
- * cloud primitives here so Rollup can prove that no CRDT worker or WASM asset
- * remains reachable.
+ * PWA production code imports only normalized immutable cloud primitives from
+ * this entry point. Rollup can therefore prove that no alternate Library
+ * authority or whole-document runtime remains reachable.
  */
 export type { CloudProvider } from "./types.js";
 export * from "./library-core-checkpoint-import.js";
