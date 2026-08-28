@@ -977,6 +977,8 @@ describe("PWA Library Core SQLite engine", () => {
       "library_intent_results",
       "library_intent_result_cursors",
       "library_optimistic_fields",
+      "library_local_change_state",
+      "library_local_invalidations",
       "library_device_contact_generations",
       "library_device_contact_sync_state",
       "library_device_contacts",
@@ -1724,6 +1726,30 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([["integer", 1_400]]);
+    expect(
+      engine.query({
+        afterRevision: 0,
+        cancellationId: "cancel-local-intent",
+        cursor: null,
+        limit: 512,
+        queryId: "local_change_feed_v1",
+        readerSessionId: "reader-local-intent",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      queryId: "local_change_feed_v1",
+      rows: [
+        {
+          entityId: "item-1",
+          ordinal: 0,
+          resetRequired: false,
+          revision: 1,
+          topic: "feed_item",
+        },
+      ],
+      source: { projectionRevision: 1, transitionSequence: 1 },
+    });
     expect(
       database.exec({
         sql: `SELECT next_counter, previous_operation_id

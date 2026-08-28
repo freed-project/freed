@@ -14,6 +14,8 @@ import {
 } from "./protocol-scalars.js";
 
 export const LIBRARY_CORE_CHANGE_FEED_QUERY_ID = "change_feed_v1" as const;
+export const LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID =
+  "local_change_feed_v1" as const;
 export const LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT = 512;
 export const LIBRARY_CORE_CHANGE_FEED_MAXIMUM_RESPONSE_BYTES = 2 * 1_048_576;
@@ -100,6 +102,20 @@ export interface LibraryCoreChangeFeedResponseV1 {
   readonly rows: readonly LibraryCoreChangeFeedRowV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
+}
+
+export interface LibraryCoreLocalChangeFeedRequestV1 extends Omit<
+  LibraryCoreChangeFeedRequestV1,
+  "queryId"
+> {
+  readonly queryId: typeof LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID;
+}
+
+export interface LibraryCoreLocalChangeFeedResponseV1 extends Omit<
+  LibraryCoreChangeFeedResponseV1,
+  "queryId"
+> {
+  readonly queryId: typeof LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID;
 }
 
 export interface LibraryCoreChangeFeedCursorV1 {
@@ -209,13 +225,18 @@ export function decodeLibraryCoreChangeFeedCursorV1(
   });
 }
 
-export function parseLibraryCoreChangeFeedRequestV1(
+function parseChangeFeedRequest(
   value: unknown,
-): LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedRequestV1> {
+  queryId:
+    | typeof LIBRARY_CORE_CHANGE_FEED_QUERY_ID
+    | typeof LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+): LibraryCoreFeedPageParseResult<
+  LibraryCoreChangeFeedRequestV1 | LibraryCoreLocalChangeFeedRequestV1
+> {
   const record = closedRecord(value, REQUEST_KEYS);
   if (
     !record ||
-    record.queryId !== LIBRARY_CORE_CHANGE_FEED_QUERY_ID ||
+    record.queryId !== queryId ||
     record.schemaVersion !== LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION ||
     !isLibraryCoreNonnegativeSafeInteger(record.afterRevision) ||
     !isLibraryCoreOperationInstanceId(record.cancellationId) ||
@@ -240,11 +261,29 @@ export function parseLibraryCoreChangeFeedRequestV1(
       cancellationId: record.cancellationId,
       cursor: record.cursor,
       limit: record.limit,
-      queryId: LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+      queryId,
       readerSessionId: record.readerSessionId,
       schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
-    }) as LibraryCoreChangeFeedRequestV1,
+    }) as LibraryCoreChangeFeedRequestV1 | LibraryCoreLocalChangeFeedRequestV1,
   });
+}
+
+export function parseLibraryCoreChangeFeedRequestV1(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedRequestV1> {
+  return parseChangeFeedRequest(
+    value,
+    LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedRequestV1>;
+}
+
+export function parseLibraryCoreLocalChangeFeedRequestV1(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreLocalChangeFeedRequestV1> {
+  return parseChangeFeedRequest(
+    value,
+    LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreLocalChangeFeedRequestV1>;
 }
 
 function parseRow(
@@ -280,18 +319,23 @@ function parseRow(
   });
 }
 
-export function parseLibraryCoreChangeFeedResponseV1(
+function parseChangeFeedResponse(
   value: unknown,
   requestValue: unknown,
-): LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedResponseV1> {
-  const request = parseLibraryCoreChangeFeedRequestV1(requestValue);
+  queryId:
+    | typeof LIBRARY_CORE_CHANGE_FEED_QUERY_ID
+    | typeof LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+): LibraryCoreFeedPageParseResult<
+  LibraryCoreChangeFeedResponseV1 | LibraryCoreLocalChangeFeedResponseV1
+> {
+  const request = parseChangeFeedRequest(requestValue, queryId);
   const record = closedRecord(value, RESPONSE_KEYS);
   const source = parseLibraryCoreFeedPageSourceV1(record?.source);
   if (
     !request.ok ||
     !record ||
     !source.ok ||
-    record.queryId !== LIBRARY_CORE_CHANGE_FEED_QUERY_ID ||
+    record.queryId !== queryId ||
     record.schemaVersion !== LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION ||
     source.value.projectionRevision !== source.value.transitionSequence ||
     source.value.projectionRevision < request.value.afterRevision ||
@@ -364,7 +408,7 @@ export function parseLibraryCoreChangeFeedResponseV1(
   }
   const response = Object.freeze({
     nextCursor: record.nextCursor as string | null,
-    queryId: LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+    queryId,
     rows: Object.freeze(rows),
     schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
     source: source.value,
@@ -376,4 +420,26 @@ export function parseLibraryCoreChangeFeedResponseV1(
     return failure("change-feed response exceeds its byte bound");
   }
   return Object.freeze({ ok: true, value: response });
+}
+
+export function parseLibraryCoreChangeFeedResponseV1(
+  value: unknown,
+  requestValue: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedResponseV1> {
+  return parseChangeFeedResponse(
+    value,
+    requestValue,
+    LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreChangeFeedResponseV1>;
+}
+
+export function parseLibraryCoreLocalChangeFeedResponseV1(
+  value: unknown,
+  requestValue: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreLocalChangeFeedResponseV1> {
+  return parseChangeFeedResponse(
+    value,
+    requestValue,
+    LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreLocalChangeFeedResponseV1>;
 }

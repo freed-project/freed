@@ -57,8 +57,12 @@ import {
 import {
   parseLibraryCoreChangeFeedRequestV1,
   parseLibraryCoreChangeFeedResponseV1,
+  parseLibraryCoreLocalChangeFeedRequestV1,
+  parseLibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedResponseV1,
+  type LibraryCoreLocalChangeFeedRequestV1,
+  type LibraryCoreLocalChangeFeedResponseV1,
 } from "./change-feed-contracts.js";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
@@ -311,6 +315,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreAccountPickerPageRequestV1
   | LibraryCoreAccountTimelineRequestV1
   | LibraryCoreChangeFeedRequestV1
+  | LibraryCoreLocalChangeFeedRequestV1
   | LibraryCoreContactMatchRequestV1
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedBrowsePageRequestV3
@@ -355,8 +360,10 @@ export type LibraryCoreSqliteQueryResponseFor<
               ? LibraryCoreAccountTimelineResponseV1
               : T extends LibraryCoreChangeFeedRequestV1
                 ? LibraryCoreChangeFeedResponseV1
-                : T extends LibraryCoreFeedBrowsePageRequestV3
-                  ? LibraryCoreFeedBrowsePageResponseV3
+                : T extends LibraryCoreLocalChangeFeedRequestV1
+                  ? LibraryCoreLocalChangeFeedResponseV1
+                  : T extends LibraryCoreFeedBrowsePageRequestV3
+                    ? LibraryCoreFeedBrowsePageResponseV3
                   : T extends LibraryCoreFeedPageRequestV1
                     ? LibraryCoreFeedPageResponseV1
                     : T extends LibraryCoreFilterScopeSummaryRequestV1
@@ -425,8 +432,10 @@ export function parseLibraryCoreSqliteQueryResponse<
                 ? parseLibraryCoreAccountTimelineResponseV1(value, request)
                 : request.queryId === "change_feed_v1"
                   ? parseLibraryCoreChangeFeedResponseV1(value, request)
-                  : request.queryId === "library_facet_summary_v1"
-                    ? parseLibraryCoreFacetSummaryResponseV1(value)
+                  : request.queryId === "local_change_feed_v1"
+                    ? parseLibraryCoreLocalChangeFeedResponseV1(value, request)
+                    : request.queryId === "library_facet_summary_v1"
+                      ? parseLibraryCoreFacetSummaryResponseV1(value)
                     : request.queryId === "feed_browse_page_v3"
                       ? parseLibraryCoreFeedBrowsePageResponseV3(value, request)
                       : request.queryId === "feed_page_v1"
@@ -1112,8 +1121,10 @@ export function parseLibraryCoreSqliteWorkerRequest(
                     ? parseLibraryCoreFacetSummaryRequestV1(value.query)
                     : value.query.queryId === "change_feed_v1"
                       ? parseLibraryCoreChangeFeedRequestV1(value.query)
-                      : value.query.queryId === "feed_browse_page_v3"
-                        ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
+                      : value.query.queryId === "local_change_feed_v1"
+                        ? parseLibraryCoreLocalChangeFeedRequestV1(value.query)
+                        : value.query.queryId === "feed_browse_page_v3"
+                          ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
                         : value.query.queryId === "filter_scope_summary_v1"
                           ? parseLibraryCoreFilterScopeSummaryRequestV1(
                               value.query,

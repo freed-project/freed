@@ -1251,7 +1251,7 @@ signals, highlights, engagement state, or reader bodies. Native Rust and
 browser SQLite execute the same generated program through their existing typed
 query dispatches. Story Wall uses the same one-row `hasMore` rule.
 
-`change_feed_v1` is the only view-refresh subscription payload. A request
+`change_feed_v1` is the canonical view-refresh subscription payload. A request
 names its last fully applied revision and receives at most 512 compact rows in
 `revision, ordinal` primary-key order. Each row contains only a topic, an
 optional changed identity, and `resetRequired`. The first page pins one upper
@@ -1272,6 +1272,19 @@ rerun their named readers. Broad identity, authority, or reset topics reopen
 the affected bounded readers. A pending follower intent does not enter this
 canonical feed. Its device-local optimistic state remains separate until the
 Primary accepts or rejects it.
+
+`local_change_feed_v1` is the separate device-local refresh payload. Sparse
+optimistic-field insertions and removals advance its monotonic sequence through
+schema-owned SQLite triggers in native and browser runtimes. Each row carries
+one topic and entity identity. It never advances `library_change_state`, enters
+a checkpoint or operation segment, or crosses Drive. One page contains at most
+512 identities and pins one local upper sequence with the same cursor codec as
+the canonical feed. SQLite retains the newest 4,096 local invalidations. When a
+reader starts behind that retained window, the first returned identity carries
+`resetRequired` so the reader discards its device-local overlay window and
+reopens bounded overlay queries. Full checkpoint replacement clears the local
+sequence only after proving that no unresolved intent or optimistic field
+exists.
 
 ## 9. Normalized checkpoint v2
 

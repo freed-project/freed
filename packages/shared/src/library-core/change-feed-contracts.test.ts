@@ -5,6 +5,8 @@ import {
   encodeLibraryCoreChangeFeedCursorV1,
   parseLibraryCoreChangeFeedRequestV1,
   parseLibraryCoreChangeFeedResponseV1,
+  parseLibraryCoreLocalChangeFeedRequestV1,
+  parseLibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreChangeFeedCursorV1,
 } from "./change-feed-contracts.js";
 
@@ -123,6 +125,43 @@ describe("Library Core change feed", () => {
         },
         request,
       ).ok,
+    ).toBe(false);
+  });
+
+  it("keeps device-local sequences on a distinct closed query identity", () => {
+    const localRequest = {
+      ...request,
+      afterRevision: 0,
+      queryId: "local_change_feed_v1" as const,
+    };
+    const localResponse = {
+      nextCursor: null,
+      queryId: "local_change_feed_v1" as const,
+      rows: [
+        {
+          entityId: "item-1",
+          ordinal: 0,
+          resetRequired: false,
+          revision: 1,
+          topic: "feed_item",
+        },
+      ],
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: 1,
+        transitionSequence: 1,
+      },
+    };
+    expect(parseLibraryCoreLocalChangeFeedRequestV1(localRequest).ok).toBe(
+      true,
+    );
+    expect(
+      parseLibraryCoreLocalChangeFeedResponseV1(localResponse, localRequest).ok,
+    ).toBe(true);
+    expect(parseLibraryCoreChangeFeedRequestV1(localRequest).ok).toBe(false);
+    expect(
+      parseLibraryCoreChangeFeedResponseV1(localResponse, localRequest).ok,
     ).toBe(false);
   });
 });

@@ -2409,6 +2409,34 @@ mod tests {
                 ),
             ]
         );
+        let crate::NormalizedQueryResponseV1::LocalChangeFeed(local_added) =
+            crate::query_normalized_v1(
+                &mut connection,
+                crate::NormalizedQueryRequestV1::LocalChangeFeed(
+                    crate::NormalizedChangeFeedRequestV1 {
+                        after_revision: 0,
+                        cancellation_id: "cancel-local-added".to_owned(),
+                        cursor: None,
+                        limit: 512,
+                        reader_session_id: "reader-local-added".to_owned(),
+                        schema_version: 1,
+                    },
+                ),
+            )
+            .expect("query added local invalidations")
+        else {
+            panic!("local change-feed response");
+        };
+        assert_eq!(local_added.query_id, "local_change_feed_v1");
+        assert_eq!(local_added.source.projection_revision, 2);
+        assert_eq!(
+            local_added
+                .rows
+                .iter()
+                .map(|row| (row.revision, row.entity_id.as_deref()))
+                .collect::<Vec<_>>(),
+            [(1, Some("rss:item:1")), (2, Some("rss:item:2"))]
+        );
         let transport_context = normalized_follower_transport_context_v2(&connection)
             .expect("follower transport context");
         assert_eq!(transport_context.actor_id, accepted.actor_id);
@@ -2586,6 +2614,33 @@ mod tests {
                 )
                 .expect("resolved optimistic count"),
             0
+        );
+        let crate::NormalizedQueryResponseV1::LocalChangeFeed(local_removed) =
+            crate::query_normalized_v1(
+                &mut connection,
+                crate::NormalizedQueryRequestV1::LocalChangeFeed(
+                    crate::NormalizedChangeFeedRequestV1 {
+                        after_revision: 2,
+                        cancellation_id: "cancel-local-removed".to_owned(),
+                        cursor: None,
+                        limit: 512,
+                        reader_session_id: "reader-local-removed".to_owned(),
+                        schema_version: 1,
+                    },
+                ),
+            )
+            .expect("query removed local invalidations")
+        else {
+            panic!("local change-feed response");
+        };
+        assert_eq!(local_removed.source.projection_revision, 4);
+        assert_eq!(
+            local_removed
+                .rows
+                .iter()
+                .map(|row| (row.revision, row.entity_id.as_deref()))
+                .collect::<Vec<_>>(),
+            [(3, Some("rss:item:1")), (4, Some("rss:item:2"))]
         );
         assert_eq!(
             import_normalized_follower_result_transport_segment_v2(

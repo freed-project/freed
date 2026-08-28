@@ -591,6 +591,7 @@ fn clear_checkpoint_replacement_target(
 ) -> Result<(), NormalizedSqliteError> {
     transaction.execute_batch(
         "DELETE FROM library_optimistic_fields;
+         DELETE FROM library_local_invalidations;
          DELETE FROM library_intent_results;
          DELETE FROM library_intent_result_cursors;
          DELETE FROM library_intent_members;
@@ -647,7 +648,8 @@ fn clear_checkpoint_replacement_target(
            WHERE singleton_id = 1;
          UPDATE library_device_graph_layout_state SET revision = 0
            WHERE singleton_id = 1;
-         UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;",
+         UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;
+         UPDATE library_local_change_state SET sequence = 0 WHERE singleton_id = 1;",
     )?;
     Ok(())
 }

@@ -438,6 +438,7 @@ pub enum NormalizedQueryRequestV1 {
     AccountPickerPage(NormalizedAccountPickerPageRequestV1),
     AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
+    LocalChangeFeed(NormalizedChangeFeedRequestV1),
     ContactMatch(NormalizedContactMatchRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
@@ -1353,6 +1354,7 @@ pub enum NormalizedQueryResponseV1 {
     AccountPickerPage(NormalizedAccountPickerPageResponseV1),
     AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
+    LocalChangeFeed(NormalizedChangeFeedResponseV1),
     ContactMatch(NormalizedContactMatchResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
@@ -3718,6 +3720,22 @@ fn query_change_feed(
     connection: &mut Connection,
     request: NormalizedChangeFeedRequestV1,
 ) -> Result<NormalizedChangeFeedResponseV1, NormalizedSqliteError> {
+    query_change_feed_program(connection, request, "change_feed_v1", true)
+}
+
+fn query_local_change_feed(
+    connection: &mut Connection,
+    request: NormalizedChangeFeedRequestV1,
+) -> Result<NormalizedChangeFeedResponseV1, NormalizedSqliteError> {
+    query_change_feed_program(connection, request, "local_change_feed_v1", false)
+}
+
+fn query_change_feed_program(
+    connection: &mut Connection,
+    request: NormalizedChangeFeedRequestV1,
+    query_id: &'static str,
+    require_canonical_revision: bool,
+) -> Result<NormalizedChangeFeedResponseV1, NormalizedSqliteError> {
     if request.schema_version != 1
         || !valid_safe_integer(request.after_revision)
         || !(1..=CHANGE_FEED_MAXIMUM_LIMIT).contains(&request.limit)
@@ -3728,15 +3746,15 @@ fn query_change_feed(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.query_id == "change_feed_v1")
+        .find(|program| program.query_id == query_id)
         .ok_or(invalid("normalized change-feed program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, current_revision) = query_source(&transaction)?;
     let change_revision: i64 = transaction.query_row(program.count_sql, [], |row| row.get(0))?;
-    if current_revision != change_revision {
+    if require_canonical_revision && current_revision != change_revision {
         return Err(invalid("normalized change-feed revisions disagree"));
     }
-    if request.after_revision > current_revision {
+    if request.after_revision > change_revision {
         return Err(invalid("normalized change-feed revision is ahead"));
     }
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
@@ -3749,7 +3767,7 @@ fn query_change_feed(
             .ok_or(invalid("normalized change-feed cursor is invalid"))?;
         if cursor.generation_id != generation_id
             || cursor.projection_revision != request.after_revision
-            || cursor.transition_sequence > current_revision
+            || cursor.transition_sequence > change_revision
             || cursor.sort_at < request.after_revision
             || cursor.sort_at > cursor.transition_sequence
             || cursor.global_id != ordinal.to_string()
@@ -3758,7 +3776,7 @@ fn query_change_feed(
         }
         (cursor.transition_sequence, cursor.sort_at, ordinal)
     } else {
-        (current_revision, request.after_revision, 255)
+        (change_revision, request.after_revision, 255)
     };
     let mut statement = transaction.prepare(program.sql)?;
     let mut query_rows = statement.query_map(
@@ -3809,7 +3827,7 @@ fn query_change_feed(
     };
     let response = NormalizedChangeFeedResponseV1 {
         next_cursor,
-        query_id: "change_feed_v1".to_owned(),
+        query_id: query_id.to_owned(),
         rows,
         schema_version: 1,
         source: NormalizedFeedPageSourceV1 {
@@ -6162,6 +6180,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
             query_change_feed(connection, request)?,
         )),
+        NormalizedQueryRequestV1::LocalChangeFeed(request) => {
+            Ok(NormalizedQueryResponseV1::LocalChangeFeed(
+                query_local_change_feed(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ContactMatch(request) => Ok(
             NormalizedQueryResponseV1::ContactMatch(query_contact_match(connection, request)?),
         ),
@@ -6320,6 +6343,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedAccountTimelineRequestV1, AccountTimeline)
         }
         "change_feed_v1" => decode_request!(NormalizedChangeFeedRequestV1, ChangeFeed),
+        "local_change_feed_v1" => {
+            decode_request!(NormalizedChangeFeedRequestV1, LocalChangeFeed)
+        }
         "contact_match_v1" => decode_request!(NormalizedContactMatchRequestV1, ContactMatch),
         "library_facet_summary_v1" => {
             decode_request!(NormalizedFacetSummaryRequestV1, FacetSummary)
@@ -6412,6 +6438,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::AccountPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
+        NormalizedQueryResponseV1::LocalChangeFeed(response) => encode_response!(response),
         NormalizedQueryResponseV1::ContactMatch(response) => encode_response!(response),
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),

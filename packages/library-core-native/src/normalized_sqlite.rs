@@ -968,6 +968,8 @@ mod tests {
             "library_result_transport_heads",
             "library_result_transport_segments",
             "library_optimistic_fields",
+            "library_local_change_state",
+            "library_local_invalidations",
             "library_device_contact_generations",
             "library_device_contact_sync_state",
             "library_device_contacts",

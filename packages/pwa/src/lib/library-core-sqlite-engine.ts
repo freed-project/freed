@@ -104,6 +104,8 @@ import {
   parseLibraryCoreFeedBrowsePageResponseV3,
   parseLibraryCoreChangeFeedRequestV1,
   parseLibraryCoreChangeFeedResponseV1,
+  parseLibraryCoreLocalChangeFeedRequestV1,
+  parseLibraryCoreLocalChangeFeedResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
   parseLibraryCoreSavedAnalyticsRequestV2,
@@ -241,6 +243,8 @@ import {
   type LibraryCoreFeedCardV1,
   type LibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedResponseV1,
+  type LibraryCoreLocalChangeFeedRequestV1,
+  type LibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFeedBrowsePageRequestV3,
@@ -1492,6 +1496,7 @@ export class PwaLibraryCoreSqliteEngine {
           );
         }
         this.#database.exec(`DELETE FROM library_optimistic_fields;
+          DELETE FROM library_local_invalidations;
           DELETE FROM library_intent_results;
           DELETE FROM library_intent_result_cursors;
           DELETE FROM library_intent_members;
@@ -1548,7 +1553,8 @@ export class PwaLibraryCoreSqliteEngine {
             WHERE singleton_id = 1;
           UPDATE library_device_graph_layout_state SET revision = 0
             WHERE singleton_id = 1;
-          UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;`);
+          UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;
+          UPDATE library_local_change_state SET sequence = 0 WHERE singleton_id = 1;`);
       }
       const existingRows = safeInteger(
         this.#database.exec({
@@ -7641,6 +7647,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryChangeFeed(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "local_change_feed_v1":
+        return this.#queryLocalChangeFeed(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "contact_match_v1":
         return this.#queryContactMatch(
           input,
@@ -7801,10 +7811,43 @@ export class PwaLibraryCoreSqliteEngine {
   #queryChangeFeed(
     input: LibraryCoreChangeFeedRequestV1,
   ): LibraryCoreChangeFeedResponseV1 {
-    const request = parseLibraryCoreChangeFeedRequestV1(input);
+    return this.#queryChangeFeedProgram(
+      input,
+      false,
+    ) as LibraryCoreChangeFeedResponseV1;
+  }
+
+  #queryLocalChangeFeed(
+    input: LibraryCoreLocalChangeFeedRequestV1,
+  ): LibraryCoreLocalChangeFeedResponseV1 {
+    return this.#queryChangeFeedProgram(
+      input,
+      true,
+    ) as LibraryCoreLocalChangeFeedResponseV1;
+  }
+
+  #queryChangeFeedProgram(
+    input: LibraryCoreChangeFeedRequestV1 | LibraryCoreLocalChangeFeedRequestV1,
+    local: boolean,
+  ): LibraryCoreChangeFeedResponseV1 | LibraryCoreLocalChangeFeedResponseV1 {
+    const request = local
+      ? parseLibraryCoreLocalChangeFeedRequestV1(input)
+      : parseLibraryCoreChangeFeedRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, sourceRevision: currentRevision } =
-      this.#querySource();
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = local
+      ? LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.local_change_feed_v1
+      : LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.change_feed_v1;
+    const currentRevision = local
+      ? safeInteger(
+          this.#database.exec({
+            sql: program.countSql,
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "local change-feed sequence",
+        )
+      : sourceRevision;
     if (request.value.afterRevision > currentRevision) {
       throw new Error("PWA Library SQLite change-feed revision is ahead");
     }
@@ -7824,7 +7867,6 @@ export class PwaLibraryCoreSqliteEngine {
       afterRevision = cursor.value.revision;
       afterOrdinal = cursor.value.ordinal;
     }
-    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.change_feed_v1;
     const rawRows = this.#database.exec({
       sql: program.sql,
       bind: [
@@ -7882,7 +7924,9 @@ export class PwaLibraryCoreSqliteEngine {
               upperRevision,
             })
           : null,
-      queryId: "change_feed_v1" as const,
+      queryId: local
+        ? ("local_change_feed_v1" as const)
+        : ("change_feed_v1" as const),
       rows,
       schemaVersion: 1 as const,
       source: {
@@ -7891,10 +7935,9 @@ export class PwaLibraryCoreSqliteEngine {
         transitionSequence: upperRevision,
       },
     };
-    const parsed = parseLibraryCoreChangeFeedResponseV1(
-      response,
-      request.value,
-    );
+    const parsed = local
+      ? parseLibraryCoreLocalChangeFeedResponseV1(response, request.value)
+      : parseLibraryCoreChangeFeedResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

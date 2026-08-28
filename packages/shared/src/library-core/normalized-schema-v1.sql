@@ -1846,6 +1846,60 @@ CREATE TABLE IF NOT EXISTS library_optimistic_fields (
   PRIMARY KEY (transaction_id, entity_type, entity_id, field_path)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_local_change_state (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  sequence INTEGER NOT NULL CHECK (sequence BETWEEN 0 AND 9007199254740991)
+) STRICT;
+
+INSERT OR IGNORE INTO library_local_change_state (singleton_id, sequence)
+VALUES (1, 0);
+
+CREATE TABLE IF NOT EXISTS library_local_invalidations (
+  sequence INTEGER PRIMARY KEY CHECK (sequence BETWEEN 1 AND 9007199254740991),
+  topic TEXT NOT NULL CHECK (length(CAST(topic AS BLOB)) BETWEEN 1 AND 128),
+  entity_id TEXT NOT NULL CHECK (length(CAST(entity_id AS BLOB)) BETWEEN 1 AND 2048),
+  reason TEXT NOT NULL CHECK (reason IN ('optimistic_added', 'optimistic_removed'))
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS library_local_invalidations_topic
+  ON library_local_invalidations(topic, sequence);
+
+CREATE TRIGGER IF NOT EXISTS library_optimistic_fields_local_insert
+AFTER INSERT ON library_optimistic_fields
+BEGIN
+  UPDATE library_local_change_state
+  SET sequence = sequence + 1
+  WHERE singleton_id = 1;
+  INSERT INTO library_local_invalidations (sequence, topic, entity_id, reason)
+  SELECT sequence,
+         CASE NEW.entity_type WHEN 'FeedItem' THEN 'feed_item' ELSE 'library' END,
+         NEW.entity_id,
+         'optimistic_added'
+  FROM library_local_change_state WHERE singleton_id = 1;
+  DELETE FROM library_local_invalidations
+  WHERE sequence <= (
+    SELECT sequence - 4096 FROM library_local_change_state WHERE singleton_id = 1
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_optimistic_fields_local_delete
+AFTER DELETE ON library_optimistic_fields
+BEGIN
+  UPDATE library_local_change_state
+  SET sequence = sequence + 1
+  WHERE singleton_id = 1;
+  INSERT INTO library_local_invalidations (sequence, topic, entity_id, reason)
+  SELECT sequence,
+         CASE OLD.entity_type WHEN 'FeedItem' THEN 'feed_item' ELSE 'library' END,
+         OLD.entity_id,
+         'optimistic_removed'
+  FROM library_local_change_state WHERE singleton_id = 1;
+  DELETE FROM library_local_invalidations
+  WHERE sequence <= (
+    SELECT sequence - 4096 FROM library_local_change_state WHERE singleton_id = 1
+  );
+END;
+
 CREATE TABLE IF NOT EXISTS library_checkpoint_stages (
   stage_id TEXT PRIMARY KEY CHECK (length(CAST(stage_id AS BLOB)) BETWEEN 1 AND 255),
   library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
