@@ -91,12 +91,12 @@
       references fail, and staging bytes are removed after activation.
 - [ ] Expose the same exporter and staging activation contract in the PWA
       SQLite worker.
-- [ ] Enforce the initial 131,072-byte canonical logical-record ceiling,
+- [x] Enforce the initial 131,072-byte canonical logical-record ceiling,
       128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
       native source-response ceiling, subject to the pre-freeze benchmark.
-- [ ] Represent larger legal fields through content descriptors and bounded
+- [x] Represent larger legal fields through content descriptors and bounded
       content-addressed chunks or authenticated range indexes.
-- [ ] Let each client stream, partially cache, fully cache, pin offline, or
+- [x] Let each client stream, partially cache, fully cache, pin offline, or
       exclude content without changing checkpoint authority.
 - [ ] Delete Automerge cloud merge, LAN document relay, compatibility control,
       shell, ordinal identity, dual-engine rollback, and SQLite file transport

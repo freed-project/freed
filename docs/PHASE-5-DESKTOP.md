@@ -302,7 +302,7 @@
         links to missing People without partial writes.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
-- [ ] Keep large content in a content-addressed vault with per-device hydration
+- [x] Keep large content in a content-addressed vault with per-device hydration
       policy and verified range reads.
   - [x] Store metadata-only, stream-on-demand, partial-cache, complete-cache,
         pinned-offline, and excluded policy in bounded device-local SQLite

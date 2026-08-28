@@ -59,7 +59,7 @@
       retaining local reader cache bytes.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
-- [ ] Persist the Library, query indexes, search, intent outbox, result receipts,
+- [x] Persist the Library, query indexes, search, intent outbox, result receipts,
       and sparse optimistic overlay in OPFS-backed SQLite.
   - [x] Install the shared strict transaction, operation, replication,
         invalidation, signed-intent, result, and sparse optimistic-field table
@@ -291,7 +291,7 @@
         candidates under 512 KiB from normalized identity, activity,
         content-signal, and bounded contact-overlap evidence. React retains no
         Person, Account, FeedItem, or activity dictionary for candidate review.
-- [ ] Support metadata only, streaming, partial cache, full cache, pinned
+- [x] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
       search postings, and compatibility code after verified cutover.
