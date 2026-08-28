@@ -6,7 +6,13 @@
 //! is rejected. Normal startup, reads, and writes do not open it.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use freed_library_core::{
+    upsert_item, BeginLibraryCoreImport, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
+    LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
+    LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
+    LibraryCoreStoreStatus,
+};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,20 +20,30 @@ use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
+use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 
 use super::library_core_actor_enrollment::{
-    countersign_pwa_actor_enrollment_request, enroll_desktop_actor, EnrollmentAuthority,
+    countersign_pwa_actor_enrollment_request, enroll_desktop_actor,
+    prepare_follower_actor_enrollment_request, sign_follower_operation_digest, EnrollmentAuthority,
     PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
-    establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
-    reassign_writer_epoch, LegacySourceRevision,
+    establish_or_transition_sqlite_authority, load_established_authority_key_pair,
+    reassign_writer_epoch, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
 };
-use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
-use super::library_core_journal_runtime::journal_path;
-
+use super::library_core_journal::{
+    AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
+    FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
+    FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
+    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
+    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+};
 const BACKUP_DIRECTORY: &str = "library-backups";
+const JOURNAL_DIRECTORY: &str = "library-core";
+const JOURNAL_FILE: &str = "library-core.sqlite";
 const MAX_IMPORT_BATCH: usize = 1_000;
+const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SHELL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IDS: usize = 10_000;
@@ -36,7 +52,21 @@ const MAX_SEARCH_PAGE_SIZE: usize = 32;
 const MAX_SEARCH_QUERY_BYTES: usize = 1_024;
 const MAX_SEARCH_QUERY_TERMS: usize = 32;
 const MAX_SEARCH_TERMS_PER_ITEM: usize = 384;
+const MAX_SEARCH_TOKEN_BYTES: usize = 1_024;
+const MAX_SEARCH_TOKEN_SCALARS: usize = 256;
+const MAX_SEARCH_SCORE_WORK: usize = 65_536;
+const MAX_SEARCH_ACCOUNT_ALIASES: usize = 512;
+const MAX_SEARCH_ACCOUNT_ALIAS_BYTES: usize = 1_024;
+const MAX_SEARCH_ACCOUNT_ALIAS_TERMS: usize = 16;
+const MAX_SEARCH_SCAN_ROWS: usize = 256;
+const MAX_SEARCH_RESULT_BYTES: usize = 131_072;
 const SEARCH_PRESERVED_TEXT_LIMIT: usize = 1_200;
+const SEARCH_RESULT_TEXT_LIMIT: usize = 8_192;
+const SEARCH_RESULT_STRING_LIMIT: usize = 2_048;
+const SEARCH_RESULT_TAG_LIMIT: usize = 16;
+const SEARCH_RESULT_TAG_SCALAR_LIMIT: usize = 256;
+const SEARCH_RESULT_MEDIA_LIMIT: usize = 4;
+const SEARCH_RESULT_HIGHLIGHT_LIMIT: usize = 8;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +78,20 @@ pub(super) struct DesktopLibraryStatus {
     source_generation: i64,
     source_revision: i64,
     source_digest: String,
+}
+
+impl From<LibraryCoreStoreStatus> for DesktopLibraryStatus {
+    fn from(status: LibraryCoreStoreStatus) -> Self {
+        Self {
+            active: status.active,
+            revision: status.revision,
+            expected_item_count: status.expected_item_count,
+            imported_item_count: status.imported_item_count,
+            source_generation: status.source_generation,
+            source_revision: status.source_revision,
+            source_digest: status.source_digest,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -108,6 +152,20 @@ pub(super) struct DesktopLibrarySyncPage {
 pub(super) struct BootstrapAuthorityRequest {
     installation_witness: String,
     accepted_at_ms: i64,
+    revision: i64,
+    item_count: i64,
+    source_digest: String,
+    materialized_digest: String,
+    persisted_cloud_identity: Option<BootstrapPersistedCloudIdentity>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct BootstrapPersistedCloudIdentity {
+    library_id: String,
+    storage_epoch: String,
+    writer_id: String,
+    source_digest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,7 +235,7 @@ pub(super) struct CloudWriterAdmissionStatus {
     verified_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryCausalTip {
     actor_id: String,
@@ -186,7 +244,7 @@ pub(super) struct DesktopLibraryCausalTip {
     chain_digest: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryAcceptedAuthority {
     library_id: String,
@@ -225,6 +283,253 @@ pub(super) struct DesktopLibraryActorCheckpointState {
 pub(super) struct DesktopLibraryAuthorityBootstrap {
     authority: DesktopLibraryAcceptedAuthority,
     actor: DesktopLibraryActorEnrollment,
+    protocol: DesktopLibraryAuthorityProtocol,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryAuthorityProtocol {
+    format: String,
+    active_engine: String,
+    schema_version: i64,
+    replication_protocol: String,
+    checkpoint_format: String,
+    transition_certificate_digest: String,
+    native_protocol_certificate_digest: String,
+    prior_transition_certificate_digest: Option<String>,
+    source_manifest_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerAnchorRequest {
+    authority: DesktopLibraryAcceptedAuthority,
+    manifest_object_key: String,
+    manifest_transport_object_id: String,
+    manifest_content_digest: String,
+    generation: i64,
+    remote_ingest_sequence: i64,
+    remote_materialized_digest: String,
+    writer_id: String,
+    control_revision: String,
+    checkpoint_actor: Option<DesktopLibraryFollowerCheckpointActor>,
+    installed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub(super) struct DesktopLibraryFollowerCheckpointActor {
+    actor_id: String,
+    accepted_sequence: i64,
+    accepted_operation_id: Option<String>,
+    accepted_chain_digest: String,
+    enrollment_certificate_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerOverlayReplayReceipt {
+    transaction_count: i64,
+    operation_count: i64,
+    materialized_row_count: i64,
+    revision_advanced: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareFollowerActorRequest {
+    created_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_request_digest: String,
+    canonical_enrollment_request_json: String,
+    created_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerActorEnrollmentRequest {
+    canonical_enrollment_certificate_json: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorEnrollment {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_certificate_digest: String,
+    actor_chain_genesis: String,
+    enrolled_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SignFollowerOperationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    operation_signing_body_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct EnqueueFollowerIntentRequest {
+    canonical_envelope_json: Vec<String>,
+    enqueued_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerOperationSignature {
+    actor_id: String,
+    operation_signing_body_digest: String,
+    signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentReceipt {
+    transaction_id: String,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    operation_count: i64,
+    status: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentContext {
+    authority: DesktopLibraryAcceptedAuthority,
+    actor_id: String,
+    actor_public_key: String,
+    next_intent_sequence: i64,
+    previous_operation_id: Option<String>,
+    previous_chain_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerRuntimeStatus {
+    state: &'static str,
+    library_id: Option<String>,
+    epoch_id: Option<String>,
+    actor_id: Option<String>,
+    checkpoint_generation: Option<i64>,
+    remote_ingest_sequence: Option<i64>,
+    pending_intent_count: i64,
+    published_intent_count: i64,
+    imported_result_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadFollowerIntentOutboxRequest {
+    maximum_operations: usize,
+    maximum_canonical_envelope_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentOutboxEntry {
+    operation_id: String,
+    intent_sequence: i64,
+    canonical_envelope_json: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentOutboxCandidate {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    schema_version: i64,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    previous_segment_digest: Option<String>,
+    canonical_envelope_bytes: i64,
+    transaction_count: i64,
+    entries: Vec<DesktopLibraryFollowerIntentOutboxEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RecordFollowerIntentPublicationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    previous_segment_digest: Option<String>,
+    published_segment_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentPublicationReceipt {
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    operation_count: i64,
+    published_segment_digest: String,
+    status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadFollowerResultImportCursorRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerResultImportCursor {
+    next_result_sequence: i64,
+    latest_segment_digest: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AppendFollowerIntentResultRequest {
+    result_operation_id: String,
+    result_sequence: i64,
+    intent_operation_id: String,
+    intent_sequence: i64,
+    status: String,
+    provider_receipt_digest: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AppendFollowerResultSegmentRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    first_result_sequence: i64,
+    last_result_sequence: i64,
+    previous_segment_digest: Option<String>,
+    segment_digest: String,
+    entries: Vec<AppendFollowerIntentResultRequest>,
+    imported_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerResultImportReceipt {
+    first_result_sequence: i64,
+    last_result_sequence: i64,
+    result_count: i64,
+    segment_digest: String,
+    status: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -241,6 +546,9 @@ pub(super) struct BeginImportRequest {
     source_generation: i64,
     source_revision: i64,
     source_digest: String,
+    source_checkpoint_object_key: Option<String>,
+    source_checkpoint_content_digest: Option<String>,
+    source_checkpoint_transport_object_id: Option<String>,
     expected_item_count: i64,
     shell_json: String,
     started_at_ms: i64,
@@ -466,7 +774,17 @@ const ALL_FEED_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_i
 pub(super) struct SearchItemsRequest {
     query: String,
     after_global_id: Option<String>,
+    expected_revision: i64,
+    account_aliases: Vec<SearchAccountAlias>,
     limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SearchAccountAlias {
+    aliases: String,
+    author_id: String,
+    platform: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -474,8 +792,6 @@ pub(super) struct SearchItemsRequest {
 pub(super) struct ScoredDesktopLibraryItem {
     item_json: String,
     score: f64,
-    #[serde(skip)]
-    global_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -483,6 +799,7 @@ pub(super) struct ScoredDesktopLibraryItem {
 pub(super) struct DesktopLibrarySearchPage {
     matches: Vec<ScoredDesktopLibraryItem>,
     next_after_global_id: Option<String>,
+    source_revision: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -496,6 +813,36 @@ pub(super) struct DesktopBackupSummary {
     reason: String,
     byte_length: u64,
     sha256: String,
+}
+
+impl From<LibraryCoreBackupReceipt> for DesktopBackupSummary {
+    fn from(receipt: LibraryCoreBackupReceipt) -> Self {
+        Self {
+            backup_id: receipt.backup_id,
+            file_name: receipt.file_name,
+            created_at_ms: receipt.created_at_ms,
+            revision: receipt.revision,
+            item_count: receipt.item_count,
+            reason: receipt.reason,
+            byte_length: receipt.byte_length,
+            sha256: receipt.sha256,
+        }
+    }
+}
+
+impl From<LibraryCoreBackupRecord> for DesktopBackupSummary {
+    fn from(record: LibraryCoreBackupRecord) -> Self {
+        Self {
+            backup_id: record.backup_id,
+            file_name: record.file_name,
+            created_at_ms: record.created_at_ms,
+            revision: record.revision,
+            item_count: record.item_count,
+            reason: record.reason,
+            byte_length: record.byte_length,
+            sha256: record.sha256,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -517,12 +864,76 @@ pub(super) struct DesktopBackupChunk {
     total_byte_length: u64,
 }
 
+impl From<NativeLibraryCoreBackupChunk> for DesktopBackupChunk {
+    fn from(chunk: NativeLibraryCoreBackupChunk) -> Self {
+        Self {
+            backup_id: chunk.backup_id,
+            bytes: chunk.bytes,
+            next_offset: chunk.next_offset,
+            offset: chunk.offset,
+            sha256: chunk.sha256,
+            total_byte_length: chunk.total_byte_length,
+        }
+    }
+}
+
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
 
+fn journal_path(root: &Path) -> PathBuf {
+    root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE)
+}
+
+#[cfg(unix)]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
+    match fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(path)?;
+        }
+        Err(error) => return Err(error),
+    }
+
+    let directory = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(path)?;
+    let metadata = directory.metadata()?;
+    if !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Library Core storage root is not a physical directory",
+        ));
+    }
+    if metadata.permissions().mode() & 0o7777 != 0o700 {
+        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+    }
+    if directory.metadata()?.permissions().mode() & 0o7777 != 0o700 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Library Core storage root is not private",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(path)
+}
+
 fn open_database_at(root: &Path) -> Result<Connection, String> {
-    fs::create_dir_all(root.join("library-core")).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding.connect().map_err(|error| error.to_string());
+    }
+    create_private_directory(&root.join(JOURNAL_DIRECTORY)).map_err(|error| error.to_string())?;
     let path = journal_path(root);
     drop(LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?);
     let connection = Connection::open(path).map_err(|error| error.to_string())?;
@@ -534,6 +945,22 @@ fn open_database_at(root: &Path) -> Result<Connection, String> {
         )
         .map_err(|error| error.to_string())?;
     Ok(connection)
+}
+
+fn open_journal_at(root: &Path) -> Result<LibraryCoreJournal, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding.open_journal().map_err(|error| error.to_string());
+    }
+    LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())
+}
+
+fn open_store_at(root: &Path) -> Result<LibraryCoreStore, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return Ok(binding.store().clone());
+    }
+    LibraryCoreStore::open(root).map_err(|error| error.to_string())
 }
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -583,95 +1010,6 @@ fn hash_bounded_record(hasher: &mut Sha256, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn integer_at(value: &Value, path: &[&str]) -> Option<i64> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_i64()
-}
-
-fn boolean_at(value: &Value, path: &[&str]) -> Option<i64> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_bool().map(i64::from)
-}
-
-pub(crate) fn upsert_item(
-    transaction: &Transaction<'_>,
-    item_json: &str,
-    updated_at_ms: i64,
-) -> Result<(), String> {
-    let item = validate_json_object(item_json, MAX_ITEM_BYTES)?;
-    let global_id = string_at(&item, &["globalId"])
-        .filter(|value| !value.is_empty() && value.len() <= 4_096)
-        .ok_or_else(|| "feed item globalId is missing or invalid".to_string())?;
-    transaction
-        .execute(
-            "INSERT INTO library_core_feed_items (
-               globalId, platform, contentType, publishedAt, capturedAt,
-               authorId, authorDisplayName, authorHandle, sourceUrl,
-               hidden, saved, archived, readAt, archivedAt, liked, likedAt,
-               likedSyncedAt, seenSyncedAt, feedUrl, sampleData, deletedAt,
-               payloadJson, updatedAtMs
-             ) VALUES (
-               ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-               ?14, ?15, ?16, ?17, ?18, ?19, ?20, NULL, ?21, ?22
-             )
-             ON CONFLICT(globalId) DO UPDATE SET
-               platform = excluded.platform,
-               contentType = excluded.contentType,
-               publishedAt = excluded.publishedAt,
-               capturedAt = excluded.capturedAt,
-               authorId = excluded.authorId,
-               authorDisplayName = excluded.authorDisplayName,
-               authorHandle = excluded.authorHandle,
-               sourceUrl = excluded.sourceUrl,
-               hidden = excluded.hidden,
-               saved = excluded.saved,
-               archived = excluded.archived,
-               readAt = excluded.readAt,
-               archivedAt = excluded.archivedAt,
-               liked = excluded.liked,
-               likedAt = excluded.likedAt,
-               likedSyncedAt = excluded.likedSyncedAt,
-               seenSyncedAt = excluded.seenSyncedAt,
-               feedUrl = excluded.feedUrl,
-               sampleData = excluded.sampleData,
-               deletedAt = NULL,
-               payloadJson = excluded.payloadJson,
-               updatedAtMs = excluded.updatedAtMs;",
-            params![
-                global_id,
-                string_at(&item, &["platform"]),
-                string_at(&item, &["contentType"]),
-                integer_at(&item, &["publishedAt"]),
-                integer_at(&item, &["capturedAt"]),
-                string_at(&item, &["author", "id"]),
-                string_at(&item, &["author", "displayName"]),
-                string_at(&item, &["author", "handle"]),
-                string_at(&item, &["sourceUrl"]),
-                boolean_at(&item, &["userState", "hidden"]),
-                boolean_at(&item, &["userState", "saved"]),
-                boolean_at(&item, &["userState", "archived"]),
-                integer_at(&item, &["userState", "readAt"]),
-                integer_at(&item, &["userState", "archivedAt"]),
-                boolean_at(&item, &["userState", "liked"]),
-                integer_at(&item, &["userState", "likedAt"]),
-                integer_at(&item, &["userState", "likedSyncedAt"]),
-                integer_at(&item, &["userState", "seenSyncedAt"]),
-                string_at(&item, &["rssSource", "feedUrl"]),
-                i64::from(item.get("sampleDataFingerprint").is_some()),
-                item_json,
-                updated_at_ms,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
 fn require_active(connection: &Connection) -> Result<(), String> {
     let active = connection
         .query_row(
@@ -691,27 +1029,10 @@ fn require_active(connection: &Connection) -> Result<(), String> {
 pub(super) fn sqlite_library_status(
     app: tauri::AppHandle,
 ) -> Result<Option<DesktopLibraryStatus>, String> {
-    let connection = open_database(&app)?;
-    let status = connection
-        .query_row(
-            "SELECT active, revision, expectedItemCount, importedItemCount,
-                    sourceGeneration, sourceRevision, sourceDigest
-             FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| {
-                Ok(DesktopLibraryStatus {
-                    active: row.get::<_, i64>(0)? == 1,
-                    revision: row.get(1)?,
-                    expected_item_count: row.get(2)?,
-                    imported_item_count: row.get(3)?,
-                    source_generation: row.get(4)?,
-                    source_revision: row.get(5)?,
-                    source_digest: row.get(6)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
+    let status: Option<DesktopLibraryStatus> = open_store_at(&app_root(&app)?)?
+        .status()
+        .map_err(|error| error.to_string())?
+        .map(Into::into);
     if let Some(status) = &status {
         log::info!(
             "[library-core] SQLite Library status active={} revision={} items={}/{}",
@@ -729,51 +1050,65 @@ pub(super) fn begin_sqlite_library_import(
     app: tauri::AppHandle,
     request: BeginImportRequest,
 ) -> Result<(), String> {
+    begin_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn begin_sqlite_library_import_at(root: &Path, request: BeginImportRequest) -> Result<(), String> {
+    let checkpoint_field_count = [
+        request.source_checkpoint_object_key.is_some(),
+        request.source_checkpoint_content_digest.is_some(),
+        request.source_checkpoint_transport_object_id.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
     if !validate_hex_digest(&request.source_digest)
         || !(0..=1_000_000).contains(&request.expected_item_count)
         || request.source_generation < 0
         || request.source_revision < 0
         || request.started_at_ms < 0
+        || (checkpoint_field_count != 0 && checkpoint_field_count != 3)
+        || request
+            .source_checkpoint_object_key
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 4_096)
+        || request
+            .source_checkpoint_content_digest
+            .as_ref()
+            .is_some_and(|value| !validate_hex_digest(value))
+        || request
+            .source_checkpoint_transport_object_id
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 4_096)
     {
         return Err("invalid SQLite Library import identity".into());
     }
-    validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let mut connection = open_database(&app)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute("DELETE FROM library_core_feed_items;", [])
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "INSERT INTO library_core_desktop_state (
-               singletonId, active, revision, sourceGeneration, sourceRevision,
-               sourceDigest, expectedItemCount, importedItemCount, shellJson,
-               startedAtMs, activatedAtMs
-             ) VALUES (1, 0, 0, ?1, ?2, ?3, ?4, 0, ?5, ?6, NULL)
-             ON CONFLICT(singletonId) DO UPDATE SET
-               active = 0,
-               revision = 0,
-               sourceGeneration = excluded.sourceGeneration,
-               sourceRevision = excluded.sourceRevision,
-               sourceDigest = excluded.sourceDigest,
-               expectedItemCount = excluded.expectedItemCount,
-               importedItemCount = 0,
-               shellJson = excluded.shellJson,
-               startedAtMs = excluded.startedAtMs,
-               activatedAtMs = NULL;",
-            params![
-                request.source_generation,
-                request.source_revision,
-                request.source_digest,
-                request.expected_item_count,
-                request.shell_json,
-                request.started_at_ms,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())
+    let source_checkpoint = match (
+        request.source_checkpoint_object_key,
+        request.source_checkpoint_content_digest,
+        request.source_checkpoint_transport_object_id,
+    ) {
+        (Some(object_key), Some(content_digest), Some(transport_object_id)) => {
+            Some(LibraryCoreCheckpointReference {
+                object_key,
+                content_digest,
+                transport_object_id,
+            })
+        }
+        (None, None, None) => None,
+        _ => return Err("invalid SQLite Library import identity".into()),
+    };
+    open_store_at(root)?
+        .begin_import(BeginLibraryCoreImport {
+            source_generation: request.source_generation,
+            source_revision: request.source_revision,
+            source_digest: request.source_digest,
+            source_checkpoint,
+            expected_item_count: request.expected_item_count,
+            shell_json: request.shell_json,
+            started_at_ms: request.started_at_ms,
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -781,83 +1116,116 @@ pub(super) fn append_sqlite_library_import(
     app: tauri::AppHandle,
     request: AppendImportRequest,
 ) -> Result<i64, String> {
+    append_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn append_sqlite_library_import_at(
+    root: &Path,
+    request: AppendImportRequest,
+) -> Result<i64, String> {
     if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library import batch must contain 1 through 1,000 items".into());
     }
-    let mut connection = open_database(&app)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    for encoded in &request.items_base64 {
-        let item = decode_base64_json(encoded)?;
-        upsert_item(&transaction, &item, request.updated_at_ms)?;
+    let encoded_bytes = request
+        .items_base64
+        .iter()
+        .try_fold(0usize, |total, item| {
+            total
+                .checked_add(item.len())
+                .ok_or_else(|| "SQLite Library import page is too large".to_string())
+        })?;
+    if encoded_bytes > MAX_IMPORT_PAGE_ENCODED_BYTES {
+        return Err("SQLite Library import page is too large".into());
     }
-    let count: i64 = transaction
-        .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "UPDATE library_core_desktop_state SET importedItemCount = ?1
-             WHERE singletonId = 1 AND active = 0;",
-            [count],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())?;
-    Ok(count)
+    if request.updated_at_ms < 0 {
+        return Err("SQLite Library import time is invalid".into());
+    }
+    let items = request
+        .items_base64
+        .iter()
+        .map(|encoded| {
+            Ok(LibraryCoreImportItem {
+                item_json: decode_base64_json(encoded)?,
+                updated_at_ms: request.updated_at_ms,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    open_store_at(root)?
+        .append_import_page(&items)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub(super) fn finalize_sqlite_library_import(
     app: tauri::AppHandle,
     activated_at_ms: i64,
+    follower_anchor: Option<InstallFollowerAnchorRequest>,
 ) -> Result<DesktopLibraryStatus, String> {
-    let mut connection = open_database(&app)?;
-    let (expected, imported): (i64, i64) = connection
-        .query_row(
-            "SELECT expectedItemCount, importedItemCount
-             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 0;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let actual: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if expected != imported || expected != actual {
-        return Err(format!(
-            "SQLite Library import count mismatch: expected {expected}, imported {imported}, actual {actual}"
-        ));
+    let root = app_root(&app)?;
+    let follower_anchor = follower_anchor.map(verified_follower_anchor);
+    let receipt = finalize_sqlite_library_import_receipt_at(
+        &root,
+        activated_at_ms,
+        follower_anchor.as_ref(),
+    )?;
+    if let Some(replay) = receipt.overlay_replay {
+        if replay.transaction_count > 0 {
+            log::info!(
+                "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
+                replay.transaction_count,
+                replay.operation_count,
+                replay.materialized_row_count,
+                replay.revision_advanced
+            );
+        }
+    } else if receipt.overlay_replay_pending {
+        log::warn!(
+            "[library-core] checkpoint activation committed; follower overlay recovery remains pending"
+        );
     }
-    let integrity: String = connection
-        .query_row("PRAGMA integrity_check;", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if integrity != "ok" {
-        return Err(format!(
-            "SQLite Library integrity check failed: {integrity}"
-        ));
-    }
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "UPDATE library_core_desktop_state
-             SET active = 1, activatedAtMs = ?1, revision = 1
-             WHERE singletonId = 1 AND active = 0;",
-            [activated_at_ms],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())?;
-    drop(connection);
-    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+    Ok(receipt.status.into())
+}
+
+#[tauri::command]
+pub(super) fn recover_sqlite_library_follower_overlay(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFollowerOverlayReplayReceipt, String> {
+    let replay = replay_sqlite_library_follower_overlay_at(&app_root(&app)?)?;
+    Ok(DesktopLibraryFollowerOverlayReplayReceipt {
+        transaction_count: replay.transaction_count,
+        operation_count: replay.operation_count,
+        materialized_row_count: replay.materialized_row_count,
+        revision_advanced: replay.revision_advanced,
+    })
+}
+
+fn replay_sqlite_library_follower_overlay_at(
+    root: &Path,
+) -> Result<FollowerOverlayReplayReceipt, String> {
+    let mut journal = open_journal_at(root)?;
+    journal
+        .replay_pending_follower_overlay()
+        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))
+}
+
+#[cfg(test)]
+fn finalize_sqlite_library_import_at(
+    root: &Path,
+    activated_at_ms: i64,
+    follower_anchor: Option<&VerifiedFollowerAnchor>,
+) -> Result<(), String> {
+    finalize_sqlite_library_import_receipt_at(root, activated_at_ms, follower_anchor)?;
+    Ok(())
+}
+
+fn finalize_sqlite_library_import_receipt_at(
+    root: &Path,
+    activated_at_ms: i64,
+    follower_anchor: Option<&VerifiedFollowerAnchor>,
+) -> Result<freed_library_core::FinalizeLibraryCoreImportReceipt, String> {
+    open_store_at(root)?
+        .finalize_import(activated_at_ms, follower_anchor)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -925,7 +1293,6 @@ pub(super) fn read_sqlite_library_shell(
         unread_by_platform,
     })
 }
-
 
 #[tauri::command]
 pub(super) fn read_sqlite_library_counts(
@@ -1025,21 +1392,33 @@ pub(super) fn read_sqlite_library_counts(
 }
 
 /// Describe one exact SQLite revision without retaining the corpus in memory.
-#[tauri::command]
-pub(super) fn read_sqlite_library_sync_descriptor(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibrarySyncDescriptor, String> {
-    let mut connection = open_database(&app)?;
-    require_active(&connection)?;
+fn read_sqlite_library_sync_snapshot(
+    connection: &mut Connection,
+) -> Result<(DesktopLibrarySyncDescriptor, u64, u64), String> {
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    let (revision, source_digest, shell_json): (i64, String, String) = transaction
+    let (revision, source_generation, source_revision, source_digest, shell_json): (
+        i64,
+        i64,
+        i64,
+        String,
+        String,
+    ) = transaction
         .query_row(
-            "SELECT revision, sourceDigest, shellJson
+            "SELECT revision, sourceGeneration, sourceRevision,
+                    sourceDigest, shellJson
              FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
@@ -1069,13 +1448,509 @@ pub(super) fn read_sqlite_library_sync_descriptor(
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    Ok(DesktopLibrarySyncDescriptor {
-        revision,
-        item_count,
-        source_digest,
-        shell_json,
-        materialized_digest,
+    let source_generation = u64::try_from(source_generation)
+        .map_err(|_| "SQLite Library source generation is invalid")?;
+    let source_revision =
+        u64::try_from(source_revision).map_err(|_| "SQLite Library source revision is invalid")?;
+    Ok((
+        DesktopLibrarySyncDescriptor {
+            revision,
+            item_count,
+            source_digest,
+            shell_json,
+            materialized_digest,
+        },
+        source_generation,
+        source_revision,
+    ))
+}
+
+/// Describe one exact SQLite revision without retaining the corpus in memory.
+#[tauri::command]
+pub(super) fn read_sqlite_library_sync_descriptor(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibrarySyncDescriptor, String> {
+    let mut connection = open_database(&app)?;
+    require_active(&connection)?;
+    read_sqlite_library_sync_snapshot(&mut connection).map(|snapshot| snapshot.0)
+}
+
+fn verified_follower_anchor(request: InstallFollowerAnchorRequest) -> VerifiedFollowerAnchor {
+    VerifiedFollowerAnchor {
+        authority: AcceptedAuthorityState {
+            library_id: request.authority.library_id,
+            epoch: request.authority.epoch,
+            epoch_id: request.authority.epoch_id,
+            authority_key_id: request.authority.authority_key_id,
+            authority_public_key: request.authority.authority_public_key,
+            observed_frontier: request
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| VerifiedCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        manifest_object_key: request.manifest_object_key,
+        manifest_transport_object_id: request.manifest_transport_object_id,
+        manifest_content_digest: request.manifest_content_digest,
+        generation: request.generation,
+        remote_ingest_sequence: request.remote_ingest_sequence,
+        remote_materialized_digest: request.remote_materialized_digest,
+        writer_id: request.writer_id,
+        control_revision: request.control_revision,
+        checkpoint_actor: request
+            .checkpoint_actor
+            .map(|actor| VerifiedFollowerCheckpointActor {
+                actor_id: actor.actor_id,
+                accepted_sequence: actor.accepted_sequence,
+                accepted_operation_id: actor.accepted_operation_id,
+                accepted_chain_digest: actor.accepted_chain_digest,
+                enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            }),
+        installed_at_ms: request.installed_at_ms,
+    }
+}
+
+fn follower_actor_request_response(
+    request: StoredFollowerActorRequest,
+) -> DesktopLibraryFollowerActorRequest {
+    DesktopLibraryFollowerActorRequest {
+        library_id: request.library_id,
+        epoch_id: request.epoch_id,
+        actor_id: request.actor_id,
+        actor_public_key: request.actor_public_key,
+        enrollment_request_digest: request.enrollment_request_digest,
+        canonical_enrollment_request_json: request.canonical_enrollment_request_json,
+        created_at_ms: request.created_at_ms,
+    }
+}
+
+/// Prepare one stable actor proof for the active follower anchor.
+///
+/// The exact request is committed before it is returned. A response-loss retry
+/// returns those same bytes rather than signing a second request with a new
+/// timestamp. No authority signature, writer admission, or provider I/O is
+/// available on this path.
+#[tauri::command]
+pub(super) fn prepare_sqlite_library_follower_actor_request(
+    app: tauri::AppHandle,
+    request: PrepareFollowerActorRequest,
+) -> Result<DesktopLibraryFollowerActorRequest, String> {
+    if request.created_at_ms < 0 {
+        return Err("SQLite Library follower actor request time is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal = open_journal_at(&root)?;
+    let anchor = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library has no verified follower anchor".to_string())?;
+    if let Some(existing) = journal
+        .follower_actor_request(&anchor.authority.library_id, &anchor.authority.epoch_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(follower_actor_request_response(existing));
+    }
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    let prepared = prepare_follower_actor_enrollment_request(
+        &EnrollmentAuthority {
+            library_id: anchor.authority.library_id.clone(),
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id.clone(),
+            authority_key_id: anchor.authority.authority_key_id,
+            installation_witness,
+        },
+        &PlatformActorKeyStore,
+        request.created_at_ms,
+    )?;
+    let stored = journal
+        .store_follower_actor_request(&StoredFollowerActorRequest {
+            library_id: anchor.authority.library_id,
+            epoch_id: anchor.authority.epoch_id,
+            actor_id: prepared.actor_id,
+            actor_public_key: prepared.actor_public_key,
+            enrollment_request_digest: prepared.enrollment_request_digest,
+            canonical_enrollment_request_json: prepared.canonical_enrollment_request_json,
+            created_at_ms: request.created_at_ms,
+        })
+        .map_err(|error| format!("SQLite Library could not store follower actor: {error}"))?;
+    Ok(follower_actor_request_response(stored))
+}
+
+fn follower_actor_enrollment_response(
+    enrollment: StoredFollowerActorEnrollment,
+) -> DesktopLibraryFollowerActorEnrollment {
+    DesktopLibraryFollowerActorEnrollment {
+        library_id: enrollment.library_id,
+        epoch_id: enrollment.epoch_id,
+        actor_id: enrollment.actor_id,
+        actor_public_key: enrollment.actor_public_key,
+        enrollment_certificate_digest: enrollment.enrollment_certificate_digest,
+        actor_chain_genesis: enrollment.actor_chain_genesis,
+        enrolled_at_ms: enrollment.enrolled_at_ms,
+    }
+}
+
+/// Verify and install the exact authority-countersigned follower certificate.
+///
+/// Successful verification initializes only the isolated follower intent
+/// chain. It never enrolls the actor into the canonical writer journal.
+#[tauri::command]
+pub(super) fn install_sqlite_library_follower_actor_enrollment(
+    app: tauri::AppHandle,
+    request: InstallFollowerActorEnrollmentRequest,
+) -> Result<DesktopLibraryFollowerActorEnrollment, String> {
+    if request.canonical_enrollment_certificate_json.is_empty()
+        || request.canonical_enrollment_certificate_json.len() > 65_536
+    {
+        return Err("SQLite Library follower enrollment certificate size is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal = open_journal_at(&root)?;
+    let enrollment = journal
+        .verify_and_install_follower_actor(request.canonical_enrollment_certificate_json.as_bytes())
+        .map_err(|error| format!("SQLite Library refused follower enrollment: {error}"))?;
+    Ok(follower_actor_enrollment_response(enrollment))
+}
+
+/// Sign one finalized follower operation body digest with the native actor key.
+///
+/// The caller still has to submit the complete canonical transaction to the
+/// native outbox, where sequence, chain, schema, and operation semantics are
+/// reverified before anything becomes durable.
+#[tauri::command]
+pub(super) fn sign_sqlite_library_follower_operation(
+    app: tauri::AppHandle,
+    request: SignFollowerOperationRequest,
+) -> Result<DesktopLibraryFollowerOperationSignature, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal = open_journal_at(&root)?;
+    let enrollment = journal
+        .follower_actor_enrollment(&request.library_id, &request.epoch_id, &request.actor_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library follower actor is not enrolled".to_string())?;
+    let signature = sign_follower_operation_digest(
+        &PlatformActorKeyStore,
+        &request.library_id,
+        &enrollment.actor_public_key,
+        &request.operation_signing_body_digest,
+    )?;
+    Ok(DesktopLibraryFollowerOperationSignature {
+        actor_id: request.actor_id,
+        operation_signing_body_digest: request.operation_signing_body_digest,
+        signature,
     })
+}
+
+fn follower_intent_receipt_response(
+    receipt: FollowerIntentEnqueueReceipt,
+) -> DesktopLibraryFollowerIntentReceipt {
+    DesktopLibraryFollowerIntentReceipt {
+        transaction_id: receipt.transaction_id,
+        first_intent_sequence: receipt.first_intent_sequence,
+        last_intent_sequence: receipt.last_intent_sequence,
+        operation_count: receipt.operation_count,
+        status: receipt.status,
+    }
+}
+
+/// Verify and atomically enqueue one complete signed follower transaction.
+///
+/// Canonical operation semantics, signatures, actor sequence, actor chain,
+/// transaction boundaries, and causal tips are checked again in native code.
+#[tauri::command]
+pub(super) fn enqueue_sqlite_library_follower_intent(
+    app: tauri::AppHandle,
+    request: EnqueueFollowerIntentRequest,
+) -> Result<DesktopLibraryFollowerIntentReceipt, String> {
+    if request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > 1_000
+        || request.enqueued_at_ms < 0
+    {
+        return Err("SQLite Library follower intent request is invalid".into());
+    }
+    let canonical_envelopes = request
+        .canonical_envelope_json
+        .iter()
+        .map(|value| value.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal = open_journal_at(&root)?;
+    let receipt = journal
+        .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
+        .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
+    Ok(follower_intent_receipt_response(receipt))
+}
+
+/// Read the exact native actor tip used to assemble the next follower intent.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_intent_context(
+    app: tauri::AppHandle,
+) -> Result<Option<DesktopLibraryFollowerIntentContext>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal = open_journal_at(&root)?;
+    let Some(anchor) = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    let Some(actor) = journal
+        .active_follower_actor_state()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(DesktopLibraryFollowerIntentContext {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: anchor.authority.library_id,
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id,
+            authority_key_id: anchor.authority.authority_key_id,
+            authority_public_key: anchor.authority.authority_public_key,
+            observed_frontier: anchor
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        actor_id: actor.actor_id,
+        actor_public_key: actor.actor_public_key,
+        next_intent_sequence: actor.next_sequence,
+        previous_operation_id: actor.previous_operation_id,
+        previous_chain_digest: actor.previous_chain_digest,
+    }))
+}
+
+/// Report the local follower checkpoint, enrollment, outbox, and result state
+/// without reading or mutating any cloud transport.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_runtime_status(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFollowerRuntimeStatus, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal = open_journal_at(&root)?;
+    let FollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    } = journal
+        .follower_runtime_status()
+        .map_err(|error| format!("SQLite Library refused follower diagnostics: {error}"))?;
+    Ok(DesktopLibraryFollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    })
+}
+
+fn follower_intent_outbox_response(
+    candidate: FollowerIntentOutboxCandidate,
+) -> DesktopLibraryFollowerIntentOutboxCandidate {
+    DesktopLibraryFollowerIntentOutboxCandidate {
+        library_id: candidate.library_id,
+        epoch_id: candidate.epoch_id,
+        actor_id: candidate.actor_id,
+        schema_version: candidate.schema_version,
+        first_intent_sequence: candidate.first_intent_sequence,
+        last_intent_sequence: candidate.last_intent_sequence,
+        previous_segment_digest: candidate.previous_segment_digest,
+        canonical_envelope_bytes: candidate.canonical_envelope_bytes,
+        transaction_count: candidate.transaction_count,
+        entries: candidate
+            .entries
+            .into_iter()
+            .map(|entry| DesktopLibraryFollowerIntentOutboxEntry {
+                operation_id: entry.operation_id,
+                intent_sequence: entry.intent_sequence,
+                canonical_envelope_json: entry.canonical_envelope_json,
+            })
+            .collect(),
+    }
+}
+
+/// Read one bounded, transaction-complete follower intent publication candidate.
+#[tauri::command]
+pub(super) fn read_sqlite_library_follower_intent_outbox_candidate(
+    app: tauri::AppHandle,
+    request: ReadFollowerIntentOutboxRequest,
+) -> Result<Option<DesktopLibraryFollowerIntentOutboxCandidate>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal = open_journal_at(&root)?;
+    journal
+        .follower_intent_outbox_candidate(
+            request.maximum_operations,
+            request.maximum_canonical_envelope_bytes,
+        )
+        .map(|candidate| candidate.map(follower_intent_outbox_response))
+        .map_err(|error| format!("SQLite Library refused follower outbox read: {error}"))
+}
+
+fn follower_intent_publication_response(
+    receipt: FollowerIntentPublicationReceipt,
+) -> DesktopLibraryFollowerIntentPublicationReceipt {
+    DesktopLibraryFollowerIntentPublicationReceipt {
+        first_intent_sequence: receipt.first_intent_sequence,
+        last_intent_sequence: receipt.last_intent_sequence,
+        operation_count: receipt.operation_count,
+        published_segment_digest: receipt.published_segment_digest,
+        status: receipt.status,
+    }
+}
+
+/// Record publication only after the immutable segment and exact actor head
+/// readback have been verified by the bounded cloud adapter.
+#[tauri::command]
+pub(super) fn record_sqlite_library_follower_intent_publication(
+    app: tauri::AppHandle,
+    request: RecordFollowerIntentPublicationRequest,
+) -> Result<DesktopLibraryFollowerIntentPublicationReceipt, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal = open_journal_at(&root)?;
+    journal
+        .record_follower_intent_publication(&VerifiedFollowerIntentPublication {
+            library_id: request.library_id,
+            epoch_id: request.epoch_id,
+            actor_id: request.actor_id,
+            first_intent_sequence: request.first_intent_sequence,
+            last_intent_sequence: request.last_intent_sequence,
+            previous_segment_digest: request.previous_segment_digest,
+            published_segment_digest: request.published_segment_digest,
+        })
+        .map(follower_intent_publication_response)
+        .map_err(|error| format!("SQLite Library refused follower publication: {error}"))
+}
+
+/// Read the exact durable cursor for one follower actor result chain.
+#[tauri::command]
+pub(super) fn read_sqlite_library_follower_result_import_cursor(
+    app: tauri::AppHandle,
+    request: ReadFollowerResultImportCursorRequest,
+) -> Result<Option<DesktopLibraryFollowerResultImportCursor>, String> {
+    if !validate_hex_digest(&request.library_id)
+        || !validate_hex_digest(&request.epoch_id)
+        || !validate_hex_digest(&request.actor_id)
+    {
+        return Err("SQLite Library follower result cursor identity is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal = open_journal_at(&root)?;
+    journal
+        .follower_result_import_cursor(&request.library_id, &request.epoch_id, &request.actor_id)
+        .map(|cursor| {
+            cursor.map(
+                |FollowerResultImportCursor {
+                     next_result_sequence,
+                     latest_segment_digest,
+                 }| DesktopLibraryFollowerResultImportCursor {
+                    next_result_sequence,
+                    latest_segment_digest,
+                },
+            )
+        })
+        .map_err(|error| format!("SQLite Library refused follower result cursor: {error}"))
+}
+
+fn follower_result_import_response(
+    receipt: FollowerResultImportReceipt,
+) -> DesktopLibraryFollowerResultImportReceipt {
+    DesktopLibraryFollowerResultImportReceipt {
+        first_result_sequence: receipt.first_result_sequence,
+        last_result_sequence: receipt.last_result_sequence,
+        result_count: receipt.result_count,
+        segment_digest: receipt.segment_digest,
+        status: receipt.status,
+    }
+}
+
+/// Append one already verified immutable result segment to the durable follower
+/// receipt chain. The journal rechecks its actor, sequence, intent references,
+/// replay identity, and previous segment digest before advancing the cursor.
+#[tauri::command]
+pub(super) fn append_sqlite_library_follower_result_segment(
+    app: tauri::AppHandle,
+    request: AppendFollowerResultSegmentRequest,
+) -> Result<DesktopLibraryFollowerResultImportReceipt, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal = open_journal_at(&root)?;
+    journal
+        .append_follower_result_segment(&VerifiedFollowerResultSegment {
+            library_id: request.library_id,
+            epoch_id: request.epoch_id,
+            actor_id: request.actor_id,
+            first_result_sequence: request.first_result_sequence,
+            last_result_sequence: request.last_result_sequence,
+            previous_segment_digest: request.previous_segment_digest,
+            segment_digest: request.segment_digest,
+            entries: request
+                .entries
+                .into_iter()
+                .map(|entry| VerifiedFollowerIntentResult {
+                    result_operation_id: entry.result_operation_id,
+                    result_sequence: entry.result_sequence,
+                    intent_operation_id: entry.intent_operation_id,
+                    intent_sequence: entry.intent_sequence,
+                    status: entry.status,
+                    provider_receipt_digest: entry.provider_receipt_digest,
+                })
+                .collect(),
+            imported_at_ms: request.imported_at_ms,
+        })
+        .map(follower_result_import_response)
+        .map_err(|error| format!("SQLite Library refused follower result segment: {error}"))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.
@@ -1088,46 +1963,65 @@ pub(super) fn bootstrap_sqlite_library_authority(
     app: tauri::AppHandle,
     request: BootstrapAuthorityRequest,
 ) -> Result<DesktopLibraryAuthorityBootstrap, String> {
-    if !validate_hex_digest(&request.installation_witness) || request.accepted_at_ms < 0 {
+    if !validate_hex_digest(&request.installation_witness)
+        || !validate_hex_digest(&request.source_digest)
+        || !validate_hex_digest(&request.materialized_digest)
+        || request.accepted_at_ms < 0
+        || request.revision < 0
+        || !(0..=1_000_000).contains(&request.item_count)
+        || request
+            .persisted_cloud_identity
+            .as_ref()
+            .is_some_and(|hint| {
+                !validate_hex_digest(&hint.library_id)
+                    || !validate_hex_digest(&hint.storage_epoch)
+                    || !validate_hex_digest(&hint.writer_id)
+                    || !validate_hex_digest(&hint.source_digest)
+            })
+    {
         return Err("SQLite Library authority bootstrap request is invalid".into());
     }
     let root = app_root(&app)?;
-    let path = journal_path(&root);
-    let connection = open_database_at(&root)?;
+    let mut connection = open_database_at(&root)?;
     require_active(&connection)?;
-    let (source_generation, source_revision, source_digest): (i64, i64, String) = connection
-        .query_row(
-            "SELECT sourceGeneration, sourceRevision, sourceDigest
-             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(|error| error.to_string())?;
+    let (descriptor, source_generation, source_revision) =
+        read_sqlite_library_sync_snapshot(&mut connection)?;
     drop(connection);
-    let source_generation = u64::try_from(source_generation)
-        .map_err(|_| "SQLite Library source generation is invalid")?;
-    let source_revision =
-        u64::try_from(source_revision).map_err(|_| "SQLite Library source revision is invalid")?;
-    if !validate_hex_digest(&source_digest) {
-        return Err("SQLite Library source digest is invalid".into());
+    if descriptor.revision != request.revision
+        || descriptor.item_count != request.item_count
+        || descriptor.source_digest != request.source_digest
+        || descriptor.materialized_digest != request.materialized_digest
+    {
+        return Err("SQLite Library changed before authority bootstrap".into());
     }
 
-    let mut journal = LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?;
-    let revision = LegacySourceRevision {
-        document_id: format!("freed-sqlite-{source_digest}"),
-        heads_digest: source_digest,
-        head_count: 1,
-        storage_generation: source_generation,
-        storage_save_revision: source_revision,
+    let mut journal = open_journal_at(&root)?;
+    let snapshot = NativeSqliteSourceSnapshot {
+        source_digest: descriptor.source_digest,
+        source_generation,
+        source_revision,
+        sqlite_revision: u64::try_from(descriptor.revision)
+            .map_err(|_| "SQLite Library revision is invalid")?,
+        item_count: u64::try_from(descriptor.item_count)
+            .map_err(|_| "SQLite Library item count is invalid")?,
+        materialized_digest: descriptor.materialized_digest,
     };
-    let library_id = legacy_library_id(&revision.document_id)?;
-    let authority = match journal
-        .active_authority_epoch(&library_id)
-        .map_err(|error| error.to_string())?
-    {
-        Some(active) => active.authority,
-        None => establish_genesis_epoch(&mut journal, &revision, request.accepted_at_ms)?,
-    };
+    let persisted_hint = request
+        .persisted_cloud_identity
+        .map(|hint| PersistedCloudAuthorityHint {
+            library_id: hint.library_id,
+            storage_epoch: hint.storage_epoch,
+            writer_id: hint.writer_id,
+            source_digest: hint.source_digest,
+        });
+    let established = establish_or_transition_sqlite_authority(
+        &mut journal,
+        &snapshot,
+        &request.installation_witness,
+        persisted_hint.as_ref(),
+        request.accepted_at_ms,
+    )?;
+    let authority = established.authority;
     let authority_key_pair = load_established_authority_key_pair(&authority.library_id)?;
     let actor = enroll_desktop_actor(
         &mut journal,
@@ -1142,6 +2036,18 @@ pub(super) fn bootstrap_sqlite_library_authority(
         &authority_key_pair,
         request.accepted_at_ms,
     )?;
+    if persisted_hint.is_none() {
+        let mut connection = open_database_at(&root)?;
+        establish_local_only_writer_admission(
+            &mut connection,
+            &authority.library_id,
+            authority.epoch,
+            &authority.epoch_id,
+            &actor.actor_id,
+            &established.protocol.transition_certificate_digest,
+            request.accepted_at_ms,
+        )?;
+    }
 
     Ok(DesktopLibraryAuthorityBootstrap {
         authority: DesktopLibraryAcceptedAuthority {
@@ -1169,6 +2075,21 @@ pub(super) fn bootstrap_sqlite_library_authority(
             canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
             actor_chain_genesis: actor.actor_chain_genesis,
         },
+        protocol: DesktopLibraryAuthorityProtocol {
+            format: established.protocol.format,
+            active_engine: established.protocol.active_engine,
+            schema_version: established.protocol.schema_version,
+            replication_protocol: established.protocol.replication_protocol,
+            checkpoint_format: established.protocol.checkpoint_format,
+            transition_certificate_digest: established.protocol.transition_certificate_digest,
+            native_protocol_certificate_digest: established
+                .protocol
+                .native_protocol_certificate_digest,
+            prior_transition_certificate_digest: established
+                .protocol
+                .prior_transition_certificate_digest,
+            source_manifest_digest: established.protocol.source_manifest_digest,
+        },
     })
 }
 
@@ -1191,8 +2112,7 @@ pub(super) fn reassign_sqlite_library_writer_epoch(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let reassigned = reassign_writer_epoch(
         &mut journal,
         &request.library_id,
@@ -1270,7 +2190,7 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
     Ok(match stored {
         None => CloudWriterAdmissionStatus {
             configured: false,
-            allowed: true,
+            allowed: false,
             local_writer_id: None,
             active_writer_id: None,
             storage_epoch: None,
@@ -1290,11 +2210,107 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
 }
 
 fn require_writer_admission(connection: &Connection) -> Result<(), String> {
-    if writer_admission_status(connection)?.allowed {
+    let status = writer_admission_status(connection)?;
+    if status.allowed {
         Ok(())
-    } else {
+    } else if status.configured {
         Err("Another Freed Desktop currently owns writes for this Library".into())
+    } else {
+        Err(
+            "Freed Desktop has not established write authority for this Library. Restart Freed Desktop or reconnect its Library sync provider."
+                .into(),
+        )
     }
+}
+
+const LOCAL_ONLY_CONTROL_REVISION_PREFIX: &str = "local-only-primary-v1:";
+
+fn establish_local_only_writer_admission(
+    connection: &mut Connection,
+    library_id: &str,
+    epoch: i64,
+    epoch_id: &str,
+    actor_id: &str,
+    transition_certificate_digest: &str,
+    verified_at_ms: i64,
+) -> Result<CloudWriterAdmissionStatus, String> {
+    if !validate_hex_digest(library_id)
+        || epoch != 1
+        || !validate_hex_digest(epoch_id)
+        || !validate_hex_digest(actor_id)
+        || !validate_hex_digest(transition_certificate_digest)
+        || verified_at_ms < 0
+    {
+        return Err("SQLite Library local-only writer admission is invalid".into());
+    }
+    let control_revision =
+        format!("{LOCAL_ONLY_CONTROL_REVISION_PREFIX}{transition_certificate_digest}");
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let existing = writer_admission_status(&transaction)?;
+    if existing.configured {
+        if existing.allowed
+            && existing.local_writer_id.as_deref() == Some(actor_id)
+            && existing.active_writer_id.as_deref() == Some(actor_id)
+            && existing.storage_epoch.as_deref() == Some(epoch_id)
+            && existing.control_revision.as_deref() == Some(control_revision.as_str())
+        {
+            transaction.commit().map_err(|error| error.to_string())?;
+            return Ok(existing);
+        }
+        return Err("SQLite Library already has a different durable writer admission".into());
+    }
+    let authority_and_actor_match = transaction
+        .query_row(
+            "SELECT EXISTS (
+               SELECT 1
+               FROM library_core_active_authority AS active
+               JOIN library_core_actors AS actor
+                 ON actor.libraryId = active.libraryId
+                AND actor.epoch = active.epoch
+                AND actor.epochId = active.epochId
+               WHERE active.libraryId = ?1
+                 AND active.epoch = ?2
+                 AND active.epochId = ?3
+                 AND active.transitionCertificateDigest = ?4
+                 AND actor.actorId = ?5
+             );",
+            params![
+                library_id,
+                epoch,
+                epoch_id,
+                transition_certificate_digest,
+                actor_id,
+            ],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !authority_and_actor_match {
+        return Err("SQLite Library local-only writer does not match accepted authority".into());
+    }
+    let has_follower_anchor = transaction
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM library_core_follower_anchor LIMIT 1);",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if has_follower_anchor {
+        return Err("SQLite Library follower cannot become a local-only writer".into());
+    }
+    transaction
+        .execute(
+            "INSERT INTO library_core_cloud_writer_admission (
+               singletonId, localWriterId, activeWriterId, storageEpoch,
+               controlRevision, verifiedAtMs
+             ) VALUES (1, ?1, ?1, ?2, ?3, ?4);",
+            params![actor_id, epoch_id, control_revision, verified_at_ms],
+        )
+        .map_err(|error| error.to_string())?;
+    let status = writer_admission_status(&transaction)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -1361,8 +2377,7 @@ pub(super) fn accept_pwa_actor_enrollment_request(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let actor = countersign_pwa_actor_enrollment_request(
         &mut journal,
         request.canonical_request_json.as_bytes(),
@@ -1398,8 +2413,7 @@ pub(super) fn accept_pwa_intent_transaction(
         .iter()
         .map(|value| value.as_bytes().to_vec())
         .collect::<Vec<_>>();
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .accept_operation_transaction(&canonical_envelopes, request.committed_at_ms)
         .map_err(|error| error.to_string())
@@ -1415,8 +2429,7 @@ pub(super) fn read_pwa_intent_result_outbox(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .pending_intent_results(&request.library_id, &request.epoch_id, request.limit)
         .map_err(|error| error.to_string())
@@ -1432,8 +2445,7 @@ pub(super) fn acknowledge_pwa_intent_result_outbox(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .acknowledge_intent_results(&request.result_operation_ids, request.acknowledged_at_ms)
         .map_err(|error| error.to_string())
@@ -1452,8 +2464,7 @@ pub(super) fn list_sqlite_library_actor_enrollments(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .actor_states(&request.library_id, &request.epoch_id)
         .map_err(|error| error.to_string())?
@@ -1863,7 +2874,9 @@ pub(super) fn query_sqlite_library_items(
         .map_err(|error| error.to_string())?;
     if !author_keys.is_empty() {
         let mut insert = connection
-            .prepare("INSERT OR IGNORE INTO query_author_keys (platform, authorId) VALUES (?1, ?2);")
+            .prepare(
+                "INSERT OR IGNORE INTO query_author_keys (platform, authorId) VALUES (?1, ?2);",
+            )
             .map_err(|error| error.to_string())?;
         for key in &author_keys {
             insert
@@ -2097,27 +3110,62 @@ pub(super) fn read_sqlite_library_facet_summary(
     })
 }
 
-fn search_terms(value: &str) -> Vec<String> {
+fn search_terms(value: &str, maximum_terms: usize) -> Vec<String> {
     let mut terms = Vec::new();
     let mut current = String::new();
-    for character in value.chars().flat_map(char::to_lowercase) {
+    let mut current_bytes = 0_usize;
+    let mut current_scalars = 0_usize;
+    let mut overflow = false;
+    for character in value
+        .nfkd()
+        .flat_map(char::to_lowercase)
+        .filter(|character| !is_combining_mark(*character))
+    {
         if character.is_alphanumeric() || matches!(character, '_' | '@' | '#') {
-            current.push(character);
-        } else if !current.is_empty() {
-            if !terms.contains(&current) {
-                terms.push(std::mem::take(&mut current));
-            } else {
-                current.clear();
+            if overflow {
+                continue;
             }
+            current_bytes += character.len_utf8();
+            current_scalars += 1;
+            if current_bytes > MAX_SEARCH_TOKEN_BYTES || current_scalars > MAX_SEARCH_TOKEN_SCALARS
+            {
+                current.clear();
+                overflow = true;
+                continue;
+            }
+            current.push(character);
+        } else {
+            if !overflow && !current.is_empty() {
+                if !terms.contains(&current) {
+                    terms.push(std::mem::take(&mut current));
+                    if terms.len() == maximum_terms {
+                        return terms;
+                    }
+                } else {
+                    current.clear();
+                }
+            }
+            current_bytes = 0;
+            current_scalars = 0;
+            overflow = false;
         }
     }
-    if !current.is_empty() && !terms.contains(&current) {
+    if terms.len() < maximum_terms && !overflow && !current.is_empty() && !terms.contains(&current)
+    {
         terms.push(current);
     }
     terms
 }
 
 fn bounded_edit_distance(left: &str, right: &str, maximum: usize) -> usize {
+    if left.len() > MAX_SEARCH_TOKEN_BYTES || right.len() > MAX_SEARCH_TOKEN_BYTES {
+        return maximum + 1;
+    }
+    if left.chars().take(MAX_SEARCH_TOKEN_SCALARS + 1).count() > MAX_SEARCH_TOKEN_SCALARS
+        || right.chars().take(MAX_SEARCH_TOKEN_SCALARS + 1).count() > MAX_SEARCH_TOKEN_SCALARS
+    {
+        return maximum + 1;
+    }
     let left = left.chars().collect::<Vec<_>>();
     let right = right.chars().collect::<Vec<_>>();
     if left.len().abs_diff(right.len()) > maximum {
@@ -2162,13 +3210,18 @@ fn search_term_score(query: &str, candidate: &str, weight: f64) -> f64 {
     }
 }
 
-fn collect_search_field(value: Option<&str>, weight: f64, fields: &mut Vec<(String, f64)>) {
-    if fields.len() >= MAX_SEARCH_TERMS_PER_ITEM {
+fn collect_search_field(
+    value: Option<&str>,
+    weight: f64,
+    maximum_terms: usize,
+    fields: &mut Vec<(String, f64)>,
+) {
+    if fields.len() >= maximum_terms {
         return;
     }
     if let Some(value) = value {
-        for term in search_terms(value) {
-            if fields.len() >= MAX_SEARCH_TERMS_PER_ITEM {
+        for term in search_terms(value, maximum_terms - fields.len()) {
+            if fields.len() >= maximum_terms {
                 break;
             }
             fields.push((term, weight));
@@ -2176,101 +3229,396 @@ fn collect_search_field(value: Option<&str>, weight: f64, fields: &mut Vec<(Stri
     }
 }
 
-fn collect_search_array(item: &Value, path: &[&str], weight: f64, fields: &mut Vec<(String, f64)>) {
+fn joined_search_array(item: &Value, path: &[&str]) -> String {
     let mut value = item;
     for key in path {
         let Some(next) = value.get(*key) else {
-            return;
+            return String::new();
         };
         value = next;
     }
-    if let Some(values) = value.as_array() {
-        for value in values {
-            collect_search_field(value.as_str(), weight, fields);
-        }
-    }
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-fn search_item_score(item: &Value, query_terms: &[String]) -> f64 {
+fn search_item_score(item: &Value, query_terms: &[String], account_alias: Option<&str>) -> f64 {
+    let mut fuzzy_work_remaining = MAX_SEARCH_SCORE_WORK;
+    search_item_score_with_budget(item, query_terms, account_alias, &mut fuzzy_work_remaining).0
+}
+
+fn search_item_score_with_budget(
+    item: &Value,
+    query_terms: &[String],
+    account_alias: Option<&str>,
+    fuzzy_work_remaining: &mut usize,
+) -> (f64, bool) {
     let mut fields = Vec::new();
+    let base_term_limit = MAX_SEARCH_TERMS_PER_ITEM - MAX_SEARCH_ACCOUNT_ALIAS_TERMS;
     collect_search_field(
         string_at(item, &["content", "linkPreview", "title"]),
         4.0,
+        base_term_limit,
         &mut fields,
     );
-    for path in [
-        &["eventCandidate", "title"][..],
-        &["eventCandidate", "locationName"][..],
-        &["eventCandidate", "evidence"][..],
-        &["location", "name"][..],
-    ] {
-        collect_search_field(string_at(item, path), 3.0, &mut fields);
-    }
-    collect_search_array(item, &["topics"], 3.0, &mut fields);
-    collect_search_array(item, &["contentSignals", "tags"], 3.0, &mut fields);
-    collect_search_array(item, &["userState", "tags"], 3.0, &mut fields);
+    let topics = format!(
+        "{} {}",
+        joined_search_array(item, &["topics"]),
+        joined_search_array(item, &["contentSignals", "tags"])
+    );
+    collect_search_field(Some(&topics), 3.0, base_term_limit, &mut fields);
+    let semantic = [
+        string_at(item, &["eventCandidate", "title"]),
+        string_at(item, &["eventCandidate", "locationName"]),
+        string_at(item, &["eventCandidate", "evidence"]),
+        string_at(item, &["location", "name"]),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ");
+    collect_search_field(Some(&semantic), 3.0, base_term_limit, &mut fields);
+    let user_tags = joined_search_array(item, &["userState", "tags"]);
+    collect_search_field(Some(&user_tags), 3.0, base_term_limit, &mut fields);
     collect_search_field(
         string_at(item, &["author", "displayName"]),
         3.0,
+        base_term_limit,
         &mut fields,
     );
-    collect_search_field(string_at(item, &["author", "handle"]), 3.0, &mut fields);
-    collect_search_field(string_at(item, &["author", "id"]), 3.0, &mut fields);
-    collect_search_field(string_at(item, &["content", "text"]), 2.0, &mut fields);
+    collect_search_field(
+        string_at(item, &["author", "handle"]),
+        3.0,
+        base_term_limit,
+        &mut fields,
+    );
+    collect_search_field(
+        string_at(item, &["author", "id"]),
+        3.0,
+        base_term_limit,
+        &mut fields,
+    );
+    collect_search_field(
+        string_at(item, &["content", "text"]),
+        2.0,
+        base_term_limit,
+        &mut fields,
+    );
     collect_search_field(
         string_at(item, &["content", "linkPreview", "description"]),
         2.0,
+        base_term_limit,
         &mut fields,
     );
     collect_search_field(
         string_at(item, &["rssSource", "feedTitle"]),
         2.0,
+        base_term_limit,
         &mut fields,
     );
-    collect_search_field(
-        string_at(item, &["preservedContent", "text"]),
-        1.0,
-        &mut fields,
-    );
-    if let Some(highlights) = item
+    let highlights = item
         .pointer("/userState/highlights")
         .and_then(Value::as_array)
-    {
-        for highlight in highlights {
-            collect_search_field(string_at(highlight, &["text"]), 2.0, &mut fields);
-            collect_search_field(string_at(highlight, &["note"]), 2.0, &mut fields);
-        }
-    }
+        .into_iter()
+        .flatten()
+        .flat_map(|highlight| {
+            [
+                string_at(highlight, &["text"]),
+                string_at(highlight, &["note"]),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    collect_search_field(Some(&highlights), 2.0, base_term_limit, &mut fields);
+    let preserved = string_at(item, &["preservedContent", "text"]).map(|value| {
+        value
+            .chars()
+            .take(SEARCH_PRESERVED_TEXT_LIMIT)
+            .collect::<String>()
+    });
+    collect_search_field(preserved.as_deref(), 1.0, base_term_limit, &mut fields);
+    collect_search_field(account_alias, 3.0, MAX_SEARCH_TERMS_PER_ITEM, &mut fields);
 
+    score_search_fields_with_budget(&fields, query_terms, fuzzy_work_remaining)
+}
+
+fn score_search_fields(fields: &[(String, f64)], query_terms: &[String]) -> f64 {
+    let mut fuzzy_work_remaining = MAX_SEARCH_SCORE_WORK;
+    score_search_fields_with_budget(fields, query_terms, &mut fuzzy_work_remaining).0
+}
+
+fn score_search_fields_with_budget(
+    fields: &[(String, f64)],
+    query_terms: &[String],
+    fuzzy_work_remaining: &mut usize,
+) -> (f64, bool) {
     let mut total = 0.0;
+    let mut exhausted = false;
     for query in query_terms {
-        let best = fields
-            .iter()
-            .map(|(candidate, weight)| search_term_score(query, candidate, *weight))
-            .fold(0.0_f64, f64::max);
+        let mut best = 0.0_f64;
+        let query_length = query.chars().count();
+        for (candidate, weight) in fields {
+            if candidate == query || candidate.starts_with(query) {
+                best = best.max(search_term_score(query, candidate, *weight));
+                continue;
+            }
+            let candidate_length = candidate.chars().count();
+            let work = (query_length + 1).saturating_mul(candidate_length + 1);
+            if work > *fuzzy_work_remaining {
+                exhausted = true;
+                continue;
+            }
+            *fuzzy_work_remaining -= work;
+            best = best.max(search_term_score(query, candidate, *weight));
+        }
         if best == 0.0 {
-            return 0.0;
+            return (0.0, exhausted);
         }
         total += best;
     }
-    total
+    (total, exhausted)
 }
 
-fn strip_large_search_payload(item: &mut Value) {
-    let Some(preserved) = item
-        .get_mut("preservedContent")
-        .and_then(Value::as_object_mut)
-    else {
+fn truncate_json_string(value: &mut Value, maximum_scalars: usize) {
+    if let Some(text) = value.as_str() {
+        *value = Value::String(text.chars().take(maximum_scalars).collect());
+    }
+}
+
+fn truncate_string_at(item: &mut Value, pointer: &str, maximum_scalars: usize) {
+    if let Some(value) = item.pointer_mut(pointer) {
+        truncate_json_string(value, maximum_scalars);
+    }
+}
+
+fn truncate_string_array_at(
+    item: &mut Value,
+    pointer: &str,
+    maximum_entries: usize,
+    maximum_scalars: usize,
+) {
+    let Some(values) = item.pointer_mut(pointer).and_then(Value::as_array_mut) else {
         return;
     };
-    preserved.remove("html");
-    if let Some(text) = preserved.get("text").and_then(Value::as_str) {
-        let bounded = text
-            .chars()
-            .take(SEARCH_PRESERVED_TEXT_LIMIT)
-            .collect::<String>();
-        preserved.insert("text".into(), Value::String(bounded));
+    values.truncate(maximum_entries);
+    for value in values {
+        truncate_json_string(value, maximum_scalars);
     }
+}
+
+fn retain_object_keys_at(item: &mut Value, pointer: &str, allowed: &[&str]) {
+    if let Some(object) = item.pointer_mut(pointer).and_then(Value::as_object_mut) {
+        object.retain(|key, _value| allowed.contains(&key.as_str()));
+    }
+}
+
+fn strip_large_search_payload(item: &mut Value) -> Result<(), String> {
+    let Some(root) = item.as_object_mut() else {
+        return Err("SQLite Library search item is not an object".into());
+    };
+    root.retain(|key, _value| {
+        [
+            "globalId",
+            "platform",
+            "contentType",
+            "capturedAt",
+            "publishedAt",
+            "author",
+            "content",
+            "engagement",
+            "location",
+            "timeRange",
+            "rssSource",
+            "fbGroup",
+            "preservedContent",
+            "userState",
+            "topics",
+            "contentSignals",
+            "eventCandidate",
+            "priority",
+            "priorityComputedAt",
+            "sourceUrl",
+        ]
+        .contains(&key.as_str())
+    });
+    for (pointer, keys) in [
+        ("/author", &["id", "handle", "displayName", "avatarUrl"][..]),
+        (
+            "/content",
+            &["text", "mediaUrls", "mediaTypes", "linkPreview"][..],
+        ),
+        ("/content/linkPreview", &["url", "title", "description"][..]),
+        (
+            "/engagement",
+            &["likes", "reposts", "comments", "views"][..],
+        ),
+        ("/location", &["name", "coordinates", "url", "source"][..]),
+        ("/location/coordinates", &["lat", "lng"][..]),
+        ("/timeRange", &["startsAt", "endsAt", "kind"][..]),
+        ("/rssSource", &["feedUrl", "feedTitle", "siteUrl"][..]),
+        ("/fbGroup", &["id", "name", "url"][..]),
+        (
+            "/preservedContent",
+            &[
+                "text",
+                "author",
+                "publishedAt",
+                "wordCount",
+                "readingTime",
+                "preservedAt",
+            ][..],
+        ),
+        (
+            "/userState",
+            &[
+                "hidden",
+                "readAt",
+                "saved",
+                "savedAt",
+                "archived",
+                "archivedAt",
+                "tags",
+                "highlights",
+                "liked",
+                "likedAt",
+                "likedSyncedAt",
+                "seenSyncedAt",
+            ][..],
+        ),
+        (
+            "/contentSignals",
+            &["version", "method", "inferredAt", "tags"][..],
+        ),
+        (
+            "/eventCandidate",
+            &[
+                "version",
+                "method",
+                "detectedAt",
+                "confidence",
+                "title",
+                "startsAt",
+                "endsAt",
+                "timezone",
+                "locationName",
+                "locationUrl",
+                "evidence",
+            ][..],
+        ),
+    ] {
+        retain_object_keys_at(item, pointer, keys);
+    }
+    for pointer in [
+        "/author/id",
+        "/author/handle",
+        "/author/displayName",
+        "/author/avatarUrl",
+        "/content/linkPreview/url",
+        "/content/linkPreview/title",
+        "/content/linkPreview/description",
+        "/sourceUrl",
+        "/eventCandidate/title",
+        "/eventCandidate/timezone",
+        "/eventCandidate/locationName",
+        "/eventCandidate/locationUrl",
+        "/eventCandidate/evidence",
+        "/location/name",
+        "/location/url",
+        "/rssSource/feedUrl",
+        "/rssSource/feedTitle",
+        "/rssSource/siteUrl",
+        "/fbGroup/id",
+        "/fbGroup/name",
+        "/fbGroup/url",
+        "/preservedContent/author",
+    ] {
+        truncate_string_at(item, pointer, SEARCH_RESULT_STRING_LIMIT);
+    }
+    truncate_string_at(item, "/content/text", SEARCH_RESULT_TEXT_LIMIT);
+    truncate_string_array_at(
+        item,
+        "/topics",
+        SEARCH_RESULT_TAG_LIMIT,
+        SEARCH_RESULT_TAG_SCALAR_LIMIT,
+    );
+    truncate_string_array_at(
+        item,
+        "/contentSignals/tags",
+        SEARCH_RESULT_TAG_LIMIT,
+        SEARCH_RESULT_TAG_SCALAR_LIMIT,
+    );
+    truncate_string_array_at(
+        item,
+        "/userState/tags",
+        SEARCH_RESULT_TAG_LIMIT,
+        SEARCH_RESULT_TAG_SCALAR_LIMIT,
+    );
+    truncate_string_array_at(
+        item,
+        "/content/mediaUrls",
+        SEARCH_RESULT_MEDIA_LIMIT,
+        SEARCH_RESULT_STRING_LIMIT,
+    );
+    let media_url_count = item
+        .pointer("/content/mediaUrls")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let media_type_count = item
+        .pointer("/content/mediaTypes")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let media_count = media_url_count
+        .min(media_type_count)
+        .min(SEARCH_RESULT_MEDIA_LIMIT);
+    if let Some(values) = item
+        .pointer_mut("/content/mediaUrls")
+        .and_then(Value::as_array_mut)
+    {
+        values.truncate(media_count);
+    }
+    if let Some(values) = item
+        .pointer_mut("/content/mediaTypes")
+        .and_then(Value::as_array_mut)
+    {
+        values.truncate(media_count);
+    }
+    if let Some(highlights) = item
+        .pointer_mut("/userState/highlights")
+        .and_then(Value::as_array_mut)
+    {
+        highlights.truncate(SEARCH_RESULT_HIGHLIGHT_LIMIT);
+        for highlight in highlights {
+            if let Some(object) = highlight.as_object_mut() {
+                object.retain(|key, _value| ["text", "note", "createdAt"].contains(&key.as_str()));
+            }
+            truncate_string_at(highlight, "/text", SEARCH_RESULT_STRING_LIMIT);
+            truncate_string_at(highlight, "/note", SEARCH_RESULT_STRING_LIMIT);
+        }
+    }
+    if let Some(preserved) = item
+        .get_mut("preservedContent")
+        .and_then(Value::as_object_mut)
+    {
+        preserved.remove("html");
+        if let Some(text) = preserved.get("text").and_then(Value::as_str) {
+            let bounded = text
+                .chars()
+                .take(SEARCH_PRESERVED_TEXT_LIMIT)
+                .collect::<String>();
+            preserved.insert("text".into(), Value::String(bounded));
+        }
+    }
+    let encoded = serde_json::to_vec(item).map_err(|error| error.to_string())?;
+    if encoded.len() > MAX_SEARCH_RESULT_BYTES {
+        return Err("SQLite Library search result exceeds its byte bound".into());
+    }
+    Ok(())
 }
 
 /// Search the active SQLite Library without copying its corpus into WebKit.
@@ -2279,28 +3627,19 @@ pub(super) fn search_sqlite_library_items(
     app: tauri::AppHandle,
     request: SearchItemsRequest,
 ) -> Result<DesktopLibrarySearchPage, String> {
-    let connection = open_database(&app)?;
+    let mut connection = open_database(&app)?;
     require_active(&connection)?;
-    search_sqlite_library_items_at(&connection, request)
+    search_sqlite_library_items_at(&mut connection, request)
 }
 
 fn search_sqlite_library_items_at(
-    connection: &Connection,
+    connection: &mut Connection,
     request: SearchItemsRequest,
 ) -> Result<DesktopLibrarySearchPage, String> {
     if request.query.len() > MAX_SEARCH_QUERY_BYTES {
         return Err("SQLite Library search query is too large".into());
     }
-    let query_terms = search_terms(&request.query)
-        .into_iter()
-        .take(MAX_SEARCH_QUERY_TERMS)
-        .collect::<Vec<_>>();
-    if query_terms.is_empty() {
-        return Ok(DesktopLibrarySearchPage {
-            matches: Vec::new(),
-            next_after_global_id: None,
-        });
-    }
+    let query_terms = search_terms(&request.query, MAX_SEARCH_QUERY_TERMS);
     if request
         .after_global_id
         .as_deref()
@@ -2308,45 +3647,117 @@ fn search_sqlite_library_items_at(
     {
         return Err("SQLite Library search cursor is invalid".into());
     }
+    if request.account_aliases.len() > MAX_SEARCH_ACCOUNT_ALIASES {
+        return Err("SQLite Library search account aliases exceed their bound".into());
+    }
+    let mut account_aliases = std::collections::BTreeMap::new();
+    for alias in request.account_aliases {
+        if alias.platform.is_empty()
+            || alias.platform.len() > 4_096
+            || alias.author_id.is_empty()
+            || alias.author_id.len() > 4_096
+            || alias.aliases.is_empty()
+            || alias.aliases.len() > MAX_SEARCH_ACCOUNT_ALIAS_BYTES
+        {
+            return Err("SQLite Library search account alias is invalid".into());
+        }
+        if account_aliases
+            .insert((alias.platform, alias.author_id), alias.aliases)
+            .is_some()
+        {
+            return Err("SQLite Library search account alias is duplicated".into());
+        }
+    }
     let limit = request.limit.clamp(1, MAX_SEARCH_PAGE_SIZE);
-    let mut statement = connection
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    require_active(&transaction)?;
+    let source_revision = transaction
+        .query_row(
+            "SELECT revision FROM library_core_desktop_state WHERE singletonId = 1;",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if source_revision != request.expected_revision {
+        return Err("SQLite Library changed during its bounded search".into());
+    }
+    if query_terms.is_empty() {
+        transaction.commit().map_err(|error| error.to_string())?;
+        return Ok(DesktopLibrarySearchPage {
+            matches: Vec::new(),
+            next_after_global_id: None,
+            source_revision,
+        });
+    }
+    let mut statement = transaction
         .prepare(
-            "SELECT payloadJson FROM library_core_feed_items
+            "SELECT globalId, payloadJson FROM library_core_feed_items
              WHERE deletedAt IS NULL
                AND (?1 IS NULL OR globalId COLLATE BINARY > ?1)
-             ORDER BY globalId COLLATE BINARY ASC;",
+             ORDER BY globalId COLLATE BINARY ASC
+             LIMIT ?2;",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([request.after_global_id], |row| row.get::<_, String>(0))
+        .query_map(
+            params![request.after_global_id, MAX_SEARCH_SCAN_ROWS],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
         .map_err(|error| error.to_string())?;
     let mut matches = Vec::with_capacity(limit);
-    let mut next_after_global_id = None;
+    let mut last_scanned_global_id = None;
+    let mut stopped_at_bound = false;
+    let mut scanned = 0;
+    let mut fuzzy_work_remaining = MAX_SEARCH_SCORE_WORK;
     for row in rows {
-        let item_json = row.map_err(|error| error.to_string())?;
+        let (global_id, item_json) = row.map_err(|error| error.to_string())?;
         let mut item = validate_json_object(&item_json, MAX_ITEM_BYTES)?;
-        let score = search_item_score(&item, &query_terms);
+        let platform = string_at(&item, &["platform"]);
+        let author_id = string_at(&item, &["author", "id"]);
+        let account_alias = platform.zip(author_id).and_then(|key| {
+            account_aliases
+                .get(&(key.0.to_string(), key.1.to_string()))
+                .map(String::as_str)
+        });
+        let fuzzy_work_before = fuzzy_work_remaining;
+        let (score, exhausted) = search_item_score_with_budget(
+            &item,
+            &query_terms,
+            account_alias,
+            &mut fuzzy_work_remaining,
+        );
+        if exhausted && fuzzy_work_before < MAX_SEARCH_SCORE_WORK {
+            stopped_at_bound = true;
+            break;
+        }
+        last_scanned_global_id = Some(global_id.clone());
+        scanned += 1;
         if score <= 0.0 {
+            if scanned == MAX_SEARCH_SCAN_ROWS {
+                stopped_at_bound = true;
+                break;
+            }
             continue;
         }
-        let global_id = string_at(&item, &["globalId"])
-            .ok_or_else(|| "SQLite Library search item has no identity".to_string())?
-            .to_string();
-        strip_large_search_payload(&mut item);
+        if string_at(&item, &["globalId"]) != Some(global_id.as_str()) {
+            return Err("SQLite Library search item identity is inconsistent".into());
+        }
+        strip_large_search_payload(&mut item)?;
         let item_json = serde_json::to_string(&item).map_err(|error| error.to_string())?;
-        matches.push(ScoredDesktopLibraryItem {
-            item_json,
-            score,
-            global_id,
-        });
-        if matches.len() == limit {
-            next_after_global_id = matches.last().map(|item| item.global_id.clone());
+        matches.push(ScoredDesktopLibraryItem { item_json, score });
+        if matches.len() == limit || scanned == MAX_SEARCH_SCAN_ROWS {
+            stopped_at_bound = true;
             break;
         }
     }
+    drop(statement);
+    transaction.commit().map_err(|error| error.to_string())?;
     Ok(DesktopLibrarySearchPage {
         matches,
-        next_after_global_id,
+        next_after_global_id: stopped_at_bound.then_some(last_scanned_global_id).flatten(),
+        source_revision,
     })
 }
 
@@ -2361,9 +3772,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         }
         digest.update(&buffer[..count]);
     }
-    Ok(crate::library_core_hash::lower_hex(
-        &digest.finalize(),
-    ))
+    Ok(crate::library_core_hash::lower_hex(&digest.finalize()))
 }
 
 #[tauri::command]
@@ -2381,108 +3790,42 @@ fn create_sqlite_library_backup_at(
     created_at_ms: i64,
     reason: &str,
 ) -> Result<DesktopBackupSummary, String> {
-    if reason != "auto" && reason != "manual" {
-        return Err("invalid SQLite Library backup reason".into());
-    }
-    let backup_directory = root.join(BACKUP_DIRECTORY);
-    fs::create_dir_all(&backup_directory).map_err(|error| error.to_string())?;
-    let backup_id = format!("sqlite-{created_at_ms}");
-    let file_name = format!("{backup_id}.sqlite");
-    let destination = backup_directory.join(&file_name);
-    if destination.exists() {
-        return Err("SQLite Library backup already exists".into());
-    }
-    let connection = open_database_at(root)?;
-    require_active(&connection)?;
-    connection
-        .execute("VACUUM INTO ?1;", [destination.to_string_lossy().as_ref()])
+    let receipt = open_store_at(root)?
+        .create_backup(created_at_ms, reason)
         .map_err(|error| error.to_string())?;
-    let check = Connection::open(&destination).map_err(|error| error.to_string())?;
-    let integrity: String = check
-        .query_row("PRAGMA integrity_check;", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if integrity != "ok" {
-        let _ = fs::remove_file(&destination);
-        return Err(format!(
-            "SQLite Library backup integrity failed: {integrity}"
-        ));
-    }
-    let (revision, item_count): (i64, i64) = check
-        .query_row(
-            "SELECT
-               (SELECT revision FROM library_core_desktop_state WHERE singletonId = 1),
-               (SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL);",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let byte_length = fs::metadata(&destination)
-        .map_err(|error| error.to_string())?
-        .len();
-    let sha256 = sha256_file(&destination)?;
-    drop(check);
-    connection
-        .execute(
-            "INSERT INTO library_core_desktop_backups (
-               backupId, createdAtMs, revision, itemCount, reason, fileName, byteLength, sha256
-             ) SELECT ?1, ?2, revision, ?3, ?4, ?5, ?6, ?7
-               FROM library_core_desktop_state WHERE singletonId = 1;",
-            params![
-                backup_id,
-                created_at_ms,
-                item_count,
-                reason,
-                file_name,
-                i64::try_from(byte_length).map_err(|_| "backup is too large")?,
-                sha256,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-
-    let mut statement = connection
-        .prepare(
-            "SELECT fileName FROM library_core_desktop_backups
-             ORDER BY createdAtMs DESC, backupId DESC LIMIT -1 OFFSET 24;",
-        )
-        .map_err(|error| error.to_string())?;
-    let expired = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    drop(statement);
-    for expired_file in expired {
-        let _ = fs::remove_file(backup_directory.join(&expired_file));
-        connection
-            .execute(
-                "DELETE FROM library_core_desktop_backups WHERE fileName = ?1;",
-                [expired_file],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-
     log::info!(
         "[library-core] created SQLite Library backup items={} bytes={}",
-        item_count,
-        byte_length
+        receipt.item_count,
+        receipt.byte_length
     );
-    Ok(DesktopBackupSummary {
-        backup_id,
-        file_name,
-        created_at_ms,
-        revision,
-        item_count,
-        reason: reason.to_string(),
-        byte_length,
-        sha256,
-    })
+    if receipt.retention_pending {
+        log::warn!(
+            "[library-core] SQLite Library backup committed; retention cleanup remains pending"
+        );
+    }
+    Ok(receipt.into())
+}
+
+fn acquire_sqlite_library_backup_operation(
+    root: &Path,
+) -> Result<LibraryCoreBackupOperationGuard, String> {
+    LibraryCoreBackupOperationGuard::acquire(root).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub(super) fn list_sqlite_library_backups(
     app: tauri::AppHandle,
 ) -> Result<Vec<DesktopBackupSummary>, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .list_bound_backups()
+            .map(|records| records.into_iter().map(Into::into).collect())
+            .map_err(|error| error.to_string());
+    }
     let root = app_root(&app)?;
+    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
     let connection = open_database(&app)?;
     require_active(&connection)?;
@@ -2536,6 +3879,15 @@ fn read_sqlite_library_backup_chunk_at(
     {
         return Err("invalid SQLite Library backup chunk request".into());
     }
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .read_bound_backup_chunk(&request.backup_id, request.offset, request.limit)
+            .map(Into::into)
+            .map_err(|error| error.to_string());
+    }
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let connection = open_database_at(root)?;
     require_active(&connection)?;
     let summary = connection
@@ -2605,6 +3957,15 @@ fn restore_sqlite_library_backup_at(
     if backup_id.is_empty() || backup_id.len() > 256 {
         return Err("invalid SQLite Library backup identity".into());
     }
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .restore_bound_backup(backup_id)
+            .map(Into::into)
+            .map_err(|error| error.to_string());
+    }
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let database_path = journal_path(root);
     let backup_directory = root.join(BACKUP_DIRECTORY);
     let connection = open_database_at(root)?;
@@ -2728,8 +4089,20 @@ fn restore_sqlite_library_backup_at(
 #[tauri::command]
 pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), String> {
     let root = app_root(&app)?;
+    clear_sqlite_library_backups_at(&root)
+}
+
+fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .clear_bound_backups()
+            .map_err(|error| error.to_string());
+    }
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
-    let connection = open_database(&app)?;
+    let connection = open_database_at(root)?;
     connection
         .execute("DELETE FROM library_core_desktop_backups;", [])
         .map_err(|error| error.to_string())?;
@@ -2746,7 +4119,15 @@ pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), 
 
 #[tauri::command]
 pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .clear_bound_all()
+            .map_err(|error| error.to_string());
+    }
     let root = app_root(&app)?;
+    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let path = journal_path(&root);
     for candidate in [
         path.clone(),
@@ -2781,6 +4162,130 @@ mod tests {
         std::env::temp_dir().join(format!("freed-{label}-{}-{nonce}", std::process::id()))
     }
 
+    fn install_test_active_authority_and_actor(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO library_core_authority_epochs (
+                   libraryId, epoch, epochId, transitionCertificateDigest,
+                   canonicalTransitionCertificateJson, authorityKeyId,
+                   authorityPublicKey, acceptedAtMs
+                 ) VALUES (?1, 1, ?2, ?3, '{}', ?4, ?5, 100);",
+                params![
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    "3".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                ],
+            )
+            .expect("insert authority epoch");
+        connection
+            .execute(
+                "INSERT INTO library_core_active_authority (
+                   libraryId, epoch, epochId, transitionCertificateDigest
+                 ) VALUES (?1, 1, ?2, ?3);",
+                params!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
+            )
+            .expect("activate authority epoch");
+        connection
+            .execute(
+                "INSERT INTO library_core_actors (
+                   libraryId, epoch, epochId, actorId, actorPublicKey,
+                   enrollmentOperationId, enrollmentCertificateDigest,
+                   canonicalEnrollmentCertificateJson, actorChainGenesis,
+                   nextSequence, previousOperationId, previousChainDigest,
+                   enrolledAtMs
+                 ) VALUES (?1, 1, ?2, ?3, ?4, 'enroll:test', ?5, '{}',
+                           ?6, 1, NULL, ?6, 100);",
+                params![
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    "6".repeat(64),
+                    "7".repeat(64),
+                    "8".repeat(64),
+                    "9".repeat(64),
+                ],
+            )
+            .expect("insert enrolled actor");
+    }
+
+    #[test]
+    fn database_path_stays_under_the_private_library_directory() {
+        let root = temporary_root("sqlite-library-private-root");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let connection = open_database_at(&root).expect("open Library database");
+        drop(connection);
+
+        let path = journal_path(&root);
+        assert_eq!(
+            path,
+            root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE),
+            "the sole Desktop runtime must own the canonical database path",
+        );
+        assert!(path.is_file());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(path.parent().expect("Library directory"))
+                .expect("Library directory metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o700);
+        }
+
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_library_directory_is_corrected_to_private_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_root("sqlite-library-existing-permissions");
+        let directory = root.join(JOURNAL_DIRECTORY);
+        fs::create_dir_all(&directory).expect("create existing Library directory");
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))
+            .expect("make existing Library directory permissive");
+
+        let connection = open_database_at(&root).expect("open Library database");
+        drop(connection);
+
+        let mode = fs::metadata(&directory)
+            .expect("Library directory metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn library_directory_symlink_is_rejected_without_touching_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let root = temporary_root("sqlite-library-symlink-root");
+        let target = temporary_root("sqlite-library-symlink-target");
+        fs::create_dir_all(&root).expect("create temporary root");
+        fs::create_dir_all(&target).expect("create symlink target");
+        let sentinel = target.join("sentinel");
+        fs::write(&sentinel, b"unchanged").expect("write target sentinel");
+        symlink(&target, root.join(JOURNAL_DIRECTORY)).expect("link Library directory");
+
+        let error = open_database_at(&root).expect_err("symlink must be rejected");
+        assert!(!error.is_empty());
+        assert_eq!(
+            fs::read(&sentinel).expect("read target sentinel"),
+            b"unchanged"
+        );
+        assert!(!target.join(JOURNAL_FILE).exists());
+
+        fs::remove_dir_all(root).expect("remove temporary root");
+        fs::remove_dir_all(target).expect("remove symlink target");
+    }
+
     #[test]
     fn json_items_require_a_bounded_identity() {
         let parsed = validate_json_object(r#"{"globalId":"rss:one"}"#, MAX_ITEM_BYTES)
@@ -2796,6 +4301,151 @@ mod tests {
         let decoded = decode_base64_json(&encoded).expect("decode item transport");
         assert_eq!(decoded, source);
         assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
+    }
+
+    #[test]
+    fn missing_cloud_writer_admission_is_not_write_authority() {
+        let root = temporary_root("sqlite-writer-admission-absent");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let connection = open_database_at(&root).expect("open Library database");
+
+        let status = writer_admission_status(&connection).expect("read missing admission");
+
+        assert!(!status.configured);
+        assert!(!status.allowed);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn explicit_local_only_admission_is_writable_and_exactly_replayable() {
+        let root = temporary_root("sqlite-local-only-writer");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        install_test_active_authority_and_actor(&connection);
+
+        let first = establish_local_only_writer_admission(
+            &mut connection,
+            &"1".repeat(64),
+            1,
+            &"2".repeat(64),
+            &"6".repeat(64),
+            &"3".repeat(64),
+            200,
+        )
+        .expect("establish local-only writer");
+        assert!(first.configured);
+        assert!(first.allowed);
+        assert_eq!(
+            first.control_revision,
+            Some(format!(
+                "{LOCAL_ONLY_CONTROL_REVISION_PREFIX}{}",
+                "3".repeat(64)
+            ))
+        );
+        require_writer_admission(&connection).expect("local-only writer is admitted");
+
+        let replay = establish_local_only_writer_admission(
+            &mut connection,
+            &"1".repeat(64),
+            1,
+            &"2".repeat(64),
+            &"6".repeat(64),
+            &"3".repeat(64),
+            300,
+        )
+        .expect("replay local-only writer");
+        assert_eq!(replay.verified_at_ms, Some(200));
+
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn local_only_admission_never_overwrites_cloud_writer_authority() {
+        let root = temporary_root("sqlite-local-only-cloud-conflict");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        install_test_active_authority_and_actor(&connection);
+        connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?2, ?3, 'etag-cloud', 150);",
+                params!["6".repeat(64), "a".repeat(64), "2".repeat(64)],
+            )
+            .expect("insert cloud writer admission");
+
+        let error = establish_local_only_writer_admission(
+            &mut connection,
+            &"1".repeat(64),
+            1,
+            &"2".repeat(64),
+            &"6".repeat(64),
+            &"3".repeat(64),
+            200,
+        )
+        .expect_err("cloud writer authority stays intact");
+        assert!(
+            error.contains("different durable writer admission"),
+            "{error}"
+        );
+        let status = writer_admission_status(&connection).expect("read cloud admission");
+        assert_eq!(status.active_writer_id, Some("a".repeat(64)));
+        assert_eq!(status.control_revision.as_deref(), Some("etag-cloud"));
+
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn follower_anchor_blocks_local_only_writer_admission() {
+        let root = temporary_root("sqlite-local-only-follower-conflict");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        install_test_active_authority_and_actor(&connection);
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_anchor (
+                   singletonId, libraryId, epoch, epochId, authorityKeyId,
+                   authorityPublicKey, observedFrontierJson, manifestObjectKey,
+                   manifestContentDigest, generation, remoteIngestSequence,
+                   remoteMaterializedDigest, writerId, controlRevision,
+                   installedAtMs
+                 ) VALUES (1, ?1, 1, ?2, ?3, ?4, '[]', 'checkpoint:test',
+                           ?5, 0, 0, ?6, ?7, 'etag-follower', 150);",
+                params![
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "c".repeat(64),
+                ],
+            )
+            .expect("insert follower anchor");
+
+        let error = establish_local_only_writer_admission(
+            &mut connection,
+            &"1".repeat(64),
+            1,
+            &"2".repeat(64),
+            &"6".repeat(64),
+            &"3".repeat(64),
+            200,
+        )
+        .expect_err("follower cannot become local-only writer");
+        assert!(error.contains("follower cannot become"), "{error}");
+        assert!(
+            !writer_admission_status(&connection)
+                .expect("read absent writer admission")
+                .configured
+        );
+
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
     }
 
     #[test]
@@ -2996,6 +4646,51 @@ mod tests {
     }
 
     #[test]
+    fn native_search_matches_the_shared_unicode_and_scoring_vectors() {
+        let fixtures: Value = serde_json::from_str(include_str!(
+            "../../../shared/src/library-core/search-parity-v1.json"
+        ))
+        .expect("decode shared search vectors");
+        for fixture in fixtures.as_array().expect("search fixture array") {
+            let query = fixture
+                .get("query")
+                .and_then(Value::as_str)
+                .expect("search fixture query");
+            let query_terms = search_terms(query, MAX_SEARCH_QUERY_TERMS);
+            let expected_terms = fixture
+                .get("queryTerms")
+                .and_then(Value::as_array)
+                .expect("search fixture query terms")
+                .iter()
+                .map(|term| term.as_str().expect("search fixture term").to_string())
+                .collect::<Vec<_>>();
+            assert_eq!(query_terms, expected_terms);
+            let mut fields = Vec::new();
+            for field in fixture
+                .get("fields")
+                .and_then(Value::as_array)
+                .expect("search fixture fields")
+            {
+                collect_search_field(
+                    field.get("value").and_then(Value::as_str),
+                    field
+                        .get("weight")
+                        .and_then(Value::as_f64)
+                        .expect("search fixture weight"),
+                    MAX_SEARCH_TERMS_PER_ITEM,
+                    &mut fields,
+                );
+            }
+            let expected_score = fixture
+                .get("score")
+                .and_then(Value::as_f64)
+                .expect("search fixture score");
+            let actual_score = score_search_fields(&fields, &query_terms);
+            assert!((actual_score - expected_score).abs() < 0.000_000_1);
+        }
+    }
+
+    #[test]
     fn native_search_scores_fields_and_strips_large_reader_content() {
         let mut title_match = serde_json::json!({
             "globalId": "rss:title",
@@ -3006,7 +4701,9 @@ mod tests {
             "author": { "id": "one", "displayName": "Author", "handle": "author" },
             "topics": [],
             "userState": { "tags": [], "highlights": [] },
-            "preservedContent": { "html": "<p>large</p>", "text": "x".repeat(2_000) }
+            "preservedContent": { "html": "<p>large</p>", "text": "x".repeat(2_000) },
+            "sampleDataFingerprint": { "batchId": "b".repeat(500_000) },
+            "unknownLargeField": { "nested": "q".repeat(500_000) }
         });
         let text_match = serde_json::json!({
             "globalId": "rss:text",
@@ -3015,14 +4712,21 @@ mod tests {
             "topics": [],
             "userState": { "tags": [], "highlights": [] }
         });
-        let query = search_terms("sqlte architecture");
-        let title_score = search_item_score(&title_match, &query);
-        let text_score = search_item_score(&text_match, &query);
+        let query = search_terms("sqlte architecture", MAX_SEARCH_QUERY_TERMS);
+        let title_score = search_item_score(&title_match, &query, None);
+        let text_score = search_item_score(&text_match, &query, None);
         assert!(title_score > text_score);
         assert!(title_score > 0.0, "one-character typo remains searchable");
+        let alias_query = search_terms("countess", MAX_SEARCH_QUERY_TERMS);
+        assert_eq!(
+            search_item_score(&text_match, &alias_query, Some("Countess Ada")),
+            12.0,
+        );
 
-        strip_large_search_payload(&mut title_match);
+        strip_large_search_payload(&mut title_match).expect("project search result");
         assert!(title_match.pointer("/preservedContent/html").is_none());
+        assert!(title_match.get("sampleDataFingerprint").is_none());
+        assert!(title_match.get("unknownLargeField").is_none());
         assert_eq!(
             title_match
                 .pointer("/preservedContent/text")
@@ -3032,6 +4736,23 @@ mod tests {
                 .count(),
             SEARCH_PRESERVED_TEXT_LIMIT,
         );
+        assert!(search_terms(&"x".repeat(MAX_SEARCH_TOKEN_SCALARS + 1), 1).is_empty());
+        let adversarial_query = (0..MAX_SEARCH_QUERY_TERMS)
+            .map(|index| format!("query{index}"))
+            .collect::<Vec<_>>();
+        let mut adversarial_fields = (0..(MAX_SEARCH_TERMS_PER_ITEM - MAX_SEARCH_QUERY_TERMS))
+            .map(|index| (format!("candidate{index:03}"), 1.0))
+            .collect::<Vec<_>>();
+        adversarial_fields.extend(adversarial_query.iter().cloned().map(|query| (query, 1.0)));
+        let mut work_budget = MAX_SEARCH_SCORE_WORK;
+        let (score, exhausted) = score_search_fields_with_budget(
+            &adversarial_fields,
+            &adversarial_query,
+            &mut work_budget,
+        );
+        assert!(score > 0.0);
+        assert!(exhausted);
+        assert!(work_budget <= MAX_SEARCH_SCORE_WORK);
     }
 
     #[test]
@@ -3065,14 +4786,41 @@ mod tests {
         }
         transaction.commit().expect("commit searchable items");
 
+        let accepted_query = search_sqlite_library_items_at(
+            &mut connection,
+            SearchItemsRequest {
+                query: "x".repeat(MAX_SEARCH_QUERY_BYTES),
+                after_global_id: None,
+                expected_revision: 1,
+                account_aliases: Vec::new(),
+                limit: 1,
+            },
+        )
+        .expect("accept exact search query byte limit");
+        assert!(accepted_query.matches.is_empty());
+        let rejected_query = search_sqlite_library_items_at(
+            &mut connection,
+            SearchItemsRequest {
+                query: "x".repeat(MAX_SEARCH_QUERY_BYTES + 1),
+                after_global_id: None,
+                expected_revision: 1,
+                account_aliases: Vec::new(),
+                limit: 1,
+            },
+        )
+        .expect_err("reject search query over byte limit");
+        assert_eq!(rejected_query, "SQLite Library search query is too large");
+
         let mut after_global_id = None;
         let mut seen = Vec::new();
         loop {
             let page = search_sqlite_library_items_at(
-                &connection,
+                &mut connection,
                 SearchItemsRequest {
                     query: "sqlite search".into(),
                     after_global_id: after_global_id.clone(),
+                    expected_revision: 1,
+                    account_aliases: Vec::new(),
                     limit: 32,
                 },
             )
@@ -3090,7 +4838,12 @@ mod tests {
                         .count(),
                     SEARCH_PRESERVED_TEXT_LIMIT,
                 );
-                seen.push(result.global_id);
+                seen.push(
+                    item.pointer("/globalId")
+                        .and_then(Value::as_str)
+                        .expect("search identity")
+                        .to_string(),
+                );
             }
             let Some(next) = page.next_after_global_id else {
                 break;
@@ -3100,6 +4853,472 @@ mod tests {
         }
         assert_eq!(seen.len(), 125);
         assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn native_search_pages_by_rows_scanned_and_fences_the_revision() {
+        let root = temporary_root("sqlite-native-search-sparse");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 9, 1, 1, ?1, 600, 600, '{}', 100, 200);",
+                ["c".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin sparse insert");
+        for index in 0..600 {
+            let text = if index == 550 {
+                "needle at the end"
+            } else {
+                "ordinary haystack"
+            };
+            let item = serde_json::json!({
+                "globalId": format!("rss:{index:03}"),
+                "platform": "rss",
+                "contentType": "article",
+                "content": { "text": text, "mediaUrls": [], "mediaTypes": [] },
+                "author": { "id": "one", "displayName": "Author", "handle": "author" },
+                "topics": [],
+                "userState": { "hidden": false, "saved": false, "archived": false, "tags": [] }
+            });
+            upsert_item(&transaction, &item.to_string(), 300).expect("insert sparse item");
+        }
+        transaction.commit().expect("commit sparse items");
+
+        let mut after_global_id = None;
+        let mut cursors = Vec::new();
+        let mut matches = Vec::new();
+        loop {
+            let page = search_sqlite_library_items_at(
+                &mut connection,
+                SearchItemsRequest {
+                    query: "needle".into(),
+                    after_global_id: after_global_id.clone(),
+                    expected_revision: 9,
+                    account_aliases: Vec::new(),
+                    limit: 32,
+                },
+            )
+            .expect("search sparse SQLite Library");
+            matches.extend(page.matches);
+            let Some(next) = page.next_after_global_id else {
+                break;
+            };
+            cursors.push(next.clone());
+            after_global_id = Some(next);
+        }
+        assert_eq!(cursors, ["rss:255", "rss:511"]);
+        assert_eq!(matches.len(), 1);
+        let matched: Value =
+            serde_json::from_str(&matches[0].item_json).expect("decode sparse search match");
+        assert_eq!(
+            matched.get("globalId").and_then(Value::as_str),
+            Some("rss:550")
+        );
+
+        let error = search_sqlite_library_items_at(
+            &mut connection,
+            SearchItemsRequest {
+                query: "needle".into(),
+                after_global_id: None,
+                expected_revision: 8,
+                account_aliases: Vec::new(),
+                limit: 32,
+            },
+        )
+        .expect_err("stale revision must fail");
+        assert!(error.contains("changed during its bounded search"));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    fn seed_active_import_test_library(root: &Path) {
+        let mut connection = open_database_at(root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 2, ?1, 1, 1, '{}', 100, 200);",
+                ["a".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin item insert");
+        upsert_item(
+            &transaction,
+            r#"{"globalId":"rss:old","platform":"rss","userState":{"saved":true}}"#,
+            250,
+        )
+        .expect("insert old item");
+        transaction.commit().expect("commit old item");
+    }
+
+    fn begin_staged_import(root: &Path, expected_item_count: i64) {
+        begin_sqlite_library_import_at(
+            root,
+            BeginImportRequest {
+                source_generation: 3,
+                source_revision: 9,
+                source_digest: "b".repeat(64),
+                source_checkpoint_object_key: Some("checkpoints/3/manifest.json".to_string()),
+                source_checkpoint_content_digest: Some("b".repeat(64)),
+                source_checkpoint_transport_object_id: Some("drive-manifest-object-4".to_string()),
+                expected_item_count,
+                shell_json: r#"{"feeds":{}}"#.to_string(),
+                started_at_ms: 300,
+            },
+        )
+        .expect("begin staged import");
+    }
+
+    fn append_staged_import_item(root: &Path) {
+        append_sqlite_library_import_at(
+            root,
+            AppendImportRequest {
+                items_base64: vec![BASE64_STANDARD.encode(
+                    r#"{"globalId":"rss:new","platform":"rss","userState":{"saved":false}}"#,
+                )],
+                updated_at_ms: 350,
+            },
+        )
+        .expect("append staged item");
+    }
+
+    fn staged_import_follower_anchor(source_revision: i64) -> VerifiedFollowerAnchor {
+        verified_follower_anchor(InstallFollowerAnchorRequest {
+            authority: DesktopLibraryAcceptedAuthority {
+                library_id: "c".repeat(64),
+                epoch: 3,
+                epoch_id: "d".repeat(64),
+                authority_key_id: "e".repeat(64),
+                authority_public_key: "f".repeat(64),
+                observed_frontier: Vec::new(),
+            },
+            manifest_object_key: "checkpoints/3/manifest.json".to_string(),
+            manifest_transport_object_id: "drive-manifest-object-4".to_string(),
+            manifest_content_digest: "b".repeat(64),
+            generation: 4,
+            remote_ingest_sequence: source_revision,
+            remote_materialized_digest: "1".repeat(64),
+            writer_id: "2".repeat(64),
+            control_revision: "drive-revision-4".to_string(),
+            checkpoint_actor: None,
+            installed_at_ms: 390,
+        })
+    }
+
+    #[test]
+    fn staged_import_items_require_an_active_import_identity() {
+        let root = temporary_root("sqlite-staged-import-identity");
+        fs::create_dir_all(&root).expect("create temporary root");
+        drop(open_database_at(&root).expect("create Library database"));
+        let error = append_sqlite_library_import_at(
+            &root,
+            AppendImportRequest {
+                items_base64: vec![
+                    BASE64_STANDARD.encode(r#"{"globalId":"rss:unbound","platform":"rss"}"#)
+                ],
+                updated_at_ms: 350,
+            },
+        )
+        .expect_err("reject item without staged import identity");
+        assert!(error.contains("no active staged import"), "{error}");
+        let connection = open_database_at(&root).expect("reopen Library database");
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rolled back staged items");
+        assert_eq!(staged_item_count, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_import_rejects_an_oversized_encoded_page_before_decoding() {
+        let root = temporary_root("sqlite-staged-import-page-bound");
+        fs::create_dir_all(&root).expect("create temporary root");
+        begin_staged_import(&root, 1);
+        let error = append_sqlite_library_import_at(
+            &root,
+            AppendImportRequest {
+                items_base64: vec!["a".repeat(MAX_IMPORT_PAGE_ENCODED_BYTES + 1)],
+                updated_at_ms: 350,
+            },
+        )
+        .expect_err("reject oversized encoded page");
+        assert_eq!(error, "SQLite Library import page is too large");
+        let connection = open_database_at(&root).expect("reopen Library database");
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count staged items");
+        assert_eq!(staged_item_count, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn backup_restore_and_clear_honor_the_shared_operation_lock() {
+        let root = temporary_root("sqlite-backup-operation-lock");
+        fs::create_dir_all(&root).expect("create temporary root");
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        finalize_sqlite_library_import_at(&root, 360, None).expect("activate Library");
+        let backup = create_sqlite_library_backup_at(&root, 400, "manual").expect("create backup");
+        let held = LibraryCoreBackupOperationGuard::acquire(&root).expect("hold backup lock");
+        let restore_error = restore_sqlite_library_backup_at(&root, &backup.backup_id)
+            .expect_err("refuse concurrent restore");
+        assert_eq!(
+            restore_error,
+            "SQLite Library backup operation is already in progress"
+        );
+        let clear_error =
+            clear_sqlite_library_backups_at(&root).expect_err("refuse concurrent backup clear");
+        assert_eq!(
+            clear_error,
+            "SQLite Library backup operation is already in progress"
+        );
+        assert!(root
+            .join(BACKUP_DIRECTORY)
+            .join(&backup.file_name)
+            .is_file());
+        drop(held);
+        clear_sqlite_library_backups_at(&root).expect("clear after lock release");
+        assert!(!root.join(BACKUP_DIRECTORY).join(&backup.file_name).exists());
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_checkpoint_reference_must_be_complete() {
+        let root = temporary_root("sqlite-staged-import-checkpoint-reference");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let error = begin_sqlite_library_import_at(
+            &root,
+            BeginImportRequest {
+                source_generation: 3,
+                source_revision: 9,
+                source_digest: "b".repeat(64),
+                source_checkpoint_object_key: Some("manifest".to_string()),
+                source_checkpoint_content_digest: None,
+                source_checkpoint_transport_object_id: None,
+                expected_item_count: 0,
+                shell_json: "{}".to_string(),
+                started_at_ms: 300,
+            },
+        )
+        .expect_err("reject partial checkpoint reference");
+        assert!(error.contains("invalid SQLite Library import identity"));
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_import_keeps_the_previous_library_until_atomic_activation() {
+        let root = temporary_root("sqlite-staged-import-activation");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+
+        let connection = open_database_at(&root).expect("reopen during staged import");
+        let active_state: (i64, i64) = connection
+            .query_row(
+                "SELECT active, revision FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read active state during import");
+        assert_eq!(active_state, (1, 7));
+        let old_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_feed_items WHERE globalId = 'rss:old';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read old item during import");
+        assert_eq!(old_item_count, 1);
+        drop(connection);
+
+        append_staged_import_item(&root);
+        finalize_sqlite_library_import_at(&root, 400, None).expect("activate staged import");
+
+        let connection = open_database_at(&root).expect("open activated Library");
+        let activated_state: (i64, i64, i64, i64, String) = connection
+            .query_row(
+                "SELECT active, revision, sourceGeneration, sourceRevision, sourceDigest
+                 FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read activated state");
+        assert_eq!(activated_state, (1, 1, 3, 9, "b".repeat(64)));
+        let item_ids = connection
+            .prepare("SELECT globalId FROM library_core_feed_items ORDER BY globalId;")
+            .expect("prepare activated item query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query activated items")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect activated items");
+        assert_eq!(item_ids, vec!["rss:new"]);
+        let staged_rows: i64 = connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM library_core_import_stage)
+                      + (SELECT COUNT(*) FROM library_core_import_item_stage);",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cleared staging rows");
+        assert_eq!(staged_rows, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn incomplete_staged_import_cannot_damage_the_active_library() {
+        let root = temporary_root("sqlite-staged-import-rejection");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 2);
+        append_staged_import_item(&root);
+
+        let error = finalize_sqlite_library_import_at(&root, 400, None)
+            .expect_err("reject incomplete staged import");
+        assert!(error.contains("import count mismatch"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT state.active, state.revision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old')
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read preserved Library");
+        assert_eq!(preserved, (1, 7, 1));
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read retryable staged item");
+        assert_eq!(staged_item_count, 1);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_follower_import_activates_checkpoint_and_anchor_atomically() {
+        let root = temporary_root("sqlite-staged-follower-activation");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let anchor = staged_import_follower_anchor(9);
+
+        finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect("atomically activate follower checkpoint");
+
+        let connection = open_database_at(&root).expect("open activated follower Library");
+        let installed: (i64, i64, String, i64, String) = connection
+            .query_row(
+                "SELECT state.sourceGeneration, state.sourceRevision, state.sourceDigest,
+                        anchor.remoteIngestSequence, anchor.manifestContentDigest
+                 FROM library_core_desktop_state AS state
+                 JOIN library_core_follower_anchor AS anchor ON anchor.singletonId = 1
+                 WHERE state.singletonId = 1 AND state.active = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read atomically installed checkpoint and anchor");
+        assert_eq!(installed, (3, 9, "b".repeat(64), 9, "b".repeat(64)));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn mismatched_follower_anchor_rolls_back_checkpoint_activation() {
+        let root = temporary_root("sqlite-staged-follower-mismatch");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let anchor = staged_import_follower_anchor(8);
+
+        let error = finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect_err("reject mismatched follower anchor");
+        assert!(error.contains("does not match"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64, i64, i64) = connection
+            .query_row(
+                "SELECT state.sourceGeneration, state.sourceRevision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old'),
+                        (SELECT COUNT(*) FROM library_core_follower_anchor)
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("read rolled back follower activation");
+        assert_eq!(preserved, (1, 2, 1, 0));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn substituted_manifest_object_cannot_activate_a_follower_checkpoint() {
+        let root = temporary_root("sqlite-staged-follower-object-substitution");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let mut anchor = staged_import_follower_anchor(9);
+        anchor.manifest_transport_object_id = "substituted-drive-object".to_string();
+
+        let error = finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect_err("reject substituted manifest transport object");
+        assert!(error.contains("does not match"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64) = connection
+            .query_row(
+                "SELECT state.sourceRevision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old')
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Library after object substitution rejection");
+        assert_eq!(preserved, (2, 1));
         drop(connection);
         fs::remove_dir_all(root).expect("remove temporary root");
     }

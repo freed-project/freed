@@ -33,7 +33,10 @@
         if (h > 0) return h;
       } catch (_) {}
     }
-    var testHeight = parseInt(node.getAttribute && node.getAttribute("data-freed-test-height"), 10);
+    var testHeight = parseInt(
+      node.getAttribute && node.getAttribute("data-freed-test-height"),
+      10,
+    );
     return isNaN(testHeight) ? 0 : testHeight;
   }
 
@@ -55,15 +58,24 @@
   }
 
   function expandLongTextControls(root) {
-    var controls = root.querySelectorAll('button, div[role="button"], span[role="button"], a[role="button"]');
+    var controls = root.querySelectorAll(
+      'button, div[role="button"], span[role="button"], a[role="button"]',
+    );
     var clicked = 0;
     for (var i = 0; i < controls.length && clicked < 8; i++) {
       var label = (
         controls[i].getAttribute("aria-label") ||
         controls[i].textContent ||
         ""
-      ).trim().toLowerCase();
-      if (label === "more" || label === "see more" || label === "show more" || label === "read more") {
+      )
+        .trim()
+        .toLowerCase();
+      if (
+        label === "more" ||
+        label === "see more" ||
+        label === "show more" ||
+        label === "read more"
+      ) {
         try {
           controls[i].click();
           clicked++;
@@ -93,7 +105,8 @@
   // ── Extract author from an article element ────────────────────────────────
 
   var IG_USERNAME_RE = /instagram\.com\/([A-Za-z0-9_.]+)\/?(?:\?|$|#)/;
-  var IG_SKIP_PATHS = /^(p|reel|stories|explore|accounts|direct|tv|ar|challenge|audio|location|tags)$/i;
+  var IG_SKIP_PATHS =
+    /^(p|reel|stories|explore|accounts|direct|tv|ar|challenge|audio|location|tags)$/i;
 
   function extractAuthor(article) {
     var handle = null;
@@ -125,7 +138,12 @@
       for (var s = 0; s < spans.length; s++) {
         var txt = (spans[s].textContent || "").trim();
         // Username-like: no spaces, has at least one letter, reasonable length
-        if (txt && txt.length > 1 && txt.length < 40 && /^[A-Za-z0-9._]+$/.test(txt)) {
+        if (
+          txt &&
+          txt.length > 1 &&
+          txt.length < 40 &&
+          /^[A-Za-z0-9._]+$/.test(txt)
+        ) {
           // Make sure the span is near the top of the article (within header area)
           var rect = spans[s].getBoundingClientRect();
           var articleRect = article.getBoundingClientRect();
@@ -236,7 +254,7 @@
 
     // Images: scontent or cdninstagram URLs
     var imgs = article.querySelectorAll(
-      'img[srcset], img[src*="cdninstagram"], img[src*="instagram"], img[src*="scontent"]'
+      'img[srcset], img[src*="cdninstagram"], img[src*="instagram"], img[src*="scontent"]',
     );
     for (var i = 0; i < imgs.length; i++) {
       var src = imgs[i].src;
@@ -338,39 +356,59 @@
   // [role="article"] or large div blocks inside the main feed section.
 
   function findArticles() {
-    var articles = Array.prototype.slice.call(document.querySelectorAll("article"));
+    var articles = Array.prototype.slice.call(
+      document.querySelectorAll("article"),
+    );
     if (articles.length > 0) return articles;
 
     // Fallback: [role="article"]
-    var roleArticles = Array.prototype.slice.call(document.querySelectorAll('[role="article"]'));
+    var roleArticles = Array.prototype.slice.call(
+      document.querySelectorAll('[role="article"]'),
+    );
     if (roleArticles.length > articles.length) articles = roleArticles;
 
     // Fallback: look inside main > section for large post-like divs
     if (articles.length < 2) {
-      var main = document.querySelector('main') || document.querySelector('[role="main"]');
+      var main =
+        document.querySelector("main") ||
+        document.querySelector('[role="main"]');
       if (main) {
-        var divs = main.querySelectorAll('div');
+        var divs = main.querySelectorAll("div");
         var candidates = [];
         for (var i = 0; i < divs.length; i++) {
           var d = divs[i];
           // Post-like: tall, has an image/video and a timestamp
-          if (elementHeight(d) > 300 &&
-              (d.querySelector('time') || d.querySelector('img[src*="cdninstagram"], img[src*="scontent"]'))) {
+          if (
+            elementHeight(d) > 300 &&
+            (d.querySelector("time") ||
+              d.querySelector('img[src*="cdninstagram"], img[src*="scontent"]'))
+          ) {
             candidates.push(d);
           }
         }
         // Remove elements that contain other candidates (keep the smallest enclosing)
-        var dedupedCandidates = candidates.filter(function(el, idx) {
+        var dedupedCandidates = candidates.filter(function (el, idx) {
           for (var j = 0; j < candidates.length; j++) {
-            if (idx !== j && candidates[j].contains(el) && candidates[j] !== el) return false;
+            if (idx !== j && candidates[j].contains(el) && candidates[j] !== el)
+              return false;
           }
           return true;
         });
-        if (dedupedCandidates.length > articles.length) articles = dedupedCandidates;
+        if (dedupedCandidates.length > articles.length)
+          articles = dedupedCandidates;
       }
     }
 
     return articles;
+  }
+
+  function hasContentDespiteMissingLayout(article) {
+    if (!article) return false;
+    var textLength = textValue(article, 4000).length;
+    var media = article.querySelector(
+      "time, img[src*='cdninstagram'], img[src*='scontent'], img[srcset], video",
+    );
+    return textLength > 15 || media !== null;
   }
 
   // ── Main ──────────────────────────────────────────────────────────────────
@@ -390,7 +428,10 @@
       var article = articles[idx];
 
       // Skip tiny or invisible articles
-      if (elementHeight(article) < 100) {
+      if (
+        elementHeight(article) < 100 &&
+        !hasContentDespiteMissingLayout(article)
+      ) {
         rejected.tinyOrInvisible++;
         continue;
       }
@@ -409,7 +450,8 @@
       var timestampIso = extractTimestamp(article);
       var mediaUrls = extractMedia(article);
       var hasVideo = article.querySelector("video") !== null;
-      var hasCarousel = article.querySelector('button[aria-label="Next"]') !== null;
+      var hasCarousel =
+        article.querySelector('button[aria-label="Next"]') !== null;
       var engagement = extractEngagement(article);
       var location = extractLocation(article);
 
@@ -468,14 +510,27 @@
       rejected: rejected,
       scrollY: window.scrollY,
       scrollTarget: window.__FREED_LAST_SOCIAL_SCROLL__ || null,
-      strategy: articles.length > 0 ? (articles[0].tagName || 'DIV').toLowerCase() : 'none',
+      strategy:
+        articles.length > 0
+          ? (articles[0].tagName || "DIV").toLowerCase()
+          : "none",
       pageState: {
         articleCount: articles.length,
-        mainFound: !!(document.querySelector("main") || document.querySelector('[role="main"]')),
-        loggedInCookie: document.cookie.indexOf("sessionid=") !== -1 && document.cookie.indexOf("sessionid=;") === -1,
-        loginChrome: !!document.querySelector('input[name="username"], input[name="password"], form[action*="login"]'),
+        mainFound: !!(
+          document.querySelector("main") ||
+          document.querySelector('[role="main"]')
+        ),
+        loggedInCookie:
+          document.cookie.indexOf("sessionid=") !== -1 &&
+          document.cookie.indexOf("sessionid=;") === -1,
+        loginChrome: !!document.querySelector(
+          'input[name="username"], input[name="password"], form[action*="login"]',
+        ),
         feedLike: articles.length > 0,
-        scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+        scrollHeight:
+          document.documentElement.scrollHeight ||
+          document.body.scrollHeight ||
+          0,
         url: window.location.href,
         title: document.title || "",
       },

@@ -197,24 +197,6 @@ pub(crate) fn store_platform_key(
     }
 }
 
-pub(crate) fn clear_platform_key(vault: &PlatformKeyVault) -> Result<(), String> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        with_keyring_user_interaction_disabled(|| match keyring_entry(vault)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err(format!(
-                "Library Core could not remove its {} key",
-                vault.description
-            )),
-        })
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = vault;
-        Ok(())
-    }
-}
-
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn unsupported_vault() -> String {
     "Library Core has no noninteractive platform credential vault on this operating system"

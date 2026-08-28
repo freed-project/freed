@@ -106,6 +106,48 @@ export function tauriInitScript(): string {
         archivableFeedCounts: archivableFeedCounts,
       };
     }
+    function sqliteSyncDescriptor() {
+      var state = sqliteState();
+      var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
+      return {
+        revision: state.revision,
+        itemCount: items.length,
+        sourceDigest: state.sourceDigest || '0'.repeat(64),
+        shellJson: JSON.stringify(state.shell || {}),
+        materializedDigest: '1'.repeat(64),
+      };
+    }
+    function sqliteAuthorityBootstrap() {
+      return {
+        authority: {
+          library_id: '2'.repeat(64),
+          epoch: 1,
+          epoch_id: '3'.repeat(64),
+          authority_key_id: '4'.repeat(64),
+          authority_public_key: '5'.repeat(64),
+          observed_frontier: [],
+        },
+        actor: {
+          actor_id: '6'.repeat(64),
+          actor_public_key: '7'.repeat(64),
+          enrollment_operation_id: 'e2e-local-authority-enrollment',
+          enrollment_certificate_digest: '8'.repeat(64),
+          canonical_enrollment_certificate_json: '{}',
+          actor_chain_genesis: '9'.repeat(64),
+        },
+        protocol: {
+          format: 'freed_library_core_native_authority_protocol_v1',
+          active_engine: 'library_core_v1',
+          schema_version: 12,
+          replication_protocol: 'op_segments_v1',
+          checkpoint_format: 'freed_logical_checkpoint_v1',
+          transition_certificate_digest: 'a'.repeat(64),
+          native_protocol_certificate_digest: 'b'.repeat(64),
+          prior_transition_certificate_digest: null,
+          source_manifest_digest: 'c'.repeat(64),
+        },
+      };
+    }
     function sqliteFacetSummary() {
       var items = Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; });
       var tags = new Set();
@@ -140,6 +182,20 @@ export function tauriInitScript(): string {
       });
       state.revision += 1;
       persistSqliteState();
+      return null;
+    }
+    function sqliteAppendImportItems(args) {
+      var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+      if (!stage) throw new Error('SQLite Library has no active staged import');
+      var request = args && args.request ? args.request : {};
+      (request.itemsBase64 || []).forEach(function(encoded) {
+        var binary = atob(encoded);
+        var bytes = Uint8Array.from(binary, function(character) {
+          return character.charCodeAt(0);
+        });
+        var item = JSON.parse(new TextDecoder().decode(bytes));
+        stage.items[item.globalId] = item;
+      });
       return null;
     }
     function sqliteMutateItems(args) {
@@ -227,9 +283,7 @@ export function tauriInitScript(): string {
       },
       begin_sqlite_library_import: (args) => {
         var request = args.request;
-        window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
-          active: false,
-          revision: 0,
+        window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
           sourceGeneration: request.sourceGeneration,
           sourceRevision: request.sourceRevision,
           sourceDigest: request.sourceDigest,
@@ -239,10 +293,16 @@ export function tauriInitScript(): string {
         };
         return null;
       },
-      append_sqlite_library_import: sqliteUpsertItems,
+      append_sqlite_library_import: sqliteAppendImportItems,
       finalize_sqlite_library_import: () => {
+        var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+        if (!stage) throw new Error('SQLite Library has no complete staged import');
+        if (Object.keys(stage.items).length !== stage.expectedItemCount) {
+          throw new Error('SQLite Library import count mismatch');
+        }
         var state = sqliteState();
-        state.active = true;
+        Object.assign(state, stage, { active: true, revision: 1 });
+        delete window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
         persistSqliteState();
         return {
           active: true,
@@ -254,6 +314,14 @@ export function tauriInitScript(): string {
           sourceDigest: state.sourceDigest,
         };
       },
+      recover_sqlite_library_follower_overlay: () => ({
+        transactionCount: 0,
+        operationCount: 0,
+        materializedRowCount: 0,
+        revisionAdvanced: false,
+      }),
+      read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
+      bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
       read_sqlite_library_shell: () => {
         // Scale benchmarks keep the corpus in mock SQLite while forcing the
         // shell projection to match production's empty renderer item array.
@@ -297,6 +365,40 @@ export function tauriInitScript(): string {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      sqlite_library_follower_intent_context: () => null,
+      sqlite_library_follower_runtime_status: () => ({
+        state: 'awaiting_checkpoint',
+        libraryId: null,
+        epochId: null,
+        actorId: null,
+        checkpointGeneration: null,
+        remoteIngestSequence: null,
+        pendingIntentCount: 0,
+        publishedIntentCount: 0,
+        importedResultCount: 0,
+      }),
+      read_sqlite_library_follower_intent_outbox_candidate: () => null,
+      record_sqlite_library_follower_intent_publication: (args) => {
+        var request = args.request || {};
+        return {
+          firstIntentSequence: request.firstIntentSequence,
+          lastIntentSequence: request.lastIntentSequence,
+          operationCount: request.lastIntentSequence - request.firstIntentSequence + 1,
+          publishedSegmentDigest: request.publishedSegmentDigest,
+          status: 'recorded',
+        };
+      },
+      read_sqlite_library_follower_result_import_cursor: () => null,
+      append_sqlite_library_follower_result_segment: (args) => {
+        var request = args.request || {};
+        return {
+          firstResultSequence: request.firstResultSequence,
+          lastResultSequence: request.lastResultSequence,
+          resultCount: (request.entries || []).length,
+          segmentDigest: request.segmentDigest,
+          status: 'imported',
+        };
+      },
       read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
         var item = sqliteState().items[id];
         return item && !item.__deleted ? JSON.stringify(item) : null;
@@ -349,6 +451,39 @@ export function tauriInitScript(): string {
           totalCount: items.length,
         };
       },
+      search_sqlite_library_items: (args) => {
+        var request = args.request || {};
+        var state = sqliteState();
+        if (request.expectedRevision !== state.revision) {
+          throw new Error('SQLite Library changed during its bounded search');
+        }
+        var candidates = Object.values(state.items)
+          .filter(function(item) {
+            return !item.__deleted
+              && (!request.afterGlobalId || String(item.globalId) > request.afterGlobalId);
+          })
+          .sort(function(left, right) {
+            return String(left.globalId).localeCompare(String(right.globalId));
+          });
+        var query = String(request.query || '').toLowerCase();
+        var limit = Math.max(1, Math.min(request.limit || 32, 32));
+        var scanned = 0;
+        var matches = [];
+        var lastScanned = null;
+        while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
+          var item = candidates[scanned];
+          lastScanned = String(item.globalId);
+          if (JSON.stringify(item).toLowerCase().includes(query)) {
+            matches.push({ itemJson: JSON.stringify(item), score: 1 });
+          }
+          scanned += 1;
+        }
+        return {
+          matches: matches,
+          nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
+          sourceRevision: state.revision,
+        };
+      },
       fetch_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"connections":[],"nextSyncToken":"test-sync-token"}') }),
       google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}') }),
@@ -362,6 +497,10 @@ export function tauriInitScript(): string {
         available: true,
         screenLocked: false,
         error: null,
+      }),
+      get_background_runtime_active_operation: () => ({
+        operation: null,
+        ageMs: null,
       }),
       get_runtime_memory_stats: () => ({
         totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,

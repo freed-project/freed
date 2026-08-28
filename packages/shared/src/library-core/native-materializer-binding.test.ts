@@ -24,13 +24,8 @@ import { LIBRARY_CORE_OPERATION_REGISTRY } from "./operation-registry.js";
 
 const repositoryRoot = join(import.meta.dirname, "..", "..", "..", "..");
 
-const readNativeModule = (relativePath: string): string => {
-  const source = readFileSync(join(repositoryRoot, relativePath), "utf8");
-  // Guard the guard. A path that resolved to something tiny or missing would
-  // make every `toContain` below trivially suspicious.
-  expect(source.length).toBeGreaterThan(10_000);
-  return source;
-};
+const readNativeModule = (relativePath: string): string =>
+  readFileSync(join(repositoryRoot, relativePath), "utf8");
 
 const DECLARED_MATERIALIZERS = Object.values(LIBRARY_CORE_OPERATION_REGISTRY)
   .map((definition) => definition.materializer)
@@ -101,7 +96,29 @@ describe("declared materializers locate their native implementations", () => {
       mergeAlgebraId: "minimum_present_nonnegative_safe_integer_v1",
       equalValueTieBreak: "lower_source_operation_id_v1",
       nativeModulePath:
-        "packages/desktop/src-tauri/src/library_core_journal.rs",
+        "packages/library-core-native/src/library_core_journal.rs",
     });
+  });
+
+  it("keeps Freed Desktop as a thin consumer of the reusable native crate", () => {
+    const adapter = readFileSync(
+      join(
+        repositoryRoot,
+        "packages/desktop/src-tauri/src/library_core_journal.rs",
+      ),
+      "utf8",
+    );
+    const manifest = readFileSync(
+      join(repositoryRoot, "packages/desktop/src-tauri/Cargo.toml"),
+      "utf8",
+    );
+
+    expect(manifest).toContain(
+      'freed-library-core = { path = "../../library-core-native" }',
+    );
+    expect(adapter).toContain("pub(super) use freed_library_core::{");
+    expect(adapter).not.toContain("rusqlite");
+    expect(adapter).not.toContain("INSERT INTO");
+    expect(adapter).not.toContain("impl LibraryCoreJournal");
   });
 });

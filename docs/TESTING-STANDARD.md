@@ -56,6 +56,8 @@ A path literal counts as a dependency edge only when it is concrete. Bare roots 
 
 The planner fails closed. Any change under `scripts/` or `automation/` that cannot be attributed selects every suite, as does any change to a global input such as `package.json`, `.nvmrc`, or the workflow itself. An empty plan is reported as a quick not-applicable success, and the gate then requires that the shard job was genuinely skipped rather than failed.
 
+Phase documents, `docs/roadmap-status.json`, and the roadmap validator have an explicit focused route. They run the manifest validator and its unit test. They do not launch general tooling shards or assert that one named phase must remain current forever.
+
 Shard budget is distributed across the selected suites by highest averages. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
 
 ## Platform routing
@@ -90,6 +92,8 @@ timing from a virtualized browser belong in Tier 4 unless the lane fixes the
 hardware, browser, renderer, workload, and statistical comparison rule. A
 missing or unsupported instrument is inconclusive. It must never be recorded as
 zero work.
+
+The raw Desktop browser performance suite runs in the nightly full matrix. Feature, `dev`, and production validation keep deterministic work and output budgets, but do not block on one virtual browser timing sample.
 
 ## Universal release gate
 
@@ -127,6 +131,8 @@ Continuously:
 Never quarantine data integrity, authority, provider safety, signing, release identity, or updater protection without an equivalent deterministic blocker.
 
 No test stays in a blocking lane merely because it has always been there.
+
+A test that accepts success, failure, timeout, or continued loading detects no defect and must be deleted. The same applies to debug probes, permanently skipped tests, and fixture-dependent assertions that silently skip whenever the fixture is absent. Required controls and fixtures must fail clearly when missing.
 
 ## Targets
 

@@ -199,6 +199,30 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       manifestReference,
     });
     await store.quiesce();
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(databaseName);
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction(
+          "portable_generations",
+          "readwrite",
+        );
+        const generations = transaction.objectStore("portable_generations");
+        const read = generations.get(generationDigest);
+        read.onsuccess = () => {
+          const legacy = read.result as Record<string, unknown>;
+          delete legacy.itemCount;
+          delete legacy.checkpointStoredByteLength;
+          generations.put(legacy);
+        };
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
 
     let nowMs = 1_783_100_000_000;
     const reopened = createPwaLibraryCorePortableCheckpointStore({
@@ -208,8 +232,14 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       now: () => nowMs,
       subtle: crypto.subtle,
     });
+    const legacyReceiptBackfill = await reopened.beginImport({
+      manifest,
+      manifestReference,
+    });
     const reopenedEnrollment =
       await reopened.preparePwaActorEnrollmentRequest();
+    const selectedCheckpointReceipt =
+      await reopened.readSelectedCheckpointReceipt();
     const reopenedPage = await reopened.readSelectedCollectionPage({
       afterOrdinal: null,
       collection: "materialized_rows",
@@ -359,10 +389,12 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
           }
         : null,
       incompleteFinalizeRejected,
+      legacyReceiptBackfill,
       receipt,
       reopenedPage,
       resumedBegin,
       secondPage,
+      selectedCheckpointReceipt,
       selectedAfterAbort,
     };
   });
@@ -421,6 +453,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       stableAfterReopen: true,
     },
     incompleteFinalizeRejected: true,
+    legacyReceiptBackfill: "already_complete",
     receipt: {
       frontierDigest: "11".repeat(32),
       ingestSequence: 0,
@@ -437,6 +470,24 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     secondPage: {
       entries: [{ ordinal: 1, value: { row: { globalId: "item-1" } } }],
       nextOrdinal: null,
+    },
+    selectedCheckpointReceipt: {
+      generationId: "aa".repeat(32),
+      importedThroughIngestSequence: 0,
+      itemCount: 2,
+      libraryId: "01".repeat(32),
+      manifest: {
+        descriptor: {
+          contentDigest: "aa".repeat(32),
+          objectKey: expect.stringContaining("freed-v2-manifest"),
+        },
+        transportObjectId: "drive-manifest-1",
+      },
+      manifestGeneration: 1,
+      selectionSequence: 1,
+      storageEpoch: "02".repeat(32),
+      totalRecordCount: 3,
+      checkpointStoredByteLength: 3,
     },
     selectedAfterAbort: {
       entries: [{ ordinal: 0 }, { ordinal: 1 }],
@@ -574,9 +625,8 @@ test("preview authority persists fractional captures in the current materialized
   await page.goto("/favicon.svg");
 
   const result = await page.evaluate(async () => {
-    const { createPwaLibraryCorePortableCheckpointStore } = await import(
-      "/src/lib/library-core-portable-checkpoint-store.ts"
-    );
+    const { createPwaLibraryCorePortableCheckpointStore } =
+      await import("/src/lib/library-core-portable-checkpoint-store.ts");
     const databaseName = `freed-library-core-preview-${crypto.randomUUID()}`;
     const store = createPwaLibraryCorePortableCheckpointStore({
       databaseName,

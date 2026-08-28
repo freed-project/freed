@@ -130,17 +130,19 @@ test("desktop capture, auth, and extractor files are provider-visible", () => {
     ),
     true,
   );
-  assert.equal(
-    isProviderVisiblePath(
-      "packages/desktop/src/lib/authenticated-essay-poller.ts",
-    ),
-    true,
-  );
   assert.deepEqual(
     providerIdsForPath(
-      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+      "packages/desktop/src/lib/provider-sync-scheduler.ts",
     ),
-    ["medium", "substack"],
+    [
+      "facebook",
+      "instagram",
+      "linkedin",
+      "medium",
+      "substack",
+      "x",
+      "youtube",
+    ],
   );
   assert.equal(
     isProviderVisiblePath("packages/desktop/src/lib/substack-auth.ts"),
@@ -899,12 +901,6 @@ test("provider-specific paths infer the provider used to validate approval scope
   assert.deepEqual(
     providerIdsForPath(
       "packages/desktop/src/lib/authenticated-essay-auth.ts",
-    ),
-    ["medium", "substack"],
-  );
-  assert.deepEqual(
-    providerIdsForPath(
-      "packages/desktop/src/lib/authenticated-essay-poller.ts",
     ),
     ["medium", "substack"],
   );

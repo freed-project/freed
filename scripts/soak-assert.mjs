@@ -979,6 +979,133 @@ export function summarizeRequestSurfaceEvents(healthLines) {
   };
 }
 
+const PROVIDER_SCHEDULE_TERMINAL_EVENTS = new Set([
+  "provider_schedule_settled",
+  "provider_schedule_backoff",
+  "provider_schedule_state_blocked",
+  "provider_schedule_deferred",
+]);
+const PROVIDER_SCHEDULE_CONSERVATIVE_LEASE_MS = 15 * 60 * 1_000;
+
+/** Reconcile privacy-safe provider schedule ownership without provider traffic. */
+export function summarizeProviderScheduleIntegrity(healthLines, windowEndMs) {
+  const attempts = new Map();
+  const active = new Map();
+  const violations = [];
+  let claimCount = 0;
+  let contactCount = 0;
+  let terminalCount = 0;
+
+  const violate = (reason, evidence) => violations.push({ reason, evidence });
+  for (const evidence of healthLines) {
+    const entry = evidence?.entry ?? evidence;
+    const event = String(entry?.event ?? "");
+    if (!event.startsWith("provider_schedule_") && event !== "provider_contact_issued") {
+      continue;
+    }
+    const attemptId = typeof entry.attemptId === "string" ? entry.attemptId : "";
+    const provider = normalizedEventGroup(entry.provider);
+    if (event === "provider_schedule_claimed") {
+      claimCount += 1;
+      if (!attemptId || provider === "unknown") {
+        violate("claim_missing_identity", evidence);
+        continue;
+      }
+      if (attempts.has(attemptId)) violate("duplicate_claim", evidence);
+      if (active.size > 0) violate("concurrent_automatic_claim", evidence);
+      const actualAt = Number(entry.actualAt ?? entry.tsMs ?? 0);
+      const record = { attemptId, provider, actualAt, evidence, contacts: 0 };
+      attempts.set(attemptId, record);
+      active.set(attemptId, record);
+      continue;
+    }
+    if (event === "provider_contact_issued") {
+      contactCount += 1;
+      const claimed = attempts.get(attemptId);
+      if (!claimed) {
+        violate("contact_without_claim", evidence);
+        continue;
+      }
+      claimed.contacts += 1;
+      if (claimed.contacts > 1 || Number(entry.contactIndex) !== 1) {
+        violate("duplicate_contact", evidence);
+      }
+      const scheduledAt = Number(entry.scheduledAt);
+      const actualAt = Number(entry.actualAt ?? entry.tsMs ?? 0);
+      const lower = Number(entry.lowerBoundMs);
+      const upper = Number(entry.upperBoundMs);
+      if (
+        !Number.isFinite(scheduledAt) ||
+        !Number.isFinite(actualAt) ||
+        actualAt < scheduledAt
+      ) {
+        violate("contact_before_deadline", evidence);
+      }
+      if (
+        !Number.isFinite(lower) ||
+        !Number.isFinite(upper) ||
+        lower < 5 * 60 * 1_000 ||
+        upper <= lower ||
+        upper > 24 * 60 * 60 * 1_000
+      ) {
+        violate("invalid_schedule_bounds", evidence);
+      }
+      continue;
+    }
+    if (PROVIDER_SCHEDULE_TERMINAL_EVENTS.has(event) && attemptId) {
+      terminalCount += 1;
+      if (!attempts.has(attemptId)) violate("settlement_without_claim", evidence);
+      active.delete(attemptId);
+    }
+  }
+
+  for (const attempt of active.values()) {
+    if (
+      Number.isFinite(attempt.actualAt) &&
+      windowEndMs >= attempt.actualAt + PROVIDER_SCHEDULE_CONSERVATIVE_LEASE_MS
+    ) {
+      violate("claim_without_true_settlement", attempt.evidence);
+    }
+  }
+  return {
+    claimCount,
+    contactCount,
+    terminalCount,
+    openAttemptCount: active.size,
+    violations,
+  };
+}
+
+function assertProviderScheduleIntegrity(
+  healthLines,
+  healthPath,
+  { runtimeEvidenceActionable, windowEndMs },
+) {
+  const summary = summarizeProviderScheduleIntegrity(healthLines, windowEndMs);
+  if (!runtimeEvidenceActionable) {
+    return assertion(
+      "provider_schedule_integrity",
+      "inconclusive",
+      `Runtime-health coverage or attribution is incomplete; ${summary.claimCount.toLocaleString()} provider schedule claim${summary.claimCount === 1 ? "" : "s"} cannot establish complete ownership.`,
+    );
+  }
+  if (summary.violations.length > 0) {
+    return assertion(
+      "provider_schedule_integrity",
+      "fail",
+      `${summary.violations.length.toLocaleString()} provider schedule ownership or bound violation${summary.violations.length === 1 ? "" : "s"} appeared across ${summary.claimCount.toLocaleString()} claim${summary.claimCount === 1 ? "" : "s"}.`,
+      summary.violations.slice(0, 10).map(({ reason, evidence }) =>
+        cite(healthPath, evidence.line ?? 0, `${reason}: ${evidence.raw ?? JSON.stringify(evidence.entry ?? evidence)}`),
+      ),
+    );
+  }
+  return assertion(
+    "provider_schedule_integrity",
+    "pass",
+    `${summary.claimCount.toLocaleString()} claim${summary.claimCount === 1 ? "" : "s"}, ${summary.contactCount.toLocaleString()} contact${summary.contactCount === 1 ? "" : "s"}, and ${summary.terminalCount.toLocaleString()} terminal settlement${summary.terminalCount === 1 ? "" : "s"}; no duplicate, concurrent, early, malformed-bound, or abandoned ownership appeared.`,
+  );
+}
+
 export function computeNativeMemoryPressureCoverage(
   healthLines,
   metricsRows,
@@ -1827,6 +1954,8 @@ export function isMetricRelevantRuntimeEntry(entry) {
       entry.event === "rss_pull_attempt" ||
       entry.event === "ai_request_attempt" ||
       entry.event === "reader_article_fetch_attempt" ||
+      entry.event === "provider_contact_issued" ||
+      String(entry.event ?? "").startsWith("provider_schedule_") ||
       typeof entry.headsUnchanged === "boolean"),
   );
 }
@@ -2350,6 +2479,10 @@ export function buildVerdict({
     ({ entry }) => entry.headsUnchanged === true,
   ).length;
   const requestSurface = summarizeRequestSurfaceEvents(healthLines);
+  const providerScheduleIntegrity = summarizeProviderScheduleIntegrity(
+    healthLines,
+    windowEnd,
+  );
   const activeWindowDestructions = healthLines.filter(
     ({ entry }) =>
       entry.event === "window_destroyed" &&
@@ -2447,6 +2580,12 @@ export function buildVerdict({
           ? lostNovelScrapes / appAliveDays
           : null,
       ),
+      "provider-schedule-integrity": measurement(
+        "provider-schedule-integrity",
+        runtimeEvidenceActionable && appAliveDays
+          ? providerScheduleIntegrity.violations.length / appAliveDays
+          : null,
+      ),
       "worker-init-rate": measurement(
         "worker-init-rate",
         runtimeEvidenceActionable && appAliveHours
@@ -2499,6 +2638,10 @@ export function buildVerdict({
     ...assertRequestSurfaceContracts(healthLines, healthPath, {
       runtimeEvidenceActionable,
     }),
+    assertProviderScheduleIntegrity(healthLines, healthPath, {
+      runtimeEvidenceActionable,
+      windowEndMs: windowEnd,
+    }),
     assertAlarmCounts(healthLines, healthPath, { runtimeEvidenceActionable }),
   ];
 
@@ -2525,6 +2668,7 @@ export function buildVerdict({
     eventSummaries: {
       workerIdleTerminations: summarizeWorkerIdleTerminations(healthLines),
       requestSurface,
+      providerScheduleIntegrity,
     },
     measurements,
     runtimeIdentity,

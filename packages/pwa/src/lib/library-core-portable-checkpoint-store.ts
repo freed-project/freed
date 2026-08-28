@@ -12,6 +12,7 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreDigestInput,
+  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -51,11 +52,13 @@ import {
   isLibraryCoreLowercaseHex64,
   sha256LowerHex,
   verifyLibraryCoreActorEnrollmentCertificateV1,
+  verifyLibraryCoreActorCapabilityCertificateV2,
   verifyLibraryCoreEd25519WithWebCrypto,
   verifyLibraryCoreOperationTransactionV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreAcceptedActorStateV1,
   type LibraryCoreAcceptedAuthorityStateV1,
+  type LibraryCoreActorCapabilityBodyV2,
   type LibraryCoreActorEnrollmentRequestV1,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreCheckpointManifestV1,
@@ -115,7 +118,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 11;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
@@ -127,6 +130,7 @@ const ACTOR_TIPS_STORE = "portable_actor_tips";
 const AUTHENTICATED_OPERATIONS_STORE = "portable_authenticated_operations";
 const AUTHENTICATED_SEGMENTS_STORE = "portable_authenticated_segments";
 const MATERIALIZED_ROWS_STORE = "portable_materialized_rows";
+const MATERIALIZED_ROWS_BY_RSS_FEED_INDEX = "by_generation_rss_feed";
 const READ_STATE_STORE = "portable_read_state";
 const FEED_ROWS_STORE = "portable_feed_rows";
 const INTENT_ACTORS_STORE = "portable_intent_actors";
@@ -134,11 +138,13 @@ const INTENT_OPERATIONS_STORE = "portable_intent_operations";
 const INTENT_TRANSACTIONS_STORE = "portable_intent_transactions";
 const INTENT_PUBLICATIONS_STORE = "portable_intent_publications";
 const INTENT_RESULTS_STORE = "portable_intent_results";
+const INTENT_OVERLAY_STORE = "portable_intent_overlay_transactions";
 const RESULT_ACTORS_STORE = "portable_result_actors";
 const PWA_ACTOR_IDENTITIES_STORE = "portable_pwa_actor_identities";
 const PWA_ACTOR_ENROLLMENT_REQUESTS_STORE =
   "portable_pwa_actor_enrollment_requests";
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
+const INTENT_OVERLAY_BACKFILL_KEY = "intent_overlay_backfill_v10";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
 export const PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT = 128;
@@ -149,6 +155,10 @@ const FEED_SESSION_MAXIMUM_AGE_MS = 60_000;
 const MAXIMUM_FEED_READER_SESSIONS = 2;
 const MAXIMUM_SAFE_SORT_KEY = Number.MAX_SAFE_INTEGER;
 const TEXT_ENCODER = new TextEncoder();
+const PWA_LIBRARY_CORE_INTENT_OVERLAY_TRANSACTION_LIMIT = 512;
+const PWA_LIBRARY_CORE_INTENT_OVERLAY_OPERATION_LIMIT = 4_096;
+const PWA_LIBRARY_CORE_INTENT_OVERLAY_CANONICAL_BYTE_LIMIT = 16_777_216;
+const PWA_LIBRARY_CORE_INTENT_OVERLAY_BACKFILL_SCAN_LIMIT = 128;
 
 type GenerationStatus = "complete" | "staging";
 
@@ -161,7 +171,9 @@ interface PortableGenerationRecord {
   readonly manifestObjectKey: string;
   readonly manifestPageCount: number;
   readonly manifestStoredByteLength: number;
+  readonly checkpointStoredByteLength?: number;
   readonly totalRecordCount: number;
+  readonly itemCount?: number;
   readonly frontierDigest: LibraryCoreLowercaseHex64;
   readonly checkpointFrontierDigest: LibraryCoreLowercaseHex64;
   readonly importedThroughIngestSequence: number;
@@ -235,13 +247,22 @@ interface PortableActorTipRecord {
   readonly retired: boolean;
 }
 
-interface PortableActorEnrollmentRecord {
+interface PortableActorEnrollmentRecordV1 {
   readonly actorChainGenesis: LibraryCoreLowercaseHex64;
   readonly actorId: LibraryCoreLowercaseHex64;
   readonly actorPublicKey: LibraryCoreEd25519PublicKeyHex;
   readonly certificateDigest: LibraryCoreLowercaseHex64;
   readonly generationId: LibraryCoreLowercaseHex64;
 }
+
+interface PortableActorEnrollmentRecordV2 extends PortableActorEnrollmentRecordV1 {
+  readonly capability: LibraryCoreActorCapabilityBodyV2;
+  readonly canonicalCertificateBytes: Uint8Array;
+  readonly schemaVersion: 2;
+}
+
+type PortableActorEnrollmentRecord =
+  PortableActorEnrollmentRecordV1 | PortableActorEnrollmentRecordV2;
 
 interface PortableReadStateRecord {
   readonly actorId: LibraryCoreLowercaseHex64;
@@ -274,6 +295,7 @@ interface PortableFeedReaderSession {
 interface PortableActiveIntentContext {
   readonly actorTip: PortableActorTipRecord;
   readonly authority: LibraryCoreAcceptedAuthorityStateV1;
+  readonly enrollment: PortableActorEnrollmentRecord;
   readonly generation: PortableGenerationRecord;
   readonly identity: PortablePwaActorIdentityRecord;
   readonly intentActor: PortableIntentActorRecord | undefined;
@@ -294,6 +316,26 @@ interface SelectedPortableGenerationRecord {
   readonly key: typeof SELECTED_GENERATION_KEY;
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly selectionSequence: number;
+}
+
+interface PortableIntentOverlayBackfillRecord {
+  readonly canonicalEnvelopeBytes: number;
+  readonly countsAreLowerBounds?: boolean;
+  readonly key: typeof INTENT_OVERLAY_BACKFILL_KEY;
+  readonly operationCount: number;
+  readonly scanGenerationId?: LibraryCoreLowercaseHex64 | null;
+  readonly scanAfterKey?: readonly [string, string, string, number] | null;
+  readonly status: "complete" | "overflow" | "pending";
+  readonly transactionCount: number;
+}
+
+export interface PwaLibraryCoreIntentOverlayRecoveryStateV1 {
+  readonly canonicalEnvelopeBytes: number;
+  readonly countsAreLowerBounds: boolean;
+  readonly operationCount: number;
+  readonly schemaVersion: 1;
+  readonly status: "backfill_pending" | "ready" | "overflow";
+  readonly transactionCount: number;
 }
 
 interface PortableOperationRecord {
@@ -362,6 +404,10 @@ interface PortableIntentTransactionRecord {
   readonly operationIds: readonly LibraryCoreOperationInstanceId[];
   readonly transactionDigest: LibraryCoreLowercaseHex64;
   readonly transactionId: LibraryCoreOperationInstanceId;
+}
+
+interface PortableIntentOverlayRecord extends PortableIntentTransactionRecord {
+  readonly enqueuedAtMs: number;
 }
 
 interface PortableIntentPublicationRecord {
@@ -490,6 +536,20 @@ export interface PwaLibraryCoreIntentResultV1 {
   readonly status: "accepted" | "provider_completed" | "provider_failed";
 }
 
+interface PwaLibraryCoreIntentOverlayReceiptV1 {
+  readonly acceptedPendingOperationCount: number;
+  readonly actorId: LibraryCoreOperationInstanceId | null;
+  readonly canonicalEnvelopeBytes: number;
+  readonly epochId: LibraryCoreOperationInstanceId | null;
+  readonly libraryId: LibraryCoreOperationInstanceId | null;
+  readonly operationCount: number;
+  readonly schemaVersion: 1;
+  readonly selectedGenerationId: LibraryCoreLowercaseHex64 | null;
+  readonly selectionSequence: number | null;
+  readonly transactionCount: number;
+  readonly unresolvedOperationCount: number;
+}
+
 export interface ReadPwaLibraryCorePortableCollectionPageInput {
   readonly afterOrdinal: number | null;
   readonly collection: LibraryCorePortableCheckpointCollection;
@@ -511,6 +571,10 @@ export interface PwaLibraryCoreMaterializedPageV1 {
     row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
   }>[];
   readonly nextCursor: string | null;
+  readonly source: Readonly<{
+    generationId: LibraryCoreLowercaseHex64;
+    selectionSequence: number;
+  }>;
 }
 
 export interface ReadPwaLibraryCoreOperationPageInput {
@@ -534,6 +598,19 @@ export interface PwaLibraryCoreReadState {
   readonly entityId: string;
   readonly readAtMs: number;
   readonly sourceOperationId: string;
+}
+
+export interface PwaLibraryCoreSelectedCheckpointReceiptV1 {
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly selectionSequence: number;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly storageEpoch: LibraryCoreOperationInstanceId;
+  readonly manifestGeneration: number;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly importedThroughIngestSequence: number;
+  readonly totalRecordCount: number;
+  readonly itemCount: number | null;
+  readonly checkpointStoredByteLength: number | null;
 }
 
 export type PwaLibraryCorePortableFeedReaderErrorCode =
@@ -582,9 +659,26 @@ function generationMatches(
     generation.manifestPageCount === manifest.pages.length &&
     generation.manifestStoredByteLength === reference.descriptor.byteLength &&
     generation.manifestTransportObjectId === reference.transportObjectId &&
+    (generation.checkpointStoredByteLength === undefined ||
+      generation.checkpointStoredByteLength ===
+        checkpointStoredByteLengthForManifest(manifest, reference)) &&
     generation.totalRecordCount === manifest.totalRecordCount &&
     generation.checkpointFrontierDigest === manifest.causalFrontierDigest
   );
+}
+
+function checkpointStoredByteLengthForManifest(
+  manifest: LibraryCoreCheckpointManifestV1,
+  reference: LibraryCoreImmutableObjectReferenceV1,
+): number {
+  const total = manifest.pages.reduce(
+    (sum, page) => sum + page.object.descriptor.byteLength,
+    reference.descriptor.byteLength,
+  );
+  if (!Number.isSafeInteger(total) || total < 0) {
+    throw new TypeError("portable checkpoint byte total is invalid");
+  }
+  return total;
 }
 
 function assertManifestReference(
@@ -645,6 +739,153 @@ function libraryCoreDigest(
 function canonicalStringKey(value: LibraryCoreCanonicalValue): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(
     encodeLibraryCoreCanonicalValue(value),
+  );
+}
+
+function isPortableActorEnrollmentV2(
+  enrollment: PortableActorEnrollmentRecord,
+): enrollment is PortableActorEnrollmentRecordV2 {
+  return Object.prototype.hasOwnProperty.call(enrollment, "schemaVersion");
+}
+
+function assertSupportedPortableActorEnrollment(
+  enrollment: PortableActorEnrollmentRecord,
+): void {
+  const commonKeys = [
+    "actorChainGenesis",
+    "actorId",
+    "actorPublicKey",
+    "certificateDigest",
+    "generationId",
+  ] as const;
+  const keys = Object.getOwnPropertyNames(enrollment);
+  const hasExactKeys = (expected: readonly string[]) =>
+    keys.length === expected.length &&
+    Object.getOwnPropertySymbols(enrollment).length === 0 &&
+    expected.every((key) =>
+      Object.prototype.hasOwnProperty.call(enrollment, key),
+    );
+  const hasValidCommonFields =
+    isLibraryCoreLowercaseHex64(enrollment.actorChainGenesis) &&
+    isLibraryCoreLowercaseHex64(enrollment.actorId) &&
+    isLibraryCoreLowercaseHex64(enrollment.actorPublicKey) &&
+    isLibraryCoreLowercaseHex64(enrollment.certificateDigest) &&
+    isLibraryCoreLowercaseHex64(enrollment.generationId);
+  if (hasExactKeys(commonKeys) && hasValidCommonFields) return;
+  const v2 = enrollment as Partial<PortableActorEnrollmentRecordV2>;
+  if (
+    hasExactKeys([
+      ...commonKeys,
+      "capability",
+      "canonicalCertificateBytes",
+      "schemaVersion",
+    ]) &&
+    hasValidCommonFields &&
+    v2.schemaVersion === 2 &&
+    typeof v2.capability === "object" &&
+    v2.capability !== null &&
+    !Array.isArray(v2.capability) &&
+    v2.canonicalCertificateBytes instanceof Uint8Array
+  ) {
+    return;
+  }
+  throw new Error(
+    "stored actor enrollment uses an unsupported schema or shape",
+  );
+}
+
+function exactBytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return (
+    left.byteLength === right.byteLength &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+function samePortableActorEnrollment(
+  left: PortableActorEnrollmentRecord,
+  right: PortableActorEnrollmentRecord,
+): boolean {
+  assertSupportedPortableActorEnrollment(left);
+  assertSupportedPortableActorEnrollment(right);
+  if (
+    left.actorChainGenesis !== right.actorChainGenesis ||
+    left.actorId !== right.actorId ||
+    left.actorPublicKey !== right.actorPublicKey ||
+    left.certificateDigest !== right.certificateDigest ||
+    left.generationId !== right.generationId ||
+    isPortableActorEnrollmentV2(left) !== isPortableActorEnrollmentV2(right)
+  ) {
+    return false;
+  }
+  if (
+    !isPortableActorEnrollmentV2(left) ||
+    !isPortableActorEnrollmentV2(right)
+  ) {
+    return true;
+  }
+  return (
+    canonicalStringKey(
+      left.capability as unknown as LibraryCoreCanonicalValue,
+    ) ===
+      canonicalStringKey(
+        right.capability as unknown as LibraryCoreCanonicalValue,
+      ) &&
+    exactBytesEqual(
+      left.canonicalCertificateBytes,
+      right.canonicalCertificateBytes,
+    )
+  );
+}
+
+function samePortableActorTip(
+  left: PortableActorTipRecord,
+  right: PortableActorTipRecord,
+): boolean {
+  return (
+    left.acceptedChainDigest === right.acceptedChainDigest &&
+    left.acceptedOperationId === right.acceptedOperationId &&
+    left.acceptedSequence === right.acceptedSequence &&
+    left.actorId === right.actorId &&
+    left.enrollmentCertificateDigest === right.enrollmentCertificateDigest &&
+    left.generationId === right.generationId &&
+    left.retired === right.retired
+  );
+}
+
+function actorEnrollmentAllowsOperation(
+  enrollment: PortableActorEnrollmentRecord,
+  operationType: unknown,
+): boolean {
+  assertSupportedPortableActorEnrollment(enrollment);
+  if (typeof operationType !== "string") return false;
+  if (!isPortableActorEnrollmentV2(enrollment)) {
+    return LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1.some(
+      (candidate) => candidate === operationType,
+    );
+  }
+  return (
+    enrollment.capability.scope.mode === "library_wide" &&
+    enrollment.capability.allowed_operation_types.some(
+      (candidate) => candidate === operationType,
+    )
+  );
+}
+
+function certificateUsesActorCapabilityV2(bytes: Uint8Array): boolean {
+  const decoded = decodeLibraryCoreCanonicalValue(bytes);
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    Array.isArray(decoded)
+  ) {
+    return false;
+  }
+  const body = (decoded as Record<string, unknown>).certificate_body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, "actor_capability_body")
   );
 }
 
@@ -734,6 +975,336 @@ function assignedPortableFeedRow(
     ...stored,
     row: { ...stored.row, userState: next },
   } satisfies PortableMaterializedRowRecord;
+}
+
+function replacePortableFeedProjection(
+  feedRows: IDBObjectStore,
+  generationId: LibraryCoreLowercaseHex64,
+  previous: PortableMaterializedRowRecord,
+  updated: PortableMaterializedRowRecord,
+): void {
+  const previousProjection = projectPortableFeedRow(generationId, previous);
+  const nextProjection = projectPortableFeedRow(generationId, updated);
+  if (
+    previousProjection &&
+    previousProjection.orderKey !== nextProjection?.orderKey
+  ) {
+    feedRows.delete([generationId, previousProjection.orderKey]);
+  }
+  if (nextProjection) feedRows.put(nextProjection);
+}
+
+function canonicalReadAt(
+  transaction: IDBTransaction,
+  stored: PortableMaterializedRowRecord,
+): number | undefined {
+  const value = canonicalObject(stored.row.userState)?.readAt;
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    transaction.abort();
+    throw new Error("materialized FeedItem read time is invalid");
+  }
+  return value as number;
+}
+
+function mergePortableReadAt(
+  transaction: IDBTransaction,
+  stored: PortableMaterializedRowRecord,
+  sidecarReadAt: number | undefined,
+  incomingReadAt: number,
+): number {
+  let current = canonicalReadAt(transaction, stored);
+  if (sidecarReadAt !== undefined) {
+    const mergedSidecar = FEED_ITEM_READ_AT_FIELD_ALGEBRA.merge(
+      current,
+      sidecarReadAt,
+    );
+    if (!mergedSidecar.ok) {
+      transaction.abort();
+      throw new Error(mergedSidecar.reason);
+    }
+    current = mergedSidecar.value;
+  }
+  const merged = FEED_ITEM_READ_AT_FIELD_ALGEBRA.merge(current, incomingReadAt);
+  if (!merged.ok) {
+    transaction.abort();
+    throw new Error(merged.reason);
+  }
+  return merged.value;
+}
+
+async function deletePortableRssFeedItems(
+  transaction: IDBTransaction,
+  generationId: LibraryCoreLowercaseHex64,
+  feedUrl: string,
+): Promise<void> {
+  const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+  const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+  const index = materializedRows.index(MATERIALIZED_ROWS_BY_RSS_FEED_INDEX);
+  let cursor = await requestResult(index.openCursor([generationId, feedUrl]));
+  while (cursor) {
+    const row = cursor.value as PortableMaterializedRowRecord;
+    if (!isPortableFeedRegistryKey(row.registryKey)) {
+      transaction.abort();
+      throw new Error("RSS feed index resolved a non-FeedItem row");
+    }
+    const projected = projectPortableFeedRow(generationId, row);
+    cursor.delete();
+    if (projected) feedRows.delete([generationId, projected.orderKey]);
+    cursor.continue();
+    cursor = await requestResult(cursor.request);
+  }
+}
+
+async function applyPortableIntentEnvelope(
+  transaction: IDBTransaction,
+  generationId: LibraryCoreLowercaseHex64,
+  envelope: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+): Promise<void> {
+  const operationType = envelope.operation_type;
+  const entityId = envelope.entity_id;
+  const operationId = envelope.operation_id;
+  const actorId = envelope.actor_id;
+  const actorSequence = envelope.actor_sequence;
+  const actorChainDigest = envelope.actor_chain_digest;
+  const payload = canonicalObject(envelope.payload);
+  if (
+    typeof operationType !== "string" ||
+    typeof entityId !== "string" ||
+    typeof operationId !== "string" ||
+    typeof actorId !== "string" ||
+    !Number.isSafeInteger(actorSequence) ||
+    typeof actorChainDigest !== "string" ||
+    payload === null
+  ) {
+    transaction.abort();
+    throw new TypeError("intent overlay operation envelope is invalid");
+  }
+
+  const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+  const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+  const readStates = transaction.objectStore(READ_STATE_STORE);
+  const primaryKey = canonicalStringKey(entityId);
+  let storedRow: PortableMaterializedRowRecord | undefined;
+  for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
+    storedRow = (await requestResult(
+      materializedRows.get([generationId, registryKey, primaryKey]),
+    )) as PortableMaterializedRowRecord | undefined;
+    if (storedRow) break;
+  }
+
+  if (operationType === "feed_item_capture_upsert") {
+    const item = payload.item;
+    if (canonicalObject(item) === null) {
+      transaction.abort();
+      throw new TypeError("intent overlay FeedItem capture is invalid");
+    }
+    const previous = storedRow
+      ? projectPortableFeedRow(generationId, storedRow)
+      : null;
+    const incoming: PortableMaterializedRowRecord = {
+      generationId,
+      registryKey: "10_feed_items",
+      primaryKey,
+      row: decodeLibraryCoreFractionalNumbersV1(item) as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >,
+    };
+    materializedRows.put(incoming);
+    const projected = projectPortableFeedRow(generationId, incoming);
+    if (previous && previous.orderKey !== projected?.orderKey) {
+      feedRows.delete([generationId, previous.orderKey]);
+    }
+    if (projected) feedRows.put(projected);
+    return;
+  }
+
+  if (operationType === "feed_item_read_assignment") {
+    if (!storedRow || !Number.isSafeInteger(payload.read_at_ms)) {
+      transaction.abort();
+      throw new Error("intent overlay read assignment has no target FeedItem");
+    }
+    const existingReadState = (await requestResult(
+      readStates.get([generationId, entityId]),
+    )) as PortableReadStateRecord | undefined;
+    const mergedReadAt = mergePortableReadAt(
+      transaction,
+      storedRow,
+      existingReadState?.readAtMs,
+      payload.read_at_ms as number,
+    );
+    const incomingWins =
+      mergedReadAt === payload.read_at_ms &&
+      (!existingReadState ||
+        mergedReadAt < existingReadState.readAtMs ||
+        (mergedReadAt === existingReadState.readAtMs &&
+          operationId < existingReadState.operationId));
+    if (incomingWins) {
+      readStates.put({
+        actorId: actorId as LibraryCoreLowercaseHex64,
+        actorSequence: actorSequence as number,
+        chainDigest: actorChainDigest as LibraryCoreLowercaseHex64,
+        entityId,
+        generationId,
+        operationId,
+        readAtMs: mergedReadAt,
+      } satisfies PortableReadStateRecord);
+    }
+    const userState = canonicalObject(storedRow.row.userState) ?? {};
+    if (userState.readAt === mergedReadAt) return;
+    const updated = {
+      ...storedRow,
+      row: {
+        ...storedRow.row,
+        userState: { ...userState, readAt: mergedReadAt },
+      },
+    } satisfies PortableMaterializedRowRecord;
+    materializedRows.put(updated);
+    replacePortableFeedProjection(feedRows, generationId, storedRow, updated);
+    return;
+  }
+
+  if (operationType === "feed_item_remove") {
+    if (storedRow) {
+      const projected = projectPortableFeedRow(generationId, storedRow);
+      materializedRows.delete([
+        generationId,
+        storedRow.registryKey,
+        storedRow.primaryKey,
+      ]);
+      if (projected) feedRows.delete([generationId, projected.orderKey]);
+    }
+    return;
+  }
+
+  const shellKey = [
+    generationId,
+    "00_library_shell",
+    canonicalStringKey("shell"),
+  ];
+  const shell = (await requestResult(materializedRows.get(shellKey))) as
+    PortableMaterializedRowRecord | undefined;
+  if (!shell) {
+    transaction.abort();
+    throw new Error("intent overlay has no materialized Library shell");
+  }
+
+  if (operationType === "rss_feed_upsert") {
+    const feeds = canonicalObject(shell.row.feeds) ?? {};
+    materializedRows.put({
+      ...shell,
+      row: { ...shell.row, feeds: { ...feeds, [entityId]: payload.feed! } },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (
+    operationType === "rss_feed_remove_keep_items" ||
+    operationType === "rss_feed_remove_with_items"
+  ) {
+    const feeds = { ...(canonicalObject(shell.row.feeds) ?? {}) };
+    delete feeds[entityId];
+    materializedRows.put({
+      ...shell,
+      row: { ...shell.row, feeds },
+    } satisfies PortableMaterializedRowRecord);
+    if (operationType === "rss_feed_remove_with_items") {
+      await deletePortableRssFeedItems(transaction, generationId, entityId);
+    }
+    return;
+  }
+  if (operationType === "preferences_leaf_assignment") {
+    const updates = canonicalObject(payload.updates);
+    if (!updates) {
+      transaction.abort();
+      throw new TypeError("intent overlay preferences patch is invalid");
+    }
+    materializedRows.put({
+      ...shell,
+      row: {
+        ...shell.row,
+        preferences: mergeCanonicalPatch(
+          canonicalObject(shell.row.preferences) ?? {},
+          updates,
+        ),
+      },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (operationType === "person_upsert") {
+    const persons = canonicalObject(shell.row.persons) ?? {};
+    materializedRows.put({
+      ...shell,
+      row: {
+        ...shell.row,
+        persons: { ...persons, [entityId]: payload.person! },
+      },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (operationType === "person_remove_and_accounts") {
+    const persons = { ...(canonicalObject(shell.row.persons) ?? {}) };
+    const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
+    delete persons[entityId];
+    for (const [accountId, account] of Object.entries(accounts)) {
+      if (canonicalObject(account)?.personId === entityId)
+        delete accounts[accountId];
+    }
+    materializedRows.put({
+      ...shell,
+      row: { ...shell.row, accounts, persons },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (operationType === "account_upsert") {
+    const accounts = canonicalObject(shell.row.accounts) ?? {};
+    materializedRows.put({
+      ...shell,
+      row: {
+        ...shell.row,
+        accounts: { ...accounts, [entityId]: payload.account! },
+      },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (operationType === "account_remove") {
+    const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
+    delete accounts[entityId];
+    materializedRows.put({
+      ...shell,
+      row: { ...shell.row, accounts },
+    } satisfies PortableMaterializedRowRecord);
+    return;
+  }
+  if (
+    operationType === "feed_item_saved_assignment" ||
+    operationType === "feed_item_archive_assignment" ||
+    operationType === "feed_item_like_assignment"
+  ) {
+    if (
+      !storedRow ||
+      typeof payload.assigned !== "boolean" ||
+      !Number.isSafeInteger(payload.assigned_at_ms)
+    ) {
+      transaction.abort();
+      throw new Error("intent overlay assignment has no target FeedItem");
+    }
+    const updated = assignedPortableFeedRow(
+      storedRow,
+      operationType === "feed_item_saved_assignment"
+        ? "saved"
+        : operationType === "feed_item_archive_assignment"
+          ? "archived"
+          : "liked",
+      payload.assigned,
+      payload.assigned_at_ms as number,
+    );
+    materializedRows.put(updated);
+    replacePortableFeedProjection(feedRows, generationId, storedRow, updated);
+    return;
+  }
+
+  transaction.abort();
+  throw new Error(`intent overlay cannot materialize ${operationType}`);
 }
 
 function portableFeedSource(
@@ -1083,6 +1654,364 @@ class PwaLibraryCorePortableCheckpointStore
     return generation.header.accepted_authority;
   }
 
+  async readSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, CONTROL_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      generationId: generation.generationId,
+      selectionSequence: selected.selectionSequence,
+      libraryId: generation.libraryId,
+      storageEpoch: generation.storageEpoch,
+      manifestGeneration: generation.manifestGeneration,
+      manifest: snapshotReference({
+        descriptor: {
+          byteLength: generation.manifestStoredByteLength,
+          contentDigest: generation.generationId,
+          objectKey: generation.manifestObjectKey,
+        },
+        transportObjectId: generation.manifestTransportObjectId,
+      }),
+      importedThroughIngestSequence: generation.importedThroughIngestSequence,
+      totalRecordCount: generation.totalRecordCount,
+      itemCount: generation.itemCount ?? null,
+      checkpointStoredByteLength: generation.checkpointStoredByteLength ?? null,
+    });
+  }
+
+  async reapplySelectedIntentOverlay(): Promise<PwaLibraryCoreIntentOverlayRecoveryStateV1> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        INTENT_OPERATIONS_STORE,
+        INTENT_TRANSACTIONS_STORE,
+        INTENT_OVERLAY_STORE,
+        MATERIALIZED_ROWS_STORE,
+        READ_STATE_STORE,
+        FEED_ROWS_STORE,
+      ],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const backfillStatus = await this.#backfillIntentOverlayInTransaction(
+      transaction,
+      generation,
+    );
+    if (backfillStatus !== "complete") {
+      const recovery =
+        await this.#readIntentOverlayRecoveryStateInTransaction(transaction);
+      await transactionDone(transaction);
+      return recovery;
+    }
+    if (!selected || !generation || generation.status !== "complete") {
+      await transactionDone(transaction);
+      return Object.freeze({
+        canonicalEnvelopeBytes: 0,
+        countsAreLowerBounds: false,
+        operationCount: 0,
+        schemaVersion: 1,
+        status: "ready",
+        transactionCount: 0,
+      });
+    }
+    await this.#reconcileIntentOverlaySelection(
+      transaction,
+      generation,
+      selected,
+    );
+    await transactionDone(transaction);
+    this.#feedSessions.clear();
+    return Object.freeze({
+      canonicalEnvelopeBytes: 0,
+      countsAreLowerBounds: false,
+      operationCount: 0,
+      schemaVersion: 1,
+      status: "ready",
+      transactionCount: 0,
+    });
+  }
+
+  async readIntentOverlayRecoveryState(): Promise<PwaLibraryCoreIntentOverlayRecoveryStateV1> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(CONTROL_STORE, "readonly");
+    const recovery =
+      await this.#readIntentOverlayRecoveryStateInTransaction(transaction);
+    await transactionDone(transaction);
+    return recovery;
+  }
+
+  async #readIntentOverlayRecoveryStateInTransaction(
+    transaction: IDBTransaction,
+  ): Promise<PwaLibraryCoreIntentOverlayRecoveryStateV1> {
+    const marker = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(INTENT_OVERLAY_BACKFILL_KEY),
+    )) as PortableIntentOverlayBackfillRecord | undefined;
+    if (marker?.status === "overflow") {
+      return Object.freeze({
+        canonicalEnvelopeBytes: marker.canonicalEnvelopeBytes,
+        countsAreLowerBounds: marker.countsAreLowerBounds === true,
+        operationCount: marker.operationCount,
+        schemaVersion: 1,
+        status: "overflow",
+        transactionCount: marker.transactionCount,
+      });
+    }
+    if (marker?.status === "pending") {
+      return Object.freeze({
+        canonicalEnvelopeBytes: marker.canonicalEnvelopeBytes,
+        countsAreLowerBounds: true,
+        operationCount: marker.operationCount,
+        schemaVersion: 1,
+        status: "backfill_pending",
+        transactionCount: marker.transactionCount,
+      });
+    }
+    return Object.freeze({
+      canonicalEnvelopeBytes: 0,
+      countsAreLowerBounds: false,
+      operationCount: 0,
+      schemaVersion: 1,
+      status: "ready",
+      transactionCount: 0,
+    });
+  }
+
+  async #backfillIntentOverlayInTransaction(
+    transaction: IDBTransaction,
+    generation: PortableGenerationRecord | undefined,
+    retryOverflow = false,
+  ): Promise<"complete" | "overflow" | "pending"> {
+    const control = transaction.objectStore(CONTROL_STORE);
+    let marker = (await requestResult(
+      control.get(INTENT_OVERLAY_BACKFILL_KEY),
+    )) as PortableIntentOverlayBackfillRecord | undefined;
+    if (marker?.status === "complete") return "complete";
+    if (marker?.status !== "pending" && marker?.status !== "overflow") {
+      return "complete";
+    }
+
+    const scanGenerationId = generation?.generationId ?? null;
+    if (
+      marker.status === "pending" &&
+      marker.scanGenerationId !== undefined &&
+      marker.scanGenerationId !== scanGenerationId &&
+      !retryOverflow
+    ) {
+      return "pending";
+    }
+    if (
+      marker.status === "overflow" &&
+      (!retryOverflow || marker.scanGenerationId === scanGenerationId)
+    ) {
+      return "overflow";
+    }
+
+    const intentTransactions = transaction.objectStore(
+      INTENT_TRANSACTIONS_STORE,
+    );
+    const overlays = transaction.objectStore(INTENT_OVERLAY_STORE);
+    const resetScan =
+      marker.status === "overflow" ||
+      marker.scanGenerationId === undefined ||
+      marker.scanGenerationId !== scanGenerationId;
+    if (resetScan) {
+      overlays.clear();
+      marker = {
+        canonicalEnvelopeBytes: 0,
+        countsAreLowerBounds: true,
+        key: INTENT_OVERLAY_BACKFILL_KEY,
+        operationCount: 0,
+        scanAfterKey: null,
+        scanGenerationId,
+        status: "pending",
+        transactionCount: 0,
+      };
+    }
+
+    const acceptedTips = new Map<string, number>();
+    const acceptedSequenceFor = async (
+      intent: PortableIntentTransactionRecord,
+    ): Promise<number> => {
+      if (generation && intent.libraryId !== generation.libraryId) {
+        transaction.abort();
+        throw new Error("historical local intents belong to another Library");
+      }
+      if (!generation || intent.epochId !== generation.storageEpoch) {
+        return 0;
+      }
+      let acceptedSequence = acceptedTips.get(intent.actorId);
+      if (acceptedSequence === undefined) {
+        const tip = (await requestResult(
+          transaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([generation.generationId, intent.actorId]),
+        )) as PortableActorTipRecord | undefined;
+        if (tip?.retired) {
+          transaction.abort();
+          throw new Error(
+            "portable checkpoint retired an actor with historical intents",
+          );
+        }
+        acceptedSequence = tip?.acceptedSequence ?? 0;
+        if (acceptedSequence > 0) {
+          const localTip = (await requestResult(
+            transaction
+              .objectStore(INTENT_OPERATIONS_STORE)
+              .get([
+                intent.libraryId,
+                intent.epochId,
+                intent.actorId,
+                acceptedSequence,
+              ]),
+          )) as PortableIntentOperationRecord | undefined;
+          if (
+            !localTip ||
+            localTip.entry.operation_id !== tip?.acceptedOperationId ||
+            localTip.entry.canonical_envelope.actor_chain_digest !==
+              tip.acceptedChainDigest
+          ) {
+            transaction.abort();
+            throw new Error(
+              "portable checkpoint actor tip does not prove historical intent containment",
+            );
+          }
+        }
+        acceptedTips.set(intent.actorId, acceptedSequence);
+      }
+      return acceptedSequence;
+    };
+
+    let transactionCount = marker.transactionCount;
+    let operationCount = marker.operationCount;
+    let canonicalEnvelopeBytes = marker.canonicalEnvelopeBytes;
+    const range = marker.scanAfterKey
+      ? this.#keyRange.lowerBound(marker.scanAfterKey, true)
+      : undefined;
+    let cursor = await requestResult(intentTransactions.openCursor(range));
+    let examined = 0;
+    let scanAfterKey = marker.scanAfterKey ?? null;
+    while (
+      cursor &&
+      examined < PWA_LIBRARY_CORE_INTENT_OVERLAY_BACKFILL_SCAN_LIMIT
+    ) {
+      const intent = cursor.value as PortableIntentTransactionRecord;
+      const acceptedSequence = await acceptedSequenceFor(intent);
+      scanAfterKey = cursor.primaryKey as [string, string, string, number];
+      examined += 1;
+      if (intent.lastIntentSequence <= acceptedSequence) {
+        cursor.continue([
+          intent.libraryId,
+          intent.epochId,
+          intent.actorId,
+          acceptedSequence + 1,
+        ]);
+        cursor = await requestResult(cursor.request);
+        continue;
+      }
+      if (intent.firstIntentSequence <= acceptedSequence) {
+        transaction.abort();
+        throw new Error(
+          "portable checkpoint actor tip splits a historical intent transaction",
+        );
+      }
+      overlays.put({
+        ...intent,
+        enqueuedAtMs: 0,
+      } satisfies PortableIntentOverlayRecord);
+      transactionCount = Math.min(
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_TRANSACTION_LIMIT + 1,
+        transactionCount + 1,
+      );
+      operationCount = Math.min(
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_OPERATION_LIMIT + 1,
+        operationCount + intent.operationCount,
+      );
+      canonicalEnvelopeBytes = Math.min(
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_CANONICAL_BYTE_LIMIT + 1,
+        canonicalEnvelopeBytes + intent.canonicalEnvelopeBytes,
+      );
+      if (
+        transactionCount > PWA_LIBRARY_CORE_INTENT_OVERLAY_TRANSACTION_LIMIT ||
+        operationCount > PWA_LIBRARY_CORE_INTENT_OVERLAY_OPERATION_LIMIT ||
+        canonicalEnvelopeBytes >
+          PWA_LIBRARY_CORE_INTENT_OVERLAY_CANONICAL_BYTE_LIMIT
+      ) {
+        overlays.clear();
+        control.put({
+          canonicalEnvelopeBytes,
+          countsAreLowerBounds: true,
+          key: INTENT_OVERLAY_BACKFILL_KEY,
+          operationCount,
+          scanAfterKey,
+          scanGenerationId,
+          status: "overflow",
+          transactionCount,
+        } satisfies PortableIntentOverlayBackfillRecord);
+        return "overflow";
+      }
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+
+    if (cursor) {
+      control.put({
+        canonicalEnvelopeBytes,
+        countsAreLowerBounds: true,
+        key: INTENT_OVERLAY_BACKFILL_KEY,
+        operationCount,
+        scanAfterKey,
+        scanGenerationId,
+        status: "pending",
+        transactionCount,
+      } satisfies PortableIntentOverlayBackfillRecord);
+      return "pending";
+    }
+
+    control.put({
+      canonicalEnvelopeBytes,
+      countsAreLowerBounds: false,
+      key: INTENT_OVERLAY_BACKFILL_KEY,
+      operationCount,
+      scanAfterKey,
+      scanGenerationId,
+      status: "complete",
+      transactionCount,
+    } satisfies PortableIntentOverlayBackfillRecord);
+    return "complete";
+  }
+
   /**
    * Create one isolated local authority for the feature preview.
    *
@@ -1280,9 +2209,7 @@ class PwaLibraryCorePortableCheckpointStore
       PWA_ACTOR_IDENTITIES_STORE,
       "readwrite",
     );
-    identityTransaction
-      .objectStore(PWA_ACTOR_IDENTITIES_STORE)
-      .add(identity);
+    identityTransaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).add(identity);
     await transactionDone(identityTransaction);
     await this.installActorEnrollment({
       acceptedAuthorityState: authority,
@@ -1291,6 +2218,42 @@ class PwaLibraryCorePortableCheckpointStore
       ),
     });
     return "created";
+  }
+
+  async #verifyStoredActorEnrollment(
+    enrollment: PortableActorEnrollmentRecord,
+    authority: LibraryCoreAcceptedAuthorityStateV1,
+  ): Promise<void> {
+    assertSupportedPortableActorEnrollment(enrollment);
+    if (!isPortableActorEnrollmentV2(enrollment)) return;
+    const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
+      enrollment.canonicalCertificateBytes,
+      authority,
+      {
+        digest: libraryCoreDigest,
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+      },
+    );
+    const enrollmentBody =
+      verified.certificate.certificate_body.actor_enrollment_body;
+    const capability =
+      verified.certificate.certificate_body.actor_capability_body;
+    const derived = Object.freeze({
+      actorChainGenesis: verified.actor_chain_genesis,
+      actorId: enrollmentBody.actor_id,
+      actorPublicKey: enrollmentBody.actor_public_key,
+      capability,
+      canonicalCertificateBytes: enrollment.canonicalCertificateBytes,
+      certificateDigest: verified.certificate.certificate_digest,
+      generationId: enrollment.generationId,
+      schemaVersion: 2,
+    }) satisfies PortableActorEnrollmentRecordV2;
+    if (!samePortableActorEnrollment(enrollment, derived)) {
+      throw new Error(
+        "stored actor capability does not match its verified certificate",
+      );
+    }
   }
 
   async #activeIntentContext(): Promise<PortableActiveIntentContext> {
@@ -1369,7 +2332,16 @@ class PwaLibraryCorePortableCheckpointStore
     ) {
       throw new Error("PWA intent requires an active enrolled actor");
     }
-    return { actorTip, authority, generation, identity, intentActor, selected };
+    await this.#verifyStoredActorEnrollment(enrollment, authority);
+    return {
+      actorTip,
+      authority,
+      enrollment,
+      generation,
+      identity,
+      intentActor,
+      selected,
+    };
   }
 
   /**
@@ -1677,14 +2649,28 @@ class PwaLibraryCorePortableCheckpointStore
     );
     assertManifestReference(manifest, reference);
     const generationId = reference.descriptor.contentDigest;
+    const checkpointStoredByteLength = checkpointStoredByteLengthForManifest(
+      manifest,
+      reference,
+    );
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, CONTROL_STORE],
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        INTENT_OPERATIONS_STORE,
+        INTENT_TRANSACTIONS_STORE,
+        INTENT_OVERLAY_STORE,
+        MATERIALIZED_ROWS_STORE,
+        READ_STATE_STORE,
+        FEED_ROWS_STORE,
+      ],
       "readwrite",
     );
     const generations = transaction.objectStore(GENERATIONS_STORE);
     const control = transaction.objectStore(CONTROL_STORE);
-    const existing = (await requestResult(generations.get(generationId))) as
+    let existing = (await requestResult(generations.get(generationId))) as
       PortableGenerationRecord | undefined;
     if (existing) {
       if (!generationMatches(existing, manifest, reference)) {
@@ -1706,25 +2692,68 @@ class PwaLibraryCorePortableCheckpointStore
             "portable checkpoint selection sequence is inconsistent",
           );
         }
+        const selectionSequence =
+          selected?.generationId === generationId
+            ? selected.selectionSequence
+            : (selected?.selectionSequence ?? 0) + 1;
+        if (!Number.isSafeInteger(selectionSequence)) {
+          transaction.abort();
+          throw new Error("portable checkpoint selection sequence exhausted");
+        }
+        const backfillStatus = await this.#backfillIntentOverlayInTransaction(
+          transaction,
+          existing,
+          true,
+        );
+        if (backfillStatus !== "complete") {
+          await transactionDone(transaction);
+          this.#activeGenerationId = null;
+          return "already_complete";
+        }
+        await this.#reconcileIntentOverlaySelection(
+          transaction,
+          existing,
+          selected,
+        );
         if (selected?.generationId !== generationId) {
-          const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
-          if (!Number.isSafeInteger(selectionSequence)) {
-            transaction.abort();
-            throw new Error("portable checkpoint selection sequence exhausted");
-          }
-          generations.put({
-            ...existing,
-            selectionSequence,
-          } satisfies PortableGenerationRecord);
           control.put({
             key: SELECTED_GENERATION_KEY,
             generationId,
             selectionSequence,
           } satisfies SelectedPortableGenerationRecord);
         }
+        const itemCount =
+          existing.itemCount ??
+          ((await requestResult(
+            transaction
+              .objectStore(MATERIALIZED_ROWS_STORE)
+              .count(
+                this.#keyRange.bound(
+                  [generationId, "10_feed_items"],
+                  [generationId, "10_feed_items", []],
+                ),
+              ),
+          )) as number);
+        if (
+          existing.selectionSequence !== selectionSequence ||
+          existing.itemCount === undefined ||
+          existing.checkpointStoredByteLength === undefined
+        ) {
+          existing = {
+            ...existing,
+            checkpointStoredByteLength,
+            itemCount,
+            selectionSequence,
+          };
+          generations.put(existing);
+        }
         await transactionDone(transaction);
         this.#activeGenerationId = null;
         return "already_complete";
+      }
+      if (existing.checkpointStoredByteLength === undefined) {
+        existing = { ...existing, checkpointStoredByteLength };
+        generations.put(existing);
       }
       await transactionDone(transaction);
       this.#activeGenerationId = generationId;
@@ -1744,6 +2773,7 @@ class PwaLibraryCorePortableCheckpointStore
       authenticatedFrontierDigest: manifest.causalFrontierDigest,
       authenticatedThroughIngestSequence: 0,
       checkpointFrontierDigest: manifest.causalFrontierDigest,
+      checkpointStoredByteLength,
       frontierDigest: manifest.causalFrontierDigest,
       generationId,
       header: null,
@@ -1987,6 +3017,9 @@ class PwaLibraryCorePortableCheckpointStore
         MATERIALIZED_ROWS_STORE,
         READ_STATE_STORE,
         FEED_ROWS_STORE,
+        INTENT_OPERATIONS_STORE,
+        INTENT_TRANSACTIONS_STORE,
+        INTENT_OVERLAY_STORE,
         CONTROL_STORE,
       ],
       "readwrite",
@@ -2026,11 +3059,21 @@ class PwaLibraryCorePortableCheckpointStore
           collectionRange(this.#keyRange, generationId, collection),
         ),
       );
-    const [entryCount, pageCount, collectionCounts] = await Promise.all([
-      requestResult(entryCountRequest),
-      requestResult(pageCountRequest),
-      Promise.all(collectionCountRequests.map(requestResult)),
-    ]);
+    const itemCountRequest = transaction
+      .objectStore(MATERIALIZED_ROWS_STORE)
+      .count(
+        this.#keyRange.bound(
+          [generationId, "10_feed_items"],
+          [generationId, "10_feed_items", []],
+        ),
+      );
+    const [entryCount, pageCount, collectionCounts, itemCount] =
+      await Promise.all([
+        requestResult(entryCountRequest),
+        requestResult(pageCountRequest),
+        Promise.all(collectionCountRequests.map(requestResult)),
+        requestResult(itemCountRequest),
+      ]);
     if (
       entryCount !== generation.totalRecordCount - 1 ||
       pageCount !== generation.manifestPageCount ||
@@ -2051,6 +3094,41 @@ class PwaLibraryCorePortableCheckpointStore
     const selected = (await requestResult(
       control.get(SELECTED_GENERATION_KEY),
     )) as SelectedPortableGenerationRecord | undefined;
+    const backfillStatus = await this.#backfillIntentOverlayInTransaction(
+      transaction,
+      generation,
+      true,
+    );
+    if (backfillStatus !== "complete") {
+      generations.put({
+        ...generation,
+        authenticatedFrontierDigest:
+          header.materializer_position.frontier_digest,
+        authenticatedThroughIngestSequence:
+          header.materializer_position.ingest_sequence,
+        importedThroughIngestSequence:
+          header.materializer_position.ingest_sequence,
+        itemCount,
+        latestAuthenticatedSegmentDigest: null,
+        latestOperationSegmentDigest: null,
+        status: "complete",
+      } satisfies PortableGenerationRecord);
+      await transactionDone(transaction);
+      this.#activeGenerationId = null;
+      return Object.freeze({
+        frontierDigest: header.materializer_position.frontier_digest,
+        ingestSequence: header.materializer_position.ingest_sequence,
+        libraryId: header.library_id,
+        materializedDigest: header.materializer_position.materialized_digest,
+        recordCount: generation.totalRecordCount,
+        storageEpoch: header.epoch_id,
+      });
+    }
+    await this.#reconcileIntentOverlaySelection(
+      transaction,
+      generation,
+      selected,
+    );
     const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
     if (!Number.isSafeInteger(selectionSequence)) {
       transaction.abort();
@@ -2063,6 +3141,7 @@ class PwaLibraryCorePortableCheckpointStore
         header.materializer_position.ingest_sequence,
       importedThroughIngestSequence:
         header.materializer_position.ingest_sequence,
+      itemCount,
       latestAuthenticatedSegmentDigest: null,
       latestOperationSegmentDigest: null,
       selectionSequence,
@@ -2146,6 +3225,166 @@ class PwaLibraryCorePortableCheckpointStore
     });
   }
 
+  async #reconcileIntentOverlaySelection(
+    transaction: IDBTransaction,
+    generation: PortableGenerationRecord,
+    previouslySelected: SelectedPortableGenerationRecord | undefined,
+  ): Promise<void> {
+    const backfill = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(INTENT_OVERLAY_BACKFILL_KEY),
+    )) as PortableIntentOverlayBackfillRecord | undefined;
+    if (backfill?.status === "pending" || backfill?.status === "overflow") {
+      transaction.abort();
+      throw new Error(
+        "portable checkpoint selection requires bounded intent overlay recovery",
+      );
+    }
+    const overlays = transaction.objectStore(INTENT_OVERLAY_STORE);
+    const intentOperations = transaction.objectStore(INTENT_OPERATIONS_STORE);
+    const actorTips = transaction.objectStore(ACTOR_TIPS_STORE);
+    const generations = transaction.objectStore(GENERATIONS_STORE);
+    const previousGeneration = previouslySelected
+      ? ((await requestResult(
+          generations.get(previouslySelected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const acceptedTips = new Map<
+      string,
+      Readonly<{
+        chainDigest: string;
+        operationId: string | null;
+        sequence: number;
+      }>
+    >();
+    let cursor = await requestResult(overlays.openCursor());
+    if (
+      cursor &&
+      previousGeneration &&
+      previousGeneration.libraryId !== generation.libraryId
+    ) {
+      transaction.abort();
+      throw new Error(
+        "portable checkpoint selection cannot carry a local intent overlay across authority",
+      );
+    }
+    if (
+      cursor &&
+      previousGeneration &&
+      previousGeneration.storageEpoch !== generation.storageEpoch
+    ) {
+      transaction.abort();
+      throw new Error(
+        "portable checkpoint epoch transition has unresolved local intents",
+      );
+    }
+    while (cursor) {
+      const overlay = cursor.value as PortableIntentOverlayRecord;
+      if (overlay.libraryId !== generation.libraryId) {
+        transaction.abort();
+        throw new Error("local intent overlay belongs to another Library");
+      }
+      if (overlay.epochId !== generation.storageEpoch) {
+        transaction.abort();
+        throw new Error(
+          "portable checkpoint epoch transition has unresolved local intents",
+        );
+      }
+      let accepted = acceptedTips.get(overlay.actorId);
+      if (!accepted) {
+        const tip = (await requestResult(
+          actorTips.get([generation.generationId, overlay.actorId]),
+        )) as PortableActorTipRecord | undefined;
+        if (tip?.retired) {
+          transaction.abort();
+          throw new Error(
+            "portable checkpoint retired an actor with pending intents",
+          );
+        }
+        accepted = Object.freeze({
+          chainDigest: tip?.acceptedChainDigest ?? "",
+          operationId: tip?.acceptedOperationId ?? null,
+          sequence: tip?.acceptedSequence ?? 0,
+        });
+        if (accepted.sequence > 0) {
+          const localTip = (await requestResult(
+            intentOperations.get([
+              overlay.libraryId,
+              overlay.epochId,
+              overlay.actorId,
+              accepted.sequence,
+            ]),
+          )) as PortableIntentOperationRecord | undefined;
+          if (
+            !localTip ||
+            localTip.entry.operation_id !== accepted.operationId ||
+            localTip.entry.canonical_envelope.actor_chain_digest !==
+              accepted.chainDigest
+          ) {
+            transaction.abort();
+            throw new Error(
+              "portable checkpoint actor tip does not prove local intent containment",
+            );
+          }
+        }
+        acceptedTips.set(overlay.actorId, accepted);
+      }
+
+      if (overlay.lastIntentSequence <= accepted.sequence) {
+        cursor.delete();
+        cursor.continue();
+        cursor = await requestResult(cursor.request);
+        continue;
+      }
+      if (overlay.firstIntentSequence <= accepted.sequence) {
+        transaction.abort();
+        throw new Error(
+          "portable checkpoint actor tip splits a local intent transaction",
+        );
+      }
+
+      const operationRecords = (await requestResult(
+        intentOperations.getAll(
+          this.#keyRange.bound(
+            [
+              overlay.libraryId,
+              overlay.epochId,
+              overlay.actorId,
+              overlay.firstIntentSequence,
+            ],
+            [
+              overlay.libraryId,
+              overlay.epochId,
+              overlay.actorId,
+              overlay.lastIntentSequence,
+            ],
+          ),
+        ),
+      )) as PortableIntentOperationRecord[];
+      if (
+        operationRecords.length !== overlay.operationCount ||
+        operationRecords.some(
+          (operation, index) =>
+            operation.intentSequence !== overlay.firstIntentSequence + index ||
+            operation.transactionId !== overlay.transactionId ||
+            operation.transactionDigest !== overlay.transactionDigest ||
+            operation.entry.operation_id !== overlay.operationIds[index],
+        )
+      ) {
+        transaction.abort();
+        throw new Error("portable intent overlay transaction is incomplete");
+      }
+      for (const operation of operationRecords) {
+        await applyPortableIntentEnvelope(
+          transaction,
+          generation.generationId,
+          operation.entry.canonical_envelope,
+        );
+      }
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+  }
+
   async abortImport(): Promise<void> {
     const generationId = this.#activeGenerationId;
     this.#activeGenerationId = null;
@@ -2196,16 +3435,39 @@ class PwaLibraryCorePortableCheckpointStore
     readonly certificateBytes: Uint8Array;
   }): Promise<"installed" | "already_installed"> {
     this.#requireAvailable();
-    const verified = await verifyLibraryCoreActorEnrollmentCertificateV1(
-      input.certificateBytes,
-      input.acceptedAuthorityState,
-      {
-        digest: libraryCoreDigest,
-        verifySignature: (verification) =>
-          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
-      },
-    );
-    const body = verified.certificate.certificate_body.actor_enrollment_body;
+    const certificateBytes = input.certificateBytes.slice();
+    const verificationDependencies = {
+      digest: libraryCoreDigest,
+      verifySignature: (
+        verification: Parameters<
+          typeof verifyLibraryCoreEd25519WithWebCrypto
+        >[0],
+      ) => verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+    };
+    const capabilityV2 = certificateUsesActorCapabilityV2(certificateBytes);
+    const verifiedV2 = capabilityV2
+      ? await verifyLibraryCoreActorCapabilityCertificateV2(
+          certificateBytes,
+          input.acceptedAuthorityState,
+          verificationDependencies,
+        )
+      : null;
+    const verifiedV1 = capabilityV2
+      ? null
+      : await verifyLibraryCoreActorEnrollmentCertificateV1(
+          certificateBytes,
+          input.acceptedAuthorityState,
+          verificationDependencies,
+        );
+    const body = capabilityV2
+      ? verifiedV2!.certificate.certificate_body.actor_enrollment_body
+      : verifiedV1!.certificate.certificate_body.actor_enrollment_body;
+    const certificateDigest = capabilityV2
+      ? verifiedV2!.certificate.certificate_digest
+      : verifiedV1!.certificate.certificate_digest;
+    const actorChainGenesis = capabilityV2
+      ? verifiedV2!.actor_chain_genesis
+      : verifiedV1!.actor_chain_genesis;
     const database = await this.#database();
     const transaction = database.transaction(
       [
@@ -2241,8 +3503,7 @@ class PwaLibraryCorePortableCheckpointStore
       generation.header?.epoch !== body.epoch ||
       !actorTip ||
       actorTip.retired ||
-      actorTip.enrollmentCertificateDigest !==
-        verified.certificate.certificate_digest
+      actorTip.enrollmentCertificateDigest !== certificateDigest
     ) {
       transaction.abort();
       throw new Error(
@@ -2253,13 +3514,27 @@ class PwaLibraryCorePortableCheckpointStore
     const existing = (await requestResult(
       enrollments.get([selected.generationId, body.actor_id]),
     )) as PortableActorEnrollmentRecord | undefined;
+    const candidate: PortableActorEnrollmentRecord = verifiedV2
+      ? Object.freeze({
+          actorChainGenesis,
+          actorId: body.actor_id,
+          actorPublicKey: body.actor_public_key,
+          capability:
+            verifiedV2.certificate.certificate_body.actor_capability_body,
+          canonicalCertificateBytes: certificateBytes,
+          certificateDigest,
+          generationId: selected.generationId,
+          schemaVersion: 2,
+        } satisfies PortableActorEnrollmentRecordV2)
+      : Object.freeze({
+          actorChainGenesis,
+          actorId: body.actor_id,
+          actorPublicKey: body.actor_public_key,
+          certificateDigest,
+          generationId: selected.generationId,
+        } satisfies PortableActorEnrollmentRecordV1);
     if (existing) {
-      if (
-        existing.certificateDigest ===
-          verified.certificate.certificate_digest &&
-        existing.actorPublicKey === body.actor_public_key &&
-        existing.actorChainGenesis === verified.actor_chain_genesis
-      ) {
+      if (samePortableActorEnrollment(existing, candidate)) {
         await transactionDone(transaction);
         return "already_installed";
       }
@@ -2268,13 +3543,7 @@ class PwaLibraryCorePortableCheckpointStore
         "actor enrollment identity already exists with different bytes",
       );
     }
-    enrollments.add({
-      actorChainGenesis: verified.actor_chain_genesis,
-      actorId: body.actor_id,
-      actorPublicKey: body.actor_public_key,
-      certificateDigest: verified.certificate.certificate_digest,
-      generationId: selected.generationId,
-    } satisfies PortableActorEnrollmentRecord);
+    enrollments.add(candidate);
     await transactionDone(transaction);
     return "installed";
   }
@@ -2287,7 +3556,18 @@ class PwaLibraryCorePortableCheckpointStore
     this.#requireAvailable();
     const header = parseLibraryCoreOperationSegmentHeaderV1(input.header);
     const entries = Object.freeze(
-      input.entries.map(parseLibraryCoreOperationSegmentEntryV1),
+      input.entries.map((entry) => {
+        const parsed = parseLibraryCoreOperationSegmentEntryV1(entry);
+        const canonicalEnvelope = decodeLibraryCoreCanonicalValue(
+          encodeLibraryCoreCanonicalValue(
+            parsed.canonical_envelope as LibraryCoreCanonicalValue,
+          ),
+        );
+        return parseLibraryCoreOperationSegmentEntryV1({
+          ...parsed,
+          canonical_envelope: canonicalEnvelope,
+        });
+      }),
     );
     const reference = snapshotReference(
       parseLibraryCoreImmutableObjectReferenceV1(input.reference),
@@ -2364,7 +3644,8 @@ class PwaLibraryCorePortableCheckpointStore
       !generation ||
       generation.status !== "complete" ||
       generation.selectionSequence !== selected.selectionSequence ||
-      generation.header === null ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null ||
       header.library_id !== generation.libraryId ||
       header.epoch_id !== generation.storageEpoch
     ) {
@@ -2390,7 +3671,139 @@ class PwaLibraryCorePortableCheckpointStore
           reference.descriptor.contentDigest &&
         existingAuthenticated.transportObjectId === reference.transportObjectId
       ) {
+        const replayTips = new Map<
+          LibraryCoreLowercaseHex64,
+          PortableActorTipRecord
+        >();
+        const replayEnrollments = new Map<
+          LibraryCoreLowercaseHex64,
+          PortableActorEnrollmentRecord
+        >();
+        for (const actorId of new Set(groups.map((group) => group.actorId))) {
+          const tip = (await requestResult(
+            snapshotTransaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorTipRecord | undefined;
+          const enrollment = (await requestResult(
+            snapshotTransaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorEnrollmentRecord | undefined;
+          if (
+            !tip ||
+            tip.retired ||
+            !enrollment ||
+            enrollment.certificateDigest !== tip.enrollmentCertificateDigest
+          ) {
+            snapshotTransaction.abort();
+            throw new Error(
+              "authenticated operation replay actor is absent, retired, or unenrolled",
+            );
+          }
+          replayTips.set(actorId, tip);
+          replayEnrollments.set(actorId, enrollment);
+        }
         await transactionDone(snapshotTransaction);
+        for (const enrollment of replayEnrollments.values()) {
+          await this.#verifyStoredActorEnrollment(
+            enrollment,
+            generation.header.accepted_authority,
+          );
+        }
+        for (const group of groups) {
+          const enrollment = replayEnrollments.get(group.actorId)!;
+          for (const entry of group.entries) {
+            const operationType = operationEnvelopeRecord(entry).operation_type;
+            if (!actorEnrollmentAllowsOperation(enrollment, operationType)) {
+              throw new Error(
+                `actor capability denies ${String(operationType)}`,
+              );
+            }
+          }
+        }
+        const replayTransaction = database.transaction(
+          [
+            GENERATIONS_STORE,
+            CONTROL_STORE,
+            ACTOR_TIPS_STORE,
+            ACTOR_ENROLLMENTS_STORE,
+            AUTHENTICATED_SEGMENTS_STORE,
+          ],
+          "readonly",
+        );
+        const replaySelected = (await requestResult(
+          replayTransaction
+            .objectStore(CONTROL_STORE)
+            .get(SELECTED_GENERATION_KEY),
+        )) as SelectedPortableGenerationRecord | undefined;
+        const replayGeneration = (await requestResult(
+          replayTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(generation.generationId),
+        )) as PortableGenerationRecord | undefined;
+        const replaySegment = (await requestResult(
+          replayTransaction
+            .objectStore(AUTHENTICATED_SEGMENTS_STORE)
+            .get([generation.generationId, header.first_ingest_sequence]),
+        )) as PortableAuthenticatedSegmentRecord | undefined;
+        if (
+          replaySelected?.generationId !== generation.generationId ||
+          replaySelected.selectionSequence !== generation.selectionSequence ||
+          !replayGeneration ||
+          replayGeneration.status !== "complete" ||
+          replayGeneration.selectionSequence !== generation.selectionSequence ||
+          replayGeneration.libraryId !== generation.libraryId ||
+          replayGeneration.storageEpoch !== generation.storageEpoch ||
+          replayGeneration.headerDigest !== generation.headerDigest ||
+          replayGeneration.authenticatedThroughIngestSequence !==
+            generation.authenticatedThroughIngestSequence ||
+          replayGeneration.authenticatedFrontierDigest !==
+            generation.authenticatedFrontierDigest ||
+          replayGeneration.latestAuthenticatedSegmentDigest !==
+            generation.latestAuthenticatedSegmentDigest ||
+          !replaySegment ||
+          replaySegment.header.segment_digest !== header.segment_digest ||
+          replaySegment.lastIngestSequence !== header.last_ingest_sequence ||
+          replaySegment.objectKey !== reference.descriptor.objectKey ||
+          replaySegment.storedByteLength !== reference.descriptor.byteLength ||
+          replaySegment.storedContentDigest !==
+            reference.descriptor.contentDigest ||
+          replaySegment.transportObjectId !== reference.transportObjectId
+        ) {
+          replayTransaction.abort();
+          throw new Error(
+            "authenticated operation replay authority changed during verification",
+          );
+        }
+        for (const [actorId, tipSnapshot] of replayTips) {
+          const currentTip = (await requestResult(
+            replayTransaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorTipRecord | undefined;
+          const currentEnrollment = (await requestResult(
+            replayTransaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorEnrollmentRecord | undefined;
+          if (
+            !currentTip ||
+            currentTip.retired ||
+            !samePortableActorTip(currentTip, tipSnapshot) ||
+            !currentEnrollment ||
+            !samePortableActorEnrollment(
+              currentEnrollment,
+              replayEnrollments.get(actorId)!,
+            )
+          ) {
+            replayTransaction.abort();
+            throw new Error(
+              "authenticated operation replay capability changed during verification",
+            );
+          }
+        }
+        await transactionDone(replayTransaction);
         return this.#segmentReceipt(header);
       }
       snapshotTransaction.abort();
@@ -2557,6 +3970,20 @@ class PwaLibraryCorePortableCheckpointStore
     }
     await transactionDone(snapshotTransaction);
 
+    const acceptedAuthority = generation.header.accepted_authority;
+    for (const enrollment of enrollments.values()) {
+      await this.#verifyStoredActorEnrollment(enrollment, acceptedAuthority);
+    }
+    for (const group of groups) {
+      const enrollment = enrollments.get(group.actorId)!;
+      for (const entry of group.entries) {
+        const operationType = operationEnvelopeRecord(entry).operation_type;
+        if (!actorEnrollmentAllowsOperation(enrollment, operationType)) {
+          throw new Error(`actor capability denies ${String(operationType)}`);
+        }
+      }
+    }
+
     const currentTips = new Map(tipSnapshots);
     const verifiedTransactions = [];
     for (const group of groups) {
@@ -2623,6 +4050,7 @@ class PwaLibraryCorePortableCheckpointStore
         OPERATIONS_STORE,
         SEGMENTS_STORE,
         ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
         AUTHENTICATED_OPERATIONS_STORE,
         AUTHENTICATED_SEGMENTS_STORE,
         MATERIALIZED_ROWS_STORE,
@@ -2641,6 +4069,11 @@ class PwaLibraryCorePortableCheckpointStore
       currentSelected?.generationId !== generation.generationId ||
       currentSelected.selectionSequence !== generation.selectionSequence ||
       !currentGeneration ||
+      currentGeneration.status !== "complete" ||
+      currentGeneration.selectionSequence !== generation.selectionSequence ||
+      currentGeneration.libraryId !== generation.libraryId ||
+      currentGeneration.storageEpoch !== generation.storageEpoch ||
+      currentGeneration.headerDigest !== generation.headerDigest ||
       currentGeneration.authenticatedThroughIngestSequence !==
         generation.authenticatedThroughIngestSequence ||
       currentGeneration.authenticatedFrontierDigest !==
@@ -2659,12 +4092,20 @@ class PwaLibraryCorePortableCheckpointStore
           .objectStore(ACTOR_TIPS_STORE)
           .get([generation.generationId, actorId]),
       )) as PortableActorTipRecord | undefined;
+      const currentEnrollment = (await requestResult(
+        transaction
+          .objectStore(ACTOR_ENROLLMENTS_STORE)
+          .get([generation.generationId, actorId]),
+      )) as PortableActorEnrollmentRecord | undefined;
       if (
         !current ||
-        current.acceptedSequence !== snapshot.acceptedSequence ||
-        current.acceptedOperationId !== snapshot.acceptedOperationId ||
-        current.acceptedChainDigest !== snapshot.acceptedChainDigest ||
-        current.retired !== snapshot.retired
+        !samePortableActorTip(current, snapshot) ||
+        current.retired ||
+        !currentEnrollment ||
+        !samePortableActorEnrollment(
+          currentEnrollment,
+          enrollments.get(actorId)!,
+        )
       ) {
         transaction.abort();
         throw new Error("actor tip changed during operation verification");
@@ -2728,19 +4169,24 @@ class PwaLibraryCorePortableCheckpointStore
           const existingReadState = (await requestResult(
             readStates.get([generation.generationId, entityId]),
           )) as PortableReadStateRecord | undefined;
-          const merged = FEED_ITEM_READ_AT_FIELD_ALGEBRA.merge(
+          if (!storedRow) {
+            transaction.abort();
+            throw new Error(
+              "authenticated read assignment has no target FeedItem",
+            );
+          }
+          const mergedReadAt = mergePortableReadAt(
+            transaction,
+            storedRow,
             existingReadState?.readAtMs,
             member.envelope.payload.read_at_ms,
           );
-          if (!merged.ok) {
-            transaction.abort();
-            throw new Error(merged.reason);
-          }
           const incomingWins =
-            !existingReadState ||
-            merged.value < existingReadState.readAtMs ||
-            (merged.value === existingReadState.readAtMs &&
-              member.envelope.operation_id < existingReadState.operationId);
+            mergedReadAt === member.envelope.payload.read_at_ms &&
+            (!existingReadState ||
+              mergedReadAt < existingReadState.readAtMs ||
+              (mergedReadAt === existingReadState.readAtMs &&
+                member.envelope.operation_id < existingReadState.operationId));
           if (incomingWins) {
             readStates.put({
               actorId: member.envelope.actor_id,
@@ -2749,32 +4195,29 @@ class PwaLibraryCorePortableCheckpointStore
               entityId,
               generationId: generation.generationId,
               operationId: member.envelope.operation_id,
-              readAtMs: merged.value,
+              readAtMs: mergedReadAt,
             } satisfies PortableReadStateRecord);
-            if (storedRow) {
-              const currentUserState =
-                typeof storedRow.row.userState === "object" &&
-                storedRow.row.userState !== null &&
-                !Array.isArray(storedRow.row.userState)
-                  ? storedRow.row.userState
-                  : {};
-              const updatedRow = {
-                ...storedRow,
-                row: {
-                  ...storedRow.row,
-                  userState: {
-                    ...currentUserState,
-                    readAt: merged.value,
-                  },
+          }
+          const currentUserState =
+            canonicalObject(storedRow.row.userState) ?? {};
+          if (currentUserState.readAt !== mergedReadAt) {
+            const updatedRow = {
+              ...storedRow,
+              row: {
+                ...storedRow.row,
+                userState: {
+                  ...currentUserState,
+                  readAt: mergedReadAt,
                 },
-              } satisfies PortableMaterializedRowRecord;
-              materializedRows.put(updatedRow);
-              const projected = projectPortableFeedRow(
-                generation.generationId,
-                updatedRow,
-              );
-              if (projected) feedRows.put(projected);
-            }
+              },
+            } satisfies PortableMaterializedRowRecord;
+            materializedRows.put(updatedRow);
+            replacePortableFeedProjection(
+              feedRows,
+              generation.generationId,
+              storedRow,
+              updatedRow,
+            );
           }
         } else if (member.envelope.operation_type === "feed_item_remove") {
           if (storedRow) {
@@ -2845,30 +4288,11 @@ class PwaLibraryCorePortableCheckpointStore
           } satisfies PortableMaterializedRowRecord);
 
           if (member.envelope.operation_type === "rss_feed_remove_with_items") {
-            let cursor = await requestResult(materializedRows.openCursor());
-            while (cursor) {
-              const row = cursor.value as PortableMaterializedRowRecord;
-              const rssSource = canonicalObject(row.row.rssSource);
-              if (
-                row.generationId === generation.generationId &&
-                row.registryKey === "10_feed_items" &&
-                rssSource?.feedUrl === entityId
-              ) {
-                const projected = projectPortableFeedRow(
-                  generation.generationId,
-                  row,
-                );
-                cursor.delete();
-                if (projected) {
-                  feedRows.delete([
-                    generation.generationId,
-                    projected.orderKey,
-                  ]);
-                }
-              }
-              cursor.continue();
-              cursor = await requestResult(cursor.request);
-            }
+            await deletePortableRssFeedItems(
+              transaction,
+              generation.generationId,
+              entityId,
+            );
           }
         } else if (
           member.envelope.operation_type === "preferences_leaf_assignment"
@@ -2945,7 +4369,9 @@ class PwaLibraryCorePortableCheckpointStore
           delete persons[member.envelope.entity_id];
           const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
           for (const [accountId, account] of Object.entries(accounts)) {
-            if (canonicalObject(account)?.personId === member.envelope.entity_id) {
+            if (
+              canonicalObject(account)?.personId === member.envelope.entity_id
+            ) {
               delete accounts[accountId];
             }
           }
@@ -3018,11 +4444,12 @@ class PwaLibraryCorePortableCheckpointStore
             member.envelope.payload.assigned_at_ms,
           );
           materializedRows.put(updatedRow);
-          const projected = projectPortableFeedRow(
+          replacePortableFeedProjection(
+            feedRows,
             generation.generationId,
+            storedRow,
             updatedRow,
           );
-          if (projected) feedRows.put(projected);
         }
         entryOffset += 1;
       }
@@ -3188,13 +4615,147 @@ class PwaLibraryCorePortableCheckpointStore
     );
 
     const database = await this.#database();
+    const admissionTransaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+      ],
+      "readonly",
+    );
+    const admittedSelected = (await requestResult(
+      admissionTransaction
+        .objectStore(CONTROL_STORE)
+        .get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const admittedGeneration = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(admittedSelected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const admittedTip = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([admittedSelected.generationId, actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const admittedEnrollment = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(ACTOR_ENROLLMENTS_STORE)
+            .get([admittedSelected.generationId, actorId]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    await transactionDone(admissionTransaction);
+    const admittedAuthority =
+      admittedGeneration?.header?.anchor_kind === "accepted_authority"
+        ? admittedGeneration.header.accepted_authority
+        : null;
+    if (
+      !admittedSelected ||
+      !admittedGeneration ||
+      admittedGeneration.status !== "complete" ||
+      admittedGeneration.selectionSequence !==
+        admittedSelected.selectionSequence ||
+      !admittedAuthority ||
+      String(admittedAuthority.library_id) !== String(libraryId) ||
+      String(admittedAuthority.epoch_id) !== String(epochId) ||
+      !admittedTip ||
+      String(admittedTip.actorId) !== String(actorId) ||
+      admittedTip.retired ||
+      !admittedEnrollment ||
+      admittedEnrollment.certificateDigest !==
+        admittedTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("intent transaction has no active enrolled capability");
+    }
+    await this.#verifyStoredActorEnrollment(
+      admittedEnrollment,
+      admittedAuthority,
+    );
+    for (const entry of entries) {
+      if (
+        !actorEnrollmentAllowsOperation(
+          admittedEnrollment,
+          entry.canonical_envelope.operation_type,
+        )
+      ) {
+        throw new Error(
+          `actor capability denies ${String(entry.canonical_envelope.operation_type)}`,
+        );
+      }
+    }
+
     const transaction = database.transaction(
-      [INTENT_ACTORS_STORE, INTENT_OPERATIONS_STORE, INTENT_TRANSACTIONS_STORE],
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        INTENT_OPERATIONS_STORE,
+        INTENT_TRANSACTIONS_STORE,
+        INTENT_OVERLAY_STORE,
+      ],
       "readwrite",
     );
+    const currentSelected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const overlayBackfill = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(INTENT_OVERLAY_BACKFILL_KEY),
+    )) as PortableIntentOverlayBackfillRecord | undefined;
+    const currentGeneration = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(GENERATIONS_STORE)
+            .get(currentSelected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const currentTip = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([currentSelected.generationId, actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const currentEnrollment = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_ENROLLMENTS_STORE)
+            .get([currentSelected.generationId, actorId]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    if (
+      overlayBackfill?.status === "pending" ||
+      overlayBackfill?.status === "overflow" ||
+      currentSelected?.generationId !== admittedSelected.generationId ||
+      currentSelected.selectionSequence !==
+        admittedSelected.selectionSequence ||
+      !currentGeneration ||
+      currentGeneration.status !== "complete" ||
+      currentGeneration.selectionSequence !==
+        admittedGeneration.selectionSequence ||
+      currentGeneration.headerDigest !== admittedGeneration.headerDigest ||
+      currentGeneration.libraryId !== libraryId ||
+      currentGeneration.storageEpoch !== epochId ||
+      !currentTip ||
+      !samePortableActorTip(currentTip, admittedTip) ||
+      currentTip.retired ||
+      !currentEnrollment ||
+      !samePortableActorEnrollment(currentEnrollment, admittedEnrollment)
+    ) {
+      transaction.abort();
+      throw new Error("intent capability changed before durable admission");
+    }
     const actors = transaction.objectStore(INTENT_ACTORS_STORE);
     const operations = transaction.objectStore(INTENT_OPERATIONS_STORE);
     const transactions = transaction.objectStore(INTENT_TRANSACTIONS_STORE);
+    const overlays = transaction.objectStore(INTENT_OVERLAY_STORE);
     const actorRequest = actors.get([libraryId, epochId, actorId]);
     const existingTransactionRequest = transactions
       .index("by_actor_transaction_id")
@@ -3250,6 +4811,31 @@ class PwaLibraryCorePortableCheckpointStore
         "intent transaction crosses the durable actor epoch or schema",
       );
     }
+    let overlayTransactionCount = 0;
+    let overlayOperationCount = 0;
+    let overlayCanonicalEnvelopeBytes = 0;
+    let overlayCursor = await requestResult(overlays.openCursor());
+    while (overlayCursor) {
+      const overlay = overlayCursor.value as PortableIntentOverlayRecord;
+      overlayTransactionCount += 1;
+      overlayOperationCount += overlay.operationCount;
+      overlayCanonicalEnvelopeBytes += overlay.canonicalEnvelopeBytes;
+      overlayCursor.continue();
+      overlayCursor = await requestResult(overlayCursor.request);
+    }
+    if (
+      overlayTransactionCount + 1 >
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_TRANSACTION_LIMIT ||
+      overlayOperationCount + transactionRecord.operationCount >
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_OPERATION_LIMIT ||
+      overlayCanonicalEnvelopeBytes + transactionRecord.canonicalEnvelopeBytes >
+        PWA_LIBRARY_CORE_INTENT_OVERLAY_CANONICAL_BYTE_LIMIT
+    ) {
+      transaction.abort();
+      throw new RangeError(
+        `local intent overlay exceeds its ${PWA_LIBRARY_CORE_INTENT_OVERLAY_TRANSACTION_LIMIT.toLocaleString()} transaction, ${PWA_LIBRARY_CORE_INTENT_OVERLAY_OPERATION_LIMIT.toLocaleString()} operation, or ${PWA_LIBRARY_CORE_INTENT_OVERLAY_CANONICAL_BYTE_LIMIT.toLocaleString()} byte bound`,
+      );
+    }
     const expectedSequence = actor?.nextIntentSequence ?? 1;
     const expectedPreviousOperation = actor?.latestOperationId ?? null;
     const expectedPreviousChain =
@@ -3269,6 +4855,10 @@ class PwaLibraryCorePortableCheckpointStore
       operations.add(operationRecord);
     }
     transactions.add(transactionRecord);
+    overlays.add({
+      ...transactionRecord,
+      enqueuedAtMs: this.#now(),
+    } satisfies PortableIntentOverlayRecord);
     actors.put({
       actorId,
       epochId,
@@ -3868,7 +5458,9 @@ class PwaLibraryCorePortableCheckpointStore
     return receipt;
   }
 
-  async #applySelectedAccountUpserts(accounts: readonly Account[]): Promise<void> {
+  async #applySelectedAccountUpserts(
+    accounts: readonly Account[],
+  ): Promise<void> {
     await this.#mutateSelectedAccounts((current) => {
       const next = { ...current };
       for (const account of accounts) {
@@ -4041,28 +5633,7 @@ class PwaLibraryCorePortableCheckpointStore
     } satisfies PortableMaterializedRowRecord);
 
     if (includeItems) {
-      const feedRows = transaction.objectStore(FEED_ROWS_STORE);
-      let cursor = await requestResult(rows.openCursor());
-      while (cursor) {
-        const stored = cursor.value as PortableMaterializedRowRecord;
-        const rssSource = canonicalObject(stored.row.rssSource);
-        if (
-          stored.generationId === selected.generationId &&
-          stored.registryKey === "10_feed_items" &&
-          rssSource?.feedUrl === url
-        ) {
-          const projected = projectPortableFeedRow(
-            selected.generationId,
-            stored,
-          );
-          cursor.delete();
-          if (projected) {
-            feedRows.delete([selected.generationId, projected.orderKey]);
-          }
-        }
-        cursor.continue();
-        cursor = await requestResult(cursor.request);
-      }
+      await deletePortableRssFeedItems(transaction, selected.generationId, url);
     }
     await transactionDone(transaction);
     this.#feedSessions.clear();
@@ -4519,8 +6090,12 @@ class PwaLibraryCorePortableCheckpointStore
         input.assignedAtMs,
       );
       materializedRows.put(updated);
-      const projected = projectPortableFeedRow(selected.generationId, updated);
-      if (projected) feedRows.put(projected);
+      replacePortableFeedProjection(
+        feedRows,
+        selected.generationId,
+        stored,
+        updated,
+      );
     }
     await transactionDone(transaction);
     this.#feedSessions.clear();
@@ -4651,10 +6226,7 @@ class PwaLibraryCorePortableCheckpointStore
       };
       materializedRows.put(stored);
       const projected = projectPortableFeedRow(selected.generationId, stored);
-      if (
-        previousFeedRow &&
-        previousFeedRow.orderKey !== projected?.orderKey
-      ) {
+      if (previousFeedRow && previousFeedRow.orderKey !== projected?.orderKey) {
         feedRows.delete([selected.generationId, previousFeedRow.orderKey]);
       }
       if (projected) {
@@ -5402,6 +6974,81 @@ class PwaLibraryCorePortableCheckpointStore
     await transactionDone(transaction);
   }
 
+  async readIntentOverlayReceipt(): Promise<PwaLibraryCoreIntentOverlayReceiptV1> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        INTENT_OVERLAY_STORE,
+        INTENT_RESULTS_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    let actorId: LibraryCoreOperationInstanceId | null = null;
+    let transactionCount = 0;
+    let operationCount = 0;
+    let canonicalEnvelopeBytes = 0;
+    let acceptedPendingOperationCount = 0;
+    let unresolvedOperationCount = 0;
+    const results = transaction.objectStore(INTENT_RESULTS_STORE);
+    let cursor = await requestResult(
+      transaction.objectStore(INTENT_OVERLAY_STORE).openCursor(),
+    );
+    while (cursor) {
+      const overlay = cursor.value as PortableIntentOverlayRecord;
+      if (
+        generation &&
+        overlay.libraryId === generation.libraryId &&
+        overlay.epochId === generation.storageEpoch
+      ) {
+        actorId ??= overlay.actorId;
+        transactionCount += 1;
+        operationCount += overlay.operationCount;
+        canonicalEnvelopeBytes += overlay.canonicalEnvelopeBytes;
+        for (const operationId of overlay.operationIds) {
+          const resultCount = await requestResult(
+            results
+              .index("by_actor_intent_operation_id")
+              .count([
+                overlay.libraryId,
+                overlay.epochId,
+                overlay.actorId,
+                operationId,
+              ]),
+          );
+          if (resultCount > 0) acceptedPendingOperationCount += 1;
+          else unresolvedOperationCount += 1;
+        }
+      }
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+    await transactionDone(transaction);
+    return Object.freeze({
+      acceptedPendingOperationCount,
+      actorId,
+      canonicalEnvelopeBytes,
+      epochId: generation?.storageEpoch ?? null,
+      libraryId: generation?.libraryId ?? null,
+      operationCount,
+      schemaVersion: 1,
+      selectedGenerationId: generation?.generationId ?? null,
+      selectionSequence: selected?.selectionSequence ?? null,
+      transactionCount,
+      unresolvedOperationCount,
+    });
+  }
+
   async readIntentResult(input: {
     readonly actorId: LibraryCoreOperationInstanceId;
     readonly epochId: LibraryCoreOperationInstanceId;
@@ -5501,12 +7148,14 @@ class PwaLibraryCorePortableCheckpointStore
         false,
       );
       const totalCount = await requestResult(
-        transaction.objectStore(FEED_ROWS_STORE).count(
-          this.#keyRange.bound(
-            [generation.generationId],
-            [generation.generationId, []],
+        transaction
+          .objectStore(FEED_ROWS_STORE)
+          .count(
+            this.#keyRange.bound(
+              [generation.generationId],
+              [generation.generationId, []],
+            ),
           ),
-        ),
       );
       const rows: LibraryCoreFeedCardV1[] = [];
       let cursor = await requestResult(
@@ -6014,33 +7663,58 @@ class PwaLibraryCorePortableCheckpointStore
     ) {
       throw new RangeError("materialized page limit must be between 1 and 512");
     }
-    let after: readonly [string, string] | null = null;
+    let after:
+      readonly [LibraryCoreLowercaseHex64, number, string, string] | null =
+      null;
     if (input.cursor !== null) {
       const decoded = JSON.parse(input.cursor) as unknown;
       if (
         !Array.isArray(decoded) ||
-        decoded.length !== 2 ||
-        decoded.some((value) => typeof value !== "string")
+        decoded.length !== 4 ||
+        typeof decoded[0] !== "string" ||
+        !/^[0-9a-f]{64}$/.test(decoded[0]) ||
+        !Number.isSafeInteger(decoded[1]) ||
+        (decoded[1] as number) < 0 ||
+        typeof decoded[2] !== "string" ||
+        typeof decoded[3] !== "string"
       ) {
         throw new TypeError("materialized page cursor is invalid");
       }
-      after = decoded as [string, string];
+      after = decoded as [LibraryCoreLowercaseHex64, number, string, string];
     }
     const database = await this.#database();
     const transaction = database.transaction(
-      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      [CONTROL_STORE, GENERATIONS_STORE, MATERIALIZED_ROWS_STORE],
       "readonly",
     );
     const selected = (await requestResult(
       transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
     )) as SelectedPortableGenerationRecord | undefined;
-    if (!selected) {
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
       transaction.abort();
       throw new Error("no complete portable checkpoint is selected");
     }
+    if (
+      after &&
+      (after[0] !== selected.generationId ||
+        after[1] !== selected.selectionSequence)
+    ) {
+      transaction.abort();
+      throw new Error("materialized page cursor source is stale");
+    }
     const range = after
       ? this.#keyRange.bound(
-          [selected.generationId, after[0], after[1]],
+          [selected.generationId, after[2], after[3]],
           [selected.generationId, []],
           true,
           false,
@@ -6060,18 +7734,36 @@ class PwaLibraryCorePortableCheckpointStore
     let lastKey: readonly [string, string] | null = null;
     while (cursor && entries.length < input.limit) {
       const stored = cursor.value as PortableMaterializedRowRecord;
-      entries.push(Object.freeze({
-        primaryKey: stored.primaryKey,
-        registryKey: stored.registryKey,
-        row: stored.row,
-      }));
+      entries.push(
+        Object.freeze({
+          primaryKey: stored.primaryKey,
+          registryKey: stored.registryKey,
+          row: stored.row,
+        }),
+      );
       lastKey = [stored.registryKey, stored.primaryKey];
       cursor.continue();
       cursor = await requestResult(cursor.request);
     }
-    const nextCursor = cursor && lastKey ? JSON.stringify(lastKey) : null;
+    const source = Object.freeze({
+      generationId: selected.generationId,
+      selectionSequence: selected.selectionSequence,
+    });
+    const nextCursor =
+      cursor && lastKey
+        ? JSON.stringify([
+            source.generationId,
+            source.selectionSequence,
+            lastKey[0],
+            lastKey[1],
+          ])
+        : null;
     await transactionDone(transaction);
-    return Object.freeze({ entries: Object.freeze(entries), nextCursor });
+    return Object.freeze({
+      entries: Object.freeze(entries),
+      nextCursor,
+      source,
+    });
   }
 
   async quiesce(): Promise<void> {
@@ -6285,9 +7977,32 @@ class PwaLibraryCorePortableCheckpointStore
             });
           }
           if (!database.objectStoreNames.contains(MATERIALIZED_ROWS_STORE)) {
-            database.createObjectStore(MATERIALIZED_ROWS_STORE, {
-              keyPath: ["generationId", "registryKey", "primaryKey"],
-            });
+            const materializedRows = database.createObjectStore(
+              MATERIALIZED_ROWS_STORE,
+              {
+                keyPath: ["generationId", "registryKey", "primaryKey"],
+              },
+            );
+            materializedRows.createIndex(
+              MATERIALIZED_ROWS_BY_RSS_FEED_INDEX,
+              ["generationId", "row.rssSource.feedUrl"],
+              { unique: false },
+            );
+          } else if (request.transaction) {
+            const materializedRows = request.transaction.objectStore(
+              MATERIALIZED_ROWS_STORE,
+            );
+            if (
+              !materializedRows.indexNames.contains(
+                MATERIALIZED_ROWS_BY_RSS_FEED_INDEX,
+              )
+            ) {
+              materializedRows.createIndex(
+                MATERIALIZED_ROWS_BY_RSS_FEED_INDEX,
+                ["generationId", "row.rssSource.feedUrl"],
+                { unique: false },
+              );
+            }
           }
           if (!database.objectStoreNames.contains(READ_STATE_STORE)) {
             database.createObjectStore(READ_STATE_STORE, {
@@ -6358,6 +8073,16 @@ class PwaLibraryCorePortableCheckpointStore
               { unique: false },
             );
           }
+          if (!database.objectStoreNames.contains(INTENT_OVERLAY_STORE)) {
+            database.createObjectStore(INTENT_OVERLAY_STORE, {
+              keyPath: [
+                "libraryId",
+                "epochId",
+                "actorId",
+                "firstIntentSequence",
+              ],
+            });
+          }
           if (!database.objectStoreNames.contains(RESULT_ACTORS_STORE)) {
             database.createObjectStore(RESULT_ACTORS_STORE, {
               keyPath: ["libraryId", "epochId", "actorId"],
@@ -6376,6 +8101,19 @@ class PwaLibraryCorePortableCheckpointStore
             database.createObjectStore(PWA_ACTOR_ENROLLMENT_REQUESTS_STORE, {
               keyPath: ["libraryId", "authorityStateDigest"],
             });
+          }
+          if (
+            event.oldVersion > 0 &&
+            event.oldVersion < 10 &&
+            request.transaction
+          ) {
+            request.transaction.objectStore(CONTROL_STORE).put({
+              canonicalEnvelopeBytes: 0,
+              key: INTENT_OVERLAY_BACKFILL_KEY,
+              operationCount: 0,
+              status: "pending",
+              transactionCount: 0,
+            } satisfies PortableIntentOverlayBackfillRecord);
           }
           const hydrateFeedRows = (transaction: IDBTransaction): void => {
             const counts = new Map<string, number>();

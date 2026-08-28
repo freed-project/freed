@@ -14,11 +14,15 @@
     },
     {
       "id": 4,
-      "status": "current",
-      "source": "docs/PHASE-4-SYNC.md"
+      "source": "docs/PHASE-4-SYNC.md",
+      "status": "current"
     },
-    { "id": 5, "status": "current", "source": "docs/PHASE-5-DESKTOP.md" },
-    { "id": 6, "status": "complete", "source": "docs/PHASE-6-PWA.md" },
+    {
+      "id": 5,
+      "status": "current",
+      "source": "docs/PHASE-5-DESKTOP.md"
+    },
+    { "id": 6, "status": "current", "source": "docs/PHASE-6-PWA.md" },
     {
       "id": 7,
       "status": "current",
@@ -39,7 +43,11 @@
       "status": "upcoming",
       "source": "docs/PHASE-10-POLISH.md"
     },
-    { "id": 11, "status": "upcoming", "source": "docs/PHASE-11-OPENCLAW.md" },
+    {
+      "id": 11,
+      "source": "docs/PHASE-11-OPENCLAW.md",
+      "status": "current"
+    },
     {
       "id": 12,
       "status": "current",

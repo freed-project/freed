@@ -44,6 +44,14 @@ const mainReleaseValidationWorkflow = readFileSync(
   ),
   "utf8",
 );
+const toolingNightlyWorkflow = readFileSync(
+  path.join(scriptsDir, "..", ".github", "workflows", "tooling-nightly.yml"),
+  "utf8",
+);
+const aptSourceSanitizer = readFileSync(
+  path.join(scriptsDir, "ci-sanitize-apt-sources.sh"),
+  "utf8",
+);
 
 test("release preparation uses the channel's protected branch as its exact base", () => {
   assert.match(releasePrep, /CHANNEL="production"/);
@@ -185,6 +193,69 @@ test("release identity lanes receive authenticated pull request read access", ()
     assert.doesNotMatch(workflow, /--library-core-review-draft/);
     assert.doesNotMatch(workflow, /--historical-release-note-correction/);
   }
+});
+
+test("native dependency setup sanitizes unstable runner sources before apt update", () => {
+  assert.match(
+    aptSourceSanitizer,
+    /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
+  );
+  assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
+  const archiveAssignment = aptSourceSanitizer
+    .split("\n")
+    .find((line) => line.startsWith("readonly ubuntu_archive="));
+  assert.equal(
+    archiveAssignment,
+    'readonly ubuntu_archive="https://archive.ubuntu.com/ubuntu"',
+  );
+  assert.equal(
+    aptSourceSanitizer.split("${ubuntu_archive}").length - 1,
+    2,
+    "both Azure mirror variants route through the canonical archive",
+  );
+
+  for (const [name, workflow, expectedCount] of [
+    ["CI", ciWorkflow, 2],
+    ["production validation", mainReleaseValidationWorkflow, 1],
+    ["release", releaseWorkflow, 1],
+  ]) {
+    const blocks = workflow.match(
+      /- name: Install native Linux dependencies[\s\S]*?(?=\n      - name:)/g,
+    );
+    assert.equal(blocks?.length, expectedCount, `${name} native setup count`);
+    for (const block of blocks ?? []) {
+      const sourceSanitizer = block.indexOf(
+        "bash scripts/ci-sanitize-apt-sources.sh",
+      );
+      const aptUpdate = block.indexOf("sudo apt-get update");
+      assert.ok(sourceSanitizer >= 0, `${name} sanitizes apt sources`);
+      assert.ok(
+        sourceSanitizer < aptUpdate,
+        `${name} sanitizes apt sources before apt update`,
+      );
+    }
+  }
+
+  const releaseLinuxBlock = releaseWorkflow.match(
+    /- name: Install Linux dependencies[\s\S]*?(?=\n      - name:)/,
+  )?.[0];
+  assert.ok(releaseLinuxBlock, "release Linux setup exists");
+  assert.ok(
+    releaseLinuxBlock.indexOf("bash scripts/ci-sanitize-apt-sources.sh") <
+      releaseLinuxBlock.indexOf("sudo apt-get update"),
+    "release Linux packaging sanitizes apt sources before apt update",
+  );
+
+  const nightlyPlaywrightBlock = toolingNightlyWorkflow.match(
+    /- name: Install Playwright browsers[\s\S]*?(?=\n      - name:)/,
+  )?.[0];
+  assert.ok(nightlyPlaywrightBlock, "nightly Playwright setup exists");
+  assert.ok(
+    nightlyPlaywrightBlock.indexOf(
+      "bash ../../scripts/ci-sanitize-apt-sources.sh",
+    ) < nightlyPlaywrightBlock.indexOf("npx playwright install --with-deps"),
+    "nightly Playwright setup sanitizes apt sources before package resolution",
+  );
 });
 
 test("dev tag validation inherits the exact successful dev integration receipt", () => {

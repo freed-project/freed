@@ -179,11 +179,26 @@ test("release admission and repository configuration changes use focused feature
     "scripts/release-tag-publisher-native.test.mjs",
     "scripts/release-workflow-matrix.test.mjs",
     "scripts/repository-config.test.mjs",
+    "scripts/lib/retired-automerge-runtime.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
+    "scripts/validate-retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.test.mjs",
     "scripts/validate-dev-integration-receipt.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
     "scripts/validate-worktree.mjs",
     "scripts/validate-worktree.test.mjs",
+  ]);
+
+  assert.deepEqual(selection.suites, []);
+  assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
+test("roadmap changes use focused feature validation without tooling shards", () => {
+  const selection = selectApplicableSuites([
+    "docs/PHASE-6-PWA.md",
+    "docs/roadmap-status.json",
+    "scripts/validate-roadmap-status.mjs",
+    "scripts/validate-roadmap-status.test.mjs",
   ]);
 
   assert.deepEqual(selection.suites, []);

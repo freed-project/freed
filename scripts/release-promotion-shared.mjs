@@ -43,12 +43,13 @@ const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
+  "chore: refresh dev promotion for production release (#1538)",
   "chore: promote dev into main for cloud conflict recovery (#784)",
   "chore: promote dev into main for PWA sync recovery (#798)",
   "chore: promote updater asset url fix to main (#313)",
 ]);
 export const REVERSE_INTEGRATION_COMMIT_SUBJECT_PATTERN =
-  /^(?:chore|fix): (?:merge main (?:back )?into dev(?: .*)?|reverse integrate (?:main|v\d+\.\d+\.\d+)(?: into dev| after v\d+\.\d+\.\d+| production release)?|backflow v\d+\.\d+\.\d+ main into dev|sync main(?: release artifacts)?(?: back)? into dev(?: .*)?)(?: \(#\d+\))?$/;
+  /^(?:chore|fix): (?:merge main (?:back )?into dev(?: .*)?|reverse integrate (?:main|v\d+\.\d+\.\d+)(?: into dev| after v\d+\.\d+\.\d+| production release| release identity)?|backflow v\d+\.\d+\.\d+ main into dev|sync main(?: release artifacts)?(?: back)? into dev(?: .*)?)(?: \(#\d+\))?$/;
 
 function runGit(args, { cwd } = {}) {
   return execFileSync("git", args, {

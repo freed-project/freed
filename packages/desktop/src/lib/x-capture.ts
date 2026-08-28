@@ -494,11 +494,17 @@ export function captureXTimeline(
   cookies: XCookies,
   requester: XRequester = defaultRequester,
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<XSyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const scrapeStartedAt = Date.now();
     try {
-      const result = await captureXTimelineInternal(cookies, requester, resetEpoch);
+      const result = await captureXTimelineInternal(
+        cookies,
+        requester,
+        resetEpoch,
+        onProviderContact,
+      );
       assertFactoryResetEpoch(resetEpoch);
       recordScrapeOutcome({
         provider: "x",
@@ -529,6 +535,7 @@ async function captureXTimelineInternal(
   cookies: XCookies,
   requester: XRequester,
   resetEpoch: number,
+  onProviderContact?: () => void,
 ): Promise<XSyncResult> {
   const store = useAppStore.getState();
   const startedAt = Date.now();
@@ -557,6 +564,7 @@ async function captureXTimelineInternal(
     }
 
     addDebugEvent("change", "[X] sync started");
+    onProviderContact?.();
     const result = await fetchXTimeline(cookies, requester);
     assertFactoryResetEpoch(resetEpoch);
 

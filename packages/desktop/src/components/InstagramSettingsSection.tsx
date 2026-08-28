@@ -34,6 +34,7 @@ import {
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
@@ -46,6 +47,7 @@ import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 
 // =============================================================================
 // Diagnostic Panel
@@ -146,6 +148,11 @@ export function InstagramSettingsSection({
         setLastDiag(result.diag);
       } catch (err) {
         console.error("Instagram feed capture failed:", err);
+      } finally {
+        rescheduleProviderAfterExternalSettlement({
+          provider: "instagram",
+          unblockAuth: trigger === "post_login",
+        });
       }
     },
     [],
@@ -356,6 +363,7 @@ export function InstagramSettingsSection({
               </p>
             )}
 
+            <ProviderSyncCadenceControl provider="instagram" />
             <ProviderHealthSectionSummary
               provider="instagram"
               showMessages={

@@ -1,0 +1,18 @@
+{
+  "channel": "production",
+  "dayKey": "26.8.15",
+  "date": "2026-08-15",
+  "preferredDeck": "Freed now runs its Library on bounded SQLite storage across Freed Desktop and the PWA, with repaired Google Drive sync and substantially lower memory demand.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "SQLite-first Library Core across Freed Desktop and the PWA",
+    "Repaired Google Drive checkpoint publication and PWA import",
+    "Lower memory demand across Library, Friends, and map rendering"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-08-15T11:09:51.499Z"
+}

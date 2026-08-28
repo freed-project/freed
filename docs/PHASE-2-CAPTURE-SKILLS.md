@@ -331,11 +331,12 @@ unbounded memory or CPU.
 
 ### RSS Polling
 
-- Default poll interval: 30 minutes
-- Scheduled desktop polls refresh only due stale feeds in capped batches, while manual refresh still covers all enabled feeds
+- Default poll interval: 3 hours
+- One device-local interval controls scheduled RSS refresh from 5 minutes to 24 hours
+- Scheduled Freed Desktop polls refresh only stale, retry-eligible feeds in capped batches, while manual refresh still covers all enabled feeds
+- Sleep and wake debt coalesces into one persisted RSS opportunity and never starts a social provider
 - Respects `Cache-Control` and `Retry-After` headers
 - Conditional GET reduces bandwidth by ~90%
-- Feed-specific intervals can be configured
 
 ### Data Flow
 

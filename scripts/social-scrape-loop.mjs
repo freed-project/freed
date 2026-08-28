@@ -26,18 +26,45 @@ const DEFAULT_APP_SUPPORT_DIR = path.join(
   "Application Support",
   "wtf.freed.desktop",
 );
-const DEFAULT_HEALTH_LOG = path.join(DEFAULT_APP_SUPPORT_DIR, "runtime-health.jsonl");
-const DEFAULT_DIAGNOSTICS_LOG = path.join(DEFAULT_APP_SUPPORT_DIR, "runtime-diagnostics.jsonl");
-const DEFAULT_PROVIDER_HEALTH_STORE = path.join(DEFAULT_APP_SUPPORT_DIR, "sync-health.json");
-const DEFAULT_OUTPUT = path.join("/tmp", "freed-social-scrape-loop", "latest-report.json");
-const DEFAULT_LOCK_PATH = path.join("/tmp", "freed-social-scrape-loop", "run.lock");
+const DEFAULT_HEALTH_LOG = path.join(
+  DEFAULT_APP_SUPPORT_DIR,
+  "runtime-health.jsonl",
+);
+const DEFAULT_DIAGNOSTICS_LOG = path.join(
+  DEFAULT_APP_SUPPORT_DIR,
+  "runtime-diagnostics.jsonl",
+);
+const DEFAULT_PROVIDER_HEALTH_STORE = path.join(
+  DEFAULT_APP_SUPPORT_DIR,
+  "sync-health.json",
+);
+const DEFAULT_OUTPUT = path.join(
+  "/tmp",
+  "freed-social-scrape-loop",
+  "latest-report.json",
+);
+const DEFAULT_LOCK_PATH = path.join(
+  "/tmp",
+  "freed-social-scrape-loop",
+  "run.lock",
+);
 const DEFAULT_JSONL_TAIL_BYTES = 8 * 1024 * 1024;
 const HEAVY_DIAGNOSTIC_FIELDS = ["sampleSummary", "vmmapSummary"];
-const PROVIDERS = ["facebook", "instagram", "linkedin", "youtube", "x"];
+const PROVIDERS = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "youtube",
+  "x",
+];
 const PROVIDER_LABELS = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  medium: "Medium",
+  substack: "Substack",
   youtube: "YouTube",
   x: "X",
 };
@@ -314,7 +341,10 @@ function compactRuntimeRow(row) {
   return compacted;
 }
 
-export function readJsonl(filePath, { tail = 5000, maxBytes = DEFAULT_JSONL_TAIL_BYTES } = {}) {
+export function readJsonl(
+  filePath,
+  { tail = 5000, maxBytes = DEFAULT_JSONL_TAIL_BYTES } = {},
+) {
   if (!filePath || !existsSync(filePath)) {
     return { exists: false, rows: [], parseErrors: 0 };
   }
@@ -334,7 +364,9 @@ export function readJsonl(filePath, { tail = 5000, maxBytes = DEFAULT_JSONL_TAIL
 }
 
 function normalizeProvider(value) {
-  const normalized = String(value ?? "").trim().toLowerCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (normalized === "twitter") {
     return "x";
   }
@@ -350,7 +382,8 @@ function providerFromRow(row) {
     return direct;
   }
 
-  const haystack = `${row.operation ?? ""} ${row.reason ?? ""} ${row.source ?? ""}`.toLowerCase();
+  const haystack =
+    `${row.operation ?? ""} ${row.reason ?? ""} ${row.source ?? ""}`.toLowerCase();
   if (haystack.includes("facebook")) {
     return "facebook";
   }
@@ -403,6 +436,14 @@ function emptyProviderStats() {
     emptyExtractions: 0,
     authFailures: 0,
     placeholderFailures: 0,
+    scheduleAttempts: 0,
+    scheduleOutcomes: 0,
+    scheduleSuccesses: 0,
+    scheduleRuntimeDeferrals: 0,
+    scheduleCoalescedIntervals: 0,
+    maxScheduleOverdueMs: 0,
+    lastScheduleAttemptTsMs: 0,
+    lastScheduleOutcomeTsMs: 0,
     maxWebkitResidentBytes: 0,
     maxAppResidentBytes: 0,
     lastEventTsMs: 0,
@@ -433,13 +474,22 @@ function emptyProviderStats() {
 }
 
 function updateProviderStats(stats, row) {
-  stats.maxWebkitResidentBytes = Math.max(stats.maxWebkitResidentBytes, rowWebkitResidentBytes(row));
-  stats.maxAppResidentBytes = Math.max(stats.maxAppResidentBytes, rowAppResidentBytes(row));
+  stats.maxWebkitResidentBytes = Math.max(
+    stats.maxWebkitResidentBytes,
+    rowWebkitResidentBytes(row),
+  );
+  stats.maxAppResidentBytes = Math.max(
+    stats.maxAppResidentBytes,
+    rowAppResidentBytes(row),
+  );
   stats.lastEventTsMs = Math.max(stats.lastEventTsMs, Number(row.tsMs ?? 0));
 
   if (row.event === "scrape_memory_preflight") {
     stats.preflights += 1;
-    stats.lastPreflightTsMs = Math.max(stats.lastPreflightTsMs, Number(row.tsMs ?? 0));
+    stats.lastPreflightTsMs = Math.max(
+      stats.lastPreflightTsMs,
+      Number(row.tsMs ?? 0),
+    );
     const pressureLevel = String(row.pressureLevel ?? "").toLowerCase();
     if (pressureLevel === "high") {
       stats.highPreflights += 1;
@@ -447,13 +497,18 @@ function updateProviderStats(stats, row) {
     if (pressureLevel === "critical") {
       stats.criticalPreflights += 1;
     }
-    if (row.mayProceed === false || pressureLevel === "high" || pressureLevel === "critical") {
+    if (
+      row.mayProceed === false ||
+      pressureLevel === "high" ||
+      pressureLevel === "critical"
+    ) {
       stats.blockedPreflights += 1;
       const tsMs = Number(row.tsMs ?? 0);
       if (tsMs >= stats.lastBlockedPreflightTsMs) {
         stats.lastBlockedPreflightTsMs = tsMs;
         stats.lastBlockedPreflightPressureLevel = pressureLevel;
-        stats.lastBlockedPreflightWebkitResidentBytes = rowWebkitResidentBytes(row);
+        stats.lastBlockedPreflightWebkitResidentBytes =
+          rowWebkitResidentBytes(row);
         stats.lastMemorySampleAfterBlockedTsMs = 0;
         stats.lastMemorySampleAfterBlockedWebkitResidentBytes = 0;
         stats.minMemorySampleAfterBlockedWebkitResidentBytes = null;
@@ -476,6 +531,45 @@ function updateProviderStats(stats, row) {
     stats.memoryCooldowns += 1;
   }
 
+  if (row.event === "provider_schedule_claimed") {
+    stats.scheduleAttempts += 1;
+    stats.scheduleCoalescedIntervals += Math.max(
+      0,
+      Math.floor(
+        Number(row.dueAgeMs ?? 0) /
+          Math.max(1, Number(row.lowerBoundMs ?? 1)),
+      ),
+    );
+    stats.maxScheduleOverdueMs = Math.max(
+      stats.maxScheduleOverdueMs,
+      Number(row.dueAgeMs ?? 0),
+    );
+    stats.lastScheduleAttemptTsMs = Math.max(
+      stats.lastScheduleAttemptTsMs,
+      Number(row.tsMs ?? 0),
+    );
+  }
+
+  if (
+    [
+      "provider_schedule_settled",
+      "provider_schedule_backoff",
+      "provider_schedule_state_blocked",
+      "provider_schedule_deferred",
+    ].includes(row.event) &&
+    row.attemptId
+  ) {
+    stats.scheduleOutcomes += 1;
+    if (row.outcome === "success") stats.scheduleSuccesses += 1;
+    if (row.event === "provider_schedule_deferred") {
+      stats.scheduleRuntimeDeferrals += 1;
+    }
+    stats.lastScheduleOutcomeTsMs = Math.max(
+      stats.lastScheduleOutcomeTsMs,
+      Number(row.tsMs ?? 0),
+    );
+  }
+
   const stage = String(row.stage ?? row.failureStage ?? "").toLowerCase();
   if (stage === "extract_silent") {
     stats.silentExtractions += 1;
@@ -489,7 +583,9 @@ function updateProviderStats(stats, row) {
 }
 
 export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
-  const providers = Object.fromEntries(PROVIDERS.map((provider) => [provider, emptyProviderStats()]));
+  const providers = Object.fromEntries(
+    PROVIDERS.map((provider) => [provider, emptyProviderStats()]),
+  );
   const events = new Map();
   let rendererRecoveryAttempts = 0;
   let mainRendererRecoveryVerifications = 0;
@@ -508,9 +604,18 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
   for (const row of rows) {
     const event = String(row.event ?? "unknown");
     events.set(event, (events.get(event) ?? 0) + 1);
-    maxWebkitResidentBytes = Math.max(maxWebkitResidentBytes, rowWebkitResidentBytes(row));
-    maxAppResidentBytes = Math.max(maxAppResidentBytes, rowAppResidentBytes(row));
-    maxEventLoopLagMs = Math.max(maxEventLoopLagMs, Number(row.eventLoopLagMs ?? 0));
+    maxWebkitResidentBytes = Math.max(
+      maxWebkitResidentBytes,
+      rowWebkitResidentBytes(row),
+    );
+    maxAppResidentBytes = Math.max(
+      maxAppResidentBytes,
+      rowAppResidentBytes(row),
+    );
+    maxEventLoopLagMs = Math.max(
+      maxEventLoopLagMs,
+      Number(row.eventLoopLagMs ?? 0),
+    );
     maxDomNodeCount = Math.max(maxDomNodeCount, Number(row.domNodeCount ?? 0));
     lastTsMs = Math.max(lastTsMs, Number(row.tsMs ?? 0));
 
@@ -530,27 +635,44 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
       const tsMs = Number(row.tsMs ?? 0);
       const webkitResidentBytes = rowWebkitResidentBytes(row);
       for (const stats of Object.values(providers)) {
-        if (stats.lastBlockedPreflightTsMs <= 0 || tsMs <= stats.lastBlockedPreflightTsMs) {
+        if (
+          stats.lastBlockedPreflightTsMs <= 0 ||
+          tsMs <= stats.lastBlockedPreflightTsMs
+        ) {
           continue;
         }
 
         stats.lastMemorySampleAfterBlockedTsMs = tsMs;
-        stats.lastMemorySampleAfterBlockedWebkitResidentBytes = webkitResidentBytes;
+        stats.lastMemorySampleAfterBlockedWebkitResidentBytes =
+          webkitResidentBytes;
         stats.lastMemorySampleAfterBlockedBackgroundWorkPaused =
-          typeof row.backgroundWorkPaused === "boolean" ? row.backgroundWorkPaused : null;
-        stats.lastMemorySampleAfterBlockedPauseReason = String(row.backgroundPauseReason ?? "");
-        stats.lastMemorySampleAfterBlockedPauseRemainingMs =
-          Number.isFinite(row.backgroundPauseRemainingMs) ? row.backgroundPauseRemainingMs : null;
+          typeof row.backgroundWorkPaused === "boolean"
+            ? row.backgroundWorkPaused
+            : null;
+        stats.lastMemorySampleAfterBlockedPauseReason = String(
+          row.backgroundPauseReason ?? "",
+        );
+        stats.lastMemorySampleAfterBlockedPauseRemainingMs = Number.isFinite(
+          row.backgroundPauseRemainingMs,
+        )
+          ? row.backgroundPauseRemainingMs
+          : null;
         stats.lastMemorySampleAfterBlockedSafeModeActive =
           typeof row.safeModeActive === "boolean" ? row.safeModeActive : null;
-        stats.lastMemorySampleAfterBlockedActiveJob = row.activeBackgroundJob ?? null;
-        stats.lastMemorySampleAfterBlockedActiveJobAgeMs =
-          Number.isFinite(row.activeBackgroundJobAgeMs) ? row.activeBackgroundJobAgeMs : null;
+        stats.lastMemorySampleAfterBlockedActiveJob =
+          row.activeBackgroundJob ?? null;
+        stats.lastMemorySampleAfterBlockedActiveJobAgeMs = Number.isFinite(
+          row.activeBackgroundJobAgeMs,
+        )
+          ? row.activeBackgroundJobAgeMs
+          : null;
         if (
           stats.minMemorySampleAfterBlockedWebkitResidentBytes === null ||
-          webkitResidentBytes < stats.minMemorySampleAfterBlockedWebkitResidentBytes
+          webkitResidentBytes <
+            stats.minMemorySampleAfterBlockedWebkitResidentBytes
         ) {
-          stats.minMemorySampleAfterBlockedWebkitResidentBytes = webkitResidentBytes;
+          stats.minMemorySampleAfterBlockedWebkitResidentBytes =
+            webkitResidentBytes;
         }
       }
     }
@@ -559,7 +681,11 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
   return {
     generatedAt: new Date().toISOString(),
     sampleCount: healthRows.length + diagnosticsRows.length,
-    eventCounts: Object.fromEntries([...events.entries()].sort(([left], [right]) => left.localeCompare(right))),
+    eventCounts: Object.fromEntries(
+      [...events.entries()].sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
     providers,
     rendererRecoveryAttempts,
     mainRendererRecoveryVerifications,
@@ -577,7 +703,11 @@ export function readJsonFile(filePath) {
   }
 
   try {
-    return { exists: true, value: JSON.parse(readFileSync(filePath, "utf8")), parseError: false };
+    return {
+      exists: true,
+      value: JSON.parse(readFileSync(filePath, "utf8")),
+      parseError: false,
+    };
   } catch {
     return { exists: true, value: null, parseError: true };
   }
@@ -587,21 +717,32 @@ function providerHealthRoot(value) {
   if (!value || typeof value !== "object") {
     return null;
   }
-  return value["provider-health"] && typeof value["provider-health"] === "object"
+  return value["provider-health"] &&
+    typeof value["provider-health"] === "object"
     ? value["provider-health"]
     : value;
 }
 
 function sortedHealthAttempts(state) {
-  const attempts = Array.isArray(state?.latestAttempts) ? state.latestAttempts : [];
+  const attempts = Array.isArray(state?.latestAttempts)
+    ? state.latestAttempts
+    : [];
   return attempts
     .filter((attempt) => attempt && typeof attempt === "object")
-    .sort((left, right) => Number(right.finishedAt ?? 0) - Number(left.finishedAt ?? 0));
+    .sort(
+      (left, right) =>
+        Number(right.finishedAt ?? 0) - Number(left.finishedAt ?? 0),
+    );
 }
 
-export function applyProviderHealthStore(summary, providerHealthValue, nowMs = Date.now()) {
+export function applyProviderHealthStore(
+  summary,
+  providerHealthValue,
+  nowMs = Date.now(),
+) {
   const root = providerHealthRoot(providerHealthValue);
-  const providerStates = root?.providers && typeof root.providers === "object" ? root.providers : {};
+  const providerStates =
+    root?.providers && typeof root.providers === "object" ? root.providers : {};
 
   for (const provider of PROVIDERS) {
     const state = providerStates[provider];
@@ -610,10 +751,14 @@ export function applyProviderHealthStore(summary, providerHealthValue, nowMs = D
       continue;
     }
 
-    const pause = state.pause && typeof state.pause === "object" ? state.pause : null;
+    const pause =
+      state.pause && typeof state.pause === "object" ? state.pause : null;
     const pausedUntil = Number(pause?.pausedUntil ?? NaN);
-    stats.healthPauseActive = Number.isFinite(pausedUntil) && pausedUntil > nowMs;
-    stats.healthPauseUntilMs = Number.isFinite(pausedUntil) ? pausedUntil : null;
+    stats.healthPauseActive =
+      Number.isFinite(pausedUntil) && pausedUntil > nowMs;
+    stats.healthPauseUntilMs = Number.isFinite(pausedUntil)
+      ? pausedUntil
+      : null;
     stats.healthPauseReason = String(pause?.pauseReason ?? "");
 
     const latestAttempt = sortedHealthAttempts(state)[0];
@@ -621,14 +766,20 @@ export function applyProviderHealthStore(summary, providerHealthValue, nowMs = D
       continue;
     }
 
-    stats.healthLatestAttemptFinishedAtMs = Number(latestAttempt.finishedAt ?? 0);
+    stats.healthLatestAttemptFinishedAtMs = Number(
+      latestAttempt.finishedAt ?? 0,
+    );
     stats.healthLatestAttemptOutcome = String(latestAttempt.outcome ?? "");
     stats.healthLatestAttemptStage = String(latestAttempt.stage ?? "");
     stats.healthLatestAttemptReason = String(latestAttempt.reason ?? "");
-    stats.healthLatestAttemptItemsSeen = Number.isFinite(latestAttempt.itemsSeen)
+    stats.healthLatestAttemptItemsSeen = Number.isFinite(
+      latestAttempt.itemsSeen,
+    )
       ? latestAttempt.itemsSeen
       : null;
-    stats.healthLatestAttemptItemsAdded = Number.isFinite(latestAttempt.itemsAdded)
+    stats.healthLatestAttemptItemsAdded = Number.isFinite(
+      latestAttempt.itemsAdded,
+    )
       ? latestAttempt.itemsAdded
       : null;
   }
@@ -637,12 +788,14 @@ export function applyProviderHealthStore(summary, providerHealthValue, nowMs = D
 }
 
 function priority(level) {
-  return {
-    critical: 100,
-    high: 75,
-    medium: 50,
-    low: 25,
-  }[level] ?? 0;
+  return (
+    {
+      critical: 100,
+      high: 75,
+      medium: 50,
+      low: 25,
+    }[level] ?? 0
+  );
 }
 
 function addAction(actions, action) {
@@ -676,9 +829,10 @@ function postBlockRuntimeEvidence(stats) {
   const pieces = [];
   if (stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === true) {
     const reason = stats.lastMemorySampleAfterBlockedPauseReason || "unknown";
-    const remaining = stats.lastMemorySampleAfterBlockedPauseRemainingMs === null
-      ? ""
-      : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedPauseRemainingMs)}`;
+    const remaining =
+      stats.lastMemorySampleAfterBlockedPauseRemainingMs === null
+        ? ""
+        : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedPauseRemainingMs)}`;
     pieces.push(`background work was still paused by ${reason}${remaining}`);
   } else if (stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === false) {
     pieces.push("background work was not paused");
@@ -691,22 +845,28 @@ function postBlockRuntimeEvidence(stats) {
   }
 
   if (stats.lastMemorySampleAfterBlockedActiveJob) {
-    const age = stats.lastMemorySampleAfterBlockedActiveJobAgeMs === null
-      ? ""
-      : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedActiveJobAgeMs)}`;
-    pieces.push(`${stats.lastMemorySampleAfterBlockedActiveJob} was active${age}`);
+    const age =
+      stats.lastMemorySampleAfterBlockedActiveJobAgeMs === null
+        ? ""
+        : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedActiveJobAgeMs)}`;
+    pieces.push(
+      `${stats.lastMemorySampleAfterBlockedActiveJob} was active${age}`,
+    );
   } else {
     pieces.push("no background job was active");
   }
 
-  return pieces.length > 0 ? ` Latest post-block runtime sample: ${pieces.join(", ")}.` : "";
+  return pieces.length > 0
+    ? ` Latest post-block runtime sample: ${pieces.join(", ")}.`
+    : "";
 }
 
 function compactReason(reason) {
-  const normalized = String(reason ?? "").replace(/\s+/g, " ").trim();
-  const trimmed = normalized.length <= 180
-    ? normalized
-    : `${normalized.slice(0, 177)}...`;
+  const normalized = String(reason ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const trimmed =
+    normalized.length <= 180 ? normalized : `${normalized.slice(0, 177)}...`;
   if (trimmed.endsWith(".") && !trimmed.endsWith("...")) {
     return trimmed.slice(0, -1);
   }
@@ -716,41 +876,58 @@ function compactReason(reason) {
 function providerHealthEvidence(stats) {
   const pieces = [];
   if (stats.healthPauseActive) {
-    const remaining = stats.healthPauseUntilMs === null
-      ? ""
-      : ` until ${new Date(stats.healthPauseUntilMs).toISOString()}`;
-    const reason = stats.healthPauseReason ? `, reason: ${compactReason(stats.healthPauseReason)}` : "";
+    const remaining =
+      stats.healthPauseUntilMs === null
+        ? ""
+        : ` until ${new Date(stats.healthPauseUntilMs).toISOString()}`;
+    const reason = stats.healthPauseReason
+      ? `, reason: ${compactReason(stats.healthPauseReason)}`
+      : "";
     pieces.push(`provider health is actively paused${remaining}${reason}`);
-  } else if (stats.healthPauseUntilMs !== null || stats.healthLatestAttemptFinishedAtMs > 0) {
+  } else if (
+    stats.healthPauseUntilMs !== null ||
+    stats.healthLatestAttemptFinishedAtMs > 0
+  ) {
     pieces.push("provider health is not actively paused");
   }
 
   if (stats.healthLatestAttemptFinishedAtMs > 0) {
     const outcome = stats.healthLatestAttemptOutcome || "unknown";
-    const stage = stats.healthLatestAttemptStage ? ` stage ${stats.healthLatestAttemptStage}` : "";
+    const stage = stats.healthLatestAttemptStage
+      ? ` stage ${stats.healthLatestAttemptStage}`
+      : "";
     const reason = stats.healthLatestAttemptReason
       ? `, reason: ${compactReason(stats.healthLatestAttemptReason)}`
       : "";
-    pieces.push(`latest provider-health attempt was ${outcome}${stage}${reason}`);
+    pieces.push(
+      `latest provider-health attempt was ${outcome}${stage}${reason}`,
+    );
   }
 
-  return pieces.length > 0 ? ` Provider-health state: ${pieces.join("; ")}.` : "";
+  return pieces.length > 0
+    ? ` Provider-health state: ${pieces.join("; ")}.`
+    : "";
 }
 
 function latestProviderHealthAttemptIsMemoryRelated(stats) {
-  const haystack = `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
+  const haystack =
+    `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
   return (
     stats.healthLatestAttemptOutcome === "error" &&
-    (haystack.includes("memory") || haystack.includes("webkit") || haystack.includes("rss"))
+    (haystack.includes("memory") ||
+      haystack.includes("webkit") ||
+      haystack.includes("rss"))
   );
 }
 
 function latestProviderHealthAttemptIsEmptyRelated(stats) {
-  const haystack = `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
+  const haystack =
+    `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
   return (
     stats.healthLatestAttemptOutcome === "empty" ||
     (stats.healthLatestAttemptOutcome === "error" &&
-      (haystack.includes("extract_empty") || haystack.includes("returned 0 posts")))
+      (haystack.includes("extract_empty") ||
+        haystack.includes("returned 0 posts")))
   );
 }
 
@@ -758,44 +935,65 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   const actions = [];
   const blockedProviderRisk = [];
   const memoryBudgetBytes = memoryBudgetGib * GIB;
-  const totalCooldowns = Object.values(summary.providers)
-    .reduce((sum, provider) => sum + provider.memoryCooldowns, 0);
-  const totalBlockedPreflights = Object.values(summary.providers)
-    .reduce((sum, provider) => sum + provider.blockedPreflights, 0);
+  const totalCooldowns = Object.values(summary.providers).reduce(
+    (sum, provider) => sum + provider.memoryCooldowns,
+    0,
+  );
+  const totalBlockedPreflights = Object.values(summary.providers).reduce(
+    (sum, provider) => sum + provider.blockedPreflights,
+    0,
+  );
 
   if (summary.maxWebkitResidentBytes >= memoryBudgetBytes) {
     addAction(actions, {
       id: "local-memory-preflight",
       priority: "critical",
       scope: "local-only",
-      title: "Keep WebKit memory gates and renderer recovery ahead of provider work.",
+      title:
+        "Keep WebKit memory gates and renderer recovery ahead of provider work.",
       evidence: `Peak WebKit RSS was ${formatBytes(summary.maxWebkitResidentBytes)} against a ${formatBytes(memoryBudgetBytes)} loop budget.`,
-      nextStep: "Inspect recent scrape_memory_preflight and renderer_recovery_attempt events, then improve local cleanup or cooldown clearing without adding provider traffic.",
+      nextStep:
+        "Inspect recent scrape_memory_preflight and renderer_recovery_attempt events, then improve local cleanup or cooldown clearing without adding provider traffic.",
     });
   }
 
   if (totalCooldowns > 0 || totalBlockedPreflights > 0) {
-    const recoveredProviders = Object.values(summary.providers)
-      .filter((provider) => (
+    const recoveredProviders = Object.values(summary.providers).filter(
+      (provider) =>
         provider.lastBlockedPreflightTsMs > 0 &&
         provider.minMemorySampleAfterBlockedWebkitResidentBytes !== null &&
-        provider.minMemorySampleAfterBlockedWebkitResidentBytes < memoryBudgetBytes
-      )).length;
-    const blockedEvidence = recoveredProviders > 0
-      ? `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed; ${numberFormatter.format(recoveredProviders)} provider${recoveredProviders === 1 ? "" : "s"} later had WebKit RSS recover under the loop budget.`
-      : `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed.`;
+        provider.minMemorySampleAfterBlockedWebkitResidentBytes <
+          memoryBudgetBytes,
+    ).length;
+    const blockedEvidence =
+      recoveredProviders > 0
+        ? `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed; ${numberFormatter.format(recoveredProviders)} provider${recoveredProviders === 1 ? "" : "s"} later had WebKit RSS recover under the loop budget.`
+        : `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed.`;
     addAction(actions, {
       id: "cooldown-recovery",
       priority: "high",
       scope: "local-only",
-      title: "Verify memory cooldowns clear as soon as memory returns to normal.",
+      title:
+        "Verify memory cooldowns clear as soon as memory returns to normal.",
       evidence: blockedEvidence,
-      nextStep: "Use the report's post-block memory samples to prove whether a provider pause is stale before changing provider cadence.",
+      nextStep:
+        "Use the report's post-block memory samples to prove whether a provider pause is stale before changing provider cadence.",
     });
   }
 
   for (const [provider, stats] of Object.entries(summary.providers)) {
     const label = PROVIDER_LABELS[provider];
+    if (stats.scheduleRuntimeDeferrals > 0) {
+      addAction(actions, {
+        id: `${provider}-scheduled-runtime-deferral`,
+        priority: "high",
+        scope: "local-only",
+        title: `Remove local scheduler deferrals from ${label} sync.`,
+        evidence: `${label} recorded ${numberFormatter.format(stats.scheduleRuntimeDeferrals)} runtime deferral${stats.scheduleRuntimeDeferrals === 1 ? "" : "s"} across ${numberFormatter.format(stats.scheduleAttempts)} device-ledger attempt${stats.scheduleAttempts === 1 ? "" : "s"}.`,
+        nextStep:
+          "Inspect coordinator ownership and durable due state. Do not add provider requests or shorten the configured provider bounds.",
+      });
+    }
     if (stats.silentExtractions > 0) {
       addAction(actions, {
         id: `${provider}-silent-extraction`,
@@ -803,7 +1001,8 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Tighten ${label} extractor diagnostics for silent rendered pages.`,
         evidence: `${label} recorded ${numberFormatter.format(stats.silentExtractions)} silent extraction failures.`,
-        nextStep: "Add DOM fixture coverage that distinguishes no events from no posts, then update the parser or failure stage mapping.",
+        nextStep:
+          "Add DOM fixture coverage that distinguishes no events from no posts, then update the parser or failure stage mapping.",
       });
     }
 
@@ -814,14 +1013,19 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Keep ${label} auth failures recoverable and explicit.`,
         evidence: `${label} recorded ${numberFormatter.format(stats.authFailures)} auth-stage failures.`,
-        nextStep: "Check auth cookie diagnostics and settings copy without changing login window cadence.",
+        nextStep:
+          "Check auth cookie diagnostics and settings copy without changing login window cadence.",
       });
     }
 
-    if (stats.emptyExtractions > 0 || latestProviderHealthAttemptIsEmptyRelated(stats)) {
-      const diagnosticsEvidence = stats.emptyExtractions > 0
-        ? `${label} recorded ${numberFormatter.format(stats.emptyExtractions)} empty extraction failures.`
-        : "";
+    if (
+      stats.emptyExtractions > 0 ||
+      latestProviderHealthAttemptIsEmptyRelated(stats)
+    ) {
+      const diagnosticsEvidence =
+        stats.emptyExtractions > 0
+          ? `${label} recorded ${numberFormatter.format(stats.emptyExtractions)} empty extraction failures.`
+          : "";
       const healthEvidence = latestProviderHealthAttemptIsEmptyRelated(stats)
         ? `${diagnosticsEvidence ? " " : ""}Provider-health latest attempt is ${stats.healthLatestAttemptOutcome || "unknown"}${stats.healthLatestAttemptStage ? ` stage ${stats.healthLatestAttemptStage}` : ""}: ${compactReason(stats.healthLatestAttemptReason)}.`
         : "";
@@ -831,7 +1035,8 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Explain why ${label} is returning zero ${provider === "youtube" ? "videos" : "posts"} after a scrape plan.`,
         evidence: `${diagnosticsEvidence}${healthEvidence}`,
-        nextStep: "Inspect local extractor diagnostics, DOM fixture coverage, and failure-stage mapping. Do not add extra provider loads or scripted traversal without explicit approval.",
+        nextStep:
+          "Inspect local extractor diagnostics, DOM fixture coverage, and failure-stage mapping. Do not add extra provider loads or scripted traversal without explicit approval.",
       });
     }
 
@@ -848,14 +1053,16 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Find why ${label} did not plan another scrape after memory recovered.`,
         evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.${postBlockRuntimeEvidence(stats)}${providerHealthEvidence(stats)}`,
-        nextStep: "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
+        nextStep:
+          "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
       });
     }
 
     if (
       stats.lastBlockedPreflightTsMs > 0 &&
       stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null &&
-      stats.minMemorySampleAfterBlockedWebkitResidentBytes < memoryBudgetBytes &&
+      stats.minMemorySampleAfterBlockedWebkitResidentBytes <
+        memoryBudgetBytes &&
       stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === false &&
       stats.lastMemorySampleAfterBlockedSafeModeActive === false &&
       !stats.lastMemorySampleAfterBlockedActiveJob &&
@@ -868,7 +1075,8 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Clear up stale ${label} memory health after runtime recovery.`,
         evidence: `${label} recovered under the memory budget and the scheduler was idle, but the latest provider-health attempt is still ${stats.healthLatestAttemptStage || "memory"}: ${compactReason(stats.healthLatestAttemptReason)}.`,
-        nextStep: "Audit local health projection and retry bookkeeping. Do not enqueue extra provider traffic without explicit approval.",
+        nextStep:
+          "Audit local health projection and retry bookkeeping. Do not enqueue extra provider traffic without explicit approval.",
       });
     }
 
@@ -879,19 +1087,23 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         scope: "local-only",
         title: `Collect ${label} coverage evidence before tuning scraper behavior.`,
         evidence: `${label} had no scrape preflights in the analyzed window.`,
-        nextStep: "Add passive health reporting or fixture coverage first. Do not synthesize provider requests just to fill the metric.",
+        nextStep:
+          "Add passive health reporting or fixture coverage first. Do not synthesize provider requests just to fill the metric.",
       });
     } else if (stats.plans === 0) {
-      const recoveryEvidence = stats.lastBlockedPreflightTsMs > 0 && stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null
-        ? ` Lowest WebKit RSS after the last blocked preflight was ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}.`
-        : "";
+      const recoveryEvidence =
+        stats.lastBlockedPreflightTsMs > 0 &&
+        stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null
+          ? ` Lowest WebKit RSS after the last blocked preflight was ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}.`
+          : "";
       addAction(actions, {
         id: `${provider}-preflight-without-plan`,
         priority: "high",
         scope: "local-only",
         title: `Explain why ${label} preflights do not become scrape plans.`,
         evidence: `${label} had ${numberFormatter.format(stats.preflights)} preflights and no recorded scrape plans.${recoveryEvidence}${providerHealthEvidence(stats)}`,
-        nextStep: "Inspect local deferral and pause state after the latest preflight before changing provider cadence.",
+        nextStep:
+          "Inspect local deferral and pause state after the latest preflight before changing provider cadence.",
       });
     }
   }
@@ -899,29 +1111,49 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   blockedProviderRisk.push(
     {
       id: "extra-feed-navigation",
-      providers: ["Facebook", "Instagram", "LinkedIn", "YouTube", "X"],
+      providers: [
+        "Facebook",
+        "Instagram",
+        "LinkedIn",
+        "Medium",
+        "Substack",
+        "YouTube",
+        "X",
+      ],
       behavior: "Extra authenticated feed loads or refreshes.",
-      whyRisky: "Providers can observe repeated navigation cadence and associate it with automation.",
-      lowestProfileAlternative: "Use local preflight cleanup, passive log analysis, and manual Sync Now while reviewing risk.",
+      whyRisky:
+        "Providers can observe repeated navigation cadence and associate it with automation.",
+      lowestProfileAlternative:
+        "Use local preflight cleanup, passive log analysis, and manual Sync Now while reviewing risk.",
     },
     {
       id: "scripted-scroll-click-recovery",
-      providers: ["Facebook", "Instagram", "LinkedIn", "X"],
-      behavior: "Scripted scrolling, clicking, retrying, or story traversal to force more coverage.",
-      whyRisky: "Interaction timing, depth, and path can become a stable fingerprint.",
-      lowestProfileAlternative: "Replay saved DOM fixtures and provider exports, then gate any live traversal behind explicit approval.",
+      providers: ["Facebook", "Instagram", "LinkedIn", "Medium", "Substack", "X"],
+      behavior:
+        "Scripted scrolling, clicking, retrying, or story traversal to force more coverage.",
+      whyRisky:
+        "Interaction timing, depth, and path can become a stable fingerprint.",
+      lowestProfileAlternative:
+        "Replay saved DOM fixtures and provider exports, then gate any live traversal behind explicit approval.",
     },
     {
       id: "media-comment-hydration",
-      providers: ["Facebook", "Instagram", "LinkedIn", "X"],
-      behavior: "Automatic media preload, comment hydration, reply expansion, or profile backfill.",
-      whyRisky: "It increases request volume and touches routes normal users may not visit in that sequence.",
-      lowestProfileAlternative: "Capture only already-rendered feed content and report missing fields as local diagnostics.",
+      providers: ["Facebook", "Instagram", "LinkedIn", "Medium", "Substack", "X"],
+      behavior:
+        "Automatic media preload, comment hydration, reply expansion, or profile backfill.",
+      whyRisky:
+        "It increases request volume and touches routes normal users may not visit in that sequence.",
+      lowestProfileAlternative:
+        "Capture only already-rendered feed content and report missing fields as local diagnostics.",
     },
   );
 
   return {
-    actions: actions.sort((left, right) => right.priorityScore - left.priorityScore || left.id.localeCompare(right.id)),
+    actions: actions.sort(
+      (left, right) =>
+        right.priorityScore - left.priorityScore ||
+        left.id.localeCompare(right.id),
+    ),
     blockedProviderRisk,
   };
 }
@@ -945,15 +1177,22 @@ export function formatTextReport(report) {
   lines.push("Freed social scrape loop report");
   lines.push(`Generated: ${report.summary.generatedAt}`);
   lines.push(`Samples: ${numberFormatter.format(report.summary.sampleCount)}`);
-  lines.push(`Peak app RSS: ${formatBytes(report.summary.maxAppResidentBytes)}`);
-  lines.push(`Peak WebKit RSS: ${formatBytes(report.summary.maxWebkitResidentBytes)}`);
-  lines.push(`Renderer recovery attempts: ${numberFormatter.format(report.summary.rendererRecoveryAttempts)}`);
+  lines.push(
+    `Peak app RSS: ${formatBytes(report.summary.maxAppResidentBytes)}`,
+  );
+  lines.push(
+    `Peak WebKit RSS: ${formatBytes(report.summary.maxWebkitResidentBytes)}`,
+  );
+  lines.push(
+    `Renderer recovery attempts: ${numberFormatter.format(report.summary.rendererRecoveryAttempts)}`,
+  );
   lines.push("");
   lines.push("Provider coverage:");
   for (const [provider, stats] of Object.entries(report.summary.providers)) {
-    const recovery = stats.lastBlockedPreflightTsMs > 0
-      ? `, post-block min WebKit ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}`
-      : "";
+    const recovery =
+      stats.lastBlockedPreflightTsMs > 0
+        ? `, post-block min WebKit ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}`
+        : "";
     lines.push(
       `- ${PROVIDER_LABELS[provider]}: ${numberFormatter.format(stats.preflights)} preflights, ${numberFormatter.format(stats.plans)} plans, ${numberFormatter.format(stats.memoryCooldowns)} cooldowns, peak WebKit ${formatBytes(stats.maxWebkitResidentBytes)}${recovery}`,
     );
@@ -981,7 +1220,9 @@ export function buildReport(args) {
     summarizeSocialScrapeHealth(health.rows, diagnostics.rows),
     providerHealth.value,
   );
-  const plan = buildOptimizationPlan(summary, { memoryBudgetGib: args.memoryBudgetGib });
+  const plan = buildOptimizationPlan(summary, {
+    memoryBudgetGib: args.memoryBudgetGib,
+  });
   return {
     inputs: {
       healthLog: args.healthLog,
@@ -1041,7 +1282,11 @@ function printLockResult(result, { json = false, action = "claim" } = {}) {
   }
 
   if (action === "release") {
-    console.log(result.released ? "Released social scrape loop lock." : `Did not release social scrape loop lock: ${result.reason}.`);
+    console.log(
+      result.released
+        ? "Released social scrape loop lock."
+        : `Did not release social scrape loop lock: ${result.reason}.`,
+    );
     return;
   }
 
@@ -1050,8 +1295,12 @@ function printLockResult(result, { json = false, action = "claim" } = {}) {
     return;
   }
 
-  const existing = result.existing?.createdAt ? ` Existing lock created at ${result.existing.createdAt}.` : "";
-  console.log(`Social scrape loop already running. Skipping this pass.${existing}`);
+  const existing = result.existing?.createdAt
+    ? ` Existing lock created at ${result.existing.createdAt}.`
+    : "";
+  console.log(
+    `Social scrape loop already running. Skipping this pass.${existing}`,
+  );
 }
 
 async function runWithProcessLock(args) {

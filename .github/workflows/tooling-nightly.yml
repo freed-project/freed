@@ -136,8 +136,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          sudo rm -f /etc/apt/sources.list.d/azure-cli.list \
-            /etc/apt/sources.list.d/azure-cli.sources
+          bash ../../scripts/ci-sanitize-apt-sources.sh
           npx playwright install --with-deps chromium
         working-directory: packages/desktop
 

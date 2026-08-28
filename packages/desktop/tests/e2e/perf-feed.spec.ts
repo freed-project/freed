@@ -406,8 +406,20 @@ test.describe("Mark-as-read enqueue storm", () => {
 
 // ─── 4. Search input ─────────────────────────────────────────────────────────
 
-test.describe("Search input (async MiniSearch index preparation)", () => {
+test.describe("Search input (bounded native Library search)", () => {
   test("typing a 5-character query with 5k items", async ({ app, page }) => {
+    await page.evaluate(() => {
+      window.name = "__freed_e2e_sqlite_library_v1__" + JSON.stringify({
+        active: true,
+        expectedItemCount: 0,
+        items: {},
+        revision: 1,
+        shell: {},
+        sourceDigest: "a".repeat(64),
+        sourceGeneration: 1,
+        sourceRevision: 1,
+      });
+    });
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_XLARGE);
@@ -447,7 +459,7 @@ test.describe("Search input (async MiniSearch index preparation)", () => {
     // Typing should not wait on a synchronous full-corpus index build.
     expect(searchLongTasks.worstMs).toBeLessThan(200);
 
-    // Verify search actually produces results (proves MiniSearch is working).
+    // Verify the bounded native contract returns results.
     await expect(page.locator(".feed-card")).not.toHaveCount(0, { timeout: 2_000 });
 
     // Clear search and verify list restores.

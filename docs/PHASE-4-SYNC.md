@@ -1,288 +1,134 @@
 # Phase 4: Sync Layer
 
 > **Status:** 🚧 In Progress
+
+> **Architecture:** This phase is governed by
+> [LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md) and
+> [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md).
+> Google Drive synchronizes immutable typed protocol objects, never a SQLite
+> file or Library shell. Checkpoints contain normalized records identified by
+> stable registry plus typed primary key. Editable followers publish signed
+> mutation intents and import canonical results from the active Primary. Large
+> content uses optional content-addressed blobs and authenticated range maps.
+> Automerge, ordinal checkpoint identity, IndexedDB Library rows, shell
+> records, shadow stores, and compatibility paths are not part of this
+> architecture.
+
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, the multi-Desktop request warning, the no-cloud-sync launch banner, revision-fenced chunked IndexedDB v3 persistence, stale worker retirement, a production-located compatibility bridge that writes exact Automerge revisions into crash-safe immutable SQLite shadow generations, a receipt-bound external decode path through graph staging, FeedItem reconstruction, lossless row projection, bounded shadow-generation population, and source-fenced product reads from SQLite are implemented. Automerge remains the sole authority. Before the first Automerge decode, Freed Desktop can resume an admitted canonical legacy revision through exact 1 MiB IndexedDB chunks into a native spool, authenticate the finalized bytes with a device-held Ed25519 source-admission key, reconstruct them through disk-backed SQLite, and select one verified immutable derived generation. macOS credential access suppresses all user interaction and fails closed instead of opening a Keychain prompt. The default renderer now evicts the full item corpus and uses bounded SQLite readers or compact native aggregates for all migrated surfaces. Remaining specialized views acquire one shared temporary compatibility projection streamed from the authenticated selected SQLite generation instead of cloned from the Automerge worker. The all-content Freed Desktop feed, when it is not searching, can materialize and select an exact query-specific generation and page compact cards from SQLite. Its materializer preserves exact source enumeration and sends only 128-row pages to SQLite. The non-Saved Friends-only feed, when no search is active, uses the versioned `feed_browse_page_v2` request and evaluates the Person-first Friends predicate before publishing its filtered generation. Version 1 and its all-content callers remain unchanged. The reader pins at most two authenticated immutable generations for at most 60 seconds, caps each SQLite cache at 2 MiB, releases exhausted, cancelled, failed, or replaced sessions, and returns source-bound canonical cursors through the closed protocol. The Saved feed uses a dedicated source-fenced SQLite reader for all four user-facing sort modes, returns 128-row pages, and retains at most two pages while traversing the complete result. Its versioned order pins one recommendation clock and binary global-ID ties without a corpus-sized source-order index; the Freed Desktop compatibility fallback uses the same contract while the PWA remains unchanged. Source changes fail closed to Automerge. Device-local rollback switches restore the compatibility paths. Elected migration authority, remaining compatibility-surface conversion, bounded conversion of the temporary compatibility readers, and replacement-replication activation remain blocked. These are active Gate D SQL read transitions, not the final authority cutover. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud is the remaining core document-sync item. Large offline media uses a separate future transport plan.
-
-> **Current Library Core cutover:** Freed Desktop imports the retained Automerge library once into native SQLite schema v5, then initializes, queries, mutates, searches, exports, diagnoses, and creates 24 retained daily backups without starting the Automerge worker or retaining the item corpus in React. Schema v5 gives both visible-only and all-item timeline paging an order-compatible partial index, so compatibility hydration walks the 19,000-record Library without rebuilding a corpus-sized temporary sort for every page. The old LAN relay and Automerge cloud loops are disabled. The retained Automerge bytes are a pre-import rollback source only. The replacement Google Drive path is enabled by default and streams one exact SQLite revision into bounded logical checkpoint pages, verifies immutable uploads, advances one provisioned control file through its exact ETag, imports a newer remote checkpoint back into SQLite, and transfers the non-expiring writer epoch through one confirmed compare-and-swap backed by a native signed epoch certificate. The last verified cloud control tuple is durable in SQLite, and native product writes, canonical journal commits, actor enrollment, and provider outbox execution reject a retired Desktop before mutation. Freed Desktop separately mirrors each closed, integrity-checked SQLite backup into a private user-visible `Freed Backups` folder through bounded resumable chunks, publishes its immutable manifest only after the database upload completes, and retains 24 off-device generations without copying WAL or SHM. The PWA discovers the sole published control, authenticates and imports its immutable checkpoint into IndexedDB, hydrates a bounded initial product window without starting its Automerge worker, pages the complete ordinary feed directly from the selected IndexedDB generation, scans the complete selected generation in bounded pages for full-library search and shared aggregate surfaces, retains a nonextractable per-Library actor key, publishes a proof-only enrollment request, installs the Desktop-countersigned enrollment, and enqueues signed read, saved, archived, liked, FeedItem removal, and saved-link capture intents without writing Automerge. Saved links materialize immediately in IndexedDB and local search, then the designated Desktop verifies the complete FeedItem envelope and atomically commits its SQLite row, acceptance receipt, and replication outbox entry without foreground article fetching. FeedItem removal evicts the selected IndexedDB row and local search document immediately, then the designated Desktop verifies the signed operation and commits its SQLite tombstone, acceptance receipt, and replication outbox entry atomically. Normal PWA startup no longer creates or precaches the legacy worker or its WASM runtime, and the shared cloud entrypoint loads the CRDT merge code only if an explicit legacy upload calls it. Freed Desktop accepts each verified intent into canonical SQLite and commits its actor-and-epoch-scoped Accepted receipt in the same transaction, then publishes immutable epoch-scoped result segments through an exact result-head compare-and-swap. The PWA imports those results atomically into epoch-scoped IndexedDB rows and preserves them across restart. Continuous immutable generation refresh and activation evidence remain in progress.
+> **Current implementation checkpoint:**
 >
-> **SQLite-only runtime candidate:** The active cutover branch removes the legacy Desktop and PWA workers, the Automerge package and WASM dependency, mutable CRDT cloud merge, WebSocket relay, legacy persistence, legacy snapshot restore, and the native external Automerge decoder and shadow projection stack. Freed Desktop serves feed, Saved, search, item detail, Friends, map, analytics, export, mutation, backup, and cloud publication directly from native SQLite. The PWA serves its Library from bounded IndexedDB pages and immutable Library Core objects. Fresh production bundles contain no Automerge package or WASM asset. Historical contract vocabulary remains source-only debt tracked in issue #1451 and cannot restore the retired runtime. Stable keyset cursors and optional route-level bundle splitting are tracked separately in issues #1452 and #1453. This candidate still requires exact-head validation, a dev release, installation, and live runtime verification before the cutover is declared complete.
-> PWA RSS feed add, rename, and removal now use the same signed intent path. IndexedDB updates immediately, authenticated replay reproduces the change, and Freed Desktop commits the SQLite shell update, optional item tombstones, acceptance receipt, and replication outbox atomically.
-> PWA Person add, bounded batch add, and synchronized profile updates now use one whole-record signed intent contract. Device-local graph coordinates are stripped before signing, IndexedDB updates the selected shell immediately and on authenticated replay, and Freed Desktop commits the Person materialization, acceptance receipt, and replication outbox atomically in native SQLite.
+> The repository contains native SQLite authority, journal, bounded-reader,
+> follower-intent, checkpoint-staging, Drive-control, receipt, backup, and
+> browser semantic foundations. The final generated registry, normalized v2
+> exporter and importer, complete mutation and query cutover, PWA SQLite
+> runtime, selective content plane, one-epoch migration, retired-runtime
+> deletion, and physical-device acceptance remain open.
+
+## Current SQLite sync work
+
+- [x] Define `freed_normalized_checkpoint_v2` registry identity and shared
+      protocol ceilings from one executable source. Rust and TypeScript reject
+      shell registry entries and losslessly chunk and reassemble a 4 MiB legal
+      value without producing a record above 131,072 canonical bytes.
+- [ ] Freeze one generated protocol registry for normalized checkpoint records,
+      operation segments, signed intents, results, content descriptors, range
+      indexes, manifests, and control tuples.
+- [ ] Remove the Library shell checkpoint record and every whole FeedItem JSON
+      checkpoint row.
+- [ ] Export and import typed normalized records through bounded native and
+      browser SQLite transactions.
+- [ ] Enforce the initial 131,072-byte canonical logical-record ceiling,
+      128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
+      native source-response ceiling, subject to the pre-freeze benchmark.
+- [ ] Represent larger legal fields through content descriptors and bounded
+      content-addressed chunks or authenticated range indexes.
+- [ ] Let each client stream, partially cache, fully cache, pin offline, or
+      exclude content without changing checkpoint authority.
+- [ ] Delete Automerge cloud merge, LAN document relay, compatibility control,
+      shell, ordinal identity, dual-engine rollback, and SQLite file transport
+      paths after verified one-epoch cutover.
+- [ ] Preserve current Google Drive endpoints, headers, retries, OAuth behavior,
+      and cadence unless separately approved.
 
 ---
 
-## Overview
+## Sync architecture
 
-Device-to-device sync via Automerge CRDT. Two sync modes, zero external infrastructure.
+One active Primary owns canonical mutation admission for a Library and writer
+epoch. The Primary runs inside Freed Desktop or the headless service and uses
+the shared native SQLite Library Core. Freed Desktop and PWA followers keep
+local SQLite replicas and submit signed mutation intents.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                           SYNC LAYER                            │
-│                                                                 │
-│  HOME NETWORK (instant sync):                                   │
-│  ┌─────────────┐    WebSocket    ┌─────────────┐               │
-│  │   Desktop   │◄──────────────►│  Phone PWA  │               │
-│  │   :8765     │    (<100ms)     │             │               │
-│  └──────┬──────┘                 └─────────────┘               │
-│         │                                                       │
-│         ▼                                                       │
-│  ┌─────────────┐                                                │
-│  │ Cloud Sync  │  (GDrive / iCloud / Dropbox)                  │
-│  │  (backup)   │  User's own account                           │
-│  └─────────────┘                                                │
-│                                                                 │
-│  AWAY FROM HOME (5-30s sync):                                   │
-│  ┌─────────────┐    Cloud File    ┌─────────────┐              │
-│  │   Desktop   │◄────────────────►│  Phone PWA  │              │
-│  └─────────────┘                  └─────────────┘              │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Logical protocol
 
----
+Synchronization exchanges only closed typed logical objects:
 
-## Architecture
+- normalized checkpoint records
+- append-only operation segments
+- actor enrollment and retirement certificates
+- signed follower intents
+- signed Primary acceptance, rejection, and provider-result records
+- authenticated checkpoint, operation, result, and content manifests
+- content descriptors, content-addressed chunks, and authenticated range indexes
+- one small authenticated control tuple
 
-**Key decisions:**
+The protocol never exchanges SQLite files, WAL files, SHM files, rollback
+journals, a Library shell, monolithic `DocState`, or whole FeedItem JSON rows.
 
-- No relay server we operate (reduces legal attack surface)
-- Desktop App / OpenClaw is the source of truth + runs ranking algorithm
-- Cloud storage = backup + away-from-home sync
-- Images cached locally per device (not synced via cloud)
+Checkpoint records are identified by stable registry key plus typed canonical
+primary key. Pages carry at most 128 records and 2,097,152 decoded canonical
+bytes. Each record uses the initial 131,072-byte canonical ceiling until the
+required benchmark freezes the protocol value. Larger legal values use the
+content plane.
 
----
+### Google Drive
 
-## Package Structure
+Google Drive `appDataFolder` stores immutable protocol objects and one
+compare-and-swap control file. The control tuple binds the Library, writer
+epoch, schema version, protocol version, registry fingerprint, checkpoint,
+operation frontier, and content root.
 
-```
-packages/sync/
-├── src/
-│   ├── index.ts              # Public API
-│   ├── repo.ts               # automerge-repo wrapper
-│   ├── storage/
-│   │   ├── indexeddb.ts      # Browser storage adapter
-│   │   └── filesystem.ts     # Node/Bun storage adapter
-│   ├── network/
-│   │   ├── local-relay.ts    # WebSocket server
-│   │   └── cloud.ts          # Cloud storage sync
-│   └── status.ts             # Sync status observables
-├── package.json
-└── tsconfig.json
-```
+Publication uploads immutable dependencies first, verifies their stored bytes,
+then advances the exact prior control revision. A lost commit response is
+resolved by authenticated readback. Unreachable immutable objects are safe to
+collect after retention and reachability proof.
 
----
+This phase preserves existing Google Drive endpoints, headers, OAuth behavior,
+retry policy, and cadence. Changing those behaviors requires separate scope and
+evidence.
 
-## Core Implementation
+### Editable followers
 
-### Local WebSocket Relay
+A follower commits its signed intent and sparse optimistic overlay atomically
+in local SQLite. The intent binds the Library, epoch, actor, capability,
+transaction, ordered operations, actor-chain predecessor, and idempotency key.
 
-```typescript
-// packages/sync/src/network/local-relay.ts
-import { WebSocketServer } from "ws";
-import { Repo } from "@automerge/automerge-repo";
-import { NodeWSServerAdapter } from "@automerge/automerge-repo-network-websocket";
+The Primary verifies the complete envelope and either commits the whole
+transaction or rejects it. It publishes a signed result that the follower
+applies atomically. Provider acceptance and provider completion are distinct.
+A client cannot display provider success until the Primary records the actual
+provider result.
 
-const DEFAULT_PORT = 8765;
+### Selective content
 
-/**
- * Start local WebSocket relay
- * PWA connects via ws://192.168.x.x:8765 or ws://desktop.local:8765
- */
-export function startLocalRelay(repo: Repo, port = DEFAULT_PORT): void {
-  const wss = new WebSocketServer({ port });
-  const adapter = new NodeWSServerAdapter(wss);
-  repo.networkSubsystem.addNetworkAdapter(adapter);
+Metadata convergence does not require content hydration. Each client chooses
+metadata-only, stream, partial-cache, full-cache, pinned-offline, or excluded
+behavior for each asset or rendition. Multi-gigabyte media uses authenticated
+range indexes and bounded chunks. Content bytes never enlarge a logical
+checkpoint record.
 
-  console.log(`Freed sync relay running on ws://localhost:${port}`);
-}
-```
+### Failure behavior
 
-### PWA Client Connection
+Invalid signatures, stale writer epochs, split authority, unknown versions,
+registry drift, gaps, changed replay, oversized records, incomplete manifests,
+content digest mismatch, and stale cursors fail closed. Checkpoint imports
+stage into SQLite and activate only after complete registry, frontier, state,
+content-root, and integrity verification.
 
-```typescript
-// packages/sync/src/network/client.ts
-import { BrowserWebSocketClientAdapter } from "@automerge/automerge-repo-network-websocket";
-
-export async function connectToLocalRelay(
-  repo: Repo,
-  host: string,
-  port = 8765
-): Promise<boolean> {
-  const url = `ws://${host}:${port}`;
-
-  try {
-    const ws = new WebSocket(url);
-    await new Promise((resolve, reject) => {
-      ws.onopen = resolve;
-      ws.onerror = reject;
-      setTimeout(reject, 2000);
-    });
-    ws.close();
-
-    const adapter = new BrowserWebSocketClientAdapter(url);
-    repo.networkSubsystem.addNetworkAdapter(adapter);
-    return true;
-  } catch {
-    return false; // Fall back to cloud sync
-  }
-}
-```
-
-### Cloud Storage Sync
-
-```typescript
-// packages/sync/src/network/cloud.ts
-import * as A from "@automerge/automerge";
-
-interface CloudConfig {
-  provider: "gdrive" | "icloud" | "dropbox";
-  credentials: OAuthCredentials;
-}
-
-export async function syncToCloud(
-  doc: A.Doc<unknown>,
-  config: CloudConfig
-): Promise<void> {
-  const binary = A.save(doc);
-
-  switch (config.provider) {
-    case "gdrive":
-      await syncToGoogleDrive(binary, config.credentials);
-      break;
-    case "icloud":
-      await syncToICloud(binary, config.credentials);
-      break;
-    case "dropbox":
-      await syncToDropbox(binary, config.credentials);
-      break;
-  }
-}
-
-export async function syncFromCloud(
-  localDoc: A.Doc<unknown>,
-  config: CloudConfig
-): Promise<A.Doc<unknown>> {
-  const remoteBinary = await fetchFromCloud(config);
-  if (!remoteBinary) return localDoc;
-
-  const remoteDoc = A.load(remoteBinary);
-  return A.merge(localDoc, remoteDoc);
-}
-```
-
-### Sync Status API
-
-```typescript
-// packages/sync/src/status.ts
-export interface SyncStatus {
-  mode: "local" | "cloud" | "offline";
-  state: "idle" | "syncing" | "error";
-  lastSyncAt: number | null;
-  localRelayConnected: boolean;
-  cloudProvider?: "gdrive" | "icloud" | "dropbox";
-  error?: string;
-}
-
-export function createSyncManager(repo: Repo): SyncManager {
-  return {
-    async sync(): Promise<void> {
-      if (await this.tryLocalRelay()) return;
-      await this.syncCloud();
-    },
-    subscribe(listener: (status: SyncStatus) => void): () => void {
-      /* ... */
-    },
-    async tryLocalRelay(): Promise<boolean> {
-      /* ... */
-    },
-    async syncCloud(): Promise<void> {
-      /* ... */
-    },
-    getStatus(): SyncStatus {
-      /* ... */
-    },
-  };
-}
-```
-
----
-
-## Sync Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        PWA OPENS                                 │
-│                            │                                     │
-│              ┌─────────────┴─────────────┐                      │
-│              ▼                           ▼                      │
-│     Try local relay              Load from IndexedDB            │
-│     (ws://desktop:8765)              │                          │
-│              │                        │                         │
-│      ┌───────┴───────┐                │                         │
-│      ▼               ▼                │                         │
-│   Success         Fail                │                         │
-│   (instant)       │                   │                         │
-│      │            ▼                   │                         │
-│      │     Try cloud sync             │                         │
-│      │     (5-30s)                    │                         │
-│      │            │                   │                         │
-│      └────────────┼───────────────────┘                         │
-│                   ▼                                             │
-│            Merge & display                                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Device Pairing
-
-1. **QR code** — Desktop displays QR with local IP + pairing token, phone scans
-2. **Manual entry** — User copies full URL (including `?t=<token>`) from desktop settings
-3. **mDNS discovery** — PWA auto-discovers `desktop.local` (not yet implemented)
-
-### Pairing Security
-
-The relay requires a 256-bit token in the WebSocket upgrade URI (`?t=<base64url>`).
-
-- Token is generated on first launch, persisted to the app data directory, and re-used across restarts so paired devices auto-reconnect.
-- QR code is rendered locally via `react-qr-code` — the user's LAN IP and token are never sent to a third party.
-- "Reset Pairing Token" button (desktop Settings → Mobile Sync) rotates the token and persists the new value; connected devices remain unaffected until they disconnect and attempt to reconnect.
-- Factory reset rotates the token, disconnects active relay clients, clears relay-held document bytes, and requires existing PWA readers to scan the current QR code again.
-- New devices must scan the current QR code to obtain a valid token.
-
----
-
-## Cloud Provider Strategy
-
-**All three providers supported from day one:**
-
-| Provider     | Complexity | Notes                                           |
-| ------------ | ---------- | ----------------------------------------------- |
-| Google Drive | Medium     | Well-documented APIs, OAuth works from browser  |
-| Dropbox      | Low        | Simple OAuth, good cross-platform support       |
-| iCloud       | High       | Best for Apple users, web API access is limited |
-
-Each provider stores a single Automerge binary file. CRDT handles merge conflicts automatically.
-
-### Future Large Media Transfer
-
-Automerge and the current document relay are not media pipes. Future offline
-audio and video packages must stay outside the Freed document, snapshots, logs,
-and bug reports.
-
-The planned transfer order is a dedicated authenticated LAN endpoint, then
-chunk-encrypted objects in the user's configured cloud when Freed Desktop is
-unreachable. The PWA verifies and stores each package in device-local media
-storage. A Freed-hosted relay requires a separate owner decision after the
-device-owned paths have been measured for reliability, privacy, provider
-visibility, bandwidth, and cost.
-
-See [YouTube Focus and Offline Integration](YOUTUBE-INTEGRATION.md) for the
-first audio-oriented use case, security model, iPhone constraints, failure
-recovery, telemetry, milestones, and acceptance tests.
-
----
+A crash before a SQLite commit leaves no accepted mutation. A crash after
+commit recovers from the durable receipt and idempotency record. No failure
+loads an alternate Library engine or compatibility path.
 
 ## Tasks
 
@@ -378,7 +224,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.88 | Canonical normalized feed-filter contract shared by the current renderer and future bounded adapters, with exact archived, hidden, source, author, feed, post/story, saved, tag, and signal semantics | ✓ | Medium |
 | 4.89 | Canonical recommendation-order contract shared by both current workers, preserving priority, published-time, and source-enumeration tie semantics for future bounded adapters | ✓ | Medium |
 | 4.90 | Dormant query-specific PWA browse projection with normalized filter and ranking-clock source identity, exact recommendation-order index keys, 128-row staging bounds, IndexedDB v1 upgrade preservation, and no product caller | ✓ | Medium |
-| 4.91 | Closed dormant `feed_browse_page_v1` protocol and PWA reader with canonical filter and ranking-clock binding, full physical keyset cursor, shared two-session and 60-second lifecycle bounds, exact worker transport, and no product caller | ✓ | Medium |
+| 4.91 | Closed dormant `feed_browse_page_v1` protocol and PWA query adapter with canonical filter and ranking-clock binding, full physical keyset cursor, shared two-session and 60-second lifecycle bounds, exact worker transport, and no product caller | ✓ | Medium |
 | 4.92 | Crash-resumable native SQLite browse generation with exact filter, ranking-clock, and source binding, 128-row and 2 MiB staging bounds, replay receipts, index-backed physical keyset order, and no runtime caller | ✓ | Medium |
 | 4.93 | Dormant Freed Desktop browse-generation writer transport with one session-bound active generation, exact progress recovery after response loss, replay-safe bounded pages, explicit cancellation, factory-reset quiescence, and no worker or product caller | ✓ | Medium |
 | 4.94 | Dormant Freed Desktop browse materializer with exact durable Automerge source authentication, normalized filter and ranking-clock generation identity, closed feed-card validation, iterator-backed 128-row pages, native receipt recovery, and no product caller | ✓ | Medium |
@@ -415,11 +261,11 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.125 | Native signed non-expiring writer-epoch reassignment bound to the exact source control tuple, idempotent transition recovery, Desktop actor re-enrollment, and one-button control compare-and-swap without a renderer-minted epoch | ✓ | High |
 | 4.126 | PWA read and bounded multi-read product mutations routed into signed durable IndexedDB intent transactions instead of the Automerge worker | ✓ | High |
 | 4.127 | Canonical PWA intent acceptance with an atomic native SQLite result outbox, immutable actor-scoped result segments, exact result-head compare-and-swap and response-loss recovery, plus restart-durable PWA IndexedDB result reconciliation | ✓ | High |
-| 4.128 | Bounded native export of the exact registered scrubbed SQLite daily backup in 1 MiB chunks with registry identity, byte-length, and SHA-256 binding for later immutable cloud publication | ✓ | High |
+| 4.128 | Bounded native inspection of the exact registered local SQLite daily backup in 1 MiB chunks with registry identity, byte-length, and SHA-256 binding for verified local recovery tooling | ✓ | High |
 | 4.129 | Epoch-scoped PWA intent heads, immutable segment locators, Drive discovery, local actor chains, transactions, operations, and publication receipts with retired-epoch coexistence | ✓ | High |
-| 4.130 | Private user-visible Google Drive backup mirror with `drive.file`, bounded resumable upload of each closed SQLite generation, manifest-after-data ordering, exact local SHA-256 and cloud byte-length binding, 24-generation retention, and no WAL or SHM publication | ✓ | High |
+| 4.130 | Retirement of the private Google Drive SQLite backup mirror, with no new SQLite upload, manifest, or retention request and a production-source guard against reintroduction | ✓ | High |
 | 4.131 | Direct one-time Desktop bootstrap into authoritative local SQLite without running the obsolete derived-shadow migration first, with bounded import transport, request splitting, exact failure evidence, and shadow-projection suppression during cutover | ✓ | High |
-| 4.132 | Native Freed Desktop full-library search that scans SQLite row by row, streams at most 32 scored cards per page, retains only the best 100 filtered cards in React, preserves weighted prefix and bounded typo matching, and never builds a corpus-sized search heap in WebKit | ✓ | High |
+| 4.132 | Cross-runtime full-library search that binds each scan to the selected SQLite or IndexedDB revision, examines at most 256 rows per cancellable page, streams at most 32 compact scored cards, retains only the best 100 cards, and shares exact normalization, weighted prefix, bounded typo, account-alias, and binary identity ordering | ✓ | High |
 | 4.133 | PWA Automerge retirement with unconditional IndexedDB Library Core startup, fail-closed legacy cloud merging, no Automerge JavaScript, worker, or WASM in production bundles, and removal of obsolete CRDT rollback tests | ✓ | High |
 | 4.133 | Schema v5 visible-only and all-item timeline indexes with literal visibility predicates, preserving archived-row semantics while preventing a corpus-sized temporary sort on every bounded Desktop page | ✓ | High |
 | 4.134 | Signed PWA FeedItem removal intent with immediate IndexedDB and search eviction, native verification, atomic SQLite tombstone, acceptance receipt, and replication outbox | ✓ | High |
@@ -431,6 +277,17 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.140 | Signed PWA FeedItem capture and update intents with 128-item transaction bounds, duplicate-safe ordered batching, device-local ranking removal, immediate IndexedDB and search materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
 | 4.141 | PWA sample seeding, fingerprinted sample clearing, and bulk feed removal through signed Library Core operations, including real-account unlinking and derived-search invalidation when feed items are removed | ✓ | High |
 | 4.142 | Freed Desktop production entry points use the SQLite-only Library client, resolve retired mutable-document cloud paths to fail-closed stubs, and reject any Automerge worker, cloud-merge worker, or WASM artifact from the release bundle | ✓ | High |
+| 4.143 | Provider-neutral Freed Desktop follower transport journal with bounded transaction-complete intent candidates, exact publication acknowledgments, contiguous result import, changed-replay rejection, and no writer admission or provider I/O | ✓ | High |
+| 4.144 | Complete PWA IndexedDB Library reads with source-fenced 128-row query pages, all feed filters and Saved orders, bounded facets and analytics, Friends graph and timelines, Map and Story Wall candidates, selected-checkpoint cursor fencing, and cross-browser coverage beyond 2,500 records | ✓ | High |
+| 4.145 | Separate content-addressed media blob descriptor with zero-byte support, streaming `DB("blob-content", raw_bytes)` identity, and a dormant Google Drive adapter using verified 1 MiB resumable upload and readback windows | ✓ | High |
+| 4.146 | Native SQLite authority genesis and signed legacy protocol correction with exact source-manifest and checkpoint fields, preserved Library and epoch state, response-loss replay, source-lineage fencing, split-head refusal, and fail-closed absent writer admission | ✓ | High |
+| 4.147 | Retired Automerge JavaScript bundle boundary with the PWA `/sync` NetworkFirst cache route removed, obsolete Library Core census and registry exports closed, Vercel staging inputs repaired, and Desktop plus PWA release artifact inspection that permits only historical verification and the required loss fence | ✓ | High |
+| 4.148 | Process-lifetime OS-backed Library Core data-root lease acquired before SQLite startup, with one bounded attributable refusal record, exact single-holder enforcement, clean release, killed-process recovery, and no database-file transport | ✓ | High |
+| 4.149 | Shared provider-neutral Primary Drive coordinator with injected authority, durable revision state, credentials, clock, scheduler, fetch, publication, and bounded credential-safe diagnostics ports, consumed by Freed Desktop with offline lifecycle and retry coverage | ✓ | High |
+| 4.150 | Authority-signed v2 actor capability certificates with exact Library, epoch, actor identity, class, operation set, explicit scope, issuance and retirement identity binding, schema v12 legacy migration, capture-only scraper authority, native pre-ingestion enforcement, dormant production issuance, and cross-runtime adversarial vectors | ✓ | High |
+| 4.151 | Drive v2 strong JSON ETag sampling and exact v2 media PUT with If-Match for mutable control, intent, and result heads, with all immutable, list, create, media read, and resumable traffic retained on v3 and the native v2 request shape closed | ✓ | High |
+| 4.152 | PWA IndexedDB schema v9 v2 capability import, exact certificate persistence, shared production verification, fixed v1 legacy preservation, local intent and imported operation enforcement, mixed-version restart, explicit rollback boundary, and zero-write adversarial denial with issuance dormant | ✓ | High |
+| 4.153 | Exact byte-aware immutable checkpoint page packing with both 128-record and 2,097,152-byte decoded ceilings, without changing Google Drive endpoints, headers, retries, or cadence | ✓ | High |
 
 ---
 
@@ -451,7 +308,7 @@ not mean those internal stages remain unreachable.
 - [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, refreshes stored OAuth credentials before Drive or Contacts calls, and retries Contacts once after a 401 with a forced token refresh
 - [x] Freed Desktop falls back to the production Google token proxy when the build omits `VITE_GDRIVE_TOKEN_PROXY_URL`, so local and dev builds do not silently use direct Google token exchange
 - [x] Google Contacts token lookup and forced refresh failures remain recoverable in sync state instead of opening the fatal recovery screen, while corrupt or unsupported local sync ledgers preserve their raw evidence and block automatic provider requests until explicit repair
-- [x] PWA and Desktop retry the initial Google Drive document download after a 401 token refresh before starting from a fresh Drive changes cursor, so existing remote libraries are not skipped after reconnect
+- [x] PWA and Desktop retry the initial Google Drive download after a 401 token refresh. The PWA applies this recovery to immutable Library Core checkpoint discovery even when cached expiry metadata says the rejected access token is still current.
 - [x] PWA cloud sync waits for Automerge worker initialization before Drive downloads, merges, uploads, OAuth callback sync starts, or LAN relay resume can touch the local document
 - [x] Google Drive upload returns the merged local plus remote Automerge binary to the uploading device, so a client that discovers remote changes during upload also converges locally
 - [x] Desktop, PWA, and cloud upload merges block delete-heavy Automerge histories before they can replace a much larger document
@@ -464,7 +321,7 @@ not mean those internal stages remain unreachable.
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
-- [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA readers do not count toward the warning.
+- [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA clients do not count toward the warning.
 - [x] The dormant Library Core census makes current synchronized fields, shared store surfaces, Desktop and PWA worker messages, planned operations and queries, and retained local authorities reviewable without changing the active Automerge writer or claiming Gate A activation
 - [x] The dormant legacy epoch bootstrap contract closes the exact digest-addressed in-document record occurrence, complete bounded current and historical reserved-root scan with deleted-root rejection, source-descended prepared owner operation, local control, completion receipt, identity codecs, current-frontier tracking, creator and TOFU read-only adopter states, response-loss readback, partial-transaction rejection, conflict behavior, and the activation block on value-only Automerge history rebuilds without adding provider objects or requests, generating authority keys, writing storage, choosing a creator at startup, or activating Library Core
 - [x] IndexedDB v2 preserves v1 Automerge bytes at revision zero, returns an exact generation and save revision with every load, rejects stale saves and clears through one atomic compare-and-swap, closes on version change, blocks unsafe upgrades, and exposes repeatable `saveSince` persistence that advances committed bytes and heads only after storage commit. Failed decodes retain the exact loaded revision, distinguish corruption from memory exhaustion, and cannot clear a newer concurrent save. Worker integration remains a separate activation step.
@@ -527,18 +384,19 @@ not mean those internal stages remain unreachable.
 - [x] Freed Desktop now attempts one startup migration before Automerge decoding. It resumes the native spool by the exact legacy storage generation, save revision, and byte length, validates every 1 MiB transfer receipt, reconstructs the source through disk-backed native stages, and publishes or replays one verified immutable SQLite generation. The TypeScript bridge explicitly maps the worker's nested storage revision into the native Tauri command's flat source schema, and its boundary test pins that exact wire contract. A failure releases live worker and native handles, preserves durable retry evidence, records the bounded rollback reason, and continues with Automerge as the sole authority and product reader. Once native publication and worker confirmation both succeed, an idempotent completion step removes that revision's spool and scratch graph. Interrupted cleanup starts from a clean copy without trusting a one-file tail. Generation selection retains only the selected and exact rollback files plus the latest replayable derived transition. Factory reset refuses to race an active migration and clears only quiescent migration files. The local rollback switch disables the attempt without deleting either the Automerge source or a prior verified generation. Because IndexedDB still returns one source-sized structured clone and every product reader still uses Automerge, this is a production-derived shadow bridge rather than Gate C or Gate D activation
 - [x] The Freed Desktop all-content feed now opens one source-fenced query-specific SQLite generation when search, Friends-only filtering, and saved-content sorting are inactive. The worker exposes only its exact durable document, heads, generation, and save revision for the source comparison. Native selection authenticates the sealed generation and the product session pages at most 128 compact cards at a time through a 2 MiB read cache. Source movement before or after selection, projection failure, page failure, session replacement, unmount, an empty nonterminal page, and growth beyond the temporary 512-card React window all close the native reader and return the view to the existing Automerge path. The virtual list requests another page only near its tail. The device-local `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch rejects before projection work and is the immediate rollback. This append-only Gate D declaration does not make SQLite authoritative, remove the full Automerge renderer corpus, supply reverse paging, convert search, Friends, PWA, content detail, provider action derivation, export, backup, diagnostics, or sync readers, or claim the final memory reduction
 - [x] Gate D browse generation now reuses the exact plain `DocState` snapshot already required by the legacy renderer instead of traversing the Automerge proxy map again. The state carries the exact source-map enumeration independently from its ranked visible items, and patch responses identify additions and removals so that tie-break order remains exact without a corpus rescan. One immutable state and source revision feed replayable pages capped at 128 rows; any movement fails closed. This removes the observed duplicate multi-gigabyte projection pass, but the initial full renderer hydration and native decoding of append-style legacy change chunks remain pending before Gate C and complete Gate D can be claimed
-- [x] The dormant replacement-replication foundation now closes one flat package-internal object namespace for epoch and enrollment JSON, operation segments, checkpoint manifests and logical pages, search manifests, shards and deltas, PWA intent and result segments, blobs, and backup manifests. Mutable control, intent-head, and result-head names are explicit and cannot pass immutable-object validation. Active sync has no SQLite checkpoint object. Its control pointer permits exactly one non-expiring writer epoch and one active Google Drive or future Dropbox transport, binds the manifest to the exact library, epoch, and generation, and rejects live SQLite artifacts, nested paths, heartbeat, expiry, dual authority, and unknown transports. It performs no cloud I/O, changes no Google request cadence, grants no PWA canonical authority, and leaves Automerge as replication authority
+- [x] The dormant replacement-replication foundation now closes one flat package-internal ordinary-object namespace for epoch and enrollment JSON, operation segments, checkpoint manifests and logical pages, search manifests, shards and deltas, PWA intent and result segments, and backup manifests. Content-addressed media blobs have a separate descriptor and validator. Mutable control, intent-head, and result-head names are explicit and cannot pass ordinary immutable-object validation. Active sync has no SQLite checkpoint object. Its control pointer permits exactly one non-expiring writer epoch and one active Google Drive or future Dropbox transport, binds the manifest to the exact library, epoch, and generation, and rejects live SQLite artifacts, nested paths, heartbeat, expiry, dual authority, and unknown transports. It performs no cloud I/O, changes no Google request cadence, grants no PWA canonical authority, and leaves Automerge as replication authority
 - [x] The dormant replacement-replication publication coordinator streams at most 4,096 staged dependency descriptors through one injected transport adapter, requires exact remote digest and size verification before manifest construction, provides verified provider object IDs to that construction, verifies the manifest, and compare-and-swaps one canonical control pointer against the exact starting revision and tuple. A stale preflight performs no upload, a final race returns the exact current tuple, and response loss succeeds only after exact pointer readback. Control records are capped at 64 KiB and ordinary publication cannot change the writer epoch or active transport. No Google or Dropbox adapter, credential, request, cadence change, writer activation, provider action, or Automerge authority change is present
 - [x] The replacement wire-object codec uses a versioned family frame of length-prefixed canonical UTF-8 JSON records followed by gzip. It caps one record at 1 MiB, one frame at 4,096 records and 32 MiB decoded, and one stored object below 5 MB. Construction and incremental receipt reject future versions, wrong families, reserved bits, truncation, trailing bytes, count drift, oversize records, noncanonical JSON, and duplicate identities. Flat locators use `.json`, `.fseg.gz`, `.fpage.gz`, and `.fidx.gz`; SHA-256 binds exact stored bytes. No CBOR or live SQLite file enters active replication
 - [x] The dormant one-button writer-reassignment transaction starts from one exact existing control revision and pointer, requires a new writer identity and storage epoch plus an exact library-and-epoch-bound immutable certificate, verifies every staged object, preserves the active transport and exact causal frontier, and compare-and-swaps generation zero of the new epoch as the sole authority commit. Stale preflight uploads nothing, a lost race returns the actual current tuple, certificate or frontier mismatch cannot publish authority, and response loss recovers only from exact readback. It has no Google or Dropbox adapter, product caller, provider action, heartbeat, lease, old-computer ceremony, automatic failover, or Automerge authority change
-- [x] The dormant Google Drive Library Core adapter discovers one existing control by private protocol, library-digest, and object-kind properties, rejects duplicate controls, and never uses filenames as authority. It publishes ordinary immutable objects below 5 MB with one multipart upload, verifies exact file ID, metadata, bounded byte length, and SHA-256 by readback, collapses exact retries only after every matching object verifies, conditionally updates control with the exact Drive ETag, and classifies `412` as a race with exact current readback. Control bootstrap, resumable media blobs, OAuth acquisition, scheduling, product callers, request-cadence changes, writer activation, provider actions, and Automerge authority changes remain absent
+- [x] The dormant Google Drive Library Core ordinary-object adapter discovers one existing control by private protocol, library-digest, and object-kind properties, rejects duplicate controls, and never uses filenames as authority. It preserves the existing multipart upload for positive immutable objects below 5 MB, verifies exact file ID, metadata, bounded byte length, and stored-byte SHA-256 by readback, collapses exact retries only after every matching object verifies, conditionally updates control with the exact Drive ETag, and classifies `412` as a race with exact current readback. Control bootstrap, OAuth acquisition, scheduling, product callers, request-cadence changes, writer activation, provider actions, and Automerge authority changes remain absent
+- [x] The separate dormant media blob boundary accepts zero-byte and larger raw-byte objects through a closed `blobContentDigest` descriptor derived as `DB("blob-content", raw_bytes)`. It verifies a replayable local source in exact windows before Drive access, validates every resumable session URL against the trusted Google Drive HTTPS upload endpoint, sends at most 1 MiB per chunk, resumes strict `308` acknowledgments, queries status after response loss, restarts bounded `404` and `410` sessions, discovers a committed content-addressed object after a lost final response, and recomputes the complete domain-separated digest through bounded remote range readback before accepting a file ID. Ordinary immutable objects keep their existing below-5-MB multipart path. This boundary has no credential acquisition, timer, product caller, content-provider fetch, deletion, SQLite, WAL, SHM, rollback-journal, or Automerge path. Its tests inject a fake Drive transport and make no live request
 - [x] The SQLite Desktop Google Drive publisher provisions one empty appDataFolder control object, treats that canonical empty object as unassigned authority, and then publishes one source-revision-pinned logical checkpoint through immutable 128-record pages and an exact ETag compare-and-swap. Native export hashes the shell and every active row without retaining the corpus, rejects a revision change between pages, and sends only bounded pages to the renderer. Google Drive startup, local revision observation, and Sync Now call this production path only after its default-off Drive activation gate is enabled. Unchanged revisions perform no Drive request. A control pointer owned by another Freed Desktop fails closed to read-only status. Final activation remains pending
 - [x] Settings now offers one confirmed `Make This Freed Desktop the Writer` action when the active immutable Drive control names another installation. A current restored SQLite copy publishes a complete generation-zero checkpoint and epoch certificate, with the checkpoint header bound to the newly accepted authority's exact numeric epoch and epoch ID, then changes authority through the exact current ETag compare-and-swap. A stale copy first creates a closed local SQLite backup, imports and verifies the active remote checkpoint in bounded pages, and only then attempts the same authority CAS. Import failure restores the backup, and a lost CAS race leaves the actual cloud writer authoritative. PWA intents and results remain pending, and the default-off activation gate prevents live Drive traffic during development
 - [x] The dormant logical-checkpoint importer reads each immutable page through its exact provider object ID, rechecks the descriptor's library, epoch, generation, page index, stored byte length, and SHA-256, then incrementally decompresses and parses no more than 128 canonical records or 2 MiB per page. Page indexes and record identities must be strictly ordered across the complete declared count, so duplicate, missing, corrupt, reordered, oversized, truncated, or cross-generation pages fail closed while retaining only one page and one prior identity. The PWA bridge feeds verified compact-card projections into the existing resumable IndexedDB generation writer and selects only after every page commits. A completed generation performs no download. This is a disposable reader projection, not the complete logical checkpoint schema, a product caller, provider traffic, writer authority, or Automerge retirement
 - [x] The dormant control pointer now binds the checkpoint manifest's exact verified descriptor and provider object ID. Publication can construct that pointer only from the manifest upload receipt after exact remote verification, rejects a substituted transport locator, and includes the locator in canonical response-loss readback equality. This closes the authority gap between a content digest and the exact immutable provider object without adding cloud traffic, a product caller, writer activation, or Automerge retirement
 - [x] The dormant checkpoint consumer now authenticates one exact canonical manifest receipt before any page can reach IndexedDB. The closed manifest binds its library, epoch, generation, causal frontier, registered feed-card projection schema, complete record count, contiguous page indexes, per-page counts, binary identity ranges, immutable descriptors, and exact provider object IDs. Each downloaded page must match that declaration after stored-byte verification and bounded canonical decoding. The PWA derives its generation source from the exact manifest stored-byte digest, manifest generation, and schema version, so callers cannot reattribute verified rows. A completed generation still authenticates the manifest but downloads no pages. The current dataset remains a disposable feed-card projection, not a complete portable authoritative checkpoint, product caller, provider request, writer activation, or Automerge retirement
 - [x] The dormant checkpoint producer now streams one bounded page preparation at a time through the immutable publication coordinator, validates its stored-byte digest, wire frame, contiguous page index, record count, binary identity range, and exact library, epoch, generation, page, and digest locator before upload, and retains only bounded manifest metadata rather than checkpoint bodies. It constructs canonical manifest bytes only after every page has an exact verified provider receipt, binds those exact provider object IDs into the closed manifest, verifies the manifest upload, and compare-and-swaps the exact manifest receipt into control. The same manifest round-trips through the bounded consumer. It has no product caller, timer, credential acquisition, cloud polling, provider behavior, writer activation, or Automerge authority change
-- [x] The dormant complete portable checkpoint now serializes one closed header followed by bounded, deterministically ordered entries for accepted and quarantined frontiers, materialized rows, field clocks, relationships, tombstones, actor states, receipts, blob roots, and explicit registry exclusions. The producer retains no more than 128 records and sends its pages through the exact manifest and CAS pipeline. The importer stages one verified page at a time into an injected SQLite or IndexedDB writer and refuses selection until the writer returns an exact library, epoch, frontier, materialized-state, and record-count receipt. Count drift, collection drift, reordered records, malformed nullable fields, manifest mismatch, and false staging receipts fail closed. PWA IndexedDB is the MVP engine; SQLite WASM and OPFS remain future adapters. Active Drive sync remains in `appDataFolder`, while enabled off-device daily backups belong in a separate user-visible `Freed Backups` folder and never copy a live SQLite filesystem. This adds no product caller, provider traffic, writer activation, or Automerge authority change
+- [x] The dormant complete portable checkpoint now serializes one closed header followed by bounded, deterministically ordered entries for accepted and quarantined frontiers, materialized rows, field clocks, relationships, tombstones, actor states, receipts, blob roots, and explicit registry exclusions. The producer retains no more than 128 records and sends its pages through the exact manifest and CAS pipeline. The importer stages one verified page at a time into an injected SQLite or IndexedDB writer and refuses selection until the writer returns an exact library, epoch, frontier, materialized-state, and record-count receipt. Count drift, collection drift, reordered records, malformed nullable fields, manifest mismatch, and false staging receipts fail closed. PWA IndexedDB is the MVP engine; SQLite WASM and OPFS remain future adapters. Active Drive sync remains in `appDataFolder`. Future off-device daily backups reuse logical checkpoint objects and content-addressed blobs, and never copy a SQLite filesystem. This adds no product caller, provider traffic, writer activation, or Automerge authority change
 - [x] The dormant PWA adapter now stages that complete portable checkpoint into IndexedDB through one transaction per verified page. It resumes only the exact library, epoch, manifest, frontier, and stored-byte generation; accepts exact page replay without duplicating rows; rolls back failed page transactions; and selects a generation only after independently counting every declared collection and matching the complete staging receipt. The selected generation and one exact rollback generation are retained. Readers receive no more than 128 rows from one collection at a time through an ordinal cursor. Abort removes staging only. This database has no production caller, grants no authority, performs no cloud or provider I/O, and does not replace the active Automerge reader
 - [x] The dormant operation-tail path now converts bounded native-outbox records into closed canonical operation segments containing at most 1,000 operations and 4,000,000 canonical envelope bytes. Each segment binds exact library and epoch identity, contiguous global ingest sequences, the base and result frontiers, the previous segment digest, a domain-separated body digest, exact stored-byte digest, and an immutable flat object locator. Import rechecks the stored bytes, wire records, locator, expected checkpoint tail, and writer receipt before one PWA IndexedDB transaction stores every occurrence and advances the selected generation. Exact segment replay is idempotent. A gap, changed retry, duplicate operation identity, frontier mismatch, or transaction failure cannot advance the tail. Readers return no more than 128 operation envelopes per page. The portable checkpoint now records the exact global ingest sequence at its frontier so the first tail segment must begin at the next sequence. This slice verifies transport structure and durable occurrence identity only. Actor enrollment, signatures, canonical operation admission, and materialized record effects remain required before any product caller or activation. Automerge remains the active replication authority, and this path performs no cloud or provider I/O
 - [x] The dormant PWA operation-admission path now verifies the exact authority-signed actor enrollment certificate against the selected checkpoint actor state, resolves the enrolled Ed25519 key, and admits only complete signed transactions that extend the actor's exact sequence and chain tip. The native outbox pager now emits whole transactions or fails before segment construction instead of splitting a transaction at an entry or byte limit. Known causal tips must resolve to the checkpoint frontier, its actor tips, or a previously authenticated operation. One IndexedDB transaction rechecks the selected generation and every actor tip, stores authenticated occurrences and the segment receipt, advances authenticated actor and generation frontiers, and applies the registered monotone read-state algebra to a sidecar row plus the selected `feedItems` materialization. Exact enrollment and segment replay are idempotent. Invalid signatures, unknown causal tips, retired or unenrolled actors, changed bytes, split transactions, stale tips, and concurrent selection changes cannot advance authenticated state or change materialized rows. The raw transport cursor remains separate from the authenticated readable cursor, preserving unverifiable bytes as non-authoritative evidence. A dependency-free bounded SHA-256 implementation supplies the synchronous digest hooks while platform Web Crypto verifies Ed25519. This database still has no product caller, cloud request, provider action, writer activation, or Automerge authority change
@@ -564,10 +422,12 @@ not mean those internal stages remain unreachable.
 - [x] The Freed Desktop Saved feed now preserves the `date_saved`, `date_published`, `recommended`, and `shortest_read` modes through a dedicated reader over the authenticated selected SQLite generation. Its versioned order pins one recommendation clock, uses binary global-ID ties, and deliberately standardizes equal-key ordering without changing the PWA. The Freed Desktop compatibility fallback uses the same clock and order. Its materializer performs source-fenced scans with at most 64 rows resident per scan, retains only matching Saved compact rows, avoids a corpus-sized source-position index, and preserves the Saved and reading-time fields required by those orders. Every reader request returns at most 128 compact rows. The feed window retains at most the current and adjacent page, replaces that window during forward traversal, and can walk the complete Saved result without crossing the old 512-row compatibility threshold. ReaderView may pin exactly one selected compact card after its page is evicted and keeps the existing local-content and hydration path. Registry cleanup holds the write transaction while choosing retired generations, validates the canonical root and single-component file names, and steadily retains current plus exact rollback. Cleanup failure after a committed selection leaves only non-authoritative retired state for a later selection to retry. Source drift, malformed pages, native failure, or `freed.libraryCore.savedFeedReaderV1.disabled=1` restores compatibility. Automerge remains authority. This active Gate D transition adds no provider, cloud, backup, writer, replication, release, or installation behavior.
 - [x] The Freed Desktop non-Saved Friends-only feed now uses `feed_browse_page_v2` when no search is active, with `identityMode: "friends"` and Friends predicate schema version 1. The first matching social Account resolves a Person, an existing Person's relationship status exclusively decides membership, and missing or unlinked people fall back to legacy Friend sources. Version 1 and its all-content callers remain unchanged. The source-fenced Desktop materializer applies the predicate before publishing its query-specific generation and keeps source positions for no more than the current 64-row scan page instead of allocating a corpus-sized map. Ranking-weight or identity movement replaces that generation, while harmless read, like, and provider-receipt patches update resident cards in place. The existing SQLite reader returns at most 128 compact rows under the 2 MiB ceiling in the ordinary browse order. React retains two pages plus one selected card so eviction cannot dismiss ReaderView. Source drift, predicate mismatch, malformed pages, native failure, or `freed.libraryCore.friendsFeedReaderV1.disabled=1` restores the exact Automerge compatibility feed. Friends search, Friends plus Saved, and the PWA remain unchanged. Automerge remains authority, and this active Gate D transition adds no provider, cloud, backup, writer, replication, release, or installation behavior.
 - [x] Freed Desktop imports the complete retained legacy library once into native SQLite, verifies count and integrity before activation, and uses SQLite for normal startup, reads, mutations, search, export, diagnostics, sample management, and daily backups. Ordinary Desktop code no longer starts the Automerge worker, LAN relay, or Automerge cloud loops, and it never hydrates the complete SQLite item corpus into renderer state. A focused native round trip proves a closed backup can restore the exact pre-mutation row and preserve its backup registry. Replacement sync transport and PWA IndexedDB remain separate unfinished work.
-- [x] The local snapshot manager now maintains one self-rearming daily chain while Freed remains open, rather than depending on a later Library mutation to wake an hourly timer. The SQLite path still creates a fresh closed `VACUUM INTO` database, verifies `PRAGMA integrity_check`, binds every backup to its exact Library revision, records its exact byte length and SHA-256, exposes it only through bounded verified chunks, retains the newest 24 generations, and restores through a digest-checked staging replacement with rollback on catalog failure. Restoring an older generation preserves the distinct revisions of every retained newer backup. This verified local closure is the sole source accepted by the off-device backup mirror.
-- [x] Freed Desktop requests the narrow `drive.file` scope when Google Drive is connected, creates one app-owned private user-visible `Freed Backups` folder per Library, and mirrors every retained closed SQLite backup through exact 1 MiB resumable chunks. Each source chunk rechecks the registered backup identity, byte length, and SHA-256. The immutable canonical manifest is uploaded only after Drive reports the exact database byte length and binds the resulting file ID, local SHA-256, Library revision, item count, reason, and exclusions. The mirror removes generations outside the retained local 24 only after current uploads complete. It never uploads a live database, WAL, SHM, OAuth token, provider session, or actor private key. Active sync authority remains in `appDataFolder`; backup files never become a control pointer or current generation.
-- [x] The active PWA Library Core runtime supplies the shared bounded Library scanner and item-detail reader directly from the authenticated selected IndexedDB generation. It visits at most 32 stored rows per IndexedDB page, returns only feed items to each callback, honors early cancellation, and lets full-library facets, command surfaces, and locally preserved reader content operate beyond the initial 512-card renderer window without starting Automerge. Full-library search now builds one disposable IndexedDB search projection from those bounded pages, keeps normalized terms and compact result metadata on disk, streams scored matches in 32-row batches, retains at most 100 result cards in React, and rebuilds only when the selected corpus version changes. It no longer reconstructs a corpus-wide MiniSearch heap in WebKit. This adds no social-provider request.
-- [x] Freed Desktop full-library search runs in the native process against the active SQLite Library. It scores one row at a time, sends at most 32 cards per page, removes preserved HTML, caps returned preserved text, and lets React retain only the best 100 filtered cards. The renderer no longer rebuilds a corpus-wide MiniSearch heap from a complete SQLite scan. This adds no social-provider request.
+- [x] The local snapshot manager now maintains one self-rearming daily chain while Freed remains open, rather than depending on a later Library mutation to wake an hourly timer. The SQLite path still creates a fresh closed `VACUUM INTO` database, verifies `PRAGMA integrity_check`, binds every backup to its exact Library revision, records its exact byte length and SHA-256, exposes it only through bounded verified chunks, retains the newest 24 generations, and restores through a digest-checked staging replacement with rollback on catalog failure. Restoring an older generation preserves the distinct revisions of every retained newer backup. These SQLite files remain local to their originating device.
+- [x] The former `Freed Backups` Drive mirror is retired. Production cloud sync no longer reads SQLite backup chunks, creates SQLite upload sessions, publishes SQLite backup manifests, or removes prior remote backup files. Existing Drive files are left untouched for explicit owner review. The active Drive path accepts logical Library Core objects only, and a source guard rejects reintroduction of the retired SQLite upload markers.
+- [ ] Complete off-device backup publishes only authenticated logical checkpoint objects, content-addressed media blobs, and a closed backup manifest. It never uploads SQLite, WAL, SHM, rollback-journal, OAuth token, provider-session, or private-key files. Retention and restore must be proven without treating a remote database file as authority.
+- [x] The active PWA Library Core runtime supplies the shared bounded Library scanner and item-detail reader directly from the authenticated selected IndexedDB generation. It visits at most 32 stored rows per IndexedDB page, returns only feed items to each callback, honors early cancellation, and lets full-library facets, command surfaces, and locally preserved reader content operate beyond the initial 512-card renderer window without starting Automerge. Full-library search keeps normalized terms and closed compact result cards on disk, invalidates its previous database shape during upgrade, and binds every document and active marker to the exact selected Library, immutable generation digest, and selection sequence instead of mutable shell state. Each cancellable transaction examines at most 256 rows and stops earlier at the shared fuzzy-scoring work budget, streams scored matches in 32-card batches, and retains at most 100 cards in React. Query, token, alias, result, and scoring-work limits are identical in TypeScript and Rust. Rebuilds serialize checkpoint movement, honor cancellation, and cannot leave a query on an older generation. A governed backend refusal is shown as unavailable instead of silently changing to the legacy MiniSearch semantics. This adds no social-provider request.
+- [x] PWA feed, Saved, Friends, facet, signal, Saved analytics, Friends graph, selected-person timeline, location detail, Map, and Story Wall readers traverse the complete selected IndexedDB generation without consulting the 512-card renderer window. Query projections retain at most 128 compact rows per staging page, every displayed page resolves lossless selected rows by identity, a checkpoint switch invalidates its cursor, and the same 2,607-row acceptance passes in Chromium and WebKit.
+- [x] Freed Desktop full-library search runs in the native process against the active SQLite Library. Each command fences the exact SQLite revision, examines at most 256 rows and stops earlier at the shared fuzzy-scoring work budget, returns a cursor for the last row examined even when no item matches, and sends at most 32 closed compact cards. The renderer can cancel between bounded commands, retains only the best 100 cards, and uses the same context-free Unicode normalization, query, token, alias, weighted prefix, bounded typo, scoring-work, and binary identity contract as the PWA. Search projections are built from an allowlist, omit preserved HTML and unneeded nested fields, and cap every retained string and complete card before crossing the native boundary. This adds no social-provider request.
 - [x] PWA saved, archived, and liked changes now become signed epoch-scoped Library Core operations in the durable IndexedDB intent outbox and update the selected local row immediately. Freed Desktop verifies the complete transaction, commits the canonical journal row, SQLite materialization, replication outbox entry, and Accepted receipt atomically, and treats response-loss replay as idempotent. Provider completion remains a distinct receipt and no enqueue or acceptance claims provider success.
 - [x] PWA mark-all-read scans the complete selected IndexedDB generation in bounded pages, filters the exact requested platform, and emits read assignments in transactions of at most 1,000 operations. Every durable read intent also updates the selected local materialized row, so a restart before Desktop acceptance does not resurrect unread state. Multi-item archive and archive-all-read-unsaved actions scan or inspect the selected local rows and queue bounded signed archive assignments only for read, visible, unsaved, unarchived items. Saved, archived, and liked intents carry explicit desired values instead of non-idempotent toggles, so stale or retried delivery cannot invert canonical state. These paths use the same epoch-scoped intent outbox as single-item actions and never wake the legacy Automerge worker or add social-provider traffic.
 - [x] Native SQLite immutable Google Drive synchronization and the PWA IndexedDB Library runtime are enabled by default. Freed Desktop publishes local revisions through bounded immutable checkpoint pages and its existing 15-second local revision watcher. The PWA performs one immediate authenticated import, publishes epoch-scoped intents, imports acceptance and provider-result receipts, then refreshes the immutable generation every 60 seconds while connected. Setting `freed.libraryCore.immutableGoogleDriveV1.enabled` or `freed.libraryCore.pwaIndexedDbV1.enabled` to `0` is the explicit device-local emergency rollback. No social-provider request, cadence, navigation, cookie, header, or extractor behavior changes.
@@ -581,9 +441,22 @@ not mean those internal stages remain unreachable.
 - [x] PWA sample-library seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations instead of Automerge. Clearing scans the complete IndexedDB corpus, preserves real records, unlinks real accounts before removing sample people, and invalidates derived search when a feed removal also removes its items.
 - [x] FeedItem operations preserve finite fractional JSON numbers through the canonical protocol's exact IEEE 754 binary64 wrapper, while the PWA and native SQLite materializers restore ordinary numbers only after signature verification. PWA runtime state and bounded scans now read the current materialized IndexedDB projection rather than the immutable bootstrap checkpoint, hidden or archived captures remain durable without entering the visible feed index, and visible feed totals come from that index in the same read transaction.
 - [x] Freed Desktop product modules now import a SQLite-only Library client. Production builds resolve obsolete mutable-document cloud and merge entry points to fail-closed stubs and fail the build if an Automerge worker, cloud-merge worker, or WASM artifact leaks into the output. Browser and unit tests retain the historical in-memory harness through test-only aliases, so test scaffolding cannot silently become release code.
+- [ ] Freed Desktop editable-follower mode imports immutable checkpoints into the local SQLite materialization, retains its remote authority anchor and actor-scoped signed-intent state in schema v10 tables that cannot grant writer admission, routes local edits through that durable outbox, imports canonical results, and never advances the cloud control pointer or runs provider capture. Native anchor installation, platform-key actor enrollment, exact signing and enqueue, complete local materialization, bulk expansion, Desktop mutation routing, bounded transaction-complete publication candidates, exact publication receipts, replay-safe result import, atomic reapplication of only the operations beyond the imported checkpoint's exact accepted actor tip with an authority-epoch and remote-revision fence, crash-safe checkpoint staging that preserves the prior active Library until one complete activation transaction, a persistent user-selected role fence that blocks every authority publication path before Drive access, and local checkpoint, enrollment, outbox, and receipt diagnostics are implemented. The active Google Drive conductor now performs one bounded pass immediately and every 60 seconds, refreshes only authenticated immutable checkpoints, publishes the stable actor request and transaction-complete signed intent segments, imports the exact result chain, stops when the role changes, and shares the same pass with Sync now. Follower mode blocks manual, scheduled, and deferred social and RSS capture before any provider request. Live Drive acceptance with the Primary installation remains required before this item can close.
+- [x] Schema v10 binds the staged checkpoint and follower anchor to the exact immutable manifest key, content digest, and transport object ID from the authenticated control pointer. Activation installs that anchor in the same SQLite transaction as the complete materialization. A mismatched source rolls back both, and follower startup replays durable local edits before exposing the recovered checkpoint.
+- [x] Primary publication records one durable exact receipt containing the SQLite revision, item count, total immutable checkpoint bytes, control revision, authenticated control pointer, manifest digest, and Drive object ID. The diagnostics surface shows the exact totals and receipt tail values, copies the complete receipt as JSON for acceptance evidence, and a verified recovery read after a lost commit response completes publication instead of reporting a false connection failure.
+- [x] Immutable checkpoint pages flush before either 128 records or 2,097,152 decoded bytes would be exceeded. The producer measures each exact canonical record before append. This can increase only the number of immutable checkpoint page uploads. Google Drive endpoints, headers, retries, control operations, and cadence remain unchanged. The normalized checkpoint producer and installed Primary plus PWA acceptance remain required before the current Library can publish successfully.
+- [x] The Primary publication conductor is shared from `@freed/sync` and consumes injected authority, durable revision state, credentials, clock, scheduler, fetch, publication, and diagnostics ports. Freed Desktop uses that state machine without changing its command DTOs, polling cadence, Drive protocol, or SQLite authority rules. Diagnostics expose only a bounded safe failure class and fixed credential-free detail. Offline fake ports prove revision-triggered publication, periodic inbound refresh, ownership loss, role loss, cancellation, failure replacement, ignored timer-callback promises, and bounded retry scheduling. No headless host or provider worker is active yet.
+- [x] Mutable Google Drive control, intent head, and result head reads now sample the bounded strong v2 JSON `etag` before and after one v3 media read. Exact updates use only v2 media `PUT` with the sampled strong ETag in `If-Match`; a stale token returns `412` and exact current readback. Immutable discovery, creation, media reads, multipart upload, and resumable upload remain on v3. The shared adapter keeps the existing request count and cadence for Freed Desktop and the PWA. The native transport admits only the exact v2 file routes, methods, queries, Authorization, Content-Type, strong If-Match, and bounded body, while preserving the existing v3 boundary. Offline fakes cover stable reads, bounded revision races, malformed metadata, all three mutable heads, and stale-token denial. An authenticated disposable appDataFolder probe independently confirmed a strong v2 JSON ETag, one successful exact update, a stale same-token `412`, unchanged v3 media readback, and cleanup without mutating a Library object. Installed Primary publication and authenticated PWA import acceptance remain open.
+- [x] The PWA reads the atomically selected IndexedDB generation as an exact local checkpoint receipt and surfaces its FeedItem count, total checkpoint bytes, manifest digest, and Drive object ID for direct comparison with the Primary publication receipt. It copies the complete selected IndexedDB receipt as JSON. Staging, incomplete, or selection-mismatched generations return no receipt.
+- [x] The native journal and PWA IndexedDB store bind every admitted actor to one explicit capability before operation admission. Existing v1 Desktop and PWA actors retain only the fixed 14-operation legacy-editor set for their exact epoch. The PWA schema v8 to v9 migration does not rewrite those legacy enrollment records. It stores exact v2 certificate bytes and signed capability fields for new records, reverifies them across restart, and compares the same enrollment and actor tip again inside the final IndexedDB write transaction. New scraper and agent actors require an authority-signed v2 certificate with an explicit operation subset and scope. Scrapers can capture FeedItems only. Missing scope, bounded scope without a canonical envelope binding, retired state, stale epoch, changed bytes or persisted fields, oversized transactions, and every operation outside the signed set fail without an authoritative write. TypeScript and native Rust share one deterministic real-signature vector. Production v2 issuance remains dormant and the production Library Core export does not expose the constructor. Retirement identity is prebound, but authority-signed retirement application and checkpoint propagation remain future work. This adds no provider request, social capture behavior, Drive activity, live Desktop process, SQLite-family transport, or Automerge bridge.
+- [x] PWA checkpoint activation, cached generation reselection, and restart preserve unresolved local intent transactions in a bounded IndexedDB overlay. Reconciliation reads only the immutable candidate generation actor tip, verifies the exact retained operation ID and chain digest at that sequence, removes only complete transactions proven contained, and reapplies every later transaction inside the same selection transaction. Accepted, provider-completed, and provider-failed results remain overlaid because none is an authority-signed canonical rejection. Library changes, epoch changes, split transaction tips, missing retained proof, and actor retirement fail closed. The overlay admits at most 512 transactions, 4,096 operations, and 16,777,216 canonical bytes. IndexedDB v9 migration preserves every historical intent row and the current selected materialization. It examines no more than 128 historical transactions per resumable pass, skips canonically contained actor ranges from the immutable candidate tip, and performs no second full-history scan. Scheduled sync advances one pass for an unchanged already selected checkpoint and fences intent publication until recovery reaches ready. An overflow records capped lower-bound diagnostics after reaching the first exceeded cap, installs no partial overlay, keeps the selected Library readable, blocks local writes and unsafe activation, and lets cloud refresh retry automatically until a candidate checkpoint canonically contains enough complete transactions. Replay preserves the minimum canonical or local read timestamp, removes stale archived feed projections, and targets RSS feed removals through an indexed generation and feed lookup. This adds no Drive or provider request and does not change request cadence.
+- [x] Exact response-loss replay retrieves an existing operation receipt only after the immediate native transaction rechecks current writer admission, active epoch, active actor state, exact signed capability equality, and authorization for every operation. Retirement, epoch advance, lost writer admission, capability change, and changed transaction bytes deny replay without returning an outbox result or adding an authoritative write.
+- [ ] Before any authoritative Primary activates schema v12, every participating Freed Desktop installation runs a schema v12 capable release. A Library migrated past schema v11 cannot be reopened by v26.8.1900, and rollback is forward-only through a schema v12 capable release. The completed source enforcement slice does not claim this installed rollout prerequisite has passed.
 - [ ] iCloud sync integration
+- [x] Content-addressed media now has a separate zero-byte-capable wire descriptor and a provider-neutral, bounded Google Drive resumable adapter contract. All validation is offline and dormant. It publishes no provider-fetched media and has no SQLite-family source or publication caller.
 - [ ] Large media packages transfer outside Automerge through an authenticated,
-      resumable, integrity-checked path with explicit storage and deletion rules
+      resumable, integrity-checked product path with encryption, local storage,
+      reachability, retention, restore, and deletion rules
 
 ---
 

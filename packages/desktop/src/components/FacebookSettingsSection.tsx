@@ -54,6 +54,7 @@ import {
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
@@ -67,6 +68,7 @@ import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 import {
   getFacebookGroupDiscovery,
   useFacebookGroupDiscovery,
@@ -335,6 +337,11 @@ export function FacebookSettingsSection({
         setLastDiag(result.diag);
       } catch (err) {
         console.error("Facebook feed capture failed:", err);
+      } finally {
+        rescheduleProviderAfterExternalSettlement({
+          provider: "facebook",
+          unblockAuth: trigger === "post_login",
+        });
       }
     },
     [],
@@ -769,6 +776,7 @@ export function FacebookSettingsSection({
               </p>
             )}
 
+            <ProviderSyncCadenceControl provider="facebook" />
             <ProviderHealthSectionSummary
               provider="facebook"
               showMessages={

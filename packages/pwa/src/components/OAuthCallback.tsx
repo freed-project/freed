@@ -12,8 +12,9 @@
  *   - Dropbox: direct client-side PKCE exchange (public-client support is
  *     enabled on the Dropbox app via "Allow public clients (PKCE)").
  *
- * Token refresh (access tokens expire ~1hr for GDrive, ~4hr for Dropbox) is
- * deferred — the user will be prompted to reconnect when the token expires.
+ * Google refresh credentials are stored with the access-token expiry. The PWA
+ * refreshes before expiry and once more after an unexpected authenticated 401.
+ * Dropbox still requires reconnect when its access token expires.
  */
 
 import { useEffect, useState } from "react";
@@ -195,7 +196,6 @@ export function OAuthCallback() {
 
       const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
       const lifecycle = captureCloudLifecycle();
-
       try {
         const result = await exchange(code, verifier);
         if (!result.ok) {
@@ -224,6 +224,7 @@ export function OAuthCallback() {
         startCloudSync(provider, result.token.accessToken).catch((err) => {
           console.error("[OAuthCallback] startCloudSync failed:", err);
         });
+        const redirectLifecycle = captureCloudLifecycle();
 
         if (cancelled) return;
 
@@ -234,7 +235,7 @@ export function OAuthCallback() {
           if (
             cancelled ||
             !runtimeLifecycle.isCurrent() ||
-            !lifecycle.isCurrent()
+            !redirectLifecycle.isCurrent()
           )
             return;
           window.location.replace("/");

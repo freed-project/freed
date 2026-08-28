@@ -112,9 +112,11 @@ Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted f
 
 Freed Desktop now supplies SearchJump tags, archive facets, scope counts, and
 selected-item context from bounded Library Core readers. On the healthy default
-native path, focusing the palette does not mount the complete item corpus. A
-native reader failure or device-local rollback key restores the Desktop
-compatibility path. PWA keeps its existing resident-row path.
+native path, focusing the palette does not mount the complete item corpus. The
+final runtime has no compatibility rollback reader. A failure returns a typed
+unavailable or stale-source result and leaves the last verified visible window
+intact. The PWA uses the same bounded named query contract through SQLite
+WebAssembly over OPFS.
 
 The command palette now covers:
 
@@ -154,6 +156,8 @@ One reviewed opaque host ID now designates the sole `primary-automation-host`. T
 Every general automation actor now requires lease acquisition through a trusted host launcher with no persistent general actor credential in Keychain or local automation state. The owner-run bootstrap helper builds the native launcher for macOS from Swift or Linux from reviewed Go source. The Linux binary is static. Both platforms install an actor-specific root-owned launcher plus one content-addressed root-owned runtime that pins Node, both control entries, both control libraries, the kernel guard and outcome repair contracts, and the lease archive helper. The launcher creates a fresh operation ID and 32 random bytes for each acquisition, sends the raw lease token only through a one-use file descriptor channel, and binds its digest to the native process chain and random challenge. Public general actor acquisition fails closed. General actor leases have a 30 minute absolute lifetime, and exact retry recovers a committed result after response loss. Verification validates every public pin and proves a live nonmutating channel attestation. Host acceptance proves acquire, heartbeat, release, and stable launcher identity for all five actors before activation. The macOS normal host has no Security framework dependency. A separate macOS migration-only native provisioner deletes validated schema 1 Keychain items and digest records with interaction disabled before schema 4 replacement, tolerates every item and record presence combination, and is safe to retry. Linux has no legacy Keychain migration path and fails closed on those bindings. Rotation is removed. Saved actor reconciliation validates the schedule, current callable model and supported reasoning effort, canonical Freed target, exact working-directory scope, execution environment, launcher and runtime digests, and live channel attestation. Missing actors remain paused. Active actors fail closed until real-host verification and lifecycle acceptance prove the complete handoff. The launchers prove the selected role, pinned runtime, process chain, operation identity, token digest, and one-use challenge, but they cannot authenticate which same-user process invoked that role. Cross-role isolation remains cooperative. Stored task authority, provider approvals, the global behavior slot, owner governance, publisher isolation, and GitHub review remain enforced. This bootstrap excludes the owner and PR publisher identities and grants no provider authority. Normal pull request publication remains available through the governed helper and the caller's existing GitHub authentication. macOS hosts that need stronger unattended publication hardening may optionally install the separate native signed broker. It clears inherited process state, validates its root-owned trust configuration and pinned tools, and uses an Ed25519 Keychain key to issue one short-lived target-scoped capability and publisher lease. The repository does not install that host profile. Missing broker provisioning does not block normal publication, and a partial broker handoff fails closed. This optional profile is cooperative hardening, not an operating-system sandbox against arbitrary same-user code. The owner governance identity remains protected by its separate expiring one-time bootstrap.
 
 An expired trusted-launcher acquisition stranded after its lease state commits can now be completed through one exact current-task owner confirmation. Recovery admits only the pending operation ID, actor, canonical lease, committed phase, retained token digest, and trusted-launcher provenance named by the confirmation. It rejects live leases and prepared or mismatched transactions, never returns the retained token, and preserves the original lease event and transaction receipt. This runtime-neutral control-plane repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
+
+A stranded task-manifest predecessor witness now has one owner-governed repair path instead of a manual file-edit escape hatch. The read-only planner proves the exact canonical and witness generations, healthy task and event history, one unique retired transaction lineage, and no active owner. The task-bound apply command appends one reserved authorization event before exact-generation retirement, never rewrites `current-tasks.json`, and recovers without duplicate events or retirements after response loss. Changed, pending, ambiguous, or foreign generations fail closed. This runtime-neutral control-plane repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
 Lease transaction cleanup now uses one pinned cross-platform helper and held file and directory descriptors for exclusive archive moves. Darwin uses `renameatx_np(RENAME_EXCL)` and Linux uses `renameat2(RENAME_NOREPLACE)`. Destination readback and the final exact archive-set rescan stay relative to the held directories, and destination durability is established before source removal durability. The general actor runtime copies and digests the helper. Strict preflight reports current and projected archive count, bytes, oldest age, local filesystem identity, and free-space headroom before new staging. The projection reserves three maximum-size transaction artifacts plus the largest stale receipt-pruning set that one canonical lease operation could retire. Count, byte, age, and headroom limits stop new transactions instead of compacting audit history without a separate owner-authorized lifecycle. This local control-plane hardening adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
@@ -435,7 +439,7 @@ Reward security researchers for responsible disclosure.
 | 10.2  | Statistics dashboard              | Medium     |
 | 10.3  | Export to JSON                    | Low        |
 | 10.4  | Export to CSV                     | Low        |
-| 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
+| 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA content-view keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
 | 10.6  | Screen reader support             | Medium     |
 | 10.7  | Reduced motion support            | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
 | 10.8  | Color contrast audit              | Low        |
@@ -474,6 +478,7 @@ Reward security researchers for responsible disclosure.
 | 10.22 | Documentation site                       | Medium     |
 | 10.28 | Primary automation host and task custody | Medium     | ✓ Complete (reviewed opaque host assignment, root-owned enrollment, nightly primary-host gate, one custodian heartbeat contract, and conservative external no-op archival)                                                              |
 | 10.29 | Task-scoped factory execution claims     | Medium     | ✓ Complete (single-manifest claims, exact retry receipts, conflict fencing, heartbeat custody, checkpoint-backed epoch transfer, exact release, and runtime-neutral draft-only pilot authority)                                         |
+| 10.30 | Stranded authority witness repair        | Medium     | ✓ Complete (read-only immutable planning, task-bound owner intent, reserved audit event, exact-generation retirement, response-loss recovery, and fail-closed drift checks)                                                             |
 
 ### Resilience
 
@@ -517,6 +522,7 @@ Reward security researchers for responsible disclosure.
 - [x] Stability status reduces the current read-only evidence surfaces into one deterministic model, rejects unsafe artifact shapes, reports foreign records without treating them as canonical evidence, and chooses one next action without network or state mutation.
 - [x] One reviewed primary host owns the single nightly executor, while one custodian heartbeat validates saved actors, enforces models from current callable capability data, and archives only confirmed no-op automation tasks.
 - [x] One trusted nightly coordinator can hold multiple task-scoped factory claims without giving workers permanent leases. Each claim remains inside the atomic task authority manifest, preserves exact custody across retries and crashes, and permits only runtime-neutral, provider-forbidden, draft-only pilot work.
+- [x] A stranded task-manifest predecessor witness can be planned without mutation and retired only through one exact task-bound owner intent, reserved audit event, and response-loss-safe native authority retirement.
 - [ ] Documentation site live
 
 ### Resilience
@@ -526,7 +532,7 @@ Reward security researchers for responsible disclosure.
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
 - [x] Shared bug reports can submit redacted text and selected stack traces to the private GitHub vulnerability inbox after an explicit click, while keeping the diagnostic zip on the user's device and avoiding automatic retries
 - [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
-- [x] Factory reset clears device preferences, selected provider sessions and sync credentials, recovery copies, diagnostics, relay-held document bytes, and the local document in a failure-aware order. It preserves local request history, retry and receipt ledgers, encrypted AI keys, local AI files, media archives, installation identity, and legal acceptance. It rotates the relay pairing token, rejects pre-reset mobile sessions, requires existing PWA readers to scan the current pairing QR code again, and leaves mobile sync paused if document deletion is uncertain.
+- [x] Factory reset clears device preferences, selected provider sessions and sync credentials, recovery copies, diagnostics, relay-held document bytes, and the local document in a failure-aware order. It preserves local request history, retry and receipt ledgers, encrypted AI keys, local AI files, media archives, installation identity, and legal acceptance. It rotates the relay pairing token, rejects pre-reset mobile sessions, requires existing PWA clients to scan the current pairing QR code again, and leaves mobile sync paused if document deletion is uncertain.
 
 ---
 

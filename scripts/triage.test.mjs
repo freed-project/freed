@@ -57,7 +57,7 @@ function attributableAlarm(count, lastTsMs, evidence = []) {
 function validVerdict(assertions, windowEnd = NOW) {
   return {
     schemaVersion: 1,
-    metricRegistryVersion: 7,
+    metricRegistryVersion: 9,
     sourceHealth: { healthy: true },
     runtimeIdentity: {
       attributable: true,
@@ -178,7 +178,7 @@ function validCanaryRecord({
   });
   return {
     schemaVersion: 3,
-    metricRegistryVersion: 7,
+    metricRegistryVersion: 9,
     version,
     buildIdentity,
     runtimeIdentity,
@@ -956,9 +956,7 @@ test("nightly planner loads only current issue-backed triage evidence", () => {
   const staleTriage = staleCandidates.find((c) => c.id === "triage-cloud-loop");
   assert.equal(staleTriage.score, 40);
 
-  const legacyDir = mkdtempSync(
-    path.join(os.tmpdir(), "freed-triage-legacy-"),
-  );
+  const legacyDir = mkdtempSync(path.join(os.tmpdir(), "freed-triage-legacy-"));
   writeFileSync(
     path.join(legacyDir, "T-01-cloud-loop.md"),
     "# T-1: legacy unlinked candidate\n",

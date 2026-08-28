@@ -1,0 +1,155 @@
+{
+  "tag": "v26.8.1406-dev",
+  "version": "26.8.1406-dev",
+  "channel": "dev",
+  "dayKey": "26.8.14",
+  "approved": true,
+  "editorialNotes": [
+    "Approved after exact-head feature validation and provider behavior review."
+  ],
+  "generatedAt": "2026-08-15T01:59:53.892Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1303-dev",
+    "previousPublishedDayTag": "v26.8.1303-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "1dcf03d4baa9b4d58c402895863a57a6b5ae4295",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1303-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "5d03731eab3397c97c18974cc4f190d26d9e43cc",
+        "toInclusiveProductCommitSha": "1dcf03d4baa9b4d58c402895863a57a6b5ae4295"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94",
+        "currentDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:38dd8daa49719a90e1345e6c5ed5d53ec5158bcfeea8bb3942f7323267d4718d",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1406-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1406-dev"
+    ],
+    "prNumbers": [
+      1463,
+      1464,
+      1466,
+      1468,
+      1471,
+      1473,
+      1474,
+      1475,
+      1478,
+      1480,
+      1482,
+      1484,
+      1489,
+      1491,
+      1492,
+      1493,
+      1494,
+      1495,
+      1496,
+      1498,
+      1500,
+      1502,
+      1503,
+      1504,
+      1505,
+      1506,
+      1509,
+      1513,
+      1516,
+      1520,
+      1521,
+      1524,
+      1525,
+      1527,
+      1531,
+      1532,
+      1533,
+      1534,
+      1536
+    ],
+    "commitSubjects": [
+      "fix: keep provider sync alive while hidden (#1536)",
+      "fix: serialize native Drive multipart uploads (#1534)",
+      "fix: wake provider scheduler after desktop resume (#1533)",
+      "fix: repair stranded authority witnesses (#1532)",
+      "chore: reverse integrate v26.8.1405 into dev (#1531)",
+      "chore: reverse integrate v26.8.1404 into dev (#1527)",
+      "fix: refresh PWA Drive disconnect state (#1525)",
+      "fix: clear PWA Drive credentials on disconnect (#1524)",
+      "fix: refresh rejected PWA Drive tokens (#1521)",
+      "chore: reverse integrate v26.8.1403 into dev (#1520)",
+      "fix: stabilize PWA Google Drive sync (#1516)",
+      "chore: prepare v26.8.1402-dev (#1513)",
+      "fix: make provider sync scheduling durable (#1509)",
+      "fix: stabilize map panels and markers (#1503)",
+      "fix: restore release integration contracts (#1506)",
+      "fix: restore SQLite Google Drive sync (#1505)",
+      "feat: add tappable zoom step controls (#1504)",
+      "fix: show unlinked provider identity labels (#1502)",
+      "fix: remove Friends dust test control (#1500)",
+      "perf: streamline Friends Galaxy rendering (#1498)",
+      "perf: streamline Friends Galaxy rendering (#1495)",
+      "fix: standardize sidebar search and nav menus (#1496)",
+      "docs: keep local previews in app (#1499)",
+      "fix: clarify empty provider states (#1494)",
+      "fix: match Friends fit control radius (#1493)",
+      "feat: add task-scoped factory claims (#1491)",
+      "fix: retry release tag readback (#1492)",
+      "chore: reverse integrate v26.8.1400 (#1489)",
+      "fix: scope production release identity checks (#1484)",
+      "fix: build Tauri frontend context before release clippy (#1482)",
+      "fix: skip dev-only Vitest contract on production main (#1480)",
+      "perf: eliminate SQLite full-corpus UI scans (#1478)",
+      "fix: preview live theme tokens everywhere (#1475)",
+      "fix: preview theme colors on map hover (#1474)",
+      "fix: align Friends graph controls (#1473)",
+      "fix: isolate production validation from website (#1471)",
+      "fix: align Friends rail and wheel boundaries (#1468)",
+      "fix: decouple production website validation (#1466)",
+      "fix: align Friends panel and camera bounds (#1464)",
+      "fix: wrap settings theme selector responsively (#1463)"
+    ]
+  },
+  "release": {
+    "deck": "Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views",
+    "features": [
+      "Tappable zoom step controls",
+      "Task-scoped factory claims"
+    ],
+    "fixes": [
+      "Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts",
+      "Restore SQLite and PWA Google Drive sync, including disconnect and token recovery",
+      "Clarify provider empty states and unlinked identity labels",
+      "Stabilize Map panels, markers, Friends navigation, and graph controls",
+      "Reduce SQLite full-corpus UI scans and Friends rendering work",
+      "Harden release and authority-witness recovery contracts"
+    ],
+    "followUps": [
+      "Verify multi-day Facebook and Instagram cadence with the hourly automation custodian",
+      "Continue measurement-guided provider reliability and performance work",
+      "Compare the installed build against matched historical runtime windows"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1406-dev\n\nDurable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views\n\n### Features\n\n- Tappable zoom step controls\n- Task-scoped factory claims\n\n### Fixes\n\n- Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts\n- Restore SQLite and PWA Google Drive sync, including disconnect and token recovery\n- Clarify provider empty states and unlinked identity labels\n- Stabilize Map panels, markers, Friends navigation, and graph controls\n- Reduce SQLite full-corpus UI scans and Friends rendering work\n- Harden release and authority-witness recovery contracts\n\n### Follow-ups\n\n- Verify multi-day Facebook and Instagram cadence with the hourly automation custodian\n- Continue measurement-guided provider reliability and performance work\n- Compare the installed build against matched historical runtime windows\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

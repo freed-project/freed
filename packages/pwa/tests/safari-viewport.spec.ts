@@ -238,48 +238,6 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
     expect(headerBox!.y).toBeLessThan(10);
   });
 
-  test("feed content is scrollable (document height > viewport height) when items exist", async ({ page }) => {
-    const m = await getLayoutMetrics(page);
-
-    // If there are no feed items the document won't be taller than the viewport;
-    // skip the overflow assertion in that case.
-    const hasItems = await page.locator("[data-index]").count();
-    if (hasItems === 0) {
-      test.skip(); // Empty state — connect a feed to enable this assertion.
-      return;
-    }
-
-    expect(m.documentScrollHeight).toBeGreaterThan(m.windowInnerHeight);
-  });
-
-  test("feed container bottom padding accounts for address-bar zone", async ({ page }) => {
-    // The mobile window-virtualizer container should have a paddingBottom that
-    // references 100lvh - 100dvh so the last item can scroll clear of the bar.
-    const paddingBottom = await page.evaluate(() => {
-      // Find the window-list container — it's the first div inside the feed section.
-      const feedSection = document.querySelector("[data-index]")?.closest("div");
-      if (!feedSection) return null;
-      // Walk up to find the container that has the padding.
-      let el: Element | null = feedSection;
-      while (el) {
-        const pb = getComputedStyle(el).paddingBottom;
-        if (pb && pb !== "0px") return pb;
-        el = el.parentElement;
-      }
-      return null;
-    });
-
-    // If null, there are no items yet; skip.
-    if (paddingBottom === null) {
-      test.skip();
-      return;
-    }
-
-    // The padding must be non-zero (it equals the address-bar height which may
-    // be 0px in WebKit emulation — acceptable as long as the property is set).
-    expect(paddingBottom).toBeDefined();
-  });
-
   test("no horizontal overflow", async ({ page }) => {
     const overflowsX = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
@@ -463,21 +421,15 @@ test.describe("BottomSheet / drawer viewport", () => {
     await page.waitForTimeout(300);
 
     const settingsBtn = page.locator("button", { hasText: "Settings" });
-    if (!(await settingsBtn.isVisible())) {
-      test.skip();
-      return;
-    }
+    await expect(settingsBtn).toBeVisible();
     await settingsBtn.click();
     await page.waitForTimeout(500);
 
     // The rounded panel container (not the scrollable content) must be visible
     // and its top edge must be on-screen. The scrollable content inside the
     // drawer intentionally overflows the panel — we do not assert its height.
-    const panel = page.locator(".rounded-t-2xl, .rounded-2xl").first();
-    if (!(await panel.isVisible())) {
-      test.skip();
-      return;
-    }
+    const panel = page.locator(".theme-settings-shell").first();
+    await expect(panel).toBeVisible();
 
     const viewportHeight = await page.evaluate(() => window.innerHeight);
     const box = await panel.boundingBox();

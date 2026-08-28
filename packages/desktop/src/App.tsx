@@ -37,9 +37,19 @@ import {
   stopRssPollerAndDrain,
 } from "./lib/rss-poller";
 import {
-  startAuthenticatedEssayPoller,
-  stopAuthenticatedEssayPoller,
-} from "./lib/authenticated-essay-poller";
+  startProviderSyncScheduler,
+  stopProviderSyncScheduler,
+  stopProviderSyncSchedulerAndDrain,
+  wakeProviderSyncScheduler,
+  wakeProviderSyncSchedulerFromNative,
+} from "./lib/provider-sync-scheduler";
+import { wasDesktopClientRegistrationCreatedThisLaunch } from "./lib/desktop-client-registration";
+import {
+  clearProviderScheduleStateForFactoryReset,
+  rescheduleProviderAfterExternalSettlement,
+} from "./lib/provider-sync-schedule-state";
+import { clearRssSyncScheduleForFactoryReset } from "./lib/rss-sync-schedule-state";
+import type { AutomaticSyncProvider } from "./lib/provider-sync-cadence";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
@@ -170,6 +180,7 @@ import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
+import { DesktopFeedsSettingsSection } from "./components/DesktopFeedsSettingsSection";
 import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import {
@@ -179,6 +190,7 @@ import {
 } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
+
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { isSqliteLibraryActive, searchSqliteItemsPage } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
@@ -222,6 +234,17 @@ import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
 
+async function runManualProviderSync<T>(
+  provider: AutomaticSyncProvider,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await withProviderSyncing(provider, operation);
+  } finally {
+    rescheduleProviderAfterExternalSettlement({ provider });
+  }
+}
+
 const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
   const session = await openLibraryCoreItemScanSession();
   try {
@@ -240,12 +263,24 @@ const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
 
 const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
   query,
-  _searchCorpusVersion,
+  searchCorpusVersion,
   visit,
+  options,
 ) => {
   let afterGlobalId: string | null = null;
   for (;;) {
-    const page = await searchSqliteItemsPage(query, afterGlobalId);
+    if (options?.signal?.aborted) {
+      throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    const page = await searchSqliteItemsPage(
+      query,
+      afterGlobalId,
+      searchCorpusVersion,
+      options?.accountAliases ?? [],
+    );
+    if (page.sourceRevision !== searchCorpusVersion) {
+      throw new Error("SQLite Library changed during its bounded search");
+    }
     if (page.matches.length > 0 && visit(page.matches) === "stop") return;
     if (!page.nextAfterGlobalId) return;
     if (page.nextAfterGlobalId === afterGlobalId) {
@@ -616,7 +651,9 @@ function App() {
     });
     void initProviderHealth();
     startRssPoller();
-    startAuthenticatedEssayPoller();
+    startProviderSyncScheduler({
+      existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
+    });
     // Replacement sync follows the SQLite Desktop revamp. The legacy
     // Automerge relay and cloud loops stay off in this build.
     if (isTauri()) {
@@ -651,7 +688,7 @@ function App() {
     });
     return () => {
       stopRssPoller();
-      stopAuthenticatedEssayPoller();
+      stopProviderSyncScheduler();
       stopSync();
       stopAllCloudSyncs();
       stopSnapshotManager();
@@ -666,7 +703,7 @@ function App() {
   useEffect(() => {
     if (!legalAccepted) return;
     log.info("[app] desktop app started");
-    if (!isTauri()) return;
+    if (!tauriRuntimeAvailable) return;
 
     const cleanups: Array<() => void> = [];
 
@@ -676,6 +713,12 @@ function App() {
 
     listen("tauri://resume", () => {
       log.info("[app] system resume (wake)");
+      wakeProviderSyncScheduler();
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    listen("provider-schedule-native-wake", () => {
+      log.info("[provider-sync] native deadline wake");
+      wakeProviderSyncSchedulerFromNative();
     }).then((unlisten) => cleanups.push(unlisten));
 
     listen<RendererRecoveryStateEvent>("renderer-recovery-state", (event) => {
@@ -700,7 +743,7 @@ function App() {
     }).then((unlisten) => cleanups.push(unlisten));
 
     return () => cleanups.forEach((fn, index) => safeUnlisten(fn, `app-lifecycle:${index.toLocaleString()}`));
-  }, [legalAccepted]);
+  }, [legalAccepted, tauriRuntimeAvailable]);
 
   useEffect(() => {
     const hasTauriMock = "__TAURI_INTERNALS__" in window;
@@ -1057,7 +1100,7 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         stopRssPoller();
-        stopAuthenticatedEssayPoller();
+        stopProviderSyncScheduler();
         stopSync();
         stopAllCloudSyncs();
         stopSnapshotManager();
@@ -1071,6 +1114,7 @@ function App() {
             quiesceDesktopOAuthForFactoryReset,
             quiesceDesktopStoreForFactoryReset,
             stopRssPollerAndDrain,
+            stopProviderSyncSchedulerAndDrain,
             stopAndDrainContentFetcher,
             stopAndDrainSemanticClassifier,
           ],
@@ -1085,6 +1129,8 @@ function App() {
             resetThemePreference,
             clearStoredCookies,
             clearDesktopClientWarningAcknowledgement,
+            clearProviderScheduleStateForFactoryReset,
+            clearRssSyncScheduleForFactoryReset,
           ],
           clearLocalData: [
             clearSnapshots,
@@ -1329,6 +1375,7 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
+      FeedsSettingsContent: DesktopFeedsSettingsSection,
       SubstackSettingsContent: SubstackSettingsSection,
       MediumSettingsContent: MediumSettingsSection,
       YouTubeSettingsContent: YouTubeSettingsSection,
@@ -1388,7 +1435,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("x");
           }
-          await withProviderSyncing("x", () => captureXTimeline(state.xAuth.cookies!, undefined, "manual"));
+          await runManualProviderSync("x", () => captureXTimeline(state.xAuth.cookies!, undefined, "manual"));
           return;
         }
 
@@ -1396,7 +1443,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("facebook");
           }
-          await withProviderSyncing("facebook", () => captureFbFeed("manual"));
+          await runManualProviderSync("facebook", () => captureFbFeed("manual"));
           return;
         }
 
@@ -1404,7 +1451,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("instagram");
           }
-          await withProviderSyncing("instagram", () => captureIgFeed("manual"));
+          await runManualProviderSync("instagram", () => captureIgFeed("manual"));
           return;
         }
 
@@ -1412,7 +1459,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("linkedin");
           }
-          await withProviderSyncing("linkedin", () => captureLiFeed("manual"));
+          await runManualProviderSync("linkedin", () => captureLiFeed("manual"));
           return;
         }
 
@@ -1420,7 +1467,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("substack");
           }
-          await withProviderSyncing("substack", () => captureSubstackFeed("manual"));
+          await runManualProviderSync("substack", () => captureSubstackFeed("manual"));
           return;
         }
 
@@ -1428,7 +1475,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("medium");
           }
-          await withProviderSyncing("medium", () => captureMediumFeed("manual"));
+          await runManualProviderSync("medium", () => captureMediumFeed("manual"));
           return;
         }
 
@@ -1436,7 +1483,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("youtube");
           }
-          await withProviderSyncing("youtube", () => captureYouTube("manual"));
+          await runManualProviderSync("youtube", () => captureYouTube("manual"));
         }
       },
       getSourceStatus: (sourceId) => {

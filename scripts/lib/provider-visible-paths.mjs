@@ -31,6 +31,7 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/App.tsx",
   "packages/desktop/src/components/CloudProviderCard.tsx",
   "packages/desktop/src/components/CloudSyncNudge.tsx",
+  "packages/desktop/src/components/DesktopFeedsSettingsSection.tsx",
   "packages/desktop/src/components/FacebookFeedEmptyState.tsx",
   "packages/desktop/src/components/FacebookSettingsSection.tsx",
   "packages/desktop/src/components/InstagramFeedEmptyState.tsx",
@@ -40,6 +41,7 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/components/SubstackSettingsSection.tsx",
   "packages/desktop/src/components/MediumSettingsSection.tsx",
   "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+  "packages/desktop/src/components/ProviderSyncCadenceControl.tsx",
   "packages/desktop/src/components/ScraperWindowModeControl.tsx",
   "packages/desktop/src/components/SyncProviderSectionSurface.tsx",
   "packages/desktop/src/components/XFeedEmptyState.tsx",
@@ -58,13 +60,17 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/li-capture.ts",
   "packages/desktop/src/lib/authenticated-essay-auth.ts",
   "packages/desktop/src/lib/authenticated-essay-capture.ts",
-  "packages/desktop/src/lib/authenticated-essay-poller.ts",
   "packages/desktop/src/lib/substack-auth.ts",
   "packages/desktop/src/lib/substack-capture.ts",
   "packages/desktop/src/lib/medium-auth.ts",
   "packages/desktop/src/lib/medium-capture.ts",
   "packages/desktop/src/lib/provider-auth-errors.ts",
   "packages/desktop/src/lib/provider-health.ts",
+  "packages/desktop/src/lib/provider-sync-adapters.ts",
+  "packages/desktop/src/lib/provider-sync-cadence.ts",
+  "packages/desktop/src/lib/provider-sync-native-wake.ts",
+  "packages/desktop/src/lib/provider-sync-schedule-state.ts",
+  "packages/desktop/src/lib/provider-sync-scheduler.ts",
   "packages/desktop/src/lib/reader-hydration.ts",
   "packages/desktop/src/lib/scraper-media-diag.ts",
   "packages/desktop/src/lib/scraper-prefs.ts",
@@ -156,6 +162,7 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
   "packages/desktop/src/lib/outbox.ts",
   "packages/desktop/src/lib/platform-actions.ts",
   "packages/desktop/src/lib/rss-poller.ts",
+  "packages/desktop/src/lib/rss-sync-schedule-state.ts",
   "packages/desktop/src/lib/side-effect-scheduler.ts",
   "packages/desktop/src/lib/sync.ts",
   "packages/desktop/src/lib/google-drive.ts",
@@ -200,6 +207,7 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ],
   ["packages/desktop/src/components/CloudProviderCard.tsx", ["other"]],
   ["packages/desktop/src/components/CloudSyncNudge.tsx", ["other"]],
+  ["packages/desktop/src/components/DesktopFeedsSettingsSection.tsx", ["other"]],
   ["packages/desktop/src/components/FacebookFeedEmptyState.tsx", ["facebook"]],
   [
     "packages/desktop/src/components/FacebookSettingsSection.tsx",
@@ -218,6 +226,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
   [
     "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/components/ProviderSyncCadenceControl.tsx",
     ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   [
@@ -303,12 +315,33 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   [
+    "packages/desktop/src/lib/provider-sync-adapters.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-sync-cadence.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-sync-native-wake.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-sync-schedule-state.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-sync-scheduler.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
     "packages/desktop/src/lib/reader-hydration.ts",
     ["facebook", "instagram", "other", "x"],
   ],
   ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
   ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
   ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-sync-schedule-state.ts", ["other"]],
   [
     "packages/desktop/src/lib/scraper-media-diag.ts",
     ["facebook", "instagram", "linkedin"],
@@ -514,8 +547,7 @@ export function providerIdsForPath(filePath) {
   if (
     normalizedPath === "packages/desktop/src/components/authenticatedessaysettingssection.tsx" ||
     normalizedPath === "packages/desktop/src/lib/authenticated-essay-auth.ts" ||
-    normalizedPath === "packages/desktop/src/lib/authenticated-essay-capture.ts" ||
-    normalizedPath === "packages/desktop/src/lib/authenticated-essay-poller.ts"
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-capture.ts"
   ) {
     return ["medium", "substack"];
   }

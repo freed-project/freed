@@ -174,6 +174,16 @@ type MockSqliteLibrary = {
   };
 };
 
+type MockSqliteImportStage = Pick<
+  MockSqliteLibrary,
+  | "sourceGeneration"
+  | "sourceRevision"
+  | "sourceDigest"
+  | "expectedItemCount"
+  | "shell"
+  | "items"
+>;
+
 function sqliteLibrary(): MockSqliteLibrary {
   const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
   w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
@@ -187,6 +197,16 @@ function sqliteLibrary(): MockSqliteLibrary {
     items: {},
   };
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
+}
+
+function sqliteImportStage(): MockSqliteImportStage | null {
+  return (
+    (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ ?? null
+  );
 }
 
 function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
@@ -297,6 +317,65 @@ function sqliteUpsertItems(args: Record<string, unknown>): null {
   return null;
 }
 
+function sqliteAppendImportItems(args: Record<string, unknown>): null {
+  const stage = sqliteImportStage();
+  if (!stage) throw new Error("SQLite Library has no active staged import");
+  const request = (args.request ?? {}) as { itemsBase64?: string[] };
+  for (const encoded of request.itemsBase64 ?? []) {
+    const binary = atob(encoded);
+    const json = new TextDecoder().decode(
+      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    );
+    const item = JSON.parse(json) as MockSqliteItem;
+    stage.items[item.globalId] = item;
+  }
+  return null;
+}
+
+function sqliteSyncDescriptor(): Record<string, unknown> {
+  const state = sqliteLibrary();
+  const items = Object.values(state.items).filter((item) => !item.__deleted);
+  return {
+    revision: state.revision,
+    itemCount: items.length,
+    sourceDigest: state.sourceDigest || "0".repeat(64),
+    shellJson: JSON.stringify(state.shell ?? {}),
+    materializedDigest: "1".repeat(64),
+  };
+}
+
+function sqliteAuthorityBootstrap(): Record<string, unknown> {
+  return {
+    authority: {
+      library_id: "2".repeat(64),
+      epoch: 1,
+      epoch_id: "3".repeat(64),
+      authority_key_id: "4".repeat(64),
+      authority_public_key: "5".repeat(64),
+      observed_frontier: [],
+    },
+    actor: {
+      actor_id: "6".repeat(64),
+      actor_public_key: "7".repeat(64),
+      enrollment_operation_id: "mock-local-authority-enrollment",
+      enrollment_certificate_digest: "8".repeat(64),
+      canonical_enrollment_certificate_json: "{}",
+      actor_chain_genesis: "9".repeat(64),
+    },
+    protocol: {
+      format: "freed_library_core_native_authority_protocol_v1",
+      active_engine: "library_core_v1",
+      schema_version: 12,
+      replication_protocol: "op_segments_v1",
+      checkpoint_format: "freed_logical_checkpoint_v1",
+      transition_certificate_digest: "a".repeat(64),
+      native_protocol_certificate_digest: "b".repeat(64),
+      prior_transition_certificate_digest: null,
+      source_manifest_digest: "c".repeat(64),
+    },
+  };
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   sqlite_library_status: () => {
@@ -319,23 +398,34 @@ const handlers: Record<string, Handler> = {
       expectedItemCount: number;
       shellJson: string;
     };
-    const state = sqliteLibrary();
-    Object.assign(state, {
-      active: false,
-      revision: 0,
+    (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
       sourceGeneration: request.sourceGeneration,
       sourceRevision: request.sourceRevision,
       sourceDigest: request.sourceDigest,
       expectedItemCount: request.expectedItemCount,
       shell: JSON.parse(request.shellJson) as Record<string, unknown>,
       items: {},
-    });
+    };
     return null;
   },
-  append_sqlite_library_import: sqliteUpsertItems,
+  append_sqlite_library_import: sqliteAppendImportItems,
   finalize_sqlite_library_import: () => {
+    const stage = sqliteImportStage();
+    if (!stage) throw new Error("SQLite Library has no complete staged import");
+    if (Object.keys(stage.items).length !== stage.expectedItemCount) {
+      throw new Error("SQLite Library import count mismatch");
+    }
     const state = sqliteLibrary();
-    state.active = true;
+    Object.assign(state, stage, { active: true, revision: 1 });
+    delete (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
     return {
       active: true,
       revision: state.revision,
@@ -346,6 +436,14 @@ const handlers: Record<string, Handler> = {
       sourceDigest: state.sourceDigest,
     };
   },
+  recover_sqlite_library_follower_overlay: () => ({
+    transactionCount: 0,
+    operationCount: 0,
+    materializedRowCount: 0,
+    revisionAdvanced: false,
+  }),
+  read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
+  bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
   read_sqlite_library_shell: sqliteShellResult,
   read_sqlite_library_counts: sqliteCountsResult,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
@@ -420,6 +518,39 @@ const handlers: Record<string, Handler> = {
       itemsJson: page.map((item) => JSON.stringify(item)),
       nextOffset: offset + page.length < items.length ? offset + page.length : null,
       totalCount: items.length,
+    };
+  },
+  search_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      query?: string;
+      afterGlobalId?: string | null;
+      expectedRevision?: number;
+      limit?: number;
+    };
+    const state = sqliteLibrary();
+    if (request.expectedRevision !== state.revision) {
+      throw new Error("SQLite Library changed during its bounded search");
+    }
+    const candidates = Object.values(state.items)
+      .filter((item) => !item.__deleted && (!request.afterGlobalId || item.globalId > request.afterGlobalId))
+      .sort((left, right) => left.globalId.localeCompare(right.globalId));
+    const query = (request.query ?? "").toLowerCase();
+    const limit = Math.max(1, Math.min(request.limit ?? 32, 32));
+    let scanned = 0;
+    const matches: Array<{ itemJson: string; score: number }> = [];
+    let lastScanned: string | null = null;
+    while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
+      const item = candidates[scanned]!;
+      lastScanned = item.globalId;
+      if (JSON.stringify(item).toLowerCase().includes(query)) {
+        matches.push({ itemJson: JSON.stringify(item), score: 1 });
+      }
+      scanned += 1;
+    }
+    return {
+      matches,
+      nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
+      sourceRevision: state.revision,
     };
   },
   mutate_sqlite_library_items: (args: Record<string, unknown>) => {
@@ -545,6 +676,40 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
+  sqlite_library_follower_intent_context: () => null,
+  sqlite_library_follower_runtime_status: () => ({
+    state: "awaiting_checkpoint",
+    libraryId: null,
+    epochId: null,
+    actorId: null,
+    checkpointGeneration: null,
+    remoteIngestSequence: null,
+    pendingIntentCount: 0,
+    publishedIntentCount: 0,
+    importedResultCount: 0,
+  }),
+  read_sqlite_library_follower_intent_outbox_candidate: () => null,
+  record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstIntentSequence: request.firstIntentSequence,
+      lastIntentSequence: request.lastIntentSequence,
+      operationCount: Number(request.lastIntentSequence) - Number(request.firstIntentSequence) + 1,
+      publishedSegmentDigest: request.publishedSegmentDigest,
+      status: "recorded",
+    };
+  },
+  read_sqlite_library_follower_result_import_cursor: () => null,
+  append_sqlite_library_follower_result_segment: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstResultSequence: request.firstResultSequence,
+      lastResultSequence: request.lastResultSequence,
+      resultCount: Array.isArray(request.entries) ? request.entries.length : 0,
+      segmentDigest: request.segmentDigest,
+      status: "imported",
+    };
+  },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,
@@ -578,6 +743,26 @@ const handlers: Record<string, Handler> = {
       screenLocked: false,
       error: null,
     },
+  get_provider_sync_runtime_eligibility: () => {
+    const session = handlers.get_desktop_session_state({}) as {
+      available: boolean;
+      screenLocked: boolean;
+    };
+    return {
+      available: session.available,
+      eligible: !session.available || !session.screenLocked,
+      reason: session.available && session.screenLocked ? "screen_locked" : null,
+    };
+  },
+  replace_provider_schedule_wake: (args: Record<string, unknown>) => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ =
+      args.wake ?? null;
+    return null;
+  },
+  get_background_runtime_active_operation: () => ({
+    operation: null,
+    ageMs: null,
+  }),
   get_runtime_memory_stats: () => ({
     totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,

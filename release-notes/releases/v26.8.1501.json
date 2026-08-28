@@ -1,0 +1,80 @@
+{
+  "tag": "v26.8.1501",
+  "version": "26.8.1501",
+  "channel": "production",
+  "dayKey": "26.8.15",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-15T11:09:51.498Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.8.1500",
+    "previousPublishedDayTag": "v26.8.1407",
+    "compareRef": "HEAD",
+    "productCommitSha": "39bf2c851b191eb7f82fd50fbcdd01b2c797f164",
+    "promotedDevCommitSha": "e18afdfbdd526d75849e12887bae4e97b0d6f2cd",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.8.1500",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2fdfe71cac82a3314c2bef21f147e62a8d07d7ad",
+        "toInclusiveProductCommitSha": "39bf2c851b191eb7f82fd50fbcdd01b2c797f164"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94",
+        "currentDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:a2789395e00d4563062c68a50261e3ad5c685f2c1aad9d016edc253df98af8b4",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1500",
+      "v26.8.1501"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1500",
+      "v26.8.1501"
+    ],
+    "prNumbers": [
+      1544,
+      1545,
+      1549
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#1549)",
+      "chore: prepare v26.8.1500 (#1545)",
+      "chore: promote dev into main for production release (#1544)"
+    ]
+  },
+  "release": {
+    "deck": "Freed now runs its Library on bounded SQLite storage across Freed Desktop and the PWA, with repaired Google Drive sync and substantially lower memory demand",
+    "features": [
+      "Moves Freed Desktop and the PWA to the SQLite-first Library Core and removes the legacy Automerge runtime",
+      "Publishes immutable SQLite Library checkpoints through Google Drive so the PWA can import the synchronized Library",
+      "Adds responsive settings controls and tappable map zoom controls across supported screen sizes"
+    ],
+    "fixes": [
+      "Prevents Google Drive publication from remaining stuck behind an abandoned native request and reports the exact failed sync stage",
+      "Repairs PWA Google Drive authentication, disconnect, token refresh, and synchronized state reporting",
+      "Eliminates full-corpus SQLite UI scans and bounds Friends and map rendering memory",
+      "Stabilizes map panels, markers, provider scheduling, wake recovery, and hidden-window sync",
+      "Lets the PWA import immutable Google Drive Library checkpoints when browsers do not expose response ETags"
+    ],
+    "followUps": [
+      "Google Drive sync remains intentionally local-first: SQLite files stay on each device while immutable Library objects move through the user's Drive"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1501\n\nFreed now runs its Library on bounded SQLite storage across Freed Desktop and the PWA, with repaired Google Drive sync and substantially lower memory demand\n\n### Features\n\n- Moves Freed Desktop and the PWA to the SQLite-first Library Core and removes the legacy Automerge runtime\n- Publishes immutable SQLite Library checkpoints through Google Drive so the PWA can import the synchronized Library\n- Adds responsive settings controls and tappable map zoom controls across supported screen sizes\n\n### Fixes\n\n- Prevents Google Drive publication from remaining stuck behind an abandoned native request and reports the exact failed sync stage\n- Repairs PWA Google Drive authentication, disconnect, token refresh, and synchronized state reporting\n- Eliminates full-corpus SQLite UI scans and bounds Friends and map rendering memory\n- Stabilizes map panels, markers, provider scheduling, wake recovery, and hidden-window sync\n- Lets the PWA import immutable Google Drive Library checkpoints when browsers do not expose response ETags\n\n### Follow-ups\n\n- Google Drive sync remains intentionally local-first: SQLite files stay on each device while immutable Library objects move through the user's Drive\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

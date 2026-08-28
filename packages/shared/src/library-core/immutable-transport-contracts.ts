@@ -95,10 +95,6 @@ export type LibraryCoreImmutableObjectKeyRequest =
       readonly digest: string;
     })
   | (LibraryScopedObjectRequest & {
-      readonly kind: "blob";
-      readonly digest: string;
-    })
-  | (LibraryScopedObjectRequest & {
       readonly kind: "backup_manifest";
       readonly backupId: string;
       readonly digest: string;
@@ -258,9 +254,6 @@ export function createLibraryCoreImmutableObjectKey(
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
       return `freed-v2-results~${request.libraryId}~e${request.epochId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
-    case "blob":
-      assertDigest(request.digest, "digest");
-      return `freed-v2-blob~${request.libraryId}~${request.digest}`;
     case "backup_manifest":
       assertIdentifier(request.backupId, "backupId");
       assertDigest(request.digest, "digest");
@@ -513,7 +506,6 @@ const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],
   },
-  { pattern: new RegExp(`^freed-v2-blob~${ID}~${DIGEST}$`) },
   {
     pattern: new RegExp(`^freed-v2-backup~${ID}~${ID}~${DIGEST}\\.json$`),
   },

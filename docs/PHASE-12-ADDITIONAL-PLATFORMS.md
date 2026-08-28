@@ -1,7 +1,32 @@
 # Phase 12: Additional Platforms
 
 > **Status:** 🚧 In Progress: LinkedIn and YouTube are integrated, and authenticated Substack and Medium capture is available in beta with local sessions, visible roster and activity extraction, provider health controls, and connection-only identity ingestion
+
+> **Library and media target:** Every captured record enters the exhaustive
+> Library Core mutation registry and normalized SQLite schema. Large media does
+> not enter checkpoint rows. Synced metadata carries typed content descriptors
+> and authenticated range indexes. Each device may stream, partially cache,
+> fully cache, pin offline, or exclude a rendition. Provider acquisition and
+> Library replication remain separate authority and traffic decisions.
+
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
+
+## Selective long-form media work
+
+- [ ] Represent each rendition as a content-addressed logical blob with typed
+      codec, duration, byte length, digest, and range-index descriptors.
+- [ ] Verify independently retrievable ranges through a paged authenticated
+      range map so multi-gigabyte media never becomes one logical wire record.
+- [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
+      follower hydration.
+- [ ] Let a client stream selected ranges through the approved user-owned
+      storage transport, keep a partial cache, complete the cache, or exclude
+      the rendition entirely.
+- [ ] Keep hydration and eviction state device-local. Synchronize only content
+      identity, availability descriptors, and canonical metadata.
+- [ ] Require separate provider-risk approval before any new resolver request,
+      page load, click, timing pattern, header, cookie use, or background media
+      acquisition is implemented.
 
 ---
 
@@ -438,10 +463,11 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.37 | Atomic follow-roster and activity reconciliation | High | ✓ Done |
 | 12.38 | Beta source UI, consent, health, filtering, and diagnostics | Medium | ✓ Done |
 | 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage | Medium | ✓ Done |
-| 12.40 | Scheduled refresh with restart-safe local cooldowns | High | ✓ Done |
+| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state | High | ✓ Done |
 | 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
 | 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
 | 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
+| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High | ✓ Done |
 
 ---
 
@@ -483,9 +509,9 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - [x] Hidden scraper WebViews can emit only from the matching Substack or
       Medium origin, with no Freed IPC access in visible login windows or on
       third party sign in pages
-- [x] Authenticated Substack and Medium sessions use a dedicated randomized
-      scheduler outside the RSS poll job, while persisted local cooldowns
-      prevent early provider navigation after a restart
+- [x] Authenticated Substack and Medium sessions use independent bounds,
+      regimes, deadlines, yield state, ordering, and cooldowns inside the shared
+      device-local provider scheduler outside the RSS poll job
 - [x] Substack subscriber dashboards and sensitive subscriber metadata stay out
       of capture, Automerge, diagnostics, and bug reports
 - [ ] Installed Substack and Medium beta sessions pass real-account selector and
@@ -521,6 +547,10 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       audio package over the local network without media bytes entering Automerge
 - [ ] Offline audio passes real iPhone airplane-mode, cold-launch, lock-screen,
       interruption, Bluetooth, AirPlay, and long-seek acceptance
+- [x] Provider-neutral media blobs use a separate zero-byte-capable descriptor,
+      domain-separated raw-byte identity, exact 1 MiB resumable upload windows,
+      bounded response-loss recovery, and streamed Drive readback verification
+      without fetching media from YouTube or another content provider
 - [ ] User-cloud media objects are opaque, chunk-encrypted, resumable, verified,
       quota-aware, and deleted with their key material
 - [ ] Optional video passes storage, codec, range, seek, battery, and eviction

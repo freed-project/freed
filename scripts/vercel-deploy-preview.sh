@@ -57,9 +57,11 @@ esac
 
 mkdir -p "$TEMP_DIR/scripts/lib" "$TEMP_DIR/.vercel"
 
-cp "$ROOT_DIR/scripts/patch-automerge.mjs" "$TEMP_DIR/scripts/patch-automerge.mjs"
 cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metadata.mjs"
 cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
+cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.mjs"
+cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.d.mts" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.d.mts"
+cp "$ROOT_DIR/scripts/validate-retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/validate-retired-automerge-runtime.mjs"
 
 if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/tsconfig.base.json" "$TEMP_DIR/tsconfig.base.json"

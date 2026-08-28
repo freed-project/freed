@@ -16,9 +16,11 @@ import { clearProviderPause, resetProviderPauseState } from "../lib/provider-hea
 import { socialProviderCopy, type SocialProviderId } from "../lib/social-provider-copy";
 import { useAppStore, withProviderSyncing } from "../lib/store";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 
 type EssayProviderId = Extract<SocialProviderId, "substack" | "medium">;
 type EssayProviderAction = "connect" | "check" | "reset" | "disconnect";
@@ -92,6 +94,11 @@ function AuthenticatedEssaySettingsSection({
       const message = error instanceof Error ? error.message : `${copy.label} sync failed.`;
       setActionError(message);
       throw error instanceof Error ? error : new Error(message);
+    } finally {
+      rescheduleProviderAfterExternalSettlement({
+        provider,
+        unblockAuth: trigger === "post_login",
+      });
     }
   }, [config, copy.label, provider]);
 
@@ -299,6 +306,7 @@ function AuthenticatedEssaySettingsSection({
             {formatProviderReconnectMessage(copy.label, auth.lastCaptureError ?? actionError)}
           </p>
         ) : null}
+        <ProviderSyncCadenceControl provider={provider} />
         <ProviderHealthSectionSummary provider={provider} />
       </div>
     </SyncProviderSectionSurface>

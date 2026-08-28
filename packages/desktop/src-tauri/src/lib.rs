@@ -12,7 +12,6 @@ mod library_core_ed25519;
 mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
-mod library_core_journal_runtime;
 mod library_core_platform_key;
 mod youtube;
 
@@ -27,7 +26,7 @@ use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex as StdMutex, RwLock as StdRwLock,
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -344,6 +343,35 @@ struct DesktopSessionState {
     error: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSyncRuntimeEligibility {
+    available: bool,
+    eligible: bool,
+    reason: Option<&'static str>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderScheduleWakeRequest {
+    provider: String,
+    deadline_at_ms: u64,
+}
+
+struct ProviderScheduleWakeState {
+    generation: Arc<AtomicU64>,
+    task: StdMutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+}
+
+impl Default for ProviderScheduleWakeState {
+    fn default() -> Self {
+        Self {
+            generation: Arc::new(AtomicU64::new(0)),
+            task: StdMutex::new(None),
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
     let locked_key = "<key>CGSSessionScreenIsLocked</key>";
@@ -623,6 +651,130 @@ fn get_desktop_session_state() -> DesktopSessionState {
             screen_locked,
             error: None,
         }
+    }
+}
+
+#[tauri::command]
+fn get_provider_sync_runtime_eligibility() -> ProviderSyncRuntimeEligibility {
+    #[cfg(not(target_os = "macos"))]
+    {
+        ProviderSyncRuntimeEligibility {
+            available: false,
+            eligible: true,
+            reason: None,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        provider_sync_runtime_eligibility(&get_desktop_session_state())
+    }
+}
+
+fn provider_sync_runtime_eligibility(
+    session: &DesktopSessionState,
+) -> ProviderSyncRuntimeEligibility {
+    if !session.available {
+        return ProviderSyncRuntimeEligibility {
+            available: false,
+            eligible: false,
+            reason: Some("session_state_unavailable"),
+        };
+    }
+    ProviderSyncRuntimeEligibility {
+        available: true,
+        eligible: !session.screen_locked,
+        reason: session.screen_locked.then_some("screen_locked"),
+    }
+}
+
+fn provider_schedule_wake_request_valid(request: &ProviderScheduleWakeRequest) -> bool {
+    matches!(
+        request.provider.as_str(),
+        "x" | "facebook" | "instagram" | "linkedin" | "youtube" | "substack" | "medium"
+    )
+}
+
+#[tauri::command]
+fn replace_provider_schedule_wake(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ProviderScheduleWakeState>,
+    wake: Option<ProviderScheduleWakeRequest>,
+) -> Result<(), String> {
+    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Some(task) = state
+        .task
+        .lock()
+        .map_err(|_| "Provider schedule wake state lock poisoned".to_string())?
+        .take()
+    {
+        task.abort();
+    }
+
+    let Some(wake) = wake else {
+        return Ok(());
+    };
+    if !provider_schedule_wake_request_valid(&wake) {
+        return Err("Unsupported provider schedule wake request".to_string());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        let _ = generation;
+        let _ = wake;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let generation_counter = state.generation.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            tokio::time::sleep(Duration::from_millis(
+                wake.deadline_at_ms.saturating_sub(now_ms),
+            ))
+            .await;
+
+            loop {
+                if generation_counter.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let eligibility =
+                    tauri::async_runtime::spawn_blocking(get_provider_sync_runtime_eligibility)
+                        .await
+                        .unwrap_or(ProviderSyncRuntimeEligibility {
+                            available: false,
+                            eligible: false,
+                            reason: Some("session_state_unavailable"),
+                        });
+                if eligibility.eligible {
+                    let actual_at_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    let _ = app.emit(
+                        "provider-schedule-native-wake",
+                        serde_json::json!({
+                            "provider": wake.provider,
+                            "scheduledAt": wake.deadline_at_ms,
+                            "actualAt": actual_at_ms,
+                            "wakeContext": true
+                        }),
+                    );
+                    return;
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+        });
+        *state
+            .task
+            .lock()
+            .map_err(|_| "Provider schedule wake state lock poisoned".to_string())? = Some(task);
+        Ok(())
     }
 }
 
@@ -3145,6 +3297,30 @@ impl CaptureState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackgroundRuntimeActiveOperation {
+    operation: Option<String>,
+    age_ms: Option<u64>,
+}
+
+fn background_runtime_active_operation(
+    runtime: &BackgroundRuntimeCoordinator,
+) -> BackgroundRuntimeActiveOperation {
+    let (operation, age_ms) = runtime.active_job_for_health();
+    BackgroundRuntimeActiveOperation {
+        operation: operation.map(str::to_string),
+        age_ms: age_ms.map(|value| u64::try_from(value).unwrap_or(u64::MAX)),
+    }
+}
+
+#[tauri::command]
+fn get_background_runtime_active_operation(
+    capture: tauri::State<'_, CaptureState>,
+) -> BackgroundRuntimeActiveOperation {
+    background_runtime_active_operation(&capture.background_runtime)
+}
+
 struct ActiveScraperSession {
     _guard: tokio::sync::OwnedMutexGuard<()>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
@@ -5031,6 +5207,95 @@ fn response_headers(response: &reqwest::Response) -> Vec<(String, String)> {
         .collect()
 }
 
+fn has_one_bounded_drive_file_id(path: &str, prefix: &str) -> bool {
+    let Some(file_id) = path.strip_prefix(prefix) else {
+        return false;
+    };
+    !file_id.is_empty()
+        && file_id.len() <= 1_024
+        && file_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn google_drive_request_target_is_allowed(parsed: &url::Url, method: &str) -> bool {
+    if parsed.scheme() != "https" || parsed.host_str() != Some("www.googleapis.com") {
+        return false;
+    }
+    if parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/") {
+        return matches!(method, "GET" | "POST" | "PATCH" | "DELETE");
+    }
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.port().is_some()
+        || parsed.fragment().is_some()
+    {
+        return false;
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/drive/v2/files/") {
+        return method == "GET" && parsed.query() == Some("fields=id,etag");
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/upload/drive/v2/files/") {
+        return method == "PUT" && parsed.query() == Some("uploadType=media&fields=id,etag");
+    }
+    false
+}
+
+fn one_exact_header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    let mut matches = headers
+        .iter()
+        .filter(|(key, _)| key.eq_ignore_ascii_case(name));
+    let value = matches.next()?.1.as_str();
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(value)
+}
+
+fn is_bounded_drive_bearer(value: &str) -> bool {
+    let Some(token) = value.strip_prefix("Bearer ") else {
+        return false;
+    };
+    !token.is_empty()
+        && token.len() <= 16_384
+        && token.bytes().all(|byte| matches!(byte, 0x21..=0x7e))
+}
+
+fn is_bounded_strong_drive_etag(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 3
+        && bytes.len() <= 1_024
+        && bytes.first() == Some(&b'"')
+        && bytes.last() == Some(&b'"')
+        && bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| *byte == 0x21 || matches!(*byte, 0x23..=0x7e))
+}
+
+fn google_drive_v2_request_shape_is_allowed(
+    parsed: &url::Url,
+    method: &str,
+    headers: &[(String, String)],
+    body: Option<&[u8]>,
+) -> bool {
+    if has_one_bounded_drive_file_id(parsed.path(), "/drive/v2/files/") {
+        return method == "GET"
+            && body.is_none()
+            && headers.len() == 1
+            && one_exact_header(headers, "Authorization").is_some_and(is_bounded_drive_bearer);
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/upload/drive/v2/files/") {
+        return method == "PUT"
+            && body.is_some_and(|bytes| !bytes.is_empty() && bytes.len() <= 65_536)
+            && headers.len() == 3
+            && one_exact_header(headers, "Authorization").is_some_and(is_bounded_drive_bearer)
+            && one_exact_header(headers, "Content-Type")
+                == Some("application/json; charset=UTF-8")
+            && one_exact_header(headers, "If-Match").is_some_and(is_bounded_strong_drive_etag);
+    }
+    true
+}
+
 /// Fetch a Google People API URL with a bearer token.
 #[tauri::command]
 async fn google_api_request(
@@ -5094,21 +5359,13 @@ async fn google_drive_request(
     };
     let parsed =
         url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
-    let allowed_path =
-        parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/");
-    if parsed.scheme() != "https"
-        || parsed.host_str() != Some("www.googleapis.com")
-        || !allowed_path
-    {
-        return Err("Google Drive API URL is not allowed".to_string());
-    }
-
     let method_name = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
     let method = match method_name.as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
         "PATCH" => reqwest::Method::PATCH,
         "DELETE" => reqwest::Method::DELETE,
+        "PUT" => reqwest::Method::PUT,
         _ => {
             return Err(format!(
                 "Google Drive API method is not allowed: {}",
@@ -5116,6 +5373,13 @@ async fn google_drive_request(
             ))
         }
     };
+    if !google_drive_request_target_is_allowed(&parsed, &method_name) {
+        return Err("Google Drive API URL is not allowed".to_string());
+    }
+    let headers = headers.unwrap_or_default();
+    if !google_drive_v2_request_shape_is_allowed(&parsed, &method_name, &headers, body.as_deref()) {
+        return Err("Google Drive v2 request shape is not allowed".to_string());
+    }
 
     let client = reqwest::Client::builder()
         .user_agent("Freed/1.0 (https://freed.wtf)")
@@ -5123,7 +5387,7 @@ async fn google_drive_request(
         .map_err(|e| e.to_string())?;
 
     let mut builder = client.request(method, parsed);
-    for (key, value) in headers.unwrap_or_default() {
+    for (key, value) in headers {
         builder = builder.header(&key, &value);
     }
     if let Some(body) = body {
@@ -5288,9 +5552,7 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
     }
 }
 
-fn clear_factory_reset_runtime_artifacts_in(
-    data_dir: &Path,
-) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
     let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
         .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
     runtime_health_write_guard.state.active_target = None;
@@ -5326,9 +5588,7 @@ fn clear_factory_reset_runtime_artifacts_in(
 }
 
 #[tauri::command]
-fn clear_factory_reset_runtime_artifacts(
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts(app: tauri::AppHandle) -> Result<(), String> {
     let data_dir = app
         .path()
         .app_data_dir()
@@ -7795,12 +8055,26 @@ struct IgFeedStatePayload {
 }
 
 impl IgFeedStatePayload {
+    fn content_bearing_without_layout(&self) -> bool {
+        self.article_count > 0
+            && self.ready_article_count == 0
+            && self.tiny_article_count > 0
+            && self.first_article_height == 0
+            && (self.first_article_text_length > 15 || self.first_article_media_count > 0)
+            && self.main_found
+            && !self.login_chrome
+    }
+
     fn placeholders_only(&self) -> bool {
-        self.article_count > 0 && self.ready_article_count == 0 && self.tiny_article_count > 0
+        self.article_count > 0
+            && self.ready_article_count == 0
+            && self.tiny_article_count > 0
+            && !self.content_bearing_without_layout()
     }
 
     fn feed_ready(&self) -> bool {
-        self.ready_article_count > 0 && !self.login_chrome
+        (self.ready_article_count > 0 || self.content_bearing_without_layout())
+            && !self.login_chrome
     }
 
     fn diagnostic_summary(&self) -> String {
@@ -12723,7 +12997,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
-        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
+        .manage(ProviderScheduleWakeState::default());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -13880,6 +14154,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_platform,
+            get_background_runtime_active_operation,
             get_desktop_installation_witness,
             get_updater_target,
             retry_startup_after_crash,
@@ -13901,18 +14176,29 @@ pub fn run() {
             record_runtime_health_event,
             get_ai_hardware_profile,
             get_desktop_session_state,
+            get_provider_sync_runtime_eligibility,
+            replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
-            library_core_journal_runtime::open_library_core_journal,
-            library_core_journal_runtime::library_core_journal_status,
             library_core_desktop_runtime::sqlite_library_status,
             library_core_desktop_runtime::begin_sqlite_library_import,
             library_core_desktop_runtime::append_sqlite_library_import,
             library_core_desktop_runtime::finalize_sqlite_library_import,
+            library_core_desktop_runtime::recover_sqlite_library_follower_overlay,
             library_core_desktop_runtime::read_sqlite_library_shell,
             library_core_desktop_runtime::read_sqlite_library_counts,
             library_core_desktop_runtime::read_sqlite_library_facet_summary,
             library_core_desktop_runtime::read_sqlite_library_sync_descriptor,
+            library_core_desktop_runtime::prepare_sqlite_library_follower_actor_request,
+            library_core_desktop_runtime::install_sqlite_library_follower_actor_enrollment,
+            library_core_desktop_runtime::sign_sqlite_library_follower_operation,
+            library_core_desktop_runtime::enqueue_sqlite_library_follower_intent,
+            library_core_desktop_runtime::sqlite_library_follower_intent_context,
+            library_core_desktop_runtime::sqlite_library_follower_runtime_status,
+            library_core_desktop_runtime::read_sqlite_library_follower_intent_outbox_candidate,
+            library_core_desktop_runtime::record_sqlite_library_follower_intent_publication,
+            library_core_desktop_runtime::read_sqlite_library_follower_result_import_cursor,
+            library_core_desktop_runtime::append_sqlite_library_follower_result_segment,
             library_core_desktop_runtime::bootstrap_sqlite_library_authority,
             library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
             library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
@@ -14006,6 +14292,171 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn drive_target(url: &str, method: &str) -> bool {
+        google_drive_request_target_is_allowed(&url::Url::parse(url).unwrap(), method)
+    }
+
+    fn drive_shape(url: &str, method: &str, headers: &[(&str, &str)], body: Option<&[u8]>) -> bool {
+        let owned_headers = headers
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect::<Vec<_>>();
+        google_drive_v2_request_shape_is_allowed(
+            &url::Url::parse(url).unwrap(),
+            method,
+            &owned_headers,
+            body,
+        )
+    }
+
+    #[test]
+    fn google_drive_v2_revision_transport_is_exactly_scoped() {
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+            "GET"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+            "PUT"
+        ));
+
+        for (url, method) in [
+            (
+                "https://www.googleapis.com/drive/v2/files?fields=id,etag",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1/permissions?fields=id,etag",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag&alt=media",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,version",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+                "POST",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media",
+                "PUT",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag&supportsAllDrives=true",
+                "PUT",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+                "PATCH",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v3/files/file-1?uploadType=media",
+                "PUT",
+            ),
+            (
+                "https://evil.example/drive/v2/files/file-1?fields=id,etag",
+                "GET",
+            ),
+        ] {
+            assert!(!drive_target(url, method), "unexpectedly allowed {method} {url}");
+        }
+    }
+
+    #[test]
+    fn google_drive_v3_transport_keeps_its_existing_methods() {
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v3/files/file-1?alt=media",
+            "GET"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            "POST"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v3/files/file-1?uploadType=media",
+            "PATCH"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v3/files/file-1",
+            "DELETE"
+        ));
+    }
+
+    #[test]
+    fn google_drive_v2_request_shape_requires_exact_headers_and_body() {
+        let metadata_url = "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag";
+        let upload_url = "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag";
+        let authorization = ("Authorization", "Bearer opaque-token");
+        let content_type = ("Content-Type", "application/json; charset=UTF-8");
+        let if_match = ("If-Match", "\"revision-1\"");
+
+        assert!(drive_shape(metadata_url, "GET", &[authorization], None));
+        assert!(drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match],
+            Some(b"{}")
+        ));
+
+        assert!(!drive_shape(
+            metadata_url,
+            "GET",
+            &[authorization],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(metadata_url, "GET", &[], None));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match],
+            None
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[
+                authorization,
+                content_type,
+                ("If-Match", "W/\"revision-1\"")
+            ],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, ("If-Match", "revision-1")],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match, if_match],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match, ("X-Extra", "no")],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[content_type, if_match],
+            Some(b"{}")
+        ));
+    }
+
     #[test]
     fn macos_tray_icon_is_a_small_monochrome_template() {
         let icon = macos_tray_icon().expect("macOS tray icon should decode");
@@ -14090,8 +14541,7 @@ mod tests {
             std::fs::write(data_dir.path().join(name), "installation state").unwrap();
         }
 
-        clear_factory_reset_runtime_artifacts_in(data_dir.path())
-        .unwrap();
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
 
         for name in cleared_files {
             assert!(
@@ -14105,8 +14555,7 @@ mod tests {
                 "installation state"
             );
         }
-        clear_factory_reset_runtime_artifacts_in(data_dir.path())
-        .unwrap();
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
     }
 
     #[cfg(unix)]
@@ -14665,6 +15114,25 @@ mod tests {
             ..state
         }
         .placeholders_only());
+
+        let hidden_content_feed = IgFeedStatePayload {
+            logged_in_cookie: false,
+            article_count: 2,
+            ready_article_count: 0,
+            tiny_article_count: 2,
+            first_article_height: 0,
+            first_article_text_length: 228,
+            first_article_media_count: 1,
+            scroll_height: 1199,
+            document_ready_state: "complete".to_string(),
+            login_chrome: false,
+            main_found: true,
+            url: "https://www.instagram.com/?variant=following".to_string(),
+            title: "Instagram".to_string(),
+        };
+        assert!(hidden_content_feed.content_bearing_without_layout());
+        assert!(hidden_content_feed.feed_ready());
+        assert!(!hidden_content_feed.placeholders_only());
     }
 
     #[test]
@@ -15234,6 +15702,35 @@ mod tests {
         assert!(runtime.begin_job("fb_scrape_feed").is_ok());
         assert!(runtime.begin_job("ig_scrape_feed").is_err());
         assert!(runtime.finish_job("fb_scrape_feed").is_some());
+    }
+
+    #[test]
+    fn background_runtime_reports_native_ownership_across_renderer_restarts() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+
+        assert_eq!(
+            background_runtime_active_operation(&runtime),
+            BackgroundRuntimeActiveOperation {
+                operation: None,
+                age_ms: None,
+            }
+        );
+
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        let active = background_runtime_active_operation(&runtime);
+        assert_eq!(active.operation.as_deref(), Some("fb_scrape_feed"));
+        assert!(active.age_ms.is_some());
+
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+        assert_eq!(
+            background_runtime_active_operation(&runtime),
+            BackgroundRuntimeActiveOperation {
+                operation: None,
+                age_ms: None,
+            }
+        );
     }
 
     #[test]
@@ -16561,6 +17058,55 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn provider_schedule_wake_accepts_only_supported_social_providers() {
+        assert!(provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "facebook".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+        assert!(provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "instagram".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+        assert!(!provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "rss".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+    }
+
+    #[test]
+    fn provider_schedule_runtime_fails_closed_when_locked_or_unknown() {
+        let locked = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: true,
+            screen_locked: true,
+            error: None,
+        });
+        assert!(!locked.eligible);
+        assert_eq!(locked.reason, Some("screen_locked"));
+
+        let unknown = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: false,
+            screen_locked: false,
+            error: Some("unavailable".to_string()),
+        });
+        assert!(!unknown.eligible);
+        assert_eq!(unknown.reason, Some("session_state_unavailable"));
+
+        let unlocked = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: true,
+            screen_locked: false,
+            error: None,
+        });
+        assert!(unlocked.eligible);
+        assert_eq!(unlocked.reason, None);
     }
 
     #[cfg(target_os = "macos")]

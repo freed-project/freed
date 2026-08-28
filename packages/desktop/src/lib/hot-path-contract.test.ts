@@ -49,6 +49,37 @@ describe("desktop hot-path contract", () => {
     expect(syncSource).not.toContain("freed.automerge");
   });
 
+  it("routes cloud sync by role and keeps writer transfer Primary-only", () => {
+    const syncSource = readFileSync(join(LIB_DIR, "sync.ts"), "utf8");
+    const startCloud = syncSource.slice(
+      syncSource.indexOf("export async function startCloudSync"),
+      syncSource.indexOf("function stopCloudSync"),
+    );
+    expect(startCloud).toContain("readLibraryCoreDesktopRole()");
+    expect(startCloud).toContain("startSqliteLibraryGoogleDriveFollowerSync");
+    expect(startCloud).toContain("startSqliteLibraryGoogleDriveSync");
+
+    const syncNow = syncSource.slice(
+      syncSource.indexOf("export async function syncCloudProviderNow"),
+      syncSource.indexOf(
+        "export async function transferSqliteLibraryWriterToThisDesktop",
+      ),
+    );
+    expect(syncNow).toContain("readLibraryCoreDesktopRole()");
+    expect(syncNow).toContain("syncSqliteLibraryFollowerGoogleDriveOnce");
+    expect(syncNow).toContain("publishCurrentSqliteLibraryToGoogleDrive");
+
+    const transfer = syncSource.slice(
+      syncSource.indexOf(
+        "export async function transferSqliteLibraryWriterToThisDesktop",
+      ),
+      syncSource.indexOf(
+        "export async function resolveCloudSyncConflict",
+      ),
+    );
+    expect(transfer).toContain("requirePrimaryLibraryCoreDesktopRole();");
+  });
+
   it("keeps provider outbox drains wired to Library mutation metadata", () => {
     const storeSource = readFileSync(join(LIB_DIR, "store.ts"), "utf8");
     const outboxSource = readFileSync(join(LIB_DIR, "outbox.ts"), "utf8");

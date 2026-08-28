@@ -51,9 +51,11 @@ esac
 
 mkdir -p "$TEMP_DIR/scripts/lib" "$TEMP_DIR/.vercel"
 
-cp "$ROOT_DIR/scripts/patch-automerge.mjs" "$TEMP_DIR/scripts/patch-automerge.mjs"
 cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metadata.mjs"
 cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
+cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.mjs"
+cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.d.mts" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.d.mts"
+cp "$ROOT_DIR/scripts/validate-retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/validate-retired-automerge-runtime.mjs"
 
 if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/package.json" "$TEMP_DIR/package.json"
@@ -70,8 +72,6 @@ else
   cp "$ROOT_DIR/$APP_DIR/.vercel/project.json" "$TEMP_DIR/.vercel/project.json"
 
   if [[ "$TARGET" == "pwa" ]]; then
-    mkdir -p "$TEMP_DIR/scripts"
-    cp "$ROOT_DIR/scripts/patch-automerge.mjs" "$TEMP_DIR/scripts/patch-automerge.mjs"
     mkdir -p "$TEMP_DIR/packages/pwa"
     cat <<'EOF' >"$TEMP_DIR/vercel.json"
 {

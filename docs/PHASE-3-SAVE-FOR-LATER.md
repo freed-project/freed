@@ -9,7 +9,10 @@
 > has full article extraction, local HTML caching, Markdown import/export,
 > background fetch healing, user-visible AI controls, and hierarchical tag
 > navigation. PWA saves sync-healed stubs for Freed Desktop to hydrate. Saved
-> content is pinned in the device-local reader cache by default.
+> content is pinned in the device-local reader cache by default. The current
+> PWA transition implementation pages the complete Saved collection from
+> IndexedDB. The Library Core stores it in SQLite
+> WebAssembly over OPFS while preserving the bounded query contract.
 
 ---
 
@@ -21,8 +24,9 @@ architecture is now:
 1. Save a URL from desktop or PWA by writing a lightweight stub item.
 2. Pull metadata plus article content in the background with Readability-safe
    browser parsing where the platform can fetch the page.
-3. Keep full HTML in a device-local cache, never in Automerge.
-4. Sync compact preserved text through Automerge for cross-device fallback.
+3. Keep full HTML in the device-local content vault, never in checkpoint rows.
+4. Sync typed content descriptors and normalized preserved-text records through
+   the Library Core protocol.
 5. Render reader content through a layered waterfall:
    1. Local cached HTML
    2. Synced preserved text
@@ -89,6 +93,7 @@ architecture is now:
 | 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
 | 3.10 | Saved content pinned in local reader cache | ✓ Complete | Saved URLs, saved posts, and saved stories enter the high-priority local cache path |
 | 3.11 | Bound Saved overview analytics on Freed Desktop | ✓ Complete | The overview now reads exact source, content, and time-bucket aggregates from the authenticated SQLite generation without retaining the Library corpus; stale or unavailable derived state falls back to the existing Automerge-compatible reducer |
+| 3.12 | Complete bounded Saved reads on the PWA transition store | ✓ Complete | IndexedDB query generations proved the bounded contract. Phase 6 replaces the engine with SQLite WebAssembly over OPFS while preserving the named queries and ordering. |
 
 ---
 

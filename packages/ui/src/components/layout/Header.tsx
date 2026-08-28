@@ -389,7 +389,7 @@ export function Header({
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
-  const { filteredItems, isSearching, resultCount } = useSearchResults(
+  const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
     items,
     searchQuery,
     activeFilter,
@@ -580,6 +580,7 @@ export function Header({
       return `${mappedFriendCount.toLocaleString()} friends on the map`;
     }
     if (isSearching) {
+      if (searchUnavailable) return "Search is temporarily unavailable";
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
     return formatItemCount(fullScopeItemCount ?? filteredItems.length);
@@ -595,6 +596,7 @@ export function Header({
     mappedFriendCount,
     pendingMatchCount,
     resultCount,
+    searchUnavailable,
     socialAccountCount,
     scopeLabel,
   ]);

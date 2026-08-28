@@ -432,6 +432,7 @@ test("validate-main-backflow accepts the historical promote dev to main subject"
 });
 
 for (const subject of [
+  "chore: refresh dev promotion for production release (#1538)",
   "chore: promote dev into main for cloud conflict recovery (#784)",
   "chore: promote dev into main for PWA sync recovery (#798)",
   "chore: promote updater asset url fix to main (#313)",
@@ -909,7 +910,10 @@ test("validate-main-backflow rejects a main rollback to an older dev blob", (t) 
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
 });
 
-test("validate-main-backflow accepts a reverse-integrated main hotfix after dev advances", (t) => {
+for (const reverseIntegrationSubject of [
+  "chore: merge main back into dev after v26.7.700 (#929)",
+  "chore: reverse integrate v26.7.700 release identity (#929)",
+]) test(`validate-main-backflow accepts ${reverseIntegrationSubject}`, (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
@@ -932,7 +936,7 @@ test("validate-main-backflow accepts a reverse-integrated main hotfix after dev 
 
   git(cwd, ["checkout", "dev"]);
   git(cwd, ["checkout", "main", "--", "packages/pwa/src/app.ts"]);
-  commitAll(cwd, "chore: merge main back into dev after v26.7.700 (#929)");
+  commitAll(cwd, reverseIntegrationSubject);
   writeRepoFile(
     cwd,
     "packages/pwa/src/app.ts",

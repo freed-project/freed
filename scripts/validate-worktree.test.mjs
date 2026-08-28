@@ -9,12 +9,12 @@ import {
   describePlan,
   executeReleaseIdentityValidation,
   isDesktopNativeSurface,
-  isDesktopPerfSensitiveSurface,
   isLibraryCoreReleaseActivationPath,
   isPullRequestPublisherToolingPath,
   isReleasePublisherToolingPath,
   isReleaseAdmissionPath,
   isRepositoryConfigPath,
+  isRetiredAutomergeRuntimeGuardPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   isStabilityStatusPath,
@@ -72,7 +72,6 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
-    "desktop e2e perf",
   ]);
 });
 
@@ -93,7 +92,17 @@ test("feature plan for sync changes runs the sync package tests", () => {
   ]);
 });
 
-test("feature plan for feed UI changes runs desktop perf checks", () => {
+test("feature plan for library service changes runs its package tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/library-service/src/supervisor.ts",
+    ]),
+  );
+
+  assert.deepEqual(labels, ["root typecheck", "library service tests"]);
+});
+
+test("feature plan for feed UI changes leaves raw timing checks to nightly", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
       "packages/ui/src/components/feed/useReadOnScrollTracker.ts",
@@ -108,11 +117,10 @@ test("feature plan for feed UI changes runs desktop perf checks", () => {
     "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
-    "desktop e2e perf",
   ]);
 });
 
-test("feature plan for Friends UI changes runs desktop perf checks", () => {
+test("feature plan for Friends UI changes leaves raw timing checks to nightly", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
       "packages/ui/src/components/friends/FriendsView.tsx",
@@ -127,11 +135,10 @@ test("feature plan for Friends UI changes runs desktop perf checks", () => {
     "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
-    "desktop e2e perf",
   ]);
 });
 
-test("feature plan for sidebar UI changes runs desktop perf checks", () => {
+test("feature plan for sidebar UI changes leaves raw timing checks to nightly", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
       "packages/ui/src/components/layout/Sidebar.tsx",
@@ -146,7 +153,21 @@ test("feature plan for sidebar UI changes runs desktop perf checks", () => {
     "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
-    "desktop e2e perf",
+  ]);
+});
+
+test("feature plan routes phase and roadmap changes through focused checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "docs/PHASE-6-PWA.md",
+      "docs/roadmap-status.json",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "roadmap status validation",
+    "roadmap status tests",
   ]);
 });
 
@@ -283,6 +304,33 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
   );
 });
 
+test("feature plan runs strict reusable Library Core checks", () => {
+  const plan = buildValidationPlan("feature", [
+    "packages/library-core-native/src/lib.rs",
+  ]);
+  const clippy = plan.find(
+    (item) => item.label === "Library Core native rust clippy",
+  );
+  const tests = plan.find(
+    (item) => item.label === "Library Core native rust tests",
+  );
+
+  assert.ok(clippy);
+  assert.ok(tests);
+  assert.match(clippy.cwd, /\/packages\/library-core-native$/);
+  assert.ok(plan.some((item) => item.label === "desktop production build"));
+  assert.ok(plan.some((item) => item.label === "native rust clippy"));
+  assert.ok(plan.some((item) => item.label === "native rust tests"));
+  assert.deepEqual(clippy.args, [
+    "clippy",
+    "--all-targets",
+    "--all-features",
+    "--",
+    "-D",
+    "warnings",
+  ]);
+});
+
 test("workspace checks run inside each workspace without root dispatch flags", () => {
   const plan = buildValidationPlan("dev", []);
   const workspaceCommands = plan.filter(
@@ -326,6 +374,23 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   );
 
   assert.deepEqual(labels, ["validation runner tests"]);
+});
+
+test("retired Automerge runtime guard changes run the focused contract", () => {
+  const paths = [
+    "scripts/lib/retired-automerge-runtime.d.mts",
+    "scripts/lib/retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isRetiredAutomergeRuntimeGuardPath(filePath), true, filePath);
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(
+      labels.includes("retired Automerge runtime guard tests"),
+      filePath,
+    );
+  }
 });
 
 test("feature plan for release admission changes runs only its contract tests", () => {
@@ -495,100 +560,21 @@ test("stability status paths route focused tests in feature and dev plans", () =
   );
 });
 
-test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
-  assert.equal(
-    isDesktopPerfSensitiveSurface(".github/workflows/ci.yml"),
-    false,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/desktop/src/lib/automerge.worker.ts",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/desktop/tests/e2e/perf-map.spec.ts",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/desktop/tests/e2e/perf-settings.spec.ts",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/components/feed/FeedList.tsx",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/components/friends/FriendGraph.tsx",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/components/layout/Sidebar.tsx",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface("packages/ui/src/components/map/MapView.tsx"),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/components/SettingsDialog.tsx",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/components/settings/FeedsSection.tsx",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface("packages/ui/src/lib/friends-workspace.ts"),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/ui/src/hooks/useResolvedLocations.ts",
-    ),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface("packages/shared/src/location.ts"),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface("packages/shared/src/ranking.ts"),
-    true,
-  );
-  assert.equal(
-    isDesktopPerfSensitiveSurface(
-      "packages/desktop/src/components/ProviderHealthSectionSummary.tsx",
-    ),
-    false,
-  );
-});
-
-test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
+test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly", () => {
   const labels = describePlan(buildValidationPlan("dev", []));
 
   assert.ok(labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
-  assert.ok(labels.includes("desktop e2e perf"));
+  assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
   assert.ok(labels.includes("pwa performance tests"));
   assert.ok(labels.includes("shared unit tests"));
+  assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  assert.ok(labels.includes("Library Core native rust clippy"));
+  assert.ok(labels.includes("Library Core native rust tests"));
+  assert.ok(labels.includes("retired Automerge release artifact guard"));
   assert.ok(!labels.includes("desktop e2e full"));
 });
 
@@ -597,12 +583,14 @@ test("production plan includes dev desktop gates without duplicating shipped bui
 
   assert.ok(labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
-  assert.ok(labels.includes("desktop e2e perf"));
+  assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
   assert.ok(!labels.includes("desktop e2e full"));
 
   // The PWA is not otherwise built by the release workflow, so it stays.
   assert.ok(labels.includes("pwa production build"));
+  assert.ok(labels.includes("library service tests"));
+  assert.ok(labels.includes("retired Automerge release artifact guard"));
 
   assert.ok(
     !labels.includes("root build"),
@@ -628,12 +616,15 @@ test("production plan includes dev desktop gates without duplicating shipped bui
     !labels.includes("desktop production build"),
     "the desktop build must not be duplicated ahead of the release matrix",
   );
-  const frontendContextIndex = labels.indexOf(
-    "desktop frontend context build",
-  );
+  const frontendContextIndex = labels.indexOf("desktop frontend context build");
   const nativeClippyIndex = labels.indexOf("native rust clippy");
+  const pwaBuildIndex = labels.indexOf("pwa production build");
+  const artifactGuardIndex = labels.indexOf(
+    "retired Automerge release artifact guard",
+  );
   assert.ok(frontendContextIndex >= 0);
   assert.ok(nativeClippyIndex > frontendContextIndex);
+  assert.ok(artifactGuardIndex > pwaBuildIndex);
 
   // The website ships from `www` through publish-website against the reviewed
   // marketing branch. Building it in the Desktop release lane couples two

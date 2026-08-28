@@ -45,6 +45,7 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     ".agents/skills/freed-library-core/SKILL.md",
     ".agents/skills/freed-ship-build/SKILL.md",
     "docs/LIBRARY-CORE-CONTRACT.md",
+    "docs/roadmap-status.json",
     "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
     "docs/library-core-activation-manifest.json",
     "packages/pwa/vercel.json",
@@ -65,6 +66,8 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/lib/library-core-release-activation.test.mjs",
     "scripts/lib/release-tag-publisher.mjs",
     "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/lib/retired-automerge-runtime.d.mts",
+    "scripts/lib/retired-automerge-runtime.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
     "scripts/post-perf-comment.mjs",
     "scripts/post-perf-comment.test.mjs",
@@ -84,6 +87,8 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/sync-github-rulesets.mjs",
     "scripts/sync-github-rulesets.test.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
+    "scripts/validate-roadmap-status.mjs",
+    "scripts/validate-roadmap-status.test.mjs",
     "scripts/validate-library-core-activation-manifest.mjs",
     "scripts/validate-dev-integration-receipt.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
@@ -91,6 +96,8 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/validate-release-identity.test.mjs",
     "scripts/validate-release-tag-authority.mjs",
     "scripts/validate-release-tag-authority.test.mjs",
+    "scripts/validate-retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.test.mjs",
     "scripts/validate-skills.mjs",
     "scripts/validate-skills.test.mjs",
     "scripts/validate-worktree.mjs",
@@ -267,6 +274,7 @@ function isRepoSurface(changedFile) {
 function hasFocusedFeatureValidation(changedFile) {
   return (
     FOCUSED_FEATURE_VALIDATION_PATHS.has(changedFile) ||
+    /^docs\/PHASE-\d+-[^/]+\.md$/.test(changedFile) ||
     /^release-notes\/daily\/(?:dev|production)\/[^/]+\.json$/.test(
       changedFile,
     ) ||

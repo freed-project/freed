@@ -174,11 +174,16 @@ function waitForLiZeroEventDrain(): Promise<void> {
  * The Rust command fires multiple 'li-feed-data' events (one per pass).
  * We accumulate them until the final pass, identified by a 'done' flag.
  */
-export function fetchLiFeed(): Promise<LiSyncResult> {
-  return runFactoryResetSensitiveDesktopOperation(fetchLiFeedInternal);
+export function fetchLiFeed(onProviderContact?: () => void): Promise<LiSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchLiFeedInternal(resetEpoch, onProviderContact),
+  );
 }
 
-async function fetchLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
+async function fetchLiFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<LiSyncResult> {
   const emptyResult = createEmptyLiSyncResult();
   const diag = emptyResult.diag;
 
@@ -262,7 +267,12 @@ async function fetchLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
       timeoutMs: 600_000,
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
-      run: () => invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }),
+      run: () => {
+        onProviderContact?.();
+        return invoke("li_scrape_feed", {
+          windowMode: getLiScraperWindowMode(),
+        });
+      },
     });
     assertFactoryResetEpoch(resetEpoch);
     if (diag.extractionPasses === 0) {
@@ -331,6 +341,7 @@ async function fetchLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
  */
 export function captureLiFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<LiSyncResult> {
   if (!isTauri()) {
     addDebugEvent("change", "[LI] browser preview skips native LinkedIn capture");
@@ -340,7 +351,7 @@ export function captureLiFeed(
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const scrapeStartedAt = Date.now();
     try {
-      const result = await captureLiFeedInternal(resetEpoch);
+      const result = await captureLiFeedInternal(resetEpoch, onProviderContact);
       assertFactoryResetEpoch(resetEpoch);
       recordScrapeOutcome({
         provider: "linkedin",
@@ -367,7 +378,10 @@ export function captureLiFeed(
   });
 }
 
-async function captureLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
+async function captureLiFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<LiSyncResult> {
   assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
@@ -429,7 +443,7 @@ async function captureLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> 
 
   try {
     addDebugEvent("change", "[LI] sync started");
-    const result = await fetchLiFeed();
+    const result = await fetchLiFeed(onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

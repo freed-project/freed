@@ -32,6 +32,7 @@ describe("PWA Library Core sync lifecycle", () => {
 
   afterEach(() => {
     stopCloudSync();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -51,6 +52,10 @@ describe("PWA Library Core sync lifecycle", () => {
       expect.objectContaining({
         status: "error",
         error: "No published SQLite Library was found in Google Drive",
+        statusMessage:
+          "Waiting for the Primary Freed Desktop to publish its first Library checkpoint.",
+        pendingReason:
+          "Your Google Drive connection is working. No remote Library has been published yet.",
       }),
     );
 
@@ -60,5 +65,50 @@ describe("PWA Library Core sync lifecycle", () => {
     expect(statuses.at(-1)).toBe(true);
     expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  it("refreshes an unexpectedly rejected Google token and retries once", async () => {
+    localStorage.setItem(
+      "freed_cloud_token_meta_gdrive",
+      JSON.stringify({
+        accessToken: "expired-access-token",
+        refreshToken: "stored-refresh-token",
+        expiresAt: Date.now() + 30 * 60 * 1000,
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          access_token: "refreshed-access-token",
+          expires_in: 3600,
+        }),
+      }),
+    );
+    mocks.syncLibraryCore
+      .mockRejectedValueOnce(
+        new Error(
+          "Library Core Drive list failed: 401 - invalid authentication credentials",
+        ),
+      )
+      .mockResolvedValueOnce({});
+
+    await startCloudSync("gdrive", "expired-access-token");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/oauth/google",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          grantType: "refresh_token",
+          refreshToken: "stored-refresh-token",
+        }),
+      }),
+    );
+    expect(mocks.syncLibraryCore).toHaveBeenNthCalledWith(2, {
+      accessToken: "refreshed-access-token",
+      signal: expect.any(AbortSignal),
+    });
   });
 });

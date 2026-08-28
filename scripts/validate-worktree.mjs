@@ -80,6 +80,8 @@ const RELEASE_ADMISSION_PATHS = new Set([
   ".github/workflows/ci.yml",
   ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
+  ".github/workflows/tooling-nightly.yml",
+  "scripts/ci-sanitize-apt-sources.sh",
   "scripts/post-perf-comment.mjs",
   "scripts/post-perf-comment.test.mjs",
   "scripts/release-governance.test.mjs",
@@ -163,6 +165,20 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
   "scripts/tooling-smoke-plan.test.mjs",
+]);
+
+const RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS = new Set([
+  "packages/desktop/vite.config.js",
+  "packages/desktop/vite.config.ts",
+  "packages/pwa/package.json",
+  "packages/pwa/vite.config.ts",
+  "packages/shared/src/library-core/index.ts",
+  "scripts/lib/retired-automerge-runtime.d.mts",
+  "scripts/lib/retired-automerge-runtime.mjs",
+  "scripts/validate-retired-automerge-runtime.mjs",
+  "scripts/validate-retired-automerge-runtime.test.mjs",
+  "scripts/vercel-deploy-preview.sh",
+  "scripts/vercel-deploy-production.sh",
 ]);
 
 export function normalizeRepoPath(filePath) {
@@ -394,46 +410,6 @@ export function isSocialProviderFocusedSurface(filePath) {
   );
 }
 
-export function isDesktopPerfSensitiveSurface(filePath) {
-  return (
-    filePath === "scripts/perf-compare.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-map.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-sidebar.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-settings.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-budgets.json" ||
-    filePath === "packages/desktop/tests/e2e/perf-baselines.json" ||
-    filePath === "packages/desktop/tests/e2e/reporters/perf-reporter.ts" ||
-    filePath === "packages/desktop/src/lib/store.ts" ||
-    filePath === "packages/desktop/src/lib/automerge.ts" ||
-    filePath === "packages/desktop/src/lib/automerge-types.ts" ||
-    filePath === "packages/desktop/src/lib/automerge.worker.ts" ||
-    filePath === "packages/desktop/src/lib/automerge-persistence.ts" ||
-    filePath === "packages/desktop/src/lib/background-runtime-coordinator.ts" ||
-    filePath === "packages/desktop/src/lib/memory-monitor.ts" ||
-    filePath === "packages/desktop/src/lib/content-fetcher.ts" ||
-    filePath === "packages/desktop/src/lib/rss-poller.ts" ||
-    filePath.startsWith("packages/desktop/src-tauri/src/") ||
-    filePath.startsWith("packages/ui/src/components/feed/") ||
-    filePath.startsWith("packages/ui/src/components/friends/") ||
-    filePath.startsWith("packages/ui/src/components/layout/") ||
-    filePath.startsWith("packages/ui/src/components/map/") ||
-    filePath.startsWith("packages/ui/src/components/settings/") ||
-    filePath === "packages/ui/src/components/SettingsDialog.tsx" ||
-    filePath === "packages/ui/src/lib/friends-workspace.ts" ||
-    filePath === "packages/ui/src/lib/account-link-suggestions.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-render.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-layout.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-model.ts" ||
-    filePath === "packages/ui/src/hooks/useResolvedLocations.ts" ||
-    filePath === "packages/ui/src/hooks/useSearchResults.ts" ||
-    filePath === "packages/shared/src/location.ts" ||
-    filePath === "packages/shared/src/ranking.ts" ||
-    filePath === "packages/shared/src/schema.ts"
-  );
-}
-
 export function captureWorkspaceForFile(filePath) {
   const match = filePath.match(/^(packages\/capture-[^/]+)/);
   return match ? match[1] : null;
@@ -494,6 +470,10 @@ export function isToolingSmokeRunnerPath(filePath) {
   return TOOLING_SMOKE_RUNNER_PATHS.has(filePath);
 }
 
+export function isRetiredAutomergeRuntimeGuardPath(filePath) {
+  return RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS.has(filePath);
+}
+
 export function isSocialScrapeLoopPath(filePath) {
   return (
     filePath === "scripts/social-scrape-loop.mjs" ||
@@ -513,11 +493,39 @@ export function isStabilityStatusPath(filePath) {
   return STABILITY_STATUS_PATHS.has(filePath);
 }
 
+export function isRoadmapStatusPath(filePath) {
+  return (
+    filePath === "docs/roadmap-status.json" ||
+    filePath === "scripts/validate-roadmap-status.mjs" ||
+    filePath === "scripts/validate-roadmap-status.test.mjs" ||
+    /^docs\/PHASE-\d+-[^/]+\.md$/.test(filePath)
+  );
+}
+
+function roadmapStatusChecks() {
+  return [
+    nodeCommand("roadmap status validation", [
+      path.join("scripts", "validate-roadmap-status.mjs"),
+    ]),
+    nodeCommand("roadmap status tests", [
+      "--test",
+      path.join("scripts", "validate-roadmap-status.test.mjs"),
+    ]),
+  ];
+}
+
 function stabilityStatusTestsCommand() {
   return nodeCommand("stability status tests", [
     "--test",
     path.join("scripts", "stability-status.test.mjs"),
     path.join("scripts", "stability-artifact.test.mjs"),
+  ]);
+}
+
+function retiredAutomergeRuntimeGuardTestsCommand() {
+  return nodeCommand("retired Automerge runtime guard tests", [
+    "--test",
+    path.join("scripts", "validate-retired-automerge-runtime.test.mjs"),
   ]);
 }
 
@@ -559,8 +567,12 @@ function nodeCommand(label, args, workspacePath = ".") {
   return commandItem(label, NODE_BIN, args, workspacePath);
 }
 
-function cargoCommand(label, args) {
-  return commandItem(label, CARGO_BIN, args, "packages/desktop/src-tauri");
+function cargoCommand(
+  label,
+  args,
+  workspacePath = "packages/desktop/src-tauri",
+) {
+  return commandItem(label, CARGO_BIN, args, workspacePath);
 }
 
 function desktopUnitFilesCommand(label, files) {
@@ -624,6 +636,21 @@ function nativeRustChecks() {
       "--all-features",
     ]),
     cargoCommand("native rust tests", ["test", "--all-features"]),
+  ];
+}
+
+function libraryCoreNativeRustChecks() {
+  return [
+    cargoCommand(
+      "Library Core native rust clippy",
+      ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"],
+      "packages/library-core-native",
+    ),
+    cargoCommand(
+      "Library Core native rust tests",
+      ["test", "--all-features"],
+      "packages/library-core-native",
+    ),
   ];
 }
 
@@ -836,6 +863,11 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root lint", ["run", "lint"]),
       npmCommand("website tests", ["run", "test"], "website"),
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+      npmCommand(
+        "library service tests",
+        ["run", "test"],
+        "packages/library-service",
+      ),
       ...pwaTestCommands(),
       npmCommand(
         "desktop unit tests",
@@ -853,19 +885,25 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
       npmCommand(
-        "desktop e2e perf",
-        ["run", "test:e2e:perf"],
-        "packages/desktop",
-      ),
-      npmCommand(
         "desktop e2e visual",
         ["run", "test:e2e:visual"],
         "packages/desktop",
       ),
       ...nativeRustChecks(),
+      ...libraryCoreNativeRustChecks(),
+      nodeCommand("retired Automerge release artifact guard", [
+        path.join("scripts", "validate-retired-automerge-runtime.mjs"),
+        "all",
+      ]),
     ];
+    if (changedFiles.some(isRetiredAutomergeRuntimeGuardPath)) {
+      addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
+    }
     if (changedFiles.some(isStabilityStatusPath)) {
       addCommand(plan, stabilityStatusTestsCommand());
+    }
+    if (changedFiles.some(isRoadmapStatusPath)) {
+      for (const check of roadmapStatusChecks()) addCommand(plan, check);
     }
     return plan;
   }
@@ -880,6 +918,7 @@ export function buildValidationPlan(mode, changedFiles) {
               "root typecheck",
               "root lint",
               "website tests",
+              "retired Automerge release artifact guard",
             ].includes(item.label),
         )
         .flatMap((item) =>
@@ -909,6 +948,10 @@ export function buildValidationPlan(mode, changedFiles) {
       // validation builds only the frontend context required by Tauri's
       // generate_context! macro before native clippy and tests.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
+      nodeCommand("retired Automerge release artifact guard", [
+        path.join("scripts", "validate-retired-automerge-runtime.mjs"),
+        "all",
+      ]),
     ];
 
     const releaseArtifacts = collectReleaseArtifactsToValidate(
@@ -976,13 +1019,18 @@ export function buildValidationPlan(mode, changedFiles) {
   const syncPackageChanged = changedFiles.some((filePath) =>
     filePath.startsWith("packages/sync/"),
   );
+  const libraryServicePackageChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/library-service/"),
+  );
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
-  const desktopNativeSurfaceChanged = changedFiles.some(isDesktopNativeSurface);
-  const desktopPerfSensitiveChanged = changedFiles.some(
-    isDesktopPerfSensitiveSurface,
+  const libraryCoreNativeSurfaceChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/library-core-native/"),
   );
+  const desktopNativeSurfaceChanged =
+    libraryCoreNativeSurfaceChanged ||
+    changedFiles.some(isDesktopNativeSurface);
   const pwaSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
@@ -1008,8 +1056,12 @@ export function buildValidationPlan(mode, changedFiles) {
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
+  const retiredAutomergeRuntimeGuardChanged = changedFiles.some(
+    isRetiredAutomergeRuntimeGuardPath,
+  );
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const stabilityStatusChanged = changedFiles.some(isStabilityStatusPath);
+  const roadmapStatusChanged = changedFiles.some(isRoadmapStatusPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
@@ -1092,6 +1144,17 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (libraryServicePackageChanged) {
+    addCommand(
+      plan,
+      npmCommand(
+        "library service tests",
+        ["run", "test"],
+        "packages/library-service",
+      ),
+    );
+  }
+
   if (pwaSurfaceChanged) {
     addCommand(
       plan,
@@ -1125,17 +1188,6 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
-  if (desktopPerfSensitiveChanged) {
-    addCommand(
-      plan,
-      npmCommand(
-        "desktop e2e perf",
-        ["run", "test:e2e:perf"],
-        "packages/desktop",
-      ),
-    );
-  }
-
   if (desktopNativeSurfaceChanged) {
     // generate_context! validates the built frontend path at compile time.
     addCommand(
@@ -1147,6 +1199,12 @@ export function buildValidationPlan(mode, changedFiles) {
       ),
     );
     for (const check of nativeRustChecks()) {
+      addCommand(plan, check);
+    }
+  }
+
+  if (libraryCoreNativeSurfaceChanged) {
+    for (const check of libraryCoreNativeRustChecks()) {
       addCommand(plan, check);
     }
   }
@@ -1265,6 +1323,10 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (retiredAutomergeRuntimeGuardChanged) {
+    addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
+  }
+
   if (validateRunnerChanged) {
     addCommand(
       plan,
@@ -1287,6 +1349,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (roadmapStatusChanged) {
+    for (const check of roadmapStatusChecks()) addCommand(plan, check);
   }
 
   if (

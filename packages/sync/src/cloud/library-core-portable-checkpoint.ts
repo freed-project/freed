@@ -1,5 +1,8 @@
 import {
   createLibraryCoreImmutableObjectKey,
+  encodeLibraryCoreCanonicalValue,
+  LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES,
+  LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES,
   libraryCorePortableCheckpointRecordIdentityV1,
   LibraryCorePortableCheckpointStreamVerifierV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
@@ -14,7 +17,12 @@ import {
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
 } from "@freed/shared/library-core";
-import { importLibraryCoreCheckpointManifestV1 } from "./library-core-checkpoint-import.js";
+import {
+  importLibraryCoreCheckpointManifestV1,
+  LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT,
+} from "./library-core-checkpoint-import.js";
 import {
   publishLibraryCoreCheckpointGenerationV1,
   reassignLibraryCoreCheckpointGenerationV1,
@@ -30,7 +38,6 @@ import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
 const PORTABLE_CHECKPOINT_DATASET_SCHEMA_ID =
   "library_core_logical_checkpoint_v1" as const;
-const PORTABLE_CHECKPOINT_PAGE_RECORD_LIMIT = 128;
 const PORTABLE_CHECKPOINT_PAGE_LIMIT = 4_096;
 
 async function* asAsyncIterable<T>(
@@ -72,6 +79,14 @@ function canonicalRecord(
   return record as unknown as LibraryCoreCanonicalValue;
 }
 
+function encodedRecordByteLength(
+  record: LibraryCorePortableCheckpointRecordV1,
+): number {
+  return encodeLibraryCoreCanonicalValue(canonicalRecord(record), {
+    maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT,
+  }).byteLength;
+}
+
 export interface PrepareLibraryCorePortableCheckpointPagesRequestV1 {
   readonly entries:
     | Iterable<LibraryCorePortableCheckpointEntryV1>
@@ -84,8 +99,9 @@ export interface PrepareLibraryCorePortableCheckpointPagesRequestV1 {
 /**
  * Encode one complete logical checkpoint as bounded immutable page objects.
  *
- * The producer retains at most 128 records and one encoded page. It verifies
- * the complete collection order and declared counts as the source advances.
+ * The producer retains at most 128 records, 2,097,152 decoded bytes, and one
+ * encoded page. It verifies the complete collection order and declared counts
+ * as the source advances.
  */
 export async function* prepareLibraryCorePortableCheckpointPagesV1(
   request: PrepareLibraryCorePortableCheckpointPagesRequestV1,
@@ -104,13 +120,17 @@ export async function* prepareLibraryCorePortableCheckpointPagesV1(
       0,
     );
   const maximumPublishedRecords =
-    PORTABLE_CHECKPOINT_PAGE_LIMIT * PORTABLE_CHECKPOINT_PAGE_RECORD_LIMIT;
+    PORTABLE_CHECKPOINT_PAGE_LIMIT * LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT;
   if (declaredRecordCount > maximumPublishedRecords) {
     throw new RangeError(
       `portable checkpoint publication supports at most ${maximumPublishedRecords.toLocaleString()} records`,
     );
   }
   let records: LibraryCorePortableCheckpointRecordV1[] = [header];
+  let decodedPageBytes =
+    LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES +
+    LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES +
+    encodedRecordByteLength(header);
   let pageIndex = 0;
 
   const flush = async (): Promise<LibraryCorePreparedCheckpointPageV1> => {
@@ -126,9 +146,9 @@ export async function* prepareLibraryCorePortableCheckpointPagesV1(
       records.map(canonicalRecord),
       {
         kind: "checkpoint",
-        maximumDecodedBytes: 2_097_152,
-        maximumRecordBytes: 131_072,
-        maximumRecords: PORTABLE_CHECKPOINT_PAGE_RECORD_LIMIT,
+        maximumDecodedBytes: LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT,
+        maximumRecordBytes: LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT,
+        maximumRecords: LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT,
         recordIdentity(value) {
           return libraryCorePortableCheckpointRecordIdentityV1(
             parseLibraryCorePortableCheckpointRecordV1(value),
@@ -160,14 +180,33 @@ export async function* prepareLibraryCorePortableCheckpointPagesV1(
     });
     pageIndex += 1;
     records = [];
+    decodedPageBytes = LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES;
     return prepared;
   };
 
   for await (const input of asAsyncIterable(request.entries)) {
-    records.push(verifier.accept(input));
-    if (records.length === PORTABLE_CHECKPOINT_PAGE_RECORD_LIMIT) {
+    const record = verifier.accept(input);
+    const recordFrameBytes =
+      LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES +
+      encodedRecordByteLength(record);
+    if (
+      records.length > 0 &&
+      (records.length === LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT ||
+        decodedPageBytes + recordFrameBytes >
+          LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT)
+    ) {
       yield await flush();
     }
+    if (
+      decodedPageBytes + recordFrameBytes >
+      LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT
+    ) {
+      throw new RangeError(
+        "portable checkpoint record cannot fit inside one bounded page",
+      );
+    }
+    records.push(record);
+    decodedPageBytes += recordFrameBytes;
   }
   verifier.finish();
   if (records.length > 0) {

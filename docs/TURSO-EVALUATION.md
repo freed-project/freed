@@ -6,6 +6,16 @@ Decided 2026-07-24, re-verified 2026-07-25 against Turso 0.7.1. This document ex
 
 Reproduction scripts and raw results are in [`docs/turso-evaluation/`](turso-evaluation/).
 
+## Architecture consequence
+
+This decision now governs the complete Library Core. Freed Desktop and the
+headless Primary consume a bundled stock SQLite build through the same
+extracted Rust core. The PWA consumes official SQLite WebAssembly over OPFS.
+Both runtimes use one checked-in SQL catalog, generated typed bindings, and one
+cross-runtime conformance suite. IndexedDB is not a Library row engine or
+fallback. SQLite database files remain local and never become synchronization
+or backup transport.
+
 ---
 
 ## Read this first if you are here to relitigate

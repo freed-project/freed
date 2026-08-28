@@ -6,6 +6,7 @@ import { realpathSync } from "fs";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
+import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -66,14 +67,7 @@ export default defineConfig({
     {
       name: "reject-retired-automerge-assets",
       generateBundle(_options, bundle) {
-        const retiredAssets = Object.keys(bundle).filter((fileName) =>
-          fileName.toLowerCase().includes("automerge"),
-        );
-        if (retiredAssets.length > 0) {
-          throw new Error(
-            `The retired PWA Automerge runtime leaked into the production bundle: ${retiredAssets.join(", ")}`,
-          );
-        }
+        assertNoRetiredAutomergeRollupBundle(bundle, "pwa");
       },
     },
     topLevelAwait(),
@@ -120,16 +114,6 @@ export default defineConfig({
               expiration: {
                 maxEntries: 10_000,
               },
-            },
-          },
-          {
-            // Automerge relay sync -- NetworkFirst so we always attempt live sync
-            // but fall back to last cached state when offline.
-            urlPattern: ({ url }) => url.pathname === "/sync",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "freed-sync-v1",
-              networkTimeoutSeconds: 5,
             },
           },
           {
