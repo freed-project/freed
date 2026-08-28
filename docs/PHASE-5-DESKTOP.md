@@ -695,6 +695,7 @@ export async function captureDomFeed(
 | 5.162 | Bind reader pinning to the selected native SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the native content-vault boundary before retaining local reader cache bytes | High       | ✓ Complete |
 | 5.163 | Generate sample identity data as normalized Person and Account records at the shared source, then submit those records through the same typed SQLite mutations used by product workflows. Freed Desktop no longer converts a Friend compatibility fixture before writing sample data | Medium     | ✓ Complete |
 | 5.167 | Stream Markdown export through bounded source-fenced SQLite pages. The renderer releases each FeedItem page before requesting the next and never reconstructs the complete Library corpus for archive assembly | Medium     | ✓ Complete |
+| 5.168 | Delete the unused full-corpus Saved analytics compatibility reducer. Saved overview aggregates come only from the typed bounded SQLite analytics query, and the UI retains only the returned fixed-size aggregate | Low        | ✓ Complete |
 
 ---
 
