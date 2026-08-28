@@ -2727,7 +2727,7 @@ export async function clearNormalizedLocalSnapshots(): Promise<void> {
   await invoke("clear_normalized_local_snapshots");
 }
 
-export async function clearSqliteLibrary(): Promise<void> {
-  await invoke("clear_sqlite_library");
+export async function resetNormalizedLibrary(): Promise<void> {
+  await invoke("reset_normalized_library");
   sqliteActive = false;
 }

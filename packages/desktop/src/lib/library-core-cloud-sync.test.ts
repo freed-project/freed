@@ -42,7 +42,6 @@ const mocks = vi.hoisted(() => ({
     sourceRevision: 9,
     stageId: input.stageId,
   })),
-  clearSqliteLibrary: vi.fn(async () => {}),
   acceptActorEnrollment: vi.fn(async () => ({})),
   acknowledgeIntentResults: vi.fn(async () => {}),
   readIntentResults: vi.fn(async () => []),
@@ -123,7 +122,6 @@ vi.mock("./sqlite-library", () => ({
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
-  clearSqliteLibrary: mocks.clearSqliteLibrary,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
   describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
   installNormalizedLibraryFollowerActorEnrollment:
@@ -404,7 +402,6 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.beginNormalizedImport.mockClear();
     mocks.appendNormalizedPage.mockClear();
     mocks.activateNormalizedImport.mockClear();
-    mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
     mocks.readNative
       .mockReset()

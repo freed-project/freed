@@ -111,8 +111,7 @@ impl LibraryCoreBoundRoot {
         {
             return Ok(None);
         }
-        if descriptor < 0
-            && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
+        if descriptor < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
         {
             let created = unsafe { libc::mkdirat(self.descriptor(), name.as_ptr(), 0o700) };
             if created < 0 {
@@ -289,6 +288,25 @@ impl LibraryCoreBoundRoot {
             }
         }
         write_result
+    }
+
+    pub(crate) fn remove_private_file(&self, name: &str) -> Result<bool, LibraryCoreStoreError> {
+        if name.is_empty() || matches!(name, "." | "..") || name.as_bytes().contains(&b'/') {
+            return Err(LibraryCoreStoreError::from(
+                "invalid bound file removal request".to_string(),
+            ));
+        }
+        let name = CString::new(name)
+            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+        if unsafe { libc::unlinkat(self.descriptor(), name.as_ptr(), 0) } < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Ok(false);
+            }
+            return Err(error.into());
+        }
+        file_from_duplicated_descriptor(self.descriptor())?.sync_all()?;
+        Ok(true)
     }
 }
 

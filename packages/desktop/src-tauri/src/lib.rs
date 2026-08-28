@@ -14213,7 +14213,7 @@ pub fn run() {
             library_core_desktop_runtime::list_normalized_local_snapshots,
             library_core_desktop_runtime::restore_normalized_local_snapshot,
             library_core_desktop_runtime::clear_normalized_local_snapshots,
-            library_core_desktop_runtime::clear_sqlite_library,
+            library_core_desktop_runtime::reset_normalized_library,
             clear_factory_reset_runtime_artifacts,
             show_window,
             open_x_login_window,

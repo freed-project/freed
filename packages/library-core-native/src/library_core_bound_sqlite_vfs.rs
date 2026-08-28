@@ -22,6 +22,14 @@ use crate::LibraryCoreStoreError;
 
 const PREFIX: &str = "/__freed_bound_v1/";
 const DATABASE_FILE: &str = "library-core.sqlite";
+const DATABASE_FILES: &[&str] = &[
+    DATABASE_FILE,
+    "library-core.sqlite-wal",
+    "library-core.sqlite-shm",
+    "library-core.sqlite-journal",
+    "library-core.sqlite.restore-staging",
+    "library-core.sqlite.pre-restore",
+];
 
 type Registry = HashMap<String, Weak<Binding>>;
 
@@ -99,6 +107,20 @@ impl BoundSqliteDatabase {
     pub(crate) fn open(&self, flags: OpenFlags) -> rusqlite::Result<Connection> {
         Connection::open_with_flags_and_vfs(self.logical_path(), flags, "unix-excl")
     }
+
+    pub(crate) fn clear_files(&self) -> Result<(), LibraryCoreStoreError> {
+        for leaf in DATABASE_FILES {
+            let leaf = CString::new(*leaf).expect("static SQLite leaf");
+            if unsafe { libc::unlinkat(self.binding.directory.as_raw_fd(), leaf.as_ptr(), 0) } < 0 {
+                let error = std::io::Error::last_os_error();
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    return Err(error.into());
+                }
+            }
+        }
+        std::fs::File::from(self.binding.directory.try_clone()?).sync_all()?;
+        Ok(())
+    }
 }
 
 fn install_shim() -> Result<(), LibraryCoreStoreError> {
@@ -167,17 +189,7 @@ fn resolve(path: *const c_char) -> Route {
     {
         return Route::Reject;
     }
-    if leaf.is_some_and(|leaf| {
-        !matches!(
-            leaf,
-            DATABASE_FILE
-                | "library-core.sqlite-wal"
-                | "library-core.sqlite-shm"
-                | "library-core.sqlite-journal"
-                | "library-core.sqlite.restore-staging"
-                | "library-core.sqlite.pre-restore"
-        )
-    }) {
+    if leaf.is_some_and(|leaf| !DATABASE_FILES.contains(&leaf)) {
         set_errno(libc::EINVAL);
         return Route::Reject;
     }

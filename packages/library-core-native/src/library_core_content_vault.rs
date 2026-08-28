@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 
 use crate::library_core_bound_root::file_from_duplicated_descriptor;
@@ -514,7 +514,7 @@ impl LibraryCoreContentVault {
         transaction: &rusqlite::Transaction<'_>,
     ) -> Result<bool, LibraryCoreStoreError> {
         let mut physical_changed = false;
-        let descriptor = self.directory.try_clone()?.into_raw_fd();
+        let descriptor = self.open_independent_directory()?;
         let stream = unsafe { libc::fdopendir(descriptor) };
         if stream.is_null() {
             let error = io::Error::last_os_error();
@@ -621,6 +621,49 @@ impl LibraryCoreContentVault {
             return Err(error.into());
         }
         Ok(true)
+    }
+
+    pub(crate) fn clear_all_v1(&self) -> Result<(), LibraryCoreStoreError> {
+        let descriptor = self.open_independent_directory()?;
+        let stream = unsafe { libc::fdopendir(descriptor) };
+        if stream.is_null() {
+            let error = io::Error::last_os_error();
+            unsafe { libc::close(descriptor) };
+            return Err(error.into());
+        }
+        loop {
+            clear_errno();
+            let entry = unsafe { libc::readdir(stream) };
+            if entry.is_null() {
+                let error = io::Error::last_os_error();
+                unsafe { libc::closedir(stream) };
+                if error.raw_os_error().unwrap_or(0) != 0 {
+                    return Err(error.into());
+                }
+                sync_directory(self.directory.as_raw_fd())?;
+                return Ok(());
+            }
+            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+            if name.to_bytes() == b"." || name.to_bytes() == b".." {
+                continue;
+            }
+            self.unlink_if_present(name)?;
+        }
+    }
+
+    fn open_independent_directory(&self) -> Result<i32, LibraryCoreStoreError> {
+        let current = c".";
+        let descriptor = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                current.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            )
+        };
+        if descriptor < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(descriptor)
     }
 }
 

@@ -78,7 +78,7 @@ import {
   type CloudProvider,
 } from "./lib/sync";
 import {
-  clearLocalLibrary,
+  resetLocalLibrary,
   archiveLibraryItems,
   markLibraryItemsAsRead,
 } from "./lib/library-client";
@@ -1204,7 +1204,7 @@ function App() {
             if (disconnectFailures.length > 0) throw disconnectFailures[0];
           },
           clearLibrary: async () => {
-            await clearLocalLibrary();
+            await resetLocalLibrary();
           },
         });
         clearFactoryResetCloudCleanupBarrier();

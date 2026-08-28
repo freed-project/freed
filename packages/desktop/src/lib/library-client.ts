@@ -28,11 +28,11 @@ import type {
 import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
 import { registerLibraryAccessors, setLibrarySnapshot } from "@freed/ui/lib/debug-store";
 import {
-  clearSqliteLibrary,
   dispatchSqliteMutation,
   ensureFreshNormalizedDesktopLibrary,
   loadSqliteLibraryState,
   readSqliteItems,
+  resetNormalizedLibrary,
 } from "./sqlite-library";
 import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
@@ -170,8 +170,8 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
   return item?.preservedContent?.text ?? null;
 }
 
-export async function clearLocalLibrary(): Promise<void> {
-  await clearSqliteLibrary();
+export async function resetLocalLibrary(): Promise<void> {
+  await resetNormalizedLibrary();
   lastState = null;
 }
 

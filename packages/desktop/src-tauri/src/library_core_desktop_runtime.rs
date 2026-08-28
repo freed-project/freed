@@ -25,10 +25,15 @@ use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
+#[cfg(not(unix))]
 const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
+#[cfg(not(unix))]
+const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
 const JOURNAL_DIRECTORY: &str = "library-core";
 const JOURNAL_FILE: &str = "library-core.sqlite";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
+#[cfg(not(unix))]
+const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1778,35 +1783,37 @@ pub(super) fn clear_normalized_local_snapshots(_app: tauri::AppHandle) -> Result
 }
 
 #[tauri::command]
-pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> {
+pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(unix)]
-    if let Ok(binding) = freed_library_core::desktop_binding() {
-        return binding
-            .store()
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
             .map_err(|error| error.to_string())?
-            .clear_bound_all()
-            .map_err(|error| error.to_string());
+            .reset_normalized_library_v1()
+            .map_err(|error| error.to_string())
     }
-    let root = app_root(&app)?;
-    let path = journal_path(&root);
-    for candidate in [
-        path.clone(),
-        PathBuf::from(format!("{}-wal", path.display())),
-        PathBuf::from(format!("{}-shm", path.display())),
-    ] {
-        match fs::remove_file(&candidate) {
+    #[cfg(not(unix))]
+    {
+        let root = app_root(&app)?;
+        for directory in [
+            JOURNAL_DIRECTORY,
+            NORMALIZED_LIBRARY_DIRECTORY,
+            CONTENT_VAULT_DIRECTORY,
+            SNAPSHOT_DIRECTORY,
+        ] {
+            match fs::remove_dir_all(root.join(directory)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        match fs::remove_file(root.join(AUTHORITY_SELECTION_FILE)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.to_string()),
         }
+        Ok(())
     }
-    let snapshots = root.join(SNAPSHOT_DIRECTORY);
-    match fs::remove_dir_all(snapshots) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.to_string()),
-    }
-    Ok(())
 }
 
 #[cfg(test)]

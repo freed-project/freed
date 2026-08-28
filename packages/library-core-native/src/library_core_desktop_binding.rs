@@ -3,7 +3,7 @@ use std::io::Read;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,13 @@ const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
 const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 const AUTHORITY_SELECTION_MAXIMUM_BYTES: usize = 16_384;
+const FACTORY_RESET_PENDING_FILE: &str = "library-factory-reset-pending-v1.json";
+const HISTORICAL_IMPORT_RETIRED_FILE: &str = "library-historical-import-retired-v1.json";
+const CONTROL_FILE_MAXIMUM_BYTES: usize = 1_024;
+const FACTORY_RESET_PENDING_BYTES: &[u8] =
+    br#"{"format":"freed_desktop_library_factory_reset_pending_v1"}"#;
+const HISTORICAL_IMPORT_RETIRED_BYTES: &[u8] =
+    br#"{"format":"freed_desktop_historical_import_retired_v1","reason":"factory_reset"}"#;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -56,6 +63,7 @@ pub struct LibraryCoreDesktopBinding {
     _historical_root: Option<LibraryCoreBoundRoot>,
     _normalized_root: LibraryCoreBoundRoot,
     app_root: LibraryCoreBoundRoot,
+    reset_gate: Mutex<()>,
 }
 
 static DESKTOP_BINDING: OnceLock<LibraryCoreDesktopBinding> = OnceLock::new();
@@ -109,7 +117,16 @@ impl LibraryCoreDesktopBinding {
         let app_parent = LibraryCoreBoundRoot::from_inherited_descriptor(descriptor.as_raw_fd())?;
         let app_directory = app_parent.open_or_create_private_directory(app_leaf)?;
         let app_root = LibraryCoreBoundRoot::from_inherited_descriptor(app_directory.as_raw_fd())?;
-        let historical_directory = app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?;
+        let historical_import_retired = exact_control_file_is_present(
+            &app_root,
+            HISTORICAL_IMPORT_RETIRED_FILE,
+            HISTORICAL_IMPORT_RETIRED_BYTES,
+        )?;
+        let historical_directory = if historical_import_retired {
+            None
+        } else {
+            app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?
+        };
         let (historical_store, historical_lease, historical_root) =
             if let Some(historical_directory) = historical_directory {
                 let historical_root = LibraryCoreBoundRoot::from_inherited_descriptor(
@@ -141,13 +158,7 @@ impl LibraryCoreDesktopBinding {
             app_root.open_or_create_private_directory(CONTENT_VAULT_DIRECTORY)?;
         let content_vault = LibraryCoreContentVault::from_directory(content_vault_directory)?;
         let snapshot_directory = app_root.open_or_create_private_directory(SNAPSHOT_DIRECTORY)?;
-        let mut normalized_connection =
-            normalized_database.open(normalized_sqlite_open_flags(true))?;
-        configure_normalized_sqlite_connection(&normalized_connection)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
-        content_vault.reconcile_v1(&mut normalized_connection)?;
-        drop(normalized_connection);
-        Ok(Self {
+        let binding = Self {
             content_vault,
             snapshot_directory,
             historical_store,
@@ -157,7 +168,21 @@ impl LibraryCoreDesktopBinding {
             _historical_root: historical_root,
             _normalized_root: normalized_root,
             app_root,
-        })
+            reset_gate: Mutex::new(()),
+        };
+        if binding.factory_reset_is_pending_v1()? {
+            binding.complete_pending_factory_reset_v1()?;
+        }
+        let mut normalized_connection = binding
+            .normalized_database
+            .open(normalized_sqlite_open_flags(true))?;
+        configure_normalized_sqlite_connection(&normalized_connection)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        binding
+            .content_vault
+            .reconcile_v1(&mut normalized_connection)?;
+        drop(normalized_connection);
+        Ok(binding)
     }
 
     pub fn connect(&self) -> Result<Connection, LibraryCoreStoreError> {
@@ -166,6 +191,7 @@ impl LibraryCoreDesktopBinding {
 
     /// Opens Freed Desktop's final normalized SQLite authority.
     pub fn connect_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+        self.require_factory_reset_complete_v1()?;
         self.authority_selection()?;
         let connection = self
             .normalized_database
@@ -177,6 +203,7 @@ impl LibraryCoreDesktopBinding {
 
     /// Opens normalized SQLite only after its authority selector is verified.
     pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+        self.require_factory_reset_complete_v1()?;
         if self.authority_selection()?.is_none() {
             return Err(LibraryCoreStoreError::from(
                 "normalized SQLite authority is not selected".to_string(),
@@ -339,6 +366,7 @@ impl LibraryCoreDesktopBinding {
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+        self.require_factory_reset_complete_v1()?;
         Ok(self.authority_selection()?.is_some())
     }
 
@@ -352,9 +380,18 @@ impl LibraryCoreDesktopBinding {
 
     pub fn historical_source_is_present_v1(&self) -> bool {
         self.historical_store.is_some()
+            && self
+                .historical_import_is_retired_v1()
+                .is_ok_and(|retired| !retired)
     }
 
     fn require_historical_source(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
+        self.require_factory_reset_complete_v1()?;
+        if self.historical_import_is_retired_v1()? {
+            return Err(LibraryCoreStoreError::from(
+                "historical Desktop migration source is retired".to_string(),
+            ));
+        }
         if self.authority_selection()?.is_some() {
             return Err(LibraryCoreStoreError::from(
                 "historical Desktop migration source is fenced after SQLite selection".to_string(),
@@ -363,6 +400,72 @@ impl LibraryCoreDesktopBinding {
         self.historical_store.as_ref().ok_or_else(|| {
             LibraryCoreStoreError::from("historical Desktop migration source is absent".to_string())
         })
+    }
+
+    pub fn reset_normalized_library_v1(&self) -> Result<(), LibraryCoreStoreError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStoreError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        self.app_root.write_new_private_file_atomically(
+            FACTORY_RESET_PENDING_FILE,
+            ".library-factory-reset-pending-v1.pending",
+            FACTORY_RESET_PENDING_BYTES,
+            CONTROL_FILE_MAXIMUM_BYTES,
+        )?;
+        self.complete_pending_factory_reset_v1()
+    }
+
+    fn complete_pending_factory_reset_v1(&self) -> Result<(), LibraryCoreStoreError> {
+        if !self.factory_reset_is_pending_v1()? {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop Library factory reset marker is absent".to_string(),
+            ));
+        }
+        self.app_root
+            .remove_private_file(AUTHORITY_SELECTION_FILE)?;
+        if let Some(store) = &self.historical_store {
+            store.clear_bound_all()?;
+        }
+        self.normalized_database.clear_files()?;
+        self.content_vault.clear_all_v1()?;
+        crate::normalized_snapshot::clear_normalized_local_snapshots_bound_v1(
+            self.snapshot_directory.as_raw_fd(),
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        self.app_root.write_new_private_file_atomically(
+            HISTORICAL_IMPORT_RETIRED_FILE,
+            ".library-historical-import-retired-v1.pending",
+            HISTORICAL_IMPORT_RETIRED_BYTES,
+            CONTROL_FILE_MAXIMUM_BYTES,
+        )?;
+        self.app_root
+            .remove_private_file(FACTORY_RESET_PENDING_FILE)?;
+        Ok(())
+    }
+
+    fn factory_reset_is_pending_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+        exact_control_file_is_present(
+            &self.app_root,
+            FACTORY_RESET_PENDING_FILE,
+            FACTORY_RESET_PENDING_BYTES,
+        )
+    }
+
+    fn historical_import_is_retired_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+        exact_control_file_is_present(
+            &self.app_root,
+            HISTORICAL_IMPORT_RETIRED_FILE,
+            HISTORICAL_IMPORT_RETIRED_BYTES,
+        )
+    }
+
+    fn require_factory_reset_complete_v1(&self) -> Result<(), LibraryCoreStoreError> {
+        if self.factory_reset_is_pending_v1()? {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop Library factory reset is pending".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn authority_selection(
@@ -498,6 +601,22 @@ impl LibraryCoreDesktopBinding {
     }
 }
 
+fn exact_control_file_is_present(
+    root: &LibraryCoreBoundRoot,
+    name: &str,
+    expected: &[u8],
+) -> Result<bool, LibraryCoreStoreError> {
+    let Some(bytes) = root.read_bounded_private_file(name, CONTROL_FILE_MAXIMUM_BYTES)? else {
+        return Ok(false);
+    };
+    if bytes != expected {
+        return Err(LibraryCoreStoreError::from(
+            "Desktop Library control file has unexpected bytes".to_string(),
+        ));
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -509,6 +628,72 @@ mod tests {
 
     const TEST_IDENTITY: ProcessLeaseIdentity<'static> =
         ProcessLeaseIdentity::new("desktop-binding-test", "1");
+
+    fn install_test_selected_authority(
+        binding: &LibraryCoreDesktopBinding,
+        library_id: &str,
+        epoch_id: &str,
+    ) {
+        let normalized = binding
+            .connect_normalized()
+            .expect("open normalized test database");
+        normalized
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 0, ?6, ?7, 400);",
+                rusqlite::params![
+                    epoch_id,
+                    library_id,
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    "e".repeat(64),
+                    "f".repeat(64),
+                    "1".repeat(64),
+                ],
+            )
+            .expect("insert test authority epoch");
+        normalized
+            .execute(
+                "INSERT INTO library_active_authority
+                 (active_key, library_id, epoch_id, writer_id,
+                  accepted_manifest_generation, activated_at)
+                 VALUES ('active', ?1, ?2, 'primary:desktop', 0, 400);",
+                rusqlite::params![library_id, epoch_id],
+            )
+            .expect("insert active test authority");
+        normalized
+            .execute(
+                "INSERT INTO library_meta
+                 (singleton_id, library_id, schema_version, authority_epoch,
+                  source_revision, updated_at)
+                 VALUES (1, ?1, 1, ?2, 0, 400);",
+                rusqlite::params![library_id, epoch_id],
+            )
+            .expect("insert test metadata");
+        normalized
+            .execute(
+                "INSERT INTO library_materialization_generation
+                 (singleton_id, generation_id) VALUES (1, ?1);",
+                ["1".repeat(64)],
+            )
+            .expect("insert test generation");
+        drop(normalized);
+        binding
+            .publish_normalized_authority_selection_v1(&NormalizedDesktopAuthorityPreparedV1 {
+                format: "freed_normalized_desktop_authority_prepared_v1".to_owned(),
+                library_id: library_id.to_owned(),
+                epoch_id: epoch_id.to_owned(),
+                transition_certificate_digest: "e".repeat(64),
+                normalized_product_digest: "1".repeat(64),
+                selected_at: 400,
+                primary_actor_id: "primary-actor".to_owned(),
+            })
+            .expect("publish test authority selector");
+    }
 
     #[test]
     fn library_replacement_after_lease_cannot_split_sqlite_from_the_lock() {
@@ -882,5 +1067,196 @@ mod tests {
             .join(NORMALIZED_LIBRARY_DIRECTORY)
             .join("library-core.sqlite")
             .is_file());
+    }
+
+    #[test]
+    fn factory_reset_clears_bound_normalized_state_and_retires_historical_import() {
+        let fixture = tempfile::TempDir::new().expect("create Desktop reset fixture");
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).expect("create app root");
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700))
+            .expect("set app root permissions");
+        let historical = app_root.join(LIBRARY_DIRECTORY);
+        fs::create_dir(&historical).expect("create historical source");
+        fs::set_permissions(&historical, fs::Permissions::from_mode(0o700))
+            .expect("set historical source permissions");
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("open Desktop reset binding");
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+
+        let vault_file = app_root
+            .join(CONTENT_VAULT_DIRECTORY)
+            .join("range-reset.bin");
+        fs::write(&vault_file, b"cached bytes").expect("write cached content");
+        fs::set_permissions(&vault_file, fs::Permissions::from_mode(0o600))
+            .expect("set cached content permissions");
+        let snapshot_pending = app_root
+            .join(SNAPSHOT_DIRECTORY)
+            .join(".normalized-snapshot.pending");
+        fs::write(&snapshot_pending, b"pending snapshot").expect("write pending snapshot");
+        fs::set_permissions(&snapshot_pending, fs::Permissions::from_mode(0o600))
+            .expect("set pending snapshot permissions");
+
+        binding
+            .reset_normalized_library_v1()
+            .expect("reset normalized Library");
+
+        assert!(!app_root.join(AUTHORITY_SELECTION_FILE).exists());
+        assert!(!app_root.join(FACTORY_RESET_PENDING_FILE).exists());
+        assert_eq!(
+            fs::read(app_root.join(HISTORICAL_IMPORT_RETIRED_FILE))
+                .expect("read historical retirement fence"),
+            HISTORICAL_IMPORT_RETIRED_BYTES
+        );
+        assert!(!historical.join("library-core.sqlite").exists());
+        assert!(!app_root
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
+            .join("library-core.sqlite")
+            .exists());
+        assert!(!vault_file.exists());
+        assert!(!snapshot_pending.exists());
+        assert!(!binding.historical_source_is_present_v1());
+        assert!(binding.connect().is_err());
+        assert!(binding.connect_selected_normalized().is_err());
+
+        drop(binding);
+        let reopened = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("reopen Desktop binding after reset");
+        let fresh = reopened
+            .connect_normalized()
+            .expect("recreate fresh normalized SQLite after reset");
+        assert_eq!(
+            fresh
+                .query_row(
+                    "SELECT count(*) FROM library_active_authority;",
+                    [],
+                    |row| { row.get::<_, i64>(0) }
+                )
+                .expect("fresh authority count"),
+            0
+        );
+    }
+
+    #[test]
+    fn pending_factory_reset_resumes_before_startup_can_reopen_authority() {
+        let fixture = tempfile::TempDir::new().expect("create reset recovery fixture");
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).expect("create app root");
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700))
+            .expect("set app root permissions");
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("open reset recovery binding");
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+        binding
+            .app_root
+            .write_new_private_file_atomically(
+                FACTORY_RESET_PENDING_FILE,
+                ".library-factory-reset-pending-v1.pending",
+                FACTORY_RESET_PENDING_BYTES,
+                CONTROL_FILE_MAXIMUM_BYTES,
+            )
+            .expect("persist interrupted reset marker");
+        drop(binding);
+
+        let reopened = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("resume reset during Desktop binding startup");
+        assert!(!app_root.join(FACTORY_RESET_PENDING_FILE).exists());
+        assert!(app_root.join(HISTORICAL_IMPORT_RETIRED_FILE).is_file());
+        assert!(!reopened
+            .normalized_authority_is_selected_v1()
+            .expect("read reset authority state"));
+        assert!(reopened.connect_selected_normalized().is_err());
+        assert_eq!(
+            reopened
+                .connect_normalized()
+                .expect("open reset normalized SQLite")
+                .query_row(
+                    "SELECT count(*) FROM library_active_authority;",
+                    [],
+                    |row| { row.get::<_, i64>(0) }
+                )
+                .expect("reset authority count"),
+            0
+        );
+    }
+
+    #[test]
+    fn factory_reset_stays_on_bound_directories_after_visible_path_replacement() {
+        let fixture = tempfile::TempDir::new().expect("create reset path-swap fixture");
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).expect("create app root");
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700))
+            .expect("set app root permissions");
+        let historical = app_root.join(LIBRARY_DIRECTORY);
+        fs::create_dir(&historical).expect("create historical source");
+        fs::set_permissions(&historical, fs::Permissions::from_mode(0o700))
+            .expect("set historical source permissions");
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("open path-swap reset binding");
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+
+        let vault_file = app_root
+            .join(CONTENT_VAULT_DIRECTORY)
+            .join("range-reset.bin");
+        fs::write(&vault_file, b"cached bytes").expect("write cached content");
+        fs::set_permissions(&vault_file, fs::Permissions::from_mode(0o600))
+            .expect("set cached content permissions");
+        let snapshot_pending = app_root
+            .join(SNAPSHOT_DIRECTORY)
+            .join(".normalized-snapshot.pending");
+        fs::write(&snapshot_pending, b"pending snapshot").expect("write pending snapshot");
+        fs::set_permissions(&snapshot_pending, fs::Permissions::from_mode(0o600))
+            .expect("set pending snapshot permissions");
+
+        for (visible_name, moved_name) in [
+            (LIBRARY_DIRECTORY, "moved-library-core"),
+            (NORMALIZED_LIBRARY_DIRECTORY, "moved-library-sqlite"),
+            (CONTENT_VAULT_DIRECTORY, "moved-library-content-vault"),
+            (SNAPSHOT_DIRECTORY, "moved-library-snapshots"),
+        ] {
+            fs::rename(app_root.join(visible_name), app_root.join(moved_name))
+                .expect("move bound reset directory");
+            let replacement = app_root.join(visible_name);
+            fs::create_dir(&replacement).expect("create visible replacement directory");
+            fs::set_permissions(&replacement, fs::Permissions::from_mode(0o700))
+                .expect("set replacement directory permissions");
+            let sentinel = replacement.join("sentinel");
+            fs::write(&sentinel, b"replacement").expect("write replacement sentinel");
+            fs::set_permissions(&sentinel, fs::Permissions::from_mode(0o600))
+                .expect("set replacement sentinel permissions");
+        }
+
+        binding
+            .reset_normalized_library_v1()
+            .expect("reset through held directory descriptors");
+
+        assert!(!app_root
+            .join("moved-library-core")
+            .join("library-core.sqlite")
+            .exists());
+        assert!(!app_root
+            .join("moved-library-sqlite")
+            .join("library-core.sqlite")
+            .exists());
+        assert!(!app_root
+            .join("moved-library-content-vault")
+            .join("range-reset.bin")
+            .exists());
+        assert!(!app_root
+            .join("moved-library-snapshots")
+            .join(".normalized-snapshot.pending")
+            .exists());
+        for visible_name in [
+            LIBRARY_DIRECTORY,
+            NORMALIZED_LIBRARY_DIRECTORY,
+            CONTENT_VAULT_DIRECTORY,
+            SNAPSHOT_DIRECTORY,
+        ] {
+            assert_eq!(
+                fs::read(app_root.join(visible_name).join("sentinel"))
+                    .expect("read replacement sentinel"),
+                b"replacement"
+            );
+        }
     }
 }
