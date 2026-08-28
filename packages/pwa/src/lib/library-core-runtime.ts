@@ -57,6 +57,7 @@ import type {
 } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreNormalizedCheckpointV2,
 } from "@freed/sync/cloud/library-core";
@@ -73,11 +74,7 @@ import {
 } from "./library-core-sqlite-runtime";
 import { createPwaNormalizedCheckpointWriter } from "./library-core-pwa-normalized-checkpoint-writer";
 import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-vault";
-import { preparePwaLibraryCoreFollowerEnrollment } from "./library-core-pwa-follower-enrollment";
-import {
-  syncPwaLibraryCoreFollowerV2,
-  type PwaLibraryCoreFollowerTransportV2,
-} from "./library-core-pwa-follower-sync";
+import { syncPwaLibraryCoreFollowerV2 } from "./library-core-pwa-follower-sync";
 import {
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountPersonAssignment,
@@ -920,7 +917,6 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRu
 /** Import the published normalized Desktop checkpoint into OPFS SQLite. */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
-  readonly followerTransport?: PwaLibraryCoreFollowerTransportV2;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreRuntimeStateV1> {
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
@@ -958,13 +954,15 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       writerActorId: pointer.writerId,
     }),
   });
-  if (input.followerTransport) {
-    await syncPwaLibraryCoreFollowerV2(input.followerTransport, {
+  await syncPwaLibraryCoreFollowerV2(
+    createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
+      accessToken: input.accessToken,
+      controlFileId: discovered.controlFileId,
+      libraryId: pointer.libraryId,
       signal: input.signal,
-    });
-  } else {
-    await preparePwaLibraryCoreFollowerEnrollment();
-  }
+    }),
+    { signal: input.signal },
+  );
   return publishSelectedStateAfterLibraryCoreSync();
 }
 

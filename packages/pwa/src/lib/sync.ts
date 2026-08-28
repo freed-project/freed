@@ -220,14 +220,14 @@ async function syncGoogleDriveOnce(
     lastSyncAt: now,
     lastDownloadAt: now,
     lastMergeAt: now,
-    statusMessage: "SQLite Library checkpoint refreshed.",
-    pendingReason: "Waiting for the next immutable Library generation.",
+    statusMessage: "SQLite Library synchronized.",
+    pendingReason: "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });
   recordCloudProviderEvent("gdrive", {
     kind: "success",
     stage: "idle",
-    message: "Refreshed the immutable SQLite Library checkpoint.",
+    message: "Synchronized the SQLite Library and follower state.",
   });
 }
 

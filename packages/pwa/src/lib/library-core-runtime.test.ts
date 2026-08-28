@@ -19,8 +19,10 @@ const mocks = vi.hoisted(() => ({
   readNormalizedCheckpointReceipt: vi.fn(),
   createNormalizedCheckpointWriter: vi.fn(),
   createCloudAdapter: vi.fn(),
+  createFollowerTransport: vi.fn(),
   discoverControl: vi.fn(),
   importCheckpoint: vi.fn(),
+  syncFollower: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
   resetNormalizedLibrary: vi.fn(),
   prepareFollowerEnrollment: vi.fn(),
@@ -51,8 +53,14 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@freed/sync/cloud/library-core")>()),
   createGoogleDriveLibraryCoreAdapterV1: mocks.createCloudAdapter,
+  createGoogleDriveLibraryCoreNormalizedFollowerTransportV2:
+    mocks.createFollowerTransport,
   discoverPublishedGoogleDriveLibraryCoreControlV1: mocks.discoverControl,
   importLibraryCoreNormalizedCheckpointV2: mocks.importCheckpoint,
+}));
+
+vi.mock("./library-core-pwa-follower-sync", () => ({
+  syncPwaLibraryCoreFollowerV2: mocks.syncFollower,
 }));
 
 vi.mock("./library-core-pwa-normalized-checkpoint-writer", () => ({
@@ -251,8 +259,12 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.createNormalizedCheckpointWriter.mockReturnValue({});
     mocks.createCloudAdapter.mockReset();
     mocks.createCloudAdapter.mockReturnValue({});
+    mocks.createFollowerTransport.mockReset();
+    mocks.createFollowerTransport.mockReturnValue({});
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
+    mocks.syncFollower.mockReset();
+    mocks.syncFollower.mockResolvedValue({});
     mocks.queryNormalizedLibrary.mockReset();
     mocks.queryNormalizedLibrary.mockResolvedValue({
       nextCursor: null,
@@ -373,6 +385,13 @@ describe("PWA Library Core bounded scanner", () => {
         writerActorId: writerId,
       }),
     );
+    expect(mocks.createFollowerTransport).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      controlFileId: "control-runtime-recovery",
+      libraryId,
+      signal: undefined,
+    });
+    expect(mocks.syncFollower).toHaveBeenCalledWith({}, { signal: undefined });
   });
 
   it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
