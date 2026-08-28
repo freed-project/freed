@@ -159,6 +159,22 @@ listener is available.
 Windows fails closed until service packaging supplies a named pipe with a
 verifiable service-account ACL.
 
+The installed host derives its service-manager definition from the same
+already-bound configuration it will serve. The compiled CLI emits one
+digest-bound macOS LaunchAgent plist or Linux systemd user unit with exact
+Node, CLI, and config arguments. Both definitions run without a shell, apply
+mode `0077`, and bind lifecycle settlement to the service process group.
+Linux grants writes only to the configured data and state roots. Definition
+generation never installs, loads, enables, or starts a service. Windows emits
+nothing until its service-account named-pipe ACL and inherited-handle model can
+be proven before any local actor request is accepted.
+
+Linux readiness proves the complete path hierarchy through a pinned root-owned
+`/usr/bin/getfacl` helper. Each bounded numeric result must contain exactly the
+three owner, group, and other entries implied by the inspected mode. Any named
+entry, mask, default ACL, malformed output, changed helper, missing helper, or
+target identity drift fails closed.
+
 The headless Primary mounted credential is one closed
 `freed_library_primary_credentials_v1` record. It binds one lowercase
 hexadecimal Library ID to one Ed25519 authority PKCS#8 key and one Ed25519

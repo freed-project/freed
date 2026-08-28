@@ -780,6 +780,24 @@ describe("compiled freed-library runtime", () => {
       });
       expect(await readFile(statusPath, "utf8")).toBe("");
 
+      const serviceDefinition = await runCli([
+        "service-definition",
+        "--config",
+        configPath,
+      ]);
+      expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
+      expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
+        schemaVersion: 1,
+        service: "freed-library",
+        role: "primary",
+        platform: "darwin",
+        format: "launchd-plist-v1",
+        fileName: "wtf.freed.library.plist",
+        contentsSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        contents: expect.stringContaining("<key>ProgramArguments</key>"),
+      });
+      expect(await readFile(statusPath, "utf8")).toBe("");
+
       const status = await runCli(["status", "--config", configPath]);
       expect(status).toMatchObject({ code: 0, stderr: "" });
       expect(JSON.parse(status.stdout)).toMatchObject({ status: null });
@@ -800,17 +818,42 @@ describe("compiled freed-library runtime", () => {
   );
 
   linuxIt(
-    "fails doctor closed when the production ACL proof is unavailable",
+    "uses the production Linux ACL proof when installed and fails closed otherwise",
     async () => {
       const { configPath, statusPath } = await createServiceFixture();
 
       const doctor = await runCli(["doctor", "--config", configPath]);
-
-      expect(doctor).toMatchObject({ code: 2, stdout: "" });
-      expect(JSON.parse(doctor.stderr)).toMatchObject({
-        ok: false,
-        code: "acl_probe_unavailable",
-      });
+      let helperAvailable = true;
+      try {
+        await stat("/usr/bin/getfacl");
+      } catch {
+        helperAvailable = false;
+      }
+      if (helperAvailable) {
+        expect(doctor).toMatchObject({ code: 0, stderr: "" });
+        expect(JSON.parse(doctor.stdout)).toMatchObject({
+          ok: true,
+          code: "ready",
+        });
+        const serviceDefinition = await runCli([
+          "service-definition",
+          "--config",
+          configPath,
+        ]);
+        expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
+        expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
+          platform: "linux",
+          format: "systemd-user-unit-v1",
+          fileName: "freed-library.service",
+          contents: expect.stringContaining("ProtectSystem=strict"),
+        });
+      } else {
+        expect(doctor).toMatchObject({ code: 2, stdout: "" });
+        expect(JSON.parse(doctor.stderr)).toMatchObject({
+          ok: false,
+          code: "acl_probe_unavailable",
+        });
+      }
       expect(await readFile(statusPath, "utf8")).toBe("");
     },
     15_000,

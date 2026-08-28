@@ -5,10 +5,11 @@ headless Library Primary. It supervises the explicitly pinned
 `library-authority-sidecar` binary from `freed-library-core`. Node never opens
 the Library SQLite database or acquires its data-root lease.
 
-The compiled `freed-library` CLI currently provides three commands:
+The compiled `freed-library` CLI currently provides four commands:
 
 ```text
 freed-library doctor --config /physical/path/service.json
+freed-library service-definition --config /physical/path/service.json
 freed-library status --config /physical/path/service.json
 freed-library serve --config /physical/path/service.json
 ```
@@ -17,6 +18,16 @@ freed-library serve --config /physical/path/service.json
 status record. Neither command starts the sidecar. `serve` revalidates every
 prerequisite immediately before it starts one sidecar. The service exposes no
 network listener.
+
+`service-definition` revalidates the same bound configuration and emits one
+deterministic, digest-bound service-manager definition. macOS receives a
+LaunchAgent plist with exact argument elements, mode `0077`, background
+restart policy, and no shell or environment fields. Linux receives a systemd
+user unit with exact quoted arguments, mode `0077`, a read-only home and system
+view except for the configured data and state roots, process-group shutdown,
+bounded restart policy, and no shell. The command does not write, install,
+load, enable, or start the definition. Windows fails closed until its native
+service-account handle and named-pipe ACL contract is implemented.
 
 ## Configuration schema version 1
 
@@ -49,11 +60,14 @@ executes the already verified descriptor. macOS repeats the descriptor digest,
 path identity, and canonical path checks immediately before launching the
 protected path. No sidecar arguments or environment values are inherited.
 
-This slice provides the production ACL proof on macOS. Linux descriptor
-execution and process-group containment are covered, but `doctor` and `serve`
-return `acl_probe_unavailable` until a bounded Linux ACL proof backend lands.
-Every platform without the complete descriptor, containment, and ACL contract
-fails closed.
+The production ACL proof is available on macOS and Linux. macOS validates the
+bounded `ls -lde` record. Linux invokes one pinned root-owned
+`/usr/bin/getfacl` helper with numeric identities, no header, and no symbolic
+link traversal. It accepts exactly the owner, group, and other entries implied
+by the inspected mode. Named users, named groups, masks, default ACLs,
+malformed output, helper drift, or target replacement fail closed. A Linux host
+without that helper returns `acl_probe_unavailable`. Every platform without
+the complete descriptor, containment, and ACL contract fails closed.
 
 The credential descriptor is also exact-shape private JSON. It contains a
 record identifier, never credential bytes:

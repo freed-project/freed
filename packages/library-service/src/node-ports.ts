@@ -29,12 +29,14 @@ import {
   type LibraryServiceSidecarProcess,
 } from "./contracts.js";
 import { LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES } from "./library-core-command-contract.generated.js";
+import { assertLinuxAclOutputHasOnlyModeEntries } from "./linux-acl-proof.js";
 import { createNodeLibraryServiceLocalActorIngressPortV1 } from "./local-actor-node-server.js";
 import type { LibraryServiceLocalActorIngressPortV1 } from "./local-actor-transport.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_ACL_OUTPUT_BYTES = 32 * 1_024;
 const ACL_TIMEOUT_MS = 1_000;
+const LINUX_GETFACL = "/usr/bin/getfacl";
 
 type BigIntStats = Awaited<ReturnType<FileHandle["stat"]>> & {
   dev: bigint;
@@ -415,12 +417,14 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
   async assertNoExtendedAcl(
     targets: readonly LibraryServiceAclProbeTarget[],
   ): Promise<void> {
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && process.platform !== "linux") {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
+    const helperPath =
+      process.platform === "darwin" ? "/bin/ls" : LINUX_GETFACL;
     let helper: LibraryServiceFileMetadata;
     try {
-      helper = await this.#fileSystem.inspect("/bin/ls");
+      helper = await this.#fileSystem.inspect(helperPath);
     } catch {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
@@ -429,16 +433,31 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
       helper.uid !== 0 ||
       (helper.mode & 0o022) !== 0 ||
       helper.links !== 1 ||
-      (await this.#fileSystem.canonicalPath("/bin/ls")) !== "/bin/ls"
+      (await this.#fileSystem.canonicalPath(helperPath)) !== helperPath
     ) {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
 
     for (const target of targets) {
+      const before = await this.#fileSystem.inspect(target.path);
+      if (before.device !== target.device || before.inode !== target.inode) {
+        throw new LibraryServiceFailure("bound_input_changed");
+      }
       let stdout: string;
       let stderr: string;
       try {
-        const result = await execFileAsync("/bin/ls", ["-lde", target.path], {
+        const arguments_ =
+          process.platform === "darwin"
+            ? ["-lde", target.path]
+            : [
+                "--absolute-names",
+                "--numeric",
+                "--omit-header",
+                "--physical",
+                "--",
+                target.path,
+              ];
+        const result = await execFileAsync(helperPath, arguments_, {
           encoding: "utf8",
           timeout: ACL_TIMEOUT_MS,
           maxBuffer: MAX_ACL_OUTPUT_BYTES,
@@ -452,16 +471,20 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
       if (stderr !== "" || Buffer.byteLength(stdout) > MAX_ACL_OUTPUT_BYTES) {
         throw new LibraryServiceFailure("acl_probe_malformed");
       }
-      const firstLine = stdout.split("\n", 1)[0] ?? "";
-      const mode = /^([bcdlps-][rwxStTs-]{9})([+@])?\s/.exec(firstLine);
-      if (mode === null) {
-        throw new LibraryServiceFailure("acl_probe_malformed");
-      }
-      if (
-        mode[2] === "+" ||
-        stdout.split("\n").some((line) => /^\s+\d+:/.test(line))
-      ) {
-        throw new LibraryServiceFailure("acl_present");
+      if (process.platform === "linux") {
+        assertLinuxAclOutputHasOnlyModeEntries(stdout, stderr, before.mode);
+      } else {
+        const firstLine = stdout.split("\n", 1)[0] ?? "";
+        const mode = /^([bcdlps-][rwxStTs-]{9})([+@])?\s/.exec(firstLine);
+        if (mode === null) {
+          throw new LibraryServiceFailure("acl_probe_malformed");
+        }
+        if (
+          mode[2] === "+" ||
+          stdout.split("\n").some((line) => /^\s+\d+:/.test(line))
+        ) {
+          throw new LibraryServiceFailure("acl_present");
+        }
       }
       const after = await this.#fileSystem.inspect(target.path);
       if (after.device !== target.device || after.inode !== target.inode) {

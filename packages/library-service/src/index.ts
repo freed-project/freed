@@ -13,6 +13,15 @@ export {
 } from "./contracts.js";
 export { runLibraryServiceCli } from "./cli-runtime.js";
 export {
+  createLibraryServiceDefinitionV1,
+  LIBRARY_SERVICE_DEFINITION_SCHEMA_VERSION,
+  LIBRARY_SERVICE_LAUNCHD_LABEL,
+  LIBRARY_SERVICE_SYSTEMD_UNIT,
+  type LibraryServiceDefinitionInputV1,
+  type LibraryServiceDefinitionPlatformV1,
+  type LibraryServiceDefinitionV1,
+} from "./service-definition.js";
+export {
   createLibraryCoreNativeCommandClientV1,
   LibraryCoreNativeCommandFailure,
   type LibraryCoreNativeCommandClientV1,

@@ -57,6 +57,7 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "state_root_not_private",
   "status_invalid",
   "status_not_private",
+  "unsupported_service_platform",
   "unsupported_secret_store_or_acl_backend",
   "unsupported_bound_descriptor_execution",
   "write_failed",

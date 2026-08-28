@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, and provider-neutral headless runtime have landed; installed Drive coordination, Windows service transport, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -257,6 +257,7 @@ Planned commands:
 freed-library init
 freed-library drive-auth
 freed-library promote
+freed-library service-definition
 freed-library serve
 freed-library sync-now
 freed-library checkpoint-now
@@ -264,6 +265,14 @@ freed-library backup-now
 freed-library status
 freed-library doctor
 ```
+
+`service-definition` is implemented. It emits a digest-bound macOS LaunchAgent
+plist or Linux systemd user unit from one fully verified service configuration.
+It uses exact argument elements without a shell, applies mode `0077`, contains
+the service process group, and grants Linux writes only to the configured data
+and state roots. It does not install, load, enable, or start a service. Windows
+continues to fail closed until its service-account named pipe and inherited
+handle contract is complete.
 
 `promote` requires the exact expected cloud control revision, manifest digest,
 source receipt, and owner confirmation. It creates a new writer epoch. It
@@ -323,8 +332,10 @@ grants separately from mutation grants, so a read-only agent has no synthetic
 mutation authority. Native SQLite and PWA OPFS SQLite store and checkpoint the
 grant set as normalized child rows. Unknown queries, unsorted or duplicate
 grants, query grants on non-agent actors, and an empty agent capability all
-fail closed. The local transport still exposes no read method until the signed
-query envelope and native admission path land.
+fail closed. The local transport accepts canonical signed query bytes only
+through protocol 2, and native SQLite rechecks the exact actor, capability
+certificate, registered query grant, body digest, and Ed25519 signature before
+dispatch.
 
 Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
@@ -515,7 +526,7 @@ review before implementation.
 | 11.11 | Complete    | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Canonical signed query bytes now cross local actor protocol 2, and native SQLite proves the active actor, exact capability certificate, Library-wide scope, registered query grant, body digest, and Ed25519 signature before dispatch. Signed edits use the local intent method. |
 | 11.12 | Open        | Add provider-neutral RSS and explicit-save workers                                                                                                                                                                                                                                                                                                                                                                                 |
 | 11.13 | Blocked     | Add social capture workers after provider-specific owner approval                                                                                                                                                                                                                                                                                                                                                                  |
-| 11.14 | Open        | Package Linux services, macOS launch agents, and Windows services                                                                                                                                                                                                                                                                                                                                                                  |
+| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd user-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Complete installed lifecycle receipts and the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                   |
 | 11.15 | Open        | Complete installed Primary migration and editable follower acceptance                                                                                                                                                                                                                                                                                                                                                              |
 | 11.16 | Open        | Complete forward recovery, competing-Primary, and fault-injection acceptance                                                                                                                                                                                                                                                                                                                                                       |
 | 11.20 | Open        | Define the signed Omi actor and user-triggered voice capture contract                                                                                                                                                                                                                                                                                                                                                              |
