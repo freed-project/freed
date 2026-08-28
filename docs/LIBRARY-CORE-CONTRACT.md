@@ -409,6 +409,14 @@ the headless Primary, and every normalized caller can reach only the current
 SQLite authority, typed protocol, bounded query, mutation, checkpoint,
 snapshot, and selective-content surfaces.
 
+The native crate exports no historical store, shell importer, import status,
+whole-item staging DTO, checkpoint reference, activation receipt, or overlay
+replay surface. The dead shell-based importer and its self-tests are deleted.
+The remaining private descriptor wrapper can only open the fenced historical
+database for one-time migration, provide its connection to that migration, or
+erase the held files during normalized factory reset. It cannot stage or
+activate another Library authority.
+
 Canonical operation verification is owned by the normalized protocol layer,
 not by the historical journal. One crate-level verifier parses the original
 canonical bytes, closes every payload, reconstructs transaction and actor-chain

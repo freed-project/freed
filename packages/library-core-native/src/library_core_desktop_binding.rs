@@ -13,6 +13,7 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_content_vault::LibraryCoreContentVault;
 use crate::library_core_journal::LibraryCoreJournal;
+use crate::library_core_store::LibraryCoreStore;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
@@ -24,9 +25,8 @@ use crate::{
     ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
     ContentRangeReadResponseV1, EvictionCandidatePageRequestV1, EvictionCandidatePageV1,
     HydrationCandidatePageRequestV1, HydrationCandidatePageV1, LibraryCoreProcessLease,
-    LibraryCoreStore, LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1,
-    NormalizedLocalSnapshotReasonV1, NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity,
-    VerifiedContentRangeReceiptV1,
+    LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1, NormalizedLocalSnapshotReasonV1,
+    NormalizedLocalSnapshotSummaryV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
@@ -375,7 +375,8 @@ impl LibraryCoreDesktopBinding {
         self.require_historical_source()?.open_bound_journal()
     }
 
-    pub fn store(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
+    #[cfg(test)]
+    fn store(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
         self.require_historical_source()
     }
 
