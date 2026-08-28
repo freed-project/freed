@@ -105,7 +105,7 @@ function getRendererMemoryStats(): BrowserMemoryStats | null {
 }
 
 /**
- * WebKit resident bytes captured before the Automerge document is loaded.
+ * WebKit resident bytes captured before Library UI hydration begins.
  *
  * This is the single largest unmeasured term in the storage roadmap's floor
  * estimates: the WebKit shell plus React baseline, which four independent
@@ -193,7 +193,7 @@ function captureShellBaselineFromNative(
 }
 
 /**
- * Capture the WebKit shell before the Automerge document starts loading.
+ * Capture the WebKit shell before Library UI hydration begins.
  *
  * `startMemoryMonitor()` runs only after the store reports initialized. Calling
  * it there is correct for pressure handling but too late for attribution. App
@@ -455,8 +455,8 @@ async function sampleRuntimeMemory(
   const nativeSampleDurationMs = Math.round(performance.now() - nativeStartedAt);
 
   // Capture the shell baseline exactly once, and only from a sample taken
-  // before the document is hydrated. Taking it later would fold the Automerge
-  // document into the "baseline" and make the delta meaningless, which is the
+  // before the Library UI is hydrated. Taking it later would fold the visible
+  // Library window into the baseline and make the delta meaningless, which is the
   // specific way this measurement is easy to get wrong.
   captureShellBaselineFromNative(native);
   const limits = {

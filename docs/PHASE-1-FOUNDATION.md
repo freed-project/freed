@@ -7,7 +7,7 @@
 
 ## Overview
 
-Core infrastructure for the Freed project: monorepo setup, shared types, Automerge CRDT schema, marketing site, and CI/CD pipeline.
+Core infrastructure for Freed: monorepo setup, shared Library Core contracts, normalized SQLite schema, marketing site, and CI pipeline.
 
 ---
 
@@ -18,7 +18,7 @@ Core infrastructure for the Freed project: monorepo setup, shared types, Automer
 ```
 freed/
 ├── packages/
-│   └── shared/          # @freed/shared - Core types and Automerge schema
+│   └── shared/          # @freed/shared - Core types and executable contracts
 ├── skills/              # OpenClaw skill wrappers
 ├── website/             # Marketing site (freed.wtf)
 ├── docs/                # Phase implementation plans
@@ -29,7 +29,7 @@ freed/
 
 ### 2. Shared Package (`@freed/shared`)
 
-Core types and Automerge document schema used by all capture layers.
+Core types, named query and mutation contracts, normalized record codecs, and generated SQLite identity shared by every runtime.
 
 #### Types (`packages/shared/src/types.ts`)
 
@@ -84,32 +84,23 @@ export interface UserPreferences {
 }
 ```
 
-#### Automerge Schema (`packages/shared/src/schema.ts`)
+#### Library Core Contract (`packages/shared/src/library-core`)
 
 ```typescript
-// Root document structure for CRDT sync
-export interface FreedDoc {
-  feedItems: Record<string, FeedItem>; // All captured content
-  rssFeeds: Record<string, RssFeed>; // RSS subscriptions
-  preferences: UserPreferences; // User settings
-  meta: DocumentMeta; // Synchronized document identity only
-}
+export type LibraryCoreQueryRequest =
+  | FeedBrowsePageRequest
+  | SavedFeedPageRequest
+  | ItemDetailRequest
+  | PersonTimelineRequest;
 
-// CRUD operations
-export function addFeedItem(doc: FreedDoc, item: FeedItem): void;
-export function updateFeedItem(
-  doc: FreedDoc,
-  globalId: string,
-  updates: Partial<FeedItem>
-): void;
-export function removeFeedItem(doc: FreedDoc, globalId: string): void;
-export function markAsRead(doc: FreedDoc, globalId: string): void;
-export function toggleSaved(doc: FreedDoc, globalId: string): void;
+export type LibraryCoreMutationRequest =
+  | FeedItemCaptureMutation
+  | FeedItemPatchMutation
+  | RssFeedUpsertMutation
+  | PreferencesPatchMutation;
 
-// Query helpers
-export function getFeedItemsSorted(doc: FreedDoc): FeedItem[];
-export function getSavedItems(doc: FreedDoc): FeedItem[];
-export function getUnreadItems(doc: FreedDoc): FeedItem[];
+// The executable registry generates Rust and TypeScript identities, SQL names,
+// bounds, request validation, and result validation from one source.
 ```
 
 ### 3. Marketing Website
@@ -260,8 +251,8 @@ Production release closeout now also requires a dedicated `main` back into `dev`
 
 | Decision                          | Rationale                                 |
 | --------------------------------- | ----------------------------------------- |
-| Automerge CRDT                    | Conflict-free sync without central server |
-| Record<string, T> for collections | CRDT-friendly map operations              |
+| Stock SQLite                      | One transactional model in every runtime  |
+| Named bounded contracts           | No arbitrary SQL or whole-corpus payloads |
 | Unix timestamps                   | Simple, portable, sortable                |
 | `globalId` = "platform:id"        | Unique across all sources                 |
 | TypeScript monorepo               | Shared types, single build system         |
@@ -274,7 +265,7 @@ Production release closeout now also requires a dedicated `main` back into `dev`
 | ---- | -------------------------------------------- | ------ |
 | 1.1  | Initialize monorepo with npm workspaces      | ✓      |
 | 1.2  | Create `@freed/shared` with core types       | ✓      |
-| 1.3  | Implement Automerge document schema          | ✓ (bugfixes: toggleSaved delete, updatePreferences deepMerge, canonical safe object-key admission across entity writers and reconcilers) |
+| 1.3  | Implement shared Library Core data contracts | ✓ Superseded by the generated normalized SQLite contract and typed record protocols |
 | 1.4  | Build marketing site (landing, manifesto)    | ✓      |
 | 1.5  | Set up GitHub Actions CI/CD                  | ✓      |
 | 1.6  | Configure custom domain (freed.wtf)          | ✓      |

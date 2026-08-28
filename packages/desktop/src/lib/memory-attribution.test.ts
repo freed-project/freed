@@ -93,7 +93,7 @@ async function flushPromises(count = 4): Promise<void> {
 }
 
 // The contract this protects: the shell baseline is only meaningful if it is
-// captured BEFORE the Automerge document is hydrated. Every floor estimate in
+// captured before the visible Library UI is hydrated. Every floor estimate in
 // the storage roadmap is derived by subtracting from an observed total, and the
 // WebKit-plus-React shell is the largest term in that subtraction, estimated
 // across four independent passes at anywhere from 60 to 250 MB. A baseline

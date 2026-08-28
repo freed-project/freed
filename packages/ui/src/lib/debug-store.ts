@@ -111,7 +111,7 @@ export interface RuntimeMemorySnapshot {
    * nobody has measured.
    */
   rendererHeapAvailable?: boolean;
-  /** Main renderer RSS sampled before Automerge hydration, captured once per launch. */
+  /** Main renderer RSS sampled before Library UI hydration, captured once per launch. */
   shellBaselineMainRendererResidentBytes?: number;
   /** PID that owns the shell baseline. Later samples are comparable only while this process survives. */
   shellBaselineMainRendererProcessId?: number;

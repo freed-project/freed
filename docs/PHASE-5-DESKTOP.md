@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, bounded SQLite user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, blocked-preflight crash-loop protection shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, classifier health notification isolation shipped, bounded SQLite maintenance scans shipped, explicit local-only primary Library authority shipped, SQLite-backed sample-data accounting, Story Wall candidates, Saved analytics, and full-library native search shipped, the four-mode Saved feed and non-Saved Friends-only feed moved onto bounded Gate D SQLite reads, the ordinary all-content feed moved onto bidirectional bounded SQLite paging, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, local interface zoom controls shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
 > **Architecture:** Freed Desktop is a bounded SQLite client and a host
 > for the shared native Library Core. Every view calls a named typed query.
@@ -374,9 +374,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
 - **Local display scale controls:** The far-right view menu and Appearance settings group global Theme and Zoom controls together, including a 75% to 200% slider that persists on the current device and tappable A controls that move to the next 10% boundary, while feed-only Card density stays in its own section
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
-- **Safe optimistic user mutations:** Feed cards, reader controls, read marks, item edits, feed renames, person edits, account edits, and synced preference changes project their visible UI state immediately, then reconcile counts and derived state from the Automerge worker. Device display controls bypass Automerge and persist locally.
-- **Incremental RSS feed metadata updates:** Desktop adds, updates, and removes RSS feed metadata through Automerge feed patches, so subscribing to a feed does not rehydrate the full 10,000 item library before the UI can recover
-- **Cloud transfer diagnostics:** Desktop Settings shows local item count, Automerge document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, why the next upload is pending, and recent Drive activity. When destructive merge protection blocks sync, Settings lets the user keep this device by replacing the cloud backup, or keep the cloud copy by replacing this device, and keeps that recovery card pinned while upload retries are paused. Uploads wait behind active outbox and social-scrape work before retrying, so normal local changes do not sit behind long backoff while another worker finishes.
+- **Safe optimistic user mutations:** Feed cards, reader controls, read marks, item edits, feed renames, person edits, account edits, and synchronized preference changes project their visible UI state immediately, then reconcile through typed SQLite mutation results and bounded query invalidation. Device display controls use device-local SQLite tables.
+- **Incremental RSS feed metadata updates:** Desktop adds, updates, and removes RSS feed metadata through registered SQLite mutations, so subscribing to a feed does not rehydrate the full Library before the UI can recover.
+- **Cloud transfer diagnostics:** Desktop Settings shows local item count, normalized checkpoint bytes, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, why the next upload is pending, and recent Drive activity. When authority protection blocks sync, Settings keeps the exact failure and recovery evidence visible. Uploads wait behind active outbox and social-scrape work before retrying.
 - **Recoverable Google Contacts state:** Token lookup and forced refresh errors are recorded in the device-local SQLite status row and Settings instead of opening the fatal recovery screen. Startup imports a valid historical localStorage ledger once, deletes the historical key, and discards malformed or unsupported historical bytes after recording a bounded SQLite error. Normal product use never reads or writes the historical ledger.
 - **Google token proxy fallback:** Freed Desktop defaults missing or empty Google proxy build env to the production token proxy so dev and local builds cannot silently drift into direct Google token exchange
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
@@ -386,9 +386,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Quiet installed startup:** Freed Desktop now keeps cold startup quiet when launched with `open -g`, holds the main window non-focusable through startup visibility probes, skips foreground-only startup occlusion recovery on that path, and lets installed-build soaks start the app without interrupting the primary workstation. Explicit Show, dock reopen, recovery retry, and other foreground actions still raise the app.
 - **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification. Main renderer recovery now treats high WebKit RSS plus high CPU as active pressure instead of reclaimable tail memory, and recycles the main renderer when multi-GB WebKit resident and footprint growth stay CPU-hot before the global high-memory ceiling is reached.
 - **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
-- **Classifier health notification isolation:** Device-local semantic classifier health persists without broadcasting a model lifecycle change, so a terminal batch cannot rearm itself every five seconds or recreate the Automerge worker
-- **Bounded scheduled RSS refresh:** Background RSS polling now refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep and bypasses local retry windows. Retry windows, failure counters, and fetch errors are device-local. Deprecated synchronized HTTP validators are ignored because the current transport does not persist validators. One machine cannot throttle another through the shared document.
-- **Single-flight document startup:** Concurrent React startup effects share one application initialization and one worker INIT request. The renderer installs one permanent Automerge subscription instead of allowing duplicate acknowledgements to replay stale UI state.
+- **Classifier health notification isolation:** Device-local semantic classifier health persists without broadcasting a model lifecycle change, so a terminal batch cannot rearm itself every five seconds or rebuild Library projections.
+- **Bounded scheduled RSS refresh:** Background RSS polling refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep and bypasses local retry windows. Retry windows, failure counters, and fetch errors are device-local. One machine cannot throttle another through synchronized records.
+- **Single-flight Library startup:** Concurrent React startup effects share one SQLite runtime initialization. Startup reads bounded facets and preferences, then each view opens its own typed window.
 
 ---
 
@@ -726,15 +726,15 @@ export async function captureDomFeed(
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] A provider-free primary Library establishes explicit durable local writer admission before exposing state, while cloud-identified and follower Libraries cannot be silently reclassified as local-only
 - [x] Provider-specific capture flows require additional local risk consent
-- [x] Legal acceptance stays outside synced Automerge state
-- [x] Permanent Facebook and Instagram media archive stores files, manifest rows, byte counts, retry state, and provider archive preferences locally outside synced Automerge state
+- [x] Legal acceptance stays outside synchronized Library records
+- [x] Permanent Facebook and Instagram media archive stores files, manifest rows, byte counts, retry state, and provider archive preferences outside synchronized Library records
 - [x] Freed Desktop keeps up to 24 immutable normalized local snapshots, verifies every canonical record before restore, and restores through one replay-safe signed successor authority epoch
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Desktop E2E gates are split into smoke, functional regression, performance, and visual lanes, with dev build validation running the performance and visual lanes instead of hiding them until production release prep
 - [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, native preview windows carry a visible worktree and thread label, and feature previews auto-accept local legal gates plus seed sample data
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog, pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link, opens the saved item in reader mode after stub persistence, and pulls readable details in the background
-- [x] Freed Desktop factory reset closes Automerge admission, settles document work already accepted by the worker, and rejects later mutations before deletion. It clears device display and AI choices, snapshots, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. The relay rotates its pairing token, clears held document bytes, disconnects old mobile sessions, and stays paused whenever document deletion is uncertain. Existing PWA clients must scan the current pairing QR code again after a successful reset. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
+- [x] Freed Desktop factory reset closes SQLite mutation admission, settles accepted native work, and rejects later mutations before deletion. It clears device display and AI choices, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local Library. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
@@ -744,7 +744,7 @@ export async function captureDomFeed(
 - [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
 - [x] Search does not build or retain a renderer index, and item-state mutations cannot trigger search-index work in React
 - [x] Safe user-triggered document mutations project visible UI changes immediately, roll back on worker failure, and leave destructive or repair operations source-of-truth first
-- [x] Visible-scope archive read actions batch filtered read items through one Automerge worker mutation, so large Instagram cleanup does not loop through one archive toggle per post
+- [x] Visible-scope archive read actions batch filtered read items through one bounded SQLite mutation, so large Instagram cleanup does not loop through one archive toggle per post
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
 - [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
@@ -797,16 +797,16 @@ export async function captureDomFeed(
 - [x] Once the primary sidebar crosses into its simplified narrow labeled state or the compact icon rail, the RSS section always behaves as closed and never renders inline sub-feed rows
 - [x] The primary sidebar now resizes without a minimum width, previews its expanded, compact, and fully closed snap states live during drag, keeps the resize handle under the cursor while the card itself snaps, uses a tighter square-button compact rail with quieter 18px glyphs, lightly boosts the visually smaller brand marks like `X` and Facebook so they sit with the rest of the source icons, shell-matched corner radii, keeps narrow desktop windows on that compact desktop rail, and only falls back to the floating drawer on actual mobile devices
 - [x] Expanded sidebar padding now flips between tighter roomy and condensed presets at a crossover instead of interpolating linearly, labeled widths below 200px drop counts, chevrons, and similar trailing chrome before labels, narrow-width labels now clip cleanly without ellipses and keep a small inner right gutter before the shell edge, provider status dots and spinners now ride on the source icons at every sidebar width, widths below 100px snap into the compact rail, compact search moves into a floating palette, and the shared mobile drawer now closes when the same hamburger button is tapped again
-- [x] Device display state now stays outside Automerge, including card density, interface zoom, sidebar modes and widths, Friends detail rail state, map and feed view modes, saved sorting, signal filters, reader preview layout, and debug panel width. Existing synced values seed local storage once for backward compatibility.
+- [x] Device display state stays outside normalized checkpoints, including card density, interface zoom, sidebar modes and widths, Friends detail rail state, map and feed view modes, saved sorting, signal filters, reader preview layout, and debug panel width. Historical synchronized values seed device storage once during cutover.
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
 - [x] The top toolbar shows a right-edge background activity spinner while any observed sync, runtime job, updater download, or local AI model download is active, and the spinner opens a right-docked live activity popover with elapsed active-work timers without opening Settings
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
 - [x] Settings expandable lists now use the shared filtered inner-list panel, so Facebook groups, RSS management, OPML previews, saved import errors, and scrape logs cannot stretch the outer Settings scroll when content loads late
 - [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while the feed rows sit in their own searchable inner scroller and still show whether the feed looks likely dead or just failing
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
-- [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
+- [x] Desktop debug tooling samples native and WebKit memory, SQLite and content-vault storage, renderer hydration, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
-- [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
+- [x] Desktop diagnostics include native and Freed-owned WebKit renderer RSS, WebKit cache size, SQLite and content-vault storage, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
 - [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
 - [x] Concurrent native runtime-health writers now share process and operating-system locks across Unix rollover, whole-record appends, non-Unix bounded rewrites, and factory-reset cleanup, so every physical JSONL line remains independently parseable and repeated events keep their exact multiplicity
@@ -824,8 +824,7 @@ export async function captureDomFeed(
 - [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, but still recovers the main renderer when the high-RSS WebKit process is hot on CPU, including active multi-GB WebKit growth below the global high-memory ceiling
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
-- [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
-- [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
+- [x] Desktop Library state never ships a complete item ID list or whole Library payload to the renderer, and the content fetcher bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items, runs one active worker job at a time, and uses randomized pacing plus capped backoff so slow AI or network work cannot overlap the queue into renderer pressure
 - [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
@@ -833,11 +832,10 @@ export async function captureDomFeed(
 - [x] Provider-health persistence now compacts RSS feed attempt history, derives per-feed charts from retained attempts, trims oversized error reasons, updates failing-feed diagnostics incrementally, and batches hot RSS writes so renderer memory is not burned repeatedly on `sync-health.json` parse and stringify cycles
 - [x] Native runtime-health sampling continues while the renderer is hidden, including background pause state, active job age, safe-mode state, WebKit RSS, and adaptive memory limits
 - [x] Desktop social scrape guardrails now scale beyond the old 4 GB ceiling on high-memory machines, while low-priority semantic enrichment and startup content-signal backfill wait through the launch quiet period
-- [x] Local AI classifier health writes stay device-local without notifying model lifecycle subscribers, so a terminal backfill stays terminal instead of rebuilding the Automerge document every five seconds
-- [x] Desktop releases idle Automerge worker documents after the request queue drains and terminates the worker until the next document operation, reducing retained renderer work during long background sessions
+- [x] Local AI classifier health writes stay device-local without notifying model lifecycle subscribers, so a terminal backfill stays terminal instead of rebuilding Library projections every five seconds
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
-- [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
+- [x] Desktop typed mutation results carry invalidation metadata, so item updates refresh bounded affected windows while reset invalidations reopen only the required SQLite readers
 - [x] Desktop outbox and article-fetch discovery now stream lossless, generation-pinned SQLite pages with stable keyset cursors instead of traversing the full renderer item corpus
 - [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
 - [x] Settings > Saved reads exact time, source, and content aggregates directly through `saved_analytics_v2`. Map, Story Wall, Library facets, and feed signal counts also fail closed on their typed SQLite readers without leasing or scanning a renderer item corpus.
@@ -847,16 +845,16 @@ export async function captureDomFeed(
 - [x] FriendEditor now reads at most 50 alphabetically ranked visible unlinked author candidates through source-fenced 64-row SQLite pages, debounces rapid searches for 150 ms, resolves exact selected-profile provenance through Account detail queries before saving, cancels stale source results, and has no renderer corpus or rollback path
 - [x] SearchJump opens and searches without hydrating the renderer corpus. It uses one bounded source-fenced scan for exact Library tags, archive totals, and complex scope counts, compact aggregates for simple scopes, and one source-fenced selected item. Native reader failure fails closed. No rollback key, compatibility lease, renderer-derived facet fallback, or selected-item fallback remains.
 - [x] The Freed Desktop Saved feed preserves all four user-facing sort modes through the normalized `saved_feed_page_v2` query with binary global-ID ties. SQLite owns filtering, ordering, and opaque bidirectional keyset cursors. React retains at most two bounded compact pages plus one selected card and never reacquires a whole Library projection.
-- [x] The Freed Desktop non-Saved Friends-only feed uses `feed_browse_page_v2` when no search is active, with Person-first predicate schema v1, the existing recommendation order, ranking-weight invalidation, and a source-order working map capped to one 64-row native scan page. React retains two feed pages plus one selected card so eviction preserves ReaderView. Version 1 and its all-content callers remain unchanged. Source drift, predicate mismatch, native failure, or `freed.libraryCore.friendsFeedReaderV1.disabled=1` restores the Automerge compatibility path. Friends search, Friends plus Saved, and the PWA remain unchanged
+- [x] The Freed Desktop non-Saved Friends-only feed uses `feed_browse_page_v2` with a Person-first predicate, ranking-weight invalidation, and a source-order working map capped to one 64-row native scan page. React retains two feed pages plus one selected card so eviction preserves ReaderView. Source drift, predicate mismatch, or native failure fails closed without a document-reader fallback.
 - [x] The Freed Desktop ordinary all-content feed pages through the normalized `feed_browse_page_v3` query when no search is active and neither Saved-only nor Friends mode is selected. It carries an explicit `next` or `previous` direction and returns exclusive edge cursors bound to the exact generation and first and last rows. Backward reads mirror the forward keyset predicate through the same unique index without a temporary sort. React retains two bounded compact pages plus at most one pinned selected card and restores an evicted leading page without reacquiring the full Library.
 - [x] Freed Desktop's ordinary feed, four-mode Saved feed, and signal counts call the flat normalized SQLite query command with exact shared request and response validation. The adapters retain only compact bounded rows, preserve opaque forward and backward keyset cursors, reconstruct the existing feed-card view model from the shared projection, and never call the historical item query. Friends remains on its existing reader until the normalized contract closes the Friends predicate inside SQLite.
-- [x] Freed Desktop returns the first filtered SQLite feed page before scanning later pages, keeps the old page hidden behind an explicit loading state during filter transitions, and computes command-palette facets, signal counts, sidebar counts, Friends activity, map candidates, Story Wall candidates, and tiny-mutation refreshes through native bounded queries or aggregates instead of streaming the complete Library into the renderer. Later pages and maintenance scans skip redundant whole-table counts. The production shell omits derived Friends rows and retired feed-order IDs.
+- [x] Freed Desktop returns the first filtered SQLite feed page before scanning later pages, keeps the old page hidden behind an explicit loading state during filter transitions, and computes command-palette facets, signal counts, sidebar counts, Friends activity, map candidates, Story Wall candidates, and tiny-mutation refreshes through native bounded queries or aggregates instead of streaming the complete Library into the renderer. Later pages and maintenance scans skip redundant whole-table counts. The production renderer omits derived Friends rows and retired feed-order IDs.
 - [x] Desktop item-patch updates now maintain a main-thread item index and adjust unread, total, and archivable aggregates incrementally instead of walking the visible item list after each patch
-- [x] Desktop RSS feed metadata writes now persist through Automerge and send feed patches to the UI without hydrating the full feed item projection
+- [x] Desktop RSS feed metadata writes persist through registered SQLite mutations and invalidate bounded feed queries without hydrating a full item projection
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
 - [x] Freed Desktop unified feed rows now use the local card density setting as a fixed-height virtualization contract, with matching loading skeletons, post cards and story rows sharing each selected height, side media wells, density-aware clamped previews, toolbar overflow access for narrower desktop widths, a local interface zoom slider for root display scale, and no row remeasurement when media loads
-- [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
+- [x] Desktop persistence commits normalized SQLite transactions and exports typed checkpoint records without serializing a whole Library document
 - [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. No renderer MiniSearch index, corpus filter, scan fallback, or browser-test compatibility path remains.
 - [x] Map candidates are classified when SQLite rows are written and ordered through a partial location timeline index, so opening Map does not scan and sort the full Library before returning its bounded page.
 - [x] Map and Story Wall call `map_markers_v1` and `story_wall_candidates_v1` directly. Their compact source-fenced rows exclude reader bodies, tags, signals, highlights, and unrelated state. Their row-to-visible-card transform lives in the shared contract package instead of a Desktop-only adapter.
@@ -867,171 +865,9 @@ export async function captureDomFeed(
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
-> macOS release builds are signed and notarized in GitHub Actions when the
-> required Apple secrets are present. The release workflow now fails fast
-> instead of silently shipping an unsigned macOS artifact. Windows signing is
-> planned through Microsoft Artifact Signing, and the repo now includes
-> `docs/WINDOWS-SIGNING.md` plus an inert Tauri `signCommand` scaffold for the
-> future implementation. Windows SmartScreen warnings will still appear until
-> that path is provisioned, enabled, and verified in a signed release. The shared desktop toolbar
-> now behaves like a real title bar again, including threshold-based window
-> dragging from toolbar controls plus normal cursor and selection treatment
-> for static toolbar labels. Desktop now also keeps dev installs on the
-> newest eligible build even when that build comes from the production
-> channel. When production gets ahead of the last dev build, the app now
-> offers that production update without flipping the saved channel away
-> from dev. Desktop now also writes
-> rotating local Automerge snapshots, including Google contact match state,
-> so catastrophic local corruption can be rolled back from Settings.
-> The desktop runtime now also emits periodic memory telemetry into the
-> debug panel and local logs, including process RSS, virtual size, relay
-> document size, relay client count, renderer heap usage, and DOM node
-> counts. We also removed the native relay's old habit of cloning whole
-> document buffers into multiple owners and writing a fresh snapshot on
-> every broadcast, which was an especially bad trade once sync churn stayed
-> hot for an hour or more. The worker now fetches full item-id lists and
-> full Automerge binaries only on demand for import dedupe, relay, cloud
-> backup, and snapshots, rather than shipping those payloads back to the
-> main thread on every state update. Desktop memory telemetry now also samples
-> Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB storage,
-> WebKit cache size, and adaptive high and critical memory limits. Native
-> runtime-health sampling now continues even while the renderer is hidden, so
-> overnight reports still show memory, pause, safe-mode, and active background
-> job state. Social capture now runs a native preflight that recycles stale scraper windows,
-> records which WebKit process IDs exited or survived the recycle, and trims
-> only Freed WebKit network-cache blobs before it decides a scrape must pause.
-> On high-memory machines, scrape guardrails now scale beyond the old 4 GB
-> critical cap, and low-priority semantic enrichment waits through launch so it
-> does not spend the first Automerge-heavy background slot before provider sync.
-> The background runtime now also gates content fetches, RSS polls,
-> automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
-> healthy renderer startup and shared pressure cooldowns, while native recovery
-> writes runtime-health records and relaunches if the old renderer label stays
-> stuck after destroy. Critical memory pressure pauses background content fetching, then
-> offers a restart action instead of letting WebKit conduct the RAM orchestra
-> with a shovel. The background content fetcher now runs one active worker job
-> at a time, randomizes its next fetch delay, backs off after timeouts or AI
-> provider failures, bounds and ages out its failed-item cooldown cache, and it
-> keeps an in-flight set so unrelated state updates cannot queue the same fetch
-> work over and over while a URL is already being processed. It also stopped
-> rescanning the full visible feed on every tiny document mutation and now
-> only rescans when the document item count actually changes. The outbox also
-> prunes completed retry bookkeeping instead of letting that map grow across
-> a long session, and removing RSS feeds now also forgets their saved health
-> history instead of leaving dead diagnostics behind. Local browser preview
-> now also short-circuits native-only snapshot, consent-store, provider-health,
-> memory-monitor, and background refresh paths so legal acceptance no longer
-> dumps the preview into the recovery screen after a reload. Desktop feed-state
-> updates also now cap preserved article text previews and fetch the full
-> preserved text only for the reader item that is actually open, instead of
-> cloning full article bodies through the live UI state on every mutation.
-> RSS feed metadata writes now use the same incremental worker pattern, so
-> adding or editing one feed persists the Automerge change and patches the UI
-> without rebuilding the full desktop feed projection.
-> Desktop search now scans and scores the active SQLite Library one row at a
-> time in the native process. It streams at most 32 result cards per page and
-> React retains the best 100 filtered cards, so typing never builds a renderer
-> search heap or clones the full `FeedItem[]`. The desktop perf harness also switched from Chromium's broken
-> zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
-> preserved-text search scenario, so memory regressions stop passing CI by
-> emitting a very confident `0.0 MB`.
-> Desktop persistence also now appends Automerge incremental saves to the
-> last stored snapshot and compacts back to a fresh snapshot only when the
-> incremental tail has grown large enough to justify it.
-> Local developer workflow now also defaults desktop preview to the
-> `VITE_TEST_TAURI=1` browser harness, with tracked preview slots so
-> multiple concurrent worktrees do not each spin up their own native Tauri
-> stack by default. When a real native preview is needed, the launched
-> window now shows a worktree plus thread label so parallel preview apps
-> can be told apart at a glance.
-> Release notes now use a
-> checked-in review gate: `./scripts/release.sh` prepares draft notes and
-> daily editorial memory, then `./scripts/release-publish.sh` tags only after
-> the reviewed release artifact passes validation and is approved. The latest
-> dev release prep now returns through a PR to `dev`. Production prep starts
-> from current `main` after any required promotion and returns through a
-> release-only PR to `main`. Tagging requires the exact merged remote commit.
-> Protected release branches no longer depend on direct
-> release commits or branch pushes. The latest
-> release of each day is cumulative, so website changelog cards describe
-> everything newly shipped since the previous day instead of unioning same-day
-> bullets after the fact. Production releases now also carry forward
-> intermediary dev prereleases since the prior production release, so the
-> public card does not drop features that first shipped on `dev`. Release
-> artifacts now render a distinct opener plus
-> separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
-> can reinforce the theme without collapsing the details into one bucket. The
-> desktop updater now shows only that reviewed opener line when an update is
-> available. The public changelog now paginates in URL-addressable sets of 5
-> releases so older builds can be linked directly without turning the page
-> into a mile-long papyrus scroll, and card hover states now key off the
-> existing timeline lane instead of inventing a second internal accent rail.
-> Freed Desktop Settings now embeds those latest five cumulative changelog
-> cards in the Updates pane, with a channel-aware link to the full changelog.
-> The updater endpoint now lives behind `freed.wtf/api/desktop-updates/{{target}}`,
-> and Freed Desktop can switch locally between production releases from `main`
-> and dev prereleases from `dev` without syncing that preference through the
-> shared document.
-> Dev release tags now run the dev validation tier and package only the
-> internal macOS Apple Silicon build. Production tags run the production
-> validation tier, build every supported platform in parallel, upload platform
-> assets to a pre-created draft release, then generate `latest.json` once after
-> all signed artifacts are present so updater metadata does not race between
-> matrix jobs.
-> The public marketing site is controlled by the `www` branch. After any
-> GitHub release is published, the workflow now redeploys `freed.wtf` from the
-> current `www` branch so the changelog snapshot rebuilds against the newly
-> published release instead of waiting for a later production ship. Production
-> desktop tags still come from `main`, and production website deploys still
-> require the reviewed website and changelog state to be merged into `www`
-> first. Production prep and publish now also validate that `main` still
-> matches current `dev` on product-owned paths, PRs to `main` reject direct
-> product edits unless they come from a `chore/promote-dev-to-main-*`
-> promotion branch, and the release workflow rechecks that same guard before a
-> production tag can build. Dev releases refresh the public changelog from
-> current `www` without ever moving `www` to `dev`. See
-> `RELEASE-SECRETS.md` for the full setup checklist.
+> Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical document storage remains fenced migration input until the one-epoch cutover is accepted, then it is deleted.
 >
-> The reader header toolbar now uses one consistent icon-button geometry for
-> sidebar, rail, bookmark, and archive controls. Back navigation reaches
-> farther left, action buttons no longer reserve bogus slot space between one
-> another, the archive action no longer changes apparent size when active, and
-> the trailing reader actions sit closer to the content instead of drifting
-> inside an oversized right gutter.
->
-> The map surface now overrides the generic sidebar-gap viewport compensation
-> and uses its own balanced vignette overlay. That removes the hard left edge
-> the inherited mask was creating, softens the visible boundary around the map,
-> and evens out the top-right corner so the feathering reads consistently on
-> all four sides.
->
-> The unified feed crystal-core icon now renders slightly larger than the rest
-> of the sidebar icon set in both labeled and compact rail modes, so it carries
-> the same visual weight as the platform marks without forcing another global
-> icon-size rebalance.
->
-> Compact-sidebar search now stays visibly active whenever the floating search
-> palette is open or a query is currently filtering content. The floating
-> palette uses the same corner radius as the sidebar shell, and active search
-> on non-reader views now promotes a clearable search field into the center of
-> the top toolbar instead of leaving stale scope copy there.
->
-> The desktop sidebar and header now share one live boundary contract instead
-> of guessing at one another's geometry. The toolbar controls track the real
-> sidebar handle during drag preview, the collapse and rail toggles now use the
-> same fixed icon-button box without off-center glyph hacks, expanded padding
-> stays on the two requested presets, and narrow labeled mode keeps the older
-> cleanup rules intact at the same time: `Feed`, `Search`, no counts, no
-> subfeeds, and clipped labels with a small right gutter instead of ellipses.
-> Sidebar status badges also use one shared overlay position in labeled and
-> compact modes, with the dark backplate removed. The narrow labeled sidebar
-> also trims its label-side right padding further now, so clipped text can run
-> closer to the shell edge without turning into edge-to-edge soup.
->
-> Local browser preview now keeps desktop snapshots, legal consent, provider
-> health persistence, and runtime memory telemetry on browser-safe fallbacks
-> instead of calling native Tauri APIs, so accepting the desktop legal gate no
-> longer crashes the `4173` preview into the recovery screen.
+> Release builds use the governed signing, notarization, updater, and channel promotion paths described in the release documentation. Runtime memory telemetry measures native and WebKit processes, visible renderer hydration, content work, and pressure controls without document-relay counters or whole-corpus payloads.
 
 ### Mobile
 

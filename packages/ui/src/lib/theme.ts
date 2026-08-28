@@ -66,8 +66,8 @@ const themeTransitionState: ThemeTransitionState = {
 type ThemePreferenceListener = () => void;
 type AppliedThemeListener = () => void;
 
-// Theme is installation-local. The Automerge field is legacy migration input,
-// never live authority, so a synchronized snapshot cannot repaint this device.
+// Theme is installation-local. Historical synchronized values are migration
+// input only, so a remote checkpoint cannot repaint this device.
 const themePreferenceListeners = new Set<ThemePreferenceListener>();
 const appliedThemeListeners = new Set<AppliedThemeListener>();
 let currentThemeId = DEFAULT_THEME_ID;

@@ -712,7 +712,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
  * across the last 22 hours (reflecting the ephemeral nature of real stories).
  * Items are spread across the last 14 days with varied user states (read,
  * saved, archived) to exercise all UI views. All IDs are deterministic so
- * repeated calls are idempotent against the Automerge duplicate guard.
+ * repeated calls are idempotent against normalized SQLite identity constraints.
  */
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const resolvedOptions = resolveSampleDataOptions(options);

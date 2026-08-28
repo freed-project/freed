@@ -699,8 +699,7 @@ function App() {
     startProviderSyncScheduler({
       existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
     });
-    // Replacement sync follows the SQLite Desktop revamp. The legacy
-    // Automerge relay and cloud loops stay off in this build.
+    // SQLite synchronization starts only through the typed Library Core path.
     if (isTauri()) {
       void startSnapshotManager().catch((error) => {
         log.error(

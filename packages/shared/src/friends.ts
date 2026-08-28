@@ -1,7 +1,7 @@
 /**
  * @freed/shared - Person/account identity resolution and CRM utilities
  *
- * Pure functions only. No React, no side effects, no Automerge imports.
+ * Pure functions only. No React, storage access, or side effects.
  * Safe to call in hot render paths.
  */
 
