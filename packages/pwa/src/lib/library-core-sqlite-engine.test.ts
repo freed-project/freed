@@ -49,6 +49,8 @@ import {
   normalizedResultSegmentHeaderFromBodyV2,
   parseLibraryCoreFollowerResultEnvelopeV1,
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  parseLibraryCoreNormalizedOperationExportDescriptorV2,
+  parseLibraryCoreNormalizedOperationExportPageV2,
   parseLibraryCoreNormalizedResultSegmentBodyV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
   constructLibraryCoreActorEnrollmentBodyV1,
@@ -1065,7 +1067,9 @@ describe("PWA Library Core SQLite engine", () => {
       sql: `INSERT INTO library_active_authority
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
-            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
       bind: [libraryId, epochId],
     });
     const enrollment = constructLibraryCoreActorEnrollmentBodyV1(
@@ -1151,6 +1155,386 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
+  it("stages split normalized operation pages and atomically applies one verified large transaction", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const authorityKeyId = "55".repeat(32);
+    const writerId = "66".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        authorityKeyId,
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, ?3, 1, 1);`,
+      bind: [libraryId, epochId, writerId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'desktop', ?3, 'enroll-1', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+
+    const body = "x".repeat(65_536);
+    const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 2_000,
+        entity_id: "saved:item:maximum-inline-body",
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 2_000,
+        library_id: libraryId,
+        operation_id: "operation:maximum-inline-body",
+        payload: {
+          item: {
+            author: {
+              displayName: "Bounded Author",
+              handle: "bounded",
+              id: "author:bounded",
+            },
+            capturedAt: 2_000,
+            content: {
+              mediaTypes: [],
+              mediaUrls: [],
+              text: body,
+            },
+            contentType: "article",
+            globalId: "saved:item:maximum-inline-body",
+            platform: "saved",
+            publishedAt: 2_000,
+            topics: [],
+            userState: {
+              archived: false,
+              hidden: false,
+              saved: true,
+              tags: [],
+            },
+          },
+        },
+        previous_actor_operation_id: null,
+        transaction_id: "transaction:maximum-inline-body",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    const finalizedMember = finalized.members[0]!;
+    const canonicalOperation = encodeLibraryCoreCanonicalValue(
+      finalizedMember.envelope as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: 131_072 },
+    );
+    expect(canonicalOperation.byteLength).toBeLessThanOrEqual(131_072);
+
+    const signedResult = (
+      sourceRevision: number,
+      transactionId: string,
+      transactionDigest: string,
+      operationId: string,
+      receiptId: string,
+      resultSequence: number,
+    ) => {
+      const candidate = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: sourceRevision,
+        authority_key_id: authorityKeyId,
+        canonical_operation_ids: [operationId],
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: null,
+        receipt_ids: [receiptId],
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: 3_000 + sourceRevision,
+        result_body_digest: "0".repeat(64),
+        result_sequence: resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: transactionDigest,
+        transaction_id: transactionId,
+      });
+      const digest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(candidate),
+      );
+      const canonicalBytes = encodeLibraryCoreCanonicalValue({
+        ...candidate,
+        result_body_digest: digest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: digest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      return { canonicalBytes, digest };
+    };
+    const accepted = signedResult(
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+      finalizedMember.envelope.operation_id,
+      finalizedMember.envelope_digest,
+      1,
+    );
+    const gap = signedResult(
+      2,
+      "transaction:future-gap",
+      "cc".repeat(32),
+      "operation:future-gap",
+      "dd".repeat(32),
+      2,
+    );
+    const descriptor = parseLibraryCoreNormalizedOperationExportDescriptorV2({
+      authorityEpoch: epochId,
+      firstAvailableRevision: 1,
+      format: "freed_normalized_operation_export_v2" as const,
+      libraryId,
+      operationCount: 1,
+      protocolVersion: 2 as const,
+      sourceRevision: 1,
+      transactionCount: 1,
+      writerId,
+    });
+    const record = (
+      canonicalRecord: Uint8Array,
+      kind: "accepted_transaction" | "operation",
+      memberIndex: number,
+      recordDigest: string,
+      sourceRevision: number,
+      transactionId: string,
+      transactionDigest: string,
+    ) => ({
+      canonicalRecordJson: new TextDecoder().decode(canonicalRecord),
+      kind,
+      memberIndex,
+      recordDigest,
+      sourceRevision,
+      transactionDigest,
+      transactionId,
+    });
+    const page = (pageRecord: ReturnType<typeof record>, done: boolean) =>
+      parseLibraryCoreNormalizedOperationExportPageV2({
+        canonicalRecordBytes: new TextEncoder().encode(
+          pageRecord.canonicalRecordJson,
+        ).byteLength,
+        done,
+        nextCursor: {
+          kind: pageRecord.kind,
+          memberIndex: pageRecord.memberIndex,
+          recordDigest: pageRecord.recordDigest,
+          sourceRevision: pageRecord.sourceRevision,
+        },
+        records: [pageRecord],
+      });
+    const gapRecord = record(
+      gap.canonicalBytes,
+      "accepted_transaction",
+      -1,
+      gap.digest,
+      2,
+      "transaction:future-gap",
+      "cc".repeat(32),
+    );
+    const gapReceipt = await engine.importNormalizedOperationPage({
+      page: page(gapRecord, false),
+      receivedAt: 2_500,
+      snapshot: {
+        ...descriptor,
+        operationCount: 2,
+        sourceRevision: 2,
+        transactionCount: 2,
+      },
+    });
+    expect(gapReceipt).toMatchObject({
+      appliedThroughRevision: 0,
+      appliedTransactionCount: 0,
+      stagedRecordCount: 1,
+    });
+
+    const resultRecord = record(
+      accepted.canonicalBytes,
+      "accepted_transaction",
+      -1,
+      accepted.digest,
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+    );
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(resultRecord, false),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toEqual({
+      appliedThroughRevision: 0,
+      appliedTransactionCount: 0,
+      receivedAt: 2_600,
+      stagedRecordCount: 1,
+      stagedTransactionCount: 1,
+    });
+    const operationRecord = record(
+      canonicalOperation,
+      "operation",
+      0,
+      finalizedMember.envelope_digest,
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+    );
+    database.exec(`CREATE TEMP TRIGGER fail_operation_replication_receipt
+      BEFORE INSERT ON library_operation_replication_results
+      BEGIN SELECT RAISE(ABORT, 'injected operation replication fault'); END;`);
+    await expect(
+      engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).rejects.toThrow(/injected operation replication fault/);
+    expect(
+      database.exec({
+        sql: `SELECT m.source_revision,
+                     (SELECT count(*) FROM library_feed_items),
+                     (SELECT count(*) FROM library_operations),
+                     (SELECT count(*) FROM library_operation_replication_stage_members
+                       WHERE source_revision = 1)
+              FROM library_meta AS m WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 0, 0, 1]]);
+    database.exec("DROP TRIGGER fail_operation_replication_receipt;");
+
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toEqual({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 1,
+      receivedAt: 2_600,
+      stagedRecordCount: 1,
+      stagedTransactionCount: 1,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT length(content_text), content_text,
+                     (SELECT count(*) FROM library_replication_outbox),
+                     (SELECT count(*) FROM library_operation_replication_results),
+                     (SELECT count(*) FROM library_operation_replication_stages)
+              FROM library_feed_items
+              WHERE global_id = 'saved:item:maximum-inline-body';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[65_536, body, 0, 1, 1]]);
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(resultRecord, false),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toMatchObject({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 0,
+    });
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toMatchObject({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 0,
+    });
+    const changedDigestRecord = {
+      ...operationRecord,
+      recordDigest: "ee".repeat(32),
+    };
+    await expect(
+      engine.importNormalizedOperationPage({
+        page: page(changedDigestRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).rejects.toThrow(/replay changed/);
+  });
+
   it("atomically commits verified follower intents, optimistic fields, and exact retries", async () => {
     const libraryId = "11".repeat(32);
     const epochId = "22".repeat(32);
@@ -1208,7 +1592,9 @@ describe("PWA Library Core SQLite engine", () => {
       sql: `INSERT INTO library_active_authority
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
-            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
       bind: [libraryId, epochId],
     });
     database.exec({
@@ -1521,7 +1907,7 @@ describe("PWA Library Core SQLite engine", () => {
       actor_id: actorId,
       authoritative_source_revision: 8,
       authority_key_id: "55".repeat(32),
-      canonical_operation_ids: ["canonical-operation-1"],
+      canonical_operation_ids: ["intent-operation-1"],
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
@@ -1530,7 +1916,7 @@ describe("PWA Library Core SQLite engine", () => {
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: null,
-      receipt_ids: ["receipt-1"],
+      receipt_ids: [finalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [
         {
@@ -1635,6 +2021,28 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([[7, 0, 1]]);
     database.exec("DROP TRIGGER fail_result_transport_receipt;");
+
+    database.exec(`CREATE TEMP TRIGGER fail_operation_replication_result
+      BEFORE INSERT ON library_operation_replication_results
+      BEGIN SELECT RAISE(ABORT, 'injected operation apply fault'); END;`);
+    await expect(
+      engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).rejects.toThrow(/injected operation apply fault/);
+    expect(
+      database.exec({
+        sql: `SELECT source_revision,
+                     (SELECT count(*) FROM library_result_transport_segments),
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields),
+                     (SELECT count(*) FROM library_transactions),
+                     (SELECT count(*) FROM library_operations),
+                     (SELECT count(*) FROM library_operation_replication_results)
+              FROM library_meta WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, 1, 1, 1, 0, 0, 0]]);
+    database.exec("DROP TRIGGER fail_operation_replication_result;");
     const transportReceipt =
       await engine.importNormalizedFollowerResultTransport(resultPublication);
     expect(transportReceipt).toEqual({
@@ -1677,13 +2085,19 @@ describe("PWA Library Core SQLite engine", () => {
       database.exec({
         sql: `SELECT read_at, (SELECT count(*) FROM library_optimistic_fields),
                      (SELECT next_result_sequence FROM library_intent_result_cursors
-                      WHERE actor_id = ?1)
+                      WHERE actor_id = ?1),
+                     (SELECT count(*) FROM library_transactions
+                      WHERE transaction_id = 'intent-transaction-1'),
+                     (SELECT count(*) FROM library_operations
+                      WHERE transaction_id = 'intent-transaction-1'),
+                     (SELECT count(*) FROM library_operation_replication_results
+                      WHERE transaction_id = 'intent-transaction-1')
               FROM library_feed_items WHERE global_id = 'item-1';`,
         bind: [actorId],
         rowMode: "array",
         returnValue: "resultRows",
       }),
-    ).toEqual([[1_400, 0, 2]]);
+    ).toEqual([[1_400, 0, 2, 1, 1, 1]]);
 
     const changedResult = new Uint8Array(canonicalResultBytes);
     changedResult[changedResult.byteLength - 2] =
@@ -1786,7 +2200,7 @@ describe("PWA Library Core SQLite engine", () => {
       actor_id: actorId,
       authoritative_source_revision: 9,
       authority_key_id: "55".repeat(32),
-      canonical_operation_ids: ["canonical-operation-2"],
+      canonical_operation_ids: ["intent-operation-2"],
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
@@ -1795,7 +2209,7 @@ describe("PWA Library Core SQLite engine", () => {
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: resultDigest,
-      receipt_ids: ["receipt-2"],
+      receipt_ids: [secondFinalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [
         {
@@ -2014,7 +2428,7 @@ describe("PWA Library Core SQLite engine", () => {
         rowMode: "array",
         returnValue: "resultRows",
       }),
-    ).toEqual([[1_600, "rejected", currentEpochId, epochId, 0, 4]]);
+    ).toEqual([[1_400, "rejected", currentEpochId, epochId, 0, 4]]);
   });
 
   it("materializes an accepted signed FeedItem capture through the generated program", async () => {
@@ -2072,7 +2486,9 @@ describe("PWA Library Core SQLite engine", () => {
       sql: `INSERT INTO library_active_authority
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
-            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
       bind: [libraryId, epochId],
     });
     database.exec({
@@ -2170,7 +2586,7 @@ describe("PWA Library Core SQLite engine", () => {
       actor_id: actorId,
       authoritative_source_revision: 1,
       authority_key_id: "55".repeat(32),
-      canonical_operation_ids: ["canonical-capture-operation-1"],
+      canonical_operation_ids: ["capture-operation-1"],
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
@@ -2179,7 +2595,7 @@ describe("PWA Library Core SQLite engine", () => {
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: null,
-      receipt_ids: ["capture-receipt-1"],
+      receipt_ids: [finalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [],
       resolved_at_ms: 2_100,
@@ -2280,7 +2696,7 @@ describe("PWA Library Core SQLite engine", () => {
       actor_id: actorId,
       authoritative_source_revision: 3,
       authority_key_id: "55".repeat(32),
-      canonical_operation_ids: ["canonical-capture-operation-gap"],
+      canonical_operation_ids: ["capture-operation-gap"],
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
@@ -2289,7 +2705,7 @@ describe("PWA Library Core SQLite engine", () => {
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: resultDigest,
-      receipt_ids: ["capture-receipt-gap"],
+      receipt_ids: [gapFinalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [],
       resolved_at_ms: 2_300,
@@ -2391,7 +2807,9 @@ describe("PWA Library Core SQLite engine", () => {
       sql: `INSERT INTO library_active_authority
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
-            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
       bind: [libraryId, epochId],
     });
     database.exec({
@@ -2413,12 +2831,7 @@ describe("PWA Library Core SQLite engine", () => {
                issued_at, retired_at)
             VALUES ('friend-capability', ?1, 2, 'editor', 'library_wide',
                     NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
-      bind: [
-        actorId,
-        "cc".repeat(32),
-        "dd".repeat(32),
-        "ee".repeat(32),
-      ],
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
     });
     database.exec({
       sql: `INSERT INTO library_actor_capability_mutations
@@ -2520,7 +2933,7 @@ describe("PWA Library Core SQLite engine", () => {
       actor_id: actorId,
       authoritative_source_revision: 1,
       authority_key_id: "55".repeat(32),
-      canonical_operation_ids: ["canonical-friend-operation-1"],
+      canonical_operation_ids: ["friend-operation-1"],
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
@@ -2529,7 +2942,7 @@ describe("PWA Library Core SQLite engine", () => {
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: null,
-      receipt_ids: ["friend-receipt-1"],
+      receipt_ids: [finalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [],
       resolved_at_ms: 500,
@@ -2659,7 +3072,9 @@ describe("PWA Library Core SQLite engine", () => {
       sql: `INSERT INTO library_active_authority
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
-            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
       bind: [libraryId, epochId],
     });
     database.exec({
@@ -2796,9 +3211,9 @@ describe("PWA Library Core SQLite engine", () => {
     };
 
     const upsertResultDigest = await applyAccepted({
-      canonicalOperationId: "canonical-rss-upsert",
+      canonicalOperationId: "rss-upsert-operation",
       previousResultDigest: null,
-      receiptId: "rss-upsert-receipt",
+      receiptId: upsertFinalized.members[0]!.envelope_digest,
       resolvedAt: 2_000,
       resultSequence: 1,
       sourceRevision: 1,
@@ -2858,9 +3273,9 @@ describe("PWA Library Core SQLite engine", () => {
       ),
     });
     const titleResultDigest = await applyAccepted({
-      canonicalOperationId: "canonical-rss-title",
+      canonicalOperationId: "rss-title-operation",
       previousResultDigest: upsertResultDigest,
-      receiptId: "rss-title-receipt",
+      receiptId: titleFinalized.members[0]!.envelope_digest,
       resolvedAt: 2_200,
       resultSequence: 2,
       sourceRevision: 2,
@@ -2923,9 +3338,9 @@ describe("PWA Library Core SQLite engine", () => {
       ),
     });
     await applyAccepted({
-      canonicalOperationId: "canonical-rss-remove",
+      canonicalOperationId: "rss-remove-operation",
       previousResultDigest: titleResultDigest,
-      receiptId: "rss-remove-receipt",
+      receiptId: removeFinalized.members[0]!.envelope_digest,
       resolvedAt: 2_400,
       resultSequence: 3,
       sourceRevision: 3,

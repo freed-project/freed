@@ -108,16 +108,6 @@ export {
   type LibraryCoreResultPublicationAdapterV1,
 } from "./library-core-result-publication.js";
 export {
-  importLibraryCoreOperationSegmentV1,
-  prepareLibraryCoreOperationSegmentV1,
-  type ImportLibraryCoreOperationSegmentRequestV1,
-  type LibraryCoreOperationOutboxEntryV1,
-  type LibraryCoreOperationSegmentImportReceiptV1,
-  type LibraryCoreOperationSegmentImportWriterV1,
-  type PreparedLibraryCoreOperationSegmentV1,
-  type PrepareLibraryCoreOperationSegmentRequestV1,
-} from "./library-core-operation-segments.js";
-export {
   LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,

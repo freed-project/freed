@@ -3,6 +3,7 @@ import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 import {
   parseLibraryCoreNormalizedOperationExportDescriptorV2,
   parseLibraryCoreNormalizedOperationExportPageV2,
+  parseLibraryCoreNormalizedOperationImportPageV2,
 } from "./normalized-operation-replication-contracts.js";
 
 const textDecoder = new TextDecoder();
@@ -166,5 +167,52 @@ describe("normalized operation replication v2 contracts", () => {
         writerId: WRITER_ID,
       }),
     ).toThrow(/version/);
+  });
+
+  it("binds an import page to one exact authority snapshot and receive time", () => {
+    const resultJson = canonicalJson(acceptedResult());
+    const imported = parseLibraryCoreNormalizedOperationImportPageV2({
+      page: {
+        canonicalRecordBytes: resultJson.length,
+        done: false,
+        nextCursor: {
+          kind: "accepted_transaction",
+          memberIndex: -1,
+          recordDigest: RESULT_DIGEST,
+          sourceRevision: 1,
+        },
+        records: [
+          {
+            canonicalRecordJson: resultJson,
+            kind: "accepted_transaction",
+            memberIndex: -1,
+            recordDigest: RESULT_DIGEST,
+            sourceRevision: 1,
+            transactionDigest: TRANSACTION_DIGEST,
+            transactionId: "transaction-1",
+          },
+        ],
+      },
+      receivedAt: 10,
+      snapshot: {
+        authorityEpoch: EPOCH_ID,
+        firstAvailableRevision: 1,
+        format: "freed_normalized_operation_export_v2",
+        libraryId: LIBRARY_ID,
+        operationCount: 1,
+        protocolVersion: 2,
+        sourceRevision: 1,
+        transactionCount: 1,
+        writerId: WRITER_ID,
+      },
+    });
+    expect(imported.receivedAt).toBe(10);
+    expect(imported.page.records[0]?.sourceRevision).toBe(1);
+    expect(() =>
+      parseLibraryCoreNormalizedOperationImportPageV2({
+        ...imported,
+        snapshot: { ...imported.snapshot, firstAvailableRevision: 2 },
+      }),
+    ).toThrow(/snapshot/);
   });
 });

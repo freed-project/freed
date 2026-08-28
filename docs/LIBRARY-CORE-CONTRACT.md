@@ -696,6 +696,37 @@ transaction. A follower stages them durably and applies nothing until the
 authority result, exact operation identity set, complete transaction, actor
 chain, signatures, and exact next source revision all verify.
 
+Browser staging is device-local SQLite state. One accepted-result row fixes the
+source revision, transaction digest, active authority epoch, Primary writer,
+snapshot frontier, member count, canonical result bytes, and first receive
+time. Member rows are keyed by source revision and contiguous member index.
+Exact replay returns the existing proof. Reused identities with changed bytes,
+digests, authority, snapshot, or membership fail closed. A future revision may
+be staged, but it cannot skip the current revision.
+
+Once the exact next revision is complete, browser SQLite independently verifies
+the Primary signature, actor signature on every member, transaction digest,
+actor chain predecessor, causal tips, operation and receipt identity arrays,
+and registered mutation program. It then writes the immutable transaction,
+operations, causal tips, typed projections, receipts, invalidations, actor tip,
+source revision, and applied-result proof in one immediate transaction. A
+follower never writes a Primary replication outbox. A fault at the final proof
+write rolls back every product row and revision while retaining the complete
+staged transaction for exact retry. Checkpoint replacement deletes these
+device-local staging and applied proofs before installing the new normalized
+frontier.
+
+An accepted result for this follower first settles only the immutable result
+chain, intent state, and result transport receipt. It does not materialize a
+projection or advance the source revision. Browser SQLite then supplies the
+locally stored actor-signed members to the same version 2 operation importer.
+That importer is the sole canonical browser materializer for both this
+follower's accepted edits and operations created by other actors. If result
+settlement commits but operation application fails, the optimistic overlay
+remains visible and an exact result-segment retry resumes the staged operation.
+The overlay is removed only inside the successful operation transaction, or
+when an exact already-applied operation proof is present.
+
 The PWA cloud coordinator never resumes publication by scanning that history
 from counter one. One closed SQLite transport context returns the enrolled
 actor, Library, storage epoch, next intent counter, previous stored-segment
@@ -1878,6 +1909,8 @@ The implementation is incomplete while any runtime caller can reach:
 - generic JSON patch or toggle mutation authority
 - SQLite database, WAL, SHM, or rollback-journal cloud transport
 - a rollback flag capable of reviving a retired engine
+- version 1 operation-segment records, preparation and import helpers, or the
+  dormant browser operation-segment bridge
 - unused migration, repair, export, test, or authority vocabulary with no final
   product requirement
 

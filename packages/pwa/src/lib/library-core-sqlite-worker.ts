@@ -564,6 +564,15 @@ async function executeImportNormalizedResultTransport(
   );
 }
 
+async function executeImportNormalizedOperationPage(
+  request: WorkerRequest<"import_normalized_operation_page">,
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  return result(
+    request.requestId,
+    await requireEngine().importNormalizedOperationPage(request.import),
+  );
+}
+
 function executeReadFollowerEnrollmentContext(
   request: WorkerRequest<"read_follower_actor_enrollment_context">,
 ): LibraryCoreSqliteWorkerResponse {
@@ -681,6 +690,8 @@ function compileCommand(
       return bindCommand(request, executePublishNormalizedIntentTransport);
     case "import_normalized_follower_result_transport":
       return bindCommand(request, executeImportNormalizedResultTransport);
+    case "import_normalized_operation_page":
+      return bindCommand(request, executeImportNormalizedOperationPage);
     case "read_follower_actor_enrollment_context":
       return bindCommand(request, executeReadFollowerEnrollmentContext);
     case "store_follower_actor_request":

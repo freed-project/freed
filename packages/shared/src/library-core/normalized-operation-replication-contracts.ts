@@ -24,8 +24,7 @@ import {
 } from "./sqlite-contract.generated.js";
 
 export type LibraryCoreNormalizedOperationRecordKindV2 =
-  | "accepted_transaction"
-  | "operation";
+  "accepted_transaction" | "operation";
 
 export interface LibraryCoreNormalizedOperationExportDescriptorV2 {
   readonly authorityEpoch: LibraryCoreLowercaseHex64;
@@ -69,6 +68,20 @@ export interface LibraryCoreNormalizedOperationExportPageV2 {
   readonly done: boolean;
   readonly nextCursor: LibraryCoreNormalizedOperationCursorV2 | null;
   readonly records: readonly LibraryCoreNormalizedOperationExportRecordV2[];
+}
+
+export interface LibraryCoreNormalizedOperationImportPageV2 {
+  readonly page: LibraryCoreNormalizedOperationExportPageV2;
+  readonly receivedAt: number;
+  readonly snapshot: LibraryCoreNormalizedOperationExportDescriptorV2;
+}
+
+export interface LibraryCoreNormalizedOperationImportReceiptV2 {
+  readonly appliedThroughRevision: number;
+  readonly appliedTransactionCount: number;
+  readonly receivedAt: number;
+  readonly stagedRecordCount: number;
+  readonly stagedTransactionCount: number;
 }
 
 const textEncoder = new TextEncoder();
@@ -122,18 +135,25 @@ function nonnegativeInteger(value: unknown, label: string): number {
   return value;
 }
 
-function recordKind(value: unknown): LibraryCoreNormalizedOperationRecordKindV2 {
+function recordKind(
+  value: unknown,
+): LibraryCoreNormalizedOperationRecordKindV2 {
   if (value !== "accepted_transaction" && value !== "operation") {
     throw new TypeError("normalized operation record kind is invalid");
   }
   return value;
 }
 
-function memberIndex(value: unknown, kind: LibraryCoreNormalizedOperationRecordKindV2): number {
+function memberIndex(
+  value: unknown,
+  kind: LibraryCoreNormalizedOperationRecordKindV2,
+): number {
   if (
     typeof value !== "number" ||
     !Number.isSafeInteger(value) ||
-    (kind === "accepted_transaction" ? value !== -1 : value < 0 || value >= 1_000)
+    (kind === "accepted_transaction"
+      ? value !== -1
+      : value < 0 || value >= 1_000)
   ) {
     throw new TypeError("normalized operation member index is invalid");
   }
@@ -166,7 +186,9 @@ function exactCanonicalValue(json: string): LibraryCoreCanonicalValue {
     restored.byteLength !== bytes.byteLength ||
     restored.some((byte, index) => byte !== bytes[index])
   ) {
-    throw new TypeError("normalized operation record is not exact canonical JSON");
+    throw new TypeError(
+      "normalized operation record is not exact canonical JSON",
+    );
   }
   return value as LibraryCoreCanonicalValue;
 }
@@ -283,7 +305,8 @@ export function parseLibraryCoreNormalizedOperationExportRequestV2(
   if (
     afterSourceRevision > snapshot.sourceRevision ||
     maximumRecords < 1 ||
-    maximumRecords > LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS ||
+    maximumRecords >
+      LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS ||
     maximumResponseBytes < 1 ||
     maximumResponseBytes >
       LIBRARY_CORE_NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES ||
@@ -352,7 +375,8 @@ export function parseLibraryCoreNormalizedOperationExportRecordV2(
       { maximumBytes: LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES },
     );
   } else {
-    const operation = parseLibraryCoreNormalizedIntentEnvelopeRecordV2(canonical);
+    const operation =
+      parseLibraryCoreNormalizedIntentEnvelopeRecordV2(canonical);
     if (
       operation.transaction_id !== transactionId ||
       operation.transaction_digest !== transactionDigest ||
@@ -365,7 +389,10 @@ export function parseLibraryCoreNormalizedOperationExportRecordV2(
     canonicalRecordJson: input.canonicalRecordJson,
     kind,
     memberIndex: parsedMemberIndex,
-    recordDigest: digest(input.recordDigest, "normalized operation record digest"),
+    recordDigest: digest(
+      input.recordDigest,
+      "normalized operation record digest",
+    ),
     sourceRevision,
     transactionDigest,
     transactionId,
@@ -391,7 +418,8 @@ export function parseLibraryCoreNormalizedOperationExportPageV2(
     "normalized operation page bytes",
   );
   const exactBytes = records.reduce(
-    (total, record) => total + textEncoder.encode(record.canonicalRecordJson).byteLength,
+    (total, record) =>
+      total + textEncoder.encode(record.canonicalRecordJson).byteLength,
     0,
   );
   const nextCursor = parseLibraryCoreNormalizedOperationCursorV2(
@@ -399,7 +427,8 @@ export function parseLibraryCoreNormalizedOperationExportPageV2(
   );
   const last = records.at(-1);
   if (
-    records.length > LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS ||
+    records.length >
+      LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS ||
     canonicalRecordBytes !== exactBytes ||
     canonicalRecordBytes >
       LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES ||
@@ -418,4 +447,32 @@ export function parseLibraryCoreNormalizedOperationExportPageV2(
     nextCursor,
     records,
   });
+}
+
+export function parseLibraryCoreNormalizedOperationImportPageV2(
+  value: unknown,
+): LibraryCoreNormalizedOperationImportPageV2 {
+  const input = closedRecord(
+    value,
+    ["page", "receivedAt", "snapshot"],
+    "normalized operation import page",
+  );
+  const snapshot = parseLibraryCoreNormalizedOperationExportDescriptorV2(
+    input.snapshot,
+  );
+  const page = parseLibraryCoreNormalizedOperationExportPageV2(input.page);
+  const receivedAt = nonnegativeInteger(
+    input.receivedAt,
+    "normalized operation import time",
+  );
+  if (
+    page.records.some(
+      (record) =>
+        record.sourceRevision < snapshot.firstAvailableRevision ||
+        record.sourceRevision > snapshot.sourceRevision,
+    )
+  ) {
+    throw new TypeError("normalized operation import crossed its snapshot");
+  }
+  return Object.freeze({ page, receivedAt, snapshot });
 }

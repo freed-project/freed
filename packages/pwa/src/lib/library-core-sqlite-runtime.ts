@@ -26,6 +26,8 @@ import type {
   LibraryCoreNormalizedIntentTransportPublicationV2,
   LibraryCoreNormalizedResultTransportImportReceiptV2,
   LibraryCoreNormalizedResultTransportImportV2,
+  LibraryCoreNormalizedOperationImportPageV2,
+  LibraryCoreNormalizedOperationImportReceiptV2,
   LibraryCoreFollowerActorEnrollmentContextV2,
   LibraryCoreFollowerActorEnrollmentReceiptV2,
   LibraryCoreFollowerActorRequestReceiptV2,
@@ -224,6 +226,13 @@ export async function importPwaNormalizedFollowerResultTransport(
 ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
   const active = await openClient();
   return active.importNormalizedFollowerResultTransport(imported);
+}
+
+export async function importPwaNormalizedOperationPage(
+  imported: LibraryCoreNormalizedOperationImportPageV2,
+): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+  const active = await openClient();
+  return active.importNormalizedOperationPage(imported);
 }
 
 export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {

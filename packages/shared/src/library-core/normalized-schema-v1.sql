@@ -1543,6 +1543,36 @@ CREATE TABLE IF NOT EXISTS library_operation_causal_tips (
   PRIMARY KEY (operation_id, tip_index)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_operation_replication_stages (
+  source_revision INTEGER PRIMARY KEY CHECK (source_revision >= 1),
+  transaction_id TEXT NOT NULL UNIQUE CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),
+  authority_epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id),
+  writer_id TEXT NOT NULL CHECK (length(writer_id) = 64 AND writer_id NOT GLOB '*[^0-9a-f]*'),
+  snapshot_source_revision INTEGER NOT NULL CHECK (snapshot_source_revision >= source_revision),
+  expected_member_count INTEGER NOT NULL CHECK (expected_member_count BETWEEN 1 AND 1000),
+  result_digest TEXT NOT NULL UNIQUE CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
+  received_at INTEGER NOT NULL CHECK (received_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_operation_replication_stage_members (
+  source_revision INTEGER NOT NULL REFERENCES library_operation_replication_stages(source_revision) ON DELETE CASCADE,
+  member_index INTEGER NOT NULL CHECK (member_index BETWEEN 0 AND 999),
+  operation_id TEXT NOT NULL UNIQUE CHECK (length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 255),
+  envelope_digest TEXT NOT NULL UNIQUE CHECK (length(envelope_digest) = 64 AND envelope_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_envelope BLOB NOT NULL CHECK (length(canonical_envelope) BETWEEN 1 AND 131072),
+  PRIMARY KEY (source_revision, member_index)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_operation_replication_results (
+  source_revision INTEGER PRIMARY KEY CHECK (source_revision >= 1),
+  transaction_id TEXT NOT NULL UNIQUE REFERENCES library_transactions(transaction_id) ON DELETE CASCADE,
+  result_digest TEXT NOT NULL UNIQUE CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
+  received_at INTEGER NOT NULL CHECK (received_at >= 0)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_replication_outbox (
   operation_id TEXT PRIMARY KEY REFERENCES library_operations(operation_id) ON DELETE CASCADE,
   actor_id TEXT NOT NULL,

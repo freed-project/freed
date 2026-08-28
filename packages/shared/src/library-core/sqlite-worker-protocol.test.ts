@@ -8,6 +8,7 @@ import {
   parseLibraryCoreNormalizedResultTransportImportV2,
 } from "./normalized-result-segment-contracts.js";
 import { parseLibraryCoreNormalizedIntentTransportPublicationV2 } from "./normalized-intent-segment-contracts.js";
+import { parseLibraryCoreNormalizedOperationImportPageV2 } from "./normalized-operation-replication-contracts.js";
 import { createLibraryCoreContentRangeStorageKeyV1 } from "./selective-content-contracts.js";
 import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
@@ -39,6 +40,7 @@ import {
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
+  createLibraryCoreSqliteNormalizedOperationImportWorkerRequest,
   createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
   createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest,
   createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest,
@@ -846,6 +848,56 @@ describe("Library Core SQLite worker protocol", () => {
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...imported, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
+
+    const canonicalResultJson = new TextDecoder().decode(
+      encodeLibraryCoreCanonicalValue(result),
+    );
+    const operationImport =
+      createLibraryCoreSqliteNormalizedOperationImportWorkerRequest(
+        "request-normalized-operation",
+        parseLibraryCoreNormalizedOperationImportPageV2({
+          page: {
+            canonicalRecordBytes: canonicalBytes,
+            done: false,
+            nextCursor: {
+              kind: "accepted_transaction",
+              memberIndex: -1,
+              recordDigest: result.result_body_digest,
+              sourceRevision: 1,
+            },
+            records: [
+              {
+                canonicalRecordJson: canonicalResultJson,
+                kind: "accepted_transaction",
+                memberIndex: -1,
+                recordDigest: result.result_body_digest,
+                sourceRevision: 1,
+                transactionDigest: result.transaction_digest,
+                transactionId: result.transaction_id,
+              },
+            ],
+          },
+          receivedAt: 102,
+          snapshot: {
+            authorityEpoch: epochId,
+            firstAvailableRevision: 1,
+            format: "freed_normalized_operation_export_v2",
+            libraryId,
+            operationCount: 1,
+            protocolVersion: 2,
+            sourceRevision: 1,
+            transactionCount: 1,
+            writerId: "6".repeat(64) as never,
+          },
+        }),
+      );
+    expect(operationImport.kind).toBe("import_normalized_operation_page");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...operationImport,
+        import: { ...operationImport.import, receivedAt: -1 },
+      }),
+    ).toThrow(/time/);
   });
 
   it("snapshots the closed follower enrollment lifecycle", () => {

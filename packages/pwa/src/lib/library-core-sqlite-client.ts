@@ -35,6 +35,7 @@ import {
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
   createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
+  createLibraryCoreSqliteNormalizedOperationImportWorkerRequest,
   createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest,
   createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest,
   createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest,
@@ -99,6 +100,8 @@ import {
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
   type LibraryCoreNormalizedResultTransportImportV2,
+  type LibraryCoreNormalizedOperationImportPageV2,
+  type LibraryCoreNormalizedOperationImportReceiptV2,
   type LibraryCoreFollowerActorEnrollmentContextV2,
   type LibraryCoreFollowerActorEnrollmentReceiptV2,
   type LibraryCoreFollowerActorRequestReceiptV2,
@@ -134,11 +137,12 @@ export class PwaLibraryCoreSqliteClient {
   #closed = false;
 
   constructor() {
-    const memoryE2eRequested = (
-      globalThis as typeof globalThis & {
-        __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean;
-      }
-    ).__FREED_PWA_SQLITE_MEMORY_E2E__ === true;
+    const memoryE2eRequested =
+      (
+        globalThis as typeof globalThis & {
+          __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean;
+        }
+      ).__FREED_PWA_SQLITE_MEMORY_E2E__ === true;
     const useMemoryE2eWorker =
       import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
       memoryE2eRequested;
@@ -484,6 +488,17 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
     return this.#send((requestId) =>
       createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest(
+        requestId,
+        imported,
+      ),
+    );
+  }
+
+  importNormalizedOperationPage(
+    imported: LibraryCoreNormalizedOperationImportPageV2,
+  ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteNormalizedOperationImportWorkerRequest(
         requestId,
         imported,
       ),

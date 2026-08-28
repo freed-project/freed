@@ -14,7 +14,6 @@ export * from "./library-core-google-drive-normalized-follower-transport.js";
 export * from "./library-core-immutable-publication.js";
 export * from "./library-core-intent-publication.js";
 export * from "./library-core-intent-segments.js";
-export * from "./library-core-operation-segments.js";
 export * from "./library-core-normalized-checkpoint.js";
 export * from "./library-core-normalized-intent-segments.js";
 export * from "./library-core-normalized-follower-sync.js";

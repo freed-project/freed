@@ -1398,6 +1398,7 @@ Deliverable:
 - Stable normalized checkpoint registry and primary-key identities
 - Typed native export and browser import
 - Operation segments
+- Transaction-complete browser staging and exact next-revision application
 - Signed follower intents and results
 - Selective content descriptors and authenticated range indexes
 - Google Drive adapter integration without behavior changes

@@ -22,6 +22,10 @@ import {
   LIBRARY_CORE_AGENT_QUERY_IDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
+  LIBRARY_CORE_NORMALIZED_OPERATION_EXPORT_FORMAT,
+  LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS,
+  LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
@@ -40,6 +44,8 @@ import {
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
   type LibraryCoreNormalizedResultTransportImportV2,
+  type LibraryCoreNormalizedOperationImportPageV2,
+  type LibraryCoreNormalizedOperationImportReceiptV2,
   type LibraryCoreFollowerActorEnrollmentContextV2,
   type LibraryCoreFollowerActorRequestReceiptV2,
   type LibraryCoreFollowerActorEnrollmentReceiptV2,
@@ -72,6 +78,7 @@ import {
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   normalizedResultSegmentBodyFromRecordsV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
+  parseLibraryCoreNormalizedOperationImportPageV2,
   parseLibraryCoreFollowerResultApplyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
@@ -434,6 +441,13 @@ function bytes(value: SqlValue | undefined, label: string): Uint8Array {
     throw new Error(`${label} is not a SQLite blob`);
   }
   return value;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return (
+    left.byteLength === right.byteLength &&
+    left.every((byte, index) => byte === right[index])
+  );
 }
 
 function nullableText(
@@ -1486,6 +1500,9 @@ export class PwaLibraryCoreSqliteEngine {
           DELETE FROM library_primary_intent_stage_transactions;
           DELETE FROM library_follower_result_outbox;
           DELETE FROM library_follower_result_cursors;
+          DELETE FROM library_operation_replication_stage_members;
+          DELETE FROM library_operation_replication_stages;
+          DELETE FROM library_operation_replication_results;
           DELETE FROM library_replication_outbox;
           DELETE FROM library_operation_causal_tips;
           DELETE FROM library_operations;
@@ -5366,24 +5383,15 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  #materializeAcceptedFollowerIntent(
-    transactionId: string,
+  #materializeCanonicalOperationMembers(
+    canonicalMembers: readonly Uint8Array[],
     resolvedAt: number,
   ): void {
-    const rows = this.#database.exec({
-      sql: `SELECT canonical_member FROM library_intent_members
-            WHERE transaction_id = ?1 ORDER BY member_index;`,
-      bind: [transactionId],
-      rowMode: 0,
-      returnValue: "resultRows",
-    });
-    if (rows.length === 0) {
-      throw new Error("accepted follower intent has no stored members");
+    if (canonicalMembers.length === 0) {
+      throw new Error("accepted operation transaction has no members");
     }
-    for (const value of rows) {
-      const decoded = decodeLibraryCoreCanonicalValue(
-        bytes(value, "accepted follower intent canonical member"),
-      );
+    for (const value of canonicalMembers) {
+      const decoded = decodeLibraryCoreCanonicalValue(value);
       if (
         decoded === null ||
         typeof decoded !== "object" ||
@@ -5510,6 +5518,98 @@ export class PwaLibraryCoreSqliteEngine {
           bind: [entityId, actorId, actorSequence, operationId, sourceAt],
         });
       };
+
+      if (program.payloadKind === "read_at") {
+        const readAt = requiredInteger(payload.read_at_ms, "read time");
+        const currentValues = this.#database.exec({
+          sql: program.currentValueSql,
+          bind: [entityId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        });
+        if (currentValues.length !== 1) {
+          throw new Error("accepted follower read target is unavailable");
+        }
+        const currentReadAt = nullableInteger(
+          currentValues[0],
+          "accepted follower current read time",
+        );
+        const currentClockRows = this.#database.exec({
+          sql: program.clockReadSql,
+          bind: [entityId],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (
+          currentClockRows.length > 1 ||
+          (currentReadAt === null) !== (currentClockRows.length === 0) ||
+          (currentReadAt !== null &&
+            safeInteger(currentClockRows[0]![0], "read field clock time") !==
+              currentReadAt)
+        ) {
+          throw new Error("accepted follower read field clock is inconsistent");
+        }
+        const wins =
+          currentReadAt === null ||
+          readAt < currentReadAt ||
+          (readAt === currentReadAt &&
+            operationId <
+              text(
+                currentClockRows[0]![1],
+                "accepted follower read clock operation",
+              ));
+        if (wins) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [readAt, readAt, resolvedAt, entityId],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower read target changed");
+          }
+          writeClock(readAt);
+        }
+        continue;
+      }
+
+      if (program.payloadKind === "boolean_assignment") {
+        const assigned = payload.assigned;
+        const assignedAt = requiredInteger(
+          payload.assigned_at_ms,
+          "assignment time",
+        );
+        if (typeof assigned !== "boolean") {
+          throw new Error("accepted follower assignment value is invalid");
+        }
+        if (clockWins(assignedAt)) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [assigned ? 1 : 0, assignedAt, resolvedAt, entityId],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower assignment target changed");
+          }
+          writeClock(assignedAt);
+        }
+        continue;
+      }
+
+      if (program.payloadKind === "sync_receipt") {
+        const syncedAt = requiredInteger(
+          payload.synced_at_ms,
+          "sync receipt time",
+        );
+        if (clockWins(syncedAt)) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [syncedAt, resolvedAt, entityId],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower sync receipt target changed");
+          }
+          writeClock(syncedAt);
+        }
+        continue;
+      }
 
       if (program.payloadKind === "friend_replace") {
         const person = payload.person;
@@ -5729,6 +5829,1010 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  async importNormalizedOperationPage(
+    input: LibraryCoreNormalizedOperationImportPageV2,
+  ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    const imported = parseLibraryCoreNormalizedOperationImportPageV2(input);
+    const touchedRevisions = new Set(
+      imported.page.records.map((record) => record.sourceRevision),
+    );
+    const authorityRows = this.#database.exec({
+      sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
+                   changes.revision, active.writer_id
+            FROM library_meta AS m
+            JOIN library_change_state AS changes
+              ON changes.singleton_id = m.singleton_id
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id
+             AND active.epoch_id = m.authority_epoch
+             AND active.active_key = 'active'
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (authorityRows.length !== 1) {
+      throw new Error("normalized operation import authority is unavailable");
+    }
+    const authority = authorityRows[0]!;
+    const initialRevision = safeInteger(
+      authority[2],
+      "normalized operation import source revision",
+    );
+    if (
+      initialRevision !==
+        safeInteger(
+          authority[3],
+          "normalized operation import change revision",
+        ) ||
+      text(authority[0], "normalized operation import Library") !==
+        imported.snapshot.libraryId ||
+      text(authority[1], "normalized operation import epoch") !==
+        imported.snapshot.authorityEpoch ||
+      text(authority[4], "normalized operation import writer") !==
+        imported.snapshot.writerId
+    ) {
+      throw new Error("normalized operation import authority changed");
+    }
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const currentRows = this.#database.exec({
+        sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
+                     changes.revision, active.writer_id
+              FROM library_meta AS m
+              JOIN library_change_state AS changes
+                ON changes.singleton_id = m.singleton_id
+              JOIN library_active_authority AS active
+                ON active.library_id = m.library_id
+               AND active.epoch_id = m.authority_epoch
+               AND active.active_key = 'active'
+              WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        currentRows.length !== 1 ||
+        text(currentRows[0]![0], "staged operation Library") !==
+          imported.snapshot.libraryId ||
+        text(currentRows[0]![1], "staged operation epoch") !==
+          imported.snapshot.authorityEpoch ||
+        text(currentRows[0]![4], "staged operation writer") !==
+          imported.snapshot.writerId
+      ) {
+        throw new Error("normalized operation import authority changed");
+      }
+      const currentRevision = safeInteger(
+        currentRows[0]![2],
+        "staged operation source revision",
+      );
+      if (
+        currentRevision !==
+        safeInteger(currentRows[0]![3], "staged operation change revision")
+      ) {
+        throw new Error("normalized operation import revisions disagree");
+      }
+
+      for (const record of imported.page.records) {
+        const canonicalBytes = Uint8Array.from(
+          textEncoder.encode(record.canonicalRecordJson),
+        );
+        if (record.sourceRevision <= currentRevision) {
+          if (record.kind === "accepted_transaction") {
+            const applied = this.#database.exec({
+              sql: `SELECT tx.transaction_digest, result.result_digest,
+                           result.canonical_result
+                    FROM library_operation_replication_results AS result
+                    JOIN library_transactions AS tx
+                      ON tx.transaction_id = result.transaction_id
+                    WHERE result.source_revision = ?1
+                      AND result.transaction_id = ?2;`,
+              bind: [record.sourceRevision, record.transactionId],
+              rowMode: "array",
+              returnValue: "resultRows",
+            });
+            if (
+              applied.length !== 1 ||
+              text(applied[0]![0], "applied transaction digest") !==
+                record.transactionDigest ||
+              text(applied[0]![1], "applied result digest") !==
+                record.recordDigest ||
+              !sameBytes(
+                bytes(applied[0]![2], "applied canonical result"),
+                canonicalBytes,
+              )
+            ) {
+              throw new Error("normalized accepted transaction replay changed");
+            }
+          } else {
+            const applied = this.#database.exec({
+              sql: `SELECT tx.transaction_digest, operation.envelope_digest,
+                           operation.canonical_envelope
+                    FROM library_transactions AS tx
+                    JOIN library_operations AS operation
+                      ON operation.transaction_id = tx.transaction_id
+                    WHERE tx.committed_revision = ?1
+                      AND tx.transaction_id = ?2
+                      AND operation.member_index = ?3;`,
+              bind: [
+                record.sourceRevision,
+                record.transactionId,
+                record.memberIndex,
+              ],
+              rowMode: "array",
+              returnValue: "resultRows",
+            });
+            if (
+              applied.length !== 1 ||
+              text(applied[0]![0], "applied operation transaction digest") !==
+                record.transactionDigest ||
+              text(applied[0]![1], "applied operation digest") !==
+                record.recordDigest ||
+              !sameBytes(
+                bytes(applied[0]![2], "applied canonical operation"),
+                canonicalBytes,
+              )
+            ) {
+              throw new Error("normalized operation replay changed");
+            }
+          }
+          continue;
+        }
+
+        if (record.kind === "accepted_transaction") {
+          const result = parseLibraryCoreFollowerResultEnvelopeV1(
+            decodeLibraryCoreCanonicalValue(canonicalBytes, {
+              maximumBytes: 131_072,
+            }),
+          );
+          const expectedMemberCount = result.canonical_operation_ids.length;
+          if (
+            expectedMemberCount < 1 ||
+            expectedMemberCount !== result.receipt_ids.length ||
+            result.authoritative_source_revision !== record.sourceRevision ||
+            result.epoch_id !== imported.snapshot.authorityEpoch ||
+            result.library_id !== imported.snapshot.libraryId ||
+            result.status !== "accepted"
+          ) {
+            throw new Error("normalized accepted transaction is incomplete");
+          }
+          const existing = this.#database.exec({
+            sql: `SELECT transaction_id, transaction_digest,
+                         authority_epoch_id, writer_id,
+                         snapshot_source_revision, expected_member_count,
+                         result_digest, canonical_result, received_at
+                  FROM library_operation_replication_stages
+                  WHERE source_revision = ?1;`,
+            bind: [record.sourceRevision],
+            rowMode: "array",
+            returnValue: "resultRows",
+          });
+          if (existing.length === 0) {
+            this.#database.exec({
+              sql: `INSERT INTO library_operation_replication_stages
+                      (source_revision, transaction_id, transaction_digest,
+                       authority_epoch_id, writer_id,
+                       snapshot_source_revision, expected_member_count,
+                       result_digest, canonical_result, received_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
+              bind: [
+                record.sourceRevision,
+                record.transactionId,
+                record.transactionDigest,
+                imported.snapshot.authorityEpoch,
+                imported.snapshot.writerId,
+                imported.snapshot.sourceRevision,
+                expectedMemberCount,
+                record.recordDigest,
+                canonicalBytes,
+                imported.receivedAt,
+              ],
+            });
+          } else {
+            const row = existing[0]!;
+            if (
+              existing.length !== 1 ||
+              text(row[0], "staged transaction ID") !== record.transactionId ||
+              text(row[1], "staged transaction digest") !==
+                record.transactionDigest ||
+              text(row[2], "staged authority epoch") !==
+                imported.snapshot.authorityEpoch ||
+              text(row[3], "staged writer") !== imported.snapshot.writerId ||
+              safeInteger(row[4], "staged snapshot revision") !==
+                imported.snapshot.sourceRevision ||
+              safeInteger(row[5], "staged member count") !==
+                expectedMemberCount ||
+              text(row[6], "staged result digest") !== record.recordDigest ||
+              !sameBytes(
+                bytes(row[7], "staged canonical result"),
+                canonicalBytes,
+              ) ||
+              safeInteger(row[8], "staged result received time") !==
+                imported.receivedAt
+            ) {
+              throw new Error("normalized accepted transaction replay changed");
+            }
+          }
+          continue;
+        }
+
+        const stage = this.#database.exec({
+          sql: `SELECT transaction_id, transaction_digest,
+                       expected_member_count
+                FROM library_operation_replication_stages
+                WHERE source_revision = ?1;`,
+          bind: [record.sourceRevision],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (
+          stage.length !== 1 ||
+          text(stage[0]![0], "operation stage transaction") !==
+            record.transactionId ||
+          text(stage[0]![1], "operation stage transaction digest") !==
+            record.transactionDigest ||
+          record.memberIndex >=
+            safeInteger(stage[0]![2], "operation stage member count")
+        ) {
+          throw new Error(
+            "normalized operation arrived without its accepted transaction",
+          );
+        }
+        const decoded = decodeLibraryCoreCanonicalValue(canonicalBytes, {
+          maximumBytes: 131_072,
+        });
+        if (!isLibraryCoreCanonicalRecord(decoded)) {
+          throw new Error("normalized operation is not a canonical record");
+        }
+        const operationId = decoded.operation_id;
+        if (typeof operationId !== "string") {
+          throw new Error("normalized operation ID is invalid");
+        }
+        const existing = this.#database.exec({
+          sql: `SELECT operation_id, envelope_digest, canonical_envelope
+                FROM library_operation_replication_stage_members
+                WHERE source_revision = ?1 AND member_index = ?2;`,
+          bind: [record.sourceRevision, record.memberIndex],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (existing.length === 0) {
+          this.#database.exec({
+            sql: `INSERT INTO library_operation_replication_stage_members
+                    (source_revision, member_index, operation_id,
+                     envelope_digest, canonical_envelope)
+                  VALUES (?1, ?2, ?3, ?4, ?5);`,
+            bind: [
+              record.sourceRevision,
+              record.memberIndex,
+              operationId,
+              record.recordDigest,
+              canonicalBytes,
+            ],
+          });
+        } else if (
+          existing.length !== 1 ||
+          text(existing[0]![0], "staged operation ID") !== operationId ||
+          text(existing[0]![1], "staged operation digest") !==
+            record.recordDigest ||
+          !sameBytes(
+            bytes(existing[0]![2], "staged canonical operation"),
+            canonicalBytes,
+          )
+        ) {
+          throw new Error("normalized operation replay changed");
+        }
+      }
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+    let appliedTransactionCount = 0;
+    while (true) {
+      const revisionRows = this.#database.exec({
+        sql: `SELECT m.source_revision, changes.revision
+              FROM library_meta AS m
+              JOIN library_change_state AS changes
+                ON changes.singleton_id = m.singleton_id
+              WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (revisionRows.length !== 1) {
+        throw new Error("normalized operation revision is unavailable");
+      }
+      const previousRevision = safeInteger(
+        revisionRows[0]![0],
+        "normalized operation previous revision",
+      );
+      if (
+        previousRevision !==
+        safeInteger(revisionRows[0]![1], "normalized operation change revision")
+      ) {
+        throw new Error("normalized operation revisions disagree");
+      }
+      if (previousRevision === Number.MAX_SAFE_INTEGER) {
+        throw new Error("normalized operation revision is exhausted");
+      }
+      const nextRevision = previousRevision + 1;
+      const stageRows = this.#database.exec({
+        sql: `SELECT transaction_id, transaction_digest, authority_epoch_id,
+                     writer_id, snapshot_source_revision,
+                     expected_member_count, result_digest,
+                     canonical_result, received_at
+              FROM library_operation_replication_stages
+              WHERE source_revision = ?1;`,
+        bind: [nextRevision],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (stageRows.length === 0) break;
+      if (stageRows.length !== 1) {
+        throw new Error("normalized operation stage is ambiguous");
+      }
+      const stage = stageRows[0]!;
+      const expectedMemberCount = safeInteger(
+        stage[5],
+        "normalized operation expected member count",
+      );
+      const memberRows = this.#database.exec({
+        sql: `SELECT member_index, operation_id, envelope_digest,
+                     canonical_envelope
+              FROM library_operation_replication_stage_members
+              WHERE source_revision = ?1 ORDER BY member_index;`,
+        bind: [nextRevision],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (memberRows.length < expectedMemberCount) break;
+      if (
+        memberRows.length !== expectedMemberCount ||
+        memberRows.some(
+          (row, index) =>
+            safeInteger(row[0], "normalized operation member index") !== index,
+        )
+      ) {
+        throw new Error("normalized operation stage membership is invalid");
+      }
+      const canonicalResult = bytes(
+        stage[7],
+        "normalized operation canonical result",
+      );
+      const resultCandidate = parseLibraryCoreFollowerResultEnvelopeV1(
+        decodeLibraryCoreCanonicalValue(canonicalResult, {
+          maximumBytes: 131_072,
+        }),
+      );
+      const actorRows = this.#database.exec({
+        sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                     e.authority_key_id, e.authority_public_key,
+                     active.writer_id, actor.actor_id, actor.public_key,
+                     actor.accepted_counter, actor.accepted_operation_id,
+                     actor.accepted_chain_digest
+              FROM library_meta AS m
+              JOIN library_authority_epochs AS e
+                ON e.epoch_id = m.authority_epoch
+              JOIN library_active_authority AS active
+                ON active.library_id = m.library_id
+               AND active.epoch_id = e.epoch_id
+               AND active.active_key = 'active'
+              JOIN library_actors AS actor
+                ON actor.actor_id = ?1
+               AND actor.authority_epoch_id = e.epoch_id
+               AND actor.retired_at IS NULL
+              WHERE m.singleton_id = 1;`,
+        bind: [resultCandidate.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (actorRows.length !== 1) {
+        throw new Error("normalized operation actor is unavailable");
+      }
+      const actor = actorRows[0]!;
+      if (
+        text(stage[2], "operation stage epoch") !==
+          text(actor[2], "active operation epoch") ||
+        text(stage[3], "operation stage writer") !==
+          text(actor[5], "active operation writer") ||
+        safeInteger(stage[4], "operation stage snapshot revision") <
+          nextRevision
+      ) {
+        throw new Error("normalized operation stage authority changed");
+      }
+      const resultAuthority = Object.freeze({
+        authorityKeyId: text(actor[3], "operation result authority key ID"),
+        authorityPublicKey: text(
+          actor[4],
+          "operation result authority public key",
+        ),
+        epoch: safeInteger(actor[1], "operation result epoch"),
+        epochId: text(actor[2], "operation result epoch ID"),
+        libraryId: text(actor[0], "operation result Library ID"),
+      });
+      const verifiedResult = await verifyLibraryCoreFollowerResultV1(
+        canonicalResult,
+        resultAuthority,
+        {
+          verifySignature: (verification) =>
+            verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+        },
+      );
+      const acceptedActor = Object.freeze({
+        actor_id: text(actor[6], "operation actor ID"),
+        actor_public_key: text(actor[7], "operation actor public key"),
+        epoch: safeInteger(actor[1], "operation actor epoch"),
+        epoch_id: text(actor[2], "operation actor epoch ID"),
+        library_id: text(actor[0], "operation actor Library ID"),
+        next_actor_sequence:
+          safeInteger(actor[8], "operation actor accepted counter") + 1,
+        previous_actor_operation_id: nullableText(
+          actor[9],
+          "operation actor previous operation",
+        ),
+        previous_actor_chain_digest: text(
+          actor[10],
+          "operation actor previous chain digest",
+        ),
+      }) as LibraryCoreAcceptedActorStateV1;
+      const canonicalMembers = memberRows.map((row) =>
+        bytes(row[3], "normalized canonical operation member"),
+      );
+      const verified = await verifyLibraryCoreOperationTransactionV1(
+        canonicalMembers,
+        acceptedActor,
+        {
+          digest: (domain, value) =>
+            sha256LowerHex(
+              encodeLibraryCoreDigestInput(
+                domain,
+                value as LibraryCoreCanonicalValue,
+              ),
+            ),
+          verifySignature: (verification) =>
+            verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+        },
+      );
+      const resultEnvelope = verifiedResult.envelope;
+      const first = verified.members[0]!.envelope;
+      const last = verified.members[verified.members.length - 1]!.envelope;
+      const operationIds = verified.members.map(
+        (member) => member.envelope.operation_id,
+      );
+      const envelopeDigests = verified.members.map(
+        (member) => member.envelope_digest,
+      );
+      if (
+        resultEnvelope.status !== "accepted" ||
+        resultEnvelope.authoritative_source_revision !== nextRevision ||
+        resultEnvelope.transaction_id !==
+          text(stage[0], "stage transaction ID") ||
+        resultEnvelope.transaction_digest !==
+          text(stage[1], "stage transaction digest") ||
+        resultEnvelope.transaction_id !== first.transaction_id ||
+        resultEnvelope.transaction_digest !== verified.transaction_digest ||
+        resultEnvelope.actor_id !== first.actor_id ||
+        resultEnvelope.intent_epoch !== first.epoch ||
+        resultEnvelope.intent_epoch_id !== first.epoch_id ||
+        resultEnvelope.resolved_at_ms < last.created_at_ms ||
+        verifiedResult.resultDigest !== text(stage[6], "stage result digest") ||
+        resultEnvelope.canonical_operation_ids.length !== operationIds.length ||
+        resultEnvelope.canonical_operation_ids.some(
+          (operationId, index) => operationId !== operationIds[index],
+        ) ||
+        resultEnvelope.receipt_ids.length !== envelopeDigests.length ||
+        resultEnvelope.receipt_ids.some(
+          (receiptId, index) => receiptId !== envelopeDigests[index],
+        ) ||
+        memberRows.some(
+          (row, index) =>
+            text(row[1], "staged operation ID") !== operationIds[index] ||
+            text(row[2], "staged envelope digest") !== envelopeDigests[index],
+        )
+      ) {
+        throw new Error("normalized operation transaction proof changed");
+      }
+      const program = sqliteMutationProgram(first.operation_type);
+      if (
+        verified.members.length > program.maximumMembers ||
+        verified.members.some(
+          (member) =>
+            member.envelope.operation_type !== first.operation_type ||
+            member.envelope.entity_type !== program.entityType,
+        )
+      ) {
+        throw new Error("normalized operation transaction exceeds its program");
+      }
+      for (const member of verified.members) {
+        for (const tip of member.envelope.causal_frontier) {
+          const tips = this.#database.exec({
+            sql: `SELECT actor_id, actor_counter, actor_chain_digest
+                  FROM library_operations WHERE operation_id = ?1;`,
+            bind: [tip.operation_id],
+            rowMode: "array",
+            returnValue: "resultRows",
+          });
+          if (
+            tips.length !== 1 ||
+            text(tips[0]![0], "causal tip actor") !== tip.actor_id ||
+            safeInteger(tips[0]![1], "causal tip counter") !== tip.sequence ||
+            text(tips[0]![2], "causal tip chain") !== tip.chain_digest
+          ) {
+            throw new Error("normalized operation causal tip is unavailable");
+          }
+        }
+      }
+
+      this.#database.exec("BEGIN IMMEDIATE;");
+      try {
+        const current = this.#database.exec({
+          sql: `SELECT m.source_revision, changes.revision,
+                       m.library_id, m.authority_epoch, active.writer_id,
+                       actor.accepted_counter, actor.accepted_operation_id,
+                       actor.accepted_chain_digest
+                FROM library_meta AS m
+                JOIN library_change_state AS changes
+                  ON changes.singleton_id = m.singleton_id
+                JOIN library_active_authority AS active
+                  ON active.library_id = m.library_id
+                 AND active.epoch_id = m.authority_epoch
+                 AND active.active_key = 'active'
+                JOIN library_actors AS actor
+                  ON actor.actor_id = ?1
+                 AND actor.authority_epoch_id = m.authority_epoch
+                 AND actor.retired_at IS NULL
+                WHERE m.singleton_id = 1;`,
+          bind: [verified.accepted_actor_state.actor_id],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        const stagedAgain = this.#database.exec({
+          sql: `SELECT transaction_id, transaction_digest, result_digest,
+                       canonical_result,
+                       (SELECT count(*)
+                          FROM library_operation_replication_stage_members
+                         WHERE source_revision = ?1)
+                FROM library_operation_replication_stages
+                WHERE source_revision = ?1;`,
+          bind: [nextRevision],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (
+          current.length !== 1 ||
+          safeInteger(current[0]![0], "commit source revision") !==
+            previousRevision ||
+          safeInteger(current[0]![1], "commit change revision") !==
+            previousRevision ||
+          text(current[0]![2], "commit Library") !==
+            verified.accepted_actor_state.library_id ||
+          text(current[0]![3], "commit epoch") !==
+            verified.accepted_actor_state.epoch_id ||
+          text(current[0]![4], "commit writer") !==
+            text(stage[3], "stage writer") ||
+          safeInteger(current[0]![5], "commit actor counter") !==
+            verified.accepted_actor_state.next_actor_sequence - 1 ||
+          nullableText(current[0]![6], "commit actor operation") !==
+            verified.accepted_actor_state.previous_actor_operation_id ||
+          text(current[0]![7], "commit actor chain") !==
+            verified.accepted_actor_state.previous_actor_chain_digest ||
+          stagedAgain.length !== 1 ||
+          text(stagedAgain[0]![0], "commit staged transaction") !==
+            resultEnvelope.transaction_id ||
+          text(stagedAgain[0]![1], "commit staged digest") !==
+            verified.transaction_digest ||
+          text(stagedAgain[0]![2], "commit staged result digest") !==
+            verifiedResult.resultDigest ||
+          !sameBytes(
+            bytes(stagedAgain[0]![3], "commit staged result"),
+            verifiedResult.canonicalBytes,
+          ) ||
+          safeInteger(stagedAgain[0]![4], "commit staged member count") !==
+            verified.members.length
+        ) {
+          throw new Error("normalized operation changed during verification");
+        }
+
+        this.#database.exec({
+          sql: `INSERT INTO library_transactions
+                  (transaction_id, transaction_digest, library_id,
+                   authority_epoch, actor_id, member_count,
+                   first_counter, last_counter, previous_operation_id,
+                   previous_chain_digest, committed_operation_id,
+                   committed_chain_digest, canonical_member_bytes,
+                   previous_revision, committed_revision, committed_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                        ?11, ?12, ?13, ?14, ?15, ?16);`,
+          bind: [
+            resultEnvelope.transaction_id,
+            verified.transaction_digest,
+            verified.accepted_actor_state.library_id,
+            verified.accepted_actor_state.epoch_id,
+            verified.accepted_actor_state.actor_id,
+            verified.members.length,
+            first.actor_sequence,
+            last.actor_sequence,
+            first.previous_actor_operation_id,
+            first.previous_actor_chain_digest,
+            last.operation_id,
+            last.actor_chain_digest,
+            verified.canonical_envelope_bytes,
+            previousRevision,
+            nextRevision,
+            resultEnvelope.resolved_at_ms,
+          ],
+        });
+        verified.members.forEach((member, memberIndex) => {
+          const envelope = member.envelope;
+          this.#database.exec({
+            sql: `INSERT INTO library_operations
+                    (operation_id, transaction_id, member_index, member_count,
+                     actor_id, actor_counter, previous_actor_operation_id,
+                     previous_actor_chain_digest, actor_chain_digest,
+                     member_digest, envelope_digest, mutation_id, entity_type,
+                     entity_id, canonical_envelope, committed_at)
+                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                          ?11, ?12, ?13, ?14, ?15, ?16);`,
+            bind: [
+              envelope.operation_id,
+              resultEnvelope.transaction_id,
+              memberIndex,
+              verified.members.length,
+              envelope.actor_id,
+              envelope.actor_sequence,
+              envelope.previous_actor_operation_id,
+              envelope.previous_actor_chain_digest,
+              envelope.actor_chain_digest,
+              member.member_digest,
+              member.envelope_digest,
+              envelope.operation_type,
+              envelope.entity_type,
+              envelope.entity_id,
+              canonicalMembers[memberIndex]!,
+              resultEnvelope.resolved_at_ms,
+            ],
+          });
+          envelope.causal_frontier.forEach((tip, tipIndex) => {
+            this.#database.exec({
+              sql: `INSERT INTO library_operation_causal_tips
+                      (operation_id, tip_index, actor_id, actor_counter,
+                       tip_operation_id, chain_digest)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6);`,
+              bind: [
+                envelope.operation_id,
+                tipIndex,
+                tip.actor_id,
+                tip.sequence,
+                tip.operation_id,
+                tip.chain_digest,
+              ],
+            });
+          });
+        });
+        this.#materializeCanonicalOperationMembers(
+          canonicalMembers,
+          resultEnvelope.resolved_at_ms,
+        );
+        verified.members.forEach((member, memberIndex) => {
+          const envelope = member.envelope;
+          this.#database.exec({
+            sql: `INSERT INTO library_receipts
+                    (actor_id, operation_id, status, digest, result_text,
+                     accepted_at)
+                  VALUES (?1, ?2, 'accepted', ?3, ?4, ?5);`,
+            bind: [
+              envelope.actor_id,
+              envelope.operation_id,
+              member.envelope_digest,
+              JSON.stringify({
+                committedRevision: nextRevision,
+                operationId: envelope.operation_id,
+              }),
+              resultEnvelope.resolved_at_ms,
+            ],
+          });
+          this.#database.exec({
+            sql: `INSERT INTO library_invalidations
+                    (revision, ordinal, topic, entity_id, reset_required)
+                  VALUES (?1, ?2, ?3, ?4, 0);`,
+            bind: [
+              nextRevision,
+              memberIndex,
+              program.invalidationTopic,
+              envelope.entity_id,
+            ],
+          });
+          if (program.payloadKind === "friend_replace") {
+            this.#database.exec({
+              sql: `INSERT INTO library_invalidations
+                      (revision, ordinal, topic, entity_id, reset_required)
+                    VALUES (?1, ?2, 'account', NULL, 1);`,
+              bind: [nextRevision, verified.members.length + memberIndex],
+            });
+          }
+        });
+        this.#database.exec({
+          sql: `UPDATE library_actors
+                SET accepted_counter = ?1, accepted_operation_id = ?2,
+                    accepted_chain_digest = ?3, updated_at = ?4
+                WHERE actor_id = ?5 AND authority_epoch_id = ?6
+                  AND accepted_counter = ?7
+                  AND accepted_operation_id IS ?8
+                  AND accepted_chain_digest = ?9;`,
+          bind: [
+            last.actor_sequence,
+            last.operation_id,
+            last.actor_chain_digest,
+            resultEnvelope.resolved_at_ms,
+            verified.accepted_actor_state.actor_id,
+            verified.accepted_actor_state.epoch_id,
+            verified.accepted_actor_state.next_actor_sequence - 1,
+            verified.accepted_actor_state.previous_actor_operation_id,
+            verified.accepted_actor_state.previous_actor_chain_digest,
+          ],
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "normalized operation actor update",
+          ) !== 1
+        ) {
+          throw new Error("normalized operation actor tip changed");
+        }
+        this.#database.exec({
+          sql: `UPDATE library_change_state SET revision = ?1
+                WHERE singleton_id = 1 AND revision = ?2;`,
+          bind: [nextRevision, previousRevision],
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "normalized operation change revision update",
+          ) !== 1
+        ) {
+          throw new Error("normalized operation change revision changed");
+        }
+        this.#database.exec({
+          sql: `UPDATE library_meta
+                SET source_revision = ?1, updated_at = ?2
+                WHERE singleton_id = 1 AND source_revision = ?3;`,
+          bind: [nextRevision, resultEnvelope.resolved_at_ms, previousRevision],
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "normalized operation source revision update",
+          ) !== 1
+        ) {
+          throw new Error("normalized operation source revision changed");
+        }
+        this.#database.exec({
+          sql: `INSERT INTO library_operation_replication_results
+                  (source_revision, transaction_id, result_digest,
+                   canonical_result, received_at)
+                VALUES (?1, ?2, ?3, ?4, ?5);`,
+          bind: [
+            nextRevision,
+            resultEnvelope.transaction_id,
+            verifiedResult.resultDigest,
+            verifiedResult.canonicalBytes,
+            safeInteger(stage[8], "operation stage received time"),
+          ],
+        });
+        this.#database.exec({
+          sql: `DELETE FROM library_optimistic_fields
+                WHERE transaction_id = ?1
+                  AND EXISTS (
+                    SELECT 1 FROM library_intent_results
+                    WHERE transaction_id = ?1
+                      AND status = 'accepted'
+                      AND result_digest = ?2
+                      AND canonical_result = ?3
+                  );`,
+          bind: [
+            resultEnvelope.transaction_id,
+            verifiedResult.resultDigest,
+            verifiedResult.canonicalBytes,
+          ],
+        });
+        this.#database.exec({
+          sql: `DELETE FROM library_operation_replication_stages
+                WHERE source_revision = ?1;`,
+          bind: [nextRevision],
+        });
+        this.#database.exec("COMMIT;");
+        appliedTransactionCount += 1;
+      } catch (error) {
+        this.#database.exec("ROLLBACK;");
+        throw error;
+      }
+    }
+
+    const appliedThroughRevision = safeInteger(
+      this.#database.exec({
+        sql: "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "normalized operation applied revision",
+    );
+    return Object.freeze({
+      appliedThroughRevision,
+      appliedTransactionCount,
+      receivedAt: imported.receivedAt,
+      stagedRecordCount: imported.page.records.length,
+      stagedTransactionCount: touchedRevisions.size,
+    });
+  }
+
+  async #applyAcceptedFollowerResultThroughOperationImport(
+    verified: LibraryCoreVerifiedFollowerResultV1,
+    receivedAt: number,
+  ): Promise<void> {
+    const envelope = verified.envelope;
+    if (envelope.status !== "accepted") return;
+    const transactionRows = this.#database.exec({
+      sql: `SELECT transaction_digest, member_count
+            FROM library_intent_transactions
+            WHERE transaction_id = ?1 AND actor_id = ?2;`,
+      bind: [envelope.transaction_id, envelope.actor_id],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (
+      transactionRows.length !== 1 ||
+      text(transactionRows[0]![0], "accepted result transaction digest") !==
+        envelope.transaction_digest ||
+      safeInteger(transactionRows[0]![1], "accepted result member count") !==
+        envelope.canonical_operation_ids.length
+    ) {
+      throw new Error("accepted result operation transaction is unavailable");
+    }
+    const memberRows = this.#database.exec({
+      sql: `SELECT member_index, operation_id, canonical_member
+            FROM library_intent_members
+            WHERE transaction_id = ?1 ORDER BY member_index;`,
+      bind: [envelope.transaction_id],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (
+      memberRows.length !== envelope.canonical_operation_ids.length ||
+      memberRows.some(
+        (row, index) =>
+          safeInteger(row[0], "accepted result member index") !== index ||
+          text(row[1], "accepted result operation ID") !==
+            envelope.canonical_operation_ids[index],
+      )
+    ) {
+      throw new Error("accepted result operation membership changed");
+    }
+    const authorityRows = this.#database.exec({
+      sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
+                   active.writer_id
+            FROM library_meta AS m
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id
+             AND active.epoch_id = m.authority_epoch
+             AND active.active_key = 'active'
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (
+      authorityRows.length !== 1 ||
+      text(authorityRows[0]![0], "accepted result Library") !==
+        envelope.library_id ||
+      text(authorityRows[0]![1], "accepted result epoch") !== envelope.epoch_id
+    ) {
+      throw new Error("accepted result operation authority changed");
+    }
+    const sourceRevision = Math.max(
+      safeInteger(authorityRows[0]![2], "accepted result source revision"),
+      envelope.authoritative_source_revision,
+    );
+    const snapshot = Object.freeze({
+      authorityEpoch: envelope.epoch_id,
+      firstAvailableRevision: envelope.authoritative_source_revision,
+      format: LIBRARY_CORE_NORMALIZED_OPERATION_EXPORT_FORMAT,
+      libraryId: envelope.library_id,
+      operationCount: memberRows.length,
+      protocolVersion:
+        LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION,
+      sourceRevision,
+      transactionCount: 1,
+      writerId: text(authorityRows[0]![3], "accepted result writer"),
+    });
+    const records = [
+      Object.freeze({
+        canonicalRecordJson: strictUtf8Decoder.decode(verified.canonicalBytes),
+        kind: "accepted_transaction",
+        memberIndex: -1,
+        recordDigest: verified.resultDigest,
+        sourceRevision: envelope.authoritative_source_revision,
+        transactionDigest: envelope.transaction_digest,
+        transactionId: envelope.transaction_id,
+      }),
+      ...memberRows.map((row, index) =>
+        Object.freeze({
+          canonicalRecordJson: strictUtf8Decoder.decode(
+            bytes(row[2], "accepted result canonical operation"),
+          ),
+          kind: "operation" as const,
+          memberIndex: index,
+          recordDigest: envelope.receipt_ids[index]!,
+          sourceRevision: envelope.authoritative_source_revision,
+          transactionDigest: envelope.transaction_digest,
+          transactionId: envelope.transaction_id,
+        }),
+      ),
+    ];
+    let index = 0;
+    while (index < records.length) {
+      const pageRecords: (typeof records)[number][] = [];
+      let canonicalRecordBytes = 0;
+      while (
+        index < records.length &&
+        pageRecords.length <
+          LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS
+      ) {
+        const next = records[index]!;
+        const nextBytes = textEncoder.encode(
+          next.canonicalRecordJson,
+        ).byteLength;
+        if (
+          pageRecords.length > 0 &&
+          canonicalRecordBytes + nextBytes >
+            LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES
+        ) {
+          break;
+        }
+        if (
+          nextBytes >
+          LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES
+        ) {
+          throw new Error("accepted result operation record exceeds its page");
+        }
+        pageRecords.push(next);
+        canonicalRecordBytes += nextBytes;
+        index += 1;
+      }
+      const last = pageRecords.at(-1);
+      if (!last) {
+        throw new Error("accepted result operation page is empty");
+      }
+      await this.importNormalizedOperationPage(
+        parseLibraryCoreNormalizedOperationImportPageV2({
+          page: {
+            canonicalRecordBytes,
+            done: index === records.length,
+            nextCursor: {
+              kind: last.kind,
+              memberIndex: last.memberIndex,
+              recordDigest: last.recordDigest,
+              sourceRevision: last.sourceRevision,
+            },
+            records: pageRecords,
+          },
+          receivedAt,
+          snapshot,
+        }),
+      );
+    }
+  }
+
   async importNormalizedFollowerResultTransport(
     input: LibraryCoreNormalizedResultTransportImportV2,
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
@@ -5801,6 +6905,7 @@ export class PwaLibraryCoreSqliteEngine {
     const firstResultSequence = publication.header.first_result_sequence;
     const lastResultSequence = publication.header.last_result_sequence;
 
+    let receipt: LibraryCoreNormalizedResultTransportImportReceiptV2;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
       this.#database.exec({
@@ -5865,7 +6970,7 @@ export class PwaLibraryCoreSqliteEngine {
           throw new Error("normalized result transport replay changed");
         }
         this.#database.exec("COMMIT;");
-        return Object.freeze({
+        receipt = Object.freeze({
           acceptedTransactionCount: safeInteger(
             row[8],
             "stored accepted result count",
@@ -5883,96 +6988,102 @@ export class PwaLibraryCoreSqliteEngine {
           semanticSegmentDigest,
           storedSegmentDigest,
         });
-      }
-      if (
+      } else if (
         safeInteger(headRows[0]![2], "normalized result next sequence") !==
           firstResultSequence ||
         nullableText(headRows[0]![3], "normalized result latest digest") !==
           publication.header.previous_segment_digest
       ) {
         throw new Error("normalized result transport does not extend its head");
-      }
-
-      for (const verified of verifiedResults) {
-        this.#applyVerifiedFollowerResult(
-          verified,
-          authority,
-          publication.receivedAt,
-          false,
-        );
-      }
-      const rejectedTransactionCount = publication.results.filter(
-        (result) => result.status === "rejected",
-      ).length;
-      const acceptedTransactionCount =
-        publication.results.length - rejectedTransactionCount;
-      this.#database.exec({
-        sql: `INSERT INTO library_result_transport_segments
+      } else {
+        for (const verified of verifiedResults) {
+          this.#applyVerifiedFollowerResult(
+            verified,
+            authority,
+            publication.receivedAt,
+            false,
+          );
+        }
+        const rejectedTransactionCount = publication.results.filter(
+          (result) => result.status === "rejected",
+        ).length;
+        const acceptedTransactionCount =
+          publication.results.length - rejectedTransactionCount;
+        this.#database.exec({
+          sql: `INSERT INTO library_result_transport_segments
                 (actor_id, first_result_sequence, last_result_sequence,
                  previous_segment_digest, semantic_segment_digest,
                  stored_segment_digest, object_key, transport_object_id,
                  received_at, result_count, accepted_transaction_count,
                  rejected_transaction_count)
               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);`,
-        bind: [
-          publication.header.actor_id,
-          firstResultSequence,
-          lastResultSequence,
-          publication.header.previous_segment_digest,
-          semanticSegmentDigest,
-          storedSegmentDigest,
-          publication.reference.descriptor.objectKey,
-          publication.reference.transportObjectId,
-          publication.receivedAt,
-          publication.results.length,
-          acceptedTransactionCount,
-          rejectedTransactionCount,
-        ],
-      });
-      this.#database.exec({
-        sql: `UPDATE library_result_transport_heads
+          bind: [
+            publication.header.actor_id,
+            firstResultSequence,
+            lastResultSequence,
+            publication.header.previous_segment_digest,
+            semanticSegmentDigest,
+            storedSegmentDigest,
+            publication.reference.descriptor.objectKey,
+            publication.reference.transportObjectId,
+            publication.receivedAt,
+            publication.results.length,
+            acceptedTransactionCount,
+            rejectedTransactionCount,
+          ],
+        });
+        this.#database.exec({
+          sql: `UPDATE library_result_transport_heads
               SET next_result_sequence = ?2, latest_segment_digest = ?3
               WHERE actor_id = ?1 AND next_result_sequence = ?4
                 AND latest_segment_digest IS ?5;`,
-        bind: [
-          publication.header.actor_id,
-          lastResultSequence + 1,
-          storedSegmentDigest,
+          bind: [
+            publication.header.actor_id,
+            lastResultSequence + 1,
+            storedSegmentDigest,
+            firstResultSequence,
+            publication.header.previous_segment_digest,
+          ],
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "normalized result head update",
+          ) !== 1
+        ) {
+          throw new Error(
+            "normalized result transport head changed concurrently",
+          );
+        }
+        this.#database.exec("COMMIT;");
+        receipt = Object.freeze({
+          acceptedTransactionCount,
+          actorId: publication.header.actor_id,
           firstResultSequence,
-          publication.header.previous_segment_digest,
-        ],
-      });
-      if (
-        safeInteger(
-          this.#database.exec({
-            sql: "SELECT changes();",
-            rowMode: 0,
-            returnValue: "resultRows",
-          })[0],
-          "normalized result head update",
-        ) !== 1
-      ) {
-        throw new Error(
-          "normalized result transport head changed concurrently",
-        );
+          lastResultSequence,
+          nextResultSequence: lastResultSequence + 1,
+          receivedAt: publication.receivedAt,
+          rejectedTransactionCount,
+          resultCount: publication.results.length,
+          semanticSegmentDigest,
+          storedSegmentDigest,
+        });
       }
-      this.#database.exec("COMMIT;");
-      return Object.freeze({
-        acceptedTransactionCount,
-        actorId: publication.header.actor_id,
-        firstResultSequence,
-        lastResultSequence,
-        nextResultSequence: lastResultSequence + 1,
-        receivedAt: publication.receivedAt,
-        rejectedTransactionCount,
-        resultCount: publication.results.length,
-        semanticSegmentDigest,
-        storedSegmentDigest,
-      });
     } catch (error) {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+    for (const verified of verifiedResults) {
+      await this.#applyAcceptedFollowerResultThroughOperationImport(
+        verified,
+        publication.receivedAt,
+      );
+    }
+    return receipt;
   }
 
   async applyFollowerResult(
@@ -5984,12 +7095,6 @@ export class PwaLibraryCoreSqliteEngine {
         maximumBytes: 131_072,
       }),
     );
-    const exactRetry = this.#followerResultRetry(
-      candidate.transaction_id,
-      apply.canonicalResultBytes,
-    );
-    if (exactRetry !== null) return exactRetry;
-
     const authorityRows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
                    e.authority_key_id, e.authority_public_key
@@ -6028,12 +7133,19 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("follower result clock is invalid");
     }
 
-    return this.#applyVerifiedFollowerResult(
+    this.#applyVerifiedFollowerResult(verified, authority, receivedAt, true);
+    await this.#applyAcceptedFollowerResultThroughOperationImport(
       verified,
-      authority,
       receivedAt,
-      true,
     );
+    const receipt = this.#followerResultRetry(
+      candidate.transaction_id,
+      apply.canonicalResultBytes,
+    );
+    if (receipt === null) {
+      throw new Error("follower result receipt disappeared after apply");
+    }
+    return receipt;
   }
 
   #applyVerifiedFollowerResult(
@@ -6193,141 +7305,50 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error("follower result replacement projection is incomplete");
       }
 
-      const canonicalColumns = Object.freeze({
-        archived: "archived",
-        archived_at: "archived_at",
-        liked: "liked",
-        liked_at: "liked_at",
-        read_at: "read_at",
-        saved: "saved",
-        saved_at: "saved_at",
-      } as const);
-
-      if (envelope.authoritative_source_revision === sourceRevision) {
-        for (const field of replacements) {
-          const expected =
-            field.value_type === "boolean"
-              ? field.boolean_value === true
-                ? 1
-                : 0
-              : field.value_type === "integer"
-                ? field.integer_value
-                : null;
-          const values = this.#database.exec({
-            sql: `SELECT ${canonicalColumns[field.field_path]}
-                  FROM library_feed_items WHERE global_id = ?1;`,
-            bind: [field.entity_id],
-            rowMode: 0,
-            returnValue: "resultRows",
-          });
-          if (values.length !== 1 || values[0] !== expected) {
-            throw new Error(
-              "follower result replacement disagrees with its source revision",
-            );
-          }
-        }
-      }
-
-      const isExactNextSourceRevision =
-        sourceRevision < Number.MAX_SAFE_INTEGER &&
-        envelope.authoritative_source_revision === sourceRevision + 1;
-      if (isExactNextSourceRevision) {
-        if (
-          envelope.status === "accepted" &&
-          envelope.replacement_fields.length === 0
-        ) {
-          this.#materializeAcceptedFollowerIntent(
-            envelope.transaction_id,
-            envelope.resolved_at_ms,
-          );
-        }
-        for (const field of replacements) {
-          const value =
-            field.value_type === "boolean"
-              ? field.boolean_value === true
-                ? 1
-                : 0
-              : field.value_type === "integer"
-                ? field.integer_value
-                : null;
-          this.#database.exec({
-            sql: `UPDATE library_feed_items
-                  SET ${canonicalColumns[field.field_path]} = ?2
-                  WHERE global_id = ?1;`,
-            bind: [field.entity_id, value],
-          });
-          if (
-            safeInteger(
-              this.#database.exec({
-                sql: "SELECT changes();",
-                rowMode: 0,
-                returnValue: "resultRows",
-              })[0],
-              "follower result canonical field update",
-            ) !== 1
-          ) {
-            throw new Error("follower result canonical target is unavailable");
-          }
-        }
-        this.#database.exec({
-          sql: `UPDATE library_meta
-                SET source_revision = ?1, updated_at = ?2
-                WHERE singleton_id = 1 AND source_revision = ?3;`,
+      if (
+        envelope.status === "accepted" &&
+        envelope.authoritative_source_revision <= sourceRevision
+      ) {
+        const applied = this.#database.exec({
+          sql: `SELECT result.result_digest, result.canonical_result
+                FROM library_operation_replication_results AS result
+                JOIN library_transactions AS tx
+                  ON tx.transaction_id = result.transaction_id
+                 AND tx.committed_revision = result.source_revision
+                WHERE result.source_revision = ?1
+                  AND result.transaction_id = ?2;`,
           bind: [
             envelope.authoritative_source_revision,
-            envelope.resolved_at_ms,
-            sourceRevision,
+            envelope.transaction_id,
           ],
-        });
-        this.#database.exec({
-          sql: `UPDATE library_change_state SET revision = ?1
-                WHERE singleton_id = 1 AND revision = ?2;`,
-          bind: [envelope.authoritative_source_revision, sourceRevision],
-        });
-        const invalidations = this.#database.exec({
-          sql: `SELECT mutation_id, entity_id FROM library_intent_members
-                WHERE transaction_id = ?1 ORDER BY member_index;`,
-          bind: [envelope.transaction_id],
           rowMode: "array",
           returnValue: "resultRows",
         });
-        invalidations.forEach((row, ordinal) => {
-          const mutationId = text(
-            row[0],
-            "follower invalidation mutation ID",
+        if (
+          applied.length !== 1 ||
+          text(applied[0]![0], "applied follower result digest") !==
+            verified.resultDigest ||
+          !sameBytes(
+            bytes(applied[0]![1], "applied follower canonical result"),
+            verified.canonicalBytes,
+          )
+        ) {
+          throw new Error(
+            "accepted follower result revision lacks its operation",
           );
-          const program = sqliteMutationProgram(
-            mutationId,
-          );
-          this.#database.exec({
-            sql: `INSERT INTO library_invalidations
-                    (revision, ordinal, topic, entity_id, reset_required)
-                  VALUES (?1, ?2, ?3, ?4, 0);`,
-            bind: [
-              envelope.authoritative_source_revision,
-              ordinal,
-              program.invalidationTopic,
-              text(row[1], "follower invalidation entity ID"),
-            ],
-          });
-          if (mutationId === "friend_replace") {
-            this.#database.exec({
-              sql: `INSERT INTO library_invalidations
-                      (revision, ordinal, topic, entity_id, reset_required)
-                    VALUES (?1, ?2, 'account', NULL, 1);`,
-              bind: [
-                envelope.authoritative_source_revision,
-                invalidations.length + ordinal,
-              ],
-            });
-          }
-        });
+        }
       }
 
-      this.#database.exec({
-        sql: `DELETE FROM library_optimistic_fields WHERE transaction_id = ?1;`,
-        bind: [envelope.transaction_id],
-      });
+      if (
+        envelope.status !== "accepted" ||
+        envelope.authoritative_source_revision <= sourceRevision
+      ) {
+        this.#database.exec({
+          sql: `DELETE FROM library_optimistic_fields
+                WHERE transaction_id = ?1;`,
+          bind: [envelope.transaction_id],
+        });
+      }
       this.#database.exec({
         sql: `INSERT INTO library_intent_results
                 (transaction_id, actor_id, authority_epoch_id, intent_epoch_id,
@@ -6389,10 +7410,7 @@ export class PwaLibraryCoreSqliteEngine {
         actorId: envelope.actor_id,
         resultDigest: verified.resultDigest,
         resultSequence: envelope.result_sequence,
-        sourceRevision: Math.max(
-          sourceRevision,
-          envelope.authoritative_source_revision,
-        ),
+        sourceRevision,
         status: envelope.status,
         transactionId: envelope.transaction_id,
       });

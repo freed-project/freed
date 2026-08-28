@@ -263,6 +263,11 @@ import {
   type LibraryCoreNormalizedResultTransportImportV2,
 } from "./normalized-result-segment-contracts.js";
 import {
+  parseLibraryCoreNormalizedOperationImportPageV2,
+  type LibraryCoreNormalizedOperationImportPageV2,
+  type LibraryCoreNormalizedOperationImportReceiptV2,
+} from "./normalized-operation-replication-contracts.js";
+import {
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
@@ -707,6 +712,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      import: LibraryCoreNormalizedOperationImportPageV2;
+      kind: "import_normalized_operation_page";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "read_follower_actor_enrollment_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -834,6 +845,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFollowerResultApplyReceiptV1
   | LibraryCoreNormalizedIntentTransportPublicationReceiptV2
   | LibraryCoreNormalizedResultTransportImportReceiptV2
+  | LibraryCoreNormalizedOperationImportReceiptV2
   | LibraryCoreFollowerActorEnrollmentContextV2
   | LibraryCoreFollowerActorRequestReceiptV2
   | LibraryCoreFollowerActorEnrollmentReceiptV2
@@ -922,7 +934,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
                         "publish_normalized_follower_intent_transport"
                       ? ["kind", "protocolVersion", "publication", "requestId"]
                       : value.kind ===
-                          "import_normalized_follower_result_transport"
+                            "import_normalized_follower_result_transport" ||
+                          value.kind === "import_normalized_operation_page"
                         ? ["import", "kind", "protocolVersion", "requestId"]
                         : value.kind === "store_follower_actor_request"
                           ? ["kind", "protocolVersion", "requestId", "store"]
@@ -1035,6 +1048,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "follower_mutation_context",
       "follower_transport_context",
       "import_normalized_follower_result_transport",
+      "import_normalized_operation_page",
       "install_follower_actor_enrollment",
       "mutate_device_contacts",
       "mutate_device_graph_layout",
@@ -1364,6 +1378,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "import_normalized_operation_page") {
+    return Object.freeze({
+      import: parseLibraryCoreNormalizedOperationImportPageV2(value.import),
+      kind: "import_normalized_operation_page",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
   } else if (value.kind === "store_follower_actor_request") {
     return Object.freeze({
       kind: "store_follower_actor_request",
@@ -1416,6 +1437,25 @@ export function createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequ
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
+}
+
+export function createLibraryCoreSqliteNormalizedOperationImportWorkerRequest(
+  requestId: string,
+  imported: LibraryCoreNormalizedOperationImportPageV2,
+): Extract<
+  LibraryCoreSqliteWorkerRequest,
+  { readonly kind: "import_normalized_operation_page" }
+> {
+  const request = parseLibraryCoreSqliteWorkerRequest({
+    import: imported,
+    kind: "import_normalized_operation_page",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+  if (request.kind !== "import_normalized_operation_page") {
+    throw new TypeError("normalized operation import request changed kind");
+  }
+  return request;
 }
 
 export function createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest(

@@ -600,6 +600,9 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_primary_intent_stage_transactions;
          DELETE FROM library_follower_result_outbox;
          DELETE FROM library_follower_result_cursors;
+         DELETE FROM library_operation_replication_stage_members;
+         DELETE FROM library_operation_replication_stages;
+         DELETE FROM library_operation_replication_results;
          DELETE FROM library_replication_outbox;
          DELETE FROM library_operation_causal_tips;
          DELETE FROM library_operations;
