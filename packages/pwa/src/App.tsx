@@ -379,6 +379,24 @@ function App() {
       },
     });
   }, []);
+  const handleLocalLibraryRecovery = useCallback(async () => {
+    await runFactoryResetWithRecovery({
+      reset: async () => {
+        beginFactoryResetBoundary();
+        stopCloudSync();
+        await runCoordinatedPwaFactoryReset(async () => {});
+      },
+      reload: () => {
+        preparePwaFactoryResetReload();
+        location.reload();
+      },
+      onFailure: () => {
+        toast.error(
+          "Freed could not replace this device's local Library. Reloading so you can retry safely.",
+        );
+      },
+    });
+  }, []);
   const handleDismissInstallNotice = useCallback(() => {
     dismissInstallNotice();
     setInstallNotice(null);
@@ -510,6 +528,13 @@ function App() {
           error={{ message: error }}
           productName="Freed"
           onRetry={() => window.location.reload()}
+          onSecondaryAction={handleLocalLibraryRecovery}
+          secondaryActionLabel="Replace local Library"
+          secondaryActionConfirmation={{
+            title: "Replace this device's local Library?",
+            body: "This removes queued edits and offline content stored only on this device. It does not delete Google Drive data or another device's Library. Freed will reload and restore from Google Drive when available.",
+            confirmLabel: "Replace local Library",
+          }}
         />
       </PlatformProvider>
     );

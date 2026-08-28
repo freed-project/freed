@@ -59,6 +59,12 @@
       retaining local reader cache bytes.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
+  - [x] When OPFS SQLite cannot initialize, expose a two-step local Library
+        replacement action beside retry and report export. The coordinated
+        cross-tab barrier stops sync and writers, deletes only this device's
+        SQLite, content vault, and actor key, preserves Google Drive data, and
+        reloads for authenticated checkpoint recovery. The warning names
+        queued edits and offline content that may exist only on this device.
 - [x] Persist the Library, query indexes, search, intent outbox, result receipts,
       and sparse optimistic overlay in OPFS-backed SQLite.
   - [x] Install the shared strict transaction, operation, replication,
@@ -603,6 +609,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.92 | Bind PWA reader pinning to OPFS SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the worker before retaining local reader cache bytes | High       | ✓ Complete                                                                                      |
 | 6.93 | Replace PWA sample and preview compatibility state with normalized Person and Account records plus exact signed follower results. Materialize atomic Friend replacement with native parity, decode signed fractional values for strict SQLite columns, and delete the unused renderer Friend graph and corpus-scan fixtures | High       | ✓ Complete                                                                                      |
 | 6.94 | Delete the retired LAN document relay from the PWA. Remove QR scanning, manual WebSocket pairing, inert relay APIs, relay storage cleanup, and the unused QR decoder dependency. Sync settings now expose only the operational Google Drive path backed by normalized OPFS SQLite records | High       | ✓ Complete                                                                                      |
+| 6.95 | Add explicit PWA SQLite recovery after initialization failure. Require a second destructive confirmation, coordinate every open tab through the existing generation fence, stop sync and writers, remove only device-local Library storage and the actor key, preserve Google Drive authority, and reload for checkpoint recovery | High       | ✓ Complete                                                                                      |
 
 ---
 
