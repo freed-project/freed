@@ -1,8 +1,4 @@
-import {
-  lstatSync,
-  readdirSync,
-  readFileSync,
-} from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export const RETIRED_LIBRARY_CORE_PUBLIC_MODULES = Object.freeze([
@@ -55,6 +51,11 @@ const RETIRED_MODULE_PATH_PATTERNS = Object.freeze([
     id: "legacy-relay-module",
     pattern: /\/src\/network\/local-relay(?:[.-]|$)/i,
   },
+  {
+    id: "pwa-indexeddb-library-module",
+    pattern:
+      /\/src\/lib\/library-core-(?:indexeddb(?:-readers)?|intent-overlay|portable-checkpoint-store|search-index)(?:[.-]|$)/i,
+  },
 ]);
 
 const RETIRED_ARTIFACT_TOKENS = Object.freeze([
@@ -104,11 +105,40 @@ const RETIRED_ARTIFACT_TOKENS = Object.freeze([
   },
   {
     id: "retired-library-core-store-registry",
-    needle: "current method writes legacy Automerge and its successor payload is unresolved",
+    needle:
+      "current method writes legacy Automerge and its successor payload is unresolved",
   },
   {
     id: "retired-library-core-operation-registry",
     needle: "runtime_authority_inactive",
+  },
+  {
+    id: "retired-library-shell-record",
+    needle: "00_library_shell",
+  },
+  {
+    id: "retired-library-shell-json",
+    needle: "shellJson",
+  },
+  {
+    id: "retired-library-shell-type",
+    needle: "DesktopLibraryShell",
+  },
+  {
+    id: "retired-library-document-state",
+    needle: "DocState",
+  },
+  {
+    id: "pwa-indexeddb-checkpoint-database",
+    needle: "freed-library-core-portable-v1",
+  },
+  {
+    id: "pwa-indexeddb-search-database",
+    needle: "freed-library-core-search-v1",
+  },
+  {
+    id: "pwa-indexeddb-read-model-database",
+    needle: "freed-library-core-read-model-v1",
   },
 ]);
 
@@ -202,7 +232,7 @@ function formatFindings(surface, findings) {
     .map((finding) => `${finding.id}: ${finding.location}`)
     .sort();
   return [
-    `The ${surface} release bundle contains retired Automerge runtime residue:`,
+    `The ${surface} release bundle contains retired Library runtime residue:`,
     ...lines.map((line) => `  ${line}`),
   ].join("\n");
 }

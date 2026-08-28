@@ -18,7 +18,9 @@ import {
 } from "./lib/retired-automerge-runtime.mjs";
 
 function withTempDirectory(run) {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-retired-runtime-"));
+  const directory = mkdtempSync(
+    path.join(os.tmpdir(), "freed-retired-runtime-"),
+  );
   try {
     return run(directory);
   } finally {
@@ -75,16 +77,21 @@ test("service-worker inspection rejects a renamed legacy sync route", () => {
   });
 });
 
-test("artifact inspection rejects retired registry payloads", () => {
+test("artifact inspection rejects retired Library payloads and browser row stores", () => {
   withTempDirectory((directory) => {
     writeFileSync(
       path.join(directory, "main.js"),
-      'const authority = "legacy-automerge-document";',
+      [
+        'const authority = "legacy-automerge-document";',
+        'const shellRecord = "00_library_shell";',
+        'const shellType = "DesktopLibraryShell";',
+        'const browserRows = "freed-library-core-portable-v1";',
+      ].join("\n"),
     );
 
     assert.throws(
       () => assertNoRetiredAutomergeArtifactDirectory(directory, "pwa"),
-      /retired-library-core-field-registry/,
+      /pwa-indexeddb-checkpoint-database[\s\S]*retired-library-core-field-registry[\s\S]*retired-library-shell-record[\s\S]*retired-library-shell-type/,
     );
   });
 });
@@ -141,7 +148,10 @@ test("Vercel staging carries the current artifact guard without the retired patc
     "vercel-deploy-preview.sh",
     "vercel-deploy-production.sh",
   ]) {
-    const source = readFileSync(path.join(repoRoot, "scripts", fileName), "utf8");
+    const source = readFileSync(
+      path.join(repoRoot, "scripts", fileName),
+      "utf8",
+    );
     assert.match(source, /retired-automerge-runtime\.mjs/);
     assert.match(source, /validate-retired-automerge-runtime\.mjs/);
     assert.doesNotMatch(source, /patch-automerge\.mjs/);

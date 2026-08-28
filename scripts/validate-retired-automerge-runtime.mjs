@@ -49,7 +49,7 @@ export function validateRetiredAutomergeRuntimeArtifacts({
 function printSummary(summaries) {
   for (const summary of summaries) {
     console.log(
-      `Retired Automerge runtime guard passed for ${summary.surface}: ${summary.files.toLocaleString("en-US")} files, ${summary.bytes.toLocaleString("en-US")} bytes.`,
+      `Retired Library runtime guard passed for ${summary.surface}: ${summary.files.toLocaleString("en-US")} files, ${summary.bytes.toLocaleString("en-US")} bytes.`,
     );
   }
 }
