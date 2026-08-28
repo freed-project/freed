@@ -115,7 +115,10 @@ import {
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
-import type { LibraryMutationEvent, LibraryMutationRequest } from "./library-types";
+import type {
+  LibraryMutationEvent,
+  LibraryMutationRequest,
+} from "./library-types";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
@@ -395,7 +398,9 @@ export async function ingestNormalizedLibraryFollowerIntentPage(
     envelopes.length > 128 ||
     canonicalEnvelopes.length !== envelopes.length
   ) {
-    throw new RangeError("normalized follower intent page is outside its bound");
+    throw new RangeError(
+      "normalized follower intent page is outside its bound",
+    );
   }
   const records = envelopes.map((envelope, index) => ({
     actorCounter: envelope.actor_sequence,
@@ -1873,12 +1878,13 @@ async function insertMissingSqliteItems(
   items: readonly FeedItem[],
 ): Promise<FeedItem[]> {
   if (items.length === 0) return [];
+  const candidates = uniqueByIdentity(items, (item) => item.globalId);
   const existing = new Set(
-    (await readSqliteItems(items.map((item) => item.globalId))).map(
+    (await readSqliteItems(candidates.map((item) => item.globalId))).map(
       (item) => item.globalId,
     ),
   );
-  const missing = items.filter((item) => !existing.has(item.globalId));
+  const missing = candidates.filter((item) => !existing.has(item.globalId));
   if (!(await maybeSubmitFeedItemCaptures(missing, Date.now()))) {
     throw new Error("Normalized SQLite FeedItem mutation context is required");
   }
@@ -2177,6 +2183,7 @@ export async function dispatchSqliteMutation(
       const inserted = await insertMissingSqliteItems(message.items);
       await saveDiscoveredAccounts(message.items);
       changedIds = inserted.map((item) => item.globalId);
+      if (message.type === "BATCH_IMPORT_ITEMS") result = [...changedIds];
       source = "item_patch";
       break;
     }
@@ -2220,16 +2227,15 @@ export async function dispatchSqliteMutation(
               }
             }
             return "continue" as const;
-          }
+          },
         );
       }
       if (
-        !(await maybeSubmitAccountUpserts(
-          [...reconciled.values()],
-          timestamp,
-        ))
+        !(await maybeSubmitAccountUpserts([...reconciled.values()], timestamp))
       ) {
-        throw new Error("Normalized SQLite Account mutation context is required");
+        throw new Error(
+          "Normalized SQLite Account mutation context is required",
+        );
       }
       changedIds = merged.map((item) => item.globalId);
       break;
@@ -2238,11 +2244,15 @@ export async function dispatchSqliteMutation(
       await insertMissingSqliteItems(message.items);
       const normalizedHandled = (await mutationContext()) !== null;
       if (!normalizedHandled) {
-        throw new Error("Normalized SQLite sample mutation context is required");
+        throw new Error(
+          "Normalized SQLite sample mutation context is required",
+        );
       }
       for (const feed of message.feeds) {
         if (!(await maybeSubmitRssFeedUpsert(feed, timestamp))) {
-          throw new Error("Normalized SQLite RSS Feed mutation context changed");
+          throw new Error(
+            "Normalized SQLite RSS Feed mutation context changed",
+          );
         }
       }
       if (!(await maybeSubmitPersonUpserts(message.persons, timestamp))) {
@@ -2266,7 +2276,9 @@ export async function dispatchSqliteMutation(
       );
       const normalizedHandled = (await mutationContext()) !== null;
       if (!normalizedHandled) {
-        throw new Error("Normalized SQLite sample mutation context is required");
+        throw new Error(
+          "Normalized SQLite sample mutation context is required",
+        );
       }
       if (
         !(await maybeSubmitAccountUpserts(
@@ -2290,7 +2302,9 @@ export async function dispatchSqliteMutation(
             url,
           }))
         ) {
-          throw new Error("Normalized SQLite RSS Feed mutation context changed");
+          throw new Error(
+            "Normalized SQLite RSS Feed mutation context changed",
+          );
         }
       }
       for (const personId of samplePersonIds) {
@@ -2320,7 +2334,9 @@ export async function dispatchSqliteMutation(
       if (item) {
         const updated = deepMerge(item, message.updates);
         if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
-          throw new Error("Normalized SQLite FeedItem mutation context is required");
+          throw new Error(
+            "Normalized SQLite FeedItem mutation context is required",
+          );
         }
       }
       changedIds = [message.globalId];
@@ -2386,7 +2402,9 @@ export async function dispatchSqliteMutation(
           },
         ]))
       ) {
-        throw new Error("Normalized SQLite archive mutation context is required");
+        throw new Error(
+          "Normalized SQLite archive mutation context is required",
+        );
       }
       changedIds = [message.globalId];
       source = "item_patch";
@@ -2403,7 +2421,9 @@ export async function dispatchSqliteMutation(
           })),
         ))
       ) {
-        throw new Error("Normalized SQLite archive mutation context is required");
+        throw new Error(
+          "Normalized SQLite archive mutation context is required",
+        );
       }
       changedIds = [...message.globalIds];
       source = "item_patch";
@@ -2447,13 +2467,17 @@ export async function dispatchSqliteMutation(
       break;
     case "REMOVE_FEED_ITEM":
       if (!(await maybeSubmitFeedItemRemoves([message.globalId], timestamp))) {
-        throw new Error("Normalized SQLite FeedItem removal context is required");
+        throw new Error(
+          "Normalized SQLite FeedItem removal context is required",
+        );
       }
       changedIds = [message.globalId];
       break;
     case "ARCHIVE_ALL_READ_UNSAVED": {
       if ((await mutationContext()) === null) {
-        throw new Error("Normalized SQLite archive mutation context is required");
+        throw new Error(
+          "Normalized SQLite archive mutation context is required",
+        );
       }
       const ids = await collectSqliteItemIds(
         { platform: message.platform, feedUrl: message.feedUrl },
@@ -2473,13 +2497,17 @@ export async function dispatchSqliteMutation(
           })),
         ))
       ) {
-        throw new Error("Library mutation context changed during archive commit");
+        throw new Error(
+          "Library mutation context changed during archive commit",
+        );
       }
       break;
     }
     case "UNARCHIVE_SAVED_ITEMS": {
       if ((await mutationContext()) === null) {
-        throw new Error("Normalized SQLite archive mutation context is required");
+        throw new Error(
+          "Normalized SQLite archive mutation context is required",
+        );
       }
       const ids = await collectSqliteItemIds(
         { saved: true, archived: true },
@@ -2495,26 +2523,34 @@ export async function dispatchSqliteMutation(
           })),
         ))
       ) {
-        throw new Error("Library mutation context changed during unarchive commit");
+        throw new Error(
+          "Library mutation context changed during unarchive commit",
+        );
       }
       break;
     }
     case "DELETE_ALL_ARCHIVED": {
       if ((await mutationContext()) === null) {
-        throw new Error("Normalized SQLite FeedItem removal context is required");
+        throw new Error(
+          "Normalized SQLite FeedItem removal context is required",
+        );
       }
       const ids = await collectSqliteItemIds(
         { archived: true },
         (item) => !item.userState.saved,
       );
       if (!(await maybeSubmitFeedItemRemoves(ids, timestamp))) {
-        throw new Error("Library mutation context changed during removal commit");
+        throw new Error(
+          "Library mutation context changed during removal commit",
+        );
       }
       break;
     }
     case "PRUNE_ARCHIVED_ITEMS": {
       if ((await mutationContext()) === null) {
-        throw new Error("Normalized SQLite FeedItem removal context is required");
+        throw new Error(
+          "Normalized SQLite FeedItem removal context is required",
+        );
       }
       const cutoff = timestamp - Math.max(0, message.maxAgeMs ?? 0);
       const ids = await collectSqliteItemIds(
@@ -2525,13 +2561,17 @@ export async function dispatchSqliteMutation(
           item.userState.archivedAt <= cutoff,
       );
       if (!(await maybeSubmitFeedItemRemoves(ids, timestamp))) {
-        throw new Error("Library mutation context changed during pruning commit");
+        throw new Error(
+          "Library mutation context changed during pruning commit",
+        );
       }
       break;
     }
     case "ADD_RSS_FEED": {
       if (!(await maybeSubmitRssFeedUpsert(message.feed, timestamp))) {
-        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+        throw new Error(
+          "Normalized SQLite RSS Feed mutation context is required",
+        );
       }
       break;
     }
@@ -2540,7 +2580,9 @@ export async function dispatchSqliteMutation(
       const updated = feed ? { ...feed, ...message.updates } : null;
       if (!updated) break;
       if (!(await maybeSubmitRssFeedUpsert(updated, timestamp))) {
-        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+        throw new Error(
+          "Normalized SQLite RSS Feed mutation context is required",
+        );
       }
       break;
     }
@@ -2552,14 +2594,18 @@ export async function dispatchSqliteMutation(
           url: message.url,
         }))
       ) {
-        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+        throw new Error(
+          "Normalized SQLite RSS Feed mutation context is required",
+        );
       }
       break;
     }
     case "REMOVE_ALL_FEEDS": {
       const normalizedHandled = (await mutationContext()) !== null;
       if (!normalizedHandled) {
-        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+        throw new Error(
+          "Normalized SQLite RSS Feed mutation context is required",
+        );
       }
       await executeFrozenRssFeedScope(
         message.includeItems === true
@@ -2584,7 +2630,9 @@ export async function dispatchSqliteMutation(
     }
     case "UPDATE_PREFERENCES": {
       if (!(await maybeSubmitPreferences(message.updates, timestamp))) {
-        throw new Error("Normalized SQLite preference mutation context is required");
+        throw new Error(
+          "Normalized SQLite preference mutation context is required",
+        );
       }
       source = "preferences_patch";
       break;
@@ -2598,7 +2646,9 @@ export async function dispatchSqliteMutation(
       }
       for (const feed of feeds) {
         if (!(await maybeSubmitRssFeedUpsert(feed, timestamp))) {
-          throw new Error("Normalized SQLite RSS Feed mutation context is required");
+          throw new Error(
+            "Normalized SQLite RSS Feed mutation context is required",
+          );
         }
       }
       changedIds = message.items.map((item) => item.globalId);
@@ -2606,7 +2656,9 @@ export async function dispatchSqliteMutation(
     }
     case "HEAL_UNTITLED_FEEDS": {
       if ((await mutationContext()) === null) {
-        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+        throw new Error(
+          "Normalized SQLite RSS Feed mutation context is required",
+        );
       }
       await executeFrozenRssFeedScope(
         "rss_feeds_heal_untitled_frozen",
@@ -2663,16 +2715,21 @@ export async function dispatchSqliteMutation(
 export async function createNormalizedLocalSnapshot(
   reason: "auto" | "manual",
 ): Promise<NormalizedLocalSnapshotSummary> {
-  return invoke<NormalizedLocalSnapshotSummary>("create_normalized_local_snapshot", {
-    createdAtMs: Date.now(),
-    reason,
-  });
+  return invoke<NormalizedLocalSnapshotSummary>(
+    "create_normalized_local_snapshot",
+    {
+      createdAtMs: Date.now(),
+      reason,
+    },
+  );
 }
 
 export async function listNormalizedLocalSnapshots(): Promise<
   NormalizedLocalSnapshotSummary[]
 > {
-  return invoke<NormalizedLocalSnapshotSummary[]>("list_normalized_local_snapshots");
+  return invoke<NormalizedLocalSnapshotSummary[]>(
+    "list_normalized_local_snapshots",
+  );
 }
 
 export async function restoreNormalizedLocalSnapshot(
@@ -2681,7 +2738,11 @@ export async function restoreNormalizedLocalSnapshot(
 ): Promise<NormalizedLocalSnapshotSummary> {
   const restored = await invoke<NormalizedLocalSnapshotSummary>(
     "restore_normalized_local_snapshot",
-    { snapshotId, operationId: request.operationId, restoredAtMs: request.restoredAtMs },
+    {
+      snapshotId,
+      operationId: request.operationId,
+      restoredAtMs: request.restoredAtMs,
+    },
   );
   sqliteActive = true;
   return restored;

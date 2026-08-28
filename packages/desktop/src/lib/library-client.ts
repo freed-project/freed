@@ -26,7 +26,10 @@ import type {
   LibraryMutationRequest,
 } from "./library-types";
 import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
-import { registerLibraryAccessors, setLibrarySnapshot } from "@freed/ui/lib/debug-store";
+import {
+  registerLibraryAccessors,
+  setLibrarySnapshot,
+} from "@freed/ui/lib/debug-store";
 import {
   dispatchSqliteMutation,
   ensureFreshNormalizedDesktopLibrary,
@@ -83,9 +86,8 @@ async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
   let legacyDataPresent = false;
   if (!normalizedSelected) {
     legacyDataPresent = await hasLegacyLibraryData();
-    normalizedSelected = await ensureFreshNormalizedDesktopLibrary(
-      !legacyDataPresent,
-    );
+    normalizedSelected =
+      await ensureFreshNormalizedDesktopLibrary(!legacyDataPresent);
   }
   if (!normalizedSelected) {
     throw new Error(
@@ -114,11 +116,18 @@ async function dispatch(message: LibraryMutationRequest): Promise<unknown> {
   return result;
 }
 
-function request<T extends { readonly type: LibraryMutationRequest["type"] }>(message: T): Promise<unknown> {
-  return dispatch({ ...message, reqId: nextRequestId++ } as unknown as LibraryMutationRequest);
+function request<T extends { readonly type: LibraryMutationRequest["type"] }>(
+  message: T,
+): Promise<unknown> {
+  return dispatch({
+    ...message,
+    reqId: nextRequestId++,
+  } as unknown as LibraryMutationRequest);
 }
 
-export function subscribeDesktopLibraryRuntime(callback: Subscriber): () => void {
+export function subscribeDesktopLibraryRuntime(
+  callback: Subscriber,
+): () => void {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
 }
@@ -145,25 +154,17 @@ export async function reloadDesktopLibraryRuntimeState(): Promise<LibraryCoreRun
 }
 
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
-  const items: FeedItem[] = [];
-  await scanAllItems((page) => items.push(...page));
-  return collectSavedYouTubeVideoUrls(items);
-}
-
-async function scanAllItems(visit: (page: FeedItem[]) => void): Promise<void> {
+  const urls: string[] = [];
   await scanLibraryCoreBackgroundItems((page) => {
-    visit([...page]);
+    urls.push(...collectSavedYouTubeVideoUrls(page));
     return "continue";
   });
+  return urls;
 }
 
-export async function getAllItemIds(): Promise<string[]> {
-  const ids: string[] = [];
-  await scanAllItems((page) => ids.push(...page.map((item) => item.globalId)));
-  return ids;
-}
-
-export async function getItemPreservedText(globalId: string): Promise<string | null> {
+export async function getItemPreservedText(
+  globalId: string,
+): Promise<string | null> {
   const [item] = await readSqliteItems([globalId]);
   return item?.preservedContent?.text ?? null;
 }
@@ -177,39 +178,87 @@ export function quiesceDesktopLibraryForFactoryReset(): Promise<void> {
   return mutationQueue;
 }
 
-export const addLibraryFeedItem = (item: FeedItem) => request({ type: "ADD_FEED_ITEM", item }).then(() => {});
-export const addLibraryFeedItems = (items: FeedItem[]) => request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
-export const removeLibraryFeedItem = (globalId: string) => request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
-export const updateLibraryFeedItem = (globalId: string, updates: Partial<FeedItem>) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
-export const markLibraryItemAsRead = (globalId: string) => request({ type: "MARK_AS_READ", globalId }).then(() => {});
-export const markLibraryItemsAsRead = (globalIds: string[]) => globalIds.length === 0 ? Promise.resolve() : request({ type: "MARK_ITEMS_AS_READ", globalIds }).then(() => {});
-export const markAllLibraryItemsAsRead = (platform?: string) => request({ type: "MARK_ALL_AS_READ", platform }).then(() => {});
-export const toggleLibraryItemSaved = (globalId: string) => request({ type: "TOGGLE_SAVED", globalId }).then(() => {});
-export const toggleLibraryItemArchived = (globalId: string) => request({ type: "TOGGLE_ARCHIVED", globalId }).then(() => {});
-export const archiveLibraryItems = (globalIds: string[]) => globalIds.length === 0 ? Promise.resolve() : request({ type: "ARCHIVE_ITEMS", globalIds }).then(() => {});
-export const toggleLibraryItemLiked = (globalId: string) => request({ type: "TOGGLE_LIKED", globalId }).then(() => {});
-export const confirmLibraryItemLikedSynced = (globalId: string, syncedAt?: number) => request({ type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt }).then(() => {});
-export const confirmLibraryItemSeenSynced = (globalId: string, syncedAt?: number) => request({ type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt }).then(() => {});
-export const archiveAllReadUnsavedLibraryItems = (platform?: string, feedUrl?: string) => request({ type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl }).then(() => {});
-export const unarchiveSavedLibraryItems = () => request({ type: "UNARCHIVE_SAVED_ITEMS" }).then(() => {});
-export const pruneArchivedLibraryItems = (maxAgeMs?: number) => request({ type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs }).then(() => {});
-export const deleteAllArchivedLibraryItems = () => request({ type: "DELETE_ALL_ARCHIVED" }).then(() => {});
-export const addLibraryRssFeed = (feed: RssFeed) => request({ type: "ADD_RSS_FEED", feed }).then(() => {});
-export const removeLibraryRssFeed = (url: string, includeItems = false) => request({ type: "REMOVE_RSS_FEED", url, includeItems }).then(() => {});
-export const updateLibraryRssFeed = (url: string, updates: Partial<RssFeed>) => request({ type: "UPDATE_RSS_FEED", url, updates }).then(() => {});
-export const removeAllLibraryFeeds = (includeItems: boolean) => request({ type: "REMOVE_ALL_FEEDS", includeItems }).then(() => {});
-export const updateLibraryPreferences = (updates: Partial<UserPreferences>) => request({ type: "UPDATE_PREFERENCES", updates }).then(() => {});
+export const addLibraryFeedItem = (item: FeedItem) =>
+  request({ type: "ADD_FEED_ITEM", item }).then(() => {});
+export const addLibraryFeedItems = (items: FeedItem[]) =>
+  request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
+export const removeLibraryFeedItem = (globalId: string) =>
+  request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
+export const updateLibraryFeedItem = (
+  globalId: string,
+  updates: Partial<FeedItem>,
+) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
+export const markLibraryItemAsRead = (globalId: string) =>
+  request({ type: "MARK_AS_READ", globalId }).then(() => {});
+export const markLibraryItemsAsRead = (globalIds: string[]) =>
+  globalIds.length === 0
+    ? Promise.resolve()
+    : request({ type: "MARK_ITEMS_AS_READ", globalIds }).then(() => {});
+export const markAllLibraryItemsAsRead = (platform?: string) =>
+  request({ type: "MARK_ALL_AS_READ", platform }).then(() => {});
+export const toggleLibraryItemSaved = (globalId: string) =>
+  request({ type: "TOGGLE_SAVED", globalId }).then(() => {});
+export const toggleLibraryItemArchived = (globalId: string) =>
+  request({ type: "TOGGLE_ARCHIVED", globalId }).then(() => {});
+export const archiveLibraryItems = (globalIds: string[]) =>
+  globalIds.length === 0
+    ? Promise.resolve()
+    : request({ type: "ARCHIVE_ITEMS", globalIds }).then(() => {});
+export const toggleLibraryItemLiked = (globalId: string) =>
+  request({ type: "TOGGLE_LIKED", globalId }).then(() => {});
+export const confirmLibraryItemLikedSynced = (
+  globalId: string,
+  syncedAt?: number,
+) =>
+  request({ type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt }).then(() => {});
+export const confirmLibraryItemSeenSynced = (
+  globalId: string,
+  syncedAt?: number,
+) =>
+  request({ type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt }).then(() => {});
+export const archiveAllReadUnsavedLibraryItems = (
+  platform?: string,
+  feedUrl?: string,
+) =>
+  request({ type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl }).then(
+    () => {},
+  );
+export const unarchiveSavedLibraryItems = () =>
+  request({ type: "UNARCHIVE_SAVED_ITEMS" }).then(() => {});
+export const pruneArchivedLibraryItems = (maxAgeMs?: number) =>
+  request({ type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs }).then(() => {});
+export const deleteAllArchivedLibraryItems = () =>
+  request({ type: "DELETE_ALL_ARCHIVED" }).then(() => {});
+export const addLibraryRssFeed = (feed: RssFeed) =>
+  request({ type: "ADD_RSS_FEED", feed }).then(() => {});
+export const removeLibraryRssFeed = (url: string, includeItems = false) =>
+  request({ type: "REMOVE_RSS_FEED", url, includeItems }).then(() => {});
+export const updateLibraryRssFeed = (url: string, updates: Partial<RssFeed>) =>
+  request({ type: "UPDATE_RSS_FEED", url, updates }).then(() => {});
+export const removeAllLibraryFeeds = (includeItems: boolean) =>
+  request({ type: "REMOVE_ALL_FEEDS", includeItems }).then(() => {});
+export const updateLibraryPreferences = (updates: Partial<UserPreferences>) =>
+  request({ type: "UPDATE_PREFERENCES", updates }).then(() => {});
 export const reconcileYouTubeLibraryCapture = (
   accounts: Account[],
   items: FeedItem[],
   options: { rosterComplete: boolean; capturedAt: number },
-) => request({ type: "RECONCILE_YOUTUBE_CAPTURE", accounts, items, options }).then(() => {});
+) =>
+  request({ type: "RECONCILE_YOUTUBE_CAPTURE", accounts, items, options }).then(
+    () => {},
+  );
 
 export const reconcileFollowRosterLibraryCapture = (
   accounts: Account[],
   items: FeedItem[],
   options: { provider: "substack" | "medium"; capturedAt: number },
-) => request({ type: "RECONCILE_FOLLOW_ROSTER_CAPTURE", accounts, items, options }).then(() => {});
+) =>
+  request({
+    type: "RECONCILE_FOLLOW_ROSTER_CAPTURE",
+    accounts,
+    items,
+    options,
+  }).then(() => {});
 
 export const addSampleLibraryData = (data: {
   feeds: RssFeed[];
@@ -219,7 +268,9 @@ export const addSampleLibraryData = (data: {
 }) => request({ type: "ADD_SAMPLE_LIBRARY_DATA", ...data }).then(() => {});
 
 export async function clearSampleLibraryData(): Promise<SampleDataClearSummary> {
-  return await request({ type: "CLEAR_SAMPLE_DATA" }) as SampleDataClearSummary;
+  return (await request({
+    type: "CLEAR_SAMPLE_DATA",
+  })) as SampleDataClearSummary;
 }
 
 export async function refreshLibraryFeeds(
@@ -231,14 +282,21 @@ export async function refreshLibraryFeeds(
 
 export async function importLibraryItems(
   items: FeedItem[],
-  onChunk?: (chunkIndex: number, totalChunks: number) => void,
-): Promise<void> {
-  await request({ type: "BATCH_IMPORT_ITEMS", items });
-  onChunk?.(1, 1);
+): Promise<readonly string[]> {
+  const result = await request({ type: "BATCH_IMPORT_ITEMS", items });
+  if (
+    !Array.isArray(result) ||
+    result.some((globalId) => typeof globalId !== "string")
+  ) {
+    throw new TypeError("SQLite import returned invalid inserted identities");
+  }
+  return Object.freeze([...result] as string[]);
 }
 
-export const healUntitledLibraryFeedTitles = () => request({ type: "HEAL_UNTITLED_FEEDS" }).then(() => {});
-export const deduplicateLibraryFeedItems = () => request({ type: "DEDUPLICATE_ITEMS" }).then(() => {});
+export const healUntitledLibraryFeedTitles = () =>
+  request({ type: "HEAL_UNTITLED_FEEDS" }).then(() => {});
+export const deduplicateLibraryFeedItems = () =>
+  request({ type: "DEDUPLICATE_ITEMS" }).then(() => {});
 
 export async function backfillLibraryContentSignals(
   _batchSize = 200,
@@ -249,18 +307,25 @@ export async function backfillLibraryContentSignals(
     scanned: 0,
     updated: 0,
     remaining: 0,
-    counts: Object.fromEntries(CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0])) as Record<ContentSignal, number>,
+    counts: Object.fromEntries(
+      CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0]),
+    ) as Record<ContentSignal, number>,
     multiSignalCount: 0,
     untaggedCount: 0,
     samples: {},
   };
 }
 
-export async function addLibraryStubItem(url: string, tags: string[] = []): Promise<FeedItem> {
+export async function addLibraryStubItem(
+  url: string,
+  tags: string[] = [],
+): Promise<FeedItem> {
   const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
   let hostname = url;
-  try { hostname = new URL(url).hostname; } catch {}
+  try {
+    hostname = new URL(url).hostname;
+  } catch {}
   const item: FeedItem = {
     globalId,
     platform: "saved",
@@ -274,7 +339,13 @@ export async function addLibraryStubItem(url: string, tags: string[] = []): Prom
       mediaTypes: [],
       linkPreview: { url, title: url },
     },
-    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
+    userState: {
+      hidden: false,
+      saved: true,
+      savedAt: now,
+      archived: false,
+      tags,
+    },
     topics: [],
   };
   await addLibraryFeedItem(item);

@@ -699,6 +699,7 @@ export async function captureDomFeed(
 | 5.167 | Stream Markdown export through bounded source-fenced SQLite pages. The renderer releases each FeedItem page before requesting the next and never reconstructs the complete Library corpus for archive assembly | Medium     | ✓ Complete |
 | 5.168 | Delete the unused full-corpus Saved analytics compatibility reducer. Saved overview aggregates come only from the typed bounded SQLite analytics query, and the UI retains only the returned fixed-size aggregate | Low        | ✓ Complete |
 | 5.169 | Delete the unused relay-client setter and Automerge worker-init event emitter from the shipping Desktop Library client. Historical soak readers may still classify archived build events, but current runtime code exposes no document-worker lifecycle API | Low        | ✓ Complete |
+| 5.170 | Process Markdown import in bounded batches of at most 128 source files. SQLite reports the exact inserted identities for each typed mutation, so import releases every parsed batch and never loads the existing Library ID corpus into the renderer | Medium     | ✓ Complete |
 
 ---
 
