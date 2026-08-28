@@ -21846,25 +21846,6 @@ test("stranded event history witness repair records durable authority before exa
   assert.equal(existsSync(fixture.witnessPath), true);
   assert.deepEqual(readFileSync(fixture.paths.events), fixture.canonicalBytes);
 
-  const authorizationBytes = readFileSync(plan.parameters.authorizationFile);
-  appendFileSync(plan.parameters.authorizationFile, "\n", { mode: 0o600 });
-  assert.throws(
-    () =>
-      repairEventHistoryAuthorityWitness({
-        stateRoot: fixture.stateRoot,
-        taskId: plan.taskId,
-        plan,
-        ownerConfirmationFile: owner.confirmationPath,
-      }),
-    (error) =>
-      error instanceof AutomationControlError &&
-      error.code === "authority_generation_conflict",
-  );
-  assert.equal(existsSync(fixture.witnessPath), true);
-  writeFileSync(plan.parameters.authorizationFile, authorizationBytes, {
-    mode: 0o600,
-  });
-
   rmSync(owner.confirmationPath);
   assert.throws(
     () =>
@@ -21940,6 +21921,58 @@ test("stranded event history witness repair records durable authority before exa
     readdirSync(fixture.paths.eventHistoryWitnessRepairs).length,
     1,
   );
+});
+
+test("stranded event history witness repair fails closed on changed durable authorization", () => {
+  const fixture = strandedEventHistoryAuthorityWitnessFixture(
+    "authorization-drift",
+  );
+  const plan = planEventHistoryAuthorityWitnessRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: "github-issue-1628",
+  });
+  const repairNowMs = Date.now();
+  const owner = writeOwnerConfirmation(
+    fixture.stateRoot,
+    plan.taskId,
+    plan.intent,
+    { nowMs: repairNowMs },
+  );
+  assert.throws(
+    () =>
+      repairEventHistoryAuthorityWitness(
+        {
+          stateRoot: fixture.stateRoot,
+          taskId: plan.taskId,
+          plan,
+          ownerConfirmationFile: owner.confirmationPath,
+        },
+        {
+          now: () => repairNowMs + 1,
+          checkpoint: (phase) => {
+            if (phase === "authorization-recorded") {
+              throw new Error("response lost after authorization");
+            }
+          },
+        },
+      ),
+    /response lost after authorization/,
+  );
+
+  appendFileSync(plan.parameters.authorizationFile, "\n", { mode: 0o600 });
+  assert.throws(
+    () =>
+      repairEventHistoryAuthorityWitness({
+        stateRoot: fixture.stateRoot,
+        taskId: plan.taskId,
+        plan,
+        ownerConfirmationFile: owner.confirmationPath,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict",
+  );
+  assert.equal(existsSync(fixture.witnessPath), true);
 });
 
 test("stranded event history witness repair fails closed on changed generations and owner intent", async (t) => {
