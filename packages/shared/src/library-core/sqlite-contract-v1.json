@@ -4,8 +4,11 @@
   "schemaVersion": 1,
   "protocolVersion": 2,
   "nativeCommandProtocolVersion": 1,
-  "localActorProtocolVersion": 1,
-  "localActorMethods": ["submit_signed_intent_page_v1"],
+  "localActorProtocolVersion": 2,
+  "localActorMethods": [
+    "execute_signed_query_v1",
+    "submit_signed_intent_page_v1"
+  ],
   "localActorErrorCodes": [
     "busy",
     "frame_invalid",
@@ -182,6 +185,13 @@
     "saved_feed_page_v2",
     "search_page_v1"
   ],
+  "agentQueryProtocol": {
+    "digestDomain": "agent-query-body",
+    "format": "freed_library_core_agent_query_v1",
+    "maximumCanonicalBytes": 262144,
+    "resultFormat": "freed_library_core_agent_query_result_v1",
+    "signatureDomain": "agent-query"
+  },
   "limits": {
     "checkpointRecordCanonicalBytes": 131072,
     "checkpointPageDecodedBytes": 2097152,
@@ -209,6 +219,7 @@
     "storage_unavailable"
   ],
   "nativeCommands": [
+    "agent_query_v1",
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",
     "commit_transaction_v1",

@@ -669,7 +669,7 @@ describe("compiled freed-library runtime", () => {
         exchangeLocalActor(localActorEndpoint, {
           method: "submit_signed_intent_page_v1",
           payload: { page: { records: [] } },
-          protocolVersion: 1,
+          protocolVersion: 2,
           requestId: "1".repeat(64),
         }),
       ).resolves.toMatchObject({

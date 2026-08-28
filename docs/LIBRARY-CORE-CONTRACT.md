@@ -95,8 +95,8 @@ ID, and one exact command payload. The closed registry contains normalized
 checkpoint begin, append, finalize, pinned export, registered query,
 storage-inspection, Primary mutation context, native operation signing,
 canonical transaction commit, follower-intent admission, actor transport
-state, bounded result export, Primary actor identity, and exact writer epoch
-reassignment commands. Startup must round-trip storage inspection and
+state, bounded result export, signed agent query admission, Primary actor
+identity, and exact writer epoch reassignment commands. Startup must round-trip storage inspection and
 match the generated SQLite application ID, contract version, schema version,
 wire protocol version, and schema digest before the service reports running.
 The same executable source generates the closed native error-code registry.
@@ -109,15 +109,31 @@ frames, oversized frames, response identity drift, and transport closure fail
 closed. This command protocol never carries raw SQL, SQLite files, shell JSON,
 whole-item JSON, Drive credentials, or authority private keys.
 
-Local actor protocol 1 is generated from the same executable contract source.
-Its first and only method is `submit_signed_intent_page_v1`. The service maps
-that method directly to `ingest_follower_intent_page_v1` on the one native
-command client. Local actors cannot submit SQL, select native commands, bypass
-capability verification, or receive an unregistered result shape. Native
-SQLite verifies every signed intent, actor, capability, storage epoch, causal
-frontier, and transaction before an authoritative write. The actor submits
-only the signed page. The Primary supplies the authoritative receipt time from
-its own service clock.
+Local actor protocol 2 is generated from the same executable contract source.
+It exposes exactly `execute_signed_query_v1` and
+`submit_signed_intent_page_v1`. The service maps them to `agent_query_v1` and
+`ingest_follower_intent_page_v1` on the one native command client. Protocol 1
+is retired and receives no alias or compatibility listener. Local actors
+cannot submit SQL, select native commands, bypass capability verification, or
+receive an unregistered result shape.
+
+One signed query carries canonical bytes capped at 256 KiB. Its body binds the
+Library, active epoch, actor, exact capability certificate digest, random
+request identity, registered query ID, and closed typed query. Native SQLite
+recomputes the body digest, verifies the actor Ed25519 signature, loads the
+active actor and capability, rejects retirement, proves the exact query grant,
+and only then dispatches the existing bounded query program. The response
+binds the request, query, capability, Library, epoch, and source revision to the
+typed result. Library-wide capability scope is admitted. Provider and source
+scopes fail closed until a query-specific scope predicate is part of the
+generated contract. Socket ownership is transport privacy, never read
+authority.
+
+Native SQLite applies the same authority rule to writes. It verifies every
+signed intent, actor, capability, storage epoch, causal frontier, and
+transaction before an authoritative write. The actor submits only the signed
+page. The Primary supplies the authoritative receipt time from its own service
+clock.
 
 Each local actor connection accepts one newline-terminated UTF-8 JSON request
 and returns one newline-terminated closed response. A request frame is at most

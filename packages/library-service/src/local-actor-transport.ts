@@ -19,6 +19,9 @@ const ERRORS = new Set<string>(LIBRARY_CORE_LOCAL_ACTOR_ERROR_CODES);
 const RATE_WINDOW_MS = 60_000;
 
 export interface LibraryServiceLocalActorBackendV1 {
+  executeSignedQuery(payload: {
+    readonly canonicalAgentQueryJson: string;
+  }): Promise<unknown>;
   submitSignedIntentPage(payload: {
     readonly page: Readonly<Record<string, unknown>>;
     readonly receivedAt: number;
@@ -47,13 +50,19 @@ export interface LibraryServiceLocalActorIngressPortV1 {
   }): Promise<LibraryServiceLocalActorListenerV1>;
 }
 
-interface ParsedRequest {
-  readonly method: LibraryCoreLocalActorMethod;
-  readonly payload: {
-    readonly page: Readonly<Record<string, unknown>>;
-  };
-  readonly requestId: string;
-}
+type ParsedRequest =
+  | {
+      readonly method: "execute_signed_query_v1";
+      readonly payload: { readonly canonicalAgentQueryJson: string };
+      readonly requestId: string;
+    }
+  | {
+      readonly method: "submit_signed_intent_page_v1";
+      readonly payload: {
+        readonly page: Readonly<Record<string, unknown>>;
+      };
+      readonly requestId: string;
+    };
 
 interface ReplayEntry {
   readonly digest: string;
@@ -117,9 +126,31 @@ function parseRequest(frame: Uint8Array): ParsedRequest {
       requestId: value.requestId,
     });
   }
+  if (!isClosedObject(value.payload)) {
+    throw Object.assign(new TypeError("frame_invalid"), {
+      requestId: value.requestId,
+    });
+  }
+  if (value.method === "execute_signed_query_v1") {
+    if (
+      !hasExactKeys(value.payload, ["canonicalAgentQueryJson"]) ||
+      typeof value.payload.canonicalAgentQueryJson !== "string" ||
+      value.payload.canonicalAgentQueryJson.length === 0
+    ) {
+      throw Object.assign(new TypeError("frame_invalid"), {
+        requestId: value.requestId,
+      });
+    }
+    return {
+      method: value.method,
+      payload: {
+        canonicalAgentQueryJson: value.payload.canonicalAgentQueryJson,
+      },
+      requestId: value.requestId,
+    };
+  }
   if (
     value.method !== "submit_signed_intent_page_v1" ||
-    !isClosedObject(value.payload) ||
     !hasExactKeys(value.payload, ["page"]) ||
     !isClosedObject(value.payload.page)
   ) {
@@ -282,10 +313,13 @@ export function createLibraryServiceLocalActorProcessorV1(
       };
       const response = (async () => {
         try {
-          const result = await backend.submitSignedIntentPage({
-            page: request.payload.page,
-            receivedAt: now,
-          });
+          const result =
+            request.method === "execute_signed_query_v1"
+              ? await backend.executeSignedQuery(request.payload)
+              : await backend.submitSignedIntentPage({
+                  page: request.payload.page,
+                  receivedAt: now,
+                });
           if (result === undefined) throw new TypeError("response_invalid");
           return encodeResponse(request.requestId, { ok: true, result });
         } catch (error) {

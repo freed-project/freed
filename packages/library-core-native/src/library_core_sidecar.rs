@@ -22,10 +22,10 @@ use crate::sqlite_contract_generated::{
 use crate::{
     accept_normalized_operation_transaction_v1, append_normalized_checkpoint_stage_page_v2,
     apply_normalized_actor_retirement_v1, begin_normalized_checkpoint_stage_v2,
-    describe_normalized_checkpoint_export_v2, export_normalized_follower_result_page_v1,
-    export_pinned_normalized_checkpoint_page_v2, finalize_normalized_checkpoint_stage_v2,
-    get_content_state_v1, ingest_normalized_follower_intent_page_v1,
-    load_or_create_normalized_actor_id_v2, lower_hex,
+    describe_normalized_checkpoint_export_v2, execute_normalized_agent_query_v1,
+    export_normalized_follower_result_page_v1, export_pinned_normalized_checkpoint_page_v2,
+    finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
+    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
     reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
@@ -120,6 +120,12 @@ struct MountedPrimaryCredentialV1 {
     library_id: String,
     authority_key_pkcs8_base64: String,
     actor_key_pkcs8_base64: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AgentQueryCommandV1 {
+    canonical_agent_query_json: String,
 }
 
 impl Drop for MountedPrimaryCredentialV1 {
@@ -540,6 +546,14 @@ fn execute_native_command_v1(
     payload: Value,
 ) -> Result<Value, &'static str> {
     match command_id {
+        "agent_query_v1" => {
+            let command: AgentQueryCommandV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                execute_normalized_agent_query_v1(connection, &command.canonical_agent_query_json)
+                    .map_err(normalized_command_error)?,
+            )
+        }
         "append_checkpoint_stage_v2" => {
             let command: AppendCheckpointStageCommandV2 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;

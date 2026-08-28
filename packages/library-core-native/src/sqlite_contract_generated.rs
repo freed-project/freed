@@ -548,6 +548,7 @@ pub const OPERATION_IDS: &[&str] = &[
 ];
 
 pub const NATIVE_COMMAND_IDS: &[&str] = &[
+    "agent_query_v1",
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",
     "commit_transaction_v1",
@@ -636,6 +637,11 @@ pub const AGENT_QUERY_IDS: &[&str] = &[
     "saved_feed_page_v2",
     "search_page_v1",
 ];
+pub const AGENT_QUERY_FORMAT: &str = "freed_library_core_agent_query_v1";
+pub const AGENT_QUERY_RESULT_FORMAT: &str = "freed_library_core_agent_query_result_v1";
+pub const AGENT_QUERY_DIGEST_DOMAIN: &str = "agent-query-body";
+pub const AGENT_QUERY_SIGNATURE_DOMAIN: &str = "agent-query";
+pub const AGENT_QUERY_MAXIMUM_CANONICAL_BYTES: usize = 262144;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteMutationProgram {

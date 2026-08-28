@@ -695,6 +695,8 @@ export class LibraryServiceSupervisor {
           expectedUserId,
           processor: createLibraryServiceLocalActorProcessorV1(
             {
+              executeSignedQuery: (payload) =>
+                commandClient.execute("agent_query_v1", payload),
               submitSignedIntentPage: (payload) =>
                 commandClient.execute(
                   "ingest_follower_intent_page_v1",

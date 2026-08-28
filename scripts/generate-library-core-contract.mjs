@@ -66,6 +66,7 @@ function assertSortedUniqueFields(values, label) {
 function assertContract(contract) {
   const expectedKeys = [
     "agentQueryProfile",
+    "agentQueryProtocol",
     "applicationId",
     "capabilityProfiles",
     "checkpointDatasetSchemaId",
@@ -157,7 +158,7 @@ function assertContract(contract) {
     contract.schemaVersion !== 1 ||
     contract.protocolVersion !== 2 ||
     contract.nativeCommandProtocolVersion !== 1 ||
-    contract.localActorProtocolVersion !== 1 ||
+    contract.localActorProtocolVersion !== 2 ||
     contract.checkpointFormat !== "freed_normalized_checkpoint_v2" ||
     contract.checkpointExportFormat !==
       "freed_normalized_checkpoint_export_v2" ||
@@ -286,6 +287,23 @@ function assertContract(contract) {
     )
   ) {
     throw new TypeError("agent capability includes an undeclared SQLite query");
+  }
+  const agentQueryProtocol = contract.agentQueryProtocol;
+  if (
+    agentQueryProtocol === null ||
+    typeof agentQueryProtocol !== "object" ||
+    Object.keys(agentQueryProtocol).sort().join(",") !==
+      "digestDomain,format,maximumCanonicalBytes,resultFormat,signatureDomain" ||
+    agentQueryProtocol.digestDomain !== "agent-query-body" ||
+    agentQueryProtocol.format !== "freed_library_core_agent_query_v1" ||
+    agentQueryProtocol.maximumCanonicalBytes !== 262_144 ||
+    agentQueryProtocol.resultFormat !==
+      "freed_library_core_agent_query_result_v1" ||
+    agentQueryProtocol.signatureDomain !== "agent-query"
+  ) {
+    throw new TypeError(
+      "agent query protocol changed without a version boundary",
+    );
   }
   const mutationProgramFields = [
     "clockReadSql",
@@ -818,6 +836,11 @@ export const LIBRARY_CORE_AGENT_QUERY_IDS = Object.freeze([
 ${stringTuple(contract.agentQueryProfile)}
 ] as const);
 export type LibraryCoreAgentQueryId = (typeof LIBRARY_CORE_AGENT_QUERY_IDS)[number];
+export const LIBRARY_CORE_AGENT_QUERY_FORMAT = ${JSON.stringify(contract.agentQueryProtocol.format)} as const;
+export const LIBRARY_CORE_AGENT_QUERY_RESULT_FORMAT = ${JSON.stringify(contract.agentQueryProtocol.resultFormat)} as const;
+export const LIBRARY_CORE_AGENT_QUERY_DIGEST_DOMAIN = ${JSON.stringify(contract.agentQueryProtocol.digestDomain)} as const;
+export const LIBRARY_CORE_AGENT_QUERY_SIGNATURE_DOMAIN = ${JSON.stringify(contract.agentQueryProtocol.signatureDomain)} as const;
+export const LIBRARY_CORE_AGENT_QUERY_MAXIMUM_CANONICAL_BYTES = ${contract.agentQueryProtocol.maximumCanonicalBytes} as const;
 
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.mutationPrograms, null, 2)} as const;
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
@@ -1220,6 +1243,11 @@ pub const SCRAPER_OPERATION_IDS: &[&str] = &[${contract.capabilityProfiles.scrap
 pub const AGENT_QUERY_IDS: &[&str] = &[
 ${rustStringSlice(contract.agentQueryProfile)}
 ];
+pub const AGENT_QUERY_FORMAT: &str = ${JSON.stringify(contract.agentQueryProtocol.format)};
+pub const AGENT_QUERY_RESULT_FORMAT: &str = ${JSON.stringify(contract.agentQueryProtocol.resultFormat)};
+pub const AGENT_QUERY_DIGEST_DOMAIN: &str = ${JSON.stringify(contract.agentQueryProtocol.digestDomain)};
+pub const AGENT_QUERY_SIGNATURE_DOMAIN: &str = ${JSON.stringify(contract.agentQueryProtocol.signatureDomain)};
+pub const AGENT_QUERY_MAXIMUM_CANONICAL_BYTES: usize = ${contract.agentQueryProtocol.maximumCanonicalBytes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteMutationProgram {

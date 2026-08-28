@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; signed agent query admission, installed Drive coordination, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -380,13 +380,24 @@ activation has happened.
 
 ## Agent and capture boundary
 
-Local actor protocol 1 is generated from the SQLite contract. It contains one
-method, `submit_signed_intent_page_v1`, which maps directly to the native
-`ingest_follower_intent_page_v1` command. It exposes neither SQL nor a generic
-native-command selector. Native SQLite remains responsible for signature,
-capability, actor, epoch, causal, and transaction verification. The actor sends
-only the signed page. The Primary supplies its receipt time from the service
-clock.
+Local actor protocol 2 is generated from the SQLite contract. It contains
+exactly `execute_signed_query_v1` and `submit_signed_intent_page_v1`, which map
+to the native `agent_query_v1` and `ingest_follower_intent_page_v1` commands.
+Protocol 1 is retired without an alias or compatibility listener. The protocol
+exposes neither SQL nor a generic native-command selector. Native SQLite
+remains responsible for signature, capability, actor, epoch, query grant,
+causal, and transaction verification. The actor sends only canonical signed
+query bytes or a signed intent page. The Primary supplies intent receipt time
+from the service clock.
+
+The signed query envelope is capped at 256 KiB and binds the active Library,
+epoch, actor, capability certificate digest, random request identity, and one
+generated query request. Native SQLite checks the exact actor and capability,
+retirement state, Library-wide scope, registered query grant, canonical body
+digest, and Ed25519 signature before running the existing bounded query.
+Provider and source bounded scopes fail closed until the generated query
+contract defines their predicates. The result binds the request and source
+revision. A socket owner does not acquire read authority merely by connecting.
 
 The macOS and Linux service binds an owner-only mode `0600` Unix socket. Each
 connection carries one newline-terminated request and one closed response.
@@ -489,63 +500,63 @@ review before implementation.
 
 ## Task ledger
 
-| Task | State | Description |
-| --- | --- | --- |
-| 11.1 | Complete | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop |
-| 11.2 | Complete | Enforce one operating system backed Library data-root lease before SQLite opens |
-| 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
-| 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
-| 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next |
-| 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next |
-| 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
-| 11.9 | Complete | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation |
-| 11.10 | In Progress | Bind the generated one-method actor protocol to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14. |
-| 11.11 | In Progress | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Add the signed query envelope and native read admission next; signed edits already use the local intent method. |
-| 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
-| 11.13 | Blocked | Add social capture workers after provider-specific owner approval |
-| 11.14 | Open | Package Linux services, macOS launch agents, and Windows services |
-| 11.15 | Open | Complete installed Primary migration and editable follower acceptance |
-| 11.16 | Open | Complete forward recovery, competing-Primary, and fault-injection acceptance |
-| 11.20 | Open | Define the signed Omi actor and user-triggered voice capture contract |
-| 11.21 | Open | Implement authenticated Omi ingress with bounded retention |
-| 11.22 | Open | Implement the separately approved bounded reading-context export |
+| Task  | State       | Description                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 11.1  | Complete    | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop                                                                                                                                                                                                                                                                                                                                |
+| 11.2  | Complete    | Enforce one operating system backed Library data-root lease before SQLite opens                                                                                                                                                                                                                                                                                                                                                    |
+| 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
+| 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
+| 11.5  | Open        | Add Drive PKCE setup and platform-safe secret stores                                                                                                                                                                                                                                                                                                                                                                               |
+| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next                                                                                                                                          |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next                                                                                                                                                                                           |
+| 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
+| 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
+| 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |
+| 11.11 | Complete    | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Canonical signed query bytes now cross local actor protocol 2, and native SQLite proves the active actor, exact capability certificate, Library-wide scope, registered query grant, body digest, and Ed25519 signature before dispatch. Signed edits use the local intent method. |
+| 11.12 | Open        | Add provider-neutral RSS and explicit-save workers                                                                                                                                                                                                                                                                                                                                                                                 |
+| 11.13 | Blocked     | Add social capture workers after provider-specific owner approval                                                                                                                                                                                                                                                                                                                                                                  |
+| 11.14 | Open        | Package Linux services, macOS launch agents, and Windows services                                                                                                                                                                                                                                                                                                                                                                  |
+| 11.15 | Open        | Complete installed Primary migration and editable follower acceptance                                                                                                                                                                                                                                                                                                                                                              |
+| 11.16 | Open        | Complete forward recovery, competing-Primary, and fault-injection acceptance                                                                                                                                                                                                                                                                                                                                                       |
+| 11.20 | Open        | Define the signed Omi actor and user-triggered voice capture contract                                                                                                                                                                                                                                                                                                                                                              |
+| 11.21 | Open        | Implement authenticated Omi ingress with bounded retention                                                                                                                                                                                                                                                                                                                                                                         |
+| 11.22 | Open        | Implement the separately approved bounded reading-context export                                                                                                                                                                                                                                                                                                                                                                   |
 
 ---
 
 ## Acceptance criteria
 
 - [ ] A headless service imports a verified checkpoint into a fresh SQLite
-  generation without copying a SQLite file from another host.
+      generation without copying a SQLite file from another host.
 - [ ] One exact writer promotion succeeds and a competing Primary loses the
-  same control compare and swap.
+      same control compare and swap.
 - [ ] The losing process durably fences itself before any further cloud or
-  provider work.
+      provider work.
 - [ ] A Primary checkpoint receipt and an authenticated production PWA receipt
-  name the same Library, epoch, generation, manifest digest, Drive object ID,
-  item count, and exact revision.
+      name the same Library, epoch, generation, manifest digest, Drive object ID,
+      item count, and exact revision.
 - [ ] A Freed Desktop follower makes a local edit, publishes one signed intent,
-  receives the canonical result, and retains the edit after checkpoint refresh.
+      receives the canonical result, and retains the edit after checkpoint refresh.
 - [ ] A real-size Library with at least 19,000 items preserves exact item count,
-  materialized digest, actor frontier, and bounded memory through migration.
+      materialized digest, actor frontier, and bounded memory through migration.
 - [ ] Two processes against one data root produce exactly one lease holder.
 - [ ] Missing admission, stale epochs, retired actors, changed or conflicting
-  replays, oversized batches, and operations outside a capability all fail
-  with zero writes. An exact response-loss retry returns the old receipt only
-  for a currently admitted writer, active epoch, active actor, and unchanged
-  capability, with zero new writes or results.
+      replays, oversized batches, and operations outside a capability all fail
+      with zero writes. An exact response-loss retry returns the old receipt only
+      for a currently admitted writer, active epoch, active actor, and unchanged
+      capability, with zero new writes or results.
 - [x] Authority-signed actor retirement atomically retires the exact actor and
-  capability, returns the original receipt on exact replay, survives normalized
-  checkpoint export and import, and rejects changed certificate bytes in native
-  and PWA SQLite.
+      capability, returns the original receipt on exact replay, survives normalized
+      checkpoint export and import, and rejects changed certificate bytes in native
+      and PWA SQLite.
 - [ ] Crash and response-loss injection covers SQLite commit, object upload,
-  manifest upload, control compare and swap, result publication, and backup.
+      manifest upload, control compare and swap, result publication, and backup.
 - [ ] Secret scans find no key or token in arguments, environment values, logs,
-  state JSON, SQLite, backups, manifests, or bug reports.
+      state JSON, SQLite, backups, manifests, or bug reports.
 - [ ] A Drive call ledger proves that SQLite, WAL, SHM, and rollback journal
-  files were never uploaded.
+      files were never uploaded.
 - [ ] Social workers remain unable to start until their exact provider gates
-  and installed acceptance are complete.
+      and installed acceptance are complete.
 - [ ] Linux x86_64 and arm64, macOS, and Windows service lifecycle tests pass.
 
 ---

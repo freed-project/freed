@@ -72,7 +72,7 @@ describe("Node local actor socket", () => {
           stateRoot,
           expectedUserId: process.getuid!(),
           processor: createLibraryServiceLocalActorProcessorV1(
-            { submitSignedIntentPage },
+            { executeSignedQuery: vi.fn(), submitSignedIntentPage },
             { nowMs: () => 1_000 },
           ),
         });
@@ -86,7 +86,7 @@ describe("Node local actor socket", () => {
           `${JSON.stringify({
             method: "submit_signed_intent_page_v1",
           payload: { page: { records: [] } },
-            protocolVersion: 1,
+            protocolVersion: 2,
             requestId: "1".repeat(64),
           })}\n`,
         ),
@@ -111,14 +111,14 @@ describe("Node local actor socket", () => {
         stateRoot,
         expectedUserId: process.getuid!(),
         processor: createLibraryServiceLocalActorProcessorV1(
-          { submitSignedIntentPage },
+          { executeSignedQuery: vi.fn(), submitSignedIntentPage },
           { nowMs: () => 1_000 },
         ),
       });
     const valid = JSON.stringify({
       method: "submit_signed_intent_page_v1",
       payload: { page: { records: [] } },
-      protocolVersion: 1,
+      protocolVersion: 2,
       requestId: "2".repeat(64),
     });
     await expect(

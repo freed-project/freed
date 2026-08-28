@@ -28,6 +28,7 @@ export {
   type LibraryCoreActorCapabilityRequestV2,
 } from "./actor-capability-certificate-v2.js";
 export * from "./actor-retirement-certificate-v1.js";
+export * from "./agent-query-contracts.js";
 export * from "./ed25519-verification.js";
 export * from "./checkpoint-manifest-contracts.js";
 export * from "./feed-browse-filter-contract.js";

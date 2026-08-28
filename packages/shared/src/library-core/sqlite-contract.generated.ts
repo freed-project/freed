@@ -830,6 +830,7 @@ export const LIBRARY_CORE_OPERATION_IDS = [
   "sample_library_remove",
 ] as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
+  "agent_query_v1",
   "append_checkpoint_stage_v2",
   "begin_checkpoint_stage_v2",
   "commit_transaction_v1",
@@ -924,6 +925,11 @@ export const LIBRARY_CORE_AGENT_QUERY_IDS = Object.freeze([
   "search_page_v1",
 ] as const);
 export type LibraryCoreAgentQueryId = (typeof LIBRARY_CORE_AGENT_QUERY_IDS)[number];
+export const LIBRARY_CORE_AGENT_QUERY_FORMAT = "freed_library_core_agent_query_v1" as const;
+export const LIBRARY_CORE_AGENT_QUERY_RESULT_FORMAT = "freed_library_core_agent_query_result_v1" as const;
+export const LIBRARY_CORE_AGENT_QUERY_DIGEST_DOMAIN = "agent-query-body" as const;
+export const LIBRARY_CORE_AGENT_QUERY_SIGNATURE_DOMAIN = "agent-query" as const;
+export const LIBRARY_CORE_AGENT_QUERY_MAXIMUM_CANONICAL_BYTES = 262144 as const;
 
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
   "account_person_assignment": {

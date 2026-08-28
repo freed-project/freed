@@ -16,7 +16,7 @@ function request(
     JSON.stringify({
       method: "submit_signed_intent_page_v1",
       payload,
-      protocolVersion: 1,
+      protocolVersion: 2,
       requestId,
     }),
   );
@@ -29,12 +29,42 @@ function decoded(bytes: Uint8Array): Record<string, unknown> {
 }
 
 describe("Library service local actor transport", () => {
+  it("routes canonical signed queries only through the restricted query backend", async () => {
+    const executeSignedQuery = vi.fn(async () => ({
+      format: "freed_library_core_agent_query_result_v1",
+      rows: [],
+    }));
+    const submitSignedIntentPage = vi.fn();
+    const processor = createLibraryServiceLocalActorProcessorV1(
+      { executeSignedQuery, submitSignedIntentPage },
+      { nowMs: () => 1_000 },
+    );
+    const canonicalAgentQueryJson = '{"signed":true}';
+    const frame = Buffer.from(
+      JSON.stringify({
+        method: "execute_signed_query_v1",
+        payload: { canonicalAgentQueryJson },
+        protocolVersion: 2,
+        requestId: "9".repeat(64),
+      }),
+    );
+
+    expect(decoded(await processor.executeFrame(frame))).toMatchObject({
+      ok: true,
+      requestId: "9".repeat(64),
+    });
+    expect(executeSignedQuery).toHaveBeenCalledWith({
+      canonicalAgentQueryJson,
+    });
+    expect(submitSignedIntentPage).not.toHaveBeenCalled();
+  });
+
   it("admits one bounded signed intent page through the restricted backend", async () => {
     const submitSignedIntentPage = vi.fn(async () => ({
       acceptedTransactions: 1,
     }));
     const processor = createLibraryServiceLocalActorProcessorV1(
-      { submitSignedIntentPage },
+      { executeSignedQuery: vi.fn(), submitSignedIntentPage },
       { nowMs: () => 1_000 },
     );
 
@@ -43,7 +73,7 @@ describe("Library service local actor transport", () => {
     );
     expect(decoded(await processor.executeFrame(request()))).toEqual({
       ok: true,
-      protocolVersion: 1,
+      protocolVersion: 2,
       requestId: "1".repeat(64),
       result: { acceptedTransactions: 1 },
     });
@@ -58,7 +88,7 @@ describe("Library service local actor transport", () => {
     const result = new Deferred<unknown>();
     const submitSignedIntentPage = vi.fn(() => result.promise);
     const processor = createLibraryServiceLocalActorProcessorV1(
-      { submitSignedIntentPage },
+      { executeSignedQuery: vi.fn(), submitSignedIntentPage },
       { nowMs: () => 1_000 },
     );
     const first = processor.executeFrame(request());
@@ -85,7 +115,7 @@ describe("Library service local actor transport", () => {
         JSON.stringify({
           method: "raw_sql_v1",
           payload: {},
-          protocolVersion: 1,
+          protocolVersion: 2,
           requestId: "2".repeat(64),
         }),
       ),
@@ -99,6 +129,7 @@ describe("Library service local actor transport", () => {
     ],
   ])("rejects a closed invalid frame", async (frame, code, requestId) => {
     const backend: LibraryServiceLocalActorBackendV1 = {
+      executeSignedQuery: vi.fn(),
       submitSignedIntentPage: vi.fn(),
     };
     const processor = createLibraryServiceLocalActorProcessorV1(backend, {
@@ -107,7 +138,7 @@ describe("Library service local actor transport", () => {
     expect(decoded(await processor.executeFrame(frame))).toMatchObject({
       errorCode: code,
       ok: false,
-      protocolVersion: 1,
+      protocolVersion: 2,
       requestId,
     });
     expect(backend.submitSignedIntentPage).not.toHaveBeenCalled();
@@ -117,7 +148,7 @@ describe("Library service local actor transport", () => {
     let now = 1_000;
     const submitSignedIntentPage = vi.fn(async () => ({ accepted: true }));
     const processor = createLibraryServiceLocalActorProcessorV1(
-      { submitSignedIntentPage },
+      { executeSignedQuery: vi.fn(), submitSignedIntentPage },
       { nowMs: () => now },
     );
     for (let index = 0; index < 120; index += 1) {
@@ -146,7 +177,7 @@ describe("Library service local actor transport", () => {
     let now = 1_000;
     const submitSignedIntentPage = vi.fn(() => new Promise(() => undefined));
     const processor = createLibraryServiceLocalActorProcessorV1(
-      { submitSignedIntentPage },
+      { executeSignedQuery: vi.fn(), submitSignedIntentPage },
       { nowMs: () => now },
     );
     for (let index = 0; index < 256; index += 1) {
@@ -172,7 +203,7 @@ describe("Library service local actor transport", () => {
     ];
     for (const submitSignedIntentPage of failures) {
       const processor = createLibraryServiceLocalActorProcessorV1(
-        { submitSignedIntentPage },
+        { executeSignedQuery: vi.fn(), submitSignedIntentPage },
         { nowMs: () => 1_000 },
       );
       const response = decoded(await processor.executeFrame(request()));

@@ -2,7 +2,7 @@
 
 export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = 4194304 as const;
-export const LIBRARY_CORE_LOCAL_ACTOR_PROTOCOL_VERSION = 1 as const;
+export const LIBRARY_CORE_LOCAL_ACTOR_PROTOCOL_VERSION = 2 as const;
 export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_REQUEST_FRAME_BYTES = 1048576 as const;
 export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_RESPONSE_FRAME_BYTES = 1048576 as const;
 export const LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_ACTIVE_CONNECTIONS = 32 as const;
@@ -15,6 +15,7 @@ export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = 2 as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "e38a724f67d5d240759f4b673527297acd6f3ec3d150ca60a93bbc28049751b7" as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
+  "agent_query_v1",
   "append_checkpoint_stage_v2",
   "begin_checkpoint_stage_v2",
   "commit_transaction_v1",
@@ -45,6 +46,7 @@ export const LIBRARY_CORE_NATIVE_COMMAND_ERROR_CODES = [
   "storage_unavailable",
 ] as const;
 export const LIBRARY_CORE_LOCAL_ACTOR_METHODS = [
+  "execute_signed_query_v1",
   "submit_signed_intent_page_v1",
 ] as const;
 export const LIBRARY_CORE_LOCAL_ACTOR_ERROR_CODES = [

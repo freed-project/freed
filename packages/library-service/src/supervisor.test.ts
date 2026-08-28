@@ -149,7 +149,7 @@ describe("LibraryServiceSupervisor", () => {
     expect(statuses.map(({ phase }) => phase)).toEqual(["starting", "running"]);
   });
 
-  it("maps the sole local actor method into the signed native intent command", async () => {
+  it("maps signed local actor methods into their closed native commands", async () => {
     const { child, clock, localActorIngress, supervisor } = createSupervisor();
     await supervisor.start();
 
@@ -158,7 +158,7 @@ describe("LibraryServiceSupervisor", () => {
         JSON.stringify({
           method: "submit_signed_intent_page_v1",
           payload: { page: { records: [] } },
-          protocolVersion: 1,
+          protocolVersion: 2,
           requestId: "2".repeat(64),
         }),
       ),
@@ -171,6 +171,29 @@ describe("LibraryServiceSupervisor", () => {
     expect(child.commandRequests.at(-1)).toMatchObject({
       commandId: "ingest_follower_intent_page_v1",
       payload: { page: { records: [] }, receivedAt: clock.nowMs() },
+    });
+
+    const canonicalAgentQueryJson = '{"signed":true}';
+    const queryResponse =
+      await localActorIngress.starts[0]!.processor.executeFrame(
+        Buffer.from(
+          JSON.stringify({
+            method: "execute_signed_query_v1",
+            payload: { canonicalAgentQueryJson },
+            protocolVersion: 2,
+            requestId: "3".repeat(64),
+          }),
+        ),
+      );
+    expect(
+      JSON.parse(Buffer.from(queryResponse).toString("utf8")),
+    ).toMatchObject({
+      ok: true,
+      result: { format: "freed_library_core_agent_query_result_v1" },
+    });
+    expect(child.commandRequests.at(-1)).toMatchObject({
+      commandId: "agent_query_v1",
+      payload: { canonicalAgentQueryJson },
     });
   });
 

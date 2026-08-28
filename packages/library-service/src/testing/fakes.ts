@@ -489,6 +489,20 @@ export class FakeSidecarProcess implements LibraryServiceSidecarProcess {
         }),
       );
     }
+    if (parsed.commandId === "agent_query_v1") {
+      return Buffer.from(
+        JSON.stringify({
+          protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+          requestId: parsed.requestId,
+          ok: true,
+          result: {
+            format: "freed_library_core_agent_query_result_v1",
+            requestId: "2".repeat(64),
+            result: { item: null },
+          },
+        }),
+      );
+    }
     if (parsed.commandId !== "inspect_storage_v1") {
       throw new LibraryServiceFailure("command_channel_failed");
     }
