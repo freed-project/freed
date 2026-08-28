@@ -38,6 +38,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 const SIGNATURE_ALGORITHM: &str = "ed25519";
 const OPERATION_TYPE: &str = "actor_enrolled";
@@ -333,6 +334,7 @@ fn load_or_create_actor_key_pair(
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {
     if let Some(bytes) = store.load(library_id)? {
+        let bytes = Zeroizing::new(bytes);
         return Ed25519KeyPair::from_pkcs8(&bytes)
             .map_err(|_| "Library Core actor signing key is corrupt".to_string());
     }
@@ -343,9 +345,11 @@ fn load_or_create_actor_key_pair(
     // Read back before signing. A store that accepted the write but kept
     // something else would enroll an actor whose key nobody can reproduce
     // after the next restart, stranding its whole operation chain.
-    let readback = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core actor signing key readback is missing".to_string())?;
+    let readback = Zeroizing::new(
+        store
+            .load(library_id)?
+            .ok_or_else(|| "Library Core actor signing key readback is missing".to_string())?,
+    );
     if readback.as_slice() != generated.as_ref() {
         return Err("Library Core actor signing key readback changed".to_string());
     }
@@ -383,9 +387,11 @@ fn load_actor_key_pair(
     store: &dyn ActorKeyStore,
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {
-    let bytes = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core actor signing key is missing".to_string())?;
+    let bytes = Zeroizing::new(
+        store
+            .load(library_id)?
+            .ok_or_else(|| "Library Core actor signing key is missing".to_string())?,
+    );
     Ed25519KeyPair::from_pkcs8(&bytes)
         .map_err(|_| "Library Core actor signing key is corrupt".to_string())
 }

@@ -79,14 +79,19 @@ and oversized records fail closed. Reads use one fixed-size zeroizing buffer,
 stop after the first byte beyond the limit, and recheck the same inode, owner,
 mode, link count, and exact size before readiness.
 
-`credentialsReady: true` proves only that the descriptor-bound sidecar could
-securely open and read the exact local mounted material, then zeroize its
-in-memory copy. The bytes remain opaque. The receipt does not prove that they
-match a generic secret format, a Drive credential format, Google Drive
-authentication, OAuth validity, cloud reachability, or writer admission. The
-sidecar never interprets a Drive token and makes no provider request in this
-slice. Generic or Drive-specific secret parsing remains unavailable until task
-11.5 defines and approves that contract.
+The mounted record is exact-shape JSON with format
+`freed_library_primary_credentials_v1`. It contains one lowercase hexadecimal
+Library ID, one base64 Ed25519 authority PKCS#8 key, and one base64 Ed25519
+Primary actor PKCS#8 key. Unknown fields, invalid base64, invalid keys, and a
+foreign Library identity fail closed. Decoded keys remain only in zeroizing
+native memory. They never enter Node, SQLite, command frames, responses, or
+logs.
+
+`credentialsReady: true` proves that exact native Primary signing custody. It
+does not prove Drive authentication, OAuth validity, cloud reachability, or
+writer promotion. The sidecar never interprets a Drive token and makes no
+provider request in this slice. Drive OAuth remains a separate credential and
+task 11.5 remains responsible for its platform-safe custody.
 
 The admission record on fd6 is exact-shape JSON. It binds the operator's local
 Primary admission to the start envelope, executable, both inherited root

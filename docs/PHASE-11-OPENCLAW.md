@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, and bounded native checkpoint and query command ingress have landed; installed Drive coordination, authority-key mutation admission, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, and native authority-key mutation admission have landed; installed Drive coordination, production v2 issuance and retirement, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -100,30 +100,32 @@ The current product already provides the protocol foundation:
   settlement before it starts one sidecar. Its local status and doctor
   commands never open SQLite or start social provider work.
 
-These pieces do not yet create a complete headless authority. Drive credentials
+These pieces do not yet create a complete installed headless authority. Drive credentials
 remain owned by the Freed Desktop renderer. The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
 private `library-sqlite` directory. It verifies the exact schema, application,
 contract, and protocol identity before it reports ready. It creates no
 historical checkpoint store or snapshot tree. Its closed command channel
-exposes bounded normalized checkpoint and query ingress, but no installed
-cloud coordinator or authority-key mutation admission yet. Its
-mounted credential proof establishes only that bounded private local material
-is exactly readable through a fixed zeroizing buffer. Growth beyond the bound,
-partial read failure, or post-read identity or metadata drift fails closed. The
-secret bytes remain opaque. The receipt does not claim a generic secret format, Drive
-credential validity, Drive authentication, or cloud readiness. Generic and
-Drive-specific secret parsing remain unavailable until task 11.5 defines and
-approves that contract.
+exposes bounded normalized checkpoint, query, Primary mutation context,
+operation signing, canonical commit, follower-intent admission, actor
+transport state, and result-export commands. The mounted credential is one
+closed version 1 record bound to one Library ID, one authority Ed25519 key, and
+one Primary actor Ed25519 key. It is read from an owner-only regular file under
+the held state-root descriptor. Decoded keys remain only in zeroizing native
+memory. Node, command frames, logs, SQLite, and cloud adapters never receive
+them. Growth beyond the bound, partial read failure, invalid keys, a foreign
+Library identity, or post-read identity or metadata drift fails closed. This
+record proves local Primary key custody only. It does not contain a Drive
+token, claim Drive authentication, or make the service cloud-ready.
 
 Freed Desktop retains the historical checkpoint store only as fenced migration
 input while the one-epoch normalized cutover is completed. The headless
 sidecar never opens that store. The sidecar command channel calls normalized
 checkpoint staging, pinned export, and registered query functions directly. It
 does not translate the old import, status, database-copy, or whole-item DTOs.
-Canonical mutation admission remains closed until the service can supply the
-established authority key through the separately governed task 11.5 secret
-contract. Installed headless Drive coordination remains unshipped.
+Canonical mutation admission now loads the established authority and Primary
+actor keys only inside the native sidecar. Installed headless Drive
+coordination and its separate OAuth custody remain unshipped.
 
 The macOS and Linux native authorities never reopen a verified root through a
 discovered pathname and never change the process working directory. A shared
@@ -213,20 +215,21 @@ unsigned big-endian length and a generated 4 MiB maximum. The independent data
 command protocol is version 1. It accepts only the generated command registry,
 one 64-character request ID, and exact payload fields. The registry contains
 normalized checkpoint begin, append, finalize, pinned export, registered
-query, and storage-inspection commands. Startup performs one storage inspection
+query, storage-inspection, Primary context, signing, canonical transaction,
+follower-intent admission, actor-state, and bounded result-export commands. Startup performs one storage inspection
 and verifies the exact generated application, contract, schema, wire protocol,
 and schema digest before the supervisor reports running. A malformed,
 truncated, oversized, unknown-version, or broken transport frame fails closed.
 
 One strict v1 admission record binds the exact start envelope, executable
 digest, data and state root identities, and credential descriptor digest. Only
-private bounded mounted credential material is
-accepted today. `os-vault`, Drive OAuth, cloud writer readiness, and every
-provider request fail closed or remain absent until task 11.5. A true ready
-receipt means only that the private physical record was securely and exactly
-readable through a fixed buffer that is zeroized on success and failure. Its opaque bytes are not
-parsed in this slice. It is not a secret-validation or cloud-authentication
-receipt.
+one private bounded `freed_library_primary_credentials_v1` mounted record is
+accepted today. It binds exact Library identity plus authority and Primary
+actor Ed25519 keys. Parsing, identity checks, and signing happen only in the
+native sidecar, with decoded keys held in zeroizing memory. `os-vault`, Drive
+OAuth, cloud writer readiness, and every provider request fail closed or
+remain absent until task 11.5. A true ready receipt proves local native signing
+custody, not cloud authentication or writer promotion.
 
 Planned commands:
 
@@ -248,8 +251,9 @@ never adopts an old local database as the cloud head.
 
 ### Secrets
 
-Authority keys, actor keys, Google refresh tokens, and future provider
-credentials are separate secret records. They never appear in SQLite,
+The headless Primary authority and writer actor keys share one atomic native
+signing bundle bound to one Library. Google refresh tokens and future provider
+credentials remain separate secret records. They never appear in SQLite,
 backups, cloud objects, command arguments, environment values, logs, or bug
 reports.
 
@@ -434,7 +438,7 @@ review before implementation.
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, and registered query commands; bind installed Drive coordination and authority-key mutation admission next |
+| 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |

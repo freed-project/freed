@@ -92,14 +92,29 @@ inherited request and response descriptors. Each frame starts with one
 four-byte unsigned big-endian payload length and cannot exceed 4 MiB. Requests
 bind a 64-character lowercase hexadecimal request ID, one generated command
 ID, and one exact command payload. The closed registry contains normalized
-checkpoint begin, append, finalize, pinned export, registered query, and
-storage-inspection commands. Startup must round-trip storage inspection and
+checkpoint begin, append, finalize, pinned export, registered query,
+storage-inspection, Primary mutation context, native operation signing,
+canonical transaction commit, follower-intent admission, actor transport
+state, and bounded result export commands. Startup must round-trip storage inspection and
 match the generated SQLite application ID, contract version, schema version,
 wire protocol version, and schema digest before the service reports running.
 Unknown commands, extra fields, changed versions, malformed UTF-8, truncated
 frames, oversized frames, response identity drift, and transport closure fail
 closed. This command protocol never carries raw SQL, SQLite files, shell JSON,
 whole-item JSON, Drive credentials, or authority private keys.
+
+The headless Primary mounted credential is one closed
+`freed_library_primary_credentials_v1` record. It binds one lowercase
+hexadecimal Library ID to one Ed25519 authority PKCS#8 key and one Ed25519
+Primary actor PKCS#8 key. The record must be a single owner-only regular file
+beneath the descriptor-bound private state root. Symbolic links, hard links,
+changed metadata, growth during read, unknown fields, malformed base64,
+foreign Library identities, and invalid keys fail before ready. The sidecar
+holds decoded key bytes only in zeroizing native memory. The Node supervisor,
+command frames, responses, logs, and SQLite never receive either private key.
+The mounted backend is the provider-neutral installed-service contract. A
+platform vault adapter may satisfy the same native custody interface later,
+without changing a mutation or wire record.
 
 ### 3.2 Browser core
 

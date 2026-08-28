@@ -6,6 +6,7 @@ use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 const MAX_IDENTITY_BYTES: usize = 64 * 1_024;
 
@@ -40,6 +41,7 @@ pub(crate) fn load_or_create_authority_key_pair(
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {
     if let Some(bytes) = store.load(library_id)? {
+        let bytes = Zeroizing::new(bytes);
         return Ed25519KeyPair::from_pkcs8(&bytes)
             .map_err(|_| "Library Core authority signing key is corrupt".to_string());
     }
@@ -47,9 +49,11 @@ pub(crate) fn load_or_create_authority_key_pair(
     let generated = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
         .map_err(|_| "Library Core could not generate an authority signing key".to_string())?;
     store.store(library_id, generated.as_ref())?;
-    let readback = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core authority signing key readback is missing".to_string())?;
+    let readback = Zeroizing::new(
+        store
+            .load(library_id)?
+            .ok_or_else(|| "Library Core authority signing key readback is missing".to_string())?,
+    );
     if readback.as_slice() != generated.as_ref() {
         return Err("Library Core authority signing key readback changed".to_string());
     }
@@ -61,9 +65,11 @@ pub fn load_established_authority_key_pair(
     store: &dyn AuthorityKeyStore,
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {
-    let bytes = store
-        .load(library_id)?
-        .ok_or_else(|| "Library Core has no established authority signing key".to_string())?;
+    let bytes = Zeroizing::new(
+        store
+            .load(library_id)?
+            .ok_or_else(|| "Library Core has no established authority signing key".to_string())?,
+    );
     Ed25519KeyPair::from_pkcs8(&bytes)
         .map_err(|_| "Library Core authority signing key is corrupt".to_string())
 }

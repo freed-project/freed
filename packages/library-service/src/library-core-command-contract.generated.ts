@@ -10,14 +10,20 @@ export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "910cbb6597f354de594d4ff6bc
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "append_checkpoint_stage_v2",
   "begin_checkpoint_stage_v2",
+  "commit_transaction_v1",
   "content_eviction_candidates_page_v1",
   "content_hydration_candidates_page_v1",
   "content_policy_set_v1",
   "content_state_get_v1",
   "describe_checkpoint_export_v2",
   "export_checkpoint_page_v2",
+  "export_follower_result_page_v1",
   "finalize_checkpoint_stage_v2",
+  "ingest_follower_intent_page_v1",
   "inspect_storage_v1",
+  "primary_follower_actor_transport_state_v1",
+  "primary_mutation_context_v1",
   "query_v1",
+  "sign_operation_v1",
 ] as const;
 export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];

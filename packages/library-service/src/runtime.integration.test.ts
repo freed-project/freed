@@ -360,10 +360,21 @@ async function createNativeSidecarFixture(input: {
       recordId,
     })}\n`,
   );
+  const primaryCredentialBytes = Buffer.from(
+    JSON.stringify({
+      actorKeyPkcs8Base64:
+        "MFECAQEwBQYDK2VwBCIEIGhZN6+p+sgxc+QXocH9OQjJ/kW0OLxTHCWx6GVWJh5fgSEAU6xH9YAKnyeUkzL10rdTMcRFhnYTx3JFlfnF+tf26Ug=",
+      authorityKeyPkcs8Base64:
+        "MFECAQEwBQYDK2VwBCIEICr3ByrhbzMvp/e8kNtImWyzMq16i50dfUrvVkDwdaDrgSEATjBB6287dnEVvSfctkIt5yZQeL2a36fkexyYj02pLso=",
+      format: "freed_library_primary_credentials_v1",
+      libraryId: "a".repeat(64),
+      schemaVersion: 1,
+    }),
+  );
   await Promise.all([
     writeFile(credential, credentialBytes, { mode: 0o600 }),
     writeFile(status, "", { mode: 0o600 }),
-    writeFile(path.join(mountedRoot, recordId), "opaque-local-material", {
+    writeFile(path.join(mountedRoot, recordId), primaryCredentialBytes, {
       mode: 0o600,
     }),
   ]);
