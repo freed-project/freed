@@ -14,18 +14,30 @@ const mocks = vi.hoisted(() => ({
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
-  readSelectedCheckpoint: vi.fn(async () => ({
-    authorityEpoch: "02".repeat(32),
-    checkpointDigest: "67".repeat(32),
-    checkpointGeneration: 4,
-    controlRevision: "68".repeat(32),
-    installedAt: Date.now(),
-    libraryId: "01".repeat(32),
-    manifestContentDigest: "67".repeat(32),
-    manifestObjectKey: "checkpoint-manifest-object-key",
-    manifestTransportObjectId: "drive-object-12345678",
-    sourceRevision: 7,
-    writerActorId: "69".repeat(32),
+  readCloudReceipt: vi.fn(async () => ({
+    checkpoint: {
+      authorityEpoch: "02".repeat(32),
+      checkpointDigest: "67".repeat(32),
+      checkpointGeneration: 4,
+      controlRevision: "68".repeat(32),
+      installedAt: Date.now(),
+      libraryId: "01".repeat(32),
+      manifestContentDigest: "67".repeat(32),
+      manifestObjectKey: "checkpoint-manifest-object-key",
+      manifestTransportObjectId: "drive-object-12345678",
+      sourceRevision: 7,
+      writerActorId: "69".repeat(32),
+    },
+    follower: {
+      actorId: "70".repeat(32),
+      libraryId: "01".repeat(32),
+      nextIntentActorCounter: 4,
+      nextResultSequence: 3,
+      previousIntentSegmentDigest: "71".repeat(32),
+      previousResultSegmentDigest: "72".repeat(32),
+      schemaVersion: 2 as const,
+      storageEpochId: "02".repeat(32),
+    },
   })),
   readFacetSummary: vi.fn(async () => ({
     archivedCount: 0,
@@ -62,7 +74,7 @@ vi.mock("../lib/sync", () => ({
 }));
 
 vi.mock("../lib/library-core-runtime", () => ({
-  readPwaLibraryCoreSelectedCheckpointReceipt: mocks.readSelectedCheckpoint,
+  readPwaLibraryCoreCloudReceiptV2: mocks.readCloudReceipt,
 }));
 
 function createPlatform(): PlatformConfig {
@@ -198,6 +210,16 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     expect(diagnostics?.textContent).toContain("7");
     expect(diagnostics?.textContent).toContain("Checkpoint digest");
     expect(diagnostics?.textContent).toContain("Control revision");
+    expect(diagnostics?.textContent).toContain("Follower actor");
+    expect(diagnostics?.textContent).toContain("...70707070");
+    expect(diagnostics?.textContent).toContain("Next intent");
+    expect(diagnostics?.textContent).toContain("4");
+    expect(diagnostics?.textContent).toContain("Intent head");
+    expect(diagnostics?.textContent).toContain("...71717171");
+    expect(diagnostics?.textContent).toContain("Next result");
+    expect(diagnostics?.textContent).toContain("3");
+    expect(diagnostics?.textContent).toContain("Result head");
+    expect(diagnostics?.textContent).toContain("...72727272");
     expect(diagnostics?.textContent).toContain("...67676767");
     expect(diagnostics?.textContent).toContain("...12345678");
     const manifestDigest = Array.from(
@@ -216,9 +238,9 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       await Promise.resolve();
     });
     expect(mocks.clipboardWrite).toHaveBeenCalledWith(
-      JSON.stringify(await mocks.readSelectedCheckpoint(), null, 2),
+      JSON.stringify(await mocks.readCloudReceipt(), null, 2),
     );
-    expect(copyReceipt?.textContent).toContain("PWA receipt copied");
+    expect(copyReceipt?.textContent).toContain("PWA sync receipt copied");
 
     await act(async () => {
       syncNow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

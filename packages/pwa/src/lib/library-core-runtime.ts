@@ -42,6 +42,7 @@ import {
   parseLibraryCoreControlPointerV1,
   sha256LowerHex,
   type FeedItemUserStateAssignmentFieldV1,
+  type LibraryCoreFollowerTransportContextV2,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
@@ -69,6 +70,7 @@ import {
   finalizePwaScopeActionStage,
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
+  readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
@@ -108,6 +110,39 @@ const NORMALIZED_READER_RUNTIME = Object.freeze({
 
 export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null> {
   return (await readPwaNormalizedCheckpointReceipt()).receipt;
+}
+
+export interface PwaLibraryCoreCloudReceiptV2 {
+  readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
+  readonly follower: LibraryCoreFollowerTransportContextV2 | null;
+}
+
+/** Read one bounded local view of checkpoint and follower cloud progress. */
+export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCoreCloudReceiptV2> {
+  const checkpoint = await readPwaLibraryCoreSelectedCheckpointReceipt();
+  if (!checkpoint) {
+    return Object.freeze({ checkpoint: null, follower: null });
+  }
+  let follower: LibraryCoreFollowerTransportContextV2 | null;
+  try {
+    follower = await readPwaFollowerTransportContext();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      error.message !== "PWA follower transport context is unavailable"
+    ) {
+      throw error;
+    }
+    follower = null;
+  }
+  if (
+    follower !== null &&
+    (follower.libraryId !== checkpoint.libraryId ||
+      follower.storageEpochId !== checkpoint.authorityEpoch)
+  ) {
+    throw new Error("PWA follower cloud receipt crosses Library authority");
+  }
+  return Object.freeze({ checkpoint, follower });
 }
 
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   commitAccountUpserts: vi.fn(),
   commitAccountRemove: vi.fn(),
   readNormalizedCheckpointReceipt: vi.fn(),
+  readFollowerTransportContext: vi.fn(),
   createNormalizedCheckpointWriter: vi.fn(),
   createCloudAdapter: vi.fn(),
   createFollowerTransport: vi.fn(),
@@ -83,6 +84,7 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   closePwaScopeActionStage: mocks.closeScopeAction,
   pagePwaScopeActionStage: mocks.pageScopeAction,
   queryPwaNormalizedLibrary: mocks.queryNormalizedLibrary,
+  readPwaFollowerTransportContext: mocks.readFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
 }));
@@ -108,6 +110,7 @@ import {
   initializePwaLibraryCoreState,
   openPwaLibraryCoreFriendsFeedReader,
   readPwaLibraryCoreItemDetail,
+  readPwaLibraryCoreCloudReceiptV2,
   readPwaLibraryCorePersonTimeline,
   readPwaLibraryCoreSelectedCheckpointReceipt,
   removeAllPwaLibraryCoreRssFeeds,
@@ -254,6 +257,7 @@ describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.readNormalizedCheckpointReceipt.mockReset();
+    mocks.readFollowerTransportContext.mockReset();
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({ receipt: null });
     mocks.createNormalizedCheckpointWriter.mockReset();
     mocks.createNormalizedCheckpointWriter.mockReturnValue({});
@@ -297,6 +301,45 @@ describe("PWA Library Core bounded scanner", () => {
     });
     await expect(readPwaLibraryCoreSelectedCheckpointReceipt()).resolves.toBe(
       SELECTED_RECEIPT,
+    );
+  });
+
+  it("binds checkpoint and follower progress to one local authority", async () => {
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: SELECTED_RECEIPT,
+    });
+    mocks.readFollowerTransportContext.mockResolvedValue({
+      actorId: "89".repeat(32),
+      libraryId: SELECTED_RECEIPT.libraryId,
+      nextIntentActorCounter: 4,
+      nextResultSequence: 3,
+      previousIntentSegmentDigest: "ab".repeat(32),
+      previousResultSegmentDigest: "cd".repeat(32),
+      schemaVersion: 2,
+      storageEpochId: SELECTED_RECEIPT.authorityEpoch,
+    });
+
+    await expect(readPwaLibraryCoreCloudReceiptV2()).resolves.toEqual({
+      checkpoint: SELECTED_RECEIPT,
+      follower: expect.objectContaining({
+        actorId: "89".repeat(32),
+        nextIntentActorCounter: 4,
+        nextResultSequence: 3,
+      }),
+    });
+
+    mocks.readFollowerTransportContext.mockResolvedValueOnce({
+      actorId: "89".repeat(32),
+      libraryId: SELECTED_RECEIPT.libraryId,
+      nextIntentActorCounter: 1,
+      nextResultSequence: 1,
+      previousIntentSegmentDigest: null,
+      previousResultSegmentDigest: null,
+      schemaVersion: 2,
+      storageEpochId: "ff".repeat(32),
+    });
+    await expect(readPwaLibraryCoreCloudReceiptV2()).rejects.toThrow(
+      "crosses Library authority",
     );
   });
 

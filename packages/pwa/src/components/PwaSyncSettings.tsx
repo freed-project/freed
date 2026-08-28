@@ -11,7 +11,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
-import type { LibraryCoreSelectedNormalizedCheckpointReceiptV2 } from "@freed/shared/library-core";
 import { usePlatform } from "@freed/ui/context";
 import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
@@ -30,7 +29,10 @@ import {
 } from "../lib/sync";
 import { SyncConnectContent } from "./SyncConnectDialog";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
-import { readPwaLibraryCoreSelectedCheckpointReceipt } from "../lib/library-core-runtime";
+import {
+  readPwaLibraryCoreCloudReceiptV2,
+  type PwaLibraryCoreCloudReceiptV2,
+} from "../lib/library-core-runtime";
 
 type Provider = "gdrive" | "dropbox" | "local";
 
@@ -209,8 +211,8 @@ export function PwaSyncSettings() {
   const [configuredCloudProvider, setConfiguredCloudProvider] = useState(() =>
     getCloudProvider(),
   );
-  const [selectedCheckpoint, setSelectedCheckpoint] =
-    useState<LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null>(null);
+  const [cloudReceipt, setCloudReceipt] =
+    useState<PwaLibraryCoreCloudReceiptV2 | null>(null);
   const [selectedCheckpointError, setSelectedCheckpointError] = useState<
     string | null
   >(null);
@@ -239,17 +241,17 @@ export function PwaSyncSettings() {
   const isManualSyncing = manualSyncingProvider !== null;
   const uploadExplanation = describeUploadGap(cloudProviderState ?? null);
   const diagnosticError = cloudProviderState?.error ?? manualSyncError;
+  const selectedCheckpoint = cloudReceipt?.checkpoint ?? null;
+  const followerReceipt = cloudReceipt?.follower ?? null;
 
   const refreshSelectedCheckpoint = useCallback(async () => {
     if (activeCloudProvider !== "gdrive") {
-      setSelectedCheckpoint(null);
+      setCloudReceipt(null);
       setSelectedCheckpointError(null);
       return;
     }
     try {
-      setSelectedCheckpoint(
-        await readPwaLibraryCoreSelectedCheckpointReceipt(),
-      );
+      setCloudReceipt(await readPwaLibraryCoreCloudReceiptV2());
       setSelectedCheckpointError(null);
     } catch (error) {
       setSelectedCheckpointError(
@@ -261,9 +263,9 @@ export function PwaSyncSettings() {
   }, [activeCloudProvider]);
 
   const copySelectedCheckpoint = useCallback(async () => {
-    if (!selectedCheckpoint) return;
+    if (!cloudReceipt?.checkpoint) return;
     try {
-      await copyExactJsonToClipboard(selectedCheckpoint);
+      await copyExactJsonToClipboard(cloudReceipt);
       setSelectedCheckpointCopied(true);
       setSelectedCheckpointError(null);
     } catch (error) {
@@ -274,7 +276,7 @@ export function PwaSyncSettings() {
           : "SQLite checkpoint receipt could not be copied.",
       );
     }
-  }, [selectedCheckpoint]);
+  }, [cloudReceipt]);
 
   useEffect(() => {
     queueMicrotask(() => void refreshSelectedCheckpoint());
@@ -571,6 +573,62 @@ export function PwaSyncSettings() {
             }
           />
           <SyncDiagnosticCell
+            label="Follower actor"
+            title={followerReceipt?.actorId}
+            value={
+              followerReceipt
+                ? formatIdentityTail(followerReceipt.actorId)
+                : "Enrollment pending"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Storage epoch"
+            title={selectedCheckpoint?.authorityEpoch}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.authorityEpoch)
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Next intent"
+            value={
+              followerReceipt?.nextIntentActorCounter.toLocaleString() ?? "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Intent head"
+            title={followerReceipt?.previousIntentSegmentDigest ?? undefined}
+            value={
+              followerReceipt?.previousIntentSegmentDigest
+                ? formatIdentityTail(
+                    followerReceipt.previousIntentSegmentDigest,
+                  )
+                : followerReceipt
+                  ? "None"
+                  : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Next result"
+            value={
+              followerReceipt?.nextResultSequence.toLocaleString() ?? "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Result head"
+            title={followerReceipt?.previousResultSegmentDigest ?? undefined}
+            value={
+              followerReceipt?.previousResultSegmentDigest
+                ? formatIdentityTail(
+                    followerReceipt.previousResultSegmentDigest,
+                  )
+                : followerReceipt
+                  ? "None"
+                  : "-"
+            }
+          />
+          <SyncDiagnosticCell
             label="Manifest digest"
             title={selectedCheckpoint?.manifestContentDigest}
             value={
@@ -617,8 +675,8 @@ export function PwaSyncSettings() {
           className="btn-secondary mt-3 w-full rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
         >
           {selectedCheckpointCopied
-            ? "PWA receipt copied"
-            : "Copy exact PWA receipt"}
+            ? "PWA sync receipt copied"
+            : "Copy exact PWA sync receipt"}
         </button>
 
         {cloudProviderState?.events && cloudProviderState.events.length > 0 && (
