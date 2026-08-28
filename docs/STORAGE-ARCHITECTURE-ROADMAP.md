@@ -42,8 +42,11 @@ overlays, anchors, results, or status to any host. Canonical operation
 verification and its closed protocol limits now live in normalized crate-level
 modules consumed directly by Primary mutation and follower admission. The
 historical journal retains only private materialization and test fixtures.
-Enrollment verification is the next extraction seam before those remaining
-private historical modules can be deleted.
+Canonical enrollment verification now lives beside operation verification and
+is consumed directly by actor enrollment, follower enrollment, and the private
+commit path. Shared scalar admission predicates are normalized protocol
+primitives too. The remaining private historical journal and materializer are
+now the next deletion seam.
 
 Primary follower transport now uses normalized SQLite and protocol version 2
 end to end. Enrollment countersigning, actor-frontier reads, bounded intent
@@ -52,9 +55,8 @@ coordinator validates the exact committed intent and result segment prefixes,
 recovers response-lost result publication from immutable records, and leaves
 Google Drive request behavior unchanged. The Desktop follower journal module,
 its five native commands, renderer DTOs, openers, and mocks are deleted. The
-next runtime-deletion proof is extraction of normalized enrollment verification,
-followed by removal of the remaining historical journal implementation and its
-Automerge-era materialization vocabulary.
+next runtime-deletion proof is removal of the remaining historical journal
+implementation and its Automerge-era materialization vocabulary.
 
 The final normalized actor boundary accepts authority-signed version 2
 capabilities only. The executable contract generates Primary writer and

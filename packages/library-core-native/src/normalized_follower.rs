@@ -10,7 +10,7 @@ use crate::{
     },
     library_core_ed25519::verify_library_core_ed25519,
     library_core_hash::lower_hex,
-    library_core_journal::verify_actor_enrollment_certificate,
+    normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate,
     normalized_mutation::{
         actor_state_at, NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1,
     },

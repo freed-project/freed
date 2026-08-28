@@ -420,6 +420,16 @@ Primary mutation paths call that verifier directly. Historical atomic
 materialization fixtures remain inside the private journal test subtree only
 until the historical materializer is deleted.
 
+Canonical enrollment verification is owned by the normalized protocol layer
+as well. It parses the original canonical certificate bytes, validates the
+accepted authority and observed frontier, derives actor and capability
+identities, verifies actor possession and authority signatures, and returns one
+sealed normalized enrollment. Actor enrollment, follower enrollment, and the
+private historical commit path call this verifier directly. Shared hexadecimal
+and operation-ID predicates live with the normalized protocol limits instead
+of under the historical journal namespace. Historical enrollment materializer
+tests remain private test fixtures only.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

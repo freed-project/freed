@@ -21,8 +21,9 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 
 #[path = "library_core_journal_authority.rs"]
 mod authority;
-#[path = "library_core_journal_enrollment_verifier.rs"]
-pub(crate) mod enrollment_verifier;
+#[cfg(test)]
+#[path = "library_core_journal_enrollment_tests.rs"]
+mod enrollment_tests;
 #[path = "library_core_journal_follower.rs"]
 pub(crate) mod follower;
 #[cfg(test)]
@@ -32,13 +33,14 @@ pub(crate) mod operation_tests;
 use crate::library_core_actor_capability as actor_capability;
 pub(crate) use crate::library_core_error::{LibraryCoreError, LibraryCoreResult};
 pub(crate) use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
+use crate::normalized_enrollment_verifier as enrollment_verifier;
 pub(crate) use crate::normalized_operation::{
     ActorState, VerifiedActorEnrollment, VerifiedOperation, VerifiedOperationTransaction,
 };
 use crate::normalized_operation_verifier as operation_verifier;
 use crate::normalized_protocol_limits::{
-    MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES, MAX_OPERATION_ID_BYTES, MAX_SAFE_INTEGER,
-    MAX_TRANSACTION_ENVELOPE_BYTES, MAX_TRANSACTION_MEMBERS,
+    is_lower_hex, is_operation_id, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
+    MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES, MAX_TRANSACTION_MEMBERS,
 };
 
 use follower::{FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment};
@@ -184,13 +186,6 @@ pub struct JournalRuntimeStatus {
     pub unacknowledged_outbox: i64,
 }
 
-pub(crate) fn verify_actor_enrollment_certificate(
-    canonical_certificate: &[u8],
-    authority: &NormalizedAuthorityStateV2,
-) -> LibraryCoreResult<VerifiedActorEnrollment> {
-    enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
-}
-
 #[derive(Debug)]
 struct StoredActorRow {
     library_id: String,
@@ -331,21 +326,6 @@ struct SchemaCatalogEntry {
 
 pub struct LibraryCoreJournal {
     connection: Connection,
-}
-
-fn is_lower_hex(value: &str, bytes: usize) -> bool {
-    value.len() == bytes * 2
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn is_operation_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_OPERATION_ID_BYTES
-        && value.bytes().enumerate().all(|(index, byte)| {
-            byte.is_ascii_alphanumeric() || (index > 0 && matches!(byte, b'.' | b'_' | b':' | b'-'))
-        })
 }
 
 fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> LibraryCoreResult<()> {

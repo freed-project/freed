@@ -32,6 +32,7 @@ mod library_core_sidecar;
 mod library_core_store;
 mod normalized_authority;
 mod normalized_checkpoint;
+mod normalized_enrollment_verifier;
 mod normalized_follower;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]

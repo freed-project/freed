@@ -527,7 +527,7 @@ pub(crate) mod tests {
             MAX_TRANSACTION_ENVELOPE_BYTES,
         )
         .expect("canonical v2 certificate");
-        let enrollment = crate::library_core_journal::enrollment_verifier::verify_actor_enrollment(
+        let enrollment = crate::normalized_enrollment_verifier::verify_actor_enrollment(
             &certificate,
             &authority,
         )
@@ -578,7 +578,7 @@ pub(crate) mod tests {
             MAX_TRANSACTION_ENVELOPE_BYTES,
         )
         .expect("canonical v1 certificate");
-        let enrollment = crate::library_core_journal::enrollment_verifier::verify_actor_enrollment(
+        let enrollment = crate::normalized_enrollment_verifier::verify_actor_enrollment(
             &certificate,
             &authority,
         )

@@ -31,8 +31,9 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::{verify_actor_enrollment_certificate, LibraryCoreJournal};
+use crate::library_core_journal::LibraryCoreJournal;
 use crate::normalized_authority::NormalizedAuthorityStateV2;
+use crate::normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate;
 use crate::normalized_operation::{ActorState, VerifiedActorEnrollment};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -184,7 +185,7 @@ fn actor_identity(
 
 /// Build the canonical certificate the journal's verifier expects.
 ///
-/// The shape is fixed by `library_core_journal_enrollment_verifier`, which
+/// The shape is fixed by `normalized_enrollment_verifier`, which
 /// rejects any object with an unexpected or missing key, so this is written to
 /// match it exactly rather than to be convenient.
 fn build_certificate_body(
