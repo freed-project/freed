@@ -2,13 +2,9 @@
 //!
 //! Native desktop app that bundles capture and the reader UI.
 
-mod library_core_actor_enrollment;
-mod library_core_authority_genesis;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_canonical;
+mod library_core_actor_key_store;
+mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_ed25519;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_platform_key;
 mod youtube;

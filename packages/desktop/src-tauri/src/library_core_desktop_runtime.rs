@@ -12,10 +12,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-use super::library_core_actor_enrollment::{
+use super::library_core_actor_key_store::{
     sign_library_core_operation_digest, PlatformActorKeyStore,
 };
-use super::library_core_authority_genesis::{
+use super::library_core_authority_key_store::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
 #[cfg(not(unix))]

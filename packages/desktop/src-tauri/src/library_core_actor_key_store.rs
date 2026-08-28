@@ -1,4 +1,4 @@
-//! Freed Desktop key-store adapter for native Library Core actor enrollment.
+//! Freed Desktop operating-system key-store adapter for Library Core actors.
 
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
 use freed_library_core::ActorKeyStore;
