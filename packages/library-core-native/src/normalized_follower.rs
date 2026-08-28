@@ -2094,7 +2094,7 @@ pub fn normalized_follower_runtime_status_v2(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_journal::operation_tests::tests::signed_envelopes;
+    use crate::normalized_operation_test_fixtures::tests::signed_envelopes;
     use crate::{
         describe_normalized_checkpoint_export_v2, install_normalized_schema_v1,
         prepare_fresh_normalized_desktop_library_v1,

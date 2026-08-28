@@ -40,12 +40,15 @@ mod normalized_migration;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
 mod normalized_operation;
+#[cfg(test)]
+mod normalized_operation_test_fixtures;
 mod normalized_operation_verifier;
 mod normalized_protocol_limits;
 mod normalized_query;
 #[cfg(unix)]
 mod normalized_snapshot;
 mod normalized_sqlite;
+mod normalized_transaction_validator;
 mod normalized_writer_certificate;
 mod normalized_writer_reassignment;
 mod product_projection;

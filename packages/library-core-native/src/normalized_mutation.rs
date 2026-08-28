@@ -4,7 +4,6 @@ use crate::library_core_canonical::{
 };
 use crate::library_core_error::{LibraryCoreError, LibraryCoreResult};
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::validate_transaction;
 use crate::normalized_operation::{ActorState, VerifiedOperationTransaction};
 #[cfg(test)]
 use crate::normalized_operation_verifier::verify_operation_transaction;
@@ -13,6 +12,7 @@ use crate::normalized_operation_verifier::{
     OperationAdmissionVerdict, OperationIdentity,
 };
 use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::normalized_transaction_validator::validate_transaction;
 use crate::sqlite_contract_generated::{
     SqliteMutationProgram, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
     FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS, OPERATION_TRANSACTION_MAXIMUM_BYTES,
@@ -2719,7 +2719,7 @@ pub fn accept_normalized_operation_transaction_v1(
 mod tests {
     use super::*;
     use crate::library_core_actor_capability::primary_writer_operation_types;
-    use crate::library_core_journal::operation_tests::tests::{
+    use crate::normalized_operation_test_fixtures::tests::{
         enrollment, signed_envelopes, signed_envelopes_from_tip,
         signed_envelopes_from_tip_with_payload,
     };
