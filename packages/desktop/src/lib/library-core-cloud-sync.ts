@@ -1430,10 +1430,16 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   >({
     authority: {
       assertPrimary: requirePrimaryLibraryCoreDesktopRole,
-      isPrimary: () => readLibraryCoreDesktopRole() === "primary",
     },
     durableState: {
       async read() {
+        if (readLibraryCoreDesktopRole() !== "primary") {
+          return {
+            active: false,
+            localRevision: 0,
+            lastPublishedRevision: null,
+          };
+        }
         const identity = await describeNormalizedLibraryCloudIdentity();
         const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
         if (!isCloudState(state)) return null;
@@ -1444,10 +1450,6 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
         };
       },
     },
-    credentials: {
-      initialAccessToken: input.accessToken,
-      resolveAccessToken: input.resolveAccessToken,
-    },
     clock: { nowMs: Date.now },
     scheduler: {
       schedule(callback, delayMs) {
@@ -1455,7 +1457,6 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
       },
       cancel: clearTimeout,
     },
-    fetch: { googleFetch: input.googleFetch },
     diagnostics: {
       record(event) {
         if (
@@ -1469,10 +1470,13 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
       },
     },
     publication: {
-      publish({ accessToken, googleFetch, signal }) {
+      async publish({ reason, signal }) {
         return publishCurrentSqliteLibraryToGoogleDrive({
-          accessToken,
-          googleFetch,
+          accessToken:
+            reason === "initial"
+              ? input.accessToken
+              : await input.resolveAccessToken(),
+          googleFetch: input.googleFetch,
           signal,
         });
       },

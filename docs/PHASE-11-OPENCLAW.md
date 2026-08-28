@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, and exact local writer reassignment have landed; installed Drive coordination, recurring actor processing, production v2 retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation admission, exact local writer reassignment, and provider-neutral headless runtime have landed; installed Drive coordination, production v2 retirement, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -75,9 +75,10 @@ The current product already provides the protocol foundation:
   receipt.
 - One operating system backed Library data-root lease prevents two local Freed
   processes from opening the same authority root.
-- `@freed/sync` owns a provider-neutral Primary coordinator with injected
-  authority, durable state, credential, clock, scheduler, fetch, publication,
-  and diagnostic ports.
+- `@freed/sync` owns a transport-neutral Primary coordinator with injected
+  authority, durable revision state, clock, scheduler, publication, and
+  diagnostic ports. It receives no credential, fetch function, or provider
+  adapter.
 - Freed Desktop is the production consumer of that shared coordinator.
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
@@ -99,9 +100,17 @@ The current product already provides the protocol foundation:
   bound authority inputs, a private lifetime watchdog, and whole process group
   settlement before it starts one sidecar. Its local status and doctor
   commands never open SQLite or start social provider work.
+- `@freed/library-service` binds the shared recurring scheduler to the native
+  actor identity and checkpoint descriptor commands. It verifies the exact
+  Library and writer before the first publication, rereads source revision on
+  each scheduled pass, and stops when normalized SQLite reports another
+  writer. Its compiled artifacts bundle the shared coordinator and need no
+  unpublished workspace package at installation time.
 
-These pieces do not yet create a complete installed headless authority. Drive credentials
-remain owned by the Freed Desktop renderer. The native sidecar acquires the
+These pieces do not yet create a complete installed headless authority. The
+service CLI has no Drive OAuth store or Drive publication binding. Freed
+Desktop retains its existing host-owned Drive credential and adapter. The
+native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
 private `library-sqlite` directory. It verifies the exact schema, application,
 contract, and protocol identity before it reports ready. It creates no
@@ -125,8 +134,10 @@ sidecar never opens that store. The sidecar command channel calls normalized
 checkpoint staging, pinned export, and registered query functions directly. It
 does not translate the old import, status, database-copy, or whole-item DTOs.
 Canonical mutation admission now loads the established authority and Primary
-actor keys only inside the native sidecar. Installed headless Drive
-coordination and its separate OAuth custody remain unshipped.
+actor keys only inside the native sidecar. The provider-neutral recurring
+headless runtime is present, but `serve` does not start it until installed
+Drive OAuth custody and immutable transport are bound. No service-side
+provider request occurs today.
 
 The macOS and Linux native authorities never reopen a verified root through a
 discovered pathname and never change the process working directory. A shared
@@ -190,9 +201,9 @@ handle. Freed Desktop exposes the native contract through a thin adapter.
 
 ### Shared Primary runtime
 
-`@freed/sync` remains the only Primary cloud coordinator. Freed Desktop and the
+`@freed/sync` owns the one recurring Primary scheduler. Freed Desktop and the
 headless service inject different host ports into the same state machine. The
-coordinator is responsible for:
+scheduler is responsible for:
 
 - immediate checkpoint publication
 - local revision polling
@@ -201,6 +212,10 @@ coordinator is responsible for:
 - checkpoint refresh and exact receipt persistence
 - writer ownership loss and role loss fencing
 - bounded, secret-free diagnostics
+
+The scheduler receives no access token, fetch implementation, endpoint, or
+provider adapter. Each host owns those capabilities inside its publication
+callback.
 
 ### Headless service
 
@@ -444,7 +459,7 @@ review before implementation.
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next |
-| 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command; bind the installed 60-second Primary actor processing loop next |
+| 11.7 | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |

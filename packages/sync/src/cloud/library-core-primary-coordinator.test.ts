@@ -58,41 +58,31 @@ function activeState(
 }
 
 describe("Library Core Primary coordinator", () => {
-  it("publishes immediately, then uses refreshed credentials for a changed local revision", async () => {
+  it("publishes immediately, then reports a changed local revision to the host", async () => {
     const scheduler = new FakeScheduler();
     const events: LibraryCorePrimaryCoordinatorDiagnosticV1[] = [];
-    const googleFetch = vi.fn<typeof fetch>();
     let nowMs = 1_000;
     let durableState = activeState(7, 7);
-    const resolveAccessToken = vi.fn(async () => "refreshed-token");
     const publication = vi.fn(
       async ({
-        accessToken,
-        googleFetch: injectedFetch,
+        reason,
         signal,
       }: {
-        readonly accessToken: string;
-        readonly googleFetch?: typeof fetch;
+        readonly reason: "initial" | "local_revision" | "inbound_refresh";
         readonly signal: AbortSignal;
       }): Promise<TestResult> => {
-        expect(injectedFetch).toBe(googleFetch);
         expect(signal.aborted).toBe(false);
         return {
-          status: accessToken === "initial-token" ? "published" : "current",
+          status: reason === "initial" ? "published" : "current",
           revision: durableState.localRevision,
         };
       },
     );
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary: vi.fn(), isPrimary: () => true },
+      authority: { assertPrimary: vi.fn() },
       durableState: { read: async () => durableState },
-      credentials: {
-        initialAccessToken: "initial-token",
-        resolveAccessToken,
-      },
       clock: { nowMs: () => nowMs },
       scheduler,
-      fetch: { googleFetch },
       diagnostics: { record: (event) => events.push(event) },
       publication: { publish: publication },
     });
@@ -106,15 +96,13 @@ describe("Library Core Primary coordinator", () => {
     nowMs += 15_000;
     await scheduler.runNext();
     expect(publication).toHaveBeenCalledTimes(1);
-    expect(resolveAccessToken).not.toHaveBeenCalled();
 
     durableState = activeState(8, 7);
     nowMs += 15_000;
     await scheduler.runNext();
 
-    expect(resolveAccessToken).toHaveBeenCalledTimes(1);
     expect(publication).toHaveBeenCalledTimes(2);
-    expect(publication.mock.calls[1]?.[0].accessToken).toBe("refreshed-token");
+    expect(publication.mock.calls[1]?.[0].reason).toBe("local_revision");
     expect(events).toContainEqual(
       expect.objectContaining({
         kind: "publication_started",
@@ -132,15 +120,10 @@ describe("Library Core Primary coordinator", () => {
     }));
     const events: LibraryCorePrimaryCoordinatorDiagnosticV1[] = [];
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary() {}, isPrimary: () => true },
+      authority: { assertPrimary() {} },
       durableState: { read: async () => activeState(12, 12) },
-      credentials: {
-        initialAccessToken: "initial",
-        resolveAccessToken: async () => "refreshed",
-      },
       clock: { nowMs: () => nowMs },
       scheduler,
-      fetch: {},
       diagnostics: { record: (event) => events.push(event) },
       publication: { publish: publication },
     });
@@ -169,15 +152,10 @@ describe("Library Core Primary coordinator", () => {
     const events: LibraryCorePrimaryCoordinatorDiagnosticV1[] = [];
     const publicationSignals: AbortSignal[] = [];
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary() {}, isPrimary: () => true },
+      authority: { assertPrimary() {} },
       durableState: { read: async () => activeState(2, 1) },
-      credentials: {
-        initialAccessToken: "initial",
-        resolveAccessToken: async () => "refreshed",
-      },
       clock: { nowMs: () => 10 },
       scheduler,
-      fetch: {},
       diagnostics: { record: (event) => events.push(event) },
       publication: {
         async publish({ signal }): Promise<TestResult> {
@@ -200,24 +178,23 @@ describe("Library Core Primary coordinator", () => {
     });
   });
 
-  it("stops before reading durable state when the host is no longer Primary", async () => {
+  it("stops when durable state reports that the host is no longer Primary", async () => {
     const scheduler = new FakeScheduler();
     let primary = true;
-    const read = vi.fn(async () => activeState(4, 4));
+    const read = vi.fn(async () =>
+      primary
+        ? activeState(4, 4)
+        : { active: false, localRevision: 0, lastPublishedRevision: null },
+    );
     const publication = vi.fn(async (): Promise<TestResult> => ({
       status: "current",
       revision: 4,
     }));
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary() {}, isPrimary: () => primary },
+      authority: { assertPrimary() {} },
       durableState: { read },
-      credentials: {
-        initialAccessToken: "initial",
-        resolveAccessToken: async () => "refreshed",
-      },
       clock: { nowMs: () => 10 },
       scheduler,
-      fetch: {},
       diagnostics: { record() {} },
       publication: { publish: publication },
     });
@@ -226,7 +203,7 @@ describe("Library Core Primary coordinator", () => {
     primary = false;
     await scheduler.runNext();
 
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(1);
     expect(publication).toHaveBeenCalledTimes(1);
     expect(scheduler.tasks.size).toBe(0);
   });
@@ -242,15 +219,10 @@ describe("Library Core Primary coordinator", () => {
       return { status: "published", revision: call };
     });
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary() {}, isPrimary: () => true },
+      authority: { assertPrimary() {} },
       durableState: { read: async () => activeState(2, 1) },
-      credentials: {
-        initialAccessToken: "initial",
-        resolveAccessToken: async () => "refreshed",
-      },
       clock: { nowMs: () => 10 },
       scheduler,
-      fetch: {},
       diagnostics: { record: (event) => events.push(event) },
       publication: { publish: publication },
     });
@@ -281,15 +253,10 @@ describe("Library Core Primary coordinator", () => {
     });
     const publicationSignals: AbortSignal[] = [];
     const coordinator = createLibraryCorePrimaryCoordinatorV1({
-      authority: { assertPrimary() {}, isPrimary: () => true },
+      authority: { assertPrimary() {} },
       durableState: { read: async () => activeState(1, 1) },
-      credentials: {
-        initialAccessToken: "initial",
-        resolveAccessToken: async () => "refreshed",
-      },
       clock: { nowMs: () => 10 },
       scheduler,
-      fetch: {},
       diagnostics: { record() {} },
       publication: {
         publish({ signal }) {
@@ -300,6 +267,7 @@ describe("Library Core Primary coordinator", () => {
     });
 
     const starting = coordinator.start();
+    await Promise.resolve();
     coordinator.stop();
     expect(publicationSignals[0]?.aborted).toBe(true);
     settlePublication({ status: "current", revision: 1 });
@@ -308,6 +276,39 @@ describe("Library Core Primary coordinator", () => {
       status: "current",
       revision: 1,
     });
+    expect(scheduler.tasks.size).toBe(0);
+  });
+
+  it("cannot be resurrected after stop during asynchronous authority assertion", async () => {
+    const scheduler = new FakeScheduler();
+    let settleAuthority: () => void = () => {
+      throw new Error("authority assertion did not start");
+    };
+    const authority = new Promise<void>((resolve) => {
+      settleAuthority = resolve;
+    });
+    const publication = vi.fn(async (): Promise<TestResult> => ({
+      status: "current",
+      revision: 1,
+    }));
+    const coordinator = createLibraryCorePrimaryCoordinatorV1({
+      authority: { assertPrimary: () => authority },
+      durableState: { read: async () => activeState(1, 1) },
+      clock: { nowMs: () => 10 },
+      scheduler,
+      diagnostics: { record() {} },
+      publication: { publish: publication },
+    });
+
+    const starting = coordinator.start();
+    await Promise.resolve();
+    coordinator.stop();
+    settleAuthority();
+
+    await expect(starting).rejects.toThrow(
+      "stopped during authority assertion",
+    );
+    expect(publication).not.toHaveBeenCalled();
     expect(scheduler.tasks.size).toBe(0);
   });
 });

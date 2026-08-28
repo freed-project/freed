@@ -103,6 +103,23 @@ success or refusal envelope, and rejects unknown error text, malformed UTF-8,
 oversized frames, and response identity drift. Startup storage inspection uses
 this same client instead of a separate parser.
 
+The service package also exposes one provider-neutral Primary runtime. It
+binds the shared 15-second local revision poll and 60-second inbound actor
+refresh scheduler to that native command client. Startup reads the stable
+Primary actor identity and pinned checkpoint descriptor from the sidecar, then
+requires the exact Library ID and current writer to match before publication.
+Each scheduled pass rereads the checkpoint descriptor and stops when native
+SQLite reports another writer. The publication port receives only the native
+client, the closed reason `initial`, `local_revision`, or `inbound_refresh`,
+and an abort signal. It owns any transport credential or provider adapter.
+
+The compiled `dist/index.js` and `dist/bin.js` artifacts bundle the shared
+provider-neutral coordinator. An installed service does not need an
+unpublished `@freed/sync` package at runtime. The `serve` command does not yet
+bind a Drive OAuth store or Drive publication port, so it does not start the
+recurring cloud loop. Task 11.5 owns that installed credential and transport
+binding.
+
 `credentialsReady: true` proves that exact native Primary signing custody. It
 does not prove Drive authentication, OAuth validity, cloud reachability, or
 writer promotion. The sidecar never interprets a Drive token and makes no

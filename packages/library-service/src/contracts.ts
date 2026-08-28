@@ -18,6 +18,7 @@ export type LibraryServiceRole = "primary";
 
 export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "already_started",
+  "authority_not_primary",
   "acl_present",
   "acl_probe_malformed",
   "acl_probe_unavailable",

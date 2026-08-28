@@ -17,3 +17,11 @@ export {
   LibraryCoreNativeCommandFailure,
   type LibraryCoreNativeCommandClientV1,
 } from "./native-command.js";
+export {
+  createLibraryServicePrimaryRuntimeV1,
+  type LibraryCorePrimaryCoordinatorDiagnosticV1,
+  type LibraryServicePrimaryPublicationPortV1,
+  type LibraryServicePrimaryPublicationStatePortV1,
+  type LibraryServicePrimaryRuntimeOptionsV1,
+  type LibraryServicePrimaryRuntimeV1,
+} from "./primary-runtime.js";

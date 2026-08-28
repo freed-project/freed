@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./cloud": "./src/cloud/index.ts",
-    "./cloud/library-core": "./src/cloud/library-core.ts"
+    "./cloud/library-core": "./src/cloud/library-core.ts",
+    "./cloud/library-core-primary-coordinator": "./src/cloud/library-core-primary-coordinator.ts"
   },
   "scripts": {
     "build": "tsc",

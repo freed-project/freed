@@ -610,6 +610,28 @@ missing local receipt. It refuses a remote head behind SQLite or more than one
 unrecorded segment ahead. Google Drive endpoint selection, headers, retries,
 paging, and cadence remain inside the Drive adapter.
 
+The recurring Primary scheduler is transport and credential neutral as well.
+It accepts only an authority assertion, one durable revision view, a clock, a
+scheduler, bounded diagnostics, and a publication callback. The callback
+receives the closed reason `initial`, `local_revision`, or `inbound_refresh`
+plus an abort signal. Freed Desktop and the headless service resolve their own
+transport credentials inside that host callback. The shared scheduler never
+receives an access token, a Google Drive fetch function, or a provider adapter.
+Both hosts use the same 15-second local revision poll and 60-second inbound
+actor refresh contract.
+
+The headless host binds this scheduler to the generated native command client.
+Before its first publication it reads the retained Primary actor identity and
+the pinned normalized checkpoint descriptor from the native sidecar. The
+Library ID and current checkpoint writer must match exactly. Every scheduled
+pass rereads the checkpoint descriptor for the current source revision and
+stops when native SQLite reports another writer. The distributable Node
+service bundles this provider-neutral coordinator into its compiled artifact,
+so an installed service does not depend on an unpublished workspace package.
+Binding Drive OAuth and the immutable Drive transport to the publication
+callback is a separate installed-host operation and does not change this core
+contract.
+
 Desktop uses the same normalized follower boundary for local coordination.
 Runtime status, stable actor request creation, and certificate installation are
 native calls against the selected normalized SQLite catalog. Their typed
