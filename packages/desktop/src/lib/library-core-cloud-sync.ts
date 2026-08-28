@@ -126,8 +126,9 @@ let runningPrimaryCoordinator: { stop(): void } | null = null;
 /**
  * Immutable Drive sync is the production SQLite Library transport.
  *
- * The legacy `"1"` opt-in remains valid. Setting this key to `"0"` is the
- * local emergency rollback switch and is the only value that disables it.
+ * The retained `"0"` value is a device-local operator pause for cloud
+ * coordination. It does not change SQLite authority or enable another Library
+ * engine.
  */
 export function isSqliteLibraryGoogleDriveSyncEnabled(): boolean {
   try {

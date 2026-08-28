@@ -34,16 +34,25 @@ Supplement to the Desktop App—quick saves and Ulysses mode. Not a primary capt
 │         └────────────────┼────────────────┘                     │
 │                          ▼                                      │
 │                  ┌──────────────┐                               │
-│                  │   Automerge  │                               │
-│                  │   (shared)   │                               │
+│                  │ Signed save  │                               │
+│                  │    intent    │                               │
 │                  └──────────────┘                               │
 │                          │                                      │
 │              ┌───────────┴───────────┐                          │
 │              ▼                       ▼                          │
-│       Desktop App               Cloud Sync                      │
-│       (if running)              (fallback)                      │
+│       Local Primary             Intent segment                  │
+│       (if running)              in user cloud                   │
+│              │                       │                          │
+│              └───────────┬───────────┘                          │
+│                          ▼                                      │
+│              Typed mutation into SQLite                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+The extension never owns a Library database and never emits a document patch.
+It creates one closed save intent using the shared mutation contract. The
+active Primary verifies and commits that intent through the native SQLite core,
+either directly or after reading its immutable cloud segment.
 
 ---
 

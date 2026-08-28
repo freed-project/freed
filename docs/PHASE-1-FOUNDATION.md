@@ -285,21 +285,16 @@ Production release closeout now also requires a dedicated `main` back into `dev`
 ```json
 {
   "@freed/shared": {
-    "dependencies": {
-      "@automerge/automerge": "^2.0.0"
-    }
+    "dependencies": {}
   },
-  "website": {
+  "@freed/pwa": {
     "dependencies": {
-      "next": "^15.0.0",
-      "react": "^19.0.0",
-      "framer-motion": "^12.0.0",
-      "feed": "^5.0.0"
-    },
-    "devDependencies": {
-      "tailwindcss": "^4.0.0",
-      "typescript": "^5.0.0"
+      "@freed/shared": "*",
+      "@sqlite.org/sqlite-wasm": "3.53.0-build1"
     }
   }
 }
 ```
+
+The native Library Core links bundled stock SQLite through `rusqlite`. Shared
+contracts remain pure TypeScript with zero runtime dependencies.

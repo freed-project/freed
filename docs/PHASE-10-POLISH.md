@@ -71,40 +71,19 @@ export function StatsDashboard() {
 ### Export Functionality
 
 ```typescript
-// packages/pwa/src/lib/export.ts
-export async function exportToJson(doc: FreedDoc): Promise<string> {
-  const exportData = {
-    version: "1.0",
-    exportedAt: new Date().toISOString(),
-    items: Object.values(doc.feedItems),
-    feeds: Object.values(doc.rssFeeds),
-    preferences: doc.preferences,
-  };
-
-  return JSON.stringify(exportData, null, 2);
-}
-
-export async function exportToCsv(items: FeedItem[]): Promise<string> {
-  const headers = [
-    "globalId",
-    "platform",
-    "author",
-    "publishedAt",
-    "title",
-    "url",
-  ];
-  const rows = items.map((item) => [
-    item.globalId,
-    item.platform,
-    item.author.displayName,
-    new Date(item.publishedAt).toISOString(),
-    item.content.linkPreview?.title ?? "",
-    item.content.linkPreview?.url ?? "",
-  ]);
-
-  return [headers, ...rows].map((row) => row.join(",")).join("\n");
+// Planned JSON and CSV exporters use the same bounded query boundary.
+export async function* exportRows(query: LibraryQueryClient) {
+  let cursor: string | null = null;
+  do {
+    const page = await query.itemScan({ cursor, limit: 128 });
+    yield page.rows;
+    cursor = page.nextCursor;
+  } while (cursor !== null);
 }
 ```
+
+Export writers serialize and release one page at a time. They never request a
+Library shell or reconstruct the complete corpus in React.
 
 ### Command Bar / Action Launcher
 
@@ -505,7 +484,7 @@ Reward security researchers for responsible disclosure.
 
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
-- [x] AI settings in Freed Desktop start with a device-local provider, model, and endpoint choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while settings persist. Only content-processing intent syncs through Automerge. The PWA hides AI controls because it cannot run those providers, downloads, or key storage paths.
+- [x] AI settings in Freed Desktop start with a device-local provider, model, and endpoint choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while settings persist. Only typed content-processing preferences synchronize through normalized SQLite records. The PWA hides AI controls because it cannot run those providers, downloads, or key storage paths.
 - [x] Local content signals classify existing and newly ingested items without cloud AI on Desktop and PWA, with inclusive saved feed filter presets, saved sort controls, expanded semantic signals, and compact event metadata for high-confidence upcoming items
 - [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
 - [x] Friend suggestions consume local `contentSignals` and optional Integrated AI enrichment without adding a cloud prompt path or automatic friend promotion

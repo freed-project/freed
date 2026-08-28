@@ -411,10 +411,10 @@ packages/pwa/
 │   │       └── SyncSettings.tsx
 │   │
 │   ├── hooks/
-│   │   ├── useFreedDoc.ts
-│   │   ├── useFeed.ts
-│   │   ├── useSyncStatus.ts
-│   │   └── usePreferences.ts
+│   │   ├── useLibraryItemDetail.ts
+│   │   ├── useLibraryFriendsDirectory.ts
+│   │   ├── useLibrarySavedAnalytics.ts
+│   │   └── useLibrarySurfaceItems.ts
 │   │
 │   └── lib/
 │       ├── ranking.ts

@@ -175,8 +175,8 @@ packages/capture-medium/
   titles. Embedded essay excerpts are not archived as activity text.
 - Incidental author links do not become roster accounts. A rendered profile
   needs an explicit follower, following, or subscription role.
-- Raw page data, cookies, and provider sessions do not enter Automerge,
-  diagnostics, or bug reports.
+- Raw page data, cookies, and provider sessions do not enter normalized Library
+  rows, checkpoints, diagnostics, or bug reports.
 
 **Known beta limits:**
 
@@ -393,7 +393,8 @@ packages/capture-youtube/
 - No YouTube developer project, Google OAuth grant, Data API client, shared
   quota, or central subscription service is required.
 - Provider cookies, session state, raw responses, and page data stay on Freed
-  Desktop and never enter Automerge, logs, or diagnostics.
+  Desktop and never enter normalized Library rows, checkpoints, logs, or
+  diagnostics.
 
 `capture-rss` continues to handle public YouTube channel feeds that a user adds
 directly. It is a separate manual intake mode. The authenticated roster is not
@@ -434,7 +435,8 @@ inside YouTube, and Freed does not claim to detect download completion.
   only after audio passes real iPhone offline and locked-screen acceptance.
 - The PWA receives media over an authenticated LAN endpoint first, then through
   chunk-encrypted objects in the user's configured cloud when Desktop is away.
-- Large media lives in the PWA Origin Private File System and never in Automerge.
+- Large media lives in the PWA Origin Private File System and never in
+  synchronized Library rows or checkpoint records.
 - iPhone downloads remain foreground, resumable jobs because Safari cannot be
   trusted to finish a large PWA transfer after lock or app switching.
 - A Freed-hosted media relay is a later decision because it increases privacy,
@@ -540,7 +542,8 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       regimes, deadlines, yield state, ordering, and cooldowns inside the shared
       device-local provider scheduler outside the RSS poll job
 - [x] Substack subscriber dashboards and sensitive subscriber metadata stay out
-      of capture, Automerge, diagnostics, and bug reports
+      of capture, normalized Library rows, checkpoints, diagnostics, and bug
+      reports
 - [ ] Installed Substack and Medium beta sessions pass real-account selector and
       runtime soak validation
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
@@ -567,11 +570,13 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       video without claiming it was downloaded
 - [x] The private offline playlist can open in YouTube for the user's Premium-managed playlist download
 - [x] YouTube website cookies, session state, and raw page data stay on Freed
-      Desktop and out of Automerge, application logs, diagnostics, and bug reports
+      Desktop and out of normalized Library rows, checkpoints, application
+      logs, diagnostics, and bug reports
 - [ ] One user-selected public video can produce a validated, seekable
       audio-first package on Freed Desktop without exporting YouTube credentials
 - [ ] A paired iPhone can download, resume, verify, store, evict, and delete an
-      audio package over the local network without media bytes entering Automerge
+      audio package over the local network without media bytes entering
+      synchronized Library rows or checkpoint records
 - [ ] Offline audio passes real iPhone airplane-mode, cold-launch, lock-screen,
       interruption, Bluetooth, AirPlay, and long-seek acceptance
 - [x] Provider-neutral media blobs use a separate zero-byte-capable descriptor,
@@ -620,7 +625,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - Substack subscriber management, private chats, direct messages, paid status,
   subscriber email addresses, and private audience tools are not capture
   surfaces
-- Future offline media is audio-first, Desktop-resolved, LAN-first, stored outside Automerge, and transferred through encrypted user cloud only when direct device transfer is unavailable
+- Future offline media is audio-first, Desktop-resolved, LAN-first, stored outside normalized Library rows, and transferred through encrypted user cloud only when direct device transfer is unavailable
 - A hosted YouTube media relay remains a later owner decision because centralized traffic directly conflicts with the goal of minimizing provider differentiation
 - Mozi should be treated as a planning source, not squeezed into the RSS mental model
 - Mozi overlap views should be derived from captured items at read time, not stored as source-authored canonical records

@@ -33,9 +33,6 @@
 /packages/desktop/src/hooks/usePostLoginAutoSync.ts @AubreyF
 /packages/desktop/src/hooks/useProviderRiskGate.tsx @AubreyF
 /packages/desktop/src/lib/ai-summarizer.ts @AubreyF
-/packages/desktop/src/lib/automerge-types.ts @AubreyF
-/packages/desktop/src/lib/automerge.ts @AubreyF
-/packages/desktop/src/lib/automerge.worker.ts @AubreyF
 /packages/desktop/src/lib/background-runtime-coordinator.ts @AubreyF
 /packages/desktop/src/lib/bug-report.ts @AubreyF
 /packages/desktop/src/lib/capture.ts @AubreyF
@@ -96,9 +93,6 @@
 /packages/pwa/src/components/OAuthCallback.tsx @AubreyF
 /packages/pwa/src/components/PwaSyncSettings.tsx @AubreyF
 /packages/pwa/src/components/SyncConnectDialog.tsx @AubreyF
-/packages/pwa/src/lib/automerge-types.ts @AubreyF
-/packages/pwa/src/lib/automerge.ts @AubreyF
-/packages/pwa/src/lib/automerge.worker.ts @AubreyF
 /packages/pwa/src/lib/cloud-oauth.ts @AubreyF
 /packages/pwa/src/lib/bug-report.ts @AubreyF
 /packages/pwa/src/lib/contacts.ts @AubreyF

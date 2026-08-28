@@ -71,7 +71,7 @@ We do not centralize assent logs. That is a values choice and a product constrai
 - acceptance timestamp
 - local surface where assent happened
 
-No legal acceptance state is synced through Automerge or cloud backup. One device accepting terms must not silently bless another device.
+No legal acceptance state enters Library SQLite, normalized checkpoints, or cloud backup. One device accepting terms must not silently bless another device.
 
 ## Risk Allocation Strategy
 
@@ -114,7 +114,7 @@ That means:
 
 If a future feature requires server-side state, it must be reviewed against this document before shipping. Quietly adding backend behavior that changes the privacy or legal story would be an own goal of biblical proportions.
 
-Permanent Facebook and Instagram media archives are part of this local-first posture. Exported or captured media is stored in the Freed Desktop app-data folder, not in Automerge, not in the local relay document, and not in cloud sync. Archive deletion must be explicit. Normal cache expiry must not delete these files.
+Permanent Facebook and Instagram media archives are part of this local-first posture. Exported or captured media is stored in the Freed Desktop app-data folder, outside Library SQLite, normalized checkpoints, and cloud sync. Archive deletion must be explicit. Normal cache expiry must not delete these files.
 
 ## Third-Party Platform Posture
 

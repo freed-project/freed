@@ -194,7 +194,7 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA = Object.freeze({
 });
 
 /**
- * V3 is the normalized SQLite order. The historical shadow reader needed a
+ * V3 is the normalized SQLite order. The retired object-map reader needed a
  * source-enumeration sequence because it rebuilt rows from an object map.
  * Normalized authority has a stable primary key, so globalId is the final
  * binary tie-break and no migration-only enumeration field survives.

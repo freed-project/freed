@@ -53,9 +53,9 @@ url = "2"
 sysinfo = "0.39"
 sha2 = "0.11"
 ring = "0.17"
-# The Library Core shadow store runs in the native process rather than the
-# renderer, which is the entire point: the renderer is the process fighting for
-# memory. `bundled` compiles SQLite from source so every install runs the same
+# The authoritative Library Core runs in the native process. The renderer keeps
+# only bounded visible query windows and ephemeral UI state. `bundled` compiles
+# SQLite from source so every install runs the same
 # engine version. Linking whatever libsqlite3 a user's machine happens to ship
 # would make STRICT table support and FTS5 availability vary per machine, and
 # the projection contract depends on STRICT.

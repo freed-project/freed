@@ -136,7 +136,7 @@ Facebook and Instagram feed scrapes now build a memory-aware pass plan after the
 
 Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive or removes that provider archive.
 
-The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
+The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are device-local. They do not enter normalized Library rows or synchronized checkpoints.
 
 Historical completeness comes from Meta export import. The importer accepts Accounts Center ZIP exports, prefers JSON-backed structures, scans Facebook and Instagram media folders defensively, skips message attachments, records discovered account handles, and copies media into the permanent vault with content-hash dedupe.
 
@@ -257,7 +257,7 @@ const RATE_LIMITS = {
 - [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
 - [x] Facebook and Instagram settings expose `(Beta) Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
 - [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
-- [x] Permanent media archive state stays outside Automerge and is not synced
+- [x] Permanent media archive state stays outside Library SQLite and is not synced
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
 - [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
 - [x] Story Wall beta preferences store selected years, source filters, layout, style, embed, publish target, hidden memories, and featured memories without syncing media binaries

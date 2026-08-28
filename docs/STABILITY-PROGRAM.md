@@ -10,7 +10,7 @@ GitHub Issues carrying the `debt` label are the sole canonical stability and tec
 
 Between April and July 2026, about 78 percent of non-release commits on `dev` were corrective. More than 52 WebKit memory fixes did not converge, and watchdog thresholds changed repeatedly without isolating demand-side causes. A verified audit found these root-cause areas:
 
-1. Full-document sync and unbounded Automerge history amplify storage, IPC, cloud, and renderer costs. Track the active work in issues #1082 through #1088.
+1. The retired full-document sync architecture amplified storage, IPC, cloud, and renderer costs. SQLite now owns normalized rows and bounded logical synchronization. Issues #1082 through #1088 retain the historical incident record.
 2. Renderer recovery can destroy the orchestrator or an active provider session before work settles. Track the active work in issues #1070, #1071, #1080, #1081, #1089, and #1097.
 3. Watchdog measurements cannot reliably identify WebKit roles or CPU state. Track the active work in issues #1090 and #1091.
 4. PWA changes do not converge back to Freed Desktop over the LAN relay. Track the active work in issues #1072, #1073, #1093, and #1094.

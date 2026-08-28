@@ -43,7 +43,8 @@ The complete product has four roles:
   segments, signed result segments, enrollment records, and control receipts.
 - SQLite files, WAL files, SHM files, and rollback journals never enter cloud
   transport.
-- Automerge is not an authority, transport, fallback, or bridge.
+- No retired document engine exists as authority, transport, fallback, or
+  bridge.
 - One operating system lock is held before any process opens the authority data
   root. A second process exits with an attributable refusal.
 - The cloud writer decision remains the exact Google Drive control compare and
@@ -493,7 +494,7 @@ into a new authority epoch with an attributable replay-safe restore receipt.
 
 ## Omi integration
 
-Omi remains a future actor integration. It does not write Automerge state and
+Omi remains a future actor integration. It submits closed signed intents and
 does not receive direct database access.
 
 The intended flows are deliberate:

@@ -351,11 +351,11 @@ X Timeline API        RSS Feed URL
       │                    │
       └──────┬─────────────┘
              ▼
-         FeedItem
+   Typed capture mutation
              │
              ▼
-       FreedDoc (Automerge)
+   Native Library Core
              │
              ▼
-    ~/.freed/data/feed.automerge
+   Normalized local SQLite
 ```
