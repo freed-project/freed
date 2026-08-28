@@ -2,7 +2,7 @@
  * AI settings section for the Settings panel.
  *
  * Provider, model, endpoint, and API keys stay device-local. Only content
- * processing intent syncs through Automerge.
+ * processing preferences synchronize through typed Library Core operations.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

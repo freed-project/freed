@@ -818,7 +818,7 @@ describe("compiled freed-library runtime", () => {
   );
 
   linuxIt(
-    "uses the production Linux ACL proof when installed and fails closed otherwise",
+    "reports the production Linux ACL proof without assuming a clean runner root",
     async () => {
       const { configPath, statusPath } = await createServiceFixture();
 
@@ -830,23 +830,31 @@ describe("compiled freed-library runtime", () => {
         helperAvailable = false;
       }
       if (helperAvailable) {
-        expect(doctor).toMatchObject({ code: 0, stderr: "" });
-        expect(JSON.parse(doctor.stdout)).toMatchObject({
-          ok: true,
-          code: "ready",
-        });
-        const serviceDefinition = await runCli([
-          "service-definition",
-          "--config",
-          configPath,
-        ]);
-        expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
-        expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
-          platform: "linux",
-          format: "systemd-user-unit-v1",
-          fileName: "freed-library.service",
-          contents: expect.stringContaining("ProtectSystem=strict"),
-        });
+        if (doctor.code === 0) {
+          expect(doctor.stderr).toBe("");
+          expect(JSON.parse(doctor.stdout)).toMatchObject({
+            ok: true,
+            code: "ready",
+          });
+          const serviceDefinition = await runCli([
+            "service-definition",
+            "--config",
+            configPath,
+          ]);
+          expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
+          expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
+            platform: "linux",
+            format: "systemd-user-unit-v1",
+            fileName: "freed-library.service",
+            contents: expect.stringContaining("ProtectSystem=strict"),
+          });
+        } else {
+          expect(doctor).toMatchObject({ code: 2, stdout: "" });
+          expect(JSON.parse(doctor.stderr)).toMatchObject({
+            ok: false,
+            code: "acl_present",
+          });
+        }
       } else {
         expect(doctor).toMatchObject({ code: 2, stdout: "" });
         expect(JSON.parse(doctor.stderr)).toMatchObject({

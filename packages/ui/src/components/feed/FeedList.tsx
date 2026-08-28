@@ -702,9 +702,9 @@ export function FeedList({
     rows.length,
   ]);
 
-  // Show shimmer placeholders while the doc is loading from IndexedDB.
-  // Once isLoading flips false, items will populate and we drop into the
-  // normal virtualizer path (or the empty state if the library is genuinely empty).
+  // Show shimmer placeholders while the first bounded SQLite page is loading.
+  // Once isLoading flips false, the visible window enters the normal
+  // virtualizer path, or the empty state if the query is genuinely empty.
   if (isLoading && items.length === 0) {
     return (
       <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">

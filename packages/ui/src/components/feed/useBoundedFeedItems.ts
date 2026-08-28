@@ -38,12 +38,11 @@ interface ResidentPage {
  *
  * The resident window is at most `maxResidentPages` whole reader pages. A
  * reader that offers `readPage` can restore an evicted leading page, so deep
- * scrolling evicts on both sides instead of growing one list until the feed has
- * to reacquire the full compatibility projection.
+ * scrolling evicts on both sides instead of growing one renderer-held list.
  *
- * Any source, filter, or reader failure closes the bounded session and returns
- * the caller to its existing in-memory path. SQLite is never allowed to leave
- * the shared feed stuck between two source revisions.
+ * Any source, filter, or reader failure closes the bounded session and fails
+ * the current window. It never falls back to a full-corpus renderer path or
+ * leaves the feed between two SQLite source revisions.
  */
 export function useBoundedFeedItems({
   activeFilter,

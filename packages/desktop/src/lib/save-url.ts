@@ -3,7 +3,7 @@
  *
  * Architecture:
  *  1. Validate and normalize the URL.
- *  2. Write a lightweight saved stub to Automerge.
+ *  2. Write a lightweight saved stub through the typed SQLite mutation API.
  *  3. Queue background detail fetching and cache hydration.
  */
 
