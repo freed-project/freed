@@ -72,11 +72,9 @@ pub use device_graph_layout::{
 };
 pub use historical_migration_source::LibraryCoreStorageError;
 pub use library_core_actor_enrollment::{
-    countersign_actor_enrollment_request, countersign_actor_enrollment_request_bytes,
-    enroll_desktop_actor, load_or_create_normalized_actor_id_v2,
-    prepare_follower_actor_enrollment_request,
+    countersign_actor_enrollment_request_bytes, load_or_create_normalized_actor_id_v2,
     prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
-    ActorKeyStore, EnrollmentAuthority, PreparedActorEnrollmentRequest,
+    ActorKeyStore, PreparedActorEnrollmentRequest,
 };
 pub use library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,

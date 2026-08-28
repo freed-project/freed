@@ -857,20 +857,6 @@ fn verify_writer_epoch_record(record: &VerifiedAuthorityEpoch) -> Result<(), Str
     Ok(())
 }
 
-/// Establish a genesis epoch with a caller-supplied key.
-///
-/// Test-only entry point for sibling modules that need a real installed epoch
-/// without touching the platform credential vault.
-#[cfg(test)]
-pub(crate) fn establish_with_key_pair_for_test(
-    journal: &mut LibraryCoreJournal,
-    revision: &LegacySourceRevision,
-    key_pair: &Ed25519KeyPair,
-    accepted_at_ms: i64,
-) -> Result<NormalizedAuthorityStateV2, String> {
-    establish_with_key_pair(journal, revision, key_pair, accepted_at_ms)
-}
-
 /// Load the authority key this installation already minted.
 ///
 /// Deliberately never mints one. An authority key that did not sign the active

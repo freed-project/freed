@@ -31,10 +31,9 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::LibraryCoreJournal;
 use crate::normalized_authority::NormalizedAuthorityStateV2;
 use crate::normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate;
-use crate::normalized_operation::{ActorState, VerifiedActorEnrollment};
+use crate::normalized_operation::VerifiedActorEnrollment;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
@@ -183,56 +182,6 @@ fn actor_identity(
     })
 }
 
-/// Build the canonical certificate the journal's verifier expects.
-///
-/// The shape is fixed by `normalized_enrollment_verifier`, which
-/// rejects any object with an unexpected or missing key, so this is written to
-/// match it exactly rather than to be convenient.
-fn build_certificate_body(
-    authority: &EnrollmentAuthority,
-    identity: &ActorIdentity,
-    actor_key_pair: &Ed25519KeyPair,
-    created_at_ms: i64,
-) -> Result<(Value, String), String> {
-    if created_at_ms < 0 {
-        return Err("Library Core enrollment time is invalid".to_string());
-    }
-    let enrollment_body = json!({
-        "operation_id": format!("actor-enrolled:{}", identity.actor_id),
-        "operation_type": OPERATION_TYPE,
-        "library_id": authority.library_id,
-        "epoch": authority.epoch,
-        "epoch_id": authority.epoch_id,
-        "schema_version": SCHEMA_VERSION,
-        "authority_key_id": authority.authority_key_id,
-        "installation_incarnation": identity.installation_incarnation,
-        "actor_incarnation_nonce": identity.actor_incarnation_nonce,
-        "actor_id": identity.actor_id,
-        "actor_public_key": identity.actor_public_key,
-        "actor_public_key_fingerprint": identity.actor_public_key_fingerprint,
-        "observed_frontier": [],
-        "created_at_ms": created_at_ms,
-        "signature_algorithm": SIGNATURE_ALGORITHM,
-    });
-
-    let enrollment_body_digest = digest_value("actor-enrollment-body", &enrollment_body)?;
-    let actor_proof_input = encode_signature_input(
-        "actor-enrollment-proof",
-        &json!({ "enrollment_body_digest": enrollment_body_digest }),
-        MAX_CERTIFICATE_BYTES,
-    )
-    .map_err(|_| "Library Core actor proof input is invalid".to_string())?;
-
-    let certificate_body = json!({
-        "actor_enrollment_body": enrollment_body,
-        "enrollment_body_digest": enrollment_body_digest,
-        "actor_proof": lower_hex(actor_key_pair.sign(&actor_proof_input).as_ref()),
-    });
-
-    let certificate_digest = digest_value("actor-enrollment-certificate", &certificate_body)?;
-    Ok((certificate_body, certificate_digest))
-}
-
 pub fn prepare_normalized_follower_actor_enrollment_request_v2(
     authority: &NormalizedAuthorityStateV2,
     installation_witness: &str,
@@ -372,64 +321,6 @@ pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
         .map_err(|error| format!("Library Core normalized actor certificate failed: {error}"))
 }
 
-fn build_certificate(
-    authority: &EnrollmentAuthority,
-    identity: &ActorIdentity,
-    actor_key_pair: &Ed25519KeyPair,
-    authority_key_pair: &Ed25519KeyPair,
-    created_at_ms: i64,
-) -> Result<Vec<u8>, String> {
-    let (certificate_body, certificate_digest) =
-        build_certificate_body(authority, identity, actor_key_pair, created_at_ms)?;
-    let authority_signature_input = encode_signature_input(
-        "actor-enrollment-authority",
-        &json!({ "certificate_digest": certificate_digest }),
-        MAX_CERTIFICATE_BYTES,
-    )
-    .map_err(|_| "Library Core enrollment authority signature input is invalid".to_string())?;
-
-    let certificate = json!({
-        "certificate_body": certificate_body,
-        "certificate_digest": certificate_digest,
-        "authority_signature": lower_hex(
-            authority_key_pair.sign(&authority_signature_input).as_ref(),
-        ),
-    });
-
-    encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES)
-        .map_err(|_| "Library Core enrollment certificate is not canonically encodable".to_string())
-}
-
-/// Mint or replay the proof-only request for a non-authoritative follower.
-///
-/// The actor key never leaves the injected credential store. This request proves key
-/// possession only. It cannot enroll itself, grant writer admission, or make a
-/// canonical change until the remote authority countersigns it.
-pub fn prepare_follower_actor_enrollment_request(
-    authority: &EnrollmentAuthority,
-    actor_store: &dyn ActorKeyStore,
-    created_at_ms: i64,
-) -> Result<PreparedActorEnrollmentRequest, String> {
-    let actor_key_pair = load_or_create_actor_key_pair(actor_store, &authority.library_id)?;
-    let identity = actor_identity(authority, &actor_key_pair)?;
-    let (certificate_body, certificate_digest) =
-        build_certificate_body(authority, &identity, &actor_key_pair, created_at_ms)?;
-    let request = json!({
-        "certificate_body": certificate_body,
-        "certificate_digest": certificate_digest,
-    });
-    let canonical = encode_canonical_value(&request, MAX_CERTIFICATE_BYTES)
-        .map_err(|_| "Library Core actor enrollment request is not canonical".to_string())?;
-    let canonical_enrollment_request_json = String::from_utf8(canonical)
-        .map_err(|_| "Library Core actor enrollment request is not UTF-8".to_string())?;
-    Ok(PreparedActorEnrollmentRequest {
-        actor_id: identity.actor_id,
-        actor_public_key: identity.actor_public_key,
-        enrollment_request_digest: certificate_digest,
-        canonical_enrollment_request_json,
-    })
-}
-
 /// Host-supplied storage for the actor signing key. The reusable core has no
 /// default credential backend, so a missing store remains an explicit error.
 pub trait ActorKeyStore {
@@ -528,59 +419,6 @@ pub fn sign_library_core_operation_digest(
     Ok(lower_hex(key_pair.sign(&input).as_ref()))
 }
 
-fn enroll_with_key_pairs(
-    journal: &mut LibraryCoreJournal,
-    authority: &EnrollmentAuthority,
-    actor_key_pair: &Ed25519KeyPair,
-    authority_key_pair: &Ed25519KeyPair,
-    created_at_ms: i64,
-) -> Result<ActorState, String> {
-    let identity = actor_identity(authority, actor_key_pair)?;
-
-    // Check before minting. `created_at_ms` is inside the signed body, so a
-    // rebuilt certificate for an already-enrolled actor would carry a
-    // different digest and be refused as a conflict.
-    if let Some(existing) = journal
-        .actor_state(
-            &authority.library_id,
-            &authority.epoch_id,
-            &identity.actor_id,
-        )
-        .map_err(|error| format!("Library Core could not read actor state: {error}"))?
-    {
-        return Ok(existing);
-    }
-
-    let certificate = build_certificate(
-        authority,
-        &identity,
-        actor_key_pair,
-        authority_key_pair,
-        created_at_ms,
-    )?;
-    journal
-        .verify_and_enroll_initial_desktop_actor(&certificate, &authority.library_id)
-        .map_err(|error| format!("Library Core could not enroll its actor: {error}"))
-}
-
-/// Enroll this installation's actor under its active authority epoch.
-pub fn enroll_desktop_actor(
-    journal: &mut LibraryCoreJournal,
-    authority: &EnrollmentAuthority,
-    actor_store: &dyn ActorKeyStore,
-    authority_key_pair: &Ed25519KeyPair,
-    created_at_ms: i64,
-) -> Result<ActorState, String> {
-    let actor_key_pair = load_or_create_actor_key_pair(actor_store, &authority.library_id)?;
-    enroll_with_key_pairs(
-        journal,
-        authority,
-        &actor_key_pair,
-        authority_key_pair,
-        created_at_ms,
-    )
-}
-
 /// Verify and countersign one canonical proof-only PWA enrollment request.
 ///
 /// The request supplies only the PWA actor proof. The designated authority host
@@ -656,37 +494,9 @@ pub fn countersign_actor_enrollment_request_bytes(
     })
 }
 
-pub fn countersign_actor_enrollment_request(
-    journal: &mut LibraryCoreJournal,
-    canonical_request: &[u8],
-    authority_store: &dyn AuthorityKeyStore,
-) -> Result<ActorState, String> {
-    let canonical_certificate =
-        countersign_actor_enrollment_request_bytes(canonical_request, authority_store)?;
-    let request: Value = serde_json::from_slice(canonical_request)
-        .map_err(|_| "Library Core actor enrollment request is invalid JSON".to_string())?;
-    let library_id = request
-        .get("certificate_body")
-        .and_then(Value::as_object)
-        .and_then(|body| body.get("actor_enrollment_body"))
-        .and_then(Value::as_object)
-        .and_then(|body| body.get("library_id"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            "Library Core actor enrollment request has no Library identity".to_string()
-        })?;
-    journal
-        .verify_and_enroll_actor(&canonical_certificate, library_id)
-        .map_err(|error| format!("Library Core could not enroll PWA actor: {error}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_authority_genesis::{
-        establish_with_key_pair_for_test, LegacySourceRevision,
-    };
-    use tempfile::tempdir;
 
     #[derive(Default)]
     struct MemoryActorKeyStore {
@@ -710,187 +520,8 @@ mod tests {
         }
     }
 
-    fn authority_key_pair() -> Ed25519KeyPair {
-        Ed25519KeyPair::from_seed_unchecked(&[7_u8; 32]).unwrap()
-    }
-
     fn actor_key_pair() -> Ed25519KeyPair {
         Ed25519KeyPair::from_seed_unchecked(&[11_u8; 32]).unwrap()
-    }
-
-    fn other_actor_key_pair() -> Ed25519KeyPair {
-        Ed25519KeyPair::from_seed_unchecked(&[13_u8; 32]).unwrap()
-    }
-
-    fn revision() -> LegacySourceRevision {
-        LegacySourceRevision {
-            document_id: "freed-library-document-1".to_string(),
-            heads_digest: "a".repeat(64),
-            head_count: 2,
-            storage_generation: 7,
-            storage_save_revision: 11,
-        }
-    }
-
-    /// A journal with a real genesis epoch installed, and the authority state
-    /// as the enrollment verifier will see it.
-    fn journal_with_authority() -> (tempfile::TempDir, LibraryCoreJournal, EnrollmentAuthority) {
-        let directory = tempdir().unwrap();
-        let mut journal =
-            LibraryCoreJournal::open(&directory.path().join("library-core.sqlite")).unwrap();
-        let accepted = establish_with_key_pair_for_test(
-            &mut journal,
-            &revision(),
-            &authority_key_pair(),
-            1_700,
-        )
-        .unwrap();
-        let authority = EnrollmentAuthority {
-            library_id: accepted.library_id,
-            epoch: accepted.epoch,
-            epoch_id: accepted.epoch_id,
-            authority_key_id: accepted.authority_key_id,
-            installation_witness: "c".repeat(64),
-        };
-        (directory, journal, authority)
-    }
-
-    #[test]
-    fn enrolls_one_actor_under_the_installed_genesis_epoch() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-
-        let actor = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &actor_key_pair(),
-            &authority_key_pair(),
-            2_000,
-        )
-        .unwrap();
-
-        assert_eq!(actor.library_id, authority.library_id);
-        assert_eq!(actor.epoch, 1);
-        assert_eq!(actor.epoch_id, authority.epoch_id);
-        assert_eq!(actor.next_sequence, 1, "a fresh actor has written nothing");
-        assert_eq!(actor.previous_operation_id, None);
-        assert_eq!(
-            actor.actor_public_key,
-            lower_hex(actor_key_pair().public_key().as_ref())
-        );
-    }
-
-    /// The wall clock moves between runs. Enrollment must still converge, or
-    /// every restart would collide with its own previous certificate.
-    #[test]
-    fn re_enrolling_at_a_later_time_returns_the_stored_actor() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-
-        let first = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &actor_key_pair(),
-            &authority_key_pair(),
-            2_000,
-        )
-        .unwrap();
-        let second = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &actor_key_pair(),
-            &authority_key_pair(),
-            9_999,
-        )
-        .unwrap();
-
-        assert_eq!(first, second);
-        let actors: i64 = journal
-            .connection_for_test()
-            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(actors, 1, "replay must not enroll a second actor");
-    }
-
-    #[test]
-    fn a_second_desktop_actor_is_refused_before_writer_admission() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-
-        let first = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &actor_key_pair(),
-            &authority_key_pair(),
-            2_000,
-        )
-        .unwrap();
-        let error = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &other_actor_key_pair(),
-            &authority_key_pair(),
-            2_000,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("active authority is stale"), "{error}");
-        assert!(is_lower_sha256(&first.actor_id));
-    }
-
-    /// The authority admits actors. An actor that countersigned its own
-    /// enrollment would be admitting itself.
-    #[test]
-    fn an_enrollment_the_authority_did_not_countersign_is_refused() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-
-        let error = enroll_with_key_pairs(
-            &mut journal,
-            &authority,
-            &actor_key_pair(),
-            // The actor key standing in for the authority key.
-            &actor_key_pair(),
-            2_000,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("could not enroll its actor"), "{error}");
-        let actors: i64 = journal
-            .connection_for_test()
-            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(actors, 0, "a refused enrollment must write nothing");
-    }
-
-    #[test]
-    fn an_enrollment_bound_to_the_wrong_authority_state_is_refused() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-
-        for wrong in [
-            EnrollmentAuthority {
-                epoch: 2,
-                ..authority.clone()
-            },
-            EnrollmentAuthority {
-                epoch_id: "f".repeat(64),
-                ..authority.clone()
-            },
-            EnrollmentAuthority {
-                authority_key_id: "e".repeat(64),
-                ..authority.clone()
-            },
-        ] {
-            let error = enroll_with_key_pairs(
-                &mut journal,
-                &wrong,
-                &actor_key_pair(),
-                &authority_key_pair(),
-                2_000,
-            )
-            .unwrap_err();
-            assert!(error.contains("could not enroll its actor"), "{error}");
-        }
     }
 
     #[test]
@@ -910,11 +541,23 @@ mod tests {
 
     #[test]
     fn follower_request_proves_actor_possession_without_granting_authority() {
-        let (_directory, _journal, authority) = journal_with_authority();
+        let authority = NormalizedAuthorityStateV2 {
+            library_id: "a".repeat(64),
+            epoch: 1,
+            epoch_id: "b".repeat(64),
+            authority_key_id: "c".repeat(64),
+            authority_public_key: "d".repeat(64),
+            observed_frontier: Vec::new(),
+        };
         let store = MemoryActorKeyStore::default();
 
-        let prepared =
-            prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
+        let prepared = prepare_normalized_follower_actor_enrollment_request_v2(
+            &authority,
+            &"e".repeat(64),
+            &store,
+            2_000,
+        )
+        .unwrap();
         let value: Value =
             serde_json::from_str(&prepared.canonical_enrollment_request_json).unwrap();
 
@@ -978,35 +621,14 @@ mod tests {
     }
 
     #[test]
-    fn the_whole_path_enrolls_through_the_key_store() {
-        let (_directory, mut journal, authority) = journal_with_authority();
-        let store = MemoryActorKeyStore::default();
-
-        let actor = enroll_desktop_actor(
-            &mut journal,
-            &authority,
-            &store,
-            &authority_key_pair(),
-            2_000,
-        )
-        .unwrap();
-
-        assert!(store.stored.borrow().is_some(), "the key must be persisted");
-        // A second call reloads the same key, so it lands on the same actor.
-        let again = enroll_desktop_actor(
-            &mut journal,
-            &authority,
-            &store,
-            &authority_key_pair(),
-            5_000,
-        )
-        .unwrap();
-        assert_eq!(actor, again);
-    }
-
-    #[test]
     fn the_derived_identity_is_stable_and_separates_installations() {
-        let (_directory, _journal, authority) = journal_with_authority();
+        let authority = EnrollmentAuthority {
+            library_id: "a".repeat(64),
+            epoch: 1,
+            epoch_id: "b".repeat(64),
+            authority_key_id: "c".repeat(64),
+            installation_witness: "d".repeat(64),
+        };
         let identity = actor_identity(&authority, &actor_key_pair()).unwrap();
 
         assert_eq!(
@@ -1021,7 +643,7 @@ mod tests {
         // A different machine means a different installation, so the same
         // actor key must not resolve to the same actor.
         let other_installation = EnrollmentAuthority {
-            installation_witness: "d".repeat(64),
+            installation_witness: "e".repeat(64),
             ..authority.clone()
         };
 

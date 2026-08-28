@@ -1660,25 +1660,6 @@ impl LibraryCoreJournal {
         self.enroll_actor_under_authority(&enrollment, &authority, false)
     }
 
-    /// Enroll the first native Desktop actor before a cloud control tuple can
-    /// exist. This grants no operation admission. Once any actor exists, or a
-    /// cloud admission row exists, the ordinary fail-closed admission fence
-    /// applies. Exact replay still returns the stored actor first.
-    pub(crate) fn verify_and_enroll_initial_desktop_actor(
-        &mut self,
-        canonical_certificate: &[u8],
-        library_id: &str,
-    ) -> LibraryCoreResult<ActorState> {
-        let authority =
-            authority::active_authority(&self.connection, library_id)?.ok_or_else(|| {
-                LibraryCoreError::AuthorityNotFound {
-                    library_id: library_id.to_owned(),
-                }
-            })?;
-        let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
-        self.enroll_actor_under_authority(&enrollment, &authority, true)
-    }
-
     #[cfg(test)]
     fn install_fixture_authority(
         &mut self,
