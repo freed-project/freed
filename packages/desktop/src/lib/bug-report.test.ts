@@ -51,7 +51,9 @@ describe("desktop bug reporting", () => {
           "/Users/alice/Library/Application Support/Freed/logs/app.log",
         ];
       }
-      if (command === "list_snapshots") return ["sqlite-123.sqlite"];
+      if (command === "list_normalized_local_snapshots") {
+        return [{ snapshotId: "snapshot-123" }];
+      }
       return null;
     });
     recordRuntimeError({

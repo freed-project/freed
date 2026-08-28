@@ -94,10 +94,9 @@ pub use library_core_process_lease::{
 #[cfg(unix)]
 pub use library_core_sidecar::run_library_authority_sidecar;
 pub use library_core_store::{
-    BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupChunk,
-    LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
-    LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore, LibraryCoreStoreError,
-    LibraryCoreStoreResult, LibraryCoreStoreStatus,
+    BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreCheckpointReference,
+    LibraryCoreImportItem, LibraryCoreStore, LibraryCoreStoreError, LibraryCoreStoreResult,
+    LibraryCoreStoreStatus,
 };
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,

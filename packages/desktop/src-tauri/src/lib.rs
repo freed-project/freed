@@ -7629,31 +7629,6 @@ async fn get_ai_hardware_profile(
 }
 
 #[tauri::command]
-fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
-    let Ok(data_dir) = app.path().app_data_dir() else {
-        return vec![];
-    };
-    let dir = data_dir.join("library-backups");
-
-    let mut entries: Vec<String> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            if name.starts_with("sqlite-") && name.ends_with(".sqlite") {
-                Some(name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    entries.sort_unstable_by(|a, b| b.cmp(a)); // newest first
-    entries
-}
-
-#[tauri::command]
 fn get_recent_logs(app: tauri::AppHandle, limit: Option<usize>) -> Result<Vec<String>, String> {
     let limit = limit.unwrap_or(120).clamp(1, 1_000);
     let log_dir = match app.path().app_log_dir() {
@@ -14244,7 +14219,6 @@ pub fn run() {
             open_x_login_window,
             check_x_login_cookies,
             close_x_login_window,
-            list_snapshots,
             get_recent_logs,
             start_oauth_server,
             pick_contact,

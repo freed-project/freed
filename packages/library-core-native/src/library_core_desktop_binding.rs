@@ -45,7 +45,7 @@ struct DesktopAuthoritySelectionV1 {
 /// Freed Desktop's descriptor-bound Library Core process binding.
 ///
 /// The app-data pathname is consumed once. Every later SQLite, WAL, SHM,
-/// journal, lease, and backup operation resolves from held directory handles.
+/// journal, lease, snapshot, and content operation resolves from held directory handles.
 pub struct LibraryCoreDesktopBinding {
     content_vault: LibraryCoreContentVault,
     snapshot_directory: OwnedFd,
@@ -109,8 +109,7 @@ impl LibraryCoreDesktopBinding {
         let app_parent = LibraryCoreBoundRoot::from_inherited_descriptor(descriptor.as_raw_fd())?;
         let app_directory = app_parent.open_or_create_private_directory(app_leaf)?;
         let app_root = LibraryCoreBoundRoot::from_inherited_descriptor(app_directory.as_raw_fd())?;
-        let historical_directory =
-            app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?;
+        let historical_directory = app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?;
         let (historical_store, historical_lease, historical_root) =
             if let Some(historical_directory) = historical_directory {
                 let historical_root = LibraryCoreBoundRoot::from_inherited_descriptor(
@@ -120,12 +119,8 @@ impl LibraryCoreDesktopBinding {
                     LibraryCoreProcessLease::acquire_bound(&historical_root, identity)
                         .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
                 after_lease();
-                let backup_directory =
-                    app_root.open_or_create_private_directory("library-backups")?;
-                let historical_store = LibraryCoreStore::open_bound_directories(
-                    historical_directory,
-                    backup_directory,
-                )?;
+                let historical_store =
+                    LibraryCoreStore::open_bound_directory(historical_directory)?;
                 (
                     Some(historical_store),
                     Some(historical_lease),
@@ -366,9 +361,7 @@ impl LibraryCoreDesktopBinding {
             ));
         }
         self.historical_store.as_ref().ok_or_else(|| {
-            LibraryCoreStoreError::from(
-                "historical Desktop migration source is absent".to_string(),
-            )
+            LibraryCoreStoreError::from("historical Desktop migration source is absent".to_string())
         })
     }
 

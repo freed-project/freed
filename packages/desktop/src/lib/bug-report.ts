@@ -22,6 +22,7 @@ import {
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { useAppStore } from "./store";
+import type { NormalizedLocalSnapshotSummary } from "./sqlite-library";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
@@ -60,7 +61,10 @@ async function getRuntimeHealthHistory(days: number): Promise<string[]> {
 
 async function getSnapshotNames(): Promise<string[]> {
   try {
-    return await invoke<string[]>("list_snapshots");
+    const snapshots = await invoke<NormalizedLocalSnapshotSummary[]>(
+      "list_normalized_local_snapshots",
+    );
+    return snapshots.map((snapshot) => snapshot.snapshotId);
   } catch {
     return [];
   }
