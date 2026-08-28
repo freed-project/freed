@@ -10,6 +10,8 @@ import {
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedItemContentV1,
+  libraryCoreNormalizedItemContentDigestsV1,
   readLibraryCoreNormalizedMapCandidatesV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedPersonDetailV1,
@@ -23,7 +25,10 @@ import {
   type LibraryCoreContentFetchCandidateV1,
   type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
-import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
+import {
+  mutateNormalizedContentPolicy,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
 
 let activeItemScan: Promise<void> | null = null;
 
@@ -164,6 +169,27 @@ export async function readLibraryCoreItemDetail(
     NORMALIZED_READER_RUNTIME,
     globalId,
   );
+}
+
+export async function pinLibraryCoreItemContent(
+  globalId: string,
+  updatedAt = Date.now(),
+): Promise<void> {
+  const content = await readLibraryCoreNormalizedItemContentV1(
+    NORMALIZED_READER_RUNTIME,
+    globalId,
+  );
+  if (content === null) {
+    throw new Error("Library Core item no longer exists");
+  }
+  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(content)) {
+    await mutateNormalizedContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt,
+    });
+  }
 }
 
 export async function readLibraryCorePersonDetail(

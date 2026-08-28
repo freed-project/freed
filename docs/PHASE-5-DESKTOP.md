@@ -328,6 +328,10 @@
   - [x] Evict native range objects through the held vault descriptor in bounded
         128-proof pages. Refuse pinned-offline eviction, and make an explicit
         excluded policy purge bytes and SQLite proofs before returning.
+  - [x] Resolve one selected item's body and media blob descriptors through the
+        bounded native `item_detail_v1` query. Reader pinning deduplicates those
+        descriptors and commits `pinned_offline` through the selected native
+        SQLite authority before retaining local reader cache bytes.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.
@@ -688,6 +692,7 @@ export async function captureDomFeed(
 | 5.159 | Delete the 2,154-line historical authority genesis module after proving it has no production consumer. Remove Automerge-era genesis and replication protocol formats, the unused native-snapshot bootstrap API, protocol correction storage methods, historical authority readers, stale public exports, and 17 compatibility tests. Normalized SQLite genesis and cutover are the only Library creation paths | High       | ✓ Complete |
 | 5.160 | Extract the complete sealed-transaction structural validator and the reusable canonical signed-envelope fixtures from the historical journal tree. Normalized Primary mutation and follower admission no longer import journal code, while transaction identity, actor sequence, payload slot, operation shape, causal tip, and exact canonical byte bounds retain direct native coverage | High       | ✓ Complete |
 | 5.161 | Delete the remaining 7,853-line historical journal implementation, authority helpers, shell materializers, schema upgrades, and private journal suites. Freed Desktop never creates or upgrades that database again. A retained schema version 12 source is available only through exact descriptor-bound read-only validation for one-time normalized migration, while an empty directory is ignored and fresh installation creates normalized SQLite only | High       | ✓ Complete |
+| 5.162 | Bind reader pinning to the selected native SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the native content-vault boundary before retaining local reader cache bytes | High       | ✓ Complete |
 
 ---
 

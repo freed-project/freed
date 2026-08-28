@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 const {
+  mutateNormalizedContentPolicy,
   mutateNormalizedDeviceGraphLayout,
   mutateNormalizedDeviceContacts,
   queryNormalizedDeviceContacts,
@@ -128,6 +129,32 @@ describe("Freed Desktop normalized query client", () => {
     );
     expect(mocks.invoke).toHaveBeenCalledWith(
       "mutate_normalized_device_graph_layout",
+      { mutation },
+    );
+  });
+
+  it("runs closed content policy mutations through the selected native core", async () => {
+    const mutation = {
+      contentDigest: "a".repeat(64),
+      policy: "pinned_offline" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 42,
+    };
+    const receipt = {
+      changed: true,
+      contentDigest: mutation.contentDigest,
+      contentRevision: 1,
+      policy: mutation.policy,
+      schemaVersion: 1 as const,
+      updatedAt: mutation.updatedAt,
+    };
+    mocks.invoke.mockResolvedValue(receipt);
+
+    await expect(mutateNormalizedContentPolicy(mutation)).resolves.toEqual(
+      receipt,
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "mutate_normalized_content_policy",
       { mutation },
     );
   });

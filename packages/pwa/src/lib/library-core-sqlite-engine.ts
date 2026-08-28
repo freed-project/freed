@@ -7839,6 +7839,9 @@ export class PwaLibraryCoreSqliteEngine {
                 ),
                 storage: text(row.contentBodyStorage, "content body storage"),
               },
+              mediaBlobDigests: JSON.parse(
+                text(row.mediaBlobDigestsJson, "media blob digests"),
+              ) as unknown,
               preservedBody: {
                 blobDigest: nullableText(
                   row.preservedBodyBlobDigest,

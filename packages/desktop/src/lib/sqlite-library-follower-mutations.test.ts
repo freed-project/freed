@@ -181,6 +181,7 @@ describe("SQLite editable follower mutations", () => {
             item: {
               card: normalizedCard(),
               contentBody: { blobDigest: null, storage: "inline" },
+              mediaBlobDigests: [],
               preservedBody: { blobDigest: null, storage: "none" },
             },
             queryId: request.queryId,

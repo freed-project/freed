@@ -823,10 +823,14 @@ reconstructs a monolithic settings object at the storage or transport boundary.
 
 `item_detail_v1` is a metadata point query. It reuses the compact feed-card
 projection and returns only typed locators that say whether each reader body is
-absent, inline in SQLite, or stored as a content-addressed blob. The body bytes
-are fetched through `item_reader_body_v1`. Item detail and background scans do
-not return full bodies, arbitrary remainder objects, or an enlarged metadata
-response.
+absent, inline in SQLite, or stored as a content-addressed blob. It also returns
+at most eight nullable media blob digests in exact ordinal alignment with the
+bounded media URL and type arrays. A null digest means that media row has no
+authenticated blob descriptor. The body bytes are fetched through
+`item_reader_body_v1`. Item detail and background scans do not return full
+bodies, media bytes, arbitrary remainder objects, or an enlarged metadata
+response. Freed Desktop and the PWA use these locators to commit device-local
+hydration policy. React receives no vault path or content byte buffer.
 
 Desktop provider-delivery discovery also has no renderer corpus path. Startup
 and explicit replacement scans must visit bounded authoritative SQLite pages.

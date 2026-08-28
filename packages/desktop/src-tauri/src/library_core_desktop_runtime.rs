@@ -425,6 +425,27 @@ pub(super) fn mutate_normalized_device_graph_layout(
 }
 
 #[tauri::command]
+pub(super) fn mutate_normalized_content_policy(
+    app: tauri::AppHandle,
+    mutation: freed_library_core::ContentPolicyMutationV1,
+) -> Result<freed_library_core::ContentPolicyMutationReceiptV1, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+        binding
+            .mutate_content_policy_v1(&mutation)
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let mut connection = open_normalized_database(&app)?;
+        freed_library_core::set_content_policy_v1(&mut connection, &mutation)
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
 pub(super) fn mutate_normalized_device_contacts(
     app: tauri::AppHandle,
     mutation: freed_library_core::DeviceContactSyncMutationV1,

@@ -2,16 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
+  mutateNormalizedContentPolicy: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
 }));
 
 vi.mock("./library-core-normalized-query-client", () => ({
   createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
+  mutateNormalizedContentPolicy: mocks.mutateNormalizedContentPolicy,
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 const {
   readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  pinLibraryCoreItemContent,
   readLibraryCoreMapCandidates,
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
@@ -52,13 +55,21 @@ const feedCard = {
 
 describe("Freed Desktop normalized surface readers", () => {
   beforeEach(() => {
+    mocks.mutateNormalizedContentPolicy.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
   });
 
   it("reads detail, facets, and Saved analytics from typed SQLite queries", async () => {
     mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
       if (request.queryId === "item_detail_v1") {
-        return { item: { card: feedCard } };
+        return {
+          item: {
+            card: feedCard,
+            contentBody: { blobDigest: null, storage: "inline" },
+            mediaBlobDigests: [],
+            preservedBody: { blobDigest: null, storage: "none" },
+          },
+        };
       }
       if (request.queryId === "library_facet_summary_v1") {
         return {
@@ -136,6 +147,40 @@ describe("Freed Desktop normalized surface readers", () => {
       "item_detail_v1",
       "library_facet_summary_v1",
       "saved_analytics_v2",
+    ]);
+  });
+
+  it("pins distinct selected-item blob descriptors through native SQLite", async () => {
+    const bodyDigest = "a".repeat(64);
+    const mediaDigest = "b".repeat(64);
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      item: {
+        card: {
+          ...feedCard,
+          mediaTypes: ["video", "image"],
+          mediaUrls: ["https://example.com/video.mp4", "https://example.com/image.jpg"],
+        },
+        contentBody: { blobDigest: bodyDigest, storage: "blob" },
+        mediaBlobDigests: [mediaDigest, bodyDigest],
+        preservedBody: { blobDigest: bodyDigest, storage: "blob" },
+      },
+    });
+
+    await pinLibraryCoreItemContent("x:item-1", 1_234);
+
+    expect(mocks.mutateNormalizedContentPolicy.mock.calls).toEqual([
+      [{
+        contentDigest: bodyDigest,
+        policy: "pinned_offline",
+        schemaVersion: 1,
+        updatedAt: 1_234,
+      }],
+      [{
+        contentDigest: mediaDigest,
+        policy: "pinned_offline",
+        schemaVersion: 1,
+        updatedAt: 1_234,
+      }],
     ]);
   });
 

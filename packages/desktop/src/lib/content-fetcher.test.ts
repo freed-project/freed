@@ -90,6 +90,7 @@ async function loadContentFetcherModule(options: {
     publishedAt: 1_700_000_000_000,
   }));
   const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
+  const mockPinLibraryCoreItemContent = vi.fn(async () => undefined);
   const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
@@ -146,6 +147,7 @@ async function loadContentFetcherModule(options: {
     subscribeDesktopLibraryRuntime: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
+    pinLibraryCoreItemContent: mockPinLibraryCoreItemContent,
     scanLibraryCoreContentFetchCandidates:
       mockScanLibraryCoreContentFetchCandidates,
   }));
@@ -207,6 +209,7 @@ async function loadContentFetcherModule(options: {
     subscriberRef,
     mockInvoke,
     mockCacheSet,
+    mockPinLibraryCoreItemContent,
     mockUpdateLibraryFeedItem,
     mockRecordReaderArticleFetchAttempt,
     mockScanLibraryCoreContentFetchCandidates,
@@ -761,10 +764,11 @@ describe("content fetcher", () => {
   });
 
   it("pins existing text posts by writing reader HTML to the local cache", async () => {
-    const { mod, mockCacheSet } = await loadContentFetcherModule();
+    const { mod, mockCacheSet, mockPinLibraryCoreItemContent } = await loadContentFetcherModule();
 
     await mod.pinReaderItem(makeTextPostItem());
 
+    expect(mockPinLibraryCoreItemContent).toHaveBeenCalledWith("x:post-1");
     expect(mockCacheSet).toHaveBeenCalledWith(
       "x:post-1",
       expect.stringContaining("Deployment confirmed."),

@@ -492,6 +492,7 @@ describe("cross-platform normalized feed readers", () => {
       item: {
         card: { ...feedCard("located"), locationName: "Babbage Square" },
         contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
       },
       source: {

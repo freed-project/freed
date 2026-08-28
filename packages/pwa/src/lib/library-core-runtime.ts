@@ -23,6 +23,8 @@ import {
   readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedItemContentV1,
+  libraryCoreNormalizedItemContentDigestsV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedPersonDetailV1,
   readLibraryCoreNormalizedFriendDetailV1,
@@ -70,6 +72,7 @@ import {
   finalizePwaScopeActionStage,
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
+  mutatePwaContentPolicy,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
@@ -813,6 +816,28 @@ export async function readPwaLibraryCoreItemDetail(
     NORMALIZED_READER_RUNTIME,
     globalId,
   );
+}
+
+/** Persist the device-local offline policy for every blob referenced by one item. */
+export async function pinPwaLibraryCoreItemContent(
+  globalId: string,
+  updatedAt = Date.now(),
+): Promise<void> {
+  const content = await readLibraryCoreNormalizedItemContentV1(
+    NORMALIZED_READER_RUNTIME,
+    globalId,
+  );
+  if (content === null) {
+    throw new Error("Library Core item no longer exists");
+  }
+  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(content)) {
+    await mutatePwaContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt,
+    });
+  }
 }
 
 /** Open a filtered feed through the shared bounded SQLite query adapter. */

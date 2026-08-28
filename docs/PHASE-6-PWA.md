@@ -47,6 +47,10 @@
       128 rows and source-fenced. Cached reads coalesce local recency writes,
       and cache pressure must present the exact candidate recency before OPFS
       bytes can be removed.
+- [x] Resolve one selected item's body and media blob descriptors through the
+      bounded OPFS SQLite `item_detail_v1` query. Reader pinning deduplicates
+      those descriptors and commits `pinned_offline` through the worker before
+      retaining local reader cache bytes.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,
@@ -576,6 +580,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.89 | Delete the final dormant IndexedDB Library browser specification and its nonexistent retired runtime import. Inline the three structured-clone helpers into the dedicated nonextractable actor key vault and delete the generic `library-core-indexeddb` module, so no reusable IndexedDB Library abstraction remains | High       | ✓ Complete                                                                                      |
 | 6.90 | Connect the shipping Google Drive sync loop to the normalized follower coordinator and its OPFS SQLite runtime. Initial, OAuth callback, 60-second, and manual passes import typed checkpoints, publish stable enrollment and bounded signed intents, reconcile signed results atomically, and report the complete Library sync rather than checkpoint download alone | High       | ✓ Complete                                                                                      |
 | 6.91 | Surface one exact OPFS SQLite cloud receipt in PWA Sync settings. Bind the selected checkpoint, Primary writer, follower actor, storage epoch, next intent and result sequences, and immutable segment heads to one authority. Reject a mixed receipt and copy the complete typed local receipt as JSON | High       | ✓ Complete                                                                                      |
+| 6.92 | Bind PWA reader pinning to OPFS SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the worker before retaining local reader cache bytes | High       | ✓ Complete                                                                                      |
 
 ---
 

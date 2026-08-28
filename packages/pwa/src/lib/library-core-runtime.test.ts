@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   importCheckpoint: vi.fn(),
   syncFollower: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
+  mutateContentPolicy: vi.fn(),
   resetNormalizedLibrary: vi.fn(),
   prepareFollowerEnrollment: vi.fn(),
   beginScopeAction: vi.fn(),
@@ -84,6 +85,7 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   closePwaScopeActionStage: mocks.closeScopeAction,
   pagePwaScopeActionStage: mocks.pageScopeAction,
   queryPwaNormalizedLibrary: mocks.queryNormalizedLibrary,
+  mutatePwaContentPolicy: mocks.mutateContentPolicy,
   readPwaFollowerTransportContext: mocks.readFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
@@ -109,6 +111,7 @@ import {
   clearPwaLibraryCoreSampleData,
   initializePwaLibraryCoreState,
   openPwaLibraryCoreFriendsFeedReader,
+  pinPwaLibraryCoreItemContent,
   readPwaLibraryCoreItemDetail,
   readPwaLibraryCoreCloudReceiptV2,
   readPwaLibraryCorePersonTimeline,
@@ -216,6 +219,9 @@ function normalizedItemDetail(
         sourceUrl: null,
         tags: [],
       },
+      contentBody: { blobDigest: null, storage: "inline" },
+      mediaBlobDigests: [],
+      preservedBody: { blobDigest: null, storage: "none" },
     },
   };
 }
@@ -274,6 +280,7 @@ describe("PWA Library Core bounded scanner", () => {
       nextCursor: null,
       rows: [],
     });
+    mocks.mutateContentPolicy.mockReset();
     mocks.resetNormalizedLibrary.mockReset();
     mocks.prepareFollowerEnrollment.mockReset();
     mocks.prepareFollowerEnrollment.mockResolvedValue(null);
@@ -766,6 +773,9 @@ describe("PWA Library Core bounded scanner", () => {
           sourceUrl: null,
           tags: [],
         },
+        contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [],
+        preservedBody: { blobDigest: null, storage: "none" },
       },
     });
 
@@ -777,6 +787,37 @@ describe("PWA Library Core bounded scanner", () => {
       queryId: "item_detail_v1",
       schemaVersion: 1,
     });
+  });
+
+  it("pins every distinct SQLite content descriptor for offline use", async () => {
+    const bodyDigest = "a".repeat(64);
+    const mediaDigest = "b".repeat(64);
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      ...normalizedItemDetail("item-pinned"),
+      item: {
+        ...normalizedItemDetail("item-pinned").item,
+        contentBody: { blobDigest: bodyDigest, storage: "blob" },
+        mediaBlobDigests: [mediaDigest, bodyDigest],
+        preservedBody: { blobDigest: bodyDigest, storage: "blob" },
+      },
+    });
+
+    await pinPwaLibraryCoreItemContent("item-pinned", 1_234);
+
+    expect(mocks.mutateContentPolicy.mock.calls).toEqual([
+      [{
+        contentDigest: bodyDigest,
+        policy: "pinned_offline",
+        schemaVersion: 1,
+        updatedAt: 1_234,
+      }],
+      [{
+        contentDigest: mediaDigest,
+        policy: "pinned_offline",
+        schemaVersion: 1,
+        updatedAt: 1_234,
+      }],
+    ]);
   });
 
   it("opens Friends through the normalized relational predicate", async () => {

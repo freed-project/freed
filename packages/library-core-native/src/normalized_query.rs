@@ -942,6 +942,7 @@ pub struct NormalizedItemBodyLocatorV1 {
 pub struct NormalizedItemDetailV1 {
     pub card: NormalizedFeedCardV1,
     pub content_body: NormalizedItemBodyLocatorV1,
+    pub media_blob_digests: Vec<Option<String>>,
     pub preserved_body: NormalizedItemBodyLocatorV1,
 }
 
@@ -2005,6 +2006,26 @@ fn string_array(
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
     })?;
     if values.len() > maximum_items || values.iter().any(|value| value.len() > maximum_item_bytes) {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(values)
+}
+
+fn nullable_digest_array(
+    row: &Row<'_>,
+    name: &str,
+    maximum_items: usize,
+) -> rusqlite::Result<Vec<Option<String>>> {
+    let json: String = row.get(name)?;
+    let values: Vec<Option<String>> = serde_json::from_str(&json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    if values.len() > maximum_items
+        || values
+            .iter()
+            .flatten()
+            .any(|digest| !valid_lower_hex_64(digest))
+    {
         return Err(rusqlite::Error::InvalidQuery);
     }
     Ok(values)
@@ -5915,9 +5936,15 @@ fn query_item_detail(
     let (generation_id, source_revision) = query_source(&transaction)?;
     let mut statement = transaction.prepare(program.sql)?;
     let rows = statement.query_map(params![request.global_id], |row| {
+        let card = feed_card(row)?;
+        let media_blob_digests = nullable_digest_array(row, "mediaBlobDigestsJson", 8)?;
+        if media_blob_digests.len() != card.media_urls.len() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
         Ok(NormalizedItemDetailV1 {
-            card: feed_card(row)?,
+            card,
             content_body: body_locator(row, "contentBodyStorage", "contentBodyBlobDigest")?,
+            media_blob_digests,
             preserved_body: body_locator(row, "preservedBodyStorage", "preservedBodyBlobDigest")?,
         })
     })?;
@@ -8326,8 +8353,12 @@ mod tests {
                     preserved_text_blob_digest, hidden, saved, archived, updated_at)
                    VALUES
                      ('item-1', 'saved', 'article', 100, 100, 'author-1', 'ada',
-                      'Ada', 'preview and body', '{}', 1, 1, 1, 100);",
+                      'Ada', 'preview and body', '{}', 1, 1, 1, 100);
+                 INSERT INTO library_feed_item_media
+                   (global_id, ordinal, source_url, media_type, blob_content_digest)
+                   VALUES ('item-1', 0, 'https://example.com/video.mp4', 'video', '{}');",
                 "a".repeat(64),
+                "b".repeat(64),
                 "b".repeat(64),
                 "b".repeat(64),
             ))
@@ -8348,6 +8379,7 @@ mod tests {
         assert_eq!(item.card.content_text.as_deref(), Some("preview and body"));
         assert_eq!(item.content_body.storage, "inline");
         assert_eq!(item.content_body.blob_digest, None);
+        assert_eq!(item.media_blob_digests, vec![Some("b".repeat(64))]);
         assert_eq!(item.preserved_body.storage, "blob");
         let digest = "b".repeat(64);
         assert_eq!(

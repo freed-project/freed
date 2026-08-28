@@ -9,6 +9,10 @@ import {
   parseLibraryCoreDeviceContactQueryRequestV1,
   parseLibraryCoreDeviceContactQueryResponseV1,
   parseLibraryCoreDeviceContactSyncMutationV1,
+  parseLibraryCoreContentPolicyMutationReceiptV1,
+  parseLibraryCoreContentPolicyMutationV1,
+  type LibraryCoreContentPolicyMutationReceiptV1,
+  type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreDeviceContactMutationExecutor,
   type LibraryCoreDeviceContactQueryExecutor,
   type LibraryCoreDeviceGraphLayoutMutationExecutor,
@@ -54,6 +58,19 @@ export const mutateNormalizedDeviceGraphLayout: LibraryCoreDeviceGraphLayoutMuta
     if (!parsedResponse.ok) throw new TypeError(parsedResponse.error);
     return parsedResponse.value;
   };
+
+export async function mutateNormalizedContentPolicy(
+  mutation: LibraryCoreContentPolicyMutationV1,
+): Promise<LibraryCoreContentPolicyMutationReceiptV1> {
+  const parsedMutation = parseLibraryCoreContentPolicyMutationV1(mutation);
+  if (!parsedMutation.ok) throw new TypeError(parsedMutation.error);
+  const response = await invoke<unknown>("mutate_normalized_content_policy", {
+    mutation: parsedMutation.value,
+  });
+  const parsedResponse = parseLibraryCoreContentPolicyMutationReceiptV1(response);
+  if (!parsedResponse.ok) throw new TypeError(parsedResponse.error);
+  return parsedResponse.value;
+}
 
 export const mutateNormalizedDeviceContacts: LibraryCoreDeviceContactMutationExecutor =
   async (mutation) => {

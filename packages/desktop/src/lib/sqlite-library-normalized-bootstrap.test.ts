@@ -151,6 +151,9 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           sourceUrl: null,
           tags: [],
         },
+        contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [],
+        preservedBody: { blobDigest: null, storage: "none" },
       },
     });
 

@@ -49,6 +49,7 @@ describe("item detail contracts", () => {
           item: {
             card,
             contentBody: { blobDigest: null, storage: "inline" },
+            mediaBlobDigests: [],
             preservedBody: { blobDigest: "a".repeat(64), storage: "blob" },
           },
           queryId: "item_detail_v1",
@@ -69,6 +70,7 @@ describe("item detail contracts", () => {
       item: {
         card,
         contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
       },
       queryId: "item_detail_v1",
@@ -82,6 +84,23 @@ describe("item detail contracts", () => {
     expect(
       parseLibraryCoreItemDetailResponseV1(
         { ...response, item: { ...response.item, contentBlob: "forbidden" } },
+        request,
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCoreItemDetailResponseV1(
+        {
+          ...response,
+          item: {
+            ...response.item,
+            card: {
+              ...card,
+              mediaTypes: ["video"],
+              mediaUrls: ["https://example.com/video.mp4"],
+            },
+            mediaBlobDigests: [],
+          },
+        },
         request,
       ).ok,
     ).toBe(false);

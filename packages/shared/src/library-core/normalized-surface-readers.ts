@@ -26,6 +26,7 @@ import { libraryCoreFeedCardToItemV1 } from "./feed-page-contracts.js";
 import {
   LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
   LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
+  type LibraryCoreItemBodyLocatorV1,
 } from "./item-detail-contracts.js";
 import type { LibraryCoreNormalizedReaderRuntime } from "./normalized-feed-readers.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
@@ -274,10 +275,33 @@ function validWindows(
   );
 }
 
-export async function readLibraryCoreNormalizedItemDetailV1(
+export interface LibraryCoreNormalizedItemContentV1 {
+  readonly contentBody: LibraryCoreItemBodyLocatorV1;
+  readonly item: FeedItem;
+  readonly mediaBlobDigests: readonly (string | null)[];
+  readonly preservedBody: LibraryCoreItemBodyLocatorV1;
+}
+
+export function libraryCoreNormalizedItemContentDigestsV1(
+  content: LibraryCoreNormalizedItemContentV1,
+): readonly string[] {
+  const digests = new Set<string>();
+  if (content.contentBody.blobDigest !== null) {
+    digests.add(content.contentBody.blobDigest);
+  }
+  if (content.preservedBody.blobDigest !== null) {
+    digests.add(content.preservedBody.blobDigest);
+  }
+  for (const digest of content.mediaBlobDigests) {
+    if (digest !== null) digests.add(digest);
+  }
+  return Object.freeze([...digests]);
+}
+
+export async function readLibraryCoreNormalizedItemContentV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   globalId: string,
-): Promise<FeedItem | null> {
+): Promise<LibraryCoreNormalizedItemContentV1 | null> {
   if (!globalId || new TextEncoder().encode(globalId).length > 4_096) {
     throw new Error("Library Core item identity is invalid");
   }
@@ -288,7 +312,19 @@ export async function readLibraryCoreNormalizedItemDetailV1(
   });
   return response.item === null
     ? null
-    : libraryCoreFeedCardToItemV1(response.item.card);
+    : Object.freeze({
+        contentBody: response.item.contentBody,
+        item: libraryCoreFeedCardToItemV1(response.item.card),
+        mediaBlobDigests: response.item.mediaBlobDigests,
+        preservedBody: response.item.preservedBody,
+      });
+}
+
+export async function readLibraryCoreNormalizedItemDetailV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  globalId: string,
+): Promise<FeedItem | null> {
+  return (await readLibraryCoreNormalizedItemContentV1(runtime, globalId))?.item ?? null;
 }
 
 function sampleDataFingerprint(

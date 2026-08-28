@@ -27,7 +27,12 @@ export const LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA = Object.freeze({
   schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
   canonicalKeys: Object.freeze(["item", "queryId", "schemaVersion", "source"]),
-  itemKeys: Object.freeze(["card", "contentBody", "preservedBody"]),
+  itemKeys: Object.freeze([
+    "card",
+    "contentBody",
+    "mediaBlobDigests",
+    "preservedBody",
+  ]),
   bodyLocatorKeys: Object.freeze(["blobDigest", "storage"]),
   nullableItem: true,
   maximumRows: 1,
@@ -61,6 +66,10 @@ export const LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS = Object.freeze({
     maximumItems: 2,
     maximumDigestUtf8BytesPerItem: 64,
   }),
+  mediaBlobDigests: Object.freeze({
+    maximumItems: 8,
+    maximumDigestUtf8BytesPerItem: 64,
+  }),
 });
 
 export type LibraryCoreItemBodyStorageV1 = "blob" | "inline" | "none";
@@ -73,6 +82,7 @@ export interface LibraryCoreItemBodyLocatorV1 {
 export interface LibraryCoreItemDetailV1 {
   readonly card: LibraryCoreFeedCardV1;
   readonly contentBody: LibraryCoreItemBodyLocatorV1;
+  readonly mediaBlobDigests: readonly (string | null)[];
   readonly preservedBody: LibraryCoreItemBodyLocatorV1;
 }
 
@@ -194,17 +204,30 @@ export function parseLibraryCoreItemDetailResponseV1(
     const itemRecord = closedRecord(record.item, ITEM_KEYS);
     const card = parseLibraryCoreFeedCardV1(itemRecord?.card);
     const contentBody = parseBodyLocator(itemRecord?.contentBody);
+    const mediaBlobDigests = itemRecord?.mediaBlobDigests;
     const preservedBody = parseBodyLocator(itemRecord?.preservedBody);
     if (
       !itemRecord ||
       !card.ok ||
       !contentBody ||
+      !Array.isArray(mediaBlobDigests) ||
+      mediaBlobDigests.length >
+        LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS.mediaBlobDigests.maximumItems ||
+      mediaBlobDigests.some(
+        (digest) => digest !== null && !isLibraryCoreLowercaseHex64(digest),
+      ) ||
+      mediaBlobDigests.length !== card.value.mediaUrls.length ||
       !preservedBody ||
       (request?.ok && card.value.globalId !== request.value.globalId)
     ) {
       return failure("item detail row is invalid");
     }
-    item = Object.freeze({ card: card.value, contentBody, preservedBody });
+    item = Object.freeze({
+      card: card.value,
+      contentBody,
+      mediaBlobDigests: Object.freeze([...mediaBlobDigests]),
+      preservedBody,
+    });
   }
   const response = Object.freeze({
     item,

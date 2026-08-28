@@ -2746,6 +2746,12 @@ describe("PWA Library Core SQLite engine", () => {
             WHERE global_id = 'item-2';`,
       bind: [blobDigest],
     });
+    database.exec({
+      sql: `UPDATE library_feed_item_media
+            SET blob_content_digest = ?1
+            WHERE global_id = 'item-2' AND ordinal = 0;`,
+      bind: [blobDigest],
+    });
     const request = {
       cancellationId: operationId("cancel-1"),
       cursor: null,
@@ -2972,6 +2978,7 @@ describe("PWA Library Core SQLite engine", () => {
       item: {
         card: { contentText: "newer", globalId: "item-2" },
         contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [blobDigest],
         preservedBody: { blobDigest, storage: "blob" },
       },
       queryId: "item_detail_v1",

@@ -39,6 +39,7 @@ import {
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
 import { renderFeedItemReaderHtml } from "./reader-item-html.js";
+import { pinLibraryCoreItemContent } from "./library-core-item-detail-runtime.js";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
@@ -259,6 +260,7 @@ function enqueueEntries(
 
 async function pinReaderItemInternal(item: FeedItem): Promise<void> {
   const url = item.content.linkPreview?.url;
+  await pinLibraryCoreItemContent(item.globalId);
   await contentCache.set(item.globalId, renderFeedItemReaderHtml(item));
   if (url) {
     enqueue([item], { priority: true, force: true });

@@ -690,6 +690,7 @@ export function tauriInitScript(): string {
               blobDigest: null,
               storage: item.content && item.content.text ? 'inline' : 'none',
             },
+            mediaBlobDigests: (item.content && item.content.media || []).map(function() { return null; }),
             preservedBody: {
               blobDigest: null,
               storage: 'none',
