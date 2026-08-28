@@ -5,6 +5,8 @@ import {
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
+  createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest,
+  createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteDeviceContactMutationWorkerRequest,
   createLibraryCoreSqliteDeviceContactQueryWorkerRequest,
@@ -40,6 +42,8 @@ import {
   parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreDeviceContactQueryResponseV1,
   parseLibraryCoreSqliteCheckpointSelectionResponse,
+  parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
+  parseLibraryCoreNormalizedCheckpointExportPageV2,
   parseLibraryCoreSqliteFollowerMutationContextResponse,
   parseLibraryCoreContentRangeReadResponseV1,
   parseLibraryCoreContentCompletionReceiptV1,
@@ -106,6 +110,9 @@ import {
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
   type LibraryCoreNormalizedCheckpointSelectionV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreNormalizedCheckpointExportPageV2,
+  type LibraryCorePinnedNormalizedCheckpointExportRequestV2,
   type LibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
@@ -544,6 +551,23 @@ export class PwaLibraryCoreSqliteClient {
     return this.#send((requestId) =>
       createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(requestId),
     ).then(parseLibraryCoreSqliteCheckpointSelectionResponse);
+  }
+
+  describeNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest(requestId),
+    ).then(parseLibraryCoreNormalizedCheckpointExportDescriptorV2);
+  }
+
+  readNormalizedCheckpointExportPage(
+    request: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+  ): Promise<LibraryCoreNormalizedCheckpointExportPageV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest(
+        requestId,
+        request,
+      ),
+    ).then(parseLibraryCoreNormalizedCheckpointExportPageV2);
   }
 
   async close(): Promise<LibraryCoreSqliteWorkerStatus> {

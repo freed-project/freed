@@ -14,16 +14,20 @@ import {
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
+  LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalBase64,
   decodeLibraryCoreCanonicalValue,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
+  digestLibraryCoreMediaBlobBytesV1,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   isLibraryCoreOperationInstanceId,
   isLibraryCoreLowercaseHex64,
   splitLibraryCoreContentV1,
+  reassembleLibraryCoreContentV1,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreLowercaseHex64,
@@ -80,6 +84,160 @@ describe("PWA Library Core SQLite engine", () => {
     }
     return value;
   }
+
+  it("exports one descriptor-pinned bounded normalized checkpoint with lossless chunks", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const libraryId = "a".repeat(64);
+    const epochId = "b".repeat(64);
+    const actorId = "c".repeat(64);
+    const chunk = Uint8Array.from(
+      { length: 65_536 },
+      (_, index) => index % 251,
+    );
+    const contentDigest = digestLibraryCoreMediaBlobBytesV1(chunk);
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 7, 100);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 7, ?6, ?7, 100);`,
+      bind: [
+        epochId,
+        libraryId,
+        "d".repeat(64),
+        "e".repeat(64),
+        "f".repeat(64),
+        "1".repeat(64),
+        "2".repeat(64),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, ?3, 7, 100);`,
+      bind: [libraryId, epochId, actorId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               created_at, updated_at)
+            VALUES (?1, ?2, 'desktop', ?3, 'enrollment', ?4, '{}', ?5,
+                    0, NULL, ?5, 100, 100);`,
+      bind: [actorId, epochId, "3".repeat(64), "4".repeat(64), "5".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, ?2, 65536, 1, 'application/octet-stream');`,
+      bind: [contentDigest, chunk.byteLength],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blob_chunks
+              (content_digest, chunk_index, chunk_digest, bytes)
+            VALUES (?1, 0, ?1, ?3);`,
+      bind: [contentDigest, chunk.byteLength, chunk],
+    });
+
+    const snapshot = engine.describeNormalizedCheckpointExport();
+    expect(snapshot).toMatchObject({
+      authorityEpoch: epochId,
+      causalFrontierDigest:
+        "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446",
+      itemCount: 0,
+      libraryId,
+      recordCount: 6,
+      sourceRevision: 7,
+      writerId: actorId,
+    });
+    const records: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let after = null;
+    while (true) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({
+        page: {
+          after,
+          maximumRecords: 2,
+          maximumResponseBytes:
+            LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        },
+        snapshot,
+      });
+      expect(page.records.length).toBeLessThanOrEqual(2);
+      expect(
+        new TextEncoder().encode(JSON.stringify(page)).byteLength,
+      ).toBeLessThanOrEqual(LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES);
+      for (const record of page.records) {
+        expect(
+          encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
+        ).toBeLessThanOrEqual(
+          LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+        );
+        records.push(record);
+      }
+      after = page.nextCursor;
+      if (page.done) break;
+    }
+    expect(records).toHaveLength(snapshot.recordCount);
+    expect(
+      records.every((record) => !record.registryKey.includes("shell")),
+    ).toBe(true);
+    expect(reassembleLibraryCoreContentV1(records)).toEqual(chunk);
+
+    database.exec({
+      sql: `INSERT INTO library_intent_actors
+              (actor_id, next_counter, previous_operation_id,
+               previous_chain_digest)
+            VALUES (?1, 1, NULL, ?2);`,
+      bind: [actorId, "5".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_intent_transactions
+              (transaction_id, transaction_digest, actor_id, intent_epoch,
+               intent_epoch_id, member_count, first_counter, last_counter,
+               previous_operation_id, previous_chain_digest,
+               ending_operation_id, ending_chain_digest,
+               canonical_member_bytes, canonical_transaction, state, created_at)
+            VALUES ('transaction-1', ?1, ?2, 1, ?3, 1, 1, 1, NULL, ?4,
+                    'operation-1', ?5, 2, X'7b7d', 'pending', 101);`,
+      bind: ["6".repeat(64), actorId, epochId, "5".repeat(64), "7".repeat(64)],
+    });
+    expect(() => engine.describeNormalizedCheckpointExport()).toThrow(
+      "unresolved local intents",
+    );
+    database.exec(
+      "DELETE FROM library_intent_transactions; DELETE FROM library_intent_actors;",
+    );
+
+    database.exec(
+      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.exportPinnedNormalizedCheckpointPage({
+        page: {
+          after: null,
+          maximumRecords: 2,
+          maximumResponseBytes:
+            LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        },
+        snapshot,
+      }),
+    ).toThrow("changed during export");
+  });
 
   it("builds and activates a replay-safe normalized contact generation", () => {
     const engine = new PwaLibraryCoreSqliteEngine(

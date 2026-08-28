@@ -17,6 +17,9 @@ import type {
   LibraryCoreBeginNormalizedCheckpointStageV2,
   LibraryCoreNormalizedCheckpointActivationReceiptV2,
   LibraryCoreNormalizedCheckpointSelectionV2,
+  LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  LibraryCoreNormalizedCheckpointExportPageV2,
+  LibraryCorePinnedNormalizedCheckpointExportRequestV2,
   LibraryCoreNormalizedCheckpointStagePageV2,
   LibraryCoreNormalizedCheckpointStageStatusV2,
   LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
@@ -174,6 +177,18 @@ export async function applyPwaFollowerResult(
 export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
   const active = await openClient();
   return active.readNormalizedCheckpointReceipt();
+}
+
+export async function describePwaNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  const active = await openClient();
+  return active.describeNormalizedCheckpointExport();
+}
+
+export async function readPwaNormalizedCheckpointExportPage(
+  request: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+): Promise<LibraryCoreNormalizedCheckpointExportPageV2> {
+  const active = await openClient();
+  return active.readNormalizedCheckpointExportPage(request);
 }
 
 export async function beginPwaNormalizedCheckpointStage(

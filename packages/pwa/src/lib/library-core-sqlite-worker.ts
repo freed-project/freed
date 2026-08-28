@@ -258,6 +258,24 @@ function executeReadCheckpointReceipt(
   );
 }
 
+function executeDescribeCheckpointExport(
+  request: WorkerRequest<"describe_normalized_checkpoint_export">,
+): LibraryCoreSqliteWorkerResponse {
+  return result(
+    request.requestId,
+    requireEngine().describeNormalizedCheckpointExport(),
+  );
+}
+
+function executeReadCheckpointExportPage(
+  request: WorkerRequest<"read_normalized_checkpoint_export_page">,
+): LibraryCoreSqliteWorkerResponse {
+  return result(
+    request.requestId,
+    requireEngine().exportPinnedNormalizedCheckpointPage(request.export),
+  );
+}
+
 function executeAppendCheckpointPage(
   request: WorkerRequest<"append_normalized_checkpoint_stage_page">,
 ): LibraryCoreSqliteWorkerResponse {
@@ -599,6 +617,10 @@ function compileCommand(
       return bindCommand(request, executeBeginCheckpoint);
     case "read_normalized_checkpoint_receipt":
       return bindCommand(request, executeReadCheckpointReceipt);
+    case "describe_normalized_checkpoint_export":
+      return bindCommand(request, executeDescribeCheckpointExport);
+    case "read_normalized_checkpoint_export_page":
+      return bindCommand(request, executeReadCheckpointExportPage);
     case "append_normalized_checkpoint_stage_page":
       return bindCommand(request, executeAppendCheckpointPage);
     case "query":

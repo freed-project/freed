@@ -1304,6 +1304,10 @@ mod tests {
         assert_eq!(snapshot.library_id, library_id);
         assert_eq!(snapshot.authority_epoch, epoch_id);
         assert_eq!(snapshot.writer_id, actor_id);
+        assert_eq!(
+            snapshot.causal_frontier_digest,
+            "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446"
+        );
         assert_eq!(snapshot.record_count, 4);
         let first = export_pinned_normalized_checkpoint_page_v2(
             &mut connection,

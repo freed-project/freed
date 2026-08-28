@@ -16,6 +16,7 @@ import {
 } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
@@ -46,6 +47,7 @@ import {
   type FeedItemUserStateAssignmentFieldV1,
   type LibraryCoreFollowerTransportContextV2,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
@@ -73,6 +75,8 @@ import {
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
   mutatePwaContentPolicy,
+  describePwaNormalizedCheckpointExport,
+  readPwaNormalizedCheckpointExportPage,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
@@ -118,13 +122,56 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
 export interface PwaLibraryCoreCloudReceiptV2 {
   readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
   readonly follower: LibraryCoreFollowerTransportContextV2 | null;
+  readonly localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
 }
 
 /** Read one bounded local view of checkpoint and follower cloud progress. */
 export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCoreCloudReceiptV2> {
   const checkpoint = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (!checkpoint) {
-    return Object.freeze({ checkpoint: null, follower: null });
+    return Object.freeze({
+      checkpoint: null,
+      follower: null,
+      localExport: null,
+    });
+  }
+  let localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
+  try {
+    localExport = await describePwaNormalizedCheckpointExport();
+    if (
+      localExport.libraryId !== checkpoint.libraryId ||
+      localExport.authorityEpoch !== checkpoint.authorityEpoch ||
+      localExport.writerId !== checkpoint.writerActorId
+    ) {
+      throw new Error("PWA local checkpoint export crosses Library authority");
+    }
+    const firstPage = await readPwaNormalizedCheckpointExportPage({
+      page: {
+        after: null,
+        maximumRecords: 1,
+        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+      },
+      snapshot: localExport,
+    });
+    const header = firstPage.records[0];
+    if (
+      header?.registryKey !== "00_checkpoint_header" ||
+      header.payload.libraryId !== localExport.libraryId ||
+      header.payload.authorityEpoch !== localExport.authorityEpoch ||
+      header.payload.sourceRevision !== localExport.sourceRevision
+    ) {
+      throw new Error("PWA local checkpoint export header is invalid");
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "normalized checkpoint export has unresolved local intents"
+    ) {
+      localExport = null;
+    } else {
+      throw error;
+    }
   }
   let follower: LibraryCoreFollowerTransportContextV2 | null;
   try {
@@ -145,7 +192,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
   ) {
     throw new Error("PWA follower cloud receipt crosses Library authority");
   }
-  return Object.freeze({ checkpoint, follower });
+  return Object.freeze({ checkpoint, follower, localExport });
 }
 
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
@@ -196,7 +243,10 @@ export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntim
 
 /** Establish the isolated signed Library used by local sample-data previews. */
 export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
-  if (import.meta.env.DEV || import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1") {
+  if (
+    import.meta.env.DEV ||
+    import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1"
+  ) {
     const preview = await import("./library-core-preview-bootstrap");
     await preview.ensurePwaLibraryCorePreviewState();
   }
@@ -495,13 +545,8 @@ export async function enqueuePwaLibraryCoreRssFeedTitleAssignment(
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */
 export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSummary> {
-  const {
-    feedUrls,
-    itemIds,
-    personIds,
-    realLinkedAccounts,
-    sampleAccountIds,
-  } = await collectLibraryCoreSampleRemovalPlanV1(NORMALIZED_READER_RUNTIME);
+  const { feedUrls, itemIds, personIds, realLinkedAccounts, sampleAccountIds } =
+    await collectLibraryCoreSampleRemovalPlanV1(NORMALIZED_READER_RUNTIME);
 
   const updatedAt = Date.now();
   await enqueuePwaLibraryCoreAccountUpserts(
@@ -834,7 +879,9 @@ export async function pinPwaLibraryCoreItemContent(
   if (content === null) {
     throw new Error("Library Core item no longer exists");
   }
-  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(content)) {
+  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(
+    content,
+  )) {
     await mutatePwaContentPolicy({
       contentDigest,
       policy: "pinned_offline",

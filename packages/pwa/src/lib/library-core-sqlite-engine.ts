@@ -5,6 +5,7 @@ import {
   LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SQL,
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
@@ -20,6 +21,7 @@ import {
   LIBRARY_CORE_OPERATION_IDS,
   LIBRARY_CORE_AGENT_QUERY_IDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
@@ -214,6 +216,7 @@ import {
   digestLibraryCoreMediaBlobBytesV1,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
+  createLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreActivateNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointSelectionV2,
@@ -223,6 +226,10 @@ import {
   libraryCoreNormalizedCheckpointSqlitePayloadV2,
   type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreNormalizedCheckpointExportPageV2,
+  type LibraryCoreNormalizedCheckpointPrimaryKeyV2,
+  type LibraryCorePinnedNormalizedCheckpointExportRequestV2,
   type LibraryCoreFeedCardV1,
   type LibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedResponseV1,
@@ -343,6 +350,17 @@ function lengthBytes(length: number): Uint8Array {
   new DataView(bytes.buffer).setBigUint64(0, BigInt(length), false);
   return bytes;
 }
+
+function signedIntegerBytes(value: number): Uint8Array {
+  const output = new Uint8Array(8);
+  new DataView(output.buffer).setBigInt64(0, BigInt(value), false);
+  return output;
+}
+
+const checkpointFrontierDigestPrefix = Uint8Array.from(
+  "freed.library-core.v2/digest-records/checkpoint-frontier\u0000",
+  (character) => character.charCodeAt(0),
+);
 
 function validateCheckpointHeader(
   record: LibraryCoreNormalizedCheckpointRecordV2,
@@ -862,6 +880,263 @@ export class PwaLibraryCoreSqliteEngine {
       sqliteVersion: this.#sqliteVersion,
       storage: "opfs",
     });
+  }
+
+  describeNormalizedCheckpointExport(): LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+    const unresolvedIntentCount = safeInteger(
+      this.#database.exec({
+        sql: `SELECT count(*) FROM library_intent_transactions
+              WHERE state IN ('pending', 'published');`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "unresolved checkpoint intent count",
+    );
+    if (unresolvedIntentCount !== 0) {
+      throw new Error(
+        "normalized checkpoint export has unresolved local intents",
+      );
+    }
+    const authorityRows = this.#database.exec({
+      sql: `SELECT meta.library_id, meta.authority_epoch, writer.actor_id,
+                   meta.source_revision, epoch.checkpoint_frontier_digest
+            FROM library_meta AS meta
+            JOIN library_active_authority AS active
+              ON active.active_key = 'active'
+             AND active.library_id = meta.library_id
+             AND active.epoch_id = meta.authority_epoch
+            JOIN library_authority_epochs AS epoch
+              ON epoch.epoch_id = active.epoch_id
+            JOIN library_actors AS writer
+              ON writer.authority_epoch_id = active.epoch_id
+             AND writer.actor_kind = 'desktop'
+             AND writer.retired_at IS NULL
+            WHERE meta.singleton_id = 1
+              AND (SELECT count(*) FROM library_actors AS candidate
+                   WHERE candidate.authority_epoch_id = active.epoch_id
+                     AND candidate.actor_kind = 'desktop'
+                     AND candidate.retired_at IS NULL) = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (authorityRows.length !== 1) {
+      throw new Error("normalized checkpoint authority is unavailable");
+    }
+    const [libraryValue, epochValue, writerValue, revisionValue, carriedValue] =
+      authorityRows[0]!;
+    const libraryId = text(libraryValue, "checkpoint Library identity");
+    const authorityEpoch = text(epochValue, "checkpoint authority epoch");
+    const writerId = text(writerValue, "checkpoint writer identity");
+    const sourceRevision = safeInteger(
+      revisionValue,
+      "checkpoint source revision",
+    );
+    const carriedFrontier = text(carriedValue, "checkpoint carried frontier");
+    if (
+      !isLibraryCoreLowercaseHex64(libraryId) ||
+      !isLibraryCoreLowercaseHex64(authorityEpoch) ||
+      !isLibraryCoreLowercaseHex64(writerId) ||
+      !isLibraryCoreLowercaseHex64(carriedFrontier) ||
+      sourceRevision < 0
+    ) {
+      throw new Error("normalized checkpoint authority identity is invalid");
+    }
+    const digest = new LibraryCoreSha256().update(
+      checkpointFrontierDigestPrefix,
+    );
+    const carriedBytes = textEncoder.encode(carriedFrontier);
+    digest.update(lengthBytes(carriedBytes.byteLength));
+    digest.update(carriedBytes);
+    const actorRows = this.#database.exec({
+      sql: `SELECT actor_id, accepted_counter, accepted_operation_id,
+                   accepted_chain_digest
+            FROM library_actors
+            WHERE authority_epoch_id = ?1 AND retired_at IS NULL
+            ORDER BY actor_id;`,
+      bind: [authorityEpoch],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    for (const actorRow of actorRows) {
+      const actorId = text(actorRow[0], "checkpoint actor identity");
+      const acceptedCounter = safeInteger(
+        actorRow[1],
+        "checkpoint actor counter",
+      );
+      const acceptedOperationId = nullableText(
+        actorRow[2],
+        "checkpoint actor operation identity",
+      );
+      const acceptedChainDigest = text(
+        actorRow[3],
+        "checkpoint actor chain digest",
+      );
+      if (acceptedCounter < 0) {
+        throw new Error("normalized checkpoint actor counter is invalid");
+      }
+      for (const value of [actorId, acceptedChainDigest]) {
+        const encoded = textEncoder.encode(value);
+        digest.update(lengthBytes(encoded.byteLength));
+        digest.update(encoded);
+      }
+      digest.update(signedIntegerBytes(acceptedCounter));
+      if (acceptedOperationId === null) {
+        digest.update(Uint8Array.of(0));
+      } else {
+        const encoded = textEncoder.encode(acceptedOperationId);
+        digest.update(Uint8Array.of(1));
+        digest.update(lengthBytes(encoded.byteLength));
+        digest.update(encoded);
+      }
+    }
+    const recordCount = safeInteger(
+      this.#database.exec({
+        sql: "SELECT count(*) FROM library_checkpoint_export;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "checkpoint record count",
+    );
+    const itemCount = safeInteger(
+      this.#database.exec({
+        sql: "SELECT count(*) FROM library_feed_items;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "checkpoint item count",
+    );
+    return Object.freeze({
+      authorityEpoch,
+      causalFrontierDigest: digest.digestLowerHex(),
+      format: LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
+      libraryId,
+      itemCount,
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      recordCount,
+      sourceRevision,
+      writerId,
+    });
+  }
+
+  exportPinnedNormalizedCheckpointPage(
+    input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+  ): LibraryCoreNormalizedCheckpointExportPageV2 {
+    const { page: request, snapshot } = input;
+    if (
+      request.maximumRecords < 1 ||
+      request.maximumRecords > LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS ||
+      request.maximumResponseBytes < 1 ||
+      request.maximumResponseBytes >
+        LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES
+    ) {
+      throw new Error("normalized checkpoint export bounds are invalid");
+    }
+    const afterRegistryKey = request.after?.registryKey ?? "";
+    const afterPrimaryKeyJson = request.after?.primaryKeyJson ?? "";
+    this.#database.exec("BEGIN;");
+    try {
+      if (
+        JSON.stringify(this.describeNormalizedCheckpointExport()) !==
+        JSON.stringify(snapshot)
+      ) {
+        throw new Error("normalized checkpoint changed during export");
+      }
+      const rows = this.#database.exec({
+        sql: `SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+              FROM library_checkpoint_export
+              WHERE (?1 = '' OR registry_key > ?1
+                     OR (registry_key = ?1 AND primary_key_json > ?2))
+              ORDER BY registry_key, primary_key_json
+              LIMIT ?3;`,
+        bind: [
+          afterRegistryKey,
+          afterPrimaryKeyJson,
+          request.maximumRecords + 1,
+        ],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const records =
+        [] as LibraryCoreNormalizedCheckpointExportPageV2["records"][number][];
+      let canonicalRecordBytes = 0;
+      let nextCursor = request.after;
+      for (const row of rows.slice(0, request.maximumRecords)) {
+        const registryKey = text(row[0], "checkpoint registry key");
+        const primaryKeyJson = text(row[1], "checkpoint primary key JSON");
+        const primaryKey = JSON.parse(
+          primaryKeyJson,
+        ) as LibraryCoreNormalizedCheckpointPrimaryKeyV2;
+        const payload = JSON.parse(
+          text(row[2], "checkpoint payload JSON"),
+        ) as Record<string, LibraryCoreCanonicalValue>;
+        if (row[3] !== null) {
+          payload.bytesBase64 = encodeLibraryCoreCanonicalBase64(
+            bytes(row[3], "checkpoint chunk bytes"),
+          );
+        }
+        const record = createLibraryCoreNormalizedCheckpointRecordV2({
+          payload,
+          primaryKey,
+          registryKey: registryKey as Parameters<
+            typeof createLibraryCoreNormalizedCheckpointRecordV2
+          >[0]["registryKey"],
+        });
+        const canonicalBytes =
+          encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength;
+        const candidate = {
+          canonicalRecordBytes: canonicalRecordBytes + canonicalBytes,
+          done: false,
+          nextCursor: { primaryKeyJson, registryKey },
+          records: [...records, record],
+        };
+        if (
+          textEncoder.encode(JSON.stringify(candidate)).byteLength >
+          request.maximumResponseBytes
+        ) {
+          break;
+        }
+        records.push(record);
+        canonicalRecordBytes += canonicalBytes;
+        nextCursor = Object.freeze({ primaryKeyJson, registryKey });
+      }
+      const hasMore =
+        this.#database.exec({
+          sql: `SELECT 1 FROM library_checkpoint_export
+              WHERE (?1 = '' OR registry_key > ?1
+                     OR (registry_key = ?1 AND primary_key_json > ?2))
+              LIMIT 1;`,
+          bind: [
+            nextCursor?.registryKey ?? "",
+            nextCursor?.primaryKeyJson ?? "",
+          ],
+          rowMode: 0,
+          returnValue: "resultRows",
+        }).length > 0;
+      if (records.length === 0 && hasMore) {
+        throw new Error(
+          "normalized checkpoint response bound cannot fit the next record",
+        );
+      }
+      const result = Object.freeze({
+        canonicalRecordBytes,
+        done: !hasMore,
+        nextCursor,
+        records: Object.freeze(records),
+      });
+      if (
+        textEncoder.encode(JSON.stringify(result)).byteLength >
+        request.maximumResponseBytes
+      ) {
+        throw new Error(
+          "normalized checkpoint response exceeded its exact byte bound",
+        );
+      }
+      this.#database.exec("COMMIT;");
+      return result;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   beginNormalizedCheckpointStage(

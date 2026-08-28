@@ -14,6 +14,8 @@ import {
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
+  createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest,
+  createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteCloseScopeActionWorkerRequest,
@@ -924,6 +926,45 @@ describe("Library Core SQLite worker protocol", () => {
       createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest("request-6")
         .kind,
     ).toBe("read_normalized_checkpoint_receipt");
+    expect(
+      createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest("request-7")
+        .kind,
+    ).toBe("describe_normalized_checkpoint_export");
+    const exportPage =
+      createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest(
+        "request-8",
+        {
+          page: {
+            after: null,
+            maximumRecords: 128,
+            maximumResponseBytes: 1_048_576,
+          },
+          snapshot: {
+            authorityEpoch: "b".repeat(64) as never,
+            causalFrontierDigest: "d".repeat(64) as never,
+            format: "freed_normalized_checkpoint_export_v2",
+            itemCount: 1,
+            libraryId: "a".repeat(64) as never,
+            protocolVersion: 2,
+            recordCount: 5,
+            sourceRevision: 7,
+            writerId: "c".repeat(64) as never,
+          },
+        },
+      );
+    expect(exportPage.kind).toBe("read_normalized_checkpoint_export_page");
+    if (exportPage.kind !== "read_normalized_checkpoint_export_page") {
+      throw new Error("checkpoint export worker lane is invalid");
+    }
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...exportPage,
+        export: {
+          ...exportPage.export,
+          page: { ...exportPage.export.page, maximumRecords: 129 },
+        },
+      }),
+    ).toThrow(/bounds are invalid/);
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

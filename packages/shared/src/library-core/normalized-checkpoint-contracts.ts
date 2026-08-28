@@ -63,6 +63,17 @@ export interface LibraryCoreNormalizedCheckpointCursorV2 {
   readonly primaryKeyJson: string;
 }
 
+export interface LibraryCoreNormalizedCheckpointExportRequestV2 {
+  readonly after: LibraryCoreNormalizedCheckpointCursorV2 | null;
+  readonly maximumRecords: number;
+  readonly maximumResponseBytes: number;
+}
+
+export interface LibraryCorePinnedNormalizedCheckpointExportRequestV2 {
+  readonly snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+  readonly page: LibraryCoreNormalizedCheckpointExportRequestV2;
+}
+
 export interface LibraryCoreNormalizedCheckpointExportPageV2 {
   readonly records: readonly LibraryCoreNormalizedCheckpointRecordV2[];
   readonly nextCursor: LibraryCoreNormalizedCheckpointCursorV2 | null;
@@ -377,6 +388,48 @@ function parseCheckpointCursor(
   return Object.freeze({
     primaryKeyJson: record.primaryKeyJson,
     registryKey: record.registryKey,
+  });
+}
+
+export function parseLibraryCoreNormalizedCheckpointExportRequestV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointExportRequestV2 {
+  const record = ownClosedRecord(
+    value,
+    ["after", "maximumRecords", "maximumResponseBytes"],
+    "normalized checkpoint export request",
+  );
+  if (
+    !isLibraryCoreNonnegativeSafeInteger(record.maximumRecords) ||
+    record.maximumRecords < 1 ||
+    record.maximumRecords > LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS ||
+    !isLibraryCoreNonnegativeSafeInteger(record.maximumResponseBytes) ||
+    record.maximumResponseBytes < 1 ||
+    record.maximumResponseBytes >
+      LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES
+  ) {
+    throw new TypeError("normalized checkpoint export bounds are invalid");
+  }
+  return Object.freeze({
+    after: parseCheckpointCursor(record.after),
+    maximumRecords: record.maximumRecords,
+    maximumResponseBytes: record.maximumResponseBytes,
+  });
+}
+
+export function parseLibraryCorePinnedNormalizedCheckpointExportRequestV2(
+  value: unknown,
+): LibraryCorePinnedNormalizedCheckpointExportRequestV2 {
+  const record = ownClosedRecord(
+    value,
+    ["page", "snapshot"],
+    "pinned normalized checkpoint export request",
+  );
+  return Object.freeze({
+    page: parseLibraryCoreNormalizedCheckpointExportRequestV2(record.page),
+    snapshot: parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
+      record.snapshot,
+    ),
   });
 }
 

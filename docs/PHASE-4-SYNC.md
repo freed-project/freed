@@ -89,7 +89,7 @@
       transactions. Exact replay is idempotent, changed replay fails, finite
       fractions use exact binary64 wrappers, incomplete content and foreign
       references fail, and staging bytes are removed after activation.
-- [ ] Expose the same exporter and staging activation contract in the PWA
+- [x] Expose the same exporter and staging activation contract in the PWA
       SQLite worker.
 - [x] Enforce the initial 131,072-byte canonical logical-record ceiling,
       128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
@@ -454,6 +454,7 @@ loads an alternate Library engine or compatibility path.
 | 4.260 | Make the recurring Primary coordinator transport and credential neutral. It now receives only an authority assertion, durable revisions, clock, scheduler, diagnostics, publication reason, and abort signal. Freed Desktop keeps its existing Drive token and fetch behavior inside its host callback. The headless runtime verifies native Primary actor and checkpoint writer identity, shares the 15-second and 60-second schedule, and bundles the coordinator into its standalone service artifact. The service CLI still has no installed Drive binding | ✓      | High       |
 | 4.261 | Extend the existing release artifact guard across the complete retired Library authority boundary. Desktop and PWA bundles now fail when they contain a Library shell record or type, `DocState`, the retired PWA IndexedDB checkpoint, search, or read-model databases, or any deleted IndexedDB Library module. The narrow nonextractable browser key vault remains allowed | ✓      | High       |
 | 4.262 | Delete the 18 unreferenced authoritative-migration, shadow-schema, shadow-generation registry, and shadow-generation schema SQL artifacts. None was a current migration input, package export, build input, test fixture, or runtime caller. The final normalized schema and fenced schema 12 source reader remain the only SQLite schema boundaries. | ✓      | High       |
+| 4.263 | Expose the normalized checkpoint exporter through the PWA OPFS SQLite worker, client, and runtime. Pin every page to one exact Library, epoch, writer, source revision, record count, item count, and causal frontier descriptor. Apply the same 128-record, 1,048,576-response-byte, 131,072-canonical-record, registry-key, primary-key, fractional-number, and content-chunk contracts as native Rust, with a shared fixed frontier digest vector and exact chunk reassembly. Refuse export while local intent transactions remain unresolved, and surface one descriptor plus first-record proof in the existing bounded PWA cloud receipt when the replica is checkpointable | ✓      | High       |
 
 ---
 

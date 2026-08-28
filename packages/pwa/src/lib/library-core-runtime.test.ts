@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   commitAccountUpserts: vi.fn(),
   commitAccountRemove: vi.fn(),
   readNormalizedCheckpointReceipt: vi.fn(),
+  describeNormalizedCheckpointExport: vi.fn(),
+  readNormalizedCheckpointExportPage: vi.fn(),
   readFollowerTransportContext: vi.fn(),
   createNormalizedCheckpointWriter: vi.fn(),
   createCloudAdapter: vi.fn(),
@@ -88,6 +90,10 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   mutatePwaContentPolicy: mocks.mutateContentPolicy,
   readPwaFollowerTransportContext: mocks.readFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
+  describePwaNormalizedCheckpointExport:
+    mocks.describeNormalizedCheckpointExport,
+  readPwaNormalizedCheckpointExportPage:
+    mocks.readNormalizedCheckpointExportPage,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
 }));
 
@@ -178,6 +184,18 @@ const SELECTED_RECEIPT = Object.freeze({
   writerActorId: "66".repeat(32),
 });
 
+const LOCAL_EXPORT = Object.freeze({
+  authorityEpoch: SELECTED_RECEIPT.authorityEpoch,
+  causalFrontierDigest: "78".repeat(32),
+  format: "freed_normalized_checkpoint_export_v2" as const,
+  itemCount: 3,
+  libraryId: SELECTED_RECEIPT.libraryId,
+  protocolVersion: 2 as const,
+  recordCount: 7,
+  sourceRevision: SELECTED_RECEIPT.sourceRevision,
+  writerId: SELECTED_RECEIPT.writerActorId as never,
+});
+
 function normalizedItemDetail(
   globalId: string,
   userState: Readonly<{
@@ -264,7 +282,34 @@ describe("PWA Library Core bounded scanner", () => {
     localStorage.clear();
     mocks.readNormalizedCheckpointReceipt.mockReset();
     mocks.readFollowerTransportContext.mockReset();
+    mocks.describeNormalizedCheckpointExport.mockReset();
+    mocks.readNormalizedCheckpointExportPage.mockReset();
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({ receipt: null });
+    mocks.describeNormalizedCheckpointExport.mockResolvedValue(LOCAL_EXPORT);
+    mocks.readNormalizedCheckpointExportPage.mockResolvedValue({
+      canonicalRecordBytes: 1,
+      done: false,
+      nextCursor: {
+        primaryKeyJson: '"checkpoint"',
+        registryKey: "00_checkpoint_header",
+      },
+      records: [
+        {
+          format: "freed_normalized_checkpoint_v2",
+          payload: {
+            authorityEpoch: LOCAL_EXPORT.authorityEpoch,
+            checkpointId: `${LOCAL_EXPORT.libraryId}:${LOCAL_EXPORT.authorityEpoch}:${LOCAL_EXPORT.sourceRevision}`,
+            createdAtMs: 1,
+            libraryId: LOCAL_EXPORT.libraryId,
+            schemaVersion: 1,
+            sourceRevision: LOCAL_EXPORT.sourceRevision,
+          },
+          primaryKey: "checkpoint",
+          protocolVersion: 2,
+          registryKey: "00_checkpoint_header",
+        },
+      ],
+    });
     mocks.createNormalizedCheckpointWriter.mockReset();
     mocks.createNormalizedCheckpointWriter.mockReturnValue({});
     mocks.createCloudAdapter.mockReset();
@@ -333,6 +378,15 @@ describe("PWA Library Core bounded scanner", () => {
         nextIntentActorCounter: 4,
         nextResultSequence: 3,
       }),
+      localExport: LOCAL_EXPORT,
+    });
+
+    mocks.describeNormalizedCheckpointExport.mockRejectedValueOnce(
+      new Error("normalized checkpoint export has unresolved local intents"),
+    );
+    await expect(readPwaLibraryCoreCloudReceiptV2()).resolves.toMatchObject({
+      checkpoint: SELECTED_RECEIPT,
+      localExport: null,
     });
 
     mocks.readFollowerTransportContext.mockResolvedValueOnce({
@@ -652,8 +706,7 @@ describe("PWA Library Core bounded scanner", () => {
         provider: "x",
         sampleBatchId: sampleDataFingerprint?.batchId ?? null,
         sampleGeneratedAt: sampleDataFingerprint?.generatedAt ?? null,
-        sampleGeneratorVersion:
-          sampleDataFingerprint?.generatorVersion ?? null,
+        sampleGeneratorVersion: sampleDataFingerprint?.generatorVersion ?? null,
         updatedAt: 1,
       },
     });
@@ -699,9 +752,13 @@ describe("PWA Library Core bounded scanner", () => {
           return {
             nextCursor: null,
             rows: [
-              backgroundRow("item-sample", {}, {
-                sampleDataFingerprint: sample,
-              }),
+              backgroundRow(
+                "item-sample",
+                {},
+                {
+                  sampleDataFingerprint: sample,
+                },
+              ),
             ],
           };
         default:
@@ -805,18 +862,22 @@ describe("PWA Library Core bounded scanner", () => {
     await pinPwaLibraryCoreItemContent("item-pinned", 1_234);
 
     expect(mocks.mutateContentPolicy.mock.calls).toEqual([
-      [{
-        contentDigest: bodyDigest,
-        policy: "pinned_offline",
-        schemaVersion: 1,
-        updatedAt: 1_234,
-      }],
-      [{
-        contentDigest: mediaDigest,
-        policy: "pinned_offline",
-        schemaVersion: 1,
-        updatedAt: 1_234,
-      }],
+      [
+        {
+          contentDigest: bodyDigest,
+          policy: "pinned_offline",
+          schemaVersion: 1,
+          updatedAt: 1_234,
+        },
+      ],
+      [
+        {
+          contentDigest: mediaDigest,
+          policy: "pinned_offline",
+          schemaVersion: 1,
+          updatedAt: 1_234,
+        },
+      ],
     ]);
   });
 

@@ -165,6 +165,12 @@ import {
   type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "./normalized-checkpoint-stage-contracts.js";
 import {
+  parseLibraryCorePinnedNormalizedCheckpointExportRequestV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreNormalizedCheckpointExportPageV2,
+  type LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+} from "./normalized-checkpoint-contracts.js";
+import {
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreDeviceGraphLayoutMutationV1,
@@ -741,6 +747,17 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "describe_normalized_checkpoint_export";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      export: LibraryCorePinnedNormalizedCheckpointExportRequestV2;
+      kind: "read_normalized_checkpoint_export_page";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       createdAt: number;
       kind: "begin_scope_action";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
@@ -790,6 +807,8 @@ export interface LibraryCoreSqliteWorkerStatus {
 
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreSqliteQueryResponse
+  | LibraryCoreNormalizedCheckpointExportDescriptorV2
+  | LibraryCoreNormalizedCheckpointExportPageV2
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
   | LibraryCoreNormalizedCheckpointSelectionV2
@@ -914,75 +933,85 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                 "protocolVersion",
                                 "requestId",
                               ]
-                            : value.kind === "begin_normalized_checkpoint_stage"
+                            : value.kind ===
+                                "read_normalized_checkpoint_export_page"
                               ? [
+                                  "export",
                                   "kind",
                                   "protocolVersion",
                                   "requestId",
-                                  "stage",
                                 ]
                               : value.kind ===
-                                  "append_normalized_checkpoint_stage_page"
+                                  "begin_normalized_checkpoint_stage"
                                 ? [
                                     "kind",
-                                    "page",
                                     "protocolVersion",
                                     "requestId",
+                                    "stage",
                                   ]
                                 : value.kind ===
-                                    "activate_normalized_checkpoint_stage"
+                                    "append_normalized_checkpoint_stage_page"
                                   ? [
-                                      "activation",
                                       "kind",
+                                      "page",
                                       "protocolVersion",
                                       "requestId",
                                     ]
-                                  : value.kind === "begin_scope_action"
+                                  : value.kind ===
+                                      "activate_normalized_checkpoint_stage"
                                     ? [
-                                        "createdAt",
+                                        "activation",
                                         "kind",
                                         "protocolVersion",
-                                        "request",
                                         "requestId",
-                                        "stageId",
                                       ]
-                                    : value.kind === "append_scope_action"
+                                    : value.kind === "begin_scope_action"
                                       ? [
-                                          "entityIds",
-                                          "expectedOrdinal",
+                                          "createdAt",
                                           "kind",
                                           "protocolVersion",
+                                          "request",
                                           "requestId",
                                           "stageId",
                                         ]
-                                      : value.kind === "finalize_scope_action"
+                                      : value.kind === "append_scope_action"
                                         ? [
-                                            "expectedMemberCount",
+                                            "entityIds",
+                                            "expectedOrdinal",
                                             "kind",
                                             "protocolVersion",
                                             "requestId",
                                             "stageId",
                                           ]
-                                        : value.kind === "page_scope_action"
+                                        : value.kind === "finalize_scope_action"
                                           ? [
-                                              "afterOrdinal",
+                                              "expectedMemberCount",
                                               "kind",
                                               "protocolVersion",
                                               "requestId",
                                               "stageId",
                                             ]
-                                          : value.kind === "close_scope_action"
+                                          : value.kind === "page_scope_action"
                                             ? [
+                                                "afterOrdinal",
                                                 "kind",
                                                 "protocolVersion",
                                                 "requestId",
                                                 "stageId",
                                               ]
-                                            : [
-                                                "kind",
-                                                "protocolVersion",
-                                                "requestId",
-                                              ];
+                                            : value.kind ===
+                                                "close_scope_action"
+                                              ? [
+                                                  "kind",
+                                                  "protocolVersion",
+                                                  "requestId",
+                                                  "stageId",
+                                                ]
+                                              : [
+                                                  "kind",
+                                                  "protocolVersion",
+                                                  "requestId",
+                                                ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -998,6 +1027,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "close",
       "close_scope_action",
       "commit_follower_intent",
+      "describe_normalized_checkpoint_export",
       "append_scope_action",
       "finalize_scope_action",
       "finalize_content_range_publication",
@@ -1020,6 +1050,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "query",
       "query_device_contacts",
       "read_normalized_checkpoint_receipt",
+      "read_normalized_checkpoint_export_page",
       "read_content_state",
       "read_content_range",
       "read_follower_actor_enrollment_context",
@@ -1034,7 +1065,16 @@ export function parseLibraryCoreSqliteWorkerRequest(
   ) {
     throw new TypeError("SQLite worker request identity is invalid");
   }
-  if (value.kind === "begin_normalized_checkpoint_stage") {
+  if (value.kind === "read_normalized_checkpoint_export_page") {
+    return Object.freeze({
+      export: parseLibraryCorePinnedNormalizedCheckpointExportRequestV2(
+        value.export,
+      ),
+      kind: "read_normalized_checkpoint_export_page",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
+  } else if (value.kind === "begin_normalized_checkpoint_stage") {
     parseLibraryCoreBeginNormalizedCheckpointStageV2(value.stage);
   } else if (value.kind === "append_normalized_checkpoint_stage_page") {
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
@@ -1789,6 +1829,28 @@ export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind: "read_normalized_checkpoint_receipt",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "describe_normalized_checkpoint_export",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest(
+  requestId: string,
+  request: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    export: request,
+    kind: "read_normalized_checkpoint_export_page",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
