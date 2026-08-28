@@ -24,8 +24,6 @@ mod authority;
 #[cfg(test)]
 #[path = "library_core_journal_enrollment_tests.rs"]
 mod enrollment_tests;
-#[path = "library_core_journal_follower.rs"]
-pub(crate) mod follower;
 #[cfg(test)]
 #[path = "library_core_journal_operation_tests.rs"]
 pub(crate) mod operation_tests;
@@ -42,8 +40,6 @@ use crate::normalized_protocol_limits::{
     is_lower_hex, is_operation_id, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
     MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES, MAX_TRANSACTION_MEMBERS,
 };
-
-use follower::{FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment};
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 12;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
@@ -1432,27 +1428,6 @@ impl LibraryCoreJournal {
         })
     }
 
-    fn verify_follower_operation_transaction(
-        &self,
-        canonical_envelopes: &[Vec<u8>],
-    ) -> LibraryCoreResult<VerifiedOperationTransaction> {
-        operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
-            self.follower_actor_state(&identity.library_id, &identity.epoch_id, &identity.actor_id)?
-                .ok_or_else(|| LibraryCoreError::ActorNotFound {
-                    actor_id: identity.actor_id.clone(),
-                })
-        })
-    }
-
-    pub fn verify_and_enqueue_follower_intent(
-        &mut self,
-        canonical_envelopes: &[Vec<u8>],
-        enqueued_at_ms: i64,
-    ) -> LibraryCoreResult<FollowerIntentEnqueueReceipt> {
-        let verified = self.verify_follower_operation_transaction(canonical_envelopes)?;
-        self.enqueue_verified_follower_transaction(&verified, enqueued_at_ms)
-    }
-
     fn verify_and_commit_read_transaction(
         &mut self,
         canonical_envelopes: &[Vec<u8>],
@@ -1702,21 +1677,6 @@ impl LibraryCoreJournal {
             })?;
         let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
         self.enroll_actor_under_authority(&enrollment, &authority, true)
-    }
-
-    /// Verify and install the authority-countersigned certificate for this
-    /// follower without admitting the actor to the canonical writer journal.
-    pub fn verify_and_install_follower_actor(
-        &mut self,
-        canonical_certificate: &[u8],
-    ) -> LibraryCoreResult<StoredFollowerActorEnrollment> {
-        let anchor = self
-            .follower_anchor()?
-            .ok_or(LibraryCoreError::InvalidVerifiedInput {
-                field: "follower_actor_enrollment.anchor",
-            })?;
-        let enrollment = self.verify_actor_enrollment(canonical_certificate, &anchor.authority)?;
-        self.install_verified_follower_actor_enrollment(&enrollment)
     }
 
     #[cfg(test)]
@@ -3667,55 +3627,6 @@ mod tests {
                 field: "actor_capability_missing"
             })
         ));
-    }
-
-    #[test]
-    fn upgrades_v7_follower_anchor_without_inventing_checkpoint_receipts() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join("library-core.sqlite");
-        let mut connection = Connection::open(&path).expect("create v7 database");
-        {
-            let transaction = connection.transaction().expect("begin v7 schema");
-            apply_schema_range(&transaction, 0, 7).expect("apply v7 schema");
-            transaction
-                .execute(
-                    "INSERT INTO library_core_follower_anchor (
-                       singletonId, libraryId, epoch, epochId, authorityKeyId,
-                       authorityPublicKey, observedFrontierJson,
-                       manifestObjectKey, manifestContentDigest, generation,
-                       remoteIngestSequence, remoteMaterializedDigest,
-                       writerId, controlRevision, installedAtMs
-                     ) VALUES (1, ?1, 3, ?2, ?3, ?4, '[]', 'manifest-1',
-                               ?5, 1, 10, ?6, ?7, 'revision-1', 1000);",
-                    params![
-                        "a".repeat(64),
-                        "b".repeat(64),
-                        "c".repeat(64),
-                        "d".repeat(64),
-                        "1".repeat(64),
-                        "2".repeat(64),
-                        "3".repeat(64),
-                    ],
-                )
-                .expect("write v7 follower anchor");
-            transaction.commit().expect("commit v7 schema");
-        }
-        drop(connection);
-
-        let journal = LibraryCoreJournal::open(&path).expect("upgrade v7 journal");
-        let stored: (String, Option<String>, Option<String>, Option<i64>) = journal
-            .connection
-            .query_row(
-                "SELECT manifestObjectKey, manifestTransportObjectId,
-                        checkpointActorId,
-                        checkpointAcceptedSequence
-                 FROM library_core_follower_anchor WHERE singletonId = 1;",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .expect("read upgraded follower anchor");
-        assert_eq!(stored, ("manifest-1".to_string(), None, None, None));
-        assert_eq!(journal.follower_anchor().unwrap(), None);
     }
 
     #[test]
