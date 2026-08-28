@@ -2837,8 +2837,6 @@ struct RuntimeMemoryStats {
     sample_duration_ms: u64,
     memory_high_bytes: u64,
     memory_critical_bytes: u64,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -4131,8 +4129,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(main_renderer_memory_should_recover(
@@ -4207,8 +4203,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4266,8 +4260,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4314,8 +4306,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4355,8 +4345,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let mut after = before.clone();
         after.app_resident_bytes = 2 * BYTES_PER_GIB;
@@ -4399,8 +4387,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4441,8 +4427,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4490,8 +4474,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4537,8 +4519,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4583,8 +4563,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4638,8 +4616,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -6402,23 +6378,12 @@ fn freed_webkit_memory_stats(
     }
 }
 
-fn collect_runtime_memory_stats(
-    app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
-) -> RuntimeMemoryStats {
-    collect_runtime_memory_stats_with_options(
-        app,
-        relay_doc_bytes,
-        relay_client_count,
-        RuntimeMemoryStatsOptions::full(),
-    )
+fn collect_runtime_memory_stats(app: &tauri::AppHandle) -> RuntimeMemoryStats {
+    collect_runtime_memory_stats_with_options(app, RuntimeMemoryStatsOptions::full())
 }
 
 fn collect_runtime_memory_stats_with_options(
     app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     options: RuntimeMemoryStatsOptions,
 ) -> RuntimeMemoryStats {
     let sample_started_at = Instant::now();
@@ -6517,8 +6482,6 @@ fn collect_runtime_memory_stats_with_options(
             .min(u128::from(u64::MAX)) as u64,
         memory_high_bytes,
         memory_critical_bytes,
-        relay_doc_bytes,
-        relay_client_count,
     }
 }
 
@@ -6889,7 +6852,7 @@ fn social_scrape_may_continue(
     pass_index: usize,
     total_passes: usize,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = scrape_memory_may_proceed(&stats);
     if !may_continue {
         warn!(
@@ -6939,7 +6902,7 @@ fn optional_story_scrape_may_continue(
     provider: &str,
     operation: &str,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = optional_story_scrape_may_proceed(&stats);
     if !may_continue {
         info!(
@@ -7034,7 +6997,7 @@ async fn maybe_recover_after_social_feed_scrape(
 ) {
     tokio::time::sleep(Duration::from_millis(700)).await;
 
-    let after = collect_runtime_memory_stats(app, 0, 0);
+    let after = collect_runtime_memory_stats(app);
     let reason = post_social_scrape_memory_recovery_reason(before, &after);
     let before_webkit_footprint = before.webkit_total_footprint_bytes.unwrap_or(0);
     let after_webkit_footprint = after.webkit_total_footprint_bytes.unwrap_or(0);
@@ -7101,7 +7064,7 @@ async fn maybe_recover_after_social_feed_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7213,7 +7176,7 @@ async fn recover_main_renderer_after_blocked_social_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7252,11 +7215,9 @@ async fn prepare_social_scrape_memory_internal(
     background_runtime: Option<&BackgroundRuntimeCoordinator>,
     provider: &str,
     operation: &str,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     preserve_label: Option<&str>,
 ) -> ScrapeMemoryPreparation {
-    let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let before = collect_runtime_memory_stats(app);
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycle_started_at = Instant::now();
     let recycled_scraper_windows = recycle_social_scraper_windows_except(
@@ -7272,7 +7233,7 @@ async fn prepare_social_scrape_memory_internal(
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
 
-    let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let after = collect_runtime_memory_stats(app);
     let scraper_recycle_verification = build_scraper_recycle_verification(
         recycled_scraper_windows,
         &before,
@@ -7412,8 +7373,6 @@ async fn ensure_social_scrape_memory(
         Some(background_runtime),
         provider,
         operation,
-        0,
-        0,
         preserve_label,
     )
     .await;
@@ -7485,8 +7444,6 @@ async fn get_runtime_memory_stats(
 ) -> Result<RuntimeMemoryStats, String> {
     Ok(collect_runtime_memory_stats_with_options(
         &app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: include_storage_sizes.unwrap_or(true),
             precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
@@ -7588,8 +7545,6 @@ async fn prepare_social_scrape_memory(
         Some(&capture.background_runtime),
         &provider,
         &operation,
-        0,
-        0,
         None,
     )
     .await)
@@ -8896,7 +8851,7 @@ async fn fb_scrape_feed(
         Some("authenticated feed rendered"),
     );
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
     emit_social_scrape_plan(
         &app,
@@ -9641,7 +9596,7 @@ async fn ig_scrape_feed(
     .await?;
     let scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
-    let scrape_start_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_start_stats = collect_runtime_memory_stats(&app);
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
@@ -9756,7 +9711,7 @@ async fn ig_scrape_feed(
         );
     }
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
     emit_social_scrape_plan(
         &app,
@@ -10449,7 +10404,7 @@ async fn li_scrape_feed(
 
     prepare_background_scraper_window(&wv, window_mode)?;
     println!("[LI] window prepared, proceeding with extraction");
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
 
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
@@ -12578,8 +12533,6 @@ fn schedule_main_window_recovery_verification(
         tokio::time::sleep(MAIN_RENDERER_RECOVERY_VERIFY_AFTER).await;
         let after = collect_runtime_memory_stats_with_options(
             &app_for_verify,
-            0,
-            0,
             RuntimeMemoryStatsOptions {
                 include_storage_sizes: false,
                 precise_webkit_attribution: true,
@@ -12718,8 +12671,6 @@ fn recover_main_window_with_presentation(
 ) -> Result<(), String> {
     let before_recovery_stats = collect_runtime_memory_stats_with_options(
         app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: false,
             precise_webkit_attribution: true,
@@ -13297,7 +13248,7 @@ pub fn run() {
                 let refreshed_memory_sample = should_refresh_memory_sample.then(|| {
                     RendererMemorySample::from_stats(
                         now,
-                        collect_runtime_memory_stats(&app_for_renderer_listener, 0, 0),
+                        collect_runtime_memory_stats(&app_for_renderer_listener),
                     )
                 });
                 let memory_sample_refreshed = refreshed_memory_sample.is_some();
@@ -13394,7 +13345,7 @@ pub fn run() {
                     tokio::time::sleep(RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL).await;
 
                     let now = std::time::Instant::now();
-                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor, 0, 0);
+                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor);
                     let memory_health_fields = {
                         let mut sample = renderer_memory_sample_for_memory_monitor.lock().unwrap();
                         *sample = Some(RendererMemorySample::from_stats(now, stats.clone()));
@@ -13756,7 +13707,7 @@ pub fn run() {
                         let mut should_recycle_background_scrapers = false;
 
                         if should_log_throttle {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             info!(
                                 "[main-window] renderer heartbeat hidden-timer throttled age_ms={} threshold_ms={} visible={} focused={} effective_visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={}",
                                 age.as_millis(),
@@ -13813,7 +13764,7 @@ pub fn run() {
                         }
 
                         if should_log_stale {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let webkit = stats
                                 .webkit_largest_process_id
                                 .zip(stats.webkit_largest_resident_bytes)
@@ -13949,7 +13900,7 @@ pub fn run() {
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
                             background_runtime_for_watchdog
                                 .note_renderer_recovery_attempt(recovery_reason);
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
                             let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
@@ -14999,8 +14950,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         }
     }
 
@@ -15634,8 +15583,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: 601,
             memory_critical_bytes: 602,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let sample = RendererMemorySample::from_stats(now - Duration::from_secs(2), stats);
         let fields = renderer_memory_health_fields(Some(&sample), now, true);
@@ -16445,8 +16392,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16490,8 +16435,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16577,8 +16520,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16617,8 +16558,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16663,8 +16602,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let budget = scrape_memory_start_budget_bytes(&stats);
 
@@ -16723,8 +16660,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let story_budget_bytes = optional_story_memory_budget_bytes(&make_stats(0, 0));
         let stats = make_stats(
