@@ -91,6 +91,7 @@ function assertContract(contract) {
     "nativeCommandErrorCodes",
     "nativeCommandProtocolVersion",
     "nativeCommands",
+    "operationReplication",
     "preferenceWritePolicies",
     "protocolVersion",
     "queries",
@@ -166,6 +167,30 @@ function assertContract(contract) {
       "library_core_normalized_checkpoint_v2"
   ) {
     throw new TypeError("SQLite contract version identity is invalid");
+  }
+  const operationReplication = contract.operationReplication;
+  const expectedOperationReplication = Object.freeze({
+    canonicalByteLimit: 1_048_576,
+    exportFormat: "freed_normalized_operation_export_v2",
+    format: "freed_normalized_operation_segment_v2",
+    logicalRecordByteLimit: 131_072,
+    nativeResponseByteLimit: 1_048_576,
+    protocol: "normalized_operation_segments_v2",
+    protocolVersion: 2,
+    recordLimit: 128,
+  });
+  if (
+    operationReplication === null ||
+    typeof operationReplication !== "object" ||
+    Object.keys(operationReplication).sort().join(",") !==
+      Object.keys(expectedOperationReplication).sort().join(",") ||
+    Object.entries(expectedOperationReplication).some(
+      ([key, value]) => operationReplication[key] !== value,
+    )
+  ) {
+    throw new TypeError(
+      "SQLite operation replication contract changed without a version boundary",
+    );
   }
   const limits = contract.limits;
   const expectedLimits = Object.freeze({
@@ -766,6 +791,14 @@ export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = ${contract.nativeCom
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT = ${JSON.stringify(contract.checkpointFormat)} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT = ${JSON.stringify(contract.checkpointExportFormat)} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID = ${JSON.stringify(contract.checkpointDatasetSchemaId)} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_FORMAT = ${JSON.stringify(contract.operationReplication.format)} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_EXPORT_FORMAT = ${JSON.stringify(contract.operationReplication.exportFormat)} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_PROTOCOL = ${JSON.stringify(contract.operationReplication.protocol)} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION = ${contract.operationReplication.protocolVersion} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS = ${contract.operationReplication.recordLimit} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES = ${contract.operationReplication.canonicalByteLimit} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract.operationReplication.logicalRecordByteLimit} as const;
+export const LIBRARY_CORE_NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.operationReplication.nativeResponseByteLimit} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN = ${JSON.stringify(contract.contentRangeMapDigestDomain)} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_PREFIX = ${JSON.stringify(contract.contentRangeStorageKey.prefix)} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_SUFFIX = ${JSON.stringify(contract.contentRangeStorageKey.suffix)} as const;
@@ -1229,6 +1262,15 @@ ${rustStringSlice(contract.nativeCommands)}
 pub const NATIVE_COMMAND_ERROR_CODES: &[&str] = &[
 ${rustStringSlice(contract.nativeCommandErrorCodes)}
 ];
+
+pub const NORMALIZED_OPERATION_SEGMENT_FORMAT: &str = ${JSON.stringify(contract.operationReplication.format)};
+pub const NORMALIZED_OPERATION_EXPORT_FORMAT: &str = ${JSON.stringify(contract.operationReplication.exportFormat)};
+pub const NORMALIZED_OPERATION_SEGMENT_PROTOCOL: &str = ${JSON.stringify(contract.operationReplication.protocol)};
+pub const NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION: u8 = ${contract.operationReplication.protocolVersion};
+pub const NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS: usize = ${contract.operationReplication.recordLimit};
+pub const NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES: usize = ${contract.operationReplication.canonicalByteLimit};
+pub const NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES: usize = ${contract.operationReplication.logicalRecordByteLimit};
+pub const NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.operationReplication.nativeResponseByteLimit};
 
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
 ${rustStringSlice(capabilityOperationIds)}

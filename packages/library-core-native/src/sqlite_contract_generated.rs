@@ -39,7 +39,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "e38a724f67d5d240759f4b673527297acd6f3ec3d150ca60a93bbc28049751b7";
+    "f3285ce7b0238c09b90615015b4a0c9b6681efc10a9fd3a7e274d393081cff35";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -557,8 +557,10 @@ pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "content_policy_set_v1",
     "content_state_get_v1",
     "describe_checkpoint_export_v2",
+    "describe_operation_export_v2",
     "export_checkpoint_page_v2",
     "export_follower_result_page_v1",
+    "export_operation_page_v2",
     "finalize_checkpoint_stage_v2",
     "ingest_follower_intent_page_v1",
     "inspect_storage_v1",
@@ -579,6 +581,15 @@ pub const NATIVE_COMMAND_ERROR_CODES: &[&str] = &[
     "response_invalid",
     "storage_unavailable",
 ];
+
+pub const NORMALIZED_OPERATION_SEGMENT_FORMAT: &str = "freed_normalized_operation_segment_v2";
+pub const NORMALIZED_OPERATION_EXPORT_FORMAT: &str = "freed_normalized_operation_export_v2";
+pub const NORMALIZED_OPERATION_SEGMENT_PROTOCOL: &str = "normalized_operation_segments_v2";
+pub const NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION: u8 = 2;
+pub const NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS: usize = 128;
+pub const NORMALIZED_OPERATION_SEGMENT_MAXIMUM_CANONICAL_BYTES: usize = 1048576;
+pub const NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES: usize = 131072;
+pub const NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
     "account_person_assignment",

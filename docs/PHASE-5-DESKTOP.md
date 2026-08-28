@@ -89,6 +89,12 @@
       rejects gaps, chain splices, cross-actor cursors, and undersized pages.
       The SQLite plan uses the actor and result sequence index without an
       offset, scan, or temporary sort.
+- [x] Export canonical accepted operation transactions directly from the
+      normalized SQLite journal through generated native commands. The
+      source-fenced stream emits the authority acceptance before its exact
+      signed members, rejects any transaction without a matching acceptance,
+      and never emits an operation envelope above the shared 131,072-byte
+      logical-record ceiling.
 - [x] Verify a complete signed transaction before evaluating mutable actor and
       capability policy. Under the immediate admission transaction, a retired
       actor receives `actor_retired`, while a retired, bounded, or
@@ -706,6 +712,7 @@ export async function captureDomFeed(
 | 5.171 | Let a genuinely fresh Freed Desktop launch reach normalized SQLite genesis without opening a nonexistent historical migration database. Native startup now skips the one-time migration cutover probe when no historical source exists, while the renderer-owned absence census still gates fresh authority creation | High       | ✓ Complete |
 | 5.172 | Require the verified normalized authority selector at the sole native product database opener. Queries, device-local models, maintenance stages, mutations, checkpoints, follower work, snapshots, and content operations can no longer open or create an unselected normalized database through a compatibility fallback | High       | ✓ Complete |
 | 5.173 | Delete the uncalled native `product_projection` module and its public `upsert_item` export. The helper wrote a complete FeedItem JSON payload into the historical `library_core_feed_items.payloadJson` table and had no production consumer. Native product writes now exist only as registered normalized SQLite mutations | High       | ✓ Complete |
+| 5.174 | Add the generated native version 2 operation export commands to the shared Library Core sidecar. Pin one export descriptor to the active Library, authority epoch, writer, and source frontier, emit authority acceptance before exact signed transaction members, validate semantic record digests and canonical bytes during every read, and keep both canonical pages and serialized native responses within their executable bounds | High       | ✓ Complete |
 
 ---
 

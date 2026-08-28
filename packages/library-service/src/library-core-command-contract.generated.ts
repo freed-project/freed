@@ -13,7 +13,7 @@ export const LIBRARY_CORE_SQLITE_APPLICATION_ID = 1179796804 as const;
 export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = 2 as const;
-export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "e38a724f67d5d240759f4b673527297acd6f3ec3d150ca60a93bbc28049751b7" as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "f3285ce7b0238c09b90615015b4a0c9b6681efc10a9fd3a7e274d393081cff35" as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "agent_query_v1",
   "append_checkpoint_stage_v2",
@@ -24,8 +24,10 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "content_policy_set_v1",
   "content_state_get_v1",
   "describe_checkpoint_export_v2",
+  "describe_operation_export_v2",
   "export_checkpoint_page_v2",
   "export_follower_result_page_v1",
+  "export_operation_page_v2",
   "finalize_checkpoint_stage_v2",
   "ingest_follower_intent_page_v1",
   "inspect_storage_v1",

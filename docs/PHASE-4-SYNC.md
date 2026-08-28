@@ -26,8 +26,9 @@
 > replay, verifies the complete digest and content graph, and activates all
 > normalized rows in one transaction. Browser SQLite activation and 16
 > equivalent generated query programs are implemented, including one-row
-> normalized Saved analytics. Complete mutation and
-> product query cutover, selective content, one-epoch migration,
+> normalized Saved analytics. The Primary now exports accepted transactions
+> after a checkpoint frontier as bounded version 2 records directly from the
+> signed SQLite journal. Browser transaction staging and application,
 > retired-runtime deletion, and physical-device acceptance remain open.
 
 ## Current SQLite sync work
@@ -91,6 +92,17 @@
       references fail, and staging bytes are removed after activation.
 - [x] Expose the same exporter and staging activation contract in the PWA
       SQLite worker.
+- [x] Export the post-checkpoint operation stream from native SQLite as one
+      authority-signed accepted-result record followed by its exact
+      actor-signed operation envelopes. The descriptor binds Library, epoch,
+      writer, source revision, transaction count, and operation count. Stable
+      keyset cursors preserve source revision, record kind, member index, and
+      semantic record digest. One logical record is capped at 131,072 bytes,
+      one page at 128 records and 1,048,576 canonical bytes, and one native
+      response at 1,048,576 serialized bytes.
+- [ ] Stage version 2 operation pages durably in PWA OPFS SQLite, verify the
+      authority-signed acceptance and complete actor-signed transaction, then
+      journal and materialize it atomically at the exact next source revision.
 - [x] Enforce the initial 131,072-byte canonical logical-record ceiling,
       128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
       native source-response ceiling, subject to the pre-freeze benchmark.
@@ -118,7 +130,9 @@ local SQLite replicas and submit signed mutation intents.
 Synchronization exchanges only closed typed logical objects:
 
 - normalized checkpoint records
-- append-only operation segments
+- append-only normalized operation segments. Each accepted transaction begins
+  with its authority-signed result, followed by the exact actor-signed members
+  named by that result
 - actor enrollment and retirement certificates
 - signed follower intents
 - signed Primary acceptance, rejection, and provider-result records
@@ -455,6 +469,7 @@ loads an alternate Library engine or compatibility path.
 | 4.261 | Extend the existing release artifact guard across the complete retired Library authority boundary. Desktop and PWA bundles now fail when they contain a Library shell record or type, `DocState`, the retired PWA IndexedDB checkpoint, search, or read-model databases, or any deleted IndexedDB Library module. The narrow nonextractable browser key vault remains allowed | ✓      | High       |
 | 4.262 | Delete the 18 unreferenced authoritative-migration, shadow-schema, shadow-generation registry, and shadow-generation schema SQL artifacts. None was a current migration input, package export, build input, test fixture, or runtime caller. The final normalized schema and fenced schema 12 source reader remain the only SQLite schema boundaries. | ✓      | High       |
 | 4.263 | Expose the normalized checkpoint exporter through the PWA OPFS SQLite worker, client, and runtime. Pin every page to one exact Library, epoch, writer, source revision, record count, item count, and causal frontier descriptor. Apply the same 128-record, 1,048,576-response-byte, 131,072-canonical-record, registry-key, primary-key, fractional-number, and content-chunk contracts as native Rust, with a shared fixed frontier digest vector and exact chunk reassembly. Refuse export while local intent transactions remain unresolved, and surface one descriptor plus first-record proof in the existing bounded PWA cloud receipt when the replica is checkpointable | ✓      | High       |
+| 4.264 | Generate the normalized operation replication version 2 contract and native producer. Export one authority-signed accepted-result record before the exact actor-signed operation members at each committed source revision, bind every cursor to its semantic digest, reject unsigned transaction gaps and source or authority drift, cap every logical record at 131,072 bytes and every response at 1,048,576 bytes, and prove exact replay plus a lossless maximum 65,536-byte inline FeedItem body | ✓      | High       |
 
 ---
 

@@ -45,6 +45,7 @@ mod normalized_operation_test_fixtures;
 mod normalized_operation_verifier;
 mod normalized_protocol_limits;
 mod normalized_query;
+mod normalized_replication;
 #[cfg(unix)]
 mod normalized_snapshot;
 mod normalized_sqlite;
@@ -165,6 +166,12 @@ pub use normalized_query::{
     NormalizedSavedFeedPageRequestV2, NormalizedSavedFeedPageResponseV2,
     NormalizedStoryWallCandidateV1, NormalizedStoryWallCandidatesRequestV1,
     NormalizedStoryWallCandidatesResponseV1,
+};
+pub use normalized_replication::{
+    describe_normalized_operation_export_v2, export_normalized_operation_page_v2,
+    NormalizedOperationCursorV2, NormalizedOperationExportDescriptorV2,
+    NormalizedOperationExportPageV2, NormalizedOperationExportRecordV2,
+    NormalizedOperationExportRequestV2, NormalizedOperationRecordKindV2,
 };
 #[cfg(unix)]
 pub use normalized_snapshot::{

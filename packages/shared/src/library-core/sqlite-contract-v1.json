@@ -20,6 +20,16 @@
   "checkpointFormat": "freed_normalized_checkpoint_v2",
   "checkpointExportFormat": "freed_normalized_checkpoint_export_v2",
   "checkpointDatasetSchemaId": "library_core_normalized_checkpoint_v2",
+  "operationReplication": {
+    "canonicalByteLimit": 1048576,
+    "exportFormat": "freed_normalized_operation_export_v2",
+    "format": "freed_normalized_operation_segment_v2",
+    "logicalRecordByteLimit": 131072,
+    "nativeResponseByteLimit": 1048576,
+    "protocol": "normalized_operation_segments_v2",
+    "protocolVersion": 2,
+    "recordLimit": 128
+  },
   "contentRangeMapDigestDomain": "freed.library-core.v1/digest-records/content-range-map\u0000",
   "contentRangeStorageKey": {
     "maximumUtf8Bytes": 255,
@@ -228,8 +238,10 @@
     "content_policy_set_v1",
     "content_state_get_v1",
     "describe_checkpoint_export_v2",
+    "describe_operation_export_v2",
     "export_checkpoint_page_v2",
     "export_follower_result_page_v1",
+    "export_operation_page_v2",
     "finalize_checkpoint_stage_v2",
     "ingest_follower_intent_page_v1",
     "inspect_storage_v1",

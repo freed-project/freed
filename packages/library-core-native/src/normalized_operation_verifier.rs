@@ -1607,6 +1607,13 @@ where
     if canonical_envelopes.is_empty() || canonical_envelopes.len() > MAX_TRANSACTION_MEMBERS {
         return Err(invalid(0, "transaction_members"));
     }
+    if let Some(index) = canonical_envelopes.iter().position(|envelope| {
+        envelope.is_empty()
+            || envelope.len()
+                > crate::sqlite_contract_generated::NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES
+    }) {
+        return Err(invalid(index, "canonical_operation_envelope_bytes"));
+    }
     let total_bytes = canonical_envelopes
         .iter()
         .try_fold(0usize, |total, envelope| total.checked_add(envelope.len()))

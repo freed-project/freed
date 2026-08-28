@@ -663,6 +663,20 @@ and exact object key. Followers verify both layers plus the logical
 `previous_result_digest` chain before passing canonical result bytes to SQLite
 for authority-signature verification and atomic reconciliation.
 
+Normalized operation segments use protocol v2. The Primary pins one native
+export descriptor to the active Library, authority epoch, writer, and source
+revision. At each committed revision it emits the exact authority-signed
+Accepted result first, followed by the actor-signed operation envelopes named
+by that result in member order. Pages may split a transaction, but followers
+stage the records in SQLite and expose no partial effect. Application begins
+only after the authority signature, complete operation identity set,
+transaction digest, actor enrollment, actor chain, member signatures, and
+exact next source revision all verify. Every logical record is at most 131,072
+canonical bytes. A native page contains at most 128 records and 1,048,576
+canonical record bytes, and its serialized response is independently capped at
+1,048,576 bytes. Long-form content remains outside operation metadata as
+content-addressed chunks or authenticated range objects.
+
 Normalized intent segments also use protocol v2. Each immutable object contains
 one closed header followed by the canonical actor-signed operation envelopes
 themselves. A page contains at most 128 envelopes and at most 1,048,576

@@ -681,6 +681,21 @@ pending page. The signed actor chain inside each canonical envelope remains the
 admission proof. The query uses the actor-counter index with no offset, table
 scan, or temporary sort.
 
+Canonical operation replication uses protocol v2. A native export descriptor
+binds one exact Library, active authority epoch, Primary writer, source
+revision, transaction count, and operation count. At each committed source
+revision the stream emits the authority-signed Accepted result first, then the
+actor-signed operation members named by that result in exact member order. A
+keyset cursor binds source revision, record kind, member index, and the stored
+semantic result or envelope digest. Every read recomputes the snapshot and
+rejects an unsigned transaction gap, changed authority, changed cursor, changed
+canonical bytes, or a record above 131,072 bytes. One page contains at most 128
+records and 1,048,576 canonical bytes, and the complete serialized native
+response is independently capped at 1,048,576 bytes. Pages may split a
+transaction. A follower stages them durably and applies nothing until the
+authority result, exact operation identity set, complete transaction, actor
+chain, signatures, and exact next source revision all verify.
+
 The PWA cloud coordinator never resumes publication by scanning that history
 from counter one. One closed SQLite transport context returns the enrolled
 actor, Library, storage epoch, next intent counter, previous stored-segment

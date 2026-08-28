@@ -22,8 +22,9 @@ use crate::sqlite_contract_generated::{
 use crate::{
     accept_normalized_operation_transaction_v1, append_normalized_checkpoint_stage_page_v2,
     apply_normalized_actor_retirement_v1, begin_normalized_checkpoint_stage_v2,
-    describe_normalized_checkpoint_export_v2, execute_normalized_agent_query_v1,
-    export_normalized_follower_result_page_v1, export_pinned_normalized_checkpoint_page_v2,
+    describe_normalized_checkpoint_export_v2, describe_normalized_operation_export_v2,
+    execute_normalized_agent_query_v1, export_normalized_follower_result_page_v1,
+    export_normalized_operation_page_v2, export_pinned_normalized_checkpoint_page_v2,
     finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
     ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
@@ -32,8 +33,9 @@ use crate::{
     ActorKeyStore, AuthorityKeyStore, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
     ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
     LibraryCoreProcessLease, NormalizedCheckpointRecordV2, NormalizedFollowerIntentStagePageV1,
-    NormalizedFollowerResultPageRequestV1, NormalizedSqliteError,
-    PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity, SelectiveContentError,
+    NormalizedFollowerResultPageRequestV1, NormalizedOperationExportRequestV2,
+    NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
+    SelectiveContentError,
 };
 
 const PROTOCOL_VERSION: u8 = 2;
@@ -655,6 +657,14 @@ fn execute_native_command_v1(
                     .map_err(normalized_command_error)?,
             )
         }
+        "describe_operation_export_v2" => {
+            serde_json::from_value::<EmptyCommandPayload>(payload)
+                .map_err(|_| "request_invalid")?;
+            encode_command_result(
+                describe_normalized_operation_export_v2(connection)
+                    .map_err(normalized_command_error)?,
+            )
+        }
         "export_checkpoint_page_v2" => {
             let command: PinnedNormalizedCheckpointExportRequestV2 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
@@ -668,6 +678,14 @@ fn execute_native_command_v1(
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
             encode_command_result(
                 export_normalized_follower_result_page_v1(connection, &command)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "export_operation_page_v2" => {
+            let command: NormalizedOperationExportRequestV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                export_normalized_operation_page_v2(connection, &command)
                     .map_err(normalized_command_error)?,
             )
         }

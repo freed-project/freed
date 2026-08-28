@@ -2729,7 +2729,7 @@ pub fn accept_normalized_operation_transaction_v1(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::library_core_actor_capability::primary_writer_operation_types;
     use crate::normalized_operation_test_fixtures::tests::{
@@ -2749,7 +2749,7 @@ mod tests {
         Option<i64>,
     );
 
-    fn fixture() -> (
+    pub(crate) fn fixture() -> (
         Connection,
         Ed25519KeyPair,
         crate::normalized_operation::VerifiedActorEnrollment,
@@ -2757,6 +2757,7 @@ mod tests {
         let key_pair = Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("actor key");
         let enrollment = enrollment(&key_pair);
         let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+        let writer_id = "6".repeat(64);
         let authority_key_id = follower_result_digest(
             "authority-key",
             &json!({
@@ -2801,8 +2802,8 @@ mod tests {
                 "INSERT INTO library_active_authority
                  (active_key, library_id, epoch_id, writer_id,
                   accepted_manifest_generation, activated_at)
-                 VALUES ('active', ?1, ?2, 'writer-1', 0, 1000);",
-                params![enrollment.library_id, enrollment.epoch_id],
+                 VALUES ('active', ?1, ?2, ?3, 0, 1000);",
+                params![enrollment.library_id, enrollment.epoch_id, writer_id],
             )
             .expect("active authority");
         connection
@@ -2810,8 +2811,8 @@ mod tests {
                 "INSERT INTO library_writer_admission
                  (singleton_id, local_writer_id, active_writer_id,
                   observed_manifest_generation, observed_at)
-                 VALUES (1, 'writer-1', 'writer-1', 0, 1000);",
-                [],
+                 VALUES (1, ?1, ?1, 0, 1000);",
+                [writer_id],
             )
             .expect("writer admission");
         connection

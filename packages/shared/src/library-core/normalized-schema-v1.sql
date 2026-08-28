@@ -1502,6 +1502,9 @@ CREATE TABLE IF NOT EXISTS library_transactions (
   )
 ) STRICT;
 
+CREATE UNIQUE INDEX IF NOT EXISTS library_transactions_source_revision
+  ON library_transactions(committed_revision);
+
 CREATE TABLE IF NOT EXISTS library_operations (
   operation_id TEXT PRIMARY KEY CHECK (length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 255),
   transaction_id TEXT NOT NULL REFERENCES library_transactions(transaction_id) ON DELETE CASCADE,
