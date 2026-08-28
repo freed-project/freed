@@ -2,17 +2,19 @@
  * Batch import/export of Freed Markdown library archives
  *
  * Import pipeline:
- *  Phase 1 "scanning"  – read + parse each .md file, check against existingIds
- *  Phase 2 "writing"   – write new items to Automerge in 500-item chunks
- *  Phase 3 "caching"   – write full HTML to the device content cache in parallel
- *  Phase 4 "fetching"  – enqueue stub items (no body) for background fetch
+ *  Phase 1 "scanning" reads and parses each Markdown file.
+ *  Phase 2 "writing" submits typed SQLite import mutations.
+ *  Phase 3 "caching" writes full HTML to the device content cache.
+ *  Phase 4 "fetching" enqueues bodyless stubs for background fetch.
  *
- * Export: read FeedItems from Automerge → read HTML from content cache → zip.
+ * Export visits bounded SQLite pages and releases each page before requesting
+ * the next one. Archive assembly never reconstructs the FeedItem corpus.
  */
 
 import { parseMarkdownArchiveFile } from "@freed/capture-save/import-markdown";
 import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { FeedItem } from "@freed/shared";
+import type { ScanLibraryItems } from "@freed/ui/context";
 import { contentCache } from "./content-cache.js";
 import { importLibraryItems, getAllItemIds } from "./library-client";
 import { enqueue as enqueueFetch } from "./content-fetcher.js";
@@ -68,10 +70,10 @@ export async function importMarkdownFiles(
   };
 
   // ── Phase 1: Scanning ──────────────────────────────────────────────────────
-  // Snapshot existing globalIds once upfront — O(1) per lookup vs O(n) Automerge reads.
+  // Snapshot existing globalIds once upfront for constant-time deduplication.
   // This is the primary deduplication gate; importLibraryItems has a secondary guard
-  // inside the CRDT change for within-batch duplicates. Fetch the full id set
-  // on demand rather than keeping it inside every live runtime update.
+  // inside the SQLite mutation for within-batch duplicates. Fetch the full ID
+  // set on demand rather than retaining it in every live runtime update.
   const existingIds = new Set(await getAllItemIds());
 
   const parsedItems: FeedItem[] = [];
@@ -117,7 +119,7 @@ export async function importMarkdownFiles(
     }
   }
 
-  // ── Phase 2: Writing to Automerge ─────────────────────────────────────────
+  // Phase 2: Write typed SQLite mutations.
 
   if (parsedItems.length > 0) {
     const totalChunks = Math.ceil(parsedItems.length / 500);
@@ -157,9 +159,11 @@ export async function importMarkdownFiles(
  * Reads HTML from the device content cache for each item (full content included
  * where available). Triggers a browser download of the zip file.
  */
-export async function exportLibrary(items: FeedItem[]): Promise<void> {
+export async function exportLibrary(
+  scanItems: ScanLibraryItems,
+): Promise<void> {
   const blob = await exportLibraryAsMarkdown(
-    items,
+    scanItems,
     (id: string) => contentCache.get(id),
   );
 

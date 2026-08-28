@@ -1461,14 +1461,7 @@ function App() {
         return saveUrlInDesktop(url, options);
       },
       importMarkdown: importMarkdownFiles,
-      exportMarkdown: async () => {
-        const items: Parameters<typeof exportLibrary>[0] = [];
-        await scanLibraryCoreItemsForDesktop((page) => {
-          items.push(...page);
-          return "continue";
-        });
-        return exportLibrary(items);
-      },
+      exportMarkdown: () => exportLibrary(scanLibraryCoreItemsForDesktop),
       retryCloudProvider,
       reconnectCloudProvider,
       forgetRssFeedHealth,

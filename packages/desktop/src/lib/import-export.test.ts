@@ -16,7 +16,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { folderTagsFromRelativePath } from "@freed/capture-save/import-markdown";
+import JSZip from "jszip";
+import {
+  folderTagsFromRelativePath,
+  parseMarkdownArchiveFile,
+} from "@freed/capture-save/import-markdown";
+import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { ImportPhase, ImportProgress } from "./import-export.js";
 import type { FeedItem } from "@freed/shared";
 
@@ -100,6 +105,13 @@ function makeFileList(files: File[]): FileList {
   return files as unknown as FileList;
 }
 
+async function parseExportItem(index: number): Promise<FeedItem> {
+  const file = makeMdFile(index);
+  const parsed = parseMarkdownArchiveFile(file.name, await file.text());
+  if (!parsed) throw new Error("expected valid archive fixture");
+  return parsed.item;
+}
+
 // ── folderTagsFromRelativePath tests ──────────────────────────────────────────
 
 describe("folderTagsFromRelativePath", () => {
@@ -123,6 +135,32 @@ describe("folderTagsFromRelativePath", () => {
 
   it("returns empty array when depth < 3 (no folder between root and file)", () => {
     expect(folderTagsFromRelativePath("root/file.md")).toEqual([]);
+  });
+});
+
+describe("exportLibraryAsMarkdown", () => {
+  it("consumes and releases each bounded SQLite page before requesting the next", async () => {
+    const first = await parseExportItem(70);
+    const second = await parseExportItem(71);
+    const getHtml = vi.fn(async (globalId: string) =>
+      globalId === first.globalId ? "<p>First cached article</p>" : null,
+    );
+
+    const blob = await exportLibraryAsMarkdown(async (visit) => {
+      expect(getHtml).not.toHaveBeenCalled();
+      expect(await visit([first])).toBe("continue");
+      expect(getHtml).toHaveBeenCalledTimes(1);
+      expect(await visit([second])).toBe("continue");
+      expect(getHtml).toHaveBeenCalledTimes(2);
+    }, getHtml);
+
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(
+      Object.keys(zip.files).filter((path) => path.endsWith(".md")),
+    ).toHaveLength(2);
+    expect(
+      Object.keys(zip.files).filter((path) => path.endsWith(".html")),
+    ).toHaveLength(1);
   });
 });
 
