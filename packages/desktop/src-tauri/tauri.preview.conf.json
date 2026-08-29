@@ -1,0 +1,6 @@
+{
+  "identifier": "wtf.freed.desktop.sqlite-native-preview",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}

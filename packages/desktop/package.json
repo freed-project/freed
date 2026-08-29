@@ -10,6 +10,7 @@
     "tauri": "node ./scripts/tauri-cli.mjs",
     "tauri:dev": "node ./scripts/tauri-cli.mjs dev",
     "tauri:build": "node ./scripts/tauri-cli.mjs build",
+    "tauri:build:isolated": "node ./scripts/tauri-cli.mjs build --bundles app --features isolated-preview-data-root --config src-tauri/tauri.preview.conf.json",
     "test:unit": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1",
     "test:unit:watch": "node ../../node_modules/vitest/vitest.mjs",
     "test:e2e": "node ../../node_modules/playwright/cli.js test",

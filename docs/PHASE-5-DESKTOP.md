@@ -914,6 +914,7 @@ export async function captureDomFeed(
 - [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
+- [x] Native local release verification uses a closed preview-only bundle identifier and matching native Library root, so an unsigned candidate cannot inspect, migrate, or mutate the installed Freed Library and does not require updater signing credentials
 
 > **Current state:**
 > Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical storage is available only to the fenced one-time source reader. It is never runtime authority or fallback and is erased after successful cutover.
