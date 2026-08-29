@@ -849,10 +849,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           runtimeState.preferences.display.archivePruneDays ?? 30;
         scheduleStartupMigrations(archivePruneDays);
       } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
-        recordBugReportEvent("desktop:initialize", "error", "Initialization failed");
+        recordBugReportEvent(
+          "desktop:initialize",
+          "error",
+          `Initialization failed: ${detail}`,
+        );
+        log.error(`[desktop:initialize] ${detail}`);
         set({
-          error: error instanceof Error ? error.message : "Failed to initialize",
+          error: detail,
           isLoading: false,
         });
       }

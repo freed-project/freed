@@ -225,6 +225,21 @@ describe("store startup migrations", () => {
     );
   });
 
+  it("preserves native string errors when SQLite initialization fails", async () => {
+    mockInitializeLibrary.mockRejectedValue(
+      "normalized SQLite authority selection is unavailable",
+    );
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState()).toMatchObject({
+      error: "normalized SQLite authority selection is unavailable",
+      isInitialized: false,
+      isLoading: false,
+    });
+  });
+
   it("defers startup maintenance instead of running it during launch", async () => {
     const { useAppStore } = await import("./store");
 
