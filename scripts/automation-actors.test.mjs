@@ -907,6 +907,30 @@ test("provision all installs one content-addressed runtime and all public bindin
   );
 });
 
+test("Linux provisioning forwards only the reviewed Go compiler to the host build", (t) => {
+  const value = fixture(t);
+  value.dependencies.platform = "linux";
+  value.dependencies.env.FREED_GO_EXECUTABLE = "/usr/bin/go";
+
+  executeCommand(
+    {
+      action: "provision",
+      actor: "freed-runtime-observer",
+      stateRoot: value.stateRoot,
+    },
+    value.dependencies,
+  );
+
+  const build = value.calls.find(
+    ({ executable, args }) =>
+      executable === "/bin/bash" && args[0] === value.hostBuildPath,
+  );
+  assert.equal(build.options.env.FREED_GO_EXECUTABLE, "/usr/bin/go");
+  assert.equal(build.options.env.FREED_OWNER_LEASE_TOKEN, undefined);
+  assert.equal(build.options.env.DEVELOPER_DIR, undefined);
+  assert.equal(build.options.env.TMPDIR, undefined);
+});
+
 test("Linux provisioning completes the full trusted actor lifecycle with root-owned material", (t) => {
   const value = fixture(t);
   value.dependencies.platform = "linux";
