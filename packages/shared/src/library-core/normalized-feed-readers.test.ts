@@ -709,6 +709,35 @@ describe("cross-platform normalized feed readers", () => {
     ]);
   });
 
+  it("accepts a terminal first SQLite search page", async () => {
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            nextCursor: null,
+            rows: [{ card: feedCard("terminal-match"), priority: 42, score: 7 }],
+            source: querySource,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn(() => "continue" as const);
+
+    await expect(
+      searchLibraryCoreNormalizedItemsV1(
+        { query, randomId: () => "test" },
+        { filter: {}, identityMode: "all_content", query: "terminal" },
+        visit,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(visit).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it("uses opaque bidirectional pages without platform storage logic", async () => {
     const query = vi.fn(async (request: { queryId: string }) =>
       request.queryId === "optimistic_fields_v1"

@@ -1492,6 +1492,39 @@ export function tauriInitScript(): string {
           source: source,
         };
       }
+      if (request.queryId === 'search_page_v1') {
+        var searchTerms = String(request.query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+        var searchCandidates = sqliteQueryItems(request).slice(0, 256);
+        var searchRows = searchCandidates.filter(function(item) {
+          var content = item.content || {};
+          var preview = content.linkPreview || {};
+          var author = item.author || {};
+          var rssSource = item.rssSource || {};
+          var searchable = [
+            content.text,
+            preview.title,
+            preview.description,
+            author.displayName,
+            author.handle,
+            rssSource.feedTitle,
+          ].filter(Boolean).join(' ').toLowerCase();
+          return searchTerms.every(function(term) { return searchable.includes(term); });
+        }).slice(0, request.limit || 32).map(function(item) {
+          return {
+            card: sqliteFeedCard(item),
+            priority: Number.isFinite(item.priority) ? Math.max(0, Math.min(100, item.priority)) : 0,
+            score: 1,
+          };
+        });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: searchRows,
+          scannedRows: searchCandidates.length,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId !== 'feed_browse_page_v3' && request.queryId !== 'saved_feed_page_v2') {
         return null;
       }

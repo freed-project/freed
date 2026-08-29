@@ -739,7 +739,7 @@ export async function searchLibraryCoreNormalizedItemsV1(
     ) {
       return;
     }
-    if (response.nextCursor === cursor) {
+    if (response.nextCursor !== null && response.nextCursor === cursor) {
       throw new Error("SQLite Library search cursor did not advance");
     }
     cursor = response.nextCursor;
