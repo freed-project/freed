@@ -101,6 +101,33 @@ test("OPFS durability changes run the persistent WebKit data integrity proof", (
   );
 });
 
+test("OPFS durability proof can be routed to the supported WebKit runner", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  process.env.FREED_SKIP_PWA_OPFS_DURABILITY = "true";
+  try {
+    assert.equal(
+      describePlan(
+        buildValidationPlan("feature", [
+          "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+        ]),
+      ).includes("pwa WebKit OPFS durability"),
+      false,
+    );
+    assert.equal(
+      describePlan(buildValidationPlan("dev", [])).includes(
+        "pwa WebKit OPFS durability",
+      ),
+      false,
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    } else {
+      process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+    }
+  }
+});
+
 test("feature plan for sync changes runs the sync package tests", () => {
   const labels = describePlan(
     buildValidationPlan("feature", ["packages/sync/src/storage/indexeddb.ts"]),

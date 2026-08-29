@@ -625,6 +625,10 @@ function pwaOpfsDurabilityCommand() {
   );
 }
 
+function shouldRunPwaOpfsDurability() {
+  return process.env.FREED_SKIP_PWA_OPFS_DURABILITY !== "true";
+}
+
 function addCaptureWorkspaceChecks(plan, workspacePath) {
   if (workspaceHasScript(workspacePath, "test")) {
     addCommand(
@@ -889,7 +893,9 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/library-service",
       ),
       ...pwaTestCommands(),
-      pwaOpfsDurabilityCommand(),
+      ...(shouldRunPwaOpfsDurability()
+        ? [pwaOpfsDurabilityCommand()]
+        : []),
       npmCommand(
         "desktop unit tests",
         ["run", "test:unit"],
@@ -1189,11 +1195,15 @@ export function buildValidationPlan(mode, changedFiles) {
     for (const check of pwaTestCommands()) {
       addCommand(plan, check);
     }
-    if (pwaOpfsDurabilityChanged) {
+    if (pwaOpfsDurabilityChanged && shouldRunPwaOpfsDurability()) {
       addCommand(plan, pwaOpfsDurabilityCommand());
     }
   }
-  if (pwaOpfsDurabilityChanged && !pwaSurfaceChanged) {
+  if (
+    pwaOpfsDurabilityChanged &&
+    !pwaSurfaceChanged &&
+    shouldRunPwaOpfsDurability()
+  ) {
     addCommand(plan, pwaOpfsDurabilityCommand());
   }
 

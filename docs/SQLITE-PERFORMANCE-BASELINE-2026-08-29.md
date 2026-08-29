@@ -152,9 +152,8 @@ selection without a scene rebuild.
 1. Accept the isolated preview's first-run agreement through the product UI.
 2. Measure Friends, map, feed, and settings on the running native app with an
    attributed process generation and matched fixture.
-3. Resolve the existing cleartext OAuth token persistence finding before this
-   branch becomes a release candidate.
-4. Correct the repository's CodeQL default setup so it does not require a Go
-   database when the repository contains no Go source.
-5. Obtain explicit authority for the Library Core activation and protected dev
+3. Resolve the pre-existing Desktop OAuth token persistence debt tracked in
+   issue #1632 through its separate Google Drive provider approval and
+   platform-secret migration delivery.
+4. Obtain explicit authority for the Library Core activation and protected dev
    promotion, then cut and verify the signed dev release.
