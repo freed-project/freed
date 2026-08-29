@@ -16,27 +16,27 @@ copy the backlog into local task state.
 
 ## Sources of truth
 
-| Source                                                     | Purpose                                                                                                                                                   |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub Issues with the `debt` label                        | Canonical technical debt backlog, evidence, gates, completion criteria, and disposition                                                                   |
-| `automation/specs/*.json`                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
-| `automation/prompts/*.md`                                  | Checked-in behavioral contract for each automation                                                                                                        |
-| `automation/host-assignments.json`                         | Reviewed opaque host ID assigned to the single `primary-automation-host` role                                                                             |
-| `/Library/Application Support/Freed/automation-host.json`  | Root-owned local host identity enrolled by the owner                                                                                                      |
-| `.github/rulesets/*.json`                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
-| `~/.freed/automation/control/current-tasks.json`           | Atomic active execution authority; every task references its canonical GitHub issue                                                                       |
-| `~/.freed/automation/control/task-transactions/`           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
-| `~/.freed/automation/control/outcome-ledger-transactions/` | Recoverable owner-governed outcome history repairs                                                                                                        |
-| `~/.freed/automation/control/events.jsonl`                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
-| `~/.freed/automation/control/kernel-guard-cutover.json`    | Durable activation receipt for the old-compatible permanent kernel guard set                                                                              |
-| `~/.freed/automation/control/leases/`                      | Token-bound leases that prevent duplicate writers                                                                                                         |
-| `~/.freed/automation/control/actor-credentials/`           | Legacy general actor migration records plus separate publisher public-key records; not current general actor authority                                    |
-| `~/.freed/automation/control/owner-capabilities/`          | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
-| `~/.freed/automation/outcomes.jsonl`                       | Versioned merge, install, and observed-effect outcomes                                                                                                    |
-| `~/.freed/automation/artifacts/outcome-ledger-repair/`     | Content-addressed raw history, per-line decisions, retained entries, rejected entries, and completion receipts                                            |
-| `~/.freed/automation/artifacts/kernel-guard-cutover/`      | Immutable pre-cutover lock bytes, transaction material, and owner-approved cutover receipts                                                               |
-| `~/.freed/automation/soaks/`                               | Installed-build evidence windows and verdicts                                                                                                             |
-| `docs/roadmap-status.json`                                 | Structured phase status used to validate roadmap truth                                                                                                    |
+| Source                                                                                                     | Purpose                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Issues with the `debt` label                                                                        | Canonical technical debt backlog, evidence, gates, completion criteria, and disposition                                                                   |
+| `automation/specs/*.json`                                                                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
+| `automation/prompts/*.md`                                                                                  | Checked-in behavioral contract for each automation                                                                                                        |
+| `automation/host-assignments.json`                                                                         | Reviewed opaque host ID assigned to the single `primary-automation-host` role                                                                             |
+| macOS `/Library/Application Support/Freed/automation-host.json` or Linux `/etc/freed/automation-host.json` | Root-owned local host identity enrolled by the owner                                                                                                      |
+| `.github/rulesets/*.json`                                                                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
+| `~/.freed/automation/control/current-tasks.json`                                                           | Atomic active execution authority; every task references its canonical GitHub issue                                                                       |
+| `~/.freed/automation/control/task-transactions/`                                                           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
+| `~/.freed/automation/control/outcome-ledger-transactions/`                                                 | Recoverable owner-governed outcome history repairs                                                                                                        |
+| `~/.freed/automation/control/events.jsonl`                                                                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
+| `~/.freed/automation/control/kernel-guard-cutover.json`                                                    | Durable activation receipt for the old-compatible permanent kernel guard set                                                                              |
+| `~/.freed/automation/control/leases/`                                                                      | Token-bound leases that prevent duplicate writers                                                                                                         |
+| `~/.freed/automation/control/actor-credentials/`                                                           | Legacy general actor migration records plus separate publisher public-key records; not current general actor authority                                    |
+| `~/.freed/automation/control/owner-capabilities/`                                                          | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
+| `~/.freed/automation/outcomes.jsonl`                                                                       | Versioned merge, install, and observed-effect outcomes                                                                                                    |
+| `~/.freed/automation/artifacts/outcome-ledger-repair/`                                                     | Content-addressed raw history, per-line decisions, retained entries, rejected entries, and completion receipts                                            |
+| `~/.freed/automation/artifacts/kernel-guard-cutover/`                                                      | Immutable pre-cutover lock bytes, transaction material, and owner-approved cutover receipts                                                               |
+| `~/.freed/automation/soaks/`                                                                               | Installed-build evidence windows and verdicts                                                                                                             |
+| `docs/roadmap-status.json`                                                                                 | Structured phase status used to validate roadmap truth                                                                                                    |
 
 Active factory claims remain a projection inside the same
 `current-tasks.json` manifest. They do not create another authority source.
@@ -80,12 +80,12 @@ self-expiring schedules, and unsupported execution modes are drift.
 
 Freed designates one machine for repository-wide scheduled ownership. The
 checked-in `automation/host-assignments.json` maps
-`primary-automation-host` to an opaque UUID. The designated Mac stores the same
-UUID in the root-owned, read-only
-`/Library/Application Support/Freed/automation-host.json` profile. Hostnames,
-usernames, network addresses, and `inv.local` files are not identity. They are
-mutable labels and, in the case of `inv.local`, merely another same-user file
-that can drift outside review.
+`primary-automation-host` to an opaque UUID. The designated host stores the same
+UUID in a root-owned, read-only profile. macOS uses
+`/Library/Application Support/Freed/automation-host.json`. Linux uses
+`/etc/freed/automation-host.json`. Hostnames, usernames, network addresses, and
+`inv.local` files are not identity. They are mutable labels and, in the case of
+`inv.local`, merely another same-user file that can drift outside review.
 
 Inspect the current machine without mutation:
 
@@ -132,8 +132,9 @@ single UUID would do.
 Every actor specification also requires `trusted-launcher` and
 `short-lived-lease-handoff`. Readiness means all of these are present:
 
-1. A schema 4 root-owned immutable launcher binding at
+1. A schema 4 root-owned immutable launcher binding. macOS stores it at
    `/Library/Application Support/Freed/automation-actor-launchers/<actor>.json`.
+   Linux stores it at `/etc/freed/automation-actor-launchers/<actor>.json`.
 2. The root-owned launcher executable and exact SHA-256 digest named by that
    binding.
 3. Root-owned pinned copies of Node, `automation-control.mjs`,
@@ -176,15 +177,26 @@ npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
 
-The build helper produces two native programs. The normal actor host links
-CryptoKit and has no Security framework or Keychain API dependency. The second
-program links Security only for one bounded migration from the installed schema
-1 contract. Provisioning validates the real root-owned legacy binding, deletes
-the fixed `freed-automation-actor` Keychain item with interaction disabled,
-removes the matching owner digest record when present, and then installs schema 4. Migration tolerates all four item and digest-record presence combinations,
-so an exact retry completes safely after response loss. Fresh installs and
-schema 4 replacements never invoke the migration program. Provision and rotate
-are rejected by the migration program.
+The build helper produces two native programs. On macOS, the normal actor host
+links CryptoKit and has no Security framework or Keychain API dependency. The
+second program links Security only for one bounded migration from the installed
+schema 1 contract. Provisioning validates the real root-owned legacy binding,
+deletes the fixed `freed-automation-actor` Keychain item with interaction
+disabled, removes the matching owner digest record when present, and then
+installs schema 4. Migration tolerates all four item and digest-record presence
+combinations, so an exact retry completes safely after response loss. Fresh
+installs and schema 4 replacements never invoke the migration program.
+Provision and rotate are rejected by the migration program.
+
+On Linux, the normal actor host is a static Go binary with the same schema 4
+channel, provenance, cancellation, retry, and bounded-output contracts. The
+build requires `FREED_GO_EXECUTABLE` to name an absolute reviewed Go compiler.
+Provisioning requires `FREED_PINNED_NODE_EXECUTABLE` to name an absolute Node
+executable whose version exactly matches `.nvmrc`. Runtime material is installed
+under `/opt/freed/automation-actor-runtimes`; bindings and launchers are
+installed under `/etc/freed/automation-actor-launchers`. Linux has no legacy
+macOS Keychain migration path. A schema 1 binding therefore fails closed and
+must be revoked on its original macOS host before Linux enrollment.
 
 Legacy Keychain deletion is irreversible. If a later replacement step fails,
 rollback may restore the old public binding, but it never fabricates a digest
