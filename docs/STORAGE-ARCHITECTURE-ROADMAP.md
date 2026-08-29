@@ -387,7 +387,10 @@ fixture. It cannot create or select product storage.
 Delete:
 
 - Automerge runtime, worker, persistence, merge, and cloud paths
-- `shellJson`, `shell_json`, `DesktopLibraryShell`, and equivalent shells
+- current-state `shellJson`, `shell_json`, `DesktopLibraryShell`, and equivalent
+  shells, while the fenced one-time migration reader may still name and read
+  the immutable historical source column long enough to decompose required
+  product fields
 - monolithic `DocState` and whole FeedItem checkpoint records
 - shadow stores, shadow readers, compatibility leases, and dual-engine flags
 - IndexedDB Library generations, rows, indexes, overlays, and cursors

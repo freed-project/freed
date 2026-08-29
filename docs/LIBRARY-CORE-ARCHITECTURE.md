@@ -1347,7 +1347,7 @@ record exact fixture, build, runtime, process generation, and storage identity.
 
 The final change deletes:
 
-- Every `shellJson` and `shell_json` field
+- Every current-state `shellJson` and `shell_json` field
 - `DesktopLibraryShell` and shell read or replacement commands
 - Monolithic `DocState` runtime authority
 - Library shell synchronization and checkpoint records
@@ -1380,7 +1380,12 @@ The final change deletes:
 - Tests that protect only deleted compatibility behavior
 
 Immutable migration receipts, source evidence, and backup provenance remain.
-Historical runtime code does not.
+The short-lived migration executable is the sole historical-shell reader. It
+may read the immutable source column once to rescue final-product fields, but
+it cannot copy, hash, checkpoint, export, retain, or reactivate those bytes.
+Deleting that fenced reader before the storage-epoch cutover would discard
+feeds, people, accounts, reach-out history, and synchronized preferences that
+the final product still requires. Historical runtime code does not remain.
 
 ## 22. Shortest path to total victory
 
