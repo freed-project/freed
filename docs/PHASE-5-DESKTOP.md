@@ -381,6 +381,8 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here:** Freed Desktop computes priority through registered
   native mutations and synchronizes the resulting typed normalized records.
+  One bounded indexed scheduler snapshots weights and time per pass, coalesces
+  invalidations, and never rescans already refreshed rows.
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
 - **Permanent social media vault:** Facebook and Instagram can copy the user's
@@ -745,6 +747,7 @@ export async function captureDomFeed(
 | 5.183 | Delete the Friends Galaxy worker's direct whole-source request and its caller-side queue. The shipping worker accepts only source-fenced person, Account, and RSS pages from the registered SQLite queries, stages one normalized job at a time, and commits the GPU scene only after all query families close | High       | ✓ Complete |
 | 5.184 | Give synchronized FeedItem annotations and analysis distinct normalized ownership. Tags and highlights replace atomically under one deterministic clock, content signals and event candidates replace under another, provider capture strips both child sets, and native Rust materializes only verified bounded payloads with blob foreign-key enforcement | High       | ✓ Complete |
 | 5.185 | Replace the fake semantic backfill result and retired deduplication command with a version-filtered, source-fenced SQLite candidate batch. Freed Desktop retains at most 1,000 compact candidates, infers signals and event candidates locally, rechecks the source revision, and commits bounded signed `feed_item_analysis_replace` transactions. RSS title repair now runs through its real frozen SQLite scope instead of an unreachable compatibility branch | High       | ✓ Complete |
+| 5.186 | Make recommendation priority canonical Primary-owned SQLite state. A bounded 64-row indexed scheduler snapshots one weight policy and monotone pass time, commits signed `feed_item_priority_assignment` operations, coalesces invalidations, refreshes recent decay hourly, and removes dead renderer ranking, identity, and compatibility helpers | High       | ✓ Complete |
 
 ---
 

@@ -204,6 +204,7 @@ pub struct NormalizedItemScanRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
+    pub priority_computed_before_ms: Option<i64>,
     pub reader_session_id: String,
     pub schema_version: u32,
 }
@@ -738,8 +739,12 @@ pub struct NormalizedItemScanRowV1 {
     #[serde(flatten)]
     pub card: NormalizedFeedCardV1,
     pub hidden: bool,
+    pub ranking_care_level: Option<i64>,
+    pub ranking_engagement_reposts: Option<i64>,
+    pub ranking_engagement_views: Option<i64>,
     pub rss_source: Option<NormalizedItemScanRssSourceV1>,
     pub sample_data_fingerprint: Option<NormalizedItemScanSampleFingerprintV1>,
+    pub topics: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2133,11 +2138,24 @@ fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV
         }
         _ => return Err(rusqlite::Error::InvalidQuery),
     };
+    let ranking_care_level: Option<i64> = row.get("rankingCareLevel")?;
+    let ranking_engagement_reposts: Option<i64> = row.get("rankingEngagementReposts")?;
+    let ranking_engagement_views: Option<i64> = row.get("rankingEngagementViews")?;
+    if ranking_care_level.is_some_and(|value| !(1..=5).contains(&value))
+        || ranking_engagement_reposts.is_some_and(|value| value < 0)
+        || ranking_engagement_views.is_some_and(|value| value < 0)
+    {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     Ok(NormalizedItemScanRowV1 {
         card: feed_card(row)?,
         hidden,
+        ranking_care_level,
+        ranking_engagement_reposts,
+        ranking_engagement_views,
         rss_source,
         sample_data_fingerprint,
+        topics: string_array(row, "rankingTopicsJson", 64, 1_024)?,
     })
 }
 
@@ -3391,6 +3409,11 @@ fn query_item_scan(
         || request
             .analysis_version
             .is_some_and(|version| !(1..=MAX_SAFE_INTEGER).contains(&version))
+        || request
+            .priority_computed_before_ms
+            .is_some_and(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+        || (request.analysis_version.is_some() && request.priority_computed_before_ms.is_some())
+        || (request.priority_computed_before_ms.is_some() && request.cursor.is_some())
         || !(1..=ITEM_SCAN_MAXIMUM_LIMIT).contains(&request.limit)
         || !valid_operation_instance_id(&request.cancellation_id)
         || !valid_operation_instance_id(&request.reader_session_id)
@@ -3412,15 +3435,34 @@ fn query_item_scan(
     }) {
         return Err(invalid("normalized item scan cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.sql)?;
-    let mut rows = statement.query_map(
-        params![
-            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
-            i64::try_from(request.limit + 1).expect("bounded item scan limit"),
-            request.analysis_version,
-        ],
-        background_item_row,
-    )?;
+    let priority_variant = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "priority")
+        .ok_or(invalid("normalized priority scan variant is missing"))?;
+    let priority_scan = request.priority_computed_before_ms.is_some();
+    let mut statement = transaction.prepare(if priority_scan {
+        priority_variant.sql
+    } else {
+        program.sql
+    })?;
+    let limit = i64::try_from(request.limit + 1).expect("bounded item scan limit");
+    let mut rows = if let Some(priority_computed_before_ms) = request.priority_computed_before_ms {
+        statement.query_map(
+            params![priority_computed_before_ms, limit],
+            background_item_row,
+        )?
+    } else {
+        statement.query_map(
+            params![
+                cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+                limit,
+                request.analysis_version,
+                Option::<i64>::None,
+            ],
+            background_item_row,
+        )?
+    };
     let mut cards = Vec::with_capacity(request.limit + 1);
     for row in rows.by_ref() {
         cards.push(row?);
@@ -8026,7 +8068,12 @@ mod tests {
             .expect("item scan plan");
         let plan = plan_statement
             .query_map(
-                params![Option::<String>::None, 3, Option::<i64>::None],
+                params![
+                    Option::<String>::None,
+                    3,
+                    Option::<i64>::None,
+                    Option::<i64>::None
+                ],
                 |row| row.get::<_, String>(3),
             )
             .expect("plan rows")
@@ -8038,6 +8085,24 @@ mod tests {
         assert!(plan.iter().all(|detail| !detail.contains("SCAN item")));
         assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
         drop(plan_statement);
+        let priority_variant = program
+            .variants
+            .iter()
+            .find(|variant| variant.variant_id == "priority")
+            .expect("priority scan variant");
+        let priority_plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", priority_variant.sql))
+            .expect("priority scan plan")
+            .query_map(params![600, 3], |row| row.get::<_, String>(3))
+            .expect("priority plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("priority plan");
+        assert!(priority_plan
+            .iter()
+            .any(|detail| detail.contains("library_feed_items_priority_refresh")));
+        assert!(priority_plan
+            .iter()
+            .all(|detail| !detail.contains("TEMP B-TREE")));
 
         connection
             .execute_batch(&format!(
@@ -8067,6 +8132,7 @@ mod tests {
             cancellation_id: "cancel-scan-1".to_owned(),
             cursor: None,
             limit: 2,
+            priority_computed_before_ms: None,
             reader_session_id: "reader-scan-1".to_owned(),
             schema_version: 1,
         };
@@ -8129,6 +8195,54 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["hidden", "item-2"]
         );
+
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES ('person-1', 'Grace', 'friend', 5, 1, 1);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                 VALUES ('account-1', 'person-1', 'social', 'rss', 'author-2',
+                         1, 1, 'captured_item', 1, 1);
+                 INSERT INTO library_feed_item_topics (global_id, topic)
+                 VALUES ('item-1', 'sqlite');
+                 UPDATE library_feed_items
+                    SET priority_computed_at = 500,
+                        engagement_reposts = 7,
+                        engagement_views = 99
+                  WHERE global_id = 'item-1';
+                 UPDATE library_feed_items SET priority_computed_at = 700
+                  WHERE global_id = 'item-2';",
+            )
+            .expect("priority scan fixtures");
+        let NormalizedQueryResponseV1::ItemScan(stale_priority) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemScan(NormalizedItemScanRequestV1 {
+                analysis_version: None,
+                cursor: None,
+                limit: ITEM_SCAN_MAXIMUM_LIMIT,
+                priority_computed_before_ms: Some(600),
+                ..request.clone()
+            }),
+        )
+        .expect("stale priority scan") else {
+            panic!("stale priority response");
+        };
+        assert_eq!(
+            stale_priority
+                .rows
+                .iter()
+                .map(|row| row.card.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["hidden", "item-1"]
+        );
+        let item_one = &stale_priority.rows[1];
+        assert_eq!(item_one.ranking_care_level, Some(5));
+        assert_eq!(item_one.ranking_engagement_reposts, Some(7));
+        assert_eq!(item_one.ranking_engagement_views, Some(99));
+        assert_eq!(item_one.topics, ["sqlite"]);
 
         connection
             .execute_batch(

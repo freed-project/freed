@@ -122,7 +122,6 @@
 /packages/ui/src/hooks/useContactSync.ts @AubreyF
 /packages/ui/src/lib/device-ai-preferences.ts @AubreyF
 /packages/ui/src/lib/factory-reset.ts @AubreyF
-/packages/sync/src/storage/indexeddb.ts @AubreyF
 
 # Stability automation, validation, provider gates, and release tooling.
 /scripts/ @AubreyF

@@ -9,6 +9,7 @@ export * from "./types";
 
 // Re-export ranking algorithm.
 export * from "./ranking";
+export * from "./library-core/feed-browse-filter-contract";
 
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";

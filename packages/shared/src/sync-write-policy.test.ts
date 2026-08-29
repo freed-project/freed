@@ -8,7 +8,7 @@ import {
 import type { RssFeed, UserPreferences } from "./types.js";
 
 describe("synchronized write policy", () => {
-  it("retains normalized nested content and excludes device-local ranking", () => {
+  it("retains normalized nested content and excludes Primary-derived ranking", () => {
     const sanitized = sanitizeFeedItemWrite({
       content: { text: "kept", mediaUrls: [], mediaTypes: [] },
       preservedContent: {

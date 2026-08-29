@@ -136,7 +136,9 @@ pub(crate) fn validate_transaction(
                     return Err(LibraryCoreError::InvalidVerifiedInput { field: "item_json" });
                 }
             }
-            "feed_item_analysis_replace" | "feed_item_annotations_replace" => {
+            "feed_item_analysis_replace"
+            | "feed_item_annotations_replace"
+            | "feed_item_priority_assignment" => {
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()

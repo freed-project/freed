@@ -44,6 +44,7 @@ import { LIBRARY_CORE_PREFERENCE_WRITE_POLICIES } from "./library-core/sqlite-co
 export type SyncWriteDisposition =
   | "sync"
   | "positive-sync"
+  | "derived-primary"
   | "device-local"
   | "nested";
 
@@ -310,20 +311,10 @@ export const FEED_ITEM_WRITE_POLICY = {
   topics: "nested",
   contentSignals: "nested",
   eventCandidate: "nested",
-  // Device-local, not synced.
-  //
-  // priority is DERIVED and TIME-DECAYING. It is a weighted average whose
-  // recency term falls to zero over 168 hours, so the correct value changes
-  // continuously for recent items and differs between two devices purely
-  // because their clocks read differently. Syncing it means every device
-  // rewrites the same field for the same item forever, producing sync traffic
-  // that carries no user intent.
-  //
-  // It is also derived from preferences and the relationship graph, so a device
-  // can always recompute it locally from inputs that ARE synced. Nothing is
-  // lost by keeping it local, and the churn goes away.
-  priority: "device-local",
-  priorityComputedAt: "device-local",
+  // The Primary derives ranking through the dedicated signed priority
+  // assignment operation. Capture and import payloads cannot supply it.
+  priority: "derived-primary",
+  priorityComputedAt: "derived-primary",
   sourceUrl: "sync",
   sampleDataFingerprint: "nested",
 } as const satisfies ExhaustiveSyncWritePolicy<FeedItem>;

@@ -54,6 +54,7 @@ const SYNC_RECEIPT_PAYLOAD_KEYS: [&str; 1] = ["synced_at_ms"];
 const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ANALYSIS_REPLACE_PAYLOAD_KEYS: [&str; 3] =
     ["assigned_at_ms", "content_signals", "event_candidate"];
+const PRIORITY_ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "priority_basis_points"];
 const CONTENT_SIGNALS_KEYS: [&str; 4] = ["inferred_at_ms", "method", "scores", "version"];
 const CONTENT_SIGNAL_SCORE_KEYS: [&str; 3] = ["score_basis_points", "signal", "tagged"];
 const EVENT_CANDIDATE_KEYS: [&str; 12] = [
@@ -1436,6 +1437,28 @@ fn parse_envelope(bytes: &[u8], index: usize) -> LibraryCoreResult<ParsedEnvelop
                 None,
                 None,
                 Some(safe_integer(payload_object, "read_at_ms", index)?),
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "feed_item_priority_assignment" => {
+            let payload_object =
+                exact_object(payload, &PRIORITY_ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
+            safe_integer(payload_object, "assigned_at_ms", index)?;
+            if safe_integer(payload_object, "priority_basis_points", index)? > 10_000 {
+                return Err(invalid(index, "priority_basis_points"));
+            }
+            let canonical = encode_canonical_value(payload, 1_024)
+                .map_err(|_| invalid(index, "feed_item_priority_assignment"))?;
+            (
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
                 None,
                 None,
                 None,

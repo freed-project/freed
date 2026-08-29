@@ -17,6 +17,7 @@ import {
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
   FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA,
   libraryCoreOptimisticFieldsForEnvelopeV1,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
@@ -5577,6 +5578,32 @@ export class PwaLibraryCoreSqliteEngine {
         continue;
       }
 
+      if (program.payloadKind === "priority_assignment") {
+        const validation =
+          FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate(payload);
+        if (!validation.ok) {
+          throw new Error(
+            `accepted follower priority assignment is invalid: ${validation.reason}`,
+          );
+        }
+        const assignedAt = validation.value.assigned_at_ms;
+        if (clockWins(assignedAt)) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [
+              validation.value.priority_basis_points,
+              assignedAt,
+              entityId,
+            ],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower priority target changed");
+          }
+          writeClock(assignedAt);
+        }
+        continue;
+      }
+
       if (program.payloadKind === "sync_receipt") {
         const syncedAt = requiredInteger(
           payload.synced_at_ms,
@@ -9610,13 +9637,18 @@ export class PwaLibraryCoreSqliteEngine {
       afterGlobalId = cursor.value.globalId;
     }
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.background_item_page_v1;
+    const priorityScan = request.value.priorityComputedBeforeMs !== null;
+    const priorityVariant = program.variants.priority;
     const rows = this.#database.exec({
-      sql: program.sql,
-      bind: [
-        afterGlobalId,
-        request.value.limit + 1,
-        request.value.analysisVersion,
-      ],
+      sql: priorityScan ? priorityVariant.sql : program.sql,
+      bind: priorityScan
+        ? [request.value.priorityComputedBeforeMs, request.value.limit + 1]
+        : [
+            afterGlobalId,
+            request.value.limit + 1,
+            request.value.analysisVersion,
+            null,
+          ],
       rowMode: "object",
       returnValue: "resultRows",
     });
@@ -9646,6 +9678,18 @@ export class PwaLibraryCoreSqliteEngine {
       return {
         ...feedCardFromSqliteRow(row),
         hidden: hiddenState === 1,
+        rankingCareLevel:
+          row.rankingCareLevel === null
+            ? null
+            : safeInteger(row.rankingCareLevel, "ranking care level"),
+        rankingEngagementReposts:
+          row.rankingEngagementReposts === null
+            ? null
+            : safeInteger(row.rankingEngagementReposts, "ranking repost count"),
+        rankingEngagementViews:
+          row.rankingEngagementViews === null
+            ? null
+            : safeInteger(row.rankingEngagementViews, "ranking view count"),
         rssSource:
           rssFeedUrl === null
             ? null
@@ -9663,6 +9707,9 @@ export class PwaLibraryCoreSqliteEngine {
                 generatorVersion: sampleGeneratorVersion!,
                 marker: "freed.sample-data.v1" as const,
               },
+        topics: JSON.parse(
+          text(row.rankingTopicsJson, "ranking topics"),
+        ) as unknown,
       };
     });
     const last = cards.at(-1);

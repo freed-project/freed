@@ -948,6 +948,20 @@ rows for a 128-row result. Next and previous cursors bind the database
 generation and exact source revision. A filter change starts a new query
 instead of reusing a cursor from another result set.
 
+Priority is Primary-derived canonical state. Capture and import operations may
+not supply `priority` or `priorityComputedAt`. The Primary snapshots one weight
+policy and one monotone pass timestamp, then reads at most 64 stale candidates
+through the `priority` variant of `background_item_page_v1`. That variant uses
+`library_feed_items_priority_refresh` to select the oldest stale scores without
+a table restart or temporary sort. The Primary computes each score with the
+shared TypeScript transform and commits bounded signed
+`feed_item_priority_assignment` transactions. Native Rust verifies and
+materializes the operation. PWA SQLite applies the same accepted operation
+during follower replay. Ranking refresh never changes an item's content
+`updatedAt`, and React never sorts a corpus or recomputes canonical priority.
+Library invalidations and weight changes coalesce into a follow-up pass, while
+one hourly pass refreshes the time-decaying recent window.
+
 The ordinary and Friends visible-window lifecycles reopen on the host's exact
 Library item invalidation revision. Saved uses its dedicated presentation
 revision, and search uses its own committed-query revision. These ephemeral

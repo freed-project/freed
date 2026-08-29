@@ -252,6 +252,7 @@ export async function scanLibraryCoreNormalizedBackgroundItemsV1(
       cancellationId: operationId(runtime, "background-page"),
       cursor,
       limit: LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
+      priorityComputedBeforeMs: null,
       queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
       readerSessionId,
       schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
@@ -270,10 +271,25 @@ function itemScanRowsToFeedItems(
       const item = libraryCoreFeedCardToItemV1(row);
       return Object.freeze({
         ...item,
+        engagement:
+          item.engagement !== undefined ||
+          row.rankingEngagementReposts !== null ||
+          row.rankingEngagementViews !== null
+            ? Object.freeze({
+                ...item.engagement,
+                ...(row.rankingEngagementReposts === null
+                  ? {}
+                  : { reposts: row.rankingEngagementReposts }),
+                ...(row.rankingEngagementViews === null
+                  ? {}
+                  : { views: row.rankingEngagementViews }),
+              })
+            : undefined,
         ...(row.rssSource === null ? {} : { rssSource: row.rssSource }),
         ...(row.sampleDataFingerprint === null
           ? {}
           : { sampleDataFingerprint: row.sampleDataFingerprint }),
+        topics: [...row.topics],
         userState: Object.freeze({
           ...item.userState,
           hidden: row.hidden,
@@ -317,6 +333,7 @@ export async function readLibraryCoreNormalizedAnalysisCandidateBatchV1(
       cancellationId: operationId(runtime, "analysis-page"),
       cursor,
       limit: pageLimit,
+      priorityComputedBeforeMs: null,
       queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
       readerSessionId,
       schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
@@ -336,6 +353,55 @@ export async function readLibraryCoreNormalizedAnalysisCandidateBatchV1(
     items: Object.freeze(items),
     remaining,
     sourceRevision: sourceRevision ?? 0,
+  });
+}
+
+export interface LibraryCorePriorityCandidateV1 {
+  readonly careLevel: number | null;
+  readonly item: FeedItem;
+}
+
+export interface LibraryCorePriorityCandidateBatchV1 {
+  readonly items: readonly LibraryCorePriorityCandidateV1[];
+  readonly remaining: boolean;
+}
+
+/** Read one bounded batch that has not been ranked for this Primary pass. */
+export async function readLibraryCoreNormalizedPriorityCandidateBatchV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  priorityComputedBeforeMs: number,
+  maximumItems: number,
+): Promise<LibraryCorePriorityCandidateBatchV1> {
+  if (
+    !Number.isSafeInteger(priorityComputedBeforeMs) ||
+    priorityComputedBeforeMs < 0 ||
+    !Number.isSafeInteger(maximumItems) ||
+    maximumItems < 1 ||
+    maximumItems > LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT
+  ) {
+    throw new TypeError("priority candidate batch bounds are invalid");
+  }
+  const page: LibraryCoreItemScanResponseV1 = await runtime.query({
+    analysisVersion: null,
+    cancellationId: operationId(runtime, "priority-page"),
+    cursor: null,
+    limit: maximumItems,
+    priorityComputedBeforeMs,
+    queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
+    readerSessionId: operationId(runtime, "priority-reader"),
+    schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
+  });
+  const feedItems = itemScanRowsToFeedItems(page.rows);
+  return Object.freeze({
+    items: Object.freeze(
+      page.rows.map((row, index) =>
+        Object.freeze({
+          careLevel: row.rankingCareLevel,
+          item: feedItems[index]!,
+        }),
+      ),
+    ),
+    remaining: page.nextCursor !== null,
   });
 }
 

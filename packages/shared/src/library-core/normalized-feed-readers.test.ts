@@ -3,6 +3,7 @@ import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedAnalysisCandidateBatchV1,
+  readLibraryCoreNormalizedPriorityCandidateBatchV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreRssFeedV1,
   scanLibraryCoreContentFetchCandidatesV1,
@@ -47,11 +48,15 @@ const feedCard = (globalId: string) => ({
   mediaUrls: [],
   platform: "rss",
   publishedAt: 100,
+  rankingCareLevel: null,
+  rankingEngagementReposts: null,
+  rankingEngagementViews: null,
   readAt: null,
   readingTimeMinutes: null,
   saved: false,
   sourceUrl: "https://example.com/item",
   tags: [],
+  topics: [],
 });
 
 const backgroundCard = (globalId: string) => ({
@@ -384,6 +389,7 @@ describe("cross-platform normalized feed readers", () => {
       cancellationId: "background-page:test",
       cursor: null,
       limit: 64,
+      priorityComputedBeforeMs: null,
       queryId: "background_item_page_v1",
       readerSessionId: "background-reader:test",
       schemaVersion: 1,
@@ -441,8 +447,55 @@ describe("cross-platform normalized feed readers", () => {
       cancellationId: "analysis-page:test",
       cursor: null,
       limit: 2,
+      priorityComputedBeforeMs: null,
       queryId: "background_item_page_v1",
       readerSessionId: "analysis-reader:test",
+      schemaVersion: 1,
+    });
+  });
+
+  it("reads one bounded Primary ranking batch with complete ranking inputs", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "more-priority-work",
+      rows: [
+        {
+          ...backgroundCard("first"),
+          rankingCareLevel: 5,
+          rankingEngagementReposts: 7,
+          rankingEngagementViews: 99,
+          topics: ["sqlite"],
+        },
+      ],
+      source: querySource,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(
+      { query, randomId: () => "test" },
+      1_000,
+      1,
+    );
+
+    expect(batch).toEqual({
+      items: [
+        {
+          careLevel: 5,
+          item: expect.objectContaining({
+            engagement: { reposts: 7, views: 99 },
+            globalId: "first",
+            topics: ["sqlite"],
+          }),
+        },
+      ],
+      remaining: true,
+    });
+    expect(query).toHaveBeenCalledWith({
+      analysisVersion: null,
+      cancellationId: "priority-page:test",
+      cursor: null,
+      limit: 1,
+      priorityComputedBeforeMs: 1_000,
+      queryId: "background_item_page_v1",
+      readerSessionId: "priority-reader:test",
       schemaVersion: 1,
     });
   });

@@ -33,6 +33,7 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -87,6 +88,7 @@ import {
   type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemAnalysisReplaceTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
+  type FeedItemPriorityAssignmentTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemSyncReceiptTransactionMemberInputV1,
   type FeedItemAnnotationsReplaceTransactionMemberInputV1,
@@ -915,11 +917,7 @@ async function maybeSubmitFeedItemCaptures(
   const batchLimit =
     LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
       .maximumMembers;
-  for (
-    let start = 0;
-    start < items.length;
-    start += batchLimit
-  ) {
+  for (let start = 0; start < items.length; start += batchLimit) {
     const batchContext = context;
     const batch = items.slice(start, start + batchLimit);
     const transactionId =
@@ -1010,12 +1008,9 @@ async function maybeSubmitFeedItemAnnotationSets(
   }));
   if (assignments.length === 0) return true;
   const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
-  for (
-    let start = 0;
-    start < assignments.length;
-    start += batchLimit
-  ) {
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace
+      .maximumMembers;
+  for (let start = 0; start < assignments.length; start += batchLimit) {
     const batchContext = context;
     const batch = assignments.slice(start, start + batchLimit);
     const transactionId =
@@ -1092,12 +1087,9 @@ async function maybeSubmitFeedItemAnalysisSets(
   }));
   if (assignments.length === 0) return true;
   const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_analysis_replace.maximumMembers;
-  for (
-    let start = 0;
-    start < assignments.length;
-    start += batchLimit
-  ) {
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_analysis_replace
+      .maximumMembers;
+  for (let start = 0; start < assignments.length; start += batchLimit) {
     const batchContext = context;
     const batch = assignments.slice(start, start + batchLimit);
     const transactionId =
@@ -1154,6 +1146,82 @@ export async function commitDesktopLibraryFeedItemAnalysisSets(
 ): Promise<void> {
   if (!(await maybeSubmitFeedItemAnalysisSets(assignments, assignedAtMs))) {
     throw new Error("Normalized SQLite FeedItem analysis context is required");
+  }
+}
+
+export async function commitDesktopLibraryFeedItemPriorities(
+  assignments: readonly Readonly<{
+    entityId: string;
+    priorityBasisPoints: number;
+  }>[],
+  assignedAtMs: number,
+): Promise<void> {
+  let context = await mutationContext();
+  if (!context) {
+    throw new Error("Normalized SQLite FeedItem priority context is required");
+  }
+  const unique = new Map<string, number>();
+  for (const assignment of assignments) {
+    if (
+      assignment.entityId.length === 0 ||
+      !Number.isSafeInteger(assignment.priorityBasisPoints) ||
+      assignment.priorityBasisPoints < 0 ||
+      assignment.priorityBasisPoints > 10_000
+    ) {
+      throw new TypeError("FeedItem priority assignment is invalid");
+    }
+    unique.set(assignment.entityId, assignment.priorityBasisPoints);
+  }
+  const normalized = [...unique].map(([entityId, priorityBasisPoints]) => ({
+    entityId,
+    priorityBasisPoints,
+  }));
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_priority_assignment
+      .maximumMembers;
+  for (let start = 0; start < normalized.length; start += batchLimit) {
+    const batchContext = context;
+    const batch = normalized.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-priority:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((assignment, index) =>
+      FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: assignment.entityId,
+          payload: {
+            assigned_at_ms: assignedAtMs,
+            priority_basis_points: assignment.priorityBasisPoints,
+          },
+          created_at_ms: assignedAtMs,
+        } satisfies FeedItemPriorityAssignmentTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
+    if (start + batch.length < normalized.length) {
+      context = await mutationContext();
+      if (!context) {
+        throw new Error(
+          "Library mutation context changed during priority commit",
+        );
+      }
+    }
   }
 }
 

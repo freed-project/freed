@@ -390,6 +390,7 @@ function assertContract(contract) {
         "preferences_leaf_assignment",
         "nullable_text_assignment",
         "person_reach_out_append",
+        "priority_assignment",
         "read_at",
         "remove",
         "rss_feed_upsert",
@@ -484,6 +485,7 @@ function assertContract(contract) {
         "countSql,maximumScanRows,sql",
         "countSql,maximumScanRows,reverseSql,sql",
         "countSql,maximumScanRows,variants",
+        "countSql,maximumScanRows,sql,variants",
       ].includes(queryProgramKeys) ||
       (!hasVariants &&
         (typeof program.sql !== "string" || program.sql.length === 0)) ||
@@ -495,15 +497,18 @@ function assertContract(contract) {
         (variants === null ||
           typeof variants !== "object" ||
           Array.isArray(variants) ||
-          Object.keys(variants).length < 2 ||
+          Object.keys(variants).length < 1 ||
           Object.entries(variants).some(
             ([variantId, variant]) =>
               !/^[a-z][a-z0-9_]*$/.test(variantId) ||
-              Object.keys(variant).sort().join(",") !== "reverseSql,sql" ||
+              !["sql", "reverseSql,sql"].includes(
+                Object.keys(variant).sort().join(","),
+              ) ||
               typeof variant.sql !== "string" ||
               variant.sql.length === 0 ||
-              typeof variant.reverseSql !== "string" ||
-              variant.reverseSql.length === 0,
+              (variant.reverseSql !== undefined &&
+                (typeof variant.reverseSql !== "string" ||
+                  variant.reverseSql.length === 0)),
           ))) ||
       typeof program.countSql !== "string" ||
       program.countSql.length === 0 ||
@@ -1122,11 +1127,11 @@ function rustSource(contract, schemaDigest) {
       const variants = Object.entries(program.variants ?? {})
         .map(
           ([variantId, variant]) =>
-            `        SqliteQueryVariant { variant_id: ${JSON.stringify(variantId)}, sql: ${JSON.stringify(variant.sql)}, reverse_sql: ${JSON.stringify(variant.reverseSql)} },`,
+            `        SqliteQueryVariant { variant_id: ${JSON.stringify(variantId)}, sql: ${JSON.stringify(variant.sql)}, reverse_sql: ${JSON.stringify(variant.reverseSql ?? variant.sql)} },`,
         )
         .join("\n");
       const defaultVariant = Object.values(program.variants ?? {})[0];
-      return `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql ?? defaultVariant.sql)}, reverse_sql: ${program.reverseSql === undefined && defaultVariant === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql ?? defaultVariant.reverseSql)})`}, count_sql: ${JSON.stringify(program.countSql)}, variants: &[\n${variants}\n    ] },`;
+      return `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql ?? defaultVariant.sql)}, reverse_sql: ${program.reverseSql === undefined && defaultVariant === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql ?? defaultVariant.reverseSql ?? defaultVariant.sql)})`}, count_sql: ${JSON.stringify(program.countSql)}, variants: &[\n${variants}\n    ] },`;
     })
     .join("\n");
   const queryRowModels = Object.entries(contract.queryRowModels)

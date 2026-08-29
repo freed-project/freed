@@ -355,9 +355,13 @@ describe("Freed Desktop normalized surface readers", () => {
           ...feedCard,
           hidden: false,
           linkPreviewTitle: "Article",
+          rankingCareLevel: null,
+          rankingEngagementReposts: null,
+          rankingEngagementViews: null,
           rssSource: null,
           sampleDataFingerprint: null,
           sourceUrl: "https://example.test/article",
+          topics: [],
         },
       ],
     });

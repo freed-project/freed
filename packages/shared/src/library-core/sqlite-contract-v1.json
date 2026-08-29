@@ -173,6 +173,7 @@
       "feed_item_capture_upsert",
       "feed_item_like_assignment",
       "feed_item_like_sync_receipt",
+      "feed_item_priority_assignment",
       "feed_item_read_assignment",
       "feed_item_remove",
       "feed_item_saved_assignment",
@@ -1126,6 +1127,21 @@
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
     },
+    "feed_item_priority_assignment": {
+      "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'priority';",
+      "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'priority', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "currentValueSql": "SELECT json_object('priorityBasisPoints', CAST(round(COALESCE(priority, 0) * 100.0) AS INTEGER), 'priorityComputedAt', priority_computed_at) FROM library_feed_items WHERE global_id = ?1;",
+      "dependentDeleteSql": [],
+      "dependentInsertSql": [],
+      "entityType": "FeedItem",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET priority = ?1 / 100.0, priority_computed_at = ?2 WHERE global_id = ?3;",
+      "maximumMembers": 256,
+      "optimisticEffectKind": "none",
+      "payloadKind": "priority_assignment",
+      "requiresExistingTarget": true,
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
     "friend_replace": {
       "clockReadSql": "",
       "clockWriteSql": "",
@@ -1302,6 +1318,7 @@
     "feed_item_capture_upsert",
     "feed_item_like_assignment",
     "feed_item_like_sync_receipt",
+    "feed_item_priority_assignment",
     "feed_item_read_assignment",
     "feed_item_remove",
     "feed_item_saved_assignment",
@@ -1363,8 +1380,13 @@
     },
     "background_item_page_v1": {
       "maximumScanRows": 65,
-      "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE ?1 IS NULL OR NOT EXISTS (SELECT 1 FROM library_feed_item_signals AS current_analysis WHERE current_analysis.global_id = item.global_id AND current_analysis.version = ?1);",
-      "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, item.hidden, substr(item.rss_feed_url, 1, 8192) AS rssFeedUrl, COALESCE(substr(item.rss_feed_title, 1, 2048), '') AS rssFeedTitle, COALESCE(substr(item.rss_site_url, 1, 8192), '') AS rssSiteUrl, substr(item.sample_batch_id, 1, 4096) AS sampleBatchId, item.sample_generated_at AS sampleGeneratedAt, item.sample_generator_version AS sampleGeneratorVersion FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.global_id > COALESCE(?1, '') COLLATE BINARY AND (?3 IS NULL OR NOT EXISTS (SELECT 1 FROM library_feed_item_signals AS current_analysis WHERE current_analysis.global_id = item.global_id AND current_analysis.version = ?3)) ORDER BY item.global_id COLLATE BINARY ASC LIMIT ?2;"
+      "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE (?1 IS NULL OR NOT EXISTS (SELECT 1 FROM library_feed_item_signals AS current_analysis WHERE current_analysis.global_id = item.global_id AND current_analysis.version = ?1)) AND (?2 IS NULL OR item.priority_computed_at IS NULL OR item.priority_computed_at < ?2);",
+      "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, item.hidden, substr(item.rss_feed_url, 1, 8192) AS rssFeedUrl, COALESCE(substr(item.rss_feed_title, 1, 2048), '') AS rssFeedTitle, COALESCE(substr(item.rss_site_url, 1, 8192), '') AS rssSiteUrl, substr(item.sample_batch_id, 1, 4096) AS sampleBatchId, item.sample_generated_at AS sampleGeneratedAt, item.sample_generator_version AS sampleGeneratorVersion, (SELECT person.care_level FROM library_accounts AS account JOIN library_persons AS person ON person.id = account.person_id WHERE account.kind = 'social' AND account.provider = item.platform AND account.external_id = item.author_id AND person.relationship_status = 'friend' ORDER BY account.id COLLATE BINARY LIMIT 1) AS rankingCareLevel, item.engagement_reposts AS rankingEngagementReposts, item.engagement_views AS rankingEngagementViews, (SELECT json_group_array(topic) FROM (SELECT topic FROM library_feed_item_topics WHERE global_id = item.global_id ORDER BY topic COLLATE BINARY LIMIT 64)) AS rankingTopicsJson FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.global_id > COALESCE(?1, '') COLLATE BINARY AND (?3 IS NULL OR NOT EXISTS (SELECT 1 FROM library_feed_item_signals AS current_analysis WHERE current_analysis.global_id = item.global_id AND current_analysis.version = ?3)) AND (?4 IS NULL OR item.priority_computed_at IS NULL OR item.priority_computed_at < ?4) ORDER BY item.global_id COLLATE BINARY ASC LIMIT ?2;",
+      "variants": {
+        "priority": {
+          "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, item.hidden, substr(item.rss_feed_url, 1, 8192) AS rssFeedUrl, COALESCE(substr(item.rss_feed_title, 1, 2048), '') AS rssFeedTitle, COALESCE(substr(item.rss_site_url, 1, 8192), '') AS rssSiteUrl, substr(item.sample_batch_id, 1, 4096) AS sampleBatchId, item.sample_generated_at AS sampleGeneratedAt, item.sample_generator_version AS sampleGeneratorVersion, (SELECT person.care_level FROM library_accounts AS account JOIN library_persons AS person ON person.id = account.person_id WHERE account.kind = 'social' AND account.provider = item.platform AND account.external_id = item.author_id AND person.relationship_status = 'friend' ORDER BY account.id COLLATE BINARY LIMIT 1) AS rankingCareLevel, item.engagement_reposts AS rankingEngagementReposts, item.engagement_views AS rankingEngagementViews, (SELECT json_group_array(topic) FROM (SELECT topic FROM library_feed_item_topics WHERE global_id = item.global_id ORDER BY topic COLLATE BINARY LIMIT 64)) AS rankingTopicsJson FROM library_feed_items AS item INDEXED BY library_feed_items_priority_refresh LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE (item.priority_computed_at IS NULL OR item.priority_computed_at < ?1) ORDER BY item.priority_computed_at ASC, item.global_id COLLATE BINARY ASC LIMIT ?2;"
+        }
+      }
     },
     "change_feed_v1": {
       "maximumScanRows": 513,
@@ -1545,7 +1567,15 @@
         "nullable": false
       },
       {
-        "enumValues": ["archived", "archived_at", "liked", "liked_at", "read_at", "saved", "saved_at"],
+        "enumValues": [
+          "archived",
+          "archived_at",
+          "liked",
+          "liked_at",
+          "read_at",
+          "saved",
+          "saved_at"
+        ],
         "integerValues": [],
         "kind": "text",
         "maximumInteger": null,

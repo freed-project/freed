@@ -1807,6 +1807,70 @@ fn materialize_structured_set_assignment(
     Ok(())
 }
 
+fn materialize_priority_assignment(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload_json =
+        member
+            .structured_payload_json
+            .as_deref()
+            .ok_or(NormalizedSqliteError::InvalidRequest(
+                "normalized priority payload is missing",
+            ))?;
+    let payload: Value = serde_json::from_str(payload_json).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized priority payload is invalid")
+    })?;
+    let assigned_at = payload
+        .get("assigned_at_ms")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized priority time is invalid",
+        ))?;
+    let priority_basis_points = payload
+        .get("priority_basis_points")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=10_000).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized priority score is invalid",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        assigned_at > clock.0
+            || (assigned_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![priority_basis_points, assigned_at, member.entity_id],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized priority target changed",
+            ));
+        }
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn materialize_sync_receipt(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -2180,6 +2244,9 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "priority_assignment" => {
+            materialize_priority_assignment(transaction, verified, member_index, program)
+        }
         "sync_receipt" => {
             materialize_sync_receipt(transaction, verified, member_index, committed_at, program)
         }
@@ -4968,6 +5035,86 @@ pub(crate) mod tests {
                 )
                 .expect("winning child sets"),
             ("alpha,research".to_owned(), 1, 1)
+        );
+    }
+
+    #[test]
+    fn signed_priority_assignment_materializes_without_rewriting_item_updated_at() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let priority = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:priority:newer",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_200)],
+            "feed_item_priority_assignment",
+            Some(&json!({
+                "assigned_at_ms": 1_200,
+                "priority_basis_points": 8_125
+            })),
+        );
+        let receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &priority,
+            &key_pair,
+            2_000,
+        )
+        .expect("assign priority");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT priority, priority_computed_at, updated_at
+                     FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, f64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    )),
+                )
+                .expect("priority state"),
+            (81.25, 1_200, 800)
+        );
+
+        let stale_priority = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:priority:stale",
+            2,
+            Some(&receipt.committed_operation_id),
+            &receipt.committed_chain_digest,
+            &[("rss:item:1", 1_100)],
+            "feed_item_priority_assignment",
+            Some(&json!({
+                "assigned_at_ms": 1_100,
+                "priority_basis_points": 100
+            })),
+        );
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_priority,
+            &key_pair,
+            2_100,
+        )
+        .expect("journal stale priority");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT priority, priority_computed_at, updated_at
+                     FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, f64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    )),
+                )
+                .expect("unchanged priority state"),
+            (81.25, 1_200, 800)
         );
     }
 

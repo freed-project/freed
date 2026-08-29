@@ -9,6 +9,7 @@ import { hashSavedUrl } from "@freed/capture-save/normalize";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
+  calculatePriority,
   collectSavedYouTubeVideoUrls,
   inferContentSignals,
   inferEventCandidate,
@@ -21,6 +22,7 @@ import {
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
+  type WeightPreferences,
 } from "@freed/shared";
 import type {
   LibraryMutationEvent,
@@ -48,6 +50,7 @@ import {
 import {
   dispatchSqliteMutation,
   commitDesktopLibraryFeedItemAnalysisSets,
+  commitDesktopLibraryFeedItemPriorities,
   ensureFreshNormalizedDesktopLibrary,
   loadSqliteLibraryState,
   readSqliteItems,
@@ -55,6 +58,7 @@ import {
 } from "./sqlite-library";
 import {
   readLibraryCoreAnalysisCandidateBatch,
+  readLibraryCorePriorityCandidateBatch,
   scanLibraryCoreBackgroundItems,
 } from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
@@ -527,11 +531,7 @@ export const healUntitledLibraryFeedTitles = () =>
 export async function backfillLibraryContentSignals(
   batchSize = 200,
 ): Promise<ContentSignalBackfillSummary> {
-  if (
-    !Number.isSafeInteger(batchSize) ||
-    batchSize < 1 ||
-    batchSize > 1_000
-  ) {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1_000) {
     throw new TypeError("content signal batch size is invalid");
   }
   let summary!: ContentSignalBackfillSummary;
@@ -596,6 +596,56 @@ export async function backfillLibraryContentSignals(
       };
       return;
     }
+  });
+  mutationQueue = operation.catch(() => undefined);
+  await operation;
+  return summary;
+}
+
+export interface LibraryPriorityBackfillSummary {
+  readonly passStartedAt: number;
+  readonly remaining: number;
+  readonly updated: number;
+}
+
+export async function backfillLibraryPriorities(
+  weights: WeightPreferences,
+  passStartedAt: number,
+  batchSize = 64,
+): Promise<LibraryPriorityBackfillSummary> {
+  if (
+    !Number.isSafeInteger(passStartedAt) ||
+    passStartedAt < 0 ||
+    !Number.isSafeInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > 64
+  ) {
+    throw new TypeError("priority backfill bounds are invalid");
+  }
+  let summary!: LibraryPriorityBackfillSummary;
+  const operation = mutationQueue.then(async () => {
+    await ensureInitialized();
+    const batch = await readLibraryCorePriorityCandidateBatch(
+      passStartedAt,
+      batchSize,
+    );
+    if (batch.items.length > 0) {
+      await commitDesktopLibraryFeedItemPriorities(
+        batch.items.map(({ careLevel, item }) => ({
+          entityId: item.globalId,
+          priorityBasisPoints:
+            calculatePriority(item, weights, passStartedAt, { careLevel }) *
+            100,
+        })),
+        passStartedAt,
+      );
+      await reloadDesktopLibraryRuntimeState();
+    }
+    summary = Object.freeze({
+      passStartedAt,
+      remaining: batch.remaining ? 1 : 0,
+      updated: batch.items.length,
+    });
   });
   mutationQueue = operation.catch(() => undefined);
   await operation;

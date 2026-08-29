@@ -346,7 +346,7 @@ side effects begin.
 - **Safe optimistic user mutations:** Read, saved, archived, and liked changes commit to a sparse local SQLite overlay and the signed epoch-scoped intent outbox atomically. They remain Pending until the Primary publishes canonical acceptance, and provider-visible success requires a separate real provider result receipt. Device display controls remain local. Friends graph pins use closed one-row SQLite set and clear programs over OPFS and never enter the signed intent outbox.
 - **Bounded Friends graph source:** The shared graph engine pumps OPFS SQLite Person, Account, and RSS pages into its worker one acknowledged page at a time. The worker compiles compact scene state under one canonical and local-layout fence, returns only scene buffers and visible metadata, and refuses more than 100,000 semantic rows. The React graph has no Account catalog or dictionary fallback. It selects stable IDs and reads labels and admitted counts from worker-owned metadata. Account linking searches OPFS SQLite through `person_picker_page_v1` and retains at most 12 compact Person rows.
 - **People mutations:** Person and Account creation, bounded batch creation, synchronized profile and relationship updates, connection-person promotion, bounded reach-out history, and atomic removal use registered signed intent mutations and update the sparse local SQLite overlay immediately. Device-local graph coordinates stay outside canonical payloads.
-- **FeedItem capture mutations:** New and updated FeedItems enter the signed epoch-scoped intent outbox in ordered bounded transactions. Local SQLite and search update after each durable batch, repeated identities retain input order across transaction boundaries, and device-local ranking fields never enter canonical payloads.
+- **FeedItem capture mutations:** New and updated FeedItems enter the signed epoch-scoped intent outbox in ordered bounded transactions. Local SQLite and search update after each durable batch, repeated identities retain input order across transaction boundaries, and capture cannot supply Primary-derived ranking fields.
 - **Library maintenance mutations:** Sample seeding, fingerprinted sample clearing, and bulk feed removal use the same signed Library Core operations as normal writes. SQLite executes registered bounded maintenance mutations without a JavaScript corpus scan.
 - **Exact RSS mutations:** Feed rename emits only `rss_feed_title_assignment`. Bulk removal atomically freezes the exact RSS scope in OPFS SQLite, then emits signed removal transactions of at most 256 feeds. Neither path reads or replaces a renderer feed dictionary.
 - **SQLite-only PWA:** SQLite WebAssembly over OPFS is the only PWA Library row store. Production builds reject Automerge assets, retired registry payloads, IndexedDB Library databases, legacy `/sync` routes, and rollback flags that could reactivate a retired runtime.
@@ -498,35 +498,11 @@ export function applyFocusMode(
 
 ## Feed Display
 
-PWA displays items sorted by pre-computed `priority` score from Desktop/OpenClaw:
-
-```typescript
-// packages/pwa/src/lib/feed.ts
-export function sortFeedItems(items: FeedItem[]): FeedItem[] {
-  return [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-}
-
-// Optional: local filtering (doesn't recompute scores)
-export function filterByPlatform(
-  items: FeedItem[],
-  platform: Platform | null,
-): FeedItem[] {
-  if (!platform) return items;
-  return items.filter((item) => item.platform === platform);
-}
-
-export function filterByAuthor(
-  items: FeedItem[],
-  authorId: string | null,
-): FeedItem[] {
-  if (!authorId) return items;
-  return items.filter((item) => item.author.id === authorId);
-}
-```
-
-**Note:** Each operational environment runs the same registered ranking and
-filter query against its local SQLite database. The PWA does this inside its
-SQLite WebAssembly worker and keeps only bounded visible pages in React.
+PWA displays canonical priority assigned by the Primary. Accepted signed
+`feed_item_priority_assignment` operations materialize in OPFS SQLite during
+follower replay. The registered feed and Saved queries apply filters, order by
+priority, and return bounded keyset pages. React holds only visible pages and
+never sorts, filters, or ranks a Library collection.
 
 ---
 
@@ -640,6 +616,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.105 | Require the PWA Friends Galaxy to build its worker scene only from bounded OPFS SQLite person, Account, and RSS pages. The worker protocol has no direct whole-source message, and its tests generate the same typed pages used by the product | High       | ✓ Complete                                                                                       |
 | 6.106 | Submit tags, highlights, content signals, and event candidates as distinct signed normalized follower transactions. OPFS SQLite materializes each accepted child set through the same generated SQL and strict payload contract as native Rust, while capture operations cannot overwrite either owner | High       | ✓ Complete                                                                                       |
 | 6.107 | Execute the nullable analysis-version selector for `background_item_page_v1` directly in OPFS SQLite. Current analysis rows are excluded before paging, stale and missing rows retain binary keyset order, every page remains capped at 64 rows, and the shared batch reader uses the same source-fenced contract as native Rust | High       | ✓ Complete                                                                                       |
+| 6.108 | Replay canonical signed Primary priority assignments into OPFS SQLite and expose the same indexed stale-candidate contract used by native Rust. Capture cannot supply derived scores, priority replay leaves content timestamps unchanged, and PWA views order bounded SQLite pages without JavaScript corpus sorting | High       | ✓ Complete                                                                                       |
 
 ---
 
@@ -681,7 +658,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA checkpoint import verifies authority-signed actor retirement certificates before activation, then atomically materializes the exact retired actor, capability, certificate, and committed revision with no IndexedDB or unsigned fallback.
 - [x] PWA control, intent head, and result head adapters sample the shared bounded strong Drive v2 JSON ETag around each v3 media read and use exact v2 media PUT with If-Match for mutable updates. All immutable, list, create, media read, multipart, and resumable traffic remains on Drive v3. The request count and 60-second cadence are unchanged, and a stale ETag fails as `412` before exact current readback.
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
-- [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude device-local ranking fields
+- [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude Primary-derived ranking fields. Accepted signed priority assignments replay separately into OPFS SQLite.
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.

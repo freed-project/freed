@@ -21,10 +21,12 @@ import {
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedAnalysisCandidateBatchV1,
+  readLibraryCoreNormalizedPriorityCandidateBatchV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   scanLibraryCoreContentFetchCandidatesV1,
   type LibraryCoreContentFetchCandidateV1,
   type LibraryCoreAnalysisCandidateBatchV1,
+  type LibraryCorePriorityCandidateBatchV1,
   type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
 import {
@@ -177,7 +179,9 @@ export async function pinLibraryCoreItemContent(
   if (content === null) {
     throw new Error("Library Core item no longer exists");
   }
-  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(content)) {
+  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(
+    content,
+  )) {
     await mutateNormalizedContentPolicy({
       contentDigest,
       policy: "pinned_offline",
@@ -287,6 +291,17 @@ export async function readLibraryCoreAnalysisCandidateBatch(
   return readLibraryCoreNormalizedAnalysisCandidateBatchV1(
     NORMALIZED_READER_RUNTIME,
     analysisVersion,
+    maximumItems,
+  );
+}
+
+export async function readLibraryCorePriorityCandidateBatch(
+  priorityComputedBeforeMs: number,
+  maximumItems: number,
+): Promise<LibraryCorePriorityCandidateBatchV1> {
+  return readLibraryCoreNormalizedPriorityCandidateBatchV1(
+    NORMALIZED_READER_RUNTIME,
+    priorityComputedBeforeMs,
     maximumItems,
   );
 }

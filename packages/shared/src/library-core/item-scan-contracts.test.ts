@@ -14,6 +14,7 @@ const request = {
   cancellationId: "cancel-scan-1",
   cursor: null,
   limit: 2,
+  priorityComputedBeforeMs: null,
   queryId: "background_item_page_v1" as const,
   readerSessionId: "reader-scan-1",
   schemaVersion: 1 as const,
@@ -45,6 +46,9 @@ function card(globalId: string) {
     mediaUrls: [],
     platform: "rss",
     publishedAt: 1,
+    rankingCareLevel: null,
+    rankingEngagementReposts: null,
+    rankingEngagementViews: null,
     readAt: null,
     readingTimeMinutes: null,
     rssSource: null,
@@ -52,6 +56,7 @@ function card(globalId: string) {
     sampleDataFingerprint: null,
     sourceUrl: null,
     tags: [],
+    topics: [],
   };
 }
 
@@ -153,6 +158,31 @@ describe("Library Core background item scan", () => {
         ok: true,
         value: expect.objectContaining({ rows: [row] }),
       }),
+    );
+  });
+
+  it("accepts the indexed stale-priority order without weakening ordinary pages", () => {
+    const priorityRequest = {
+      ...request,
+      priorityComputedBeforeMs: 1_000,
+    };
+    const response = {
+      nextCursor: null,
+      queryId: "background_item_page_v1" as const,
+      rows: [card("z-oldest"), card("a-newer")],
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: 7,
+        transitionSequence: 7,
+      },
+    };
+
+    expect(
+      parseLibraryCoreItemScanResponseV1(response, priorityRequest).ok,
+    ).toBe(true);
+    expect(parseLibraryCoreItemScanResponseV1(response, request).ok).toBe(
+      false,
     );
   });
 });

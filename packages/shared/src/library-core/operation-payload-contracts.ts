@@ -104,6 +104,11 @@ export interface FeedItemReadAssignmentPayloadV1 {
   readonly read_at_ms: number;
 }
 
+export interface FeedItemPriorityAssignmentPayloadV1 {
+  readonly assigned_at_ms: number;
+  readonly priority_basis_points: number;
+}
+
 export interface FeedItemSyncReceiptPayloadV1 {
   readonly synced_at_ms: number;
 }
@@ -210,6 +215,10 @@ export interface LibraryCoreOperationPayloadSchema<
 }
 
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
+const PRIORITY_ASSIGNMENT_KEYS = [
+  "assigned_at_ms",
+  "priority_basis_points",
+] as const;
 const SYNC_RECEIPT_KEYS = ["synced_at_ms"] as const;
 const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_ANALYSIS_REPLACE_KEYS = [
@@ -451,7 +460,7 @@ function validateFeedItemCaptureUpsertPayload(
       synchronizedEncoded.byteLength !== encoded.byteLength ||
       synchronizedEncoded.some((byte, index) => byte !== encoded[index])
     ) {
-      return invalid("item contains a noncanonical or device-local field");
+      return invalid("item contains a noncanonical or producer-owned field");
     }
     return {
       ok: true,
@@ -533,10 +542,7 @@ export function canonicalizeFeedItemAnalysisV1(
   contentSignals: ContentSignals | undefined,
   eventCandidate: EventCandidate | undefined,
 ): Readonly<
-  Pick<
-    FeedItemAnalysisReplacePayloadV1,
-    "content_signals" | "event_candidate"
-  >
+  Pick<FeedItemAnalysisReplacePayloadV1, "content_signals" | "event_candidate">
 > {
   const encoder = new TextEncoder();
   const boundedOptionalText = (
@@ -574,7 +580,9 @@ export function canonicalizeFeedItemAnalysisV1(
             const score = contentSignals.scores[signal];
             if (score === undefined) return [];
             if (!Number.isFinite(score) || score < 0 || score > 1) {
-              throw new TypeError("content signal score must be between 0 and 1");
+              throw new TypeError(
+                "content signal score must be between 0 and 1",
+              );
             }
             return [
               Object.freeze({
@@ -649,7 +657,8 @@ export function canonicalizeFeedItemAnalysisV1(
 function validateFeedItemAnalysisReplacePayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemAnalysisReplacePayloadV1> {
-  if (!isCanonicalObject(value)) return invalid("payload must be a plain object");
+  if (!isCanonicalObject(value))
+    return invalid("payload must be a plain object");
   const keys = Object.getOwnPropertyNames(value);
   if (
     keys.length !== FEED_ITEM_ANALYSIS_REPLACE_KEYS.length ||
@@ -770,6 +779,32 @@ function validateFeedItemAnalysisReplacePayload(
   }
 }
 
+function validateFeedItemPriorityAssignmentPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemPriorityAssignmentPayloadV1> {
+  if (!isCanonicalObject(value))
+    return invalid("payload must be a plain object");
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== PRIORITY_ASSIGNMENT_KEYS.length ||
+    PRIORITY_ASSIGNMENT_KEYS.some((key) => !keys.includes(key)) ||
+    !isLibraryCoreNonnegativeSafeInteger(value.assigned_at_ms) ||
+    !isLibraryCoreNonnegativeSafeInteger(value.priority_basis_points) ||
+    value.priority_basis_points > 10_000
+  ) {
+    return invalid(
+      "priority payload must contain a bounded score and assignment time",
+    );
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      assigned_at_ms: value.assigned_at_ms,
+      priority_basis_points: value.priority_basis_points,
+    }),
+  };
+}
+
 function validateFeedItemAnnotationsReplacePayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemAnnotationsReplacePayloadV1> {
@@ -850,7 +885,8 @@ function validateFeedItemAnnotationsReplacePayload(
       typeof highlight !== "object" ||
       highlight === null ||
       Array.isArray(highlight) ||
-      (highlightPrototype !== Object.prototype && highlightPrototype !== null) ||
+      (highlightPrototype !== Object.prototype &&
+        highlightPrototype !== null) ||
       Object.getOwnPropertyNames(highlight).sort().join(",") !==
         "createdAt,note,text,textBlobDigest"
     ) {
@@ -1827,6 +1863,17 @@ export const FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "feed_item_analysis_replace",
   FeedItemAnalysisReplacePayloadV1
+>;
+
+export const FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "feed_item_priority_assignment_payload_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_priority_assignment",
+  canonicalKeys: PRIORITY_ASSIGNMENT_KEYS,
+  validate: validateFeedItemPriorityAssignmentPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "feed_item_priority_assignment",
+  FeedItemPriorityAssignmentPayloadV1
 >;
 
 export const FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA = Object.freeze({

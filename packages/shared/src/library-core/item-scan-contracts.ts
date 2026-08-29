@@ -37,6 +37,7 @@ export const LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA = Object.freeze({
     "cancellationId",
     "cursor",
     "limit",
+    "priorityComputedBeforeMs",
     "queryId",
     "readerSessionId",
     "schemaVersion",
@@ -73,8 +74,12 @@ export const LIBRARY_CORE_ITEM_SCAN_PROJECTION = Object.freeze({
   selectedFields: Object.freeze([
     ...LIBRARY_CORE_FEED_PAGE_PROJECTION.selectedFields,
     "hidden",
+    "rankingCareLevel",
+    "rankingEngagementReposts",
+    "rankingEngagementViews",
     "rssSource",
     "sampleDataFingerprint",
+    "topics",
   ]),
   orderedColumns: Object.freeze(["globalId"]),
 });
@@ -88,6 +93,7 @@ export interface LibraryCoreItemScanRequestV1 {
   readonly cancellationId: string;
   readonly cursor: string | null;
   readonly limit: number;
+  readonly priorityComputedBeforeMs: number | null;
   readonly queryId: typeof LIBRARY_CORE_ITEM_SCAN_QUERY_ID;
   readonly readerSessionId: string;
   readonly schemaVersion: typeof LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION;
@@ -116,8 +122,12 @@ export interface LibraryCoreItemScanSampleFingerprintV1 {
 
 export interface LibraryCoreItemScanRowV1 extends LibraryCoreFeedCardV1 {
   readonly hidden: boolean;
+  readonly rankingCareLevel: number | null;
+  readonly rankingEngagementReposts: number | null;
+  readonly rankingEngagementViews: number | null;
   readonly rssSource: LibraryCoreItemScanRssSourceV1 | null;
   readonly sampleDataFingerprint: LibraryCoreItemScanSampleFingerprintV1 | null;
+  readonly topics: readonly string[];
 }
 
 export type LibraryCoreItemScanCursorV1 = Omit<
@@ -171,7 +181,16 @@ function parseRow(
 ): LibraryCoreFeedPageParseResult<LibraryCoreItemScanRowV1> {
   const record = closedRecord(value, ROW_KEYS);
   if (!record) return failure("item scan row is invalid");
-  const { hidden, rssSource, sampleDataFingerprint, ...cardInput } = record;
+  const {
+    hidden,
+    rankingCareLevel,
+    rankingEngagementReposts,
+    rankingEngagementViews,
+    rssSource,
+    sampleDataFingerprint,
+    topics,
+    ...cardInput
+  } = record;
   const card = parseLibraryCoreFeedCardV1(cardInput);
   const rss =
     rssSource === null
@@ -189,6 +208,18 @@ function parseRow(
   if (
     !card.ok ||
     typeof hidden !== "boolean" ||
+    (rankingCareLevel !== null &&
+      (!Number.isSafeInteger(rankingCareLevel) ||
+        (rankingCareLevel as number) < 1 ||
+        (rankingCareLevel as number) > 5)) ||
+    ![rankingEngagementReposts, rankingEngagementViews].every(
+      (metric) =>
+        metric === null ||
+        (Number.isSafeInteger(metric) && (metric as number) >= 0),
+    ) ||
+    !Array.isArray(topics) ||
+    topics.length > 64 ||
+    topics.some((topic) => !boundedText(topic, 1_024) || topic.length === 0) ||
     (rssSource !== null && rss === null) ||
     (rss !== null &&
       (!boundedText(rss.feedUrl, 8_192) ||
@@ -212,6 +243,9 @@ function parseRow(
     value: Object.freeze({
       ...card.value,
       hidden,
+      rankingCareLevel: rankingCareLevel as number | null,
+      rankingEngagementReposts: rankingEngagementReposts as number | null,
+      rankingEngagementViews: rankingEngagementViews as number | null,
       rssSource:
         rss === null
           ? null
@@ -229,6 +263,7 @@ function parseRow(
               generatorVersion: fingerprint.generatorVersion as number,
               marker: "freed.sample-data.v1" as const,
             }),
+      topics: Object.freeze([...(topics as string[])]),
     }),
   });
 }
@@ -268,6 +303,12 @@ export function parseLibraryCoreItemScanRequestV1(
     (record.analysisVersion !== null &&
       (!Number.isSafeInteger(record.analysisVersion) ||
         (record.analysisVersion as number) < 1)) ||
+    (record.priorityComputedBeforeMs !== null &&
+      (!Number.isSafeInteger(record.priorityComputedBeforeMs) ||
+        (record.priorityComputedBeforeMs as number) < 0)) ||
+    (record.analysisVersion !== null &&
+      record.priorityComputedBeforeMs !== null) ||
+    (record.priorityComputedBeforeMs !== null && record.cursor !== null) ||
     !isLibraryCoreOperationInstanceId(record.cancellationId) ||
     !isLibraryCoreOperationInstanceId(record.readerSessionId) ||
     !Number.isSafeInteger(record.limit) ||
@@ -290,6 +331,7 @@ export function parseLibraryCoreItemScanRequestV1(
       cancellationId: record.cancellationId,
       cursor: record.cursor,
       limit: record.limit,
+      priorityComputedBeforeMs: record.priorityComputedBeforeMs,
       queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
       readerSessionId: record.readerSessionId,
       schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
@@ -321,7 +363,11 @@ export function parseLibraryCoreItemScanResponseV1(
     const row = parseRow(candidate);
     if (!row.ok) return failure(row.error);
     const previous = rows.at(-1);
-    if (previous && previous.globalId >= row.value.globalId) {
+    if (
+      request.value.priorityComputedBeforeMs === null &&
+      previous &&
+      previous.globalId >= row.value.globalId
+    ) {
       return failure("item scan rows are not in binary identity order");
     }
     rows.push(row.value);

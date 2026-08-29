@@ -173,6 +173,11 @@ import {
   stopAndDrain as stopAndDrainSemanticClassifier,
 } from "./lib/semantic-classifier";
 import {
+  start as startPriorityIndexer,
+  stop as stopPriorityIndexer,
+  stopAndDrain as stopAndDrainPriorityIndexer,
+} from "./lib/priority-indexer";
+import {
   quiesceDesktopStoreForFactoryReset,
   useAppStore as useDesktopStore,
   withProviderSyncing,
@@ -682,6 +687,7 @@ function App() {
     startMemoryMonitor({
       onCriticalPressure: () => {
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         toast.error("Freed paused background fetch because memory is critically high", {
           actionLabel: "Restart",
@@ -730,6 +736,15 @@ function App() {
         };
       },
     });
+    startPriorityIndexer({
+      getWeights: () => useDesktopStore.getState().preferences.weights,
+      subscribeToWeightChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.weights !== previous.preferences.weights) {
+            callback();
+          }
+        }),
+    });
     return () => {
       stopRssPoller();
       stopProviderSyncScheduler();
@@ -737,6 +752,7 @@ function App() {
       stopAllCloudSyncs();
       stopSnapshotManager();
       stopContentFetcher();
+      stopPriorityIndexer();
       stopSemanticClassifier();
       stopMemoryMonitor();
     };
@@ -773,6 +789,7 @@ function App() {
       }
       if (event.payload.phase === "safe_mode") {
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         toast.error("Freed paused background work while the renderer recovers", {
           actionLabel: "Restart",
@@ -1149,6 +1166,7 @@ function App() {
         stopAllCloudSyncs();
         stopSnapshotManager();
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         await runFactoryResetOperations({
           phaseTimeoutMs: 255_000,
@@ -1160,6 +1178,7 @@ function App() {
             stopRssPollerAndDrain,
             stopProviderSyncSchedulerAndDrain,
             stopAndDrainContentFetcher,
+            stopAndDrainPriorityIndexer,
             stopAndDrainSemanticClassifier,
           ],
           clearDeviceStores: () => [

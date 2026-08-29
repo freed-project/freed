@@ -17,6 +17,7 @@ import {
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
   canonicalizeFeedItemAnalysisV1,
   canonicalizeFeedItemHighlightsV1,
@@ -119,6 +120,32 @@ describe("Library Core operation payload contracts", () => {
         },
       }),
     ).toMatchObject({ ok: true });
+  });
+
+  it("accepts only a closed canonical priority assignment", () => {
+    expect(
+      FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        priority_basis_points: 8_125,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        priority_basis_points: 8_125,
+      },
+    });
+    for (const invalid of [
+      { assigned_at_ms: -1, priority_basis_points: 1 },
+      { assigned_at_ms: 1, priority_basis_points: -1 },
+      { assigned_at_ms: 1, priority_basis_points: 10_001 },
+      { assigned_at_ms: 1, priority_basis_points: 1.5 },
+      { assigned_at_ms: 1, priority_basis_points: 1, extra: true },
+    ]) {
+      expect(
+        FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 
   it("bounds one canonical FeedItem capture below the logical wire-record ceiling", () => {

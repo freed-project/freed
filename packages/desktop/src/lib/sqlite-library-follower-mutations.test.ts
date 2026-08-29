@@ -49,6 +49,9 @@ function normalizedRow(globalId = ITEM_ID) {
     mediaUrls: [],
     platform: "rss",
     publishedAt: 1,
+    rankingCareLevel: null,
+    rankingEngagementReposts: null,
+    rankingEngagementViews: null,
     readAt: null,
     readingTimeMinutes: null,
     rssSource: null,
@@ -56,14 +59,19 @@ function normalizedRow(globalId = ITEM_ID) {
     saved: false,
     sourceUrl: null,
     tags: [],
+    topics: [],
   };
 }
 
 function normalizedCard(globalId = ITEM_ID) {
   const {
     hidden: _hidden,
+    rankingCareLevel: _rankingCareLevel,
+    rankingEngagementReposts: _rankingEngagementReposts,
+    rankingEngagementViews: _rankingEngagementViews,
     rssSource: _rssSource,
     sampleDataFingerprint: _sampleDataFingerprint,
+    topics: _topics,
     ...card
   } = normalizedRow(globalId);
   return card;

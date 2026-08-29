@@ -40,6 +40,7 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -2554,7 +2555,7 @@ describe("PWA Library Core SQLite engine", () => {
                scope_mode, scope_kind, scope_id, issuance_identity,
                retirement_identity, certificate_digest, canonical_certificate,
                issued_at, retired_at)
-            VALUES ('capture-capability', ?1, 2, 'scraper', 'library_wide',
+            VALUES ('capture-capability', ?1, 2, 'agent', 'library_wide',
                     NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
       bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
     });
@@ -2564,7 +2565,8 @@ describe("PWA Library Core SQLite engine", () => {
             VALUES
               ('capture-capability', 'feed_item_analysis_replace'),
               ('capture-capability', 'feed_item_annotations_replace'),
-              ('capture-capability', 'feed_item_capture_upsert');`,
+              ('capture-capability', 'feed_item_capture_upsert'),
+              ('capture-capability', 'feed_item_priority_assignment');`,
     });
     const item = {
       author: { displayName: "Ada", handle: "ada", id: "author-1" },
@@ -2918,6 +2920,67 @@ describe("PWA Library Core SQLite engine", () => {
       ["alpha,research", "Bounded passage", 0.875, 1, 0.8125, "Meetup"],
     ]);
 
+    const itemUpdatedAtBeforePriority = database.exec({
+      sql: `SELECT updated_at FROM library_feed_items
+            WHERE global_id = 'captured-item-1';`,
+      rowMode: 0,
+      returnValue: "resultRows",
+    })[0] as number;
+    const priorityMember =
+      FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 4,
+          causal_frontier: [],
+          created_at_ms: 2_202,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_202,
+          library_id: libraryId,
+          operation_id: "priority-operation-1",
+          payload: {
+            assigned_at_ms: 2_202,
+            priority_basis_points: 8_125,
+          },
+          previous_actor_operation_id: "analysis-operation-1",
+          transaction_id: "priority-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const priorityAssembled = assembleLibraryCoreTransactionV1(
+      [priorityMember],
+      analysisFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const priorityFinalized = await finalizeLibraryCoreTransactionV1(
+      priorityAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const priorityResultDigest = await applyAcceptedTestTransaction(
+      priorityFinalized,
+      4,
+      analysisResultDigest,
+      4,
+      2_270,
+    );
+    expect(
+      database.exec({
+        sql: `SELECT priority, priority_computed_at, updated_at
+              FROM library_feed_items WHERE global_id = 'captured-item-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[81.25, 2_202, itemUpdatedAtBeforePriority]]);
+
     const gapItem = {
       ...item,
       content: { ...item.content, text: "Must wait for revision two" },
@@ -2927,7 +2990,7 @@ describe("PWA Library Core SQLite engine", () => {
       FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           actor_id: actorId,
-          actor_sequence: 4,
+          actor_sequence: 5,
           causal_frontier: [],
           created_at_ms: 2_200,
           entity_id: gapItem.globalId,
@@ -2938,7 +3001,7 @@ describe("PWA Library Core SQLite engine", () => {
           library_id: libraryId,
           operation_id: "capture-operation-gap",
           payload: { item: gapItem },
-          previous_actor_operation_id: "analysis-operation-1",
+          previous_actor_operation_id: "priority-operation-1",
           transaction_id: "capture-transaction-gap",
           transaction_member_count: 1,
           transaction_member_index: 0,
@@ -2947,7 +3010,7 @@ describe("PWA Library Core SQLite engine", () => {
       );
     const gapAssembled = assembleLibraryCoreTransactionV1(
       [gapMember],
-      analysisFinalized.members[0]!.envelope.actor_chain_digest,
+      priorityFinalized.members[0]!.envelope.actor_chain_digest,
       { digest: coreDigest },
     );
     const gapFinalized = await finalizeLibraryCoreTransactionV1(gapAssembled, {
@@ -2965,7 +3028,7 @@ describe("PWA Library Core SQLite engine", () => {
     });
     const unsignedGapResult = parseLibraryCoreFollowerResultEnvelopeV1({
       actor_id: actorId,
-      authoritative_source_revision: 5,
+      authoritative_source_revision: 6,
       authority_key_id: "55".repeat(32),
       canonical_operation_ids: ["capture-operation-gap"],
       epoch: 1,
@@ -2975,13 +3038,13 @@ describe("PWA Library Core SQLite engine", () => {
       intent_epoch_id: epochId,
       library_id: libraryId,
       original_result_digest: null,
-      previous_result_digest: analysisResultDigest,
+      previous_result_digest: priorityResultDigest,
       receipt_ids: [gapFinalized.members[0]!.envelope_digest],
       rejection_reason: null,
       replacement_fields: [],
       resolved_at_ms: 2_300,
       result_body_digest: "0".repeat(64),
-      result_sequence: 4,
+      result_sequence: 5,
       schema_version: 1,
       signature: "0".repeat(128),
       signature_algorithm: "ed25519",
@@ -3021,7 +3084,7 @@ describe("PWA Library Core SQLite engine", () => {
         rowMode: "array",
         returnValue: "resultRows",
       }),
-    ).toEqual([[3, 3, 0, "accepted", 5]]);
+    ).toEqual([[4, 4, 0, "accepted", 6]]);
   });
 
   it("atomically materializes an accepted signed Friend replacement", async () => {
@@ -4208,6 +4271,7 @@ describe("PWA Library Core SQLite engine", () => {
       cancellationId: operationId("cancel-scan-1"),
       cursor: null,
       limit: 2,
+      priorityComputedBeforeMs: null,
       queryId: "background_item_page_v1" as const,
       readerSessionId: operationId("reader-scan-1"),
       schemaVersion: 1 as const,
@@ -4242,6 +4306,33 @@ describe("PWA Library Core SQLite engine", () => {
       "item-2",
     ]);
     expect(staleAnalysisScan.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_feed_item_topics (global_id, topic)
+      VALUES ('item-2', 'sqlite');
+      UPDATE library_feed_items
+         SET priority_computed_at = 500,
+             engagement_reposts = 7,
+             engagement_views = 99
+       WHERE global_id = 'item-2';
+      UPDATE library_feed_items SET priority_computed_at = 700
+       WHERE global_id = 'item-1';
+    `);
+    const stalePriorityScan = engine.query({
+      ...scanRequest,
+      cursor: null,
+      limit: 64,
+      priorityComputedBeforeMs: 600,
+    });
+    expect(stalePriorityScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-2",
+    ]);
+    expect(stalePriorityScan.rows[1]).toMatchObject({
+      rankingCareLevel: 5,
+      rankingEngagementReposts: 7,
+      rankingEngagementViews: 99,
+      topics: ["sqlite"],
+    });
     const contentFetchRequest = {
       cancellationId: operationId("cancel-content-fetch-1"),
       cursor: null,

@@ -241,6 +241,7 @@ describe("Library Core SQLite worker protocol", () => {
         cancellationId: "cancel-scan-1",
         cursor: null,
         limit: 64,
+        priorityComputedBeforeMs: null,
         queryId: "background_item_page_v1",
         readerSessionId: "reader-scan-1",
         schemaVersion: 1,

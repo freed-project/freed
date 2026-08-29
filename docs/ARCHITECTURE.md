@@ -105,6 +105,13 @@ The schema includes:
 - content descriptors, renditions, chunk indexes, cache policy, and local
   hydration state
 
+The Primary owns canonical ranking materialization. It reads bounded stale
+candidate pages through an indexed SQLite query, computes scores through the
+shared ranking transform, and commits signed priority assignments. Desktop,
+headless, and PWA readers order their local SQLite rows by those accepted
+scores. Capture cannot write priority, and React never ranks or sorts a Library
+corpus.
+
 Device-local state such as window geometry, graph pin coordinates, temporary
 filters, provider session cookies, retry timers, machine endpoints, and cache
 residency remains outside synchronized Library state. The last verified cloud

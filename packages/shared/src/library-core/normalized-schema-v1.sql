@@ -232,6 +232,8 @@ CREATE INDEX IF NOT EXISTS library_feed_items_browse_rank_all
     published_at DESC,
     global_id
   );
+CREATE INDEX IF NOT EXISTS library_feed_items_priority_refresh
+  ON library_feed_items(priority_computed_at ASC, global_id COLLATE BINARY ASC);
 CREATE INDEX IF NOT EXISTS library_feed_items_saved
   ON library_feed_items(saved, archived, saved_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_saved_date_saved

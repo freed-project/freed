@@ -308,8 +308,12 @@ function backgroundRow(
     ...normalizedItemDetail(globalId, userState).item.card,
     hidden: options.hidden ?? false,
     platform: options.platform ?? "rss",
+    rankingCareLevel: null,
+    rankingEngagementReposts: null,
+    rankingEngagementViews: null,
     rssSource: options.rssSource ?? null,
     sampleDataFingerprint: options.sampleDataFingerprint ?? null,
+    topics: [],
   };
 }
 

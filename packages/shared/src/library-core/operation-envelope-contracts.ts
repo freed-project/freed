@@ -4,6 +4,7 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -24,6 +25,7 @@ import {
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemAnalysisReplacePayloadV1,
+  type FeedItemPriorityAssignmentPayloadV1,
   type FeedItemAnnotationsReplacePayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
   type FeedItemSyncReceiptOperationTypeV1,
@@ -83,6 +85,8 @@ export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
 export type FeedItemCaptureUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemAnalysisReplaceTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemPriorityAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemAnnotationsReplaceTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
@@ -186,6 +190,14 @@ export interface FeedItemAnalysisReplaceTransactionMemberBodyV1 {
   readonly blob_references: readonly [];
   readonly created_at_ms: number;
   readonly signature_algorithm: "ed25519";
+}
+
+export interface FeedItemPriorityAssignmentTransactionMemberBodyV1 extends Omit<
+  FeedItemReadAssignmentTransactionMemberBodyV1,
+  "operation_type" | "payload"
+> {
+  readonly operation_type: "feed_item_priority_assignment";
+  readonly payload: FeedItemPriorityAssignmentPayloadV1;
 }
 
 export interface FeedItemAnnotationsReplaceTransactionMemberBodyV1 {
@@ -571,6 +583,7 @@ export interface AccountRemoveTransactionMemberBodyV1 {
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemAnalysisReplaceTransactionMemberBodyV1
+  | FeedItemPriorityAssignmentTransactionMemberBodyV1
   | FeedItemAnnotationsReplaceTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
   | FeedItemUserStateAssignmentTransactionMemberBodyV1
@@ -891,6 +904,11 @@ function constructEntityTransactionMember(
         readonly entityType: "FeedItem";
       }
     | {
+        readonly operationType: "feed_item_priority_assignment";
+        readonly validatePayload: typeof FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
         readonly operationType: "feed_item_annotations_replace";
         readonly validatePayload: typeof FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate;
         readonly entityType: "FeedItem";
@@ -1154,6 +1172,17 @@ function constructFeedItemAnalysisReplaceTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<FeedItemAnalysisReplaceTransactionMemberBodyV1>;
 }
 
+function constructFeedItemPriorityAssignmentTransactionMember(
+  input: FeedItemPriorityAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemPriorityAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "feed_item_priority_assignment",
+    validatePayload: FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemPriorityAssignmentTransactionMemberBodyV1>;
+}
+
 function constructFeedItemAnnotationsReplaceTransactionMember(
   input: FeedItemAnnotationsReplaceTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -1389,29 +1418,44 @@ export const FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze(
   FeedItemCaptureUpsertTransactionMemberBodyV1
 >;
 
-export const FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
-  schemaId: "feed_item_analysis_replace_transaction_member_v1",
-  schemaVersion: 1,
-  operationType: "feed_item_analysis_replace",
-  entityType: "FeedItem",
-  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
-  construct: constructFeedItemAnalysisReplaceTransactionMember,
-}) satisfies LibraryCoreTransactionMemberSchema<
-  FeedItemAnalysisReplaceTransactionMemberInputV1,
-  FeedItemAnalysisReplaceTransactionMemberBodyV1
->;
+export const FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_analysis_replace_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_analysis_replace",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemAnalysisReplaceTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemAnalysisReplaceTransactionMemberInputV1,
+    FeedItemAnalysisReplaceTransactionMemberBodyV1
+  >;
 
-export const FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
-  schemaId: "feed_item_annotations_replace_transaction_member_v1",
-  schemaVersion: 1,
-  operationType: "feed_item_annotations_replace",
-  entityType: "FeedItem",
-  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
-  construct: constructFeedItemAnnotationsReplaceTransactionMember,
-}) satisfies LibraryCoreTransactionMemberSchema<
-  FeedItemAnnotationsReplaceTransactionMemberInputV1,
-  FeedItemAnnotationsReplaceTransactionMemberBodyV1
->;
+export const FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_priority_assignment_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_priority_assignment",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemPriorityAssignmentTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemPriorityAssignmentTransactionMemberInputV1,
+    FeedItemPriorityAssignmentTransactionMemberBodyV1
+  >;
+
+export const FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_annotations_replace_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_annotations_replace",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemAnnotationsReplaceTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemAnnotationsReplaceTransactionMemberInputV1,
+    FeedItemAnnotationsReplaceTransactionMemberBodyV1
+  >;
 
 function userStateAssignmentTransactionMemberSchema(
   operationType: FeedItemUserStateAssignmentOperationTypeV1,
@@ -1663,16 +1707,21 @@ export const LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS = Object.freeze({
     ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   account_remove: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   account_upsert: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  feed_item_analysis_replace: FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_analysis_replace:
+    FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   feed_item_annotations_replace:
     FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   feed_item_archive_assignment:
     FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   feed_item_capture_upsert: FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  feed_item_like_assignment: FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_like_assignment:
+    FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   feed_item_like_sync_receipt:
     FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
-  feed_item_read_assignment: FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_priority_assignment:
+    FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_read_assignment:
+    FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   feed_item_remove: FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   feed_item_saved_assignment:
     FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -1691,7 +1740,8 @@ export const LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS = Object.freeze({
     RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   rss_feed_remove_with_items:
     RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
-  rss_feed_title_assignment: RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_title_assignment:
+    RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   rss_feed_upsert: RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
 }) satisfies Readonly<
   Record<

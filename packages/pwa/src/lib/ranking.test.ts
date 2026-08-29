@@ -1,15 +1,15 @@
 /**
- * Unit tests for the shared ranking and filtering algorithms
+ * Unit tests for the shared per-item ranking transform.
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  calculatePriority,
-  rankFeedItems,
-  filterFeedItems,
-  sortByPriority,
+import { calculatePriority } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  Person,
+  WeightPreferences,
 } from "@freed/shared";
-import type { Account, FeedItem, Person, WeightPreferences } from "@freed/shared";
 
 // =============================================================================
 // Test fixtures
@@ -22,7 +22,9 @@ const baseWeights: WeightPreferences = {
   topics: {},
 };
 
-function makeItem(overrides: Partial<FeedItem> & { globalId: string }): FeedItem {
+function makeItem(
+  overrides: Partial<FeedItem> & { globalId: string },
+): FeedItem {
   return {
     platform: "rss",
     contentType: "article",
@@ -49,7 +51,10 @@ const NOW = Date.now();
 describe("calculatePriority", () => {
   it("gives higher score to recent items", () => {
     const fresh = makeItem({ globalId: "fresh", publishedAt: NOW - 1000 * 60 }); // 1 min ago
-    const old = makeItem({ globalId: "old", publishedAt: NOW - 1000 * 60 * 60 * 100 }); // 100 hours ago
+    const old = makeItem({
+      globalId: "old",
+      publishedAt: NOW - 1000 * 60 * 60 * 100,
+    }); // 100 hours ago
 
     const freshScore = calculatePriority(fresh, baseWeights, NOW);
     const oldScore = calculatePriority(old, baseWeights, NOW);
@@ -65,7 +70,10 @@ describe("calculatePriority", () => {
   });
 
   it("boosts saved items", () => {
-    const unsaved = makeItem({ globalId: "unsaved", publishedAt: NOW - 1000 * 60 * 60 * 24 });
+    const unsaved = makeItem({
+      globalId: "unsaved",
+      publishedAt: NOW - 1000 * 60 * 60 * 24,
+    });
     const saved = makeItem({
       globalId: "saved",
       publishedAt: NOW - 1000 * 60 * 60 * 24,
@@ -83,7 +91,10 @@ describe("calculatePriority", () => {
       ...baseWeights,
       authors: { "author-1": 100 }, // max boost for author-1
     };
-    const itemFav = makeItem({ globalId: "fav", publishedAt: NOW - 1000 * 60 * 60 * 10 });
+    const itemFav = makeItem({
+      globalId: "fav",
+      publishedAt: NOW - 1000 * 60 * 60 * 10,
+    });
     const itemPlain = makeItem({
       globalId: "plain",
       publishedAt: NOW - 1000 * 60 * 60 * 10,
@@ -140,15 +151,37 @@ describe("calculatePriority", () => {
     const b = makeItem({ globalId: "b", publishedAt: NOW - 5000 });
 
     expect(calculatePriority(a, baseWeights, NOW)).toBe(
-      calculatePriority(b, baseWeights, NOW)
+      calculatePriority(b, baseWeights, NOW),
     );
+  });
+
+  it("keeps old-item priority stable while refreshing the recent window", () => {
+    const old = makeItem({
+      globalId: "old-stable",
+      publishedAt: NOW - 30 * 24 * 60 * 60 * 1_000,
+    });
+    const recent = makeItem({
+      globalId: "recent-decay",
+      publishedAt: NOW - 60 * 60 * 1_000,
+    });
+
+    expect(calculatePriority(old, baseWeights, NOW + 365 * 24 * 60 * 60 * 1_000)).toBe(
+      calculatePriority(old, baseWeights, NOW),
+    );
+    expect(
+      calculatePriority(recent, baseWeights, NOW + 48 * 60 * 60 * 1_000),
+    ).toBeLessThan(calculatePriority(recent, baseWeights, NOW));
   });
 
   it("boosts Fam content more than regular friend content", () => {
     const baseItem = makeItem({
       globalId: "friend-item",
       platform: "instagram",
-      author: { id: "friend-author", handle: "friend", displayName: "Friend Author" },
+      author: {
+        id: "friend-author",
+        handle: "friend",
+        displayName: "Friend Author",
+      },
       publishedAt: NOW - 1000 * 60 * 60,
     });
     const famItem = makeItem({
@@ -160,7 +193,11 @@ describe("calculatePriority", () => {
     const followedItem = makeItem({
       globalId: "followed-item",
       platform: "instagram",
-      author: { id: "followed-author", handle: "followed", displayName: "Followed Author" },
+      author: {
+        id: "followed-author",
+        handle: "followed",
+        displayName: "Followed Author",
+      },
       publishedAt: baseItem.publishedAt,
     });
     const persons: Record<string, Person> = {
@@ -228,265 +265,20 @@ describe("calculatePriority", () => {
       },
     };
 
-    const friendScore = calculatePriority(baseItem, baseWeights, NOW, { persons, accounts });
-    const famScore = calculatePriority(famItem, baseWeights, NOW, { persons, accounts });
-    const followedScore = calculatePriority(followedItem, baseWeights, NOW, { persons, accounts });
+    const friendScore = calculatePriority(baseItem, baseWeights, NOW, {
+      persons,
+      accounts,
+    });
+    const famScore = calculatePriority(famItem, baseWeights, NOW, {
+      persons,
+      accounts,
+    });
+    const followedScore = calculatePriority(followedItem, baseWeights, NOW, {
+      persons,
+      accounts,
+    });
 
     expect(famScore).toBeGreaterThan(friendScore);
     expect(friendScore).toBeGreaterThan(followedScore);
-  });
-});
-
-// =============================================================================
-// rankFeedItems
-// =============================================================================
-
-describe("rankFeedItems", () => {
-  it("assigns a priority to every item", () => {
-    const items = [
-      makeItem({ globalId: "a", publishedAt: NOW - 1000 }),
-      makeItem({ globalId: "b", publishedAt: NOW - 5000 }),
-      makeItem({ globalId: "c", publishedAt: NOW - 100000 }),
-    ];
-
-    const ranked = rankFeedItems(items, baseWeights);
-
-    expect(ranked).toHaveLength(3);
-    for (const item of ranked) {
-      expect(item.priority).toBeDefined();
-      expect(typeof item.priority).toBe("number");
-    }
-  });
-
-  it("does not mutate the original items", () => {
-    const items = [
-      makeItem({ globalId: "a", publishedAt: NOW }),
-    ];
-    const original = items[0];
-
-    rankFeedItems(items, baseWeights);
-
-    expect(items[0]).toBe(original); // same reference
-    expect(original.priority).toBeUndefined(); // not mutated
-  });
-
-  it("sets priorityComputedAt on each item", () => {
-    const items = [makeItem({ globalId: "a", publishedAt: NOW })];
-    const ranked = rankFeedItems(items, baseWeights);
-
-    expect(ranked[0].priorityComputedAt).toBeDefined();
-  });
-});
-
-// =============================================================================
-// sortByPriority
-// =============================================================================
-
-describe("sortByPriority", () => {
-  it("sorts items highest priority first", () => {
-    const items: FeedItem[] = [
-      { ...makeItem({ globalId: "low" }), priority: 10 },
-      { ...makeItem({ globalId: "high" }), priority: 90 },
-      { ...makeItem({ globalId: "mid" }), priority: 50 },
-    ];
-
-    const sorted = sortByPriority(items);
-
-    expect(sorted[0].globalId).toBe("high");
-    expect(sorted[1].globalId).toBe("mid");
-    expect(sorted[2].globalId).toBe("low");
-  });
-
-  it("treats undefined priority as 0", () => {
-    const items: FeedItem[] = [
-      { ...makeItem({ globalId: "noprio" }) }, // no priority
-      { ...makeItem({ globalId: "highprio" }), priority: 80 },
-    ];
-
-    const sorted = sortByPriority(items);
-    expect(sorted[0].globalId).toBe("highprio");
-  });
-
-  it("does not mutate the original array", () => {
-    const items: FeedItem[] = [
-      { ...makeItem({ globalId: "b" }), priority: 10 },
-      { ...makeItem({ globalId: "a" }), priority: 90 },
-    ];
-    const originalFirst = items[0].globalId;
-
-    sortByPriority(items);
-
-    expect(items[0].globalId).toBe(originalFirst);
-  });
-});
-
-// =============================================================================
-// filterFeedItems
-// =============================================================================
-
-describe("filterFeedItems", () => {
-  const items: FeedItem[] = [
-    makeItem({ globalId: "visible-rss", platform: "rss", userState: { hidden: false, saved: false, archived: false, tags: ["tech"] } }),
-    makeItem({ globalId: "visible-x", platform: "x", userState: { hidden: false, saved: true, archived: false, tags: [] } }),
-    makeItem({ globalId: "hidden", platform: "rss", userState: { hidden: true, saved: false, archived: false, tags: [] } }),
-    makeItem({ globalId: "archived", platform: "rss", userState: { hidden: false, saved: false, archived: true, tags: [] } }),
-  ];
-
-  it("filters out hidden items by default", () => {
-    const result = filterFeedItems(items);
-    expect(result.find((i) => i.globalId === "hidden")).toBeUndefined();
-  });
-
-  it("includes hidden items when showHidden is true", () => {
-    const result = filterFeedItems(items, { showHidden: true });
-    expect(result.find((i) => i.globalId === "hidden")).toBeDefined();
-  });
-
-  it("filters out archived items by default", () => {
-    const result = filterFeedItems(items);
-    expect(result.find((i) => i.globalId === "archived")).toBeUndefined();
-  });
-
-  it("shows only archived items when archivedOnly is true", () => {
-    const result = filterFeedItems(items, { archivedOnly: true });
-    expect(result.every((i) => i.userState.archived)).toBe(true);
-    expect(result.find((i) => i.globalId === "archived")).toBeDefined();
-  });
-
-  it("filters by platform", () => {
-    const result = filterFeedItems(items, { platform: "x" });
-    expect(result.every((i) => i.platform === "x")).toBe(true);
-    expect(result).toHaveLength(1);
-  });
-
-  it("filters by platform and author id", () => {
-    const socialItems: FeedItem[] = [
-      makeItem({ globalId: "rob-x", platform: "x", author: { id: "rob", handle: "@rob", displayName: "Rob" } }),
-      makeItem({ globalId: "ada-x", platform: "x", author: { id: "ada", handle: "@ada", displayName: "Ada" } }),
-      makeItem({ globalId: "rob-rss", platform: "rss", author: { id: "rob", handle: "rob", displayName: "Rob RSS" } }),
-      makeItem({
-        globalId: "rob-archived",
-        platform: "x",
-        author: { id: "rob", handle: "@rob", displayName: "Rob" },
-        userState: { hidden: false, saved: false, archived: true, tags: [] },
-      }),
-    ];
-
-    expect(
-      filterFeedItems(socialItems, { platform: "x", authorId: "rob" }).map((item) => item.globalId),
-    ).toEqual(["rob-x"]);
-    expect(
-      filterFeedItems(socialItems, { platform: "x", authorId: "rob", archivedOnly: true }).map((item) => item.globalId),
-    ).toEqual(["rob-archived"]);
-  });
-
-  it("filters RSS source views by feed URL", () => {
-    const feedItems: FeedItem[] = [
-      makeItem({
-        globalId: "feed-a",
-        platform: "rss",
-        rssSource: {
-          feedUrl: "https://bench.example/a.xml",
-          feedTitle: "A",
-          siteUrl: "https://bench.example/a",
-        },
-      }),
-      makeItem({
-        globalId: "feed-b",
-        platform: "rss",
-        rssSource: {
-          feedUrl: "https://bench.example/b.xml",
-          feedTitle: "B",
-          siteUrl: "https://bench.example/b",
-        },
-      }),
-      makeItem({ globalId: "social", platform: "x" }),
-    ];
-
-    expect(
-      filterFeedItems(feedItems, { feedUrl: "https://bench.example/a.xml" }).map((item) => item.globalId),
-    ).toEqual(["feed-a"]);
-  });
-
-  it("filters to saved only", () => {
-    const result = filterFeedItems(items, { savedOnly: true });
-    expect(result.every((i) => i.userState.saved)).toBe(true);
-    expect(result).toHaveLength(1);
-    expect(result[0].globalId).toBe("visible-x");
-  });
-
-  it("filters by tag (any match)", () => {
-    const result = filterFeedItems(items, { tags: ["tech"] });
-    expect(result).toHaveLength(1);
-    expect(result[0].globalId).toBe("visible-rss");
-  });
-
-  it("returns all visible items when no filters specified", () => {
-    const result = filterFeedItems(items);
-    expect(result).toHaveLength(2); // hidden and archived excluded
-    expect(result.map((i) => i.globalId)).toContain("visible-rss");
-    expect(result.map((i) => i.globalId)).toContain("visible-x");
-  });
-
-  it("returns empty array when no items match", () => {
-    const result = filterFeedItems(items, { platform: "youtube" });
-    expect(result).toHaveLength(0);
-  });
-
-  it("combines filters (platform + savedOnly)", () => {
-    const result = filterFeedItems(items, { platform: "x", savedOnly: true });
-    expect(result).toHaveLength(1);
-    expect(result[0].globalId).toBe("visible-x");
-  });
-
-  it("filters Facebook and Instagram source views by posts and stories", () => {
-    const socialItems: FeedItem[] = [
-      makeItem({ globalId: "ig-post", platform: "instagram", contentType: "post" }),
-      makeItem({ globalId: "ig-video", platform: "instagram", contentType: "video" }),
-      makeItem({ globalId: "ig-story", platform: "instagram", contentType: "story" }),
-      makeItem({ globalId: "fb-post", platform: "facebook", contentType: "post" }),
-      makeItem({ globalId: "fb-story", platform: "facebook", contentType: "story" }),
-      makeItem({ globalId: "rss-story", platform: "rss", contentType: "story" }),
-    ];
-
-    expect(
-      filterFeedItems(socialItems, {
-        platform: "instagram",
-        socialContentFilter: "posts",
-      }).map((item) => item.globalId),
-    ).toEqual(["ig-post", "ig-video"]);
-    expect(
-      filterFeedItems(socialItems, {
-        platform: "instagram",
-        socialContentFilter: "stories",
-      }).map((item) => item.globalId),
-    ).toEqual(["ig-story"]);
-    expect(
-      filterFeedItems(socialItems, {
-        platform: "facebook",
-        socialContentFilter: "stories",
-      }).map((item) => item.globalId),
-    ).toEqual(["fb-story"]);
-  });
-
-  it("applies posts and stories filters across the unified feed", () => {
-    const mixedItems: FeedItem[] = [
-      makeItem({ globalId: "rss-article", platform: "rss", contentType: "article" }),
-      makeItem({ globalId: "rss-story", platform: "rss", contentType: "story" }),
-      makeItem({ globalId: "ig-story", platform: "instagram", contentType: "story" }),
-    ];
-
-    expect(
-      filterFeedItems(mixedItems, { socialContentFilter: "posts" }).map((item) => item.globalId),
-    ).toEqual(["rss-article"]);
-    expect(
-      filterFeedItems(mixedItems, { socialContentFilter: "stories" }).map((item) => item.globalId),
-    ).toEqual(["rss-story", "ig-story"]);
-    expect(
-      filterFeedItems(mixedItems, {
-        platform: "rss",
-        socialContentFilter: "posts",
-      }).map((item) => item.globalId),
-    ).toEqual(["rss-article"]);
   });
 });
