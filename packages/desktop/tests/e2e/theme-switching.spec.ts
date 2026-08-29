@@ -60,7 +60,7 @@ test("switching to both AubOS themes applies the selected theme immediately", as
   );
   expect(await page.evaluate(() =>
     window.__FREED_STORE__?.getState().preferences.display.themeId,
-  )).toBe("scriptorium");
+  )).toBeUndefined();
 });
 
 test("committing a hovered settings theme does not restore the old theme", async ({ app, page }) => {
@@ -537,21 +537,7 @@ test("map view removes the left frame when the desktop sidebar is closed", async
   await page.getByRole("button", { name: /^Map/ }).click();
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (patch: { display: { sidebarMode: "closed" } }) => Promise<void>;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        sidebarMode: "closed",
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ sidebarMode: "closed" });
 
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 
@@ -581,31 +567,11 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
 
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (patch: {
-              display: {
-                friendsMode: "friends";
-                friendsSidebarOpen: boolean;
-                sidebarMode: "expanded";
-                sidebarWidth: number;
-              };
-            }) => Promise<void>;
-            setActiveView: (view: string) => void;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: true,
-        sidebarMode: "expanded",
-        sidebarWidth: 256,
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: true,
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
   });
 
   const navigationSidebar = page.getByTestId("app-sidebar");

@@ -73,6 +73,39 @@ export function tauriInitScript(): string {
       var decoded = new DataView(bytes.buffer).getFloat64(0, false);
       return Number.isFinite(decoded) ? decoded : null;
     }
+    function identityCursorEntityId(cursor) {
+      if (cursor == null) return null;
+      var padded = String(cursor).replace(/-/g, '+').replace(/_/g, '/');
+      while (padded.length % 4 !== 0) padded += '=';
+      var binary = atob(padded);
+      var bytes = Uint8Array.from(binary, function(character) {
+        return character.charCodeAt(0);
+      });
+      if (bytes.length < 59 || bytes[0] !== 1) return null;
+      var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      var length = view.getUint16(57, false);
+      if (bytes.length !== 59 + length) return null;
+      return new TextDecoder().decode(bytes.subarray(59));
+    }
+    function identityPageCursor(source, layoutRevision, entityId) {
+      var encodedId = new TextEncoder().encode(entityId);
+      var bytes = new Uint8Array(59 + encodedId.length);
+      var view = new DataView(bytes.buffer);
+      bytes[0] = 1;
+      for (var index = 0; index < 32; index += 1) {
+        bytes[index + 1] = parseInt(source.generationId.slice(index * 2, index * 2 + 2), 16);
+      }
+      view.setBigUint64(33, BigInt(source.transitionSequence), false);
+      view.setBigUint64(41, BigInt(source.projectionRevision), false);
+      view.setBigUint64(49, BigInt(layoutRevision), false);
+      view.setUint16(57, encodedId.length, false);
+      bytes.set(encodedId, 59);
+      var binary = '';
+      for (var byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
+        binary += String.fromCharCode(bytes[byteIndex]);
+      }
+      return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+    }
     function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -631,9 +664,16 @@ export function tauriInitScript(): string {
         };
       }
       if (request.queryId === 'person_graph_page_v1') {
-        var personRows = Object.values(state.persons || {})
-          .sort(function(left, right) { return left.id.localeCompare(right.id); })
-          .slice(0, request.limit || 256)
+        var personCandidates = Object.values(state.persons || {})
+          .sort(function(left, right) { return left.id.localeCompare(right.id); });
+        var personCursorId = identityCursorEntityId(request.cursor);
+        var personStart = personCursorId == null
+          ? 0
+          : personCandidates.findIndex(function(person) { return person.id === personCursorId; }) + 1;
+        var personLimit = request.limit || 256;
+        var personEnd = Math.min(personCandidates.length, personStart + personLimit);
+        var personRows = personCandidates
+          .slice(personStart, personEnd)
           .map(function(person) {
             var graphPinned = person.graphPinned === true &&
               Number.isFinite(person.graphX) && Number.isFinite(person.graphY) &&
@@ -655,7 +695,9 @@ export function tauriInitScript(): string {
           });
         return {
           layoutRevision: source.projectionRevision,
-          nextCursor: null,
+          nextCursor: personEnd < personCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, personRows[personRows.length - 1].id)
+            : null,
           queryId: request.queryId,
           rows: personRows,
           schemaVersion: request.schemaVersion,
@@ -667,10 +709,17 @@ export function tauriInitScript(): string {
         var accountItems = Object.values(state.items).filter(function(item) {
           return item && !item.__deleted && !sqliteItemState(item).hidden;
         });
-        var accountRows = Object.values(state.accounts || {})
+        var accountCandidates = Object.values(state.accounts || {})
           .filter(function(account) { return account.kind === 'social'; })
-          .sort(function(left, right) { return left.id.localeCompare(right.id); })
-          .slice(0, request.limit || 256)
+          .sort(function(left, right) { return left.id.localeCompare(right.id); });
+        var accountCursorId = identityCursorEntityId(request.cursor);
+        var accountStart = accountCursorId == null
+          ? 0
+          : accountCandidates.findIndex(function(account) { return account.id === accountCursorId; }) + 1;
+        var accountLimit = request.limit || 256;
+        var accountEnd = Math.min(accountCandidates.length, accountStart + accountLimit);
+        var accountRows = accountCandidates
+          .slice(accountStart, accountEnd)
           .map(function(account) {
             var activity = accountItems.filter(function(item) {
               return item.platform === account.provider && item.author &&
@@ -707,7 +756,9 @@ export function tauriInitScript(): string {
           });
         return {
           layoutRevision: source.projectionRevision,
-          nextCursor: null,
+          nextCursor: accountEnd < accountCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, accountRows[accountRows.length - 1].id)
+            : null,
           queryId: request.queryId,
           rows: accountRows,
           schemaVersion: request.schemaVersion,
@@ -718,9 +769,16 @@ export function tauriInitScript(): string {
         var feedItems = Object.values(state.items).filter(function(item) {
           return item && !item.__deleted && !sqliteItemState(item).hidden;
         });
-        var feedRows = Object.values(state.feeds || {})
-          .sort(function(left, right) { return left.url.localeCompare(right.url); })
-          .slice(0, request.limit || 256)
+        var feedCandidates = Object.values(state.feeds || {})
+          .sort(function(left, right) { return left.url.localeCompare(right.url); });
+        var feedCursorId = identityCursorEntityId(request.cursor);
+        var feedStart = feedCursorId == null
+          ? 0
+          : feedCandidates.findIndex(function(feed) { return feed.url === feedCursorId; }) + 1;
+        var feedLimit = request.limit || 256;
+        var feedEnd = Math.min(feedCandidates.length, feedStart + feedLimit);
+        var feedRows = feedCandidates
+          .slice(feedStart, feedEnd)
           .map(function(feed) {
             var activity = feedItems.filter(function(item) {
               return item.rssSource && item.rssSource.feedUrl === feed.url;
@@ -751,7 +809,9 @@ export function tauriInitScript(): string {
           });
         return {
           layoutRevision: source.projectionRevision,
-          nextCursor: null,
+          nextCursor: feedEnd < feedCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, feedRows[feedRows.length - 1].url)
+            : null,
           queryId: request.queryId,
           rows: feedRows,
           schemaVersion: request.schemaVersion,

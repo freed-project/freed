@@ -255,36 +255,6 @@ async function setShowEngagementCounts(
   }, show);
 }
 
-async function setDualColumnMode(
-  page: import("@playwright/test").Page,
-  enabled: boolean,
-): Promise<void> {
-  await page.evaluate(async (shouldEnable) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        preferences: {
-          display: {
-            reading: Record<string, unknown>;
-          };
-        };
-        updatePreferences: (update: unknown) => Promise<void>;
-      };
-    };
-
-    const state = store.getState();
-    await state.updatePreferences({
-      display: {
-        ...state.preferences.display,
-        reading: {
-          ...state.preferences.display.reading,
-          dualColumnMode: shouldEnable,
-        },
-      },
-    });
-  }, enabled);
-}
-
 async function showStoriesFilter(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
@@ -348,7 +318,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).not.toContainText("1,234");
   await expect(facebookCard).not.toContainText("45");
 
-  await setDualColumnMode(app.page, true);
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
   await facebookCard.click();
   const readerHeading = app.page.locator("article h1").filter({ hasText: FACEBOOK_TITLE }).first();
   await expect(readerHeading).toBeVisible();
@@ -687,7 +657,7 @@ test("filter menu theme row fits one line and preserves the settings swatch heig
   )).toBe("dark-star");
   expect(await page.evaluate(() =>
     window.__FREED_STORE__?.getState().preferences.display.themeId,
-  )).toBe("scriptorium");
+  )).toBeUndefined();
   await expect.poll(() => page.evaluate(() =>
     document.documentElement.dataset.themeTransition,
   )).toBeUndefined();
@@ -1053,7 +1023,7 @@ test("story cards participate in feed layout transitions", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await injectCardUiItems(app.page);
-  await setDualColumnMode(app.page, true);
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await app.page.evaluate(() => {
     const doc = document as Document & {

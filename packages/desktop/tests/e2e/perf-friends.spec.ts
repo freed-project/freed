@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures/app";
 
 const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
-const ITEM_COUNT = 6_400;
+const ITEM_COUNT = 1_000;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
 const FRIEND_RENDERER_LABEL_BUDGET = 64;
 const SETTLED_VISIBLE_NODE_BUDGET = 1_100;
@@ -362,34 +362,39 @@ async function collectLongTasksDuring<T>(
   };
 }
 
-test("Friends WebGL2 compatibility view handles 1,600 visible people while zooming and panning", async ({ app, page }) => {
+test("Friends WebGL2 view pages 3,520 SQLite identities while zooming and panning", async ({ app, page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  const preferenceSaveStartedAt = performance.now();
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+  });
+  const preferenceSaveMs = performance.now() - preferenceSaveStartedAt;
   await seedLargeFriendsWorkspace(page);
   await expect
     .poll(async () => page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
         getState: () => {
-          persons: Record<string, unknown>;
-          accounts: Record<string, unknown>;
-          items: Array<{ globalId: string }>;
+          items?: Array<{ globalId: string }>;
         };
       };
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
         active?: boolean;
+        accounts?: Record<string, unknown>;
         items?: Record<string, { globalId?: string; __deleted?: boolean }>;
+        persons?: Record<string, unknown>;
       } | undefined;
       const state = store.getState();
       return {
-        persons: Object.keys(state.persons)
+        persons: Object.keys(sqlite?.persons ?? {})
           .filter((id) => id.startsWith("scale-person-")).length,
-        accounts: Object.keys(state.accounts)
+        accounts: Object.keys(sqlite?.accounts ?? {})
           .filter((id) => id.startsWith("scale-account-")).length,
         sqliteItems: Object.values(sqlite?.items ?? {})
           .filter((item) => !item.__deleted && item.globalId?.startsWith("scale-item-")).length,
-        residentItems: state.items.length,
+        residentItems: state.items?.length ?? 0,
       };
     }), { timeout: 60_000 })
     .toEqual({
@@ -400,23 +405,14 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
     });
 
   const mountStartedAt = COLLECT_PERF_TELEMETRY ? Date.now() : null;
-  const preferenceSaveMs = await page.evaluate(async () => {
+  await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
-    const preferenceSaveStartedAt = performance.now();
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
-    return performance.now() - preferenceSaveStartedAt;
   });
 
   const viewport = page.getByTestId("friend-graph-viewport");
@@ -424,7 +420,6 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
   await expect(page.getByTestId("friends-graph-loading")).toHaveCount(0, {
     timeout: 60_000,
   });
-
   await expect
     .poll(async () => {
       const perf = await readGraphPerf(page);

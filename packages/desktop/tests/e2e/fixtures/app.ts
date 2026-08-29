@@ -37,8 +37,55 @@ interface MockFeedItem {
 
 // ─── AppFixture ───────────────────────────────────────────────────────────────
 
+export async function setDeviceDisplayPreferences(
+  page: Page,
+  update: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  await page.evaluate((values) => {
+    const key = "freed-device-display-preferences-v1";
+    const oldValue = window.localStorage.getItem(key);
+    let current: Record<string, unknown> = {};
+    if (oldValue !== null) {
+      try {
+        const parsed = JSON.parse(oldValue) as {
+          version?: unknown;
+          values?: unknown;
+        };
+        if (
+          parsed.version === 1 &&
+          typeof parsed.values === "object" &&
+          parsed.values !== null &&
+          !Array.isArray(parsed.values)
+        ) {
+          current = parsed.values as Record<string, unknown>;
+        }
+      } catch {
+        current = {};
+      }
+    }
+    const newValue = JSON.stringify({
+      version: 1,
+      values: { ...current, ...values },
+    });
+    window.localStorage.setItem(key, newValue);
+    window.dispatchEvent(new StorageEvent("storage", {
+      key,
+      newValue,
+      oldValue,
+      storageArea: window.localStorage,
+      url: window.location.href,
+    }));
+  }, update);
+}
+
 export class AppFixture {
   constructor(public readonly page: Page) {}
+
+  async setDeviceDisplayPreferences(
+    update: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    await setDeviceDisplayPreferences(this.page, update);
+  }
 
   async acceptLegalGateIfPresent(timeout = 5_000): Promise<boolean> {
     const acceptButton = this.page.getByTestId("legal-gate-accept");

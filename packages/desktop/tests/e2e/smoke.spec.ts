@@ -15,6 +15,7 @@ import {
   expect,
   acceptLegalGate,
   resolveViteFsModulePath,
+  setDeviceDisplayPreferences,
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
 import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
@@ -243,18 +244,7 @@ async function readDeviceDisplayPreference(page: Page, key: string): Promise<unk
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
-  await page.evaluate(
-    async ({ key, value }) => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as {
-        getState: () => {
-          updatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
-        };
-      };
-      await store.getState().updatePreferences({ display: { [key]: value } });
-    },
-    { key, value },
-  );
+  await setDeviceDisplayPreferences(page, { [key]: value });
   await expect.poll(() => readDeviceDisplayPreference(page, key)).toBe(value);
 }
 
@@ -616,6 +606,10 @@ async function waitForGraphPresentationSyncAfter(
 }
 
 async function seedStressIdentityGraph(page: Page) {
+  await setDeviceDisplayPreferences(page, {
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
   return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
@@ -625,7 +619,6 @@ async function seedStressIdentityGraph(page: Page) {
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId?: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -670,12 +663,6 @@ async function seedStressIdentityGraph(page: Page) {
     await libraryCore.upsertLibraryPersons(persons);
     await libraryCore.upsertLibraryAccounts(accounts);
     await Promise.all(feeds.map((feed) => libraryCore.addLibraryRssFeed(feed)));
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
     return personCount + accountCount + feedCount;
   });
@@ -1778,21 +1765,9 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
   await expect(resizeHandle).toBeVisible();
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    await store?.getState().updatePreferences({
-      display: {
-        sidebarMode: "expanded",
-        sidebarWidth: 256,
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
   });
   await expect(page.getByTestId("desktop-sidebar-toggle")).toHaveAttribute("aria-label", "Minimal sidebar");
 
@@ -2448,23 +2423,9 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   await app.waitForReady();
   await app.injectRssItems(12);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        animationIntensity: "detailed",
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    animationIntensity: "detailed",
+    dualColumnMode: true,
   });
 
   await page.getByText("Article 0:", { exact: false }).click();
@@ -2542,23 +2503,7 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   await app.waitForReady();
   await app.injectRssItems(8);
 
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.getByText("Article 0:", { exact: false }).click();
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
@@ -2597,22 +2542,17 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await app.waitForReady();
   await app.injectRssItems(8);
 
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
   await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    await store?.getState().updatePreferences({
-      display: {
-        animationIntensity: "none",
-        reading: {
-          dualColumnMode: true,
-        },
-      },
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (update: {
+          display: { animationIntensity: "none" };
+        }) => Promise<void>;
+      };
+    };
+    await store.getState().updatePreferences({
+      display: { animationIntensity: "none" },
     });
   });
   await expect.poll(async () =>
@@ -2638,23 +2578,7 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
   await app.waitForReady();
   await app.injectRssItems(4);
 
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.getByText("Article 0:", { exact: false }).click();
   await expect.poll(async () => {
@@ -2828,23 +2752,7 @@ test("feed toolbar bulk action counts follow the active filter", async ({ app, p
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
-
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        reading: {
-          markReadOnScroll: false,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ markReadOnScroll: false });
 
   const activeFeedUrl = "https://bench.example/active-filter-feed.xml";
   const otherFeedUrl = "https://bench.example/other-filter-feed.xml";
@@ -3016,6 +2924,9 @@ test("feed toolbar title describes active content filters", async ({ app, page }
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    feedSignalModes: ["conversation", "news"],
+  });
 
   await page.evaluate(async () => {
     const now = Date.now();
@@ -3027,7 +2938,6 @@ test("feed toolbar title describes active content filters", async ({ app, page }
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
@@ -3071,51 +2981,38 @@ test("feed toolbar title describes active content filters", async ({ app, page }
       },
     ]);
 
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: ["conversation", "news"],
-      },
-    });
     store?.getState().setFilter({ signals: ["request", "discussion", "news", "alert", "product_update"] });
   });
 
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Conversations and News");
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
 
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({
+    feedSignalModes: ["conversation", "news", "personal"],
+  });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: ["conversation", "news", "personal"],
-      },
-    });
     store?.getState().setFilter({
       signals: ["request", "discussion", "news", "alert", "product_update", "life_update", "moment"],
     });
   });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Filtered");
 
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({ feedSignalModes: [] });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: [],
-      },
-    });
     store?.getState().setFilter({ platform: "facebook", socialContentFilter: "stories" });
   });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Facebook Stories");
@@ -3169,24 +3066,7 @@ test("dual-column reader toggles use shared view transitions when supported", as
   await app.goto();
   await app.waitForReady();
   await app.injectRssItems(6);
-
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.evaluate(() => {
     const doc = document as Document & {
@@ -3243,6 +3123,10 @@ test("dual-column reader toggles use shared view transitions when supported", as
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
   const { page } = app;
   await page.evaluate(async () => {
@@ -3258,7 +3142,6 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
           setActiveView: (view: string) => void;
           setSelectedPerson: (personId: string | null) => void;
           setSelectedAccount: (accountId: string | null) => void;
-          updatePreferences: (update: unknown) => Promise<void>;
         };
       }
       | undefined;
@@ -3305,12 +3188,6 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
         topics: [],
       },
     ]);
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -3388,6 +3265,7 @@ test("Map view popup exposes friend actions and supports post navigation", async
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(app.page);
+  await app.setDeviceDisplayPreferences({ friendsSidebarWidth: 388 });
 
   const { page } = app;
 
@@ -3531,7 +3409,6 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const store = w.__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number } }) => Promise<void>;
             setActiveView: (view: "friends") => void;
             setSelectedPerson: (personId: string | null) => void;
           };
@@ -3542,14 +3419,8 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
       return;
     }
 
-    return state.updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-      },
-    }).then(() => {
-      state.setActiveView("friends");
-      state.setSelectedPerson("friend-ada");
-    });
+    state.setActiveView("friends");
+    state.setSelectedPerson("friend-ada");
   });
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
@@ -4081,25 +3952,22 @@ test("Friends detail rail visibility preference hides and restores the desktop s
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setActiveView("friends");
   });
 
@@ -4114,31 +3982,13 @@ test("Friends detail rail visibility preference hides and restores the desktop s
 
   expect(before.shellWidth).toBeGreaterThanOrEqual(388);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarOpen: false,
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ friendsSidebarOpen: false });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(false);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarOpen: true,
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ friendsSidebarOpen: true });
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(true);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
@@ -4160,24 +4010,25 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4321,20 +4172,17 @@ test("selection while the initial Friends atlas is pending retains the semantic 
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedPerson: (personId: string | null) => void;
       };
     };
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store.getState().setSelectedPerson(null);
     store.getState().setActiveView("friends");
   });
@@ -4381,24 +4229,21 @@ test("selected Friends graph person shows a compact detail card when the detail 
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4464,24 +4309,21 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4543,22 +4385,19 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends" | "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setActiveView("friends");
   });
 
@@ -4642,7 +4481,6 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -4755,12 +4593,6 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       },
     ]);
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -4789,6 +4621,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "friends" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -4799,7 +4632,6 @@ test("AI ranked friend suggestions surface and promote connection people", async
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "friends" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -4884,7 +4716,6 @@ test("AI ranked friend suggestions surface and promote connection people", async
       },
     ]);
 
-    await store.getState().updatePreferences({ display: { friendsMode: "friends" } });
     store.getState().setActiveView("friends");
   });
 
@@ -4921,6 +4752,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -4930,7 +4762,6 @@ test("account detail promote upgrades a linked connection instead of opening a d
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedAccount: (accountId: string | null) => void;
       };
@@ -4962,7 +4793,6 @@ test("account detail promote upgrades a linked connection instead of opening a d
       updatedAt: now,
     });
 
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
     store.getState().setSelectedAccount("social:instagram:linked-maya");
   });
@@ -5006,6 +4836,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -5014,7 +4845,6 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedPerson: (personId: string | null) => void;
       };
@@ -5029,7 +4859,6 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
       createdAt: now,
       updatedAt: now,
     });
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
     store.getState().setSelectedPerson("tier-slider-person");
   });
@@ -5078,6 +4907,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -5087,7 +4917,6 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -5145,7 +4974,6 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
       },
     ]);
 
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
   });
 
@@ -5173,6 +5001,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -5182,7 +5011,6 @@ test("linking a channel through bounded graph queries survives reload", async ({
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -5236,11 +5064,6 @@ test("linking a channel through bounded graph queries survives reload", async ({
       },
     ]);
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5325,6 +5148,7 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -5334,7 +5158,6 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -5374,11 +5197,6 @@ test("pinning a person persists in device-local SQLite and survives reload", asy
         updatedAt: now,
       },
     ]);
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5487,6 +5305,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -5496,7 +5315,6 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -5536,11 +5354,6 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
         updatedAt: now,
       })),
     );
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5624,21 +5437,18 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    friendsSidebarOpen: true,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        friendsSidebarOpen: true,
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -6073,6 +5883,10 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -6083,7 +5897,6 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -6164,12 +5977,6 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
       ),
     );
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 

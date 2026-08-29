@@ -1,4 +1,9 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import {
+  test,
+  expect,
+  resolveViteFsModulePath,
+  setDeviceDisplayPreferences,
+} from "./fixtures/app";
 
 const FEED_URL = "https://example.com/feed.xml";
 const DEBUG_STORE_PATH = resolveViteFsModulePath(
@@ -1871,16 +1876,13 @@ test("toolbar activity spinner opens job activity popover in compact sidebar mod
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, { sidebarMode: "compact" });
 
   await page.evaluate(async ({ activityStorePath }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({ display: { sidebarMode: "compact" } });
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "job:content-fetch:e2e",
@@ -2091,18 +2093,16 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     store.setState({
       xAuth: {
         isAuthenticated: true,
@@ -2147,6 +2147,10 @@ test("source menu trigger toggles open and closed", async ({ app, page }) => {
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -2190,19 +2194,19 @@ test("source menu stays open and acknowledges sync now while syncing is already 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
         providerSyncCounts: Record<string, number>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     const current = store.getState();
     store.setState({
       xAuth: {
