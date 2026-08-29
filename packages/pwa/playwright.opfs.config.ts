@@ -18,7 +18,7 @@ export default defineConfig({
     baseURL: pwaOpfsE2eBaseUrl,
     browserName: "webkit",
     screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   webServer: {
     command: `npm run dev -- --host 127.0.0.1 --port ${pwaOpfsE2ePort.toLocaleString("en-US", {

@@ -19,14 +19,7 @@ export interface RuntimeHealthIdentityFields {
 }
 
 function createRuntimeAppSessionId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
-    const words = crypto.getRandomValues(new Uint32Array(4));
-    return `session-${Array.from(words, (word) => word.toString(36)).join("")}`;
-  }
-  return `session-${Date.now().toLocaleString()}`;
+  return crypto.randomUUID();
 }
 
 const RUNTIME_APP_SESSION_ID = createRuntimeAppSessionId();

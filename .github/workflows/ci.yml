@@ -448,6 +448,14 @@ jobs:
         run: npm run test:e2e:opfs
         working-directory: packages/pwa
 
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pwa-opfs-test-results
+          path: packages/pwa/test-results/
+          retention-days: 7
+
   dev:
     name: Dev integration
     if: github.event_name == 'push'

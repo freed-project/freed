@@ -71,7 +71,7 @@ async function openPersistentLibrary(profileRoot: string): Promise<{
     baseURL: pwaOpfsE2eBaseUrl,
     headless: true,
   });
-  const page = await context.newPage();
+  const page = context.pages()[0] ?? (await context.newPage());
   await openLibrary(page);
   return { context, page };
 }
