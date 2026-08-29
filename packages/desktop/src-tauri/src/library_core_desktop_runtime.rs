@@ -27,6 +27,8 @@ const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 #[cfg(not(unix))]
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
+#[cfg(not(unix))]
+const NORMALIZED_DATABASE_FILE: &str = "library-core.sqlite";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,23 +195,177 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
             .connect_selected_normalized()
             .map_err(|error| error.to_string());
     }
-    let _ = app;
-    Err("normalized SQLite authority selection is unavailable on this host".into())
+    #[cfg(unix)]
+    {
+        let _ = app;
+        Err("normalized SQLite Desktop binding is unavailable".into())
+    }
+    #[cfg(not(unix))]
+    {
+        let root = app_root(app)?;
+        let selection_path = root.join(AUTHORITY_SELECTION_FILE);
+        let selection: DesktopLibraryAuthoritySelectionV1 =
+            serde_json::from_slice(&fs::read(&selection_path).map_err(|error| {
+                format!("normalized SQLite authority is not selected: {error}")
+            })?)
+            .map_err(|_| "normalized SQLite authority selection is invalid".to_owned())?;
+        if selection.format != "freed_desktop_sqlite_authority_selection_v1"
+            || !valid_normalized_digest(&selection.library_id)
+        {
+            return Err("normalized SQLite authority selection identity is invalid".into());
+        }
+        let connection = open_unselected_normalized_database(app, false)?;
+        let matches: i64 = connection
+            .query_row(
+                "SELECT count(*)
+                 FROM library_active_authority AS active
+                 JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+                 JOIN library_meta AS meta ON meta.singleton_id = 1
+                 JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+                 WHERE active.active_key = 'active'
+                   AND active.library_id = ?1
+                   AND meta.library_id = active.library_id
+                   AND meta.authority_epoch = active.epoch_id
+                   AND epoch.library_id = active.library_id
+                   AND epoch.materialized_state_digest = generation.generation_id;",
+                [&selection.library_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if matches != 1 {
+            return Err("normalized SQLite authority selection does not match SQLite".into());
+        }
+        Ok(connection)
+    }
 }
 
-#[cfg(unix)]
-pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, String> {
-    let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
-    if binding
-        .normalized_authority_is_selected_v1()
-        .map_err(|error| error.to_string())?
+#[cfg(not(unix))]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DesktopLibraryAuthoritySelectionV1 {
+    format: String,
+    library_id: String,
+}
+
+#[cfg(not(unix))]
+fn valid_normalized_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+#[cfg(not(unix))]
+fn open_unselected_normalized_database(
+    app: &tauri::AppHandle,
+    create: bool,
+) -> Result<Connection, String> {
+    freed_library_core::open_normalized_sqlite_database_v1(
+        &app_root(app)?
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
+            .join(NORMALIZED_DATABASE_FILE),
+        create,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(not(unix))]
+fn publish_windows_authority_selection(
+    app: &tauri::AppHandle,
+    prepared: &freed_library_core::NormalizedDesktopAuthorityPreparedV1,
+) -> Result<(), String> {
+    if !valid_normalized_digest(&prepared.library_id) {
+        return Err("normalized SQLite authority identity is invalid".into());
+    }
+    let path = app_root(app)?.join(AUTHORITY_SELECTION_FILE);
+    if path.exists() {
+        return open_normalized_database(app).map(|_| ());
+    }
+    let pending = path.with_extension("pending");
+    let bytes = serde_json::to_vec(&DesktopLibraryAuthoritySelectionV1 {
+        format: "freed_desktop_sqlite_authority_selection_v1".into(),
+        library_id: prepared.library_id.clone(),
+    })
+    .map_err(|error| error.to_string())?;
+    fs::write(&pending, bytes).map_err(|error| error.to_string())?;
+    fs::rename(&pending, &path).map_err(|error| error.to_string())?;
+    open_normalized_database(app).map(|_| ())
+}
+
+pub(super) fn complete_normalized_desktop_cutover_if_ready(
+    app: &tauri::AppHandle,
+) -> Result<bool, String> {
+    #[cfg(not(unix))]
     {
+        return complete_windows_normalized_cutover(app);
+    }
+    #[cfg(unix)]
+    {
+        let _ = app;
+        let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+        if binding
+            .normalized_authority_is_selected_v1()
+            .map_err(|error| error.to_string())?
+        {
+            return Ok(false);
+        }
+        if !binding.historical_source_is_present_v1() {
+            return Ok(false);
+        }
+        let mut source = binding.connect().map_err(|error| error.to_string())?;
+        let source_state: Option<(i64, i64, i64, Option<i64>)> = source
+            .query_row(
+                "SELECT active, expectedItemCount, importedItemCount, activatedAtMs
+             FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        let Some((active, expected_items, imported_items, activated_at)) = source_state else {
+            return Ok(false);
+        };
+        if active == 0 && activated_at.is_none() {
+            return Ok(false);
+        }
+        if active != 1 || activated_at.is_none() || expected_items != imported_items {
+            return Err("historical Library is not a complete migration source".to_owned());
+        }
+        let mut target = binding
+            .connect_normalized()
+            .map_err(|error| error.to_string())?;
+        let installation_witness = crate::get_desktop_installation_witness()?;
+        let accepted_at = i64::try_from(crate::unix_millis_now())
+            .map_err(|_| "Desktop cutover time is invalid".to_owned())?;
+        let prepared = freed_library_core::prepare_normalized_desktop_cutover_v1(
+            &mut source,
+            &mut target,
+            &installation_witness,
+            &PlatformActorKeyStore,
+            &PlatformAuthorityKeyStore,
+            accepted_at,
+        )
+        .map_err(|error| error.to_string())?;
+        binding
+            .publish_normalized_authority_selection_v1(&prepared)
+            .map_err(|error| error.to_string())?;
+        Ok(true)
+    }
+}
+
+#[cfg(not(unix))]
+fn complete_windows_normalized_cutover(app: &tauri::AppHandle) -> Result<bool, String> {
+    if app_root(app)?.join(AUTHORITY_SELECTION_FILE).exists() {
+        open_normalized_database(app)?;
         return Ok(false);
     }
-    if !binding.historical_source_is_present_v1() {
+    let Some(mut source) = freed_library_core::open_historical_migration_source_v1(
+        &app_root(app)?.join("library-core"),
+    )
+    .map_err(|error| error.to_string())?
+    else {
         return Ok(false);
-    }
-    let mut source = binding.connect().map_err(|error| error.to_string())?;
+    };
     let source_state: Option<(i64, i64, i64, Option<i64>)> = source
         .query_row(
             "SELECT active, expectedItemCount, importedItemCount, activatedAtMs
@@ -226,11 +382,9 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, Str
         return Ok(false);
     }
     if active != 1 || activated_at.is_none() || expected_items != imported_items {
-        return Err("historical Library is not a complete migration source".to_owned());
+        return Err("historical Library is not a complete migration source".into());
     }
-    let mut target = binding
-        .connect_normalized()
-        .map_err(|error| error.to_string())?;
+    let mut target = open_unselected_normalized_database(app, true)?;
     let installation_witness = crate::get_desktop_installation_witness()?;
     let accepted_at = i64::try_from(crate::unix_millis_now())
         .map_err(|_| "Desktop cutover time is invalid".to_owned())?;
@@ -243,93 +397,127 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, Str
         accepted_at,
     )
     .map_err(|error| error.to_string())?;
-    binding
-        .publish_normalized_authority_selection_v1(&prepared)
-        .map_err(|error| error.to_string())?;
+    drop(target);
+    publish_windows_authority_selection(app, &prepared)?;
     Ok(true)
 }
 
-#[cfg(unix)]
 #[tauri::command]
 pub(super) fn ensure_fresh_normalized_desktop_library(
+    app: tauri::AppHandle,
     historical_data_absent: bool,
 ) -> Result<bool, String> {
-    let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
-    if binding
-        .normalized_authority_is_selected_v1()
-        .map_err(|error| error.to_string())?
+    #[cfg(not(unix))]
     {
-        return Ok(true);
-    }
-    if !historical_data_absent {
-        return Ok(false);
-    }
-    if binding.historical_source_is_present_v1() {
-        let source = binding.connect().map_err(|error| error.to_string())?;
-        let source_state: Option<i64> = source
-            .query_row(
-                "SELECT singletonId FROM library_core_desktop_state WHERE singletonId = 1;",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?;
-        if source_state.is_some() {
+        if app_root(&app)?.join(AUTHORITY_SELECTION_FILE).exists() {
+            open_normalized_database(&app)?;
+            return Ok(true);
+        }
+        if !historical_data_absent {
             return Ok(false);
         }
-        let mut tables = source
-            .prepare(
-                "SELECT name FROM sqlite_schema
-                 WHERE type = 'table' AND name LIKE 'library_core_%'
-                 ORDER BY name;",
-            )
-            .map_err(|error| error.to_string())?;
-        let table_names = tables
-            .query_map([], |row| row.get::<_, String>(0))
+        let historical = app_root(&app)?
+            .join("library-core")
+            .join(NORMALIZED_DATABASE_FILE);
+        if historical.exists() {
+            return Ok(false);
+        }
+        let mut target = open_unselected_normalized_database(&app, true)?;
+        let installation_witness = crate::get_desktop_installation_witness()?;
+        let accepted_at = i64::try_from(crate::unix_millis_now())
+            .map_err(|_| "Desktop fresh Library time is invalid".to_owned())?;
+        let prepared = freed_library_core::prepare_fresh_normalized_desktop_library_v1(
+            &mut target,
+            &installation_witness,
+            &PlatformActorKeyStore,
+            &PlatformAuthorityKeyStore,
+            accepted_at,
+        )
+        .map_err(|error| error.to_string())?;
+        drop(target);
+        publish_windows_authority_selection(&app, &prepared)?;
+        return Ok(true);
+    }
+    #[cfg(unix)]
+    {
+        let _ = app;
+        let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+        if binding
+            .normalized_authority_is_selected_v1()
             .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        drop(tables);
-        for table_name in table_names {
-            if table_name == "library_core_meta" {
-                continue;
-            }
-            if !table_name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-            {
-                return Err("historical Library table identity is invalid".into());
-            }
-            let occupied: i64 = source
+        {
+            return Ok(true);
+        }
+        if !historical_data_absent {
+            return Ok(false);
+        }
+        if binding.historical_source_is_present_v1() {
+            let source = binding.connect().map_err(|error| error.to_string())?;
+            let source_state: Option<i64> = source
                 .query_row(
-                    &format!("SELECT EXISTS(SELECT 1 FROM \"{table_name}\" LIMIT 1);"),
+                    "SELECT singletonId FROM library_core_desktop_state WHERE singletonId = 1;",
                     [],
                     |row| row.get(0),
                 )
+                .optional()
                 .map_err(|error| error.to_string())?;
-            if occupied != 0 {
+            if source_state.is_some() {
                 return Ok(false);
             }
+            let mut tables = source
+                .prepare(
+                    "SELECT name FROM sqlite_schema
+                 WHERE type = 'table' AND name LIKE 'library_core_%'
+                 ORDER BY name;",
+                )
+                .map_err(|error| error.to_string())?;
+            let table_names = tables
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|error| error.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?;
+            drop(tables);
+            for table_name in table_names {
+                if table_name == "library_core_meta" {
+                    continue;
+                }
+                if !table_name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                {
+                    return Err("historical Library table identity is invalid".into());
+                }
+                let occupied: i64 = source
+                    .query_row(
+                        &format!("SELECT EXISTS(SELECT 1 FROM \"{table_name}\" LIMIT 1);"),
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())?;
+                if occupied != 0 {
+                    return Ok(false);
+                }
+            }
         }
+        let mut target = binding
+            .connect_normalized()
+            .map_err(|error| error.to_string())?;
+        let installation_witness = crate::get_desktop_installation_witness()?;
+        let accepted_at = i64::try_from(crate::unix_millis_now())
+            .map_err(|_| "Desktop fresh Library time is invalid".to_owned())?;
+        let prepared = freed_library_core::prepare_fresh_normalized_desktop_library_v1(
+            &mut target,
+            &installation_witness,
+            &PlatformActorKeyStore,
+            &PlatformAuthorityKeyStore,
+            accepted_at,
+        )
+        .map_err(|error| error.to_string())?;
+        binding
+            .publish_normalized_authority_selection_v1(&prepared)
+            .map_err(|error| error.to_string())?;
+        Ok(true)
     }
-    let mut target = binding
-        .connect_normalized()
-        .map_err(|error| error.to_string())?;
-    let installation_witness = crate::get_desktop_installation_witness()?;
-    let accepted_at = i64::try_from(crate::unix_millis_now())
-        .map_err(|_| "Desktop fresh Library time is invalid".to_owned())?;
-    let prepared = freed_library_core::prepare_fresh_normalized_desktop_library_v1(
-        &mut target,
-        &installation_witness,
-        &PlatformActorKeyStore,
-        &PlatformAuthorityKeyStore,
-        accepted_at,
-    )
-    .map_err(|error| error.to_string())?;
-    binding
-        .publish_normalized_authority_selection_v1(&prepared)
-        .map_err(|error| error.to_string())?;
-    Ok(true)
 }
 
 #[tauri::command]

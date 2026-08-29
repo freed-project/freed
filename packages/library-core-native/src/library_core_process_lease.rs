@@ -7,7 +7,9 @@
 //! file exists only to make a refusal attributable.
 
 use serde::Serialize;
-use std::io::{Read, Seek, SeekFrom, Write};
+#[cfg(unix)]
+use std::io::{Read, Seek, SeekFrom};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 

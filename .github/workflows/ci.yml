@@ -456,6 +456,51 @@ jobs:
           path: packages/pwa/test-results/
           retention-days: 7
 
+  windows-native:
+    name: Windows native compile
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.native == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build shared packages and Desktop frontend
+        shell: bash
+        run: |
+          (cd packages/shared && npm run build)
+          (cd packages/sync && npm run build)
+          (cd packages/capture-rss && npm run build)
+          (cd packages/desktop && npm run build)
+
+      - name: Check the Windows Desktop native target
+        working-directory: packages/desktop/src-tauri
+        run: cargo check --target x86_64-pc-windows-msvc --all-features
+
   dev:
     name: Dev integration
     if: github.event_name == 'push'

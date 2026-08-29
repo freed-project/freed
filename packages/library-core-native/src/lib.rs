@@ -46,7 +46,6 @@ mod normalized_operation_verifier;
 mod normalized_protocol_limits;
 mod normalized_query;
 mod normalized_replication;
-#[cfg(unix)]
 mod normalized_snapshot;
 mod normalized_sqlite;
 mod normalized_transaction_validator;
@@ -74,7 +73,9 @@ pub use device_graph_layout::{
     mutate_device_graph_layout_v1, DeviceGraphLayoutError, DeviceGraphLayoutMutationResultV1,
     DeviceGraphLayoutMutationV1,
 };
-pub use historical_migration_source::LibraryCoreStorageError;
+pub use historical_migration_source::{
+    open_historical_migration_source_v1, LibraryCoreStorageError,
+};
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request_bytes, load_or_create_normalized_actor_id_v2,
     prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
@@ -174,7 +175,6 @@ pub use normalized_replication::{
     NormalizedOperationExportPageV2, NormalizedOperationExportRecordV2,
     NormalizedOperationExportRequestV2, NormalizedOperationRecordKindV2,
 };
-#[cfg(unix)]
 pub use normalized_snapshot::{
     clear_normalized_local_snapshots_v1, create_normalized_local_snapshot_v1,
     list_normalized_local_snapshots_v1, restore_normalized_local_snapshot_v1,
@@ -184,9 +184,10 @@ pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
-    BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
-    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
-    NormalizedCheckpointExportRequestV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    open_normalized_sqlite_database_v1, BeginNormalizedCheckpointStageV2,
+    NormalizedCheckpointCursorV2, NormalizedCheckpointExportDescriptorV2,
+    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
+    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{

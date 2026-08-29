@@ -57,11 +57,17 @@ impl LibraryCoreProcessLease {
         }
         #[cfg(not(unix))]
         {
-            freed_library_core::LibraryCoreProcessLease::acquire(
-                requested_data_root,
-                DESKTOP_IDENTITY,
-            )
-            .map(|lease| Self { _lease: lease })
+            let app_root = requested_data_root.parent().ok_or_else(|| {
+                freed_library_core::LibraryCoreProcessLeaseError::Storage {
+                    operation: "bind",
+                    path: requested_data_root.to_path_buf(),
+                    source: std::io::Error::other(
+                        "Freed Desktop Library Core data root has no app root",
+                    ),
+                }
+            })?;
+            freed_library_core::LibraryCoreProcessLease::acquire(app_root, DESKTOP_IDENTITY)
+                .map(|lease| Self { _lease: lease })
         }
     }
 

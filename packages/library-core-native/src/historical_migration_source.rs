@@ -1,6 +1,7 @@
 use rusqlite::{Connection, OpenFlags};
 #[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::fs::File;
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -214,6 +215,33 @@ impl HistoricalMigrationSource {
             LibraryCoreStorageError("descriptor-bound Library root is absent".into())
         })
     }
+}
+
+/// Opens the retired Desktop SQLite source through a bounded read-only path.
+///
+/// This exists for the Windows storage-epoch cutover, where Unix directory
+/// descriptors are unavailable. Absence is distinct from an invalid source.
+pub fn open_historical_migration_source_v1(
+    library_directory: &Path,
+) -> LibraryCoreStorageResult<Option<Connection>> {
+    let database = database_path(library_directory);
+    let metadata = match std::fs::symlink_metadata(&database) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(LibraryCoreStorageError(
+            "historical Desktop migration source is not an ordinary file".into(),
+        ));
+    }
+    let parent = std::fs::canonicalize(library_directory)?;
+    let source = HistoricalMigrationSource {
+        root: parent,
+        #[cfg(unix)]
+        bound: None,
+    };
+    source.connect().map(Some)
 }
 
 #[cfg(unix)]

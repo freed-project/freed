@@ -23,8 +23,7 @@ use std::sync::{LazyLock, Mutex};
 #[cfg(not(feature = "isolated-preview-data-root"))]
 pub(crate) const KEYRING_SERVICE: &str = "wtf.freed.library-core";
 #[cfg(feature = "isolated-preview-data-root")]
-pub(crate) const KEYRING_SERVICE: &str =
-    "wtf.freed.library-core.sqlite-native-preview";
+pub(crate) const KEYRING_SERVICE: &str = "wtf.freed.library-core.sqlite-native-preview";
 const MAXIMUM_SUBJECT_BYTES: usize = 128;
 
 /// One named private key: which vault account holds it, and how its envelope
