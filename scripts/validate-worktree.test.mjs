@@ -76,6 +76,8 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
 });
 
 test("OPFS durability changes run the persistent WebKit data integrity proof", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
   const paths = [
     "package-lock.json",
     "packages/pwa/package.json",
@@ -86,19 +88,27 @@ test("OPFS durability changes run the persistent WebKit data integrity proof", (
     "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
     "packages/shared/src/library-core/normalized-schema-v1.sql",
   ];
-  for (const filePath of paths) {
-    assert.equal(isPwaOpfsDurabilityPath(filePath), true, filePath);
-    assert.ok(
-      describePlan(buildValidationPlan("feature", [filePath])).includes(
-        "pwa WebKit OPFS durability",
-      ),
-      filePath,
+  try {
+    for (const filePath of paths) {
+      assert.equal(isPwaOpfsDurabilityPath(filePath), true, filePath);
+      assert.ok(
+        describePlan(buildValidationPlan("feature", [filePath])).includes(
+          "pwa WebKit OPFS durability",
+        ),
+        filePath,
+      );
+    }
+    assert.equal(
+      isPwaOpfsDurabilityPath("packages/pwa/src/components/SyncDialog.tsx"),
+      false,
     );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    } else {
+      process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+    }
   }
-  assert.equal(
-    isPwaOpfsDurabilityPath("packages/pwa/src/components/SyncDialog.tsx"),
-    false,
-  );
 });
 
 test("OPFS durability proof can be routed to the supported WebKit runner", () => {
