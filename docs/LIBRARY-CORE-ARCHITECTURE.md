@@ -220,13 +220,21 @@ system.
 The PWA uses the official SQLite WebAssembly distribution with:
 
 - OPFS `opfs-sahpool`
-- One SharedWorker owning the SQLite connection
-- A dedicated-worker recovery route if SharedWorker startup is unavailable
+- One dedicated worker owning the SQLite connection for the active PWA window
+- One browser-level exclusive writer lease that makes a second app window fail
+  closed until the active owner exits
 - One connection generation that fences stale tabs and old application code
-- One browser-level writer lock for the exact Library root
 - Durable transaction completion before acknowledgment
 - Reopen and recovery after worker suspension or termination
 - Persistent-storage request, quota inspection, and storage-pressure handling
+
+The database worker is deliberately not a SharedWorker. Chromium does not
+expose the OPFS APIs required by SQLite's SAH pool inside SharedWorker, and
+WebKit can terminate a SharedWorker when its creator document exits even while
+another document remains connected. Freed therefore uses the worker context
+that both engines actually support. A future multi-window router may forward
+typed requests to the active dedicated worker, but it may not become a second
+database authority or add another storage representation.
 
 The supported floor is iOS 17 because it supplies the complete
 Storage API and persistent-storage behavior required by the product contract.
