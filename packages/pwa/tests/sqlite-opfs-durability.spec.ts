@@ -1,7 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { devices, expect, test, webkit, type Page } from "@playwright/test";
+import {
+  devices,
+  expect,
+  test,
+  webkit,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
 
 interface BrowserLibraryCore {
@@ -47,6 +54,26 @@ async function openLibrary(page: Page): Promise<void> {
   await page.goto("/");
   await acceptLegalGate(page);
   await waitForLibrary(page);
+}
+
+async function openPersistentLibrary(profileRoot: string): Promise<{
+  context: BrowserContext;
+  page: Page;
+}> {
+  const iphone = devices["iPhone 14"];
+  const context = await webkit.launchPersistentContext(profileRoot, {
+    userAgent: iphone.userAgent,
+    viewport: iphone.viewport,
+    screen: iphone.screen,
+    deviceScaleFactor: iphone.deviceScaleFactor,
+    isMobile: iphone.isMobile,
+    hasTouch: iphone.hasTouch,
+    baseURL: pwaOpfsE2eBaseUrl,
+    headless: true,
+  });
+  const page = await context.newPage();
+  await openLibrary(page);
+  return { context, page };
 }
 
 async function setContactSyncError(page: Page): Promise<{
@@ -104,21 +131,14 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
   const profileRoot = await mkdtemp(
     join(tmpdir(), "freed-pwa-opfs-webkit-"),
   );
-  const iphone = devices["iPhone 14"];
-  const context = await webkit.launchPersistentContext(profileRoot, {
-    userAgent: iphone.userAgent,
-    viewport: iphone.viewport,
-    screen: iphone.screen,
-    deviceScaleFactor: iphone.deviceScaleFactor,
-    isMobile: iphone.isMobile,
-    hasTouch: iphone.hasTouch,
-    baseURL: pwaOpfsE2eBaseUrl,
-    headless: true,
-  });
+  let context: BrowserContext | null = null;
 
   try {
-    const page = await context.newPage();
-    await openLibrary(page);
+    let opened = await test.step("write through the first WebKit lifecycle", () =>
+      openPersistentLibrary(profileRoot),
+    );
+    context = opened.context;
+    const page = opened.page;
 
     const capabilities = await page.evaluate(() => ({
       getDirectory: typeof navigator.storage?.getDirectory === "function",
@@ -144,9 +164,13 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
     });
     expect(sqliteFiles.length).toBeGreaterThan(0);
 
-    await page.close();
-    const reopened = await context.newPage();
-    await openLibrary(reopened);
+    await context.close();
+    context = null;
+    opened = await test.step("reopen the same OPFS Library after WebKit exits", () =>
+      openPersistentLibrary(profileRoot),
+    );
+    context = opened.context;
+    const reopened = opened.page;
     expect(await readContactSyncStatus(reopened)).toMatchObject({
       authStatus: "reconnect_required",
       lastErrorCode: "network",
@@ -167,9 +191,14 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
       revision: clearedRevision,
     });
 
-    await reopened.close();
-    const reopenedAfterDelete = await context.newPage();
-    await openLibrary(reopenedAfterDelete);
+    await context.close();
+    context = null;
+    opened = await test.step(
+      "reopen the cleared row after a second WebKit exit",
+      () => openPersistentLibrary(profileRoot),
+    );
+    context = opened.context;
+    const reopenedAfterDelete = opened.page;
     expect(await readContactSyncStatus(reopenedAfterDelete)).toMatchObject({
       authStatus: "connected",
       lastErrorCode: null,
@@ -184,7 +213,7 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
       revision: clearedRevision,
     });
   } finally {
-    await context.close();
+    await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
   }
 });
