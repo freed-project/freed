@@ -476,3 +476,53 @@ export function parseLibraryCoreNormalizedOperationImportPageV2(
   }
   return Object.freeze({ page, receivedAt, snapshot });
 }
+
+export function parseLibraryCoreNormalizedOperationImportReceiptV2(
+  value: unknown,
+): LibraryCoreNormalizedOperationImportReceiptV2 {
+  const input = closedRecord(
+    value,
+    [
+      "appliedThroughRevision",
+      "appliedTransactionCount",
+      "receivedAt",
+      "stagedRecordCount",
+      "stagedTransactionCount",
+    ],
+    "normalized operation import receipt",
+  );
+  const appliedThroughRevision = nonnegativeInteger(
+    input.appliedThroughRevision,
+    "normalized operation applied revision",
+  );
+  const appliedTransactionCount = nonnegativeInteger(
+    input.appliedTransactionCount,
+    "normalized operation applied transaction count",
+  );
+  const receivedAt = nonnegativeInteger(
+    input.receivedAt,
+    "normalized operation receipt time",
+  );
+  const stagedRecordCount = nonnegativeInteger(
+    input.stagedRecordCount,
+    "normalized operation staged record count",
+  );
+  const stagedTransactionCount = nonnegativeInteger(
+    input.stagedTransactionCount,
+    "normalized operation staged transaction count",
+  );
+  if (
+    stagedRecordCount >
+      LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS ||
+    stagedTransactionCount > stagedRecordCount
+  ) {
+    throw new TypeError("normalized operation import receipt is invalid");
+  }
+  return Object.freeze({
+    appliedThroughRevision,
+    appliedTransactionCount,
+    receivedAt,
+    stagedRecordCount,
+    stagedTransactionCount,
+  });
+}

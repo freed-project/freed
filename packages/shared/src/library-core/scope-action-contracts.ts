@@ -84,6 +84,117 @@ const REQUEST_KEYS = [
   "schemaVersion",
 ] as const;
 const RSS_FEED_REQUEST_KEYS = ["action", "schemaVersion"] as const;
+const SCOPE_STAGE_ID_MAXIMUM_UTF8_BYTES = 255;
+const SCOPE_ENTITY_ID_MAXIMUM_UTF8_BYTES = 4_096;
+const TEXT_ENCODER = new TextEncoder();
+
+function closedScopeResult(
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Record<string, unknown> {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw new TypeError(`${label} must be a closed record`);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const actual = Object.keys(descriptors).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index]) ||
+    expected.some(
+      (key) => !descriptors[key]?.enumerable || !("value" in descriptors[key]!),
+    )
+  ) {
+    throw new TypeError(`${label} has unknown or missing fields`);
+  }
+  return Object.fromEntries(
+    expected.map((key) => [key, descriptors[key]!.value]),
+  );
+}
+
+function boundedScopeText(
+  value: unknown,
+  maximumBytes: number,
+  label: string,
+): string {
+  if (
+    typeof value !== "string" ||
+    TEXT_ENCODER.encode(value).byteLength < 1 ||
+    TEXT_ENCODER.encode(value).byteLength > maximumBytes
+  ) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return value;
+}
+
+export function parseLibraryCoreScopeActionStageStatusV1(
+  value: unknown,
+): LibraryCoreScopeActionStageStatusV1 {
+  const record = closedScopeResult(
+    value,
+    ["memberCount", "stageId", "state"],
+    "Library scope action stage status",
+  );
+  if (
+    !Number.isSafeInteger(record.memberCount) ||
+    (record.memberCount as number) < 0 ||
+    (record.state !== "ready" && record.state !== "staging")
+  ) {
+    throw new TypeError("Library scope action stage status is invalid");
+  }
+  return Object.freeze({
+    memberCount: record.memberCount as number,
+    stageId: boundedScopeText(
+      record.stageId,
+      SCOPE_STAGE_ID_MAXIMUM_UTF8_BYTES,
+      "Library scope action stage ID",
+    ),
+    state: record.state,
+  });
+}
+
+export function parseLibraryCoreScopeActionStagePageV1(
+  value: unknown,
+): LibraryCoreScopeActionStagePageV1 {
+  const record = closedScopeResult(
+    value,
+    ["entityIds", "nextOrdinal", "stageId"],
+    "Library scope action stage page",
+  );
+  if (
+    !Array.isArray(record.entityIds) ||
+    record.entityIds.length > LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT ||
+    !Number.isSafeInteger(record.nextOrdinal) ||
+    (record.nextOrdinal as number) < -1
+  ) {
+    throw new TypeError("Library scope action stage page is invalid");
+  }
+  const entityIds = Object.freeze(
+    record.entityIds.map((entityId) =>
+      boundedScopeText(
+        entityId,
+        SCOPE_ENTITY_ID_MAXIMUM_UTF8_BYTES,
+        "Library scope action entity ID",
+      ),
+    ),
+  );
+  return Object.freeze({
+    entityIds,
+    nextOrdinal: record.nextOrdinal as number,
+    stageId: boundedScopeText(
+      record.stageId,
+      SCOPE_STAGE_ID_MAXIMUM_UTF8_BYTES,
+      "Library scope action stage ID",
+    ),
+  });
+}
 
 export function parseLibraryCoreRssFeedScopeActionRequestV1(
   value: unknown,
@@ -93,7 +204,9 @@ export function parseLibraryCoreRssFeedScopeActionRequestV1(
     typeof value !== "object" ||
     Object.getPrototypeOf(value) !== Object.prototype
   ) {
-    throw new TypeError("Library RSS Feed scope action must be one plain record");
+    throw new TypeError(
+      "Library RSS Feed scope action must be one plain record",
+    );
   }
   const record = value as Record<string, unknown>;
   const keys = Reflect.ownKeys(record);
@@ -129,8 +242,7 @@ export function digestLibraryCoreRssFeedScopeActionRequestV1(
 }
 
 export type LibraryCoreAnyScopeActionRequestV1 =
-  | LibraryCoreScopeActionRequestV1
-  | LibraryCoreRssFeedScopeActionRequestV1;
+  LibraryCoreScopeActionRequestV1 | LibraryCoreRssFeedScopeActionRequestV1;
 
 export function parseLibraryCoreAnyScopeActionRequestV1(
   value: unknown,

@@ -1,4 +1,5 @@
 import type { LibraryCoreActorCapabilityAuthorityStateV2 } from "./actor-capability-certificate-v2.js";
+import { snapshotLibraryCoreCausalFrontier } from "./operation-envelope-contracts.js";
 import {
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreLowercaseHex64,
@@ -145,5 +146,88 @@ export function parseLibraryCoreFollowerActorRequestReceiptV2(
     createdAt: timestamp(input.createdAt, "follower actor request receipt"),
     enrollmentRequestDigest: input.enrollmentRequestDigest,
     state: input.state,
+  });
+}
+
+export function parseLibraryCoreFollowerActorEnrollmentContextV2(
+  value: unknown,
+): LibraryCoreFollowerActorEnrollmentContextV2 {
+  const input = closedRecord(
+    value,
+    ["authority", "request", "schemaVersion"],
+    "follower actor enrollment context",
+  );
+  const authority = closedRecord(
+    input.authority,
+    [
+      "authority_key_id",
+      "authority_public_key",
+      "epoch",
+      "epoch_id",
+      "library_id",
+      "observed_frontier",
+    ],
+    "follower actor enrollment authority",
+  );
+  if (
+    input.schemaVersion !== 2 ||
+    !isLibraryCoreLowercaseHex64(authority.authority_key_id) ||
+    !isLibraryCoreEd25519PublicKeyHex(authority.authority_public_key) ||
+    !isLibraryCoreNonnegativeSafeInteger(authority.epoch) ||
+    authority.epoch < 1 ||
+    !isLibraryCoreLowercaseHex64(authority.epoch_id) ||
+    !isLibraryCoreLowercaseHex64(authority.library_id)
+  ) {
+    throw new TypeError("follower actor enrollment context is invalid");
+  }
+  const request =
+    input.request === null
+      ? null
+      : parseLibraryCoreFollowerActorRequestReceiptV2(input.request);
+  return Object.freeze({
+    authority: Object.freeze({
+      authority_key_id: authority.authority_key_id,
+      authority_public_key: authority.authority_public_key,
+      epoch: authority.epoch,
+      epoch_id: authority.epoch_id,
+      library_id: authority.library_id,
+      observed_frontier: snapshotLibraryCoreCausalFrontier(
+        authority.observed_frontier,
+        "follower actor enrollment authority frontier",
+      ),
+    }),
+    request,
+    schemaVersion: 2,
+  });
+}
+
+export function parseLibraryCoreFollowerActorEnrollmentReceiptV2(
+  value: unknown,
+): LibraryCoreFollowerActorEnrollmentReceiptV2 {
+  const input = closedRecord(
+    value,
+    [
+      "actorChainGenesis",
+      "actorId",
+      "actorPublicKey",
+      "enrolledAt",
+      "enrollmentCertificateDigest",
+    ],
+    "follower actor enrollment receipt",
+  );
+  if (
+    !isLibraryCoreLowercaseHex64(input.actorChainGenesis) ||
+    !isLibraryCoreLowercaseHex64(input.actorId) ||
+    !isLibraryCoreEd25519PublicKeyHex(input.actorPublicKey) ||
+    !isLibraryCoreLowercaseHex64(input.enrollmentCertificateDigest)
+  ) {
+    throw new TypeError("follower actor enrollment receipt is invalid");
+  }
+  return Object.freeze({
+    actorChainGenesis: input.actorChainGenesis,
+    actorId: input.actorId,
+    actorPublicKey: input.actorPublicKey,
+    enrolledAt: timestamp(input.enrolledAt, "follower actor enrollment"),
+    enrollmentCertificateDigest: input.enrollmentCertificateDigest,
   });
 }

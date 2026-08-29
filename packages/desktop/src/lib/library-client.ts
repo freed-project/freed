@@ -393,13 +393,6 @@ export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
   return urls;
 }
 
-export async function getItemPreservedText(
-  globalId: string,
-): Promise<string | null> {
-  const [item] = await readSqliteItems([globalId]);
-  return item?.preservedContent?.text ?? null;
-}
-
 export async function resetLocalLibrary(): Promise<void> {
   await resetNormalizedLibrary();
   lastState = null;

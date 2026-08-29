@@ -299,6 +299,78 @@ export function parseLibraryCoreFollowerIntentPublicationV1(
   });
 }
 
+export function parseLibraryCoreFollowerIntentCommitResultV1(
+  value: unknown,
+): LibraryCoreFollowerIntentCommitResultV1 {
+  const record = closedRecord(value, [
+    "actorId",
+    "firstCounter",
+    "lastCounter",
+    "memberCount",
+    "optimisticFieldCount",
+    "state",
+    "transactionId",
+  ]);
+  if (
+    !record ||
+    !boundedIdentity(record.actorId) ||
+    !Number.isSafeInteger(record.firstCounter) ||
+    (record.firstCounter as number) < 1 ||
+    !Number.isSafeInteger(record.lastCounter) ||
+    (record.lastCounter as number) < (record.firstCounter as number) ||
+    !Number.isSafeInteger(record.memberCount) ||
+    (record.memberCount as number) < 1 ||
+    (record.memberCount as number) >
+      LIBRARY_CORE_FOLLOWER_INTENT_MEMBER_LIMIT ||
+    (record.lastCounter as number) - (record.firstCounter as number) + 1 !==
+      record.memberCount ||
+    !Number.isSafeInteger(record.optimisticFieldCount) ||
+    (record.optimisticFieldCount as number) < 0 ||
+    (record.optimisticFieldCount as number) >
+      LIBRARY_CORE_FOLLOWER_INTENT_MEMBER_LIMIT * 8 ||
+    (record.state !== "pending" && record.state !== "published") ||
+    !boundedIdentity(record.transactionId)
+  ) {
+    throw new TypeError("follower intent commit result is invalid");
+  }
+  return Object.freeze({
+    actorId: record.actorId,
+    firstCounter: record.firstCounter as number,
+    lastCounter: record.lastCounter as number,
+    memberCount: record.memberCount as number,
+    optimisticFieldCount: record.optimisticFieldCount as number,
+    state: record.state,
+    transactionId: record.transactionId,
+  });
+}
+
+export function parseLibraryCoreFollowerIntentPublicationReceiptV1(
+  value: unknown,
+): LibraryCoreFollowerIntentPublicationReceiptV1 {
+  const record = closedRecord(value, [
+    "actorId",
+    "publishedAt",
+    "state",
+    "transactionId",
+  ]);
+  if (
+    !record ||
+    !boundedIdentity(record.actorId) ||
+    !Number.isSafeInteger(record.publishedAt) ||
+    (record.publishedAt as number) < 0 ||
+    record.state !== "published" ||
+    !boundedIdentity(record.transactionId)
+  ) {
+    throw new TypeError("follower intent publication receipt is invalid");
+  }
+  return Object.freeze({
+    actorId: record.actorId,
+    publishedAt: record.publishedAt as number,
+    state: "published",
+    transactionId: record.transactionId,
+  });
+}
+
 /**
  * Snapshot one complete signed follower transaction before it crosses an
  * asynchronous worker or SQLite boundary.

@@ -28,9 +28,7 @@ export const LIBRARY_CORE_FOLLOWER_RESULT_REJECTION_REASONS = [
 ] as const;
 
 export type LibraryCoreFollowerResultStatusV1 =
-  | "accepted"
-  | "already_applied"
-  | "rejected";
+  "accepted" | "already_applied" | "rejected";
 
 export type LibraryCoreFollowerResultRejectionReasonV1 =
   (typeof LIBRARY_CORE_FOLLOWER_RESULT_REJECTION_REASONS)[number];
@@ -77,8 +75,7 @@ export interface LibraryCoreFollowerResultBodyV1 {
   readonly transaction_id: string;
 }
 
-export interface LibraryCoreFollowerResultEnvelopeV1
-  extends LibraryCoreFollowerResultBodyV1 {
+export interface LibraryCoreFollowerResultEnvelopeV1 extends LibraryCoreFollowerResultBodyV1 {
   readonly result_body_digest: string;
   readonly signature: string;
   readonly signature_algorithm: "ed25519";
@@ -153,20 +150,31 @@ const REGISTERED_FIELD_PATHS = new Set([
   "saved_at",
 ]);
 
-function record(value: unknown, fields: readonly string[], label: string): Record<string, unknown> {
+function record(
+  value: unknown,
+  fields: readonly string[],
+  label: string,
+): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be a closed record`);
   }
   const names = Object.keys(value).sort();
   const expected = [...fields].sort();
-  if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) {
+  if (
+    names.length !== expected.length ||
+    names.some((name, index) => name !== expected[index])
+  ) {
     throw new TypeError(`${label} has an invalid field set`);
   }
   return value as Record<string, unknown>;
 }
 
 function boundedString(value: unknown, label: string, maximum = 4_096): string {
-  if (typeof value !== "string" || value.length === 0 || new TextEncoder().encode(value).byteLength > maximum) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    new TextEncoder().encode(value).byteLength > maximum
+  ) {
     throw new TypeError(`${label} is invalid`);
   }
   return value;
@@ -174,7 +182,8 @@ function boundedString(value: unknown, label: string, maximum = 4_096): string {
 
 function digestOrNull(value: unknown, label: string): string | null {
   if (value === null) return null;
-  if (!isLibraryCoreLowercaseHex64(value)) throw new TypeError(`${label} is invalid`);
+  if (!isLibraryCoreLowercaseHex64(value))
+    throw new TypeError(`${label} is invalid`);
   return value;
 }
 
@@ -195,13 +204,22 @@ function stringArray(value: unknown, label: string): readonly string[] {
   return Object.freeze(result);
 }
 
-function replacementField(value: unknown): LibraryCoreFollowerResultReplacementFieldV1 {
+function replacementField(
+  value: unknown,
+): LibraryCoreFollowerResultReplacementFieldV1 {
   const input = record(value, REPLACEMENT_FIELDS, "follower replacement field");
-  if (input.entity_type !== "FeedItem" || !REGISTERED_FIELD_PATHS.has(String(input.field_path))) {
+  if (
+    input.entity_type !== "FeedItem" ||
+    !REGISTERED_FIELD_PATHS.has(String(input.field_path))
+  ) {
     throw new TypeError("follower replacement field identity is invalid");
   }
   const valueType = input.value_type;
-  if (valueType !== "boolean" && valueType !== "integer" && valueType !== "null") {
+  if (
+    valueType !== "boolean" &&
+    valueType !== "integer" &&
+    valueType !== "null"
+  ) {
     throw new TypeError("follower replacement field value type is invalid");
   }
   const fieldPath = String(input.field_path);
@@ -211,14 +229,17 @@ function replacementField(value: unknown): LibraryCoreFollowerResultReplacementF
     (expectsBoolean && valueType !== "boolean") ||
     (!expectsBoolean && valueType !== "integer" && valueType !== "null")
   ) {
-    throw new TypeError("follower replacement field type disagrees with its path");
+    throw new TypeError(
+      "follower replacement field type disagrees with its path",
+    );
   }
   const booleanValue = input.boolean_value;
   const integerValue = input.integer_value;
   if (
     (valueType === "boolean" && typeof booleanValue !== "boolean") ||
     (valueType !== "boolean" && booleanValue !== null) ||
-    (valueType === "integer" && !isLibraryCoreNonnegativeSafeInteger(integerValue)) ||
+    (valueType === "integer" &&
+      !isLibraryCoreNonnegativeSafeInteger(integerValue)) ||
     (valueType !== "integer" && integerValue !== null) ||
     input.real_value !== null ||
     input.text_value !== null
@@ -229,7 +250,8 @@ function replacementField(value: unknown): LibraryCoreFollowerResultReplacementF
     boolean_value: booleanValue as boolean | null,
     entity_id: boundedString(input.entity_id, "follower replacement entity ID"),
     entity_type: "FeedItem",
-    field_path: fieldPath as LibraryCoreFollowerResultReplacementFieldV1["field_path"],
+    field_path:
+      fieldPath as LibraryCoreFollowerResultReplacementFieldV1["field_path"],
     integer_value: integerValue as number | null,
     real_value: null,
     text_value: null,
@@ -237,7 +259,9 @@ function replacementField(value: unknown): LibraryCoreFollowerResultReplacementF
   });
 }
 
-export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): LibraryCoreFollowerResultEnvelopeV1 {
+export function parseLibraryCoreFollowerResultEnvelopeV1(
+  value: unknown,
+): LibraryCoreFollowerResultEnvelopeV1 {
   const input = record(value, ENVELOPE_FIELDS, "follower result envelope");
   if (
     input.format !== "freed_follower_result_v1" ||
@@ -257,27 +281,47 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     throw new TypeError("follower result envelope scalar is invalid");
   }
   const status = input.status;
-  if (status !== "accepted" && status !== "rejected" && status !== "already_applied") {
+  if (
+    status !== "accepted" &&
+    status !== "rejected" &&
+    status !== "already_applied"
+  ) {
     throw new TypeError("follower result status is invalid");
   }
-  const operationIds = stringArray(input.canonical_operation_ids, "canonical operation IDs");
+  const operationIds = stringArray(
+    input.canonical_operation_ids,
+    "canonical operation IDs",
+  );
   const receiptIds = stringArray(input.receipt_ids, "receipt IDs");
   if (operationIds.length !== receiptIds.length) {
-    throw new TypeError("follower result operation and receipt counts disagree");
+    throw new TypeError(
+      "follower result operation and receipt counts disagree",
+    );
   }
   const reason = input.rejection_reason;
   if (
     (status === "rejected" &&
-      !LIBRARY_CORE_FOLLOWER_RESULT_REJECTION_REASONS.includes(reason as never)) ||
+      !LIBRARY_CORE_FOLLOWER_RESULT_REJECTION_REASONS.includes(
+        reason as never,
+      )) ||
     (status !== "rejected" && reason !== null)
   ) {
-    throw new TypeError("follower result rejection reason disagrees with status");
+    throw new TypeError(
+      "follower result rejection reason disagrees with status",
+    );
   }
-  const original = digestOrNull(input.original_result_digest, "original result digest");
+  const original = digestOrNull(
+    input.original_result_digest,
+    "original result digest",
+  );
   if ((status === "already_applied") !== (original !== null)) {
     throw new TypeError("original result digest disagrees with status");
   }
-  const epochId = boundedString(input.epoch_id, "follower result epoch ID", 255);
+  const epochId = boundedString(
+    input.epoch_id,
+    "follower result epoch ID",
+    255,
+  );
   const intentEpochId = boundedString(
     input.intent_epoch_id,
     "follower result intent epoch ID",
@@ -292,21 +336,29 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     throw new TypeError("follower result intent and authority epochs disagree");
   }
   if (status === "rejected" && operationIds.length !== 0) {
-    throw new TypeError("rejected follower result cannot name canonical operations");
+    throw new TypeError(
+      "rejected follower result cannot name canonical operations",
+    );
   }
   if (
     !Array.isArray(input.replacement_fields) ||
     input.replacement_fields.length >
       LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_REPLACEMENT_FIELDS ||
-    Object.keys(input.replacement_fields).length !== input.replacement_fields.length
+    Object.keys(input.replacement_fields).length !==
+      input.replacement_fields.length
   ) {
-    throw new TypeError("follower replacement fields must be a bounded dense array");
+    throw new TypeError(
+      "follower replacement fields must be a bounded dense array",
+    );
   }
-  const replacements = Object.freeze(input.replacement_fields.map(replacementField));
+  const replacements = Object.freeze(
+    input.replacement_fields.map(replacementField),
+  );
   const identities = new Set<string>();
   for (const field of replacements) {
     const identity = `${field.entity_type}\u0000${field.entity_id}\u0000${field.field_path}`;
-    if (identities.has(identity)) throw new TypeError("follower replacement field identity is duplicated");
+    if (identities.has(identity))
+      throw new TypeError("follower replacement field identity is duplicated");
     identities.add(identity);
   }
   return Object.freeze({
@@ -319,11 +371,19 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     format: "freed_follower_result_v1",
     intent_epoch: input.intent_epoch,
     intent_epoch_id: intentEpochId,
-    library_id: boundedString(input.library_id, "follower result Library ID", 255),
+    library_id: boundedString(
+      input.library_id,
+      "follower result Library ID",
+      255,
+    ),
     original_result_digest: original,
-    previous_result_digest: digestOrNull(input.previous_result_digest, "previous result digest"),
+    previous_result_digest: digestOrNull(
+      input.previous_result_digest,
+      "previous result digest",
+    ),
     receipt_ids: receiptIds,
-    rejection_reason: reason as LibraryCoreFollowerResultRejectionReasonV1 | null,
+    rejection_reason:
+      reason as LibraryCoreFollowerResultRejectionReasonV1 | null,
     replacement_fields: replacements,
     resolved_at_ms: input.resolved_at_ms,
     result_body_digest: input.result_body_digest,
@@ -333,13 +393,20 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     signature_algorithm: "ed25519",
     status,
     transaction_digest: input.transaction_digest,
-    transaction_id: boundedString(input.transaction_id, "follower result transaction ID", 255),
+    transaction_id: boundedString(
+      input.transaction_id,
+      "follower result transaction ID",
+      255,
+    ),
   });
 }
 
-export function libraryCoreFollowerResultBodyV1(envelope: LibraryCoreFollowerResultEnvelopeV1): LibraryCoreFollowerResultBodyV1 {
+export function libraryCoreFollowerResultBodyV1(
+  envelope: LibraryCoreFollowerResultEnvelopeV1,
+): LibraryCoreFollowerResultBodyV1 {
   const body: Record<string, LibraryCoreCanonicalValue> = {};
-  for (const field of BODY_FIELDS) body[field] = envelope[field] as LibraryCoreCanonicalValue;
+  for (const field of BODY_FIELDS)
+    body[field] = envelope[field] as LibraryCoreCanonicalValue;
   return body as unknown as LibraryCoreFollowerResultBodyV1;
 }
 
@@ -350,7 +417,9 @@ export async function verifyLibraryCoreFollowerResultV1(
 ): Promise<LibraryCoreVerifiedFollowerResultV1> {
   const snapshot = new Uint8Array(canonicalBytes);
   const envelope = parseLibraryCoreFollowerResultEnvelopeV1(
-    decodeLibraryCoreCanonicalValue(snapshot, { maximumBytes: LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES }),
+    decodeLibraryCoreCanonicalValue(snapshot, {
+      maximumBytes: LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES,
+    }),
   );
   if (
     envelope.library_id !== authority.libraryId ||
@@ -362,13 +431,21 @@ export async function verifyLibraryCoreFollowerResultV1(
     throw new Error("follower result authority is not active");
   }
   const body = libraryCoreFollowerResultBodyV1(envelope);
-  const resultDigest = sha256LowerHex(encodeLibraryCoreDigestInput("follower-result-body", body as unknown as LibraryCoreCanonicalValue));
-  if (resultDigest !== envelope.result_body_digest) throw new Error("follower result digest is invalid");
+  const resultDigest = sha256LowerHex(
+    encodeLibraryCoreDigestInput(
+      "follower-result-body",
+      body as unknown as LibraryCoreCanonicalValue,
+    ),
+  );
+  if (resultDigest !== envelope.result_body_digest)
+    throw new Error("follower result digest is invalid");
   if (!isLibraryCoreEd25519SignatureHex(envelope.signature)) {
     throw new Error("follower result signature encoding is invalid");
   }
   const valid = await verifier.verifySignature({
-    message: encodeLibraryCoreSignatureInput("follower-result-envelope", { result_body_digest: resultDigest }),
+    message: encodeLibraryCoreSignatureInput("follower-result-envelope", {
+      result_body_digest: resultDigest,
+    }),
     publicKeyHex: authority.authorityPublicKey,
     signatureHex: envelope.signature,
   });
@@ -381,7 +458,9 @@ export async function verifyLibraryCoreFollowerResultV1(
     restored.byteLength !== snapshot.byteLength ||
     !restored.every((byte, index) => byte === snapshot[index])
   ) {
-    throw new Error("follower result canonical snapshot changed during verification");
+    throw new Error(
+      "follower result canonical snapshot changed during verification",
+    );
   }
   return Object.freeze({ canonicalBytes: snapshot, envelope, resultDigest });
 }
@@ -399,10 +478,65 @@ export interface LibraryCoreFollowerResultApplyReceiptV1 {
   readonly transactionId: string;
 }
 
-export function parseLibraryCoreFollowerResultApplyV1(value: unknown): LibraryCoreFollowerResultApplyV1 {
-  const input = record(value, ["canonicalResultBytes"], "follower result apply request");
-  if (!(input.canonicalResultBytes instanceof Uint8Array) || input.canonicalResultBytes.byteLength === 0 || input.canonicalResultBytes.byteLength > LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES) {
+export function parseLibraryCoreFollowerResultApplyV1(
+  value: unknown,
+): LibraryCoreFollowerResultApplyV1 {
+  const input = record(
+    value,
+    ["canonicalResultBytes"],
+    "follower result apply request",
+  );
+  if (
+    !(input.canonicalResultBytes instanceof Uint8Array) ||
+    input.canonicalResultBytes.byteLength === 0 ||
+    input.canonicalResultBytes.byteLength >
+      LIBRARY_CORE_FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES
+  ) {
     throw new TypeError("follower result bytes are invalid");
   }
-  return Object.freeze({ canonicalResultBytes: new Uint8Array(input.canonicalResultBytes) });
+  return Object.freeze({
+    canonicalResultBytes: new Uint8Array(input.canonicalResultBytes),
+  });
+}
+
+export function parseLibraryCoreFollowerResultApplyReceiptV1(
+  value: unknown,
+): LibraryCoreFollowerResultApplyReceiptV1 {
+  const input = record(
+    value,
+    [
+      "actorId",
+      "resultDigest",
+      "resultSequence",
+      "sourceRevision",
+      "status",
+      "transactionId",
+    ],
+    "follower result apply receipt",
+  );
+  if (
+    !isLibraryCoreLowercaseHex64(input.actorId) ||
+    !isLibraryCoreLowercaseHex64(input.resultDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(input.resultSequence) ||
+    input.resultSequence < 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(input.sourceRevision) ||
+    (input.status !== "accepted" &&
+      input.status !== "already_applied" &&
+      input.status !== "rejected") ||
+    typeof input.transactionId !== "string"
+  ) {
+    throw new TypeError("follower result apply receipt is invalid");
+  }
+  return Object.freeze({
+    actorId: input.actorId,
+    resultDigest: input.resultDigest,
+    resultSequence: input.resultSequence,
+    sourceRevision: input.sourceRevision,
+    status: input.status,
+    transactionId: boundedString(
+      input.transactionId,
+      "follower result transaction ID",
+      255,
+    ),
+  });
 }

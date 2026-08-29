@@ -479,13 +479,13 @@ export async function readNormalizedPrimaryFollowerResultPage(input: {
   );
 }
 
-export async function readNormalizedLibraryFollowerMutationContext(): Promise<SqliteLibraryPrimaryMutationContext | null> {
+async function readNormalizedLibraryFollowerMutationContext(): Promise<SqliteLibraryPrimaryMutationContext | null> {
   return invoke<SqliteLibraryPrimaryMutationContext | null>(
     "normalized_library_follower_mutation_context",
   );
 }
 
-export async function signNormalizedLibraryFollowerOperation(input: {
+async function signNormalizedLibraryFollowerOperation(input: {
   readonly libraryId: string;
   readonly epochId: string;
   readonly actorId: string;
@@ -498,7 +498,7 @@ export async function signNormalizedLibraryFollowerOperation(input: {
   );
 }
 
-export async function enqueueNormalizedLibraryFollowerIntent(
+async function enqueueNormalizedLibraryFollowerIntent(
   canonicalEnvelopeJson: readonly string[],
 ): Promise<SqliteLibraryNormalizedFollowerIntentReceipt> {
   if (

@@ -23,8 +23,7 @@ import {
 export const LIBRARY_CORE_NORMALIZED_RESULT_SEGMENT_FORMAT =
   "freed_normalized_result_segment_v2" as const;
 export const LIBRARY_CORE_NORMALIZED_RESULT_SEGMENT_RECORD_LIMIT = 128;
-export const LIBRARY_CORE_NORMALIZED_RESULT_SEGMENT_CANONICAL_BYTE_LIMIT =
-  1_048_576;
+export const LIBRARY_CORE_NORMALIZED_RESULT_SEGMENT_CANONICAL_BYTE_LIMIT = 1_048_576;
 
 interface LibraryCoreNormalizedResultSegmentCommonV2 {
   readonly actor_id: LibraryCoreOperationInstanceId;
@@ -40,14 +39,12 @@ interface LibraryCoreNormalizedResultSegmentCommonV2 {
   readonly storage_epoch_id: LibraryCoreOperationInstanceId;
 }
 
-export interface LibraryCoreNormalizedResultSegmentBodyV2
-  extends LibraryCoreNormalizedResultSegmentCommonV2 {
+export interface LibraryCoreNormalizedResultSegmentBodyV2 extends LibraryCoreNormalizedResultSegmentCommonV2 {
   readonly kind: "normalized_result_segment_body";
   readonly results: readonly LibraryCoreFollowerResultEnvelopeV1[];
 }
 
-export interface LibraryCoreNormalizedResultSegmentHeaderV2
-  extends LibraryCoreNormalizedResultSegmentCommonV2 {
+export interface LibraryCoreNormalizedResultSegmentHeaderV2 extends LibraryCoreNormalizedResultSegmentCommonV2 {
   readonly kind: "normalized_result_segment_header";
   readonly segment_digest: LibraryCoreLowercaseHex64;
 }
@@ -254,7 +251,9 @@ export function parseLibraryCoreNormalizedResultSegmentBodyV2(
       result.result_sequence !== common.first_result_sequence + index ||
       result.previous_result_digest !== previousResultDigest
     ) {
-      throw new TypeError("normalized result records cross an identity boundary");
+      throw new TypeError(
+        "normalized result records cross an identity boundary",
+      );
     }
     const bytes = encodeLibraryCoreCanonicalValue(
       result as unknown as LibraryCoreCanonicalValue,
@@ -374,6 +373,73 @@ export function parseLibraryCoreNormalizedResultTransportImportV2(
   });
 }
 
+export function parseLibraryCoreNormalizedResultTransportImportReceiptV2(
+  value: unknown,
+): LibraryCoreNormalizedResultTransportImportReceiptV2 {
+  const input = closedRecord(
+    value,
+    [
+      "acceptedTransactionCount",
+      "actorId",
+      "firstResultSequence",
+      "lastResultSequence",
+      "nextResultSequence",
+      "receivedAt",
+      "rejectedTransactionCount",
+      "resultCount",
+      "semanticSegmentDigest",
+      "storedSegmentDigest",
+    ],
+    "normalized result transport import receipt",
+  );
+  const firstResultSequence = positiveInteger(
+    input.firstResultSequence,
+    "normalized result receipt first sequence",
+  );
+  const lastResultSequence = positiveInteger(
+    input.lastResultSequence,
+    "normalized result receipt last sequence",
+  );
+  const nextResultSequence = positiveInteger(
+    input.nextResultSequence,
+    "normalized result receipt next sequence",
+  );
+  if (
+    lastResultSequence < firstResultSequence ||
+    nextResultSequence !== lastResultSequence + 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(input.acceptedTransactionCount) ||
+    !isLibraryCoreNonnegativeSafeInteger(input.rejectedTransactionCount) ||
+    !isLibraryCoreNonnegativeSafeInteger(input.resultCount) ||
+    input.resultCount < 1 ||
+    input.resultCount > LIBRARY_CORE_NORMALIZED_RESULT_SEGMENT_RECORD_LIMIT ||
+    input.acceptedTransactionCount + input.rejectedTransactionCount !==
+      input.resultCount ||
+    !isLibraryCoreNonnegativeSafeInteger(input.receivedAt)
+  ) {
+    throw new TypeError(
+      "normalized result transport import receipt is invalid",
+    );
+  }
+  return Object.freeze({
+    acceptedTransactionCount: input.acceptedTransactionCount,
+    actorId: identifier(input.actorId, "normalized result receipt actor"),
+    firstResultSequence,
+    lastResultSequence,
+    nextResultSequence,
+    receivedAt: input.receivedAt,
+    rejectedTransactionCount: input.rejectedTransactionCount,
+    resultCount: input.resultCount,
+    semanticSegmentDigest: digest(
+      input.semanticSegmentDigest,
+      "normalized result receipt semantic digest",
+    ),
+    storedSegmentDigest: digest(
+      input.storedSegmentDigest,
+      "normalized result receipt stored digest",
+    ),
+  });
+}
+
 export function parseLibraryCoreNormalizedResultHeadV2(
   value: unknown,
 ): LibraryCoreNormalizedResultHeadV2 {
@@ -409,9 +475,7 @@ export function parseLibraryCoreNormalizedResultHeadV2(
     throw new TypeError("normalized result head segment identity is invalid");
   }
   if (latest !== null && latestDigest !== null) {
-    const range = /~s([0-9]+)-([0-9]+)~/.exec(
-      latest.descriptor.objectKey,
-    );
+    const range = /~s([0-9]+)-([0-9]+)~/.exec(latest.descriptor.objectKey);
     const firstSequence = Number(range?.[1] ?? Number.NaN);
     const lastSequence = Number(range?.[2] ?? Number.NaN);
     if (
@@ -434,7 +498,9 @@ export function parseLibraryCoreNormalizedResultHeadV2(
       throw new TypeError("normalized result head object identity is invalid");
     }
   } else if (nextSequence !== 1) {
-    throw new TypeError("empty normalized result head must start at sequence 1");
+    throw new TypeError(
+      "empty normalized result head must start at sequence 1",
+    );
   }
   return Object.freeze({
     actor_id: actorId,

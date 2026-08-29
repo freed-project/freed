@@ -906,6 +906,52 @@ function isClosedRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+export function parseLibraryCoreSqliteWorkerStatus(
+  value: unknown,
+): LibraryCoreSqliteWorkerStatus {
+  if (!isClosedRecord(value)) {
+    throw new TypeError("SQLite worker status must be a closed record");
+  }
+  const expected = [
+    "connectionGeneration",
+    "contractVersion",
+    "engine",
+    "protocolVersion",
+    "schemaSha256",
+    "schemaVersion",
+    "sqliteVersion",
+    "storage",
+  ];
+  const actual = Object.keys(value).sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index]) ||
+    !Number.isSafeInteger(value.connectionGeneration) ||
+    (value.connectionGeneration as number) < 1 ||
+    value.contractVersion !== LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
+    value.engine !== "sqlite-wasm-opfs-sahpool" ||
+    value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
+    value.schemaSha256 !== LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 ||
+    value.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
+    typeof value.sqliteVersion !== "string" ||
+    value.sqliteVersion.length < 1 ||
+    value.sqliteVersion.length > 64 ||
+    value.storage !== "opfs"
+  ) {
+    throw new TypeError("SQLite worker status is invalid");
+  }
+  return Object.freeze({
+    connectionGeneration: value.connectionGeneration as number,
+    contractVersion: LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+    engine: "sqlite-wasm-opfs-sahpool",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    schemaSha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+    schemaVersion: LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+    sqliteVersion: value.sqliteVersion,
+    storage: "opfs",
+  });
+}
+
 function isBoundedWorkerIdentity(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 255;
 }

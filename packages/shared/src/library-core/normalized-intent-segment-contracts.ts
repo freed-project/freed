@@ -22,11 +22,11 @@ import {
 export const LIBRARY_CORE_NORMALIZED_INTENT_SEGMENT_FORMAT =
   "freed_normalized_intent_segment_v2" as const;
 export const LIBRARY_CORE_NORMALIZED_INTENT_SEGMENT_RECORD_LIMIT = 128;
-export const LIBRARY_CORE_NORMALIZED_INTENT_SEGMENT_CANONICAL_BYTE_LIMIT =
-  1_048_576;
+export const LIBRARY_CORE_NORMALIZED_INTENT_SEGMENT_CANONICAL_BYTE_LIMIT = 1_048_576;
 
-export interface LibraryCoreNormalizedIntentEnvelopeRecordV2
-  extends Readonly<Record<string, LibraryCoreCanonicalValue>> {
+export interface LibraryCoreNormalizedIntentEnvelopeRecordV2 extends Readonly<
+  Record<string, LibraryCoreCanonicalValue>
+> {
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_id: LibraryCoreLowercaseHex64;
   readonly actor_sequence: number;
@@ -58,14 +58,12 @@ interface LibraryCoreNormalizedIntentSegmentCommonV2 {
   readonly storage_epoch_id: LibraryCoreLowercaseHex64;
 }
 
-export interface LibraryCoreNormalizedIntentSegmentBodyV2
-  extends LibraryCoreNormalizedIntentSegmentCommonV2 {
+export interface LibraryCoreNormalizedIntentSegmentBodyV2 extends LibraryCoreNormalizedIntentSegmentCommonV2 {
   readonly envelopes: readonly LibraryCoreNormalizedIntentEnvelopeRecordV2[];
   readonly kind: "normalized_intent_segment_body";
 }
 
-export interface LibraryCoreNormalizedIntentSegmentHeaderV2
-  extends LibraryCoreNormalizedIntentSegmentCommonV2 {
+export interface LibraryCoreNormalizedIntentSegmentHeaderV2 extends LibraryCoreNormalizedIntentSegmentCommonV2 {
   readonly kind: "normalized_intent_segment_header";
   readonly segment_digest: LibraryCoreLowercaseHex64;
 }
@@ -219,7 +217,11 @@ function operationId(
 export function parseLibraryCoreNormalizedIntentEnvelopeRecordV2(
   value: unknown,
 ): LibraryCoreNormalizedIntentEnvelopeRecordV2 {
-  const input = closedRecord(value, ENVELOPE_KEYS, "normalized intent envelope");
+  const input = closedRecord(
+    value,
+    ENVELOPE_KEYS,
+    "normalized intent envelope",
+  );
   const actorSequence = positiveInteger(
     input.actor_sequence,
     "normalized intent actor sequence",
@@ -497,6 +499,67 @@ export function parseLibraryCoreNormalizedIntentTransportPublicationV2(
   });
 }
 
+export function parseLibraryCoreNormalizedIntentTransportPublicationReceiptV2(
+  value: unknown,
+): LibraryCoreNormalizedIntentTransportPublicationReceiptV2 {
+  const input = closedRecord(
+    value,
+    [
+      "actorId",
+      "firstActorCounter",
+      "lastActorCounter",
+      "newlyPublishedTransactionCount",
+      "nextActorCounter",
+      "publishedAt",
+      "semanticSegmentDigest",
+      "storedSegmentDigest",
+    ],
+    "normalized intent transport publication receipt",
+  );
+  const firstActorCounter = positiveInteger(
+    input.firstActorCounter,
+    "normalized intent receipt first counter",
+  );
+  const lastActorCounter = positiveInteger(
+    input.lastActorCounter,
+    "normalized intent receipt last counter",
+  );
+  const nextActorCounter = positiveInteger(
+    input.nextActorCounter,
+    "normalized intent receipt next counter",
+  );
+  if (
+    lastActorCounter < firstActorCounter ||
+    nextActorCounter !== lastActorCounter + 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(
+      input.newlyPublishedTransactionCount,
+    ) ||
+    input.newlyPublishedTransactionCount >
+      LIBRARY_CORE_NORMALIZED_INTENT_SEGMENT_RECORD_LIMIT ||
+    !isLibraryCoreNonnegativeSafeInteger(input.publishedAt)
+  ) {
+    throw new TypeError(
+      "normalized intent transport publication receipt is invalid",
+    );
+  }
+  return Object.freeze({
+    actorId: digest(input.actorId, "normalized intent receipt actor"),
+    firstActorCounter,
+    lastActorCounter,
+    newlyPublishedTransactionCount: input.newlyPublishedTransactionCount,
+    nextActorCounter,
+    publishedAt: input.publishedAt,
+    semanticSegmentDigest: digest(
+      input.semanticSegmentDigest,
+      "normalized intent receipt semantic digest",
+    ),
+    storedSegmentDigest: digest(
+      input.storedSegmentDigest,
+      "normalized intent receipt stored digest",
+    ),
+  });
+}
+
 export function parseLibraryCoreNormalizedIntentHeadV2(
   value: unknown,
 ): LibraryCoreNormalizedIntentHeadV2 {
@@ -529,9 +592,7 @@ export function parseLibraryCoreNormalizedIntentHeadV2(
     throw new TypeError("normalized intent head segment identity is invalid");
   }
   if (latest !== null && latestDigest !== null) {
-    const range = /~s([0-9]+)-([0-9]+)~/.exec(
-      latest.descriptor.objectKey,
-    );
+    const range = /~s([0-9]+)-([0-9]+)~/.exec(latest.descriptor.objectKey);
     const firstCounter = Number(range?.[1] ?? Number.NaN);
     const lastCounter = Number(range?.[2] ?? Number.NaN);
     if (

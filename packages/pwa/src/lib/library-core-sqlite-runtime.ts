@@ -254,7 +254,7 @@ export async function installPwaFollowerActorEnrollment(
   return active.installFollowerActorEnrollment(install);
 }
 
-export async function closePwaNormalizedLibrary(): Promise<void> {
+async function closePwaNormalizedLibrary(): Promise<void> {
   const active = client;
   client = null;
   openTask = null;

@@ -322,10 +322,6 @@ export async function drainPwaLibraryCoreLocalChanges(
   });
 }
 
-export function isPwaLibraryCoreEnabled(): boolean {
-  return true;
-}
-
 export function subscribePwaLibraryCoreState(
   listener: LibraryCoreStateListener,
 ): () => void {
@@ -521,20 +517,11 @@ export async function enqueuePwaLibraryCoreUserStateToggle(
     globalId,
   );
   if (!item) throw new Error("PWA assignment targets an unavailable FeedItem");
-  await enqueuePwaLibraryCoreUserStateAssignment(
-    globalId,
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    [globalId],
     field,
     item.userState[field] !== true,
   );
-}
-
-/** Queue one signed, idempotent PWA user-state assignment. */
-export async function enqueuePwaLibraryCoreUserStateAssignment(
-  globalId: string,
-  field: FeedItemUserStateAssignmentFieldV1,
-  assigned: boolean,
-): Promise<void> {
-  await enqueuePwaLibraryCoreUserStateAssignments([globalId], field, assigned);
 }
 
 /** Commit one signed FeedItem removal to OPFS SQLite. */
@@ -789,17 +776,10 @@ export async function enqueuePwaLibraryCorePreferencesPatch(
   await commitPwaLibraryCorePreferencesPatch(updates, Date.now());
 }
 
-/** Commit one whole sanitized Person to OPFS SQLite. */
-export async function enqueuePwaLibraryCorePersonUpsert(
-  person: Person,
-): Promise<void> {
-  await enqueuePwaLibraryCorePersonUpserts([person]);
-}
-
 export async function upsertPwaLibraryCorePerson(
   person: Person,
 ): Promise<void> {
-  await enqueuePwaLibraryCorePersonUpsert(person);
+  await enqueuePwaLibraryCorePersonUpserts([person]);
 }
 
 export async function appendPwaLibraryCorePersonReachOut(
@@ -903,17 +883,10 @@ export async function removePwaLibraryCorePerson(
   await enqueuePwaLibraryCorePersonRemove(personId);
 }
 
-/** Commit one whole sanitized Account to OPFS SQLite. */
-export async function enqueuePwaLibraryCoreAccountUpsert(
-  account: Account,
-): Promise<void> {
-  await enqueuePwaLibraryCoreAccountUpserts([account]);
-}
-
 export async function upsertPwaLibraryCoreAccount(
   account: Account,
 ): Promise<void> {
-  await enqueuePwaLibraryCoreAccountUpsert(account);
+  await enqueuePwaLibraryCoreAccountUpserts([account]);
 }
 
 /** Commit bounded whole sanitized Accounts to OPFS SQLite. */

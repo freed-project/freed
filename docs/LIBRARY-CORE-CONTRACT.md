@@ -87,6 +87,15 @@ cursors, row and byte bounds, nested limits, and exact closed fields, and
 returns the request-specific response type. A host cannot widen or reinterpret
 the result shape.
 
+The PWA worker client also binds every non-query request to one exact result
+parser before posting it. Its pending request retains the expected `result` or
+`status` field and rejects a mismatched response member, unknown envelope
+field, accessor, symbol, error code, oversized error message, or malformed
+typed receipt. Checkpoint stages, scope actions, device-local mutations,
+selective content, follower intents and results, normalized transport,
+operation replay, and actor enrollment therefore cross the worker boundary as
+closed values. A TypeScript cast is never a worker response validator.
+
 The headless native boundary uses generated command protocol 1 over dedicated
 inherited request and response descriptors. Each frame starts with one
 four-byte unsigned big-endian payload length and cannot exceed 4 MiB. Requests

@@ -352,16 +352,6 @@ export async function syncCloudProviderNow(
   await syncGoogleDriveOnce(cloudGeneration, cloudAbort.signal);
 }
 
-export function scheduleCloudUpload(
-  provider: CloudProvider,
-  token?: string,
-  generation = cloudGeneration,
-): void {
-  void provider;
-  void token;
-  void generation;
-}
-
 export async function deleteCloudFile(
   provider: CloudProvider,
   token: string,
