@@ -438,6 +438,66 @@ event and retirement receipt without duplicating either. A changed manifest,
 witness, history prefix, lineage, plan, lease, or retirement generation fails
 closed.
 
+### Stranded event-history witness repair
+
+A completed event append can leave its predecessor witness beside
+`events.jsonl` after a later process republishes the same canonical bytes onto
+a different inode. The ordinary reader rejects that state because the ready
+name identifies the original successor generation. This blocks every event,
+lease, task, and outcome reader, including the normal `freed-owner` lease
+lifecycle.
+
+The exceptional planner is read-only:
+
+```bash
+umask 077
+node scripts/authority-witness-repair.mjs plan-events \
+  --task-id <id> > <private-plan.json>
+```
+
+It requires one complete ready witness, a canonical history containing exactly
+one additional event, healthy lease, task, task-manifest, and outcome history,
+an unchanged task manifest, one exact permanent kernel-guard receipt generation,
+and no second event witness. It records both event-history generations, the
+exact witness bytes, semantic event lineage, task-manifest generation,
+kernel-guard receipt generation, original opaque namespace, and a
+content-derived operation and owner-intent digest.
+
+The planner cannot reconstruct the original staging namespace. That namespace
+includes the predecessor inode as it existed before publication. Once another
+process replaces the canonical inode, the original identity no longer exists.
+The repair instead binds the unique witness name and generation, exact byte
+prefix, exact one-event successor, healthy cross-ledger history, and
+owner-approved plan. It rejects content equality without all of those proofs.
+
+Apply requires one private mode `0600` current-task owner confirmation bound to
+the plan's exact intent:
+
+```bash
+node scripts/authority-witness-repair.mjs repair-events \
+  --task-id <id> \
+  --plan-file <private-plan.json> \
+  --owner-confirmation-file <private-owner-confirmation.json>
+```
+
+Under the event kernel guard, apply rechecks every planned generation and
+history. Before moving the witness, it writes an immutable private
+authorization record containing the owner confirmation, its digest, the plan
+intent, both generations, and semantic lineage. It then retires only the exact
+witness through `authority-retire` and appends one reserved
+`event_history_witness_repair_authorized` event. The authorization record is
+telemetry and idempotency evidence, not another queue or continuing grant.
+
+The durable record lets the same plan finish if the process loses its response
+after authorization, after retirement, or after the audit append. A retry does
+not need a still-live owner confirmation after that record exists. It proves
+the unchanged authorization, exact retirement receipt, canonical byte prefix,
+and single audit event instead. A changed plan, canonical history, witness,
+task manifest, kernel-guard receipt, authorization record, semantic lineage,
+ambiguous stage set, or foreign audit event fails closed. The command never alters the planned
+`events.jsonl` byte prefix, deletes a witness, acquires a lease through the
+broken history, contacts a provider, or grants publication authority.
+
 The generic authority publication path may call only
 `authority-stage-create`, `authority-stage-rewrite`, `authority-exchange`, and
 `authority-retire`. It must not call the helper's legacy `replace-durable` or

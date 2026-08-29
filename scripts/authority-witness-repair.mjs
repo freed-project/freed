@@ -15,22 +15,31 @@ import { fileURLToPath } from "node:url";
 import {
   AUTHORITY_WITNESS_REPAIR_ACTION,
   AutomationControlError,
+  CONTROL_EVENT_HISTORY_MAX_BYTES,
+  EVENT_HISTORY_WITNESS_REPAIR_ACTION,
+  planEventHistoryAuthorityWitnessRepair,
   planTaskManifestAuthorityWitnessRepair,
+  repairEventHistoryAuthorityWitness,
   repairTaskManifestAuthorityWitness,
   resolveAutomationStateRoot,
 } from "./lib/automation-control.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
-const MAX_PLAN_BYTES = 2 * 1024 * 1024;
+const MAX_PLAN_BYTES =
+  Math.ceil((CONTROL_EVENT_HISTORY_MAX_BYTES * 4) / 3) + 4 * 1024 * 1024;
 
 function usage() {
   return `Usage:
   node scripts/authority-witness-repair.mjs plan --task-id <id> [--state-root <path>]
   node scripts/authority-witness-repair.mjs repair --task-id <id> --plan-file <path> [--state-root <path>]
+  node scripts/authority-witness-repair.mjs plan-events --task-id <id> [--state-root <path>]
+  node scripts/authority-witness-repair.mjs repair-events --task-id <id> --plan-file <path> --owner-confirmation-file <path> [--state-root <path>]
 
-The plan command is read-only. Save its JSON output to a private physical file.
-The repair command requires an exact live freed-owner lease for owner-governance
-in FREED_AUTOMATION_LEASE_TOKEN.
+The plan commands are read-only. Save their JSON output to private physical files.
+Task-manifest repair requires an exact live freed-owner lease for owner-governance
+in FREED_AUTOMATION_LEASE_TOKEN. Event-history repair uses one exact private
+current-task owner confirmation because the stranded history witness prevents
+the normal owner-lease lifecycle from being read or appended safely.
 `;
 }
 
@@ -166,6 +175,14 @@ export function execute(argv, env = process.env) {
       result: planTaskManifestAuthorityWitnessRepair({ stateRoot, taskId }),
     };
   }
+  if (action === "plan-events") {
+    assertExactOptions(options, ["stateRoot", "taskId"]);
+    return {
+      action: "event-history-witness.plan",
+      stateRoot,
+      result: planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }),
+    };
+  }
   if (action === "repair") {
     assertExactOptions(options, ["planFile", "stateRoot", "taskId"]);
     const leaseToken = env.FREED_AUTOMATION_LEASE_TOKEN;
@@ -185,6 +202,28 @@ export function execute(argv, env = process.env) {
         actor: "freed-owner",
         leaseName: "owner-governance",
         leaseToken,
+      }),
+    };
+  }
+  if (action === "repair-events") {
+    assertExactOptions(options, [
+      "ownerConfirmationFile",
+      "planFile",
+      "stateRoot",
+      "taskId",
+    ]);
+    return {
+      action: EVENT_HISTORY_WITNESS_REPAIR_ACTION,
+      stateRoot,
+      result: repairEventHistoryAuthorityWitness({
+        stateRoot,
+        taskId,
+        plan: readPrivatePlan(required(options, "planFile", "--plan-file")),
+        ownerConfirmationFile: required(
+          options,
+          "ownerConfirmationFile",
+          "--owner-confirmation-file",
+        ),
       }),
     };
   }
