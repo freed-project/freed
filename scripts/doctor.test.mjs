@@ -365,7 +365,7 @@ test("automation state preflight rejects a symlinked control ancestor without sc
   assert.doesNotMatch(result.detail, /followed\.lock/);
 });
 
-test("automation state preflight checks private outcome repair directories", () => {
+test("automation state preflight checks private recovery directories", () => {
   const stateDir = path.join(
     mkdtempSync(path.join(os.tmpdir(), "freed-doctor-repair-dirs-")),
     "automation",
@@ -376,19 +376,30 @@ test("automation state preflight checks private outcome repair directories", () 
     "outcome-ledger-transactions",
   );
   const artifactDir = path.join(stateDir, "artifacts", "outcome-ledger-repair");
+  const eventWitnessRepairDir = path.join(
+    stateDir,
+    "control",
+    "event-history-witness-repairs",
+  );
   mkdirSync(transactionDir, { recursive: true, mode: 0o700 });
   mkdirSync(artifactDir, { recursive: true, mode: 0o700 });
+  mkdirSync(eventWitnessRepairDir, { recursive: true, mode: 0o700 });
   chmodSync(stateDir, 0o700);
   chmodSync(path.join(stateDir, "control"), 0o700);
   chmodSync(path.join(stateDir, "artifacts"), 0o700);
   chmodSync(transactionDir, 0o755);
   chmodSync(artifactDir, 0o755);
+  chmodSync(eventWitnessRepairDir, 0o755);
 
   const result = checkAutomationStateDir(stateDir);
 
   assert.equal(result.status, "fail");
   assert.match(result.detail, /outcome-ledger-transactions is not mode 0700/);
   assert.match(result.detail, /outcome-ledger-repair is not mode 0700/);
+  assert.match(
+    result.detail,
+    /event-history-witness-repairs is not mode 0700/,
+  );
 });
 
 test("automation state preflight accepts only the exact completed kernel guard cutover", () => {
