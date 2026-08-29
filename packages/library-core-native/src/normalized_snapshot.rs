@@ -29,12 +29,17 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
 use std::ffi::{CStr, CString};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+#[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
 
 const SNAPSHOT_FORMAT: &str = "freed_normalized_local_snapshot_v1";
 const SNAPSHOT_FILE_SUFFIX: &str = ".freed-snapshot";
@@ -98,9 +103,13 @@ struct SnapshotArchive {
 }
 
 struct SnapshotOperationGuard {
+    #[cfg(unix)]
     lock: File,
+    #[cfg(windows)]
+    _lock: fslock::LockFile,
 }
 
+#[cfg(unix)]
 impl Drop for SnapshotOperationGuard {
     fn drop(&mut self) {
         unsafe {
@@ -110,7 +119,10 @@ impl Drop for SnapshotOperationGuard {
 }
 
 struct SnapshotDirectory {
+    #[cfg(unix)]
     directory: File,
+    #[cfg(windows)]
+    path: PathBuf,
 }
 
 fn snapshot_error(message: impl Into<String>) -> NormalizedSqliteError {
@@ -118,6 +130,7 @@ fn snapshot_error(message: impl Into<String>) -> NormalizedSqliteError {
 }
 
 impl SnapshotDirectory {
+    #[cfg(unix)]
     fn from_descriptor(descriptor: RawFd) -> Result<Self, NormalizedSqliteError> {
         if descriptor < 0 {
             return Err(snapshot_error(
@@ -145,14 +158,23 @@ impl SnapshotDirectory {
 
     fn open_or_create(path: &Path) -> Result<Self, NormalizedSqliteError> {
         ensure_snapshot_directory(path)?;
-        let directory = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW)
-            .open(path)
-            .map_err(|error| snapshot_error(error.to_string()))?;
-        Self::from_descriptor(directory.as_raw_fd())
+        #[cfg(unix)]
+        {
+            let directory = OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+                .open(path)
+                .map_err(|error| snapshot_error(error.to_string()))?;
+            Self::from_descriptor(directory.as_raw_fd())
+        }
+        #[cfg(windows)]
+        {
+            let path = fs::canonicalize(path).map_err(|error| snapshot_error(error.to_string()))?;
+            Ok(Self { path })
+        }
     }
 
+    #[cfg(unix)]
     fn leaf(name: &str) -> Result<CString, NormalizedSqliteError> {
         if name.is_empty()
             || name.len() > 255
@@ -164,38 +186,73 @@ impl SnapshotDirectory {
         CString::new(name).map_err(|_| snapshot_error("normalized snapshot file name is invalid"))
     }
 
+    #[cfg(windows)]
+    fn leaf(name: &str) -> Result<&str, NormalizedSqliteError> {
+        if name.is_empty()
+            || name.len() > 255
+            || matches!(name, "." | "..")
+            || name
+                .as_bytes()
+                .iter()
+                .any(|byte| matches!(byte, b'/' | b'\\'))
+        {
+            return Err(snapshot_error("normalized snapshot file name is invalid"));
+        }
+        Ok(name)
+    }
+
     fn open_private_file_optional(
         &self,
         name: &str,
     ) -> Result<Option<File>, NormalizedSqliteError> {
         let name = Self::leaf(name)?;
-        let descriptor = unsafe {
-            libc::openat(
-                self.directory.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            )
-        };
-        if descriptor < 0 {
-            let error = std::io::Error::last_os_error();
-            if error.kind() == std::io::ErrorKind::NotFound {
-                return Ok(None);
-            }
-            return Err(snapshot_error(error.to_string()));
-        }
-        let file = unsafe { File::from_raw_fd(descriptor) };
-        let metadata = file
-            .metadata()
-            .map_err(|error| snapshot_error(error.to_string()))?;
-        if !metadata.is_file()
-            || metadata.file_type().is_symlink()
-            || metadata.mode() & 0o777 != 0o600
-            || metadata.nlink() != 1
-            || metadata.uid() != unsafe { libc::geteuid() }
+        #[cfg(unix)]
         {
-            return Err(snapshot_error("normalized snapshot file is not private"));
+            let descriptor = unsafe {
+                libc::openat(
+                    self.directory.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                )
+            };
+            if descriptor < 0 {
+                let error = std::io::Error::last_os_error();
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    return Ok(None);
+                }
+                return Err(snapshot_error(error.to_string()));
+            }
+            let file = unsafe { File::from_raw_fd(descriptor) };
+            let metadata = file
+                .metadata()
+                .map_err(|error| snapshot_error(error.to_string()))?;
+            if !metadata.is_file()
+                || metadata.file_type().is_symlink()
+                || metadata.mode() & 0o777 != 0o600
+                || metadata.nlink() != 1
+                || metadata.uid() != unsafe { libc::geteuid() }
+            {
+                return Err(snapshot_error("normalized snapshot file is not private"));
+            }
+            Ok(Some(file))
         }
-        Ok(Some(file))
+        #[cfg(windows)]
+        {
+            let path = self.path.join(name);
+            let metadata = match fs::symlink_metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(snapshot_error(error.to_string())),
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(snapshot_error("normalized snapshot file is not private"));
+            }
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .map(Some)
+                .map_err(|error| snapshot_error(error.to_string()))
+        }
     }
 
     fn open_private_file(&self, name: &str) -> Result<File, NormalizedSqliteError> {
@@ -205,20 +262,36 @@ impl SnapshotDirectory {
 
     fn create_private_file(&self, name: &str) -> Result<File, NormalizedSqliteError> {
         let name = Self::leaf(name)?;
-        let descriptor = unsafe {
-            libc::openat(
-                self.directory.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-                0o600,
-            )
-        };
-        if descriptor < 0 {
-            return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+        #[cfg(unix)]
+        {
+            let descriptor = unsafe {
+                libc::openat(
+                    self.directory.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_WRONLY
+                        | libc::O_CREAT
+                        | libc::O_EXCL
+                        | libc::O_CLOEXEC
+                        | libc::O_NOFOLLOW,
+                    0o600,
+                )
+            };
+            if descriptor < 0 {
+                return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            }
+            Ok(unsafe { File::from_raw_fd(descriptor) })
         }
-        Ok(unsafe { File::from_raw_fd(descriptor) })
+        #[cfg(windows)]
+        {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(self.path.join(name))
+                .map_err(|error| snapshot_error(error.to_string()))
+        }
     }
 
+    #[cfg(unix)]
     fn open_lock_file(&self) -> Result<File, NormalizedSqliteError> {
         let name = Self::leaf(SNAPSHOT_LOCK_FILE)?;
         let descriptor = unsafe {
@@ -248,79 +321,117 @@ impl SnapshotDirectory {
 
     fn remove_file(&self, name: &str) -> Result<bool, NormalizedSqliteError> {
         let name = Self::leaf(name)?;
-        if unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) } == 0 {
-            return Ok(true);
+        #[cfg(unix)]
+        {
+            if unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) } == 0 {
+                return Ok(true);
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Ok(false);
+            }
+            Err(snapshot_error(error.to_string()))
         }
-        let error = std::io::Error::last_os_error();
-        if error.kind() == std::io::ErrorKind::NotFound {
-            return Ok(false);
+        #[cfg(windows)]
+        {
+            match fs::remove_file(self.path.join(name)) {
+                Ok(()) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(snapshot_error(error.to_string())),
+            }
         }
-        Err(snapshot_error(error.to_string()))
     }
 
     fn rename(&self, from: &str, to: &str) -> Result<(), NormalizedSqliteError> {
         let from = Self::leaf(from)?;
         let to = Self::leaf(to)?;
-        if unsafe {
-            libc::renameat(
-                self.directory.as_raw_fd(),
-                from.as_ptr(),
-                self.directory.as_raw_fd(),
-                to.as_ptr(),
-            )
-        } < 0
+        #[cfg(unix)]
         {
-            return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            if unsafe {
+                libc::renameat(
+                    self.directory.as_raw_fd(),
+                    from.as_ptr(),
+                    self.directory.as_raw_fd(),
+                    to.as_ptr(),
+                )
+            } < 0
+            {
+                return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            }
+            Ok(())
         }
-        Ok(())
+        #[cfg(windows)]
+        {
+            fs::rename(self.path.join(from), self.path.join(to))
+                .map_err(|error| snapshot_error(error.to_string()))
+        }
     }
 
     fn names(&self) -> Result<Vec<String>, NormalizedSqliteError> {
-        let duplicated =
-            unsafe { libc::fcntl(self.directory.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
-        if duplicated < 0 {
-            return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
-        }
-        if unsafe { libc::lseek(duplicated, 0, libc::SEEK_SET) } < 0 {
+        #[cfg(unix)]
+        {
+            let duplicated =
+                unsafe { libc::fcntl(self.directory.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+            if duplicated < 0 {
+                return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            }
+            if unsafe { libc::lseek(duplicated, 0, libc::SEEK_SET) } < 0 {
+                unsafe {
+                    libc::close(duplicated);
+                }
+                return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            }
+            let directory = unsafe { libc::fdopendir(duplicated) };
+            if directory.is_null() {
+                unsafe {
+                    libc::close(duplicated);
+                }
+                return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            }
+            let mut names = Vec::new();
+            loop {
+                let entry = unsafe { libc::readdir(directory) };
+                if entry.is_null() {
+                    break;
+                }
+                let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+                let Ok(name) = name.to_str() else {
+                    continue;
+                };
+                if !matches!(name, "." | "..") {
+                    names.push(name.to_owned());
+                }
+            }
             unsafe {
-                libc::close(duplicated);
+                libc::closedir(directory);
             }
-            return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+            Ok(names)
         }
-        let directory = unsafe { libc::fdopendir(duplicated) };
-        if directory.is_null() {
-            unsafe {
-                libc::close(duplicated);
-            }
-            return Err(snapshot_error(std::io::Error::last_os_error().to_string()));
+        #[cfg(windows)]
+        {
+            Ok(fs::read_dir(&self.path)
+                .map_err(|error| snapshot_error(error.to_string()))?
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .collect::<Vec<_>>())
         }
-        let mut names = Vec::new();
-        loop {
-            let entry = unsafe { libc::readdir(directory) };
-            if entry.is_null() {
-                break;
-            }
-            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
-            let Ok(name) = name.to_str() else {
-                continue;
-            };
-            if !matches!(name, "." | "..") {
-                names.push(name.to_owned());
-            }
-        }
-        unsafe {
-            libc::closedir(directory);
-        }
-        Ok(names)
     }
 
     fn sync(&self) -> Result<(), NormalizedSqliteError> {
-        self.directory
-            .sync_all()
-            .map_err(|error| snapshot_error(error.to_string()))
+        #[cfg(unix)]
+        {
+            self.directory
+                .sync_all()
+                .map_err(|error| snapshot_error(error.to_string()))
+        }
+        #[cfg(windows)]
+        {
+            Ok(())
+        }
     }
 }
 
+#[cfg(unix)]
 fn path_for_bound_directory(descriptor: RawFd) -> Result<SnapshotDirectory, NormalizedSqliteError> {
     SnapshotDirectory::from_descriptor(descriptor)
 }
@@ -346,13 +457,15 @@ fn ensure_snapshot_directory(path: &Path) -> Result<(), NormalizedSqliteError> {
         }
         Err(error) => return Err(snapshot_error(error.to_string())),
     }
+    #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))
         .map_err(|error| snapshot_error(error.to_string()))?;
     let metadata = fs::symlink_metadata(path).map_err(|error| snapshot_error(error.to_string()))?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.permissions().mode() & 0o7777 != 0o700
-    {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(snapshot_error("normalized snapshot root is not private"));
+    }
+    #[cfg(unix)]
+    if metadata.permissions().mode() & 0o7777 != 0o700 {
         return Err(snapshot_error("normalized snapshot root is not private"));
     }
     Ok(())
@@ -361,17 +474,34 @@ fn ensure_snapshot_directory(path: &Path) -> Result<(), NormalizedSqliteError> {
 fn acquire_snapshot_operation(
     snapshot_root: &SnapshotDirectory,
 ) -> Result<SnapshotOperationGuard, NormalizedSqliteError> {
-    let lock = snapshot_root.open_lock_file()?;
-    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
-        let error = std::io::Error::last_os_error();
-        if error.kind() == std::io::ErrorKind::WouldBlock {
+    #[cfg(unix)]
+    {
+        let lock = snapshot_root.open_lock_file()?;
+        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::WouldBlock {
+                return Err(snapshot_error(
+                    "another normalized snapshot operation is already active",
+                ));
+            }
+            return Err(snapshot_error(error.to_string()));
+        }
+        Ok(SnapshotOperationGuard { lock })
+    }
+    #[cfg(windows)]
+    {
+        let mut lock = fslock::LockFile::open(snapshot_root.path.join(SNAPSHOT_LOCK_FILE))
+            .map_err(|error| snapshot_error(error.to_string()))?;
+        if !lock
+            .try_lock()
+            .map_err(|error| snapshot_error(error.to_string()))?
+        {
             return Err(snapshot_error(
                 "another normalized snapshot operation is already active",
             ));
         }
-        return Err(snapshot_error(error.to_string()));
+        Ok(SnapshotOperationGuard { _lock: lock })
     }
-    Ok(SnapshotOperationGuard { lock })
 }
 
 fn canonical_record(
@@ -997,6 +1127,7 @@ fn clear_normalized_local_snapshots_in_v1(
     snapshot_root.sync()
 }
 
+#[cfg(unix)]
 pub(crate) fn create_normalized_local_snapshot_bound_v1(
     connection: &mut Connection,
     snapshot_directory: RawFd,
@@ -1007,6 +1138,7 @@ pub(crate) fn create_normalized_local_snapshot_bound_v1(
     create_normalized_local_snapshot_in_v1(connection, &directory, created_at_ms, reason)
 }
 
+#[cfg(unix)]
 pub(crate) fn list_normalized_local_snapshots_bound_v1(
     snapshot_directory: RawFd,
 ) -> Result<Vec<NormalizedLocalSnapshotSummaryV1>, NormalizedSqliteError> {
@@ -1016,6 +1148,7 @@ pub(crate) fn list_normalized_local_snapshots_bound_v1(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(unix)]
 pub(crate) fn restore_normalized_local_snapshot_bound_v1(
     connection: &mut Connection,
     snapshot_directory: RawFd,
@@ -1046,7 +1179,7 @@ pub(crate) fn clear_normalized_local_snapshots_bound_v1(
     clear_normalized_local_snapshots_in_v1(&directory)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::{install_normalized_schema_v1, prepare_fresh_normalized_desktop_library_v1};

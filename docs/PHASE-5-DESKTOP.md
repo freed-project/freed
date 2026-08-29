@@ -752,6 +752,7 @@ export async function captureDomFeed(
 | 5.188 | Construct normalized FeedItem capture payloads through the shared pure capture projector used by the PWA. Desktop cannot submit Primary-owned analysis, device-authored highlights, or capture tags through a root upsert, and no host-specific projection can drift from the contract | Medium     | ✓ Complete |
 | 5.189 | Close the Desktop acceptance boundary around authoritative SQLite rows. Likes, read receipts, archive scopes, RSS health search, Person and Account promotion, candidate ranking, graph linkage, map timelines, and social filtering now validate native query and mutation projections instead of inspecting a renderer corpus. The dual-column reader pins only its visible bounded window while SQLite refreshes beneath it, and device-local RSS health can join that bounded Feed window without loading the subscription catalog | High       | ✓ Complete |
 | 5.190 | Remove compatibility-shaped fields from current Person, Account, Friend, RSS, AI, display, Facebook, Story Wall, and app-state contracts. Installation-local settings use their dedicated stores, synchronized preference mutations reject unsupported fields, graph and RSS runtime state use explicit local models, and opaque historical values remain readable only by fenced one-time import functions | High       | ✓ Complete |
+| 5.191 | Make the activated SQLite storage epoch operational on Windows. Freed Desktop holds one process lease over the canonical app data root, opens the normalized database with the same stock SQLite schema and bounded query contract as macOS and Linux, verifies the one-way authority selector before product access, supports fresh genesis and the fenced historical cutover, and stores local snapshots as typed checkpoint records. Native authority changes compile the real Windows target before release | High       | ✓ Complete |
 
 ---
 
@@ -769,6 +770,7 @@ export async function captureDomFeed(
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
 - [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
+- [x] Native Library Core changes compile on Windows during pull request and dev integration validation, before release packaging
 - [x] Dev release tags run the faster dev validation lane and build only the internal macOS Apple Silicon target, while production tags keep full validation and all supported platform builds
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds

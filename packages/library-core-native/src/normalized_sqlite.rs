@@ -15,6 +15,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::path::Path;
 
 const STAGED_RECORD_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-bytes/staged-checkpoint-record\0";
@@ -42,6 +43,46 @@ pub(crate) fn configure_normalized_sqlite_connection(
     install_normalized_schema_v1(connection)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
     Ok(())
+}
+
+/// Opens the normalized Library database through the platform path boundary.
+///
+/// The caller must already hold the process-wide Library lease. This adapter
+/// rejects a symbolic final component, disables SQLite URI interpretation,
+/// uses a private cache, and applies the same schema and connection contract
+/// on every supported Desktop platform.
+pub fn open_normalized_sqlite_database_v1(
+    database_path: &Path,
+    create: bool,
+) -> Result<Connection, NormalizedSqliteError> {
+    let parent = database_path
+        .parent()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite database has no parent directory",
+        ))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| NormalizedSqliteError::Transport(error.to_string()))?;
+    let parent = std::fs::canonicalize(parent)
+        .map_err(|error| NormalizedSqliteError::Transport(error.to_string()))?;
+    let leaf = database_path
+        .file_name()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite database file name is invalid",
+        ))?;
+    let resolved = parent.join(leaf);
+    match std::fs::symlink_metadata(&resolved) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized SQLite database is not an ordinary file",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {}
+        Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
+    }
+    let connection = Connection::open_with_flags(&resolved, normalized_sqlite_open_flags(create))?;
+    configure_normalized_sqlite_connection(&connection)?;
+    Ok(connection)
 }
 
 #[derive(Debug)]
@@ -742,6 +783,30 @@ mod tests {
         let connection = Connection::open_in_memory().expect("open");
         install_normalized_schema_v1(&connection).expect("schema");
         connection
+    }
+
+    #[test]
+    fn platform_path_opener_creates_and_reopens_the_normalized_schema() {
+        let root = tempfile::TempDir::new().expect("create database root");
+        let path = root
+            .path()
+            .join("library-sqlite")
+            .join("library-core.sqlite");
+        let created = open_normalized_sqlite_database_v1(&path, true).expect("create database");
+        assert_eq!(
+            created
+                .query_row("PRAGMA application_id;", [], |row| row.get::<_, i64>(0))
+                .expect("application identity"),
+            i64::from(SQLITE_APPLICATION_ID)
+        );
+        drop(created);
+        let reopened = open_normalized_sqlite_database_v1(&path, false).expect("reopen database");
+        assert_eq!(
+            reopened
+                .query_row("PRAGMA user_version;", [], |row| row.get::<_, i64>(0))
+                .expect("schema version"),
+            i64::from(SQLITE_SCHEMA_VERSION)
+        );
     }
 
     fn install_test_authority(connection: &Connection, accepted_counter: i64) {

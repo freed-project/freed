@@ -12940,8 +12940,9 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
-            #[cfg(unix)]
-            if library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready()
+            if library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(
+                &app_handle,
+            )
                 .map_err(std::io::Error::other)?
             {
                 info!("[library-core] selected normalized SQLite authority");
