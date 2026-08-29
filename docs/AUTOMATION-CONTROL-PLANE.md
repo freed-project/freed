@@ -331,6 +331,14 @@ owner. While a claim is active, normal task transitions and authority updates
 are fenced. The coordinator must release the exact claim before lifecycle
 projection continues.
 
+Initial acquisition accepts a request for at most eight minutes. That bound
+covers the trusted launcher's reviewed 370-second lifecycle, its 380-second
+caller boundary, and the separately bounded claim command. The claim and
+request timestamps must still match exactly, custody must begin at epoch one,
+and a timestamp more than 30 seconds in the future remains invalid. The wider
+transit allowance grants no additional actor, task, provider, publication, or
+worker authority.
+
 Claim expiry policy remains conservative. AubTown may release an unlaunched
 `claimed` record only after its initial grace and an exact heartbeat compare.
 A stale `running` record remains authoritative custody until the worker returns

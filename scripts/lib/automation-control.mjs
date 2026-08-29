@@ -76,6 +76,11 @@ export const CONTROL_EVENT_HISTORY_MAX_RECORDS = 100_000;
 const TASK_CONTROL_FILE_MAX_BYTES = 16 * 1024 * 1024;
 const FACTORY_CLAIM_ADMISSION_LIFETIME_MS = 5 * 60 * 1_000;
 const FACTORY_CLAIM_CLOCK_SKEW_MS = 30 * 1_000;
+// The trusted actor launcher owns a bounded 370-second lifecycle, and its
+// caller reserves another 10 seconds before the claim command starts. Keep
+// initial claim freshness bounded while allowing that reviewed authority path
+// to finish without making a healthy request stale in transit.
+const FACTORY_CLAIM_ACQUIRE_FRESHNESS_MS = 8 * 60 * 1_000;
 const FACTORY_CLAIM_ACTOR = "freed-nightly-runner";
 const FACTORY_CLAIM_ACTIONS = Object.freeze([
   "claim-acquire",
@@ -11264,7 +11269,7 @@ export function acquireFactoryExecutionClaim({
         nowMs,
       );
       if (
-        nowMs - requestedAtMs > 120 * 1_000 ||
+        nowMs - requestedAtMs > FACTORY_CLAIM_ACQUIRE_FRESHNESS_MS ||
         value.claim.claimedAt !== value.requestedAt ||
         value.claim.custodyEpoch !== 1
       ) {
