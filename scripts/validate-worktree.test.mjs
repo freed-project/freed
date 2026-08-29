@@ -10,6 +10,7 @@ import {
   executeReleaseIdentityValidation,
   isDesktopNativeSurface,
   isLibraryCoreReleaseActivationPath,
+  isPwaOpfsDurabilityPath,
   isPullRequestPublisherToolingPath,
   isReleasePublisherToolingPath,
   isReleaseAdmissionPath,
@@ -72,6 +73,32 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
+});
+
+test("OPFS durability changes run the persistent WebKit data integrity proof", () => {
+  const paths = [
+    "package-lock.json",
+    "packages/pwa/package.json",
+    "packages/pwa/playwright.opfs.config.ts",
+    "packages/pwa/src/lib/library-core-sqlite-worker.ts",
+    "packages/pwa/src/main.tsx",
+    "packages/pwa/tests/opfs-e2e-settings.ts",
+    "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+    "packages/shared/src/library-core/normalized-schema-v1.sql",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isPwaOpfsDurabilityPath(filePath), true, filePath);
+    assert.ok(
+      describePlan(buildValidationPlan("feature", [filePath])).includes(
+        "pwa WebKit OPFS durability",
+      ),
+      filePath,
+    );
+  }
+  assert.equal(
+    isPwaOpfsDurabilityPath("packages/pwa/src/components/SyncDialog.tsx"),
+    false,
+  );
 });
 
 test("feature plan for sync changes runs the sync package tests", () => {

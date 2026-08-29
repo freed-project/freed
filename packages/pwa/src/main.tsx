@@ -6,6 +6,10 @@ import {
   type Person,
   type ReachOutLog,
 } from '@freed/shared'
+import type {
+  LibraryCoreDeviceContactQueryRequestV1,
+  LibraryCoreDeviceContactSyncMutationV1,
+} from '@freed/shared/library-core'
 import './index.css'
 import App from './App.tsx'
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
@@ -22,7 +26,8 @@ if (import.meta.env.DEV) {
   void Promise.all([
     import("./lib/store"),
     import("./lib/library-core-runtime"),
-  ]).then(([store, libraryCore]) => {
+    import("./lib/library-core-sqlite-runtime"),
+  ]).then(([store, libraryCore, sqliteCore]) => {
     const w = window as unknown as Record<string, unknown>
     const settle = async () => {
       await libraryCore.ensurePwaLibraryCoreLocalSampleState()
@@ -42,6 +47,12 @@ if (import.meta.env.DEV) {
     }
     w.__FREED_STORE__ = store.useAppStore
     w.__FREED_LIBRARY_CORE__ = {
+      mutateDeviceContactSync: (
+        mutation: LibraryCoreDeviceContactSyncMutationV1,
+      ) => sqliteCore.mutatePwaDeviceContactSync(mutation),
+      queryDeviceContacts: (
+        query: LibraryCoreDeviceContactQueryRequestV1,
+      ) => sqliteCore.queryPwaDeviceContacts(query),
       replacePerson: (person: Person, accounts: readonly Account[]) =>
         run(() => libraryCore.replacePwaLibraryCoreFriend(
           person,

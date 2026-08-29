@@ -92,10 +92,15 @@ async function acquireOwnership(): Promise<void> {
 
 async function open(): Promise<PwaLibraryCoreSqliteEngine> {
   if (engine) return engine;
+  let openingStage = "acquire writer ownership";
   await acquireOwnership();
   let openingEngine: PwaLibraryCoreSqliteEngine | null = null;
   try {
+    openingStage = "initialize SQLite WebAssembly";
     const sqlite3 = await sqlite3InitModule();
+    openingStage = useMemoryE2eStorage
+      ? "open the test memory database"
+      : "install the OPFS SAH pool VFS";
     const database = useMemoryE2eStorage
       ? new sqlite3.oo1.DB(":memory:", "c")
       : new (
@@ -105,12 +110,14 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
             name: "freed-opfs-sahpool-v1",
           })
         ).OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME);
+    openingStage = "initialize the normalized schema";
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
     );
     openingEngine = next;
     next.initialize();
+    openingStage = "reconcile the OPFS content vault";
     const nextContentVault = new PwaLibraryCoreOpfsContentVault(
       next,
       useMemoryE2eStorage ? emptyE2eContentRangeStorage : undefined,
@@ -126,7 +133,15 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     releaseOwnership = null;
     await ownershipTask?.catch(() => undefined);
     ownershipTask = null;
-    throw error;
+    const detail =
+      error instanceof DOMException
+        ? `${error.name}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    throw new Error(`PWA Library SQLite could not ${openingStage}: ${detail}`, {
+      cause: error,
+    });
   }
 }
 

@@ -26,6 +26,13 @@
       for both browser TypeScript and native Rust from the shared contract.
 - [ ] Prove the supported iPhone Safari durability floor through
       physical iPhone storage, suspension, recovery, quota, and playback tests.
+- [x] Prove real WebKit OPFS SQLite durability in a persistent iPhone-class
+      browser profile. The acceptance test commits one typed device-local
+      transaction, terminates the document and dedicated worker twice, reopens
+      the same database, verifies exact values and revisions, and proves
+      idempotent replay after each restart. This deterministic browser gate
+      does not replace the physical iPhone suspension, quota, and playback
+      evidence above.
 - [x] Run official SQLite WebAssembly through one dedicated Library worker over
       the high-performance `opfs-sahpool` VFS, with one bounded protocol, one
       connection generation, one cross-window Library lock, exact schema
@@ -619,6 +626,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.108 | Replay canonical signed Primary priority assignments into OPFS SQLite and expose the same indexed stale-candidate contract used by native Rust. Capture cannot supply derived scores, priority replay leaves content timestamps unchanged, and PWA views order bounded SQLite pages without JavaScript corpus sorting | High       | ✓ Complete                                                                                       |
 | 6.109 | Close every PWA SQLite worker response against the original pending request and its exact typed result parser. Unknown envelope fields, response-member drift, malformed checkpoint, scope, content, follower, transport, operation, actor, or status receipts fail before application code, while dead always-on flags, no-op upload scheduling, duplicate write wrappers, and public internal helpers are deleted | High       | ✓ Complete                                                                                       |
 | 6.110 | Construct normalized FeedItem capture payloads through the shared pure capture projector used by Freed Desktop. The PWA cannot submit Primary-owned analysis, device-authored highlights, or capture tags through a root upsert, and the projection remains identical across both SQLite hosts | Medium     | ✓ Complete                                                                                       |
+| 6.111 | Run a persistent iPhone-class WebKit profile against the real OPFS SAH pool. Commit and read back a typed device-local SQLite transaction across two document and dedicated-worker terminations, prove exact revision-stable replay, and route the five-second data-integrity proof from PWA SQLite and shared Library contract changes without claiming physical iPhone acceptance | High       | ✓ Complete                                                                                       |
 
 ---
 

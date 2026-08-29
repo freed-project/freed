@@ -1288,6 +1288,14 @@ PWA admission includes physical iPhone testing of reopen, worker termination,
 quota pressure, large search, range playback, cache eviction, and offline pin
 behavior.
 
+Changed-path and dev validation also run one persistent iPhone-class WebKit
+profile against the real OPFS SAH pool. It commits a typed device-local SQLite
+transaction, closes the document and dedicated worker twice, reopens the same
+database, verifies exact values and revisions, and proves idempotent replay.
+This deterministic browser proof catches OPFS VFS, worker lifecycle, schema,
+and persistence regressions. It does not substitute for physical iPhone
+suspension, quota pressure, storage eviction, or media playback evidence.
+
 ## 20. Test architecture
 
 One conformance suite runs the same fixture against native SQLite and browser
@@ -1309,6 +1317,7 @@ It proves:
 - Exact retry after response loss
 - Native crash atomicity
 - Browser worker termination recovery
+- Persistent WebKit OPFS SQLite write, reopen, and replay durability
 - Migration full-field parity and explicit exclusion closure
 - No whole-corpus renderer, worker, or native response
 - Query-plan use of registered indexes
