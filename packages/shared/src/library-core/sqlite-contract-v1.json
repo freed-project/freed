@@ -54,32 +54,16 @@
   },
   "preferenceWritePolicies": {
     "ai": {
-      "provider": "device-local",
-      "model": "device-local",
-      "ollamaUrl": "device-local",
       "autoSummarize": "sync",
       "extractTopics": "sync"
     },
     "display": {
-      "themeId": "device-local",
       "showEngagementCounts": "sync",
       "animationIntensity": "sync",
       "reading": "nested",
-      "sidebarWidth": "device-local",
-      "sidebarMode": "device-local",
-      "friendsSidebarWidth": "device-local",
-      "friendsSidebarOpen": "device-local",
-      "friendsMode": "device-local",
-      "debugPanelWidth": "device-local",
-      "mapMode": "device-local",
-      "mapTimeMode": "device-local",
-      "feedSignalMode": "device-local",
-      "feedSignalModes": "device-local",
-      "savedContentSortMode": "device-local",
       "archivePruneDays": "sync"
     },
     "facebookCapture": {
-      "knownGroups": "device-local",
       "excludedGroupIds": "nested"
     },
     "friendSuggestions": {
@@ -89,8 +73,7 @@
       "focusMode": "sync",
       "focusIntensity": "sync",
       "markReadOnScroll": "sync",
-      "showReadInGrayscale": "sync",
-      "dualColumnMode": "device-local"
+      "showReadInGrayscale": "sync"
     },
     "storyWall": {
       "enabled": "sync",
@@ -112,9 +95,7 @@
       "branch": "sync",
       "directory": "sync",
       "pagesUrl": "sync",
-      "lastPublishedAt": "sync",
-      "lastError": "device-local",
-      "status": "device-local"
+      "lastPublishedAt": "sync"
     },
     "storyWallStyle": {
       "palette": "sync",

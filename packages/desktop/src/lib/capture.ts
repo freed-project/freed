@@ -44,6 +44,7 @@ import {
   setRssRuntimeState,
   withRssRuntimeState,
   withRssRuntimeStates,
+  type RuntimeRssFeed,
 } from "./rss-runtime-state";
 import {
   assertFactoryResetEpoch,
@@ -267,7 +268,7 @@ const socialDebugLabels: Record<RetriableSocialProvider, string> = {
   youtube: "YT",
 };
 
-function nextFailedFeedRetryMs(feed: RssFeed): number {
+function nextFailedFeedRetryMs(feed: RuntimeRssFeed): number {
   const failureCount = Math.max(0, feed.consecutiveFailures ?? 0);
   return Math.min(
     RSS_FAILURE_RETRY_MAX_MS,

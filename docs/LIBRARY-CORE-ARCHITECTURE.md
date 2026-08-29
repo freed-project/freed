@@ -1114,6 +1114,15 @@ other obsolete values do not enter canonical SQLite. Invalid foreign
 keys, oversized metadata, malformed preference shapes, and unregistered nested
 policies abort the caller's one migration transaction.
 
+Current domain types contain only current fields. Person and Account never
+carry graph placement. RssFeed never carries retry or failure state. Synced AI,
+display, Facebook, and Story Wall preferences never carry installation-local
+provider, layout, discovery, or progress values. The synchronized preference
+mutation boundary rejects an unsupported key instead of stripping it or
+routing it to another store. Fenced one-time import readers accept opaque
+historical input and copy retained device values into their explicit local
+models before the historical source is retired.
+
 The inert migration candidate receipt binds the active old authority tuple,
 source document identity, source generation and revisions, and an ordered
 bounded digest of its causal frontier. Deleted historical FeedItem rows are
@@ -1295,6 +1304,9 @@ database, verifies exact values and revisions, and proves idempotent replay.
 This deterministic browser proof catches OPFS VFS, worker lifecycle, schema,
 and persistence regressions. It does not substitute for physical iPhone
 suspension, quota pressure, storage eviction, or media playback evidence.
+The validation planner declares WebKit separately from Chromium and every CI
+lane that schedules this proof installs the matching browser executable before
+the test begins.
 
 ## 20. Test architecture
 

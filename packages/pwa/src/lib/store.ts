@@ -7,9 +7,8 @@
 import { create } from "zustand";
 import {
   applyFeedSignalModesToFilter,
+  assertSupportedUserPreferenceWrite,
   createDefaultPreferences,
-  getDeviceLocalPreferenceUpdates,
-  stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
 import type {
   BaseAppState,
@@ -27,14 +26,10 @@ import {
 import {
   getDeviceDisplayPreferences,
   migrateLegacyDeviceDisplayPreferences,
-  setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
-import {
-  migrateLegacyDeviceAIPreferences,
-  setDeviceAIPreferences,
-} from "@freed/ui/lib/device-ai-preferences";
+import { migrateLegacyDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   clearPwaLibraryCoreSampleData,
@@ -135,6 +130,17 @@ function mergePreferenceUpdate<T extends object>(
     ) as T[typeof key];
   }
   return next;
+}
+
+function mergeFacebookCapturePreferenceUpdate(
+  current: BaseAppState["preferences"]["fbCapture"],
+  update: Partial<BaseAppState["preferences"]["fbCapture"]>,
+): BaseAppState["preferences"]["fbCapture"] {
+  return {
+    excludedGroupIds: update.excludedGroupIds
+      ? { ...update.excludedGroupIds }
+      : { ...current.excludedGroupIds },
+  };
 }
 
 /**
@@ -273,7 +279,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedItemId: null,
   selectedPersonId: null,
   selectedAccountId: null,
-  selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
@@ -297,9 +302,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ isLoading: true });
         const state = await initializePwaLibraryCoreState();
         runtimeLifecycle.assertCurrent();
-        migrateLegacyDeviceDisplayPreferences(state.preferences.display);
-        migrateLegacyThemePreference(state.preferences.display.themeId);
-        migrateLegacyDeviceAIPreferences(state.preferences.ai);
+        migrateLegacyDeviceDisplayPreferences(state.preferences.display as unknown);
+        migrateLegacyThemePreference(state.preferences.display as unknown);
+        migrateLegacyDeviceAIPreferences(state.preferences.ai as unknown);
         await migrateLegacyDeviceGraphLayoutToSqlite({
           mutate: mutatePwaDeviceGraphLayout,
           query: queryPwaNormalizedLibrary,
@@ -663,25 +668,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Preference actions
   updatePreferences: async (update) => {
     assertPwaStoreWritable({ allowLibraryCoreIntent: true });
-    const localUpdate = getDeviceLocalPreferenceUpdates(update);
-    if (
-      localUpdate.display &&
-      !setDeviceDisplayPreferences(localUpdate.display)
-    ) {
-      throw new Error(
-        "Freed could not save the display settings on this device.",
-      );
-    }
-    if (localUpdate.ai && !setDeviceAIPreferences(localUpdate.ai)) {
-      throw new Error("Freed could not save the AI settings on this device.");
-    }
-    const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
+    const syncedUpdate = assertSupportedUserPreferenceWrite(update);
     if (Object.keys(syncedUpdate).length === 0) return;
     const currentPreferences = get().preferences;
     const nextPreferences = mergePreferenceUpdate(
       currentPreferences,
       syncedUpdate,
     );
+    if (syncedUpdate.fbCapture !== undefined) {
+      nextPreferences.fbCapture = mergeFacebookCapturePreferenceUpdate(
+        currentPreferences.fbCapture,
+        syncedUpdate.fbCapture,
+      );
+    }
     set({ preferences: nextPreferences });
     try {
       await runSqliteMutation(
@@ -707,19 +706,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       selectedPersonId: id,
       selectedAccountId: null,
-      selectedFriendId: id,
     }),
   setSelectedAccount: (id) =>
     set({
       selectedPersonId: null,
       selectedAccountId: id,
-      selectedFriendId: null,
-    }),
-  setSelectedFriend: (id) =>
-    set({
-      selectedPersonId: id,
-      selectedAccountId: null,
-      selectedFriendId: id,
     }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
@@ -731,7 +722,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeView: "map",
       selectedPersonId: personId,
       selectedAccountId: null,
-      selectedFriendId: personId,
       selectedItemId: null,
     }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),

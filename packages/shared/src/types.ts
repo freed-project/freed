@@ -236,20 +236,8 @@ export interface ContentSignalBackfillSummary {
   samples: Partial<Record<ContentSignal, string[]>>;
 }
 
-/**
- * AI content-processing intent. Provider, model, and endpoint are legacy
- * device-local fields retained only for backward-compatible document reads.
- */
+/** Synchronized AI content-processing intent. */
 export interface AIPreferences {
-  /** @deprecated Device-local. Use the device AI preference store. */
-  provider?: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
-
-  /** @deprecated Device-local. Use the device AI preference store. */
-  model?: string;
-
-  /** @deprecated Device-local. Use the device AI endpoint preference. */
-  ollamaUrl?: string;
-
   /** Summarize articles as they are cached (may incur API costs with frontier providers) */
   autoSummarize: boolean;
 
@@ -259,7 +247,6 @@ export interface AIPreferences {
 
 export type StoryWallLayoutPreset = "mosaic" | "timeline" | "magazine" | "map_year" | "filmstrip";
 export type StoryWallPublishProvider = "none" | "github_pages";
-export type StoryWallPublishStatus = "idle" | "queued" | "publishing" | "published" | "error";
 export type StoryWallVisibilityDefault = "private_review" | "public";
 export type StoryWallMotionLevel = "none" | "light" | "full";
 
@@ -280,10 +267,6 @@ export interface StoryWallPublishTarget {
   directory: string;
   pagesUrl?: string;
   lastPublishedAt?: number;
-  /** @deprecated Transient publish errors stay local to the publishing device. */
-  lastError?: string;
-  /** @deprecated Transient publish progress stays local to the publishing device. */
-  status?: StoryWallPublishStatus;
 }
 
 export interface StoryWallPreferences {
@@ -341,9 +324,7 @@ export interface FriendSuggestionPreferences {
 export type LocalAIModelId =
   | "integrated-light"
   | "integrated-balanced"
-  | "integrated-pro"
-  /** @deprecated Legacy single-pack id migrated to integrated-balanced. */
-  | "integrated-local-ai";
+  | "integrated-pro";
 
 export type LocalAIPackTier = "light" | "balanced" | "pro";
 
@@ -623,9 +604,6 @@ export interface XCapturePreferences {
  * Facebook capture preferences
  */
 export interface FacebookCapturePreferences {
-  /** @deprecated Device-local Facebook group discovery cache. */
-  knownGroups?: Record<string, FbGroupInfo>;
-
   /** Groups to hide from future captures */
   excludedGroupIds: Record<string, true>;
 }
@@ -649,18 +627,6 @@ export interface RssFeed {
 
   /** Last successful fetch timestamp */
   lastFetched?: number;
-
-  /** @deprecated Device-local RSS scheduler state. */
-  lastFetchAttemptedAt?: number;
-
-  /** @deprecated Device-local RSS scheduler state. */
-  nextFetchAfter?: number;
-
-  /** @deprecated Device-local RSS scheduler state. */
-  consecutiveFailures?: number;
-
-  /** @deprecated Device-local RSS diagnostics state. */
-  lastFetchError?: string;
 
   /** Feed image URL */
   imageUrl?: string;
@@ -762,8 +728,6 @@ export interface ReadingEnhancements {
    */
   showReadInGrayscale: boolean;
 
-  /** @deprecated Device-local. Use the device display preference store. */
-  dualColumnMode?: boolean;
 }
 
 export type SidebarMode = "expanded" | "compact" | "closed";
@@ -771,9 +735,6 @@ export type FeedSignalMode = "all" | "inspiring" | "events" | "personal" | "conv
 export type SavedContentSortMode = "date_saved" | "date_published" | "recommended" | "shortest_read";
 
 export interface DisplayPreferences {
-  /** Active visual theme */
-  themeId: ThemeId;
-
   /** Show engagement counts (default: false - opt-in only) */
   showEngagementCounts: boolean;
 
@@ -782,39 +743,6 @@ export interface DisplayPreferences {
 
   /** Reading enhancements */
   reading: ReadingEnhancements;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  sidebarWidth?: number;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  sidebarMode?: SidebarMode;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  friendsSidebarWidth?: number;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  friendsSidebarOpen?: boolean;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  friendsMode?: MapMode;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  debugPanelWidth?: number;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  mapMode?: MapMode;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  mapTimeMode?: MapTimeMode;
-
-  /** @deprecated Device-local legacy single-select filter. */
-  feedSignalMode?: FeedSignalMode;
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  feedSignalModes?: FeedSignalMode[];
-
-  /** @deprecated Device-local. Use the device display preference store. */
-  savedContentSortMode?: SavedContentSortMode;
 
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
@@ -864,11 +792,8 @@ export type AccountDiscoveredFrom =
 
 export type FollowRosterRole = "follower" | "following" | "subscription";
 
-/**
- * Legacy social-profile shape preserved only for migration from the old
- * Friend document model.
- */
-export interface LegacyFriendSource {
+/** Social-profile projection attached to a bounded Friend view model. */
+export interface FriendSource {
   platform: Platform;
   authorId: string;
   handle?: string;
@@ -877,11 +802,8 @@ export interface LegacyFriendSource {
   profileUrl?: string;
 }
 
-/**
- * Legacy contact shape preserved only for migration from the old Friend
- * document model.
- */
-export interface LegacyDeviceContact {
+/** Contact projection attached to a bounded Friend view model. */
+export interface DeviceContact {
   importedFrom: "macos" | "ios" | "android" | "web" | "google";
   name: string;
   phone?: string;
@@ -889,23 +811,6 @@ export interface LegacyDeviceContact {
   address?: string;
   nativeId?: string;
   importedAt: number;
-}
-
-/** Historical Friend row retained only for deterministic Library import. */
-export interface LegacyFriend {
-  id: string;
-  name: string;
-  avatarUrl?: string;
-  bio?: string;
-  sources: LegacyFriendSource[];
-  contact?: LegacyDeviceContact;
-  careLevel: 1 | 2 | 3 | 4 | 5;
-  reachOutIntervalDays?: number;
-  reachOutLog?: ReachOutLog[];
-  tags?: string[];
-  notes?: string;
-  createdAt: number;
-  updatedAt: number;
 }
 
 /**
@@ -936,14 +841,6 @@ export interface Person {
   reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphX?: number;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphY?: number;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphPinned?: boolean;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphUpdatedAt?: number;
   /** Internal marker for generated sample data. */
   sampleDataFingerprint?: SampleDataFingerprint;
   createdAt: number;
@@ -977,31 +874,17 @@ export interface Account {
   followRosterSyncedAt?: number;
   /** Provider relationship directions observed across partial roster captures. */
   followRosterRoles?: FollowRosterRole[];
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphX?: number;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphY?: number;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphPinned?: boolean;
-  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
-  graphUpdatedAt?: number;
   /** Internal marker for generated sample data. */
   sampleDataFingerprint?: SampleDataFingerprint;
   createdAt: number;
   updatedAt: number;
 }
 
-/** @deprecated Use Person plus Account queries. */
+/** Bounded selected-Friend view model assembled from Person and Account rows. */
 export type Friend = Person & {
-  sources: LegacyFriendSource[];
-  contact?: LegacyDeviceContact;
+  sources: FriendSource[];
+  contact?: DeviceContact;
 };
-
-/** @deprecated Use Account. */
-export type FriendSource = LegacyFriendSource;
-
-/** @deprecated Use contact Accounts instead. */
-export type DeviceContact = LegacyDeviceContact;
 
 // =============================================================================
 // Library client registration
@@ -1046,7 +929,6 @@ export function createDefaultPreferences(): UserPreferences {
       },
     },
     display: {
-      themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
       animationIntensity: "detailed",
       reading: {

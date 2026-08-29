@@ -60,7 +60,6 @@ const preferences: StoryWallPreferences = {
     repoName: "freed-story-wall",
     branch: "main",
     directory: "docs",
-    status: "idle",
   },
   featuredItemIds: ["instagram:one"],
   hiddenItemIds: ["facebook:hidden"],

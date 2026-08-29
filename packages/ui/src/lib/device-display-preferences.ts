@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 import type {
-  DisplayPreferences,
   FeedSignalMode,
   MapMode,
   MapTimeMode,
@@ -205,26 +204,38 @@ export function clearDeviceDisplayPreferences(): boolean {
   return true;
 }
 
-export function migrateLegacyDeviceDisplayPreferences(display: DisplayPreferences): boolean {
+export function migrateLegacyDeviceDisplayPreferences(value: unknown): boolean {
   if (readStoredPreferences().status !== "missing") return false;
+  const display = isRecord(value) ? value : {};
+  const reading = isRecord(display.reading) ? display.reading : {};
 
   const legacyModes = Array.isArray(display.feedSignalModes)
-    ? display.feedSignalModes
-    : display.feedSignalMode && display.feedSignalMode !== "all"
+    ? display.feedSignalModes.filter(isFeedSignalMode)
+    : isFeedSignalMode(display.feedSignalMode) && display.feedSignalMode !== "all"
       ? [display.feedSignalMode]
       : [];
   const migrated = normalizeDeviceDisplayPreferences({
-    sidebarWidth: display.sidebarWidth,
-    sidebarMode: display.sidebarMode,
-    friendsSidebarWidth: display.friendsSidebarWidth,
-    friendsSidebarOpen: display.friendsSidebarOpen,
-    friendsMode: display.friendsMode,
-    debugPanelWidth: display.debugPanelWidth,
-    mapMode: display.mapMode,
-    mapTimeMode: display.mapTimeMode,
+    sidebarWidth: typeof display.sidebarWidth === "number" ? display.sidebarWidth : undefined,
+    sidebarMode: isSidebarMode(display.sidebarMode) ? display.sidebarMode : undefined,
+    friendsSidebarWidth: typeof display.friendsSidebarWidth === "number"
+      ? display.friendsSidebarWidth
+      : undefined,
+    friendsSidebarOpen: typeof display.friendsSidebarOpen === "boolean"
+      ? display.friendsSidebarOpen
+      : undefined,
+    friendsMode: isMapMode(display.friendsMode) ? display.friendsMode : undefined,
+    debugPanelWidth: typeof display.debugPanelWidth === "number"
+      ? display.debugPanelWidth
+      : undefined,
+    mapMode: isMapMode(display.mapMode) ? display.mapMode : undefined,
+    mapTimeMode: isMapTimeMode(display.mapTimeMode) ? display.mapTimeMode : undefined,
     feedSignalModes: legacyModes,
-    savedContentSortMode: display.savedContentSortMode,
-    dualColumnMode: display.reading.dualColumnMode,
+    savedContentSortMode: isSavedContentSortMode(display.savedContentSortMode)
+      ? display.savedContentSortMode
+      : undefined,
+    dualColumnMode: typeof reading.dualColumnMode === "boolean"
+      ? reading.dualColumnMode
+      : undefined,
   });
   if (!persistPreferences(migrated)) return false;
   current = migrated;

@@ -21,18 +21,11 @@ import type {
 } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
+  assertSupportedUserPreferenceWrite,
   createDefaultPreferences,
-  getDeviceLocalPreferenceUpdates,
-  stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
-import {
-  migrateLegacyDeviceAIPreferences,
-  setDeviceAIPreferences,
-} from "@freed/ui/lib/device-ai-preferences";
-import {
-  migrateLegacyDeviceDisplayPreferences,
-  setDeviceDisplayPreferences,
-} from "@freed/ui/lib/device-display-preferences";
+import { migrateLegacyDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
+import { migrateLegacyDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
@@ -317,7 +310,6 @@ interface AppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  selectedFriendId: string | null;
   setVisibleFeedTotalCount: (totalCount: number) => void;
 
   // Initialization
@@ -372,7 +364,6 @@ interface AppState {
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
   setSelectedAccount: (id: string | null) => void;
-  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setProviderSyncing: (provider: SyncProviderId, syncing: boolean) => void;
@@ -467,14 +458,11 @@ function mergeFacebookCapturePreferenceUpdate(
   current: UserPreferences["fbCapture"],
   update: Partial<UserPreferences["fbCapture"]>,
 ): UserPreferences["fbCapture"] {
-  const next: UserPreferences["fbCapture"] = {
+  return {
     excludedGroupIds: update.excludedGroupIds
       ? { ...update.excludedGroupIds }
       : { ...current.excludedGroupIds },
   };
-  const knownGroups = update.knownGroups ?? current.knownGroups;
-  if (knownGroups) next.knownGroups = { ...knownGroups };
-  return next;
 }
 
 function optimisticMutationTestFailure(source: string): Error | null {
@@ -684,7 +672,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedItemId: null,
   selectedPersonId: null,
   selectedAccountId: null,
-  selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
@@ -725,16 +712,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         // includes the active Library Core runtime, so it cannot be a baseline.
         recordLibraryRuntimeReady();
         assertDesktopStoreWritable();
-        migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display);
-        migrateLegacyThemePreference(runtimeState.preferences.display.themeId);
-        migrateLegacyDeviceAIPreferences(runtimeState.preferences.ai);
+        migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display as unknown);
+        migrateLegacyThemePreference(runtimeState.preferences.display as unknown);
+        migrateLegacyDeviceAIPreferences(runtimeState.preferences.ai as unknown);
         await migrateLegacyDeviceGraphLayoutToSqlite({
           mutate: mutateNormalizedDeviceGraphLayout,
           query: queryNormalizedLibrary,
         });
-        migrateLegacyFacebookGroupDiscovery(
-          runtimeState.preferences.fbCapture?.knownGroups,
-        );
+        migrateLegacyFacebookGroupDiscovery(runtimeState.preferences.fbCapture as unknown);
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on
         // count maps to avoid spurious selector re-renders.
@@ -1053,14 +1038,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Preference actions
   updatePreferences: async (update) => {
     assertDesktopStoreWritable();
-    const localUpdate = getDeviceLocalPreferenceUpdates(update);
-    if (localUpdate.display && !setDeviceDisplayPreferences(localUpdate.display)) {
-      throw new Error("Freed could not save the display settings on this device.");
-    }
-    if (localUpdate.ai && !setDeviceAIPreferences(localUpdate.ai)) {
-      throw new Error("Freed could not save the AI settings on this device.");
-    }
-    const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
+    const syncedUpdate = assertSupportedUserPreferenceWrite(update);
     if (Object.keys(syncedUpdate).length === 0) return;
     const currentPreferences = get().preferences;
     const nextPreferences = mergePreferenceUpdate(currentPreferences, syncedUpdate);
@@ -1070,7 +1048,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         syncedUpdate.fbCapture,
       );
     }
-
     try {
       set({ preferences: nextPreferences });
       await runStoreMutation(
@@ -1110,9 +1087,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
-  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id, selectedFriendId: null }),
-  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
+  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null }),
+  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setProviderSyncing: (provider, syncing) =>
@@ -1133,7 +1109,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeView: "map",
       selectedPersonId: personId,
       selectedAccountId: null,
-      selectedFriendId: personId,
       selectedItemId: null,
     }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),

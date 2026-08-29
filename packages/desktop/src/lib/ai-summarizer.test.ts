@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AIPreferences } from "@freed/shared";
+import type { DeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 
 const recordAiRequestAttempt = vi.hoisted(() => vi.fn());
 
@@ -7,9 +8,10 @@ vi.mock("./runtime-health-events", () => ({ recordAiRequestAttempt }));
 
 import { summarize } from "./ai-summarizer.js";
 
-const OPENAI_PREFS: AIPreferences = {
+const OPENAI_PREFS: AIPreferences & DeviceAIPreferences = {
   provider: "openai",
   model: "gpt-4o-mini",
+  ollamaUrl: "http://localhost:11434",
   autoSummarize: true,
   extractTopics: true,
 };

@@ -4,7 +4,7 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
-import { stripDeviceLocalPreferenceUpdates } from "../preferences.js";
+import { sanitizeUserPreferenceWrite } from "../sync-write-policy.js";
 import {
   sanitizeAccountWrite,
   sanitizeFeedItemWrite,
@@ -1243,7 +1243,7 @@ function validatePreferencesLeafAssignmentPayload(
     ) {
       return invalid("updates exceed normalized preference node bounds");
     }
-    const synchronized = stripDeviceLocalPreferenceUpdates(
+    const synchronized = sanitizeUserPreferenceWrite(
       updates as Partial<UserPreferences>,
     ) as unknown as LibraryCoreCanonicalValue;
     const synchronizedBytes = encodeLibraryCoreCanonicalValue(synchronized, {
@@ -1253,7 +1253,7 @@ function validatePreferencesLeafAssignmentPayload(
       synchronizedBytes.byteLength !== encoded.byteLength ||
       synchronizedBytes.some((byte, index) => byte !== encoded[index])
     ) {
-      return invalid("updates contain device-local or compatibility fields");
+      return invalid("updates contain unsupported fields");
     }
     return {
       ok: true,

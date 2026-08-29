@@ -62,8 +62,8 @@ vi.mock("@freed/ui/lib/bug-report", () => ({
 
 function makeLibraryState() {
   const preferences = createDefaultPreferences();
-  preferences.display.sidebarMode = "closed";
-  preferences.ai.provider = "ollama";
+  (preferences.display as unknown as Record<string, unknown>).sidebarMode = "closed";
+  (preferences.ai as unknown as Record<string, unknown>).provider = "ollama";
   return {
     searchCorpusVersion: 0,
     preferences,

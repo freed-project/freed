@@ -17,6 +17,7 @@
  */
 
 import type { AIPreferences } from "@freed/shared";
+import type { DeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { recordAiRequestAttempt } from "./runtime-health-events";
 
 export interface AISummary {
@@ -169,7 +170,7 @@ function parseAISummary(raw: string): AISummary | null {
  */
 export async function summarize(
   text: string,
-  prefs: AIPreferences,
+  prefs: AIPreferences & DeviceAIPreferences,
   apiKey?: string | null,
   options: SummarizeOptions = {},
 ): Promise<AISummary | null> {

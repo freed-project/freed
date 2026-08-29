@@ -66,7 +66,6 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
           activeView: nextState.activeView,
           activeFilter: nextState.activeFilter,
           selectedItemId: nextState.selectedItemId,
-          selectedFriendId: null,
         });
       } else if (event.code === "BracketRight" || event.key === "]") {
         if (historyIndexRef.current >= historyStackRef.current.length - 1) return;
@@ -78,7 +77,6 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
           activeView: nextState.activeView,
           activeFilter: nextState.activeFilter,
           selectedItemId: nextState.selectedItemId,
-          selectedFriendId: null,
         });
       }
     };

@@ -260,7 +260,7 @@ describe("store startup migrations", () => {
 
   it("imports the legacy sidebar mode before initialization completes", async () => {
     const state = createLibraryState();
-    state.preferences.display.sidebarMode = "closed";
+    (state.preferences.display as unknown as Record<string, unknown>).sidebarMode = "closed";
     mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
@@ -272,20 +272,21 @@ describe("store startup migrations", () => {
 
   it("imports legacy Facebook group discovery before initialization completes", async () => {
     const state = createLibraryState();
-    state.preferences.fbCapture.knownGroups = {
+    const historicalGroups = {
       "group-one": {
         id: "group-one",
         name: "Local group",
         url: "https://www.facebook.com/groups/group-one",
       },
     };
+    (state.preferences.fbCapture as unknown as Record<string, unknown>).knownGroups = historicalGroups;
     mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
 
     expect(useAppStore.getState().isInitialized).toBe(true);
-    expect(getFacebookGroupDiscovery()).toEqual(state.preferences.fbCapture.knownGroups);
+    expect(getFacebookGroupDiscovery()).toEqual(historicalGroups);
   });
 
   it("coalesces concurrent initialization into one worker subscription", async () => {

@@ -6194,9 +6194,9 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
 
   await page.evaluate(() => {
     const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { setSelectedFriend: (id: string) => void };
+      getState: () => { setSelectedPerson: (id: string) => void };
     };
-    store.getState().setSelectedFriend("friend-ada");
+    store.getState().setSelectedPerson("friend-ada");
   });
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? 0;

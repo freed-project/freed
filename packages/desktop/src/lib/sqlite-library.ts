@@ -10,7 +10,7 @@ import {
   sanitizePersonRootWrite,
   sanitizeReachOutLogWrite,
   sanitizeRssFeedWrite,
-  stripDeviceLocalPreferenceUpdates,
+  assertSupportedUserPreferenceWrite,
   type Account,
   type FeedItem,
   type Highlight,
@@ -1493,7 +1493,7 @@ async function maybeSubmitPreferences(
 ): Promise<boolean> {
   const context = await mutationContext();
   if (!context) return false;
-  const synchronized = stripDeviceLocalPreferenceUpdates(updates);
+  const synchronized = assertSupportedUserPreferenceWrite(updates);
   if (Object.keys(synchronized).length === 0) return true;
   const transactionId =
     `desktop-library-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;

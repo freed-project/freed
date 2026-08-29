@@ -131,8 +131,6 @@ export interface BaseAppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  /** @deprecated Use selectedPersonId. */
-  selectedFriendId: string | null;
   /** Publish only the exact count for the current bounded feed query. */
   setVisibleFeedTotalCount: (totalCount: number) => void;
 
@@ -156,7 +154,7 @@ export interface BaseAppState {
   archiveItems: (ids: string[]) => Promise<void>;
   /** Archive all read, non-saved items in the current view. */
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
-  /** Repair legacy states where saved items are also marked archived. */
+  /** Restore the invariant that saved items remain outside the archive. */
   unarchiveSavedItems: () => Promise<void>;
   /** Immediately delete ALL archived, non-saved items regardless of age. */
   deleteAllArchived: () => Promise<void>;
@@ -188,8 +186,6 @@ export interface BaseAppState {
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
   setSelectedAccount: (id: string | null) => void;
-  /** @deprecated Use setSelectedPerson. */
-  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;

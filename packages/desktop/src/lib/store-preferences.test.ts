@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
-import {
-  DEVICE_AI_PREFERENCES_STORAGE_KEY,
-  resetDeviceAIPreferencesForTests,
-} from "@freed/ui/lib/device-ai-preferences";
-import {
-  DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY,
-  resetDeviceDisplayPreferencesForTests,
-} from "@freed/ui/lib/device-display-preferences";
 
 const {
   mockUpdateLibraryPreferences,
@@ -64,52 +56,30 @@ import { useAppStore } from "./store";
 describe("store.updatePreferences", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    resetDeviceDisplayPreferencesForTests();
-    resetDeviceAIPreferencesForTests();
     mockUpdateLibraryPreferences.mockReset();
     mockRecordRuntimeError.mockReset();
     mockRecordBugReportEvent.mockReset();
     useAppStore.setState({ preferences: createDefaultPreferences() });
   });
 
-  it("does not send device-local display preferences to synchronized Library state", async () => {
-    await useAppStore.getState().updatePreferences({
+  it("rejects installation-local fields at the synchronized mutation boundary", async () => {
+    await expect(useAppStore.getState().updatePreferences({
       display: {
         reading: {
           dualColumnMode: false,
         },
       },
-    } as never);
+    } as never)).rejects.toThrow("unsupported fields");
 
-    expect(useAppStore.getState().preferences.display.reading.dualColumnMode).toBeUndefined();
     expect(mockUpdateLibraryPreferences).not.toHaveBeenCalled();
-    expect(JSON.parse(window.localStorage.getItem("freed-device-display-preferences-v1") ?? "null"))
-      .toMatchObject({ values: { dualColumnMode: false } });
-  });
-
-  it("rejects device-local preference writes when a newer record owns the key", async () => {
-    const futureDisplay = JSON.stringify({ version: 2, values: { sidebarMode: "closed" } });
-    window.localStorage.setItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY, futureDisplay);
-    resetDeviceDisplayPreferencesForTests();
-
     await expect(useAppStore.getState().updatePreferences({
       display: { sidebarMode: "compact" },
-    } as never)).rejects.toThrow("could not save the display settings");
-
-    expect(mockUpdateLibraryPreferences).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY)).toBe(futureDisplay);
-
-    window.localStorage.removeItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY);
-    const futureAI = JSON.stringify({ version: 2, values: { provider: "future" } });
-    window.localStorage.setItem(DEVICE_AI_PREFERENCES_STORAGE_KEY, futureAI);
-    resetDeviceAIPreferencesForTests();
-
+    } as never)).rejects.toThrow("unsupported fields");
     await expect(useAppStore.getState().updatePreferences({
       ai: { provider: "integrated" },
-    } as never)).rejects.toThrow("could not save the AI settings");
+    } as never)).rejects.toThrow("unsupported fields");
 
     expect(mockUpdateLibraryPreferences).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem(DEVICE_AI_PREFERENCES_STORAGE_KEY)).toBe(futureAI);
   });
 
   it("defaults animations to detailed", () => {
@@ -134,7 +104,6 @@ describe("store.updatePreferences", () => {
       activeView: "friends",
       selectedPersonId: null,
       selectedAccountId: "account-ada",
-      selectedFriendId: null,
       selectedItemId: "ig:ada:paris",
     });
 
@@ -144,7 +113,6 @@ describe("store.updatePreferences", () => {
       activeView: "map",
       selectedPersonId: "friend-ada",
       selectedAccountId: null,
-      selectedFriendId: "friend-ada",
       selectedItemId: null,
     });
   });
@@ -173,44 +141,49 @@ describe("store.updatePreferences", () => {
     expect(useAppStore.getState().preferences.display.showEngagementCounts).toBe(false);
   });
 
-  it("ignores legacy map display updates", async () => {
+  it("rejects historical map display updates", async () => {
     await expect(
       useAppStore.getState().updatePreferences({
         display: { mapMode: "all_content" },
       } as never),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("unsupported fields");
 
     expect(mockUpdateLibraryPreferences).not.toHaveBeenCalled();
   });
 
-  it("ignores legacy map time updates", async () => {
+  it("rejects historical map time updates", async () => {
     await expect(
       useAppStore.getState().updatePreferences({
         display: { mapTimeMode: "future" },
       } as never),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("unsupported fields");
 
     expect(mockUpdateLibraryPreferences).not.toHaveBeenCalled();
   });
 
-  it("replaces Facebook exclusions without synchronizing local group discovery", async () => {
+  it("updates Facebook exclusions only through the final synchronized shape", async () => {
     useAppStore.setState((state) => ({
       preferences: {
         ...state.preferences,
         fbCapture: {
-          knownGroups: {
-            one: {
-              id: "one",
-              name: "One",
-              url: "https://facebook.com/groups/one",
-            },
-          },
           excludedGroupIds: {
             one: true,
           },
         },
       },
     }));
+
+    await expect(useAppStore.getState().updatePreferences({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "One",
+            url: "https://facebook.com/groups/one",
+          },
+        },
+      },
+    } as never)).rejects.toThrow("unsupported fields");
 
     let resolvePersistence: (() => void) | undefined;
     mockUpdateLibraryPreferences.mockImplementationOnce(
@@ -221,25 +194,11 @@ describe("store.updatePreferences", () => {
 
     const updatePromise = useAppStore.getState().updatePreferences({
       fbCapture: {
-        knownGroups: {
-          one: {
-            id: "one",
-            name: "One",
-            url: "https://facebook.com/groups/one",
-          },
-        },
         excludedGroupIds: {},
       },
     } as never);
 
     expect(useAppStore.getState().preferences.fbCapture.excludedGroupIds).toEqual({});
-    expect(useAppStore.getState().preferences.fbCapture.knownGroups).toEqual({
-      one: {
-        id: "one",
-        name: "One",
-        url: "https://facebook.com/groups/one",
-      },
-    });
     expect(mockUpdateLibraryPreferences).toHaveBeenCalledWith({
       fbCapture: {
         excludedGroupIds: {},

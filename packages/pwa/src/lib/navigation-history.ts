@@ -49,7 +49,6 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
       activeView: parsed.activeView,
       activeFilter: parsed.activeFilter,
       selectedItemId: parsed.selectedItemId,
-      selectedFriendId: null,
     });
     window.history.replaceState(window.history.state, "", serializeNavigationState(parsed));
     bootstrappedRef.current = true;
@@ -65,7 +64,6 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
         activeView: parsed.activeView,
         activeFilter: parsed.activeFilter,
         selectedItemId: parsed.selectedItemId,
-        selectedFriendId: null,
       });
     };
 

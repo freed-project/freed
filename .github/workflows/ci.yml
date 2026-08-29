@@ -314,6 +314,11 @@ jobs:
           else
             echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
           fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^pwa WebKit OPFS durability$'; then
+            echo "needs_webkit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_webkit=false" >> "$GITHUB_OUTPUT"
+          fi
           if printf '%s\n' "$PLAN_LABELS" | grep -q '^native rust '; then
             echo "needs_native=true" >> "$GITHUB_OUTPUT"
           else
@@ -349,9 +354,16 @@ jobs:
             libxdo-dev
 
       - name: Install Playwright browsers
-        if: steps.feature-plan.outputs.needs_playwright == 'true'
+        if: steps.feature-plan.outputs.needs_playwright == 'true' || steps.feature-plan.outputs.needs_webkit == 'true'
         run: |
-          npx playwright install --with-deps chromium
+          browsers=()
+          if [ "${{ steps.feature-plan.outputs.needs_playwright }}" = "true" ]; then
+            browsers+=(chromium)
+          fi
+          if [ "${{ steps.feature-plan.outputs.needs_webkit }}" = "true" ]; then
+            browsers+=(webkit)
+          fi
+          npx playwright install --with-deps "${browsers[@]}"
         working-directory: packages/desktop
 
       - name: Run feature validation
@@ -457,7 +469,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
         working-directory: packages/desktop
 
       - name: Run dev validation

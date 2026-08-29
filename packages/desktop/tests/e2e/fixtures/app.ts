@@ -247,7 +247,7 @@ export class AppFixture {
       const store = w.__FREED_STORE__ as {
         getState: () => {
           setActiveView: (view: string) => void;
-          setSelectedFriend: (id: string | null) => void;
+          setSelectedPerson: (id: string | null) => void;
         };
       };
 

@@ -2095,7 +2095,7 @@ export function FriendsView({
                   accountId,
                   activityCount: 0,
                   avatarUrl: account.avatarUrl ?? null,
-                  graphPinned: account.graphPinned,
+                  graphPinned: false,
                   id: target.nodeId,
                   initials: "",
                   kind: "account",
@@ -2116,7 +2116,7 @@ export function FriendsView({
                   activityCount: 0,
                   avatarUrl: person.avatarUrl ?? null,
                   careLevel: person.careLevel,
-                  graphPinned: person.graphPinned,
+                  graphPinned: false,
                   id: target.nodeId,
                   initials: "",
                   kind:

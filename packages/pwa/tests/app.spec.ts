@@ -151,7 +151,7 @@ async function seedFriendLocation(
     const store = w.__FREED_STORE__ as {
       getState: () => {
         setActiveView: (view: string) => void;
-        setSelectedFriend: (id: string | null) => void;
+        setSelectedPerson: (id: string | null) => void;
       };
     };
 
@@ -213,7 +213,7 @@ async function seedFriendLocation(
 
     const state = store.getState();
     state.setActiveView("friends");
-    state.setSelectedFriend("friend-ada");
+    state.setSelectedPerson("friend-ada");
   });
 }
 
@@ -231,7 +231,7 @@ async function seedFriendFeedLens(
     const store = w.__FREED_STORE__ as {
       getState: () => {
         setActiveView: (view: string) => void;
-        setSelectedFriend: (id: string | null) => void;
+        setSelectedPerson: (id: string | null) => void;
         setSelectedItem: (id: string | null) => void;
       };
     };
@@ -313,7 +313,7 @@ async function seedFriendFeedLens(
 
     const state = store.getState();
     state.setActiveView("feed");
-    state.setSelectedFriend(null);
+    state.setSelectedPerson(null);
     state.setSelectedItem(null);
   });
 }

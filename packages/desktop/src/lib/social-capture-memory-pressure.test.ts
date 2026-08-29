@@ -1081,10 +1081,12 @@ describe("social capture memory pressure gate", () => {
     };
     const discovery = await import("./facebook-group-discovery");
     discovery.migrateLegacyFacebookGroupDiscovery({
-      "group-one": {
-        id: "group-one",
-        name: "group-one",
-        url: "https://www.facebook.com/groups/group-one",
+      knownGroups: {
+        "group-one": {
+          id: "group-one",
+          name: "group-one",
+          url: "https://www.facebook.com/groups/group-one",
+        },
       },
     });
     mocks.storeState.updatePreferences.mockClear();

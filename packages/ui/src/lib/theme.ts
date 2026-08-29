@@ -277,13 +277,18 @@ export function setThemePreference(themeId: ThemeId): boolean {
   return true;
 }
 
-export function migrateLegacyThemePreference(themeId: ThemeId): boolean {
+export function migrateLegacyThemePreference(value: unknown): boolean {
   if (typeof window === "undefined") return false;
   if (
     window.localStorage.getItem(THEME_STORAGE_KEY) !== null
     || window.localStorage.getItem(THEME_LEGACY_MIGRATION_KEY) === "complete"
   ) return false;
-  const migratedThemeId = resolveThemeId(themeId);
+  const historicalTheme = typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>).themeId
+    : value;
+  const migratedThemeId = resolveThemeId(
+    typeof historicalTheme === "string" ? historicalTheme : undefined,
+  );
   if (!setThemePreference(migratedThemeId)) return false;
   window.localStorage.setItem(THEME_LEGACY_MIGRATION_KEY, "complete");
   applyThemeToDocument(migratedThemeId);

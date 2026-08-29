@@ -9,10 +9,14 @@ import {
 const STORAGE_KEY = "freed-device-rss-runtime-v1";
 const MAX_TRACKED_FEEDS = 10_000;
 
-export type RssRuntimeState = Pick<
-  RssFeed,
-  "lastFetchAttemptedAt" | "nextFetchAfter" | "consecutiveFailures" | "lastFetchError"
->;
+export interface RssRuntimeState {
+  lastFetchAttemptedAt?: number;
+  nextFetchAfter?: number;
+  consecutiveFailures?: number;
+  lastFetchError?: string;
+}
+
+export type RuntimeRssFeed = RssFeed & RssRuntimeState;
 
 type StoredRssRuntimeState = Record<string, RssRuntimeState>;
 
@@ -35,13 +39,13 @@ let storageStatus: VersionedLocalStorageRead<StoredRssRuntimeState>["status"] = 
 
 const BLOCK_SCHEDULED_PULLS_UNTIL = Number.MAX_SAFE_INTEGER;
 
-function withoutLegacySyncedRuntimeState(feed: RssFeed): RssFeed {
-  const clean = { ...feed };
+function withoutHistoricalSyncedRuntimeState(feed: RssFeed): RssFeed {
+  const clean = { ...feed } as Record<string, unknown>;
   delete clean.lastFetchAttemptedAt;
   delete clean.nextFetchAfter;
   delete clean.consecutiveFailures;
   delete clean.lastFetchError;
-  return clean;
+  return clean as unknown as RssFeed;
 }
 
 function normalizeRuntimeState(value: unknown): RssRuntimeState | null {
@@ -122,7 +126,7 @@ function storageRequiresScheduledPullBlock(): boolean {
     || storageStatus === "unavailable";
 }
 
-function legacyRuntimeState(feed: RssFeed): RssRuntimeState | null {
+function historicalRuntimeState(feed: unknown): RssRuntimeState | null {
   const migrated = normalizeRuntimeState(feed);
   return migrated && Object.keys(migrated).length > 0 ? migrated : null;
 }
@@ -142,10 +146,10 @@ function migrateLegacyRuntimeStates(feeds: readonly RssFeed[]): StoredRssRuntime
   for (const feed of feeds) {
     const activeState = next ?? state;
     if (Object.prototype.hasOwnProperty.call(activeState, feed.url)) continue;
-    const legacy = legacyRuntimeState(feed);
-    if (!legacy || trackedCount >= MAX_TRACKED_FEEDS) continue;
+    const historical = historicalRuntimeState(feed);
+    if (!historical || trackedCount >= MAX_TRACKED_FEEDS) continue;
     next ??= { ...state };
-    next[feed.url] = legacy;
+    next[feed.url] = historical;
     trackedCount += 1;
   }
 
@@ -157,9 +161,9 @@ function overlayRuntimeState(
   feed: RssFeed,
   state: RssRuntimeState,
   untrackedAtCapacity: boolean,
-): RssFeed {
+): RuntimeRssFeed {
   return {
-    ...withoutLegacySyncedRuntimeState(feed),
+    ...withoutHistoricalSyncedRuntimeState(feed),
     ...state,
     ...(storageRequiresScheduledPullBlock() || untrackedAtCapacity
       ? { nextFetchAfter: BLOCK_SCHEDULED_PULLS_UNTIL }
@@ -183,7 +187,7 @@ export function setRssRuntimeState(url: string, update: RssRuntimeState): void {
   if (writeAll(next)) current = next;
 }
 
-export function withRssRuntimeState(feed: RssFeed): RssFeed {
+export function withRssRuntimeState(feed: RssFeed): RuntimeRssFeed {
   const state = migrateLegacyRuntimeStates([feed]);
   const untrackedAtCapacity = Object.keys(state).length >= MAX_TRACKED_FEEDS
     && !Object.prototype.hasOwnProperty.call(state, feed.url);
@@ -194,7 +198,7 @@ export function withRssRuntimeState(feed: RssFeed): RssFeed {
   );
 }
 
-export function withRssRuntimeStates(feeds: RssFeed[]): RssFeed[] {
+export function withRssRuntimeStates(feeds: RssFeed[]): RuntimeRssFeed[] {
   const state = migrateLegacyRuntimeStates(feeds);
   const atCapacity = Object.keys(state).length >= MAX_TRACKED_FEEDS;
   return feeds.map((feed) => overlayRuntimeState(

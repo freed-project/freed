@@ -672,7 +672,7 @@ export function Sidebar({
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
-  const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const [sidebarSearchInput, setSidebarSearchInput] = useState(searchQuery);
@@ -1076,14 +1076,14 @@ export function Sidebar({
     navigateToFeedView(
       {
         setActiveView,
-        setSelectedPerson: setSelectedFriend,
+        setSelectedPerson,
         setSelectedItem,
         setFilter,
       },
       filter,
     );
     onMobileClose();
-  }, [onMobileClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
+  }, [onMobileClose, setActiveView, setFilter, setSelectedItem, setSelectedPerson]);
 
   const handleSourceClick = (source: SourceNavigationItem) => {
     showFeed({ platform: source.id });
@@ -1536,7 +1536,7 @@ export function Sidebar({
                   active: activeView === "friends",
                   onClick: () => {
                     setActiveView("friends");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     onMobileClose();
                   },
@@ -1570,7 +1570,7 @@ export function Sidebar({
                   menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     onMobileClose();
                   }}
@@ -1591,7 +1591,7 @@ export function Sidebar({
                   active: activeView === "map",
                   onClick: () => {
                     setActiveView("map");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     setSearchQuery("");
                     onMobileClose();
@@ -1609,7 +1609,7 @@ export function Sidebar({
                   labelClass={sidebarLabelClass}
                   onClick={() => {
                     setActiveView("map");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     setSearchQuery("");
                     onMobileClose();
