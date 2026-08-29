@@ -42,11 +42,7 @@ import { LIBRARY_CORE_PREFERENCE_WRITE_POLICIES } from "./library-core/sqlite-co
  * their ownership is classified.
  */
 export type SyncWriteDisposition =
-  | "sync"
-  | "positive-sync"
-  | "derived-primary"
-  | "device-local"
-  | "nested";
+  "sync" | "positive-sync" | "derived-primary" | "device-local" | "nested";
 
 export type FieldPolicy = SyncWriteDisposition;
 
@@ -54,17 +50,23 @@ export type ExhaustiveSyncWritePolicy<T extends object> = {
   readonly [K in keyof T]-?: FieldPolicy;
 };
 
-export const WEIGHT_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
+export const WEIGHT_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
 
-export const ULYSSES_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ulysses satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
+export const ULYSSES_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ulysses satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
 
-export const READING_ENHANCEMENTS_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.reading satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
+export const READING_ENHANCEMENTS_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.reading satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
 
-export const DISPLAY_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.display satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
+export const DISPLAY_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.display satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
 
-export const X_ACCOUNT_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xAccount satisfies ExhaustiveSyncWritePolicy<XAccount>;
+export const X_ACCOUNT_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xAccount satisfies ExhaustiveSyncWritePolicy<XAccount>;
 
-export const X_CAPTURE_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xCapture satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
+export const X_CAPTURE_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xCapture satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
 
 export const FB_GROUP_INFO_WRITE_POLICY = {
   id: "sync",
@@ -72,19 +74,26 @@ export const FB_GROUP_INFO_WRITE_POLICY = {
   url: "sync",
 } as const satisfies ExhaustiveSyncWritePolicy<FbGroupInfo>;
 
-export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.facebookCapture satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
+export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.facebookCapture satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
 
-export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.friendSuggestions satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
+export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.friendSuggestions satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
 
-export const AI_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ai satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
+export const AI_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ai satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
 
-export const STORY_WALL_STYLE_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallStyle satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
+export const STORY_WALL_STYLE_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallStyle satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
 
-export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallPublishTarget satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
+export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallPublishTarget satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
 
-export const STORY_WALL_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWall satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
+export const STORY_WALL_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWall satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
 
-export const USER_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.user satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
+export const USER_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.user satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
 
 export const REACH_OUT_LOG_WRITE_POLICY = {
   loggedAt: "sync",
@@ -350,7 +359,10 @@ function sanitizeByPolicy<
 ): Partial<T> {
   const source = input as Record<string, unknown>;
   const result: Record<string, unknown> = {};
-  const nested = nestedSanitizers as Record<string, (value: unknown) => unknown>;
+  const nested = nestedSanitizers as Record<
+    string,
+    (value: unknown) => unknown
+  >;
 
   for (const key of Object.keys(policy)) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
@@ -403,14 +415,20 @@ function sanitizeNumberArray(value: unknown): number[] | undefined {
   return value.filter((entry): entry is number => typeof entry === "number");
 }
 
-function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+function sanitizeNumberRecord(
+  value: unknown,
+): Record<string, number> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"),
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
   );
 }
 
-function sanitizeStringArrayRecord(value: unknown): Record<string, string[]> | undefined {
+function sanitizeStringArrayRecord(
+  value: unknown,
+): Record<string, string[]> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, entry]) => {
@@ -423,7 +441,9 @@ function sanitizeStringArrayRecord(value: unknown): Record<string, string[]> | u
 function sanitizeTrueRecord(value: unknown): Record<string, true> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, true] => entry[1] === true),
+    Object.entries(value).filter(
+      (entry): entry is [string, true] => entry[1] === true,
+    ),
   );
 }
 
@@ -482,7 +502,8 @@ function sanitizeDisplayPreferencesWrite(
   updates: Partial<DisplayPreferences>,
 ): Partial<DisplayPreferences> {
   return sanitizeByPolicy(updates, DISPLAY_PREFERENCES_WRITE_POLICY, {
-    reading: (value) => sanitizeNestedObject(value, sanitizeReadingEnhancementsWrite),
+    reading: (value) =>
+      sanitizeNestedObject(value, sanitizeReadingEnhancementsWrite),
   });
 }
 
@@ -499,7 +520,9 @@ function sanitizeXCapturePreferencesWrite(
   });
 }
 
-function sanitizeFbGroupInfoWrite(updates: Partial<FbGroupInfo>): Partial<FbGroupInfo> {
+function sanitizeFbGroupInfoWrite(
+  updates: Partial<FbGroupInfo>,
+): Partial<FbGroupInfo> {
   return sanitizeByPolicy(updates, FB_GROUP_INFO_WRITE_POLICY, {});
 }
 
@@ -545,7 +568,8 @@ function sanitizeStoryWallPreferencesWrite(
     includedPlatforms: sanitizeStringArray,
     includedAccountIds: sanitizeStringArray,
     style: (value) => sanitizeNestedObject(value, sanitizeStoryWallStyleWrite),
-    publishTarget: (value) => sanitizeNestedObject(value, sanitizeStoryWallPublishTargetWrite),
+    publishTarget: (value) =>
+      sanitizeNestedObject(value, sanitizeStoryWallPublishTargetWrite),
     featuredItemIds: sanitizeStringArray,
     hiddenItemIds: sanitizeStringArray,
   });
@@ -555,18 +579,27 @@ export function sanitizeUserPreferenceWrite(
   updates: Partial<UserPreferences>,
 ): Partial<UserPreferences> {
   return sanitizeByPolicy(updates, USER_PREFERENCES_WRITE_POLICY, {
-    weights: (value) => sanitizeNestedObject(value, sanitizeWeightPreferencesWrite),
-    ulysses: (value) => sanitizeNestedObject(value, sanitizeUlyssesPreferencesWrite),
-    display: (value) => sanitizeNestedObject(value, sanitizeDisplayPreferencesWrite),
-    xCapture: (value) => sanitizeNestedObject(value, sanitizeXCapturePreferencesWrite),
-    fbCapture: (value) => sanitizeNestedObject(value, sanitizeFacebookCapturePreferencesWrite),
-    friendSuggestions: (value) => sanitizeNestedObject(value, sanitizeFriendSuggestionPreferencesWrite),
+    weights: (value) =>
+      sanitizeNestedObject(value, sanitizeWeightPreferencesWrite),
+    ulysses: (value) =>
+      sanitizeNestedObject(value, sanitizeUlyssesPreferencesWrite),
+    display: (value) =>
+      sanitizeNestedObject(value, sanitizeDisplayPreferencesWrite),
+    xCapture: (value) =>
+      sanitizeNestedObject(value, sanitizeXCapturePreferencesWrite),
+    fbCapture: (value) =>
+      sanitizeNestedObject(value, sanitizeFacebookCapturePreferencesWrite),
+    friendSuggestions: (value) =>
+      sanitizeNestedObject(value, sanitizeFriendSuggestionPreferencesWrite),
     ai: (value) => sanitizeNestedObject(value, sanitizeAIPreferencesWrite),
-    storyWall: (value) => sanitizeNestedObject(value, sanitizeStoryWallPreferencesWrite),
+    storyWall: (value) =>
+      sanitizeNestedObject(value, sanitizeStoryWallPreferencesWrite),
   });
 }
 
-export function sanitizeReachOutLogWrite(updates: Partial<ReachOutLog>): Partial<ReachOutLog> {
+export function sanitizeReachOutLogWrite(
+  updates: Partial<ReachOutLog>,
+): Partial<ReachOutLog> {
   return sanitizeByPolicy(updates, REACH_OUT_LOG_WRITE_POLICY, {});
 }
 
@@ -584,9 +617,11 @@ export function sanitizePersonWrite(
     updates,
     PERSON_WRITE_POLICY,
     {
-      reachOutLog: (value) => sanitizeObjectArray(value, sanitizeReachOutLogWrite),
+      reachOutLog: (value) =>
+        sanitizeObjectArray(value, sanitizeReachOutLogWrite),
       tags: sanitizeStringArray,
-      sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+      sampleDataFingerprint: (value) =>
+        sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
     },
     options.preserveUndefined,
   );
@@ -618,7 +653,8 @@ export function sanitizeAccountWrite(
     ACCOUNT_WRITE_POLICY,
     {
       followRosterRoles: sanitizeStringArray,
-      sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+      sampleDataFingerprint: (value) =>
+        sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
     },
     options.preserveUndefined,
   );
@@ -628,7 +664,8 @@ export function sanitizeRssFeedWrite(
   updates: Partial<RssFeed>,
 ): Partial<RssFeed> {
   return sanitizeByPolicy(updates, RSS_FEED_WRITE_POLICY, {
-    sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+    sampleDataFingerprint: (value) =>
+      sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
   });
 }
 
@@ -636,7 +673,9 @@ function sanitizeAuthorWrite(updates: Partial<Author>): Partial<Author> {
   return sanitizeByPolicy(updates, AUTHOR_WRITE_POLICY, {});
 }
 
-function sanitizeLinkPreviewWrite(updates: Partial<LinkPreview>): Partial<LinkPreview> {
+function sanitizeLinkPreviewWrite(
+  updates: Partial<LinkPreview>,
+): Partial<LinkPreview> {
   return sanitizeByPolicy(updates, LINK_PREVIEW_WRITE_POLICY, {});
 }
 
@@ -644,29 +683,39 @@ function sanitizeContentWrite(updates: Partial<Content>): Partial<Content> {
   return sanitizeByPolicy(updates, CONTENT_WRITE_POLICY, {
     mediaUrls: sanitizeStringArray,
     mediaTypes: sanitizeStringArray,
-    linkPreview: (value) => sanitizeNestedObject(value, sanitizeLinkPreviewWrite),
+    linkPreview: (value) =>
+      sanitizeNestedObject(value, sanitizeLinkPreviewWrite),
   });
 }
 
-function sanitizeEngagementWrite(updates: Partial<Engagement>): Partial<Engagement> {
+function sanitizeEngagementWrite(
+  updates: Partial<Engagement>,
+): Partial<Engagement> {
   return sanitizeByPolicy(updates, ENGAGEMENT_WRITE_POLICY, {});
 }
 
-function sanitizeCoordinatesWrite(updates: Partial<Coordinates>): Partial<Coordinates> {
+function sanitizeCoordinatesWrite(
+  updates: Partial<Coordinates>,
+): Partial<Coordinates> {
   return sanitizeByPolicy(updates, LOCATION_COORDINATES_WRITE_POLICY, {});
 }
 
 function sanitizeLocationWrite(updates: Partial<Location>): Partial<Location> {
   return sanitizeByPolicy(updates, LOCATION_WRITE_POLICY, {
-    coordinates: (value) => sanitizeNestedObject(value, sanitizeCoordinatesWrite),
+    coordinates: (value) =>
+      sanitizeNestedObject(value, sanitizeCoordinatesWrite),
   });
 }
 
-function sanitizeTimeRangeWrite(updates: Partial<TimeRange>): Partial<TimeRange> {
+function sanitizeTimeRangeWrite(
+  updates: Partial<TimeRange>,
+): Partial<TimeRange> {
   return sanitizeByPolicy(updates, TIME_RANGE_WRITE_POLICY, {});
 }
 
-function sanitizeRssSourceInfoWrite(updates: Partial<RssSourceInfo>): Partial<RssSourceInfo> {
+function sanitizeRssSourceInfoWrite(
+  updates: Partial<RssSourceInfo>,
+): Partial<RssSourceInfo> {
   return sanitizeByPolicy(updates, RSS_SOURCE_INFO_WRITE_POLICY, {});
 }
 
@@ -676,7 +725,9 @@ function sanitizePreservedContentWrite(
   return sanitizeByPolicy(updates, PRESERVED_CONTENT_WRITE_POLICY, {});
 }
 
-function sanitizeHighlightWrite(updates: Partial<Highlight>): Partial<Highlight> {
+function sanitizeHighlightWrite(
+  updates: Partial<Highlight>,
+): Partial<Highlight> {
   return sanitizeByPolicy(updates, HIGHLIGHT_WRITE_POLICY, {});
 }
 
@@ -694,16 +745,22 @@ function sanitizeContentSignalScores(
 ): Partial<Record<ContentSignal, number>> | undefined {
   if (!isRecord(value)) return undefined;
   const result: Partial<Record<ContentSignal, number>> = {};
-  for (const signal of Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY) as ContentSignal[]) {
+  for (const signal of Object.keys(
+    CONTENT_SIGNAL_SCORE_WRITE_POLICY,
+  ) as ContentSignal[]) {
     const score = value[signal];
     if (typeof score === "number") result[signal] = score;
   }
   return result;
 }
 
-function sanitizeContentSignalArray(value: unknown): ContentSignal[] | undefined {
+function sanitizeContentSignalArray(
+  value: unknown,
+): ContentSignal[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const allowed = new Set<unknown>(Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY));
+  const allowed = new Set<unknown>(
+    Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY),
+  );
   return value.filter((entry): entry is ContentSignal => allowed.has(entry));
 }
 
@@ -731,19 +788,47 @@ export function sanitizeFeedItemWrite(
     engagement: (value) => sanitizeNestedObject(value, sanitizeEngagementWrite),
     location: (value) => sanitizeNestedObject(value, sanitizeLocationWrite),
     timeRange: (value) => sanitizeNestedObject(value, sanitizeTimeRangeWrite),
-    rssSource: (value) => sanitizeNestedObject(value, sanitizeRssSourceInfoWrite),
+    rssSource: (value) =>
+      sanitizeNestedObject(value, sanitizeRssSourceInfoWrite),
     fbGroup: (value) => sanitizeNestedObject(value, sanitizeFbGroupInfoWrite),
-    preservedContent: (value) => sanitizeNestedObject(value, sanitizePreservedContentWrite),
+    preservedContent: (value) =>
+      sanitizeNestedObject(value, sanitizePreservedContentWrite),
     userState: (value) => sanitizeNestedObject(value, sanitizeUserStateWrite),
     topics: sanitizeStringArray,
-    contentSignals: (value) => sanitizeNestedObject(value, sanitizeContentSignalsWrite),
-    eventCandidate: (value) => sanitizeNestedObject(value, sanitizeEventCandidateWrite),
-    sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+    contentSignals: (value) =>
+      sanitizeNestedObject(value, sanitizeContentSignalsWrite),
+    eventCandidate: (value) =>
+      sanitizeNestedObject(value, sanitizeEventCandidateWrite),
+    sampleDataFingerprint: (value) =>
+      sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
   });
+}
+
+/**
+ * Produce the one synchronized FeedItem capture shape accepted by Library
+ * Core. Primary-owned analysis and device-authored annotations travel through
+ * their own normalized operations and cannot leak through a capture upsert.
+ */
+export function sanitizeFeedItemCaptureWrite(item: FeedItem): FeedItem {
+  const sanitized = sanitizeFeedItemWrite(item) as FeedItem;
+  const { contentSignals, eventCandidate, ...root } = sanitized;
+  const { highlights, tags, ...userState } = root.userState;
+  void contentSignals;
+  void eventCandidate;
+  void highlights;
+  void tags;
+  return {
+    ...root,
+    userState: { ...userState, tags: [] },
+  };
 }
 
 export function sanitizeDesktopClientRegistrationWrite(
   updates: Partial<DesktopClientRegistration>,
 ): Partial<DesktopClientRegistration> {
-  return sanitizeByPolicy(updates, DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY, {});
+  return sanitizeByPolicy(
+    updates,
+    DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY,
+    {},
+  );
 }

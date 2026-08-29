@@ -466,27 +466,26 @@ test("feed card archive rollback restores the visible card after a failed mutati
 
   await expect.poll(async () =>
     app.page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | { getState: () => { items: Array<{ globalId: string; userState: { archived?: boolean } }> } }
-        | undefined;
-      const item = store?.getState().items.find((candidate) =>
-        candidate.globalId === "test-facebook-card-ui-overhaul"
-      );
+      const state = (window as unknown as {
+        __TAURI_MOCK_SQLITE_LIBRARY__: {
+          items: Record<string, { userState: { archived?: boolean } }>;
+        };
+      }).__TAURI_MOCK_SQLITE_LIBRARY__;
+      const item = state.items["test-facebook-card-ui-overhaul"];
       return item?.userState.archived ?? null;
     }),
   ).toBe(false);
   await expect(card).toBeVisible();
 
-  const errorRecorded = await app.page.evaluate(async (bugReportStorePath) => {
+  await expect.poll(() => app.page.evaluate(async (bugReportStorePath) => {
     const mod = await import(bugReportStorePath);
     const events = mod.getRecentBugReportEvents() as Array<{ source?: string; level?: string; message?: string }>;
     return events.some((event) =>
       event.source === "desktop:toggleArchived" &&
       event.level === "error" &&
-      event.message === "Optimistic mutation failed"
+      event.message === "SQLite mutation failed"
     );
-  }, BUG_REPORT_STORE_PATH);
-  expect(errorRecorded).toBe(true);
+  }, BUG_REPORT_STORE_PATH)).toBe(true);
 });
 
 test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
@@ -521,6 +520,14 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
   await expect(xCard).toBeVisible();
   await expect(xCard).toContainText(X_LIKE_TITLE);
   await expect(xCard.getByRole("button", { name: /Liked/ })).toBeVisible();
+  await expect.poll(() => app.page.evaluate(() => {
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, { userState: { likedSyncedAt?: number } }>;
+      };
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    return state.items["x:2049705418436600244"]?.userState.likedSyncedAt ?? null;
+  }), { timeout: 10_000 }).toEqual(expect.any(Number));
   await expect(xCard.getByRole("button", { name: "Liked on X" })).toBeVisible({
     timeout: 8_000,
   });
@@ -528,10 +535,9 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
   await expect(xCard).toContainText(X_LIKE_TITLE);
 
   const userState = await app.page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{
-          globalId: string;
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, {
           userState: {
             archived: boolean;
             hidden: boolean;
@@ -541,8 +547,8 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
           };
         }>;
       };
-    };
-    return store.getState().items.find((item) => item.globalId === "x:2049705418436600244")?.userState;
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    return state.items["x:2049705418436600244"]?.userState;
   });
 
   expect(userState).toMatchObject({
@@ -578,26 +584,33 @@ test("filter menu card density slider persists locally", async ({ app, page }) =
   await expect(filterMenu.getByText("Connections", { exact: true })).toHaveCount(0);
   await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
   const slider = filterMenu.getByTestId("feed-card-density-slider");
-  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  // Measure the leading resident card. A deeper virtual row may leave the
+  // viewport when density changes, producing a zero geometry even though the
+  // density contract is working correctly.
+  const card = page.locator('[data-feed-item-id="test-rss-card-ui-overhaul"]').first();
 
   await expect(slider).toBeVisible();
   await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  await expect(card).toBeVisible();
   const comfortableHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
 
   await slider.focus();
   await slider.press("ArrowLeft");
   await expect(card).toHaveAttribute("data-feed-card-density", "compact");
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
-  const compactHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+  await expect.poll(async () => {
+    const height = await card.evaluate((element) => element.getBoundingClientRect().height);
+    return height > 0 && height < comfortableHeight;
+  }).toBe(true);
 
   await slider.press("ArrowRight");
   await slider.press("ArrowRight");
   await expect(card).toHaveAttribute("data-feed-card-density", "expansive");
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("expansive");
-  const expansiveHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
-
-  expect(compactHeight).toBeLessThan(comfortableHeight);
-  expect(expansiveHeight).toBeGreaterThan(comfortableHeight);
+  await expect.poll(async () => {
+    const height = await card.evaluate((element) => element.getBoundingClientRect().height);
+    return height > comfortableHeight;
+  }).toBe(true);
 
   await page.reload();
   await app.waitForReady();

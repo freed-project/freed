@@ -290,6 +290,7 @@ interface AppState {
   archivableCountByPlatform: Record<string, number>;
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
+  visibleFeedTotalCount: number;
 
   // X auth state
   xAuth: XAuthState;
@@ -317,6 +318,7 @@ interface AppState {
   selectedPersonId: string | null;
   selectedAccountId: string | null;
   selectedFriendId: string | null;
+  setVisibleFeedTotalCount: (totalCount: number) => void;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -665,6 +667,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
+  visibleFeedTotalCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -685,6 +688,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
+  setVisibleFeedTotalCount: (totalCount) => {
+    set({ visibleFeedTotalCount: totalCount });
+  },
   acknowledgeSavedFeedPresentationPatch: (sourceVersion, revision) => {
     set((state) =>
       state.savedFeedPresentationPatch?.sourceVersion === sourceVersion &&

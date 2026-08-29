@@ -308,7 +308,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
         : Math.max(selectedIndex - 1, 0);
     virtualizer.scrollToIndex(lookaheadIndex, {
       align: selectionMoveDirection > 0 ? "end" : "start",
-      behavior,
+      behavior: "auto",
     });
 
     didInitialScroll.current = true;
@@ -316,6 +316,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     firstItemHeight,
     boundedWindowDidShift,
     itemHeight,
+    items,
     items.length,
     selectedIndex,
     selectionMoveDirection,
@@ -411,6 +412,9 @@ export function FeedView() {
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setVisibleFeedTotalCount = useAppStore(
+    (s) => s.setVisibleFeedTotalCount,
+  );
   const markAsRead = useAppStore((s) => s.markAsRead);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
@@ -472,7 +476,9 @@ export function FeedView() {
   );
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
+  const [readerWindow, setReaderWindow] = useState<readonly FeedItem[] | null>(
+    null,
+  );
   const savedBoundedFeedEligible =
     Boolean(openBoundedSavedFeedReader) &&
     isInitialized &&
@@ -507,6 +513,15 @@ export function FeedView() {
         : "ordinary",
     sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
     sourceVersion: boundedFeedSourceVersion,
+  });
+  const boundedSelectionIdentity = JSON.stringify({
+    filter: activeFilter,
+    kind: savedBoundedFeedEligible
+      ? "saved"
+      : friendsBoundedFeedEligible
+        ? "friends"
+        : "ordinary",
+    sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
   });
   const boundedReaderRankingClockRef = useRef<BoundedReaderRankingClock | null>(
     null,
@@ -632,6 +647,17 @@ export function FeedView() {
     filteredItems,
     isSearching,
   ]);
+  useEffect(() => {
+    if (boundedFeedReadyIsCurrent) {
+      setVisibleFeedTotalCount(boundedFeed.totalCount);
+      return;
+    }
+    setVisibleFeedTotalCount(0);
+  }, [
+    boundedFeed.totalCount,
+    boundedFeedReadyIsCurrent,
+    setVisibleFeedTotalCount,
+  ]);
 
   const dualColumnMode = deviceDisplay.dualColumnMode;
   const markReadOnScroll = useAppStore(
@@ -663,6 +689,10 @@ export function FeedView() {
   const [compactSelectionDirection, setCompactSelectionDirection] = useState<
     -1 | 0 | 1
   >(0);
+  const pendingReaderMoveRef = useRef<{
+    readonly direction: -1 | 1;
+    readonly selectedItemId: string;
+  } | null>(null);
   const previousWindowStartRef = useRef(boundedFeed.windowStartIndex);
   useLayoutEffect(() => {
     const previousWindowStart = previousWindowStartRef.current;
@@ -692,21 +722,20 @@ export function FeedView() {
     setSelectedItemPin((current) =>
       resolveSavedFeedSelectionPin({
         current,
-        eligible: Boolean(boundedFeedEligible && boundedFeedReadyIsCurrent),
-        readerIdentity: boundedReaderIdentity,
+        eligible: boundedFeedEligible,
+        readerIdentity: boundedSelectionIdentity,
         residentSelectedItem,
         selectedItemId,
       }),
     );
   }, [
-    boundedReaderIdentity,
+    boundedSelectionIdentity,
     boundedFeedEligible,
-    boundedFeedReadyIsCurrent,
     residentSelectedItem,
     selectedItemId,
   ]);
   const currentSelectedItemPin =
-    selectedItemPin?.readerIdentity === boundedReaderIdentity &&
+    selectedItemPin?.readerIdentity === boundedSelectionIdentity &&
     selectedItemPin.selectedItemId === selectedItemId
       ? selectedItemPin.item
       : null;
@@ -733,7 +762,7 @@ export function FeedView() {
       );
     }
     setSelectedItemPin((current) =>
-      current?.readerIdentity === boundedReaderIdentity &&
+      current?.readerIdentity === boundedSelectionIdentity &&
       current.selectedItemId === selectedItemId
         ? {
             ...current,
@@ -750,6 +779,7 @@ export function FeedView() {
     boundedFeed.status,
     boundedFeedStatusIsCurrent,
     boundedReaderIdentity,
+    boundedSelectionIdentity,
     patchBoundedItems,
     pagedBoundedFeedEligible,
     savedFeedPresentationPatch,
@@ -758,10 +788,8 @@ export function FeedView() {
   ]);
   const readerItems = useMemo(() => {
     const itemById = new Map(visibleItems.map((item) => [item.globalId, item]));
-    const stableItems = readerOrderIds
-      ? readerOrderIds
-          .map((id) => itemById.get(id))
-          .filter((item): item is FeedItem => Boolean(item))
+    const stableItems = readerWindow
+      ? readerWindow.map((item) => itemById.get(item.globalId) ?? item)
       : [];
     const stableIds = new Set(stableItems.map((item) => item.globalId));
     const residentItems =
@@ -781,7 +809,7 @@ export function FeedView() {
       ? [pinnedSelection, ...residentItems]
       : residentItems;
   }, [
-    readerOrderIds,
+    readerWindow,
     boundedFeedEligible,
     currentSelectedItemPin,
     selectedItemId,
@@ -805,7 +833,11 @@ export function FeedView() {
       };
 
       if (showDualColumn && !selectedItemId) {
-        setReaderOrderIds(visibleItems.map((candidate) => candidate.globalId));
+        // Opening the rail pins exactly the bounded window the user can see.
+        // SQLite mutations may refresh the underlying reader while the rail is
+        // open. Retaining this visible window prevents those refreshes from
+        // collapsing keyboard navigation to the selected row alone.
+        setReaderWindow([...visibleItems]);
         runFeedLayoutTransition(selectItem);
         return;
       }
@@ -831,9 +863,25 @@ export function FeedView() {
     [openItem],
   );
 
+  useLayoutEffect(() => {
+    const pending = pendingReaderMoveRef.current;
+    if (!pending) return;
+    const currentIndex = readerItems.findIndex(
+      (item) => item.globalId === pending.selectedItemId,
+    );
+    if (currentIndex < 0) return;
+    const nextItem = readerItems[currentIndex + pending.direction];
+    if (!nextItem) return;
+
+    pendingReaderMoveRef.current = null;
+    setCompactSelectionDirection(pending.direction);
+    setFocusedIndex(currentIndex + pending.direction);
+    openItem(nextItem);
+  }, [openItem, readerItems]);
+
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
-    setReaderOrderIds(null);
+    setReaderWindow(null);
     if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -876,7 +924,28 @@ export function FeedView() {
             0,
             Math.min(currentIndex + direction, readerItems.length - 1),
           );
-          if (nextIndex === currentIndex) return;
+          if (nextIndex === currentIndex) {
+            const canLoadNext =
+              direction > 0 &&
+              boundedFeed.windowStartIndex + readerItems.length <
+                boundedFeed.totalCount;
+            const canLoadPrevious =
+              direction < 0 && boundedFeed.windowStartIndex > 0;
+            if (canLoadNext) {
+              pendingReaderMoveRef.current = {
+                direction,
+                selectedItemId,
+              };
+              if (boundedFeed.hasMore) loadMoreBoundedItems();
+            } else if (canLoadPrevious) {
+              pendingReaderMoveRef.current = {
+                direction,
+                selectedItemId,
+              };
+              if (boundedFeed.hasPrevious) loadPreviousBoundedItems();
+            }
+            return;
+          }
 
           const nextItem = readerItems[nextIndex];
           if (!nextItem) return;
@@ -913,6 +982,12 @@ export function FeedView() {
     showDualColumn,
     visibleItems,
     readerItems,
+    boundedFeed.hasMore,
+    boundedFeed.hasPrevious,
+    boundedFeed.totalCount,
+    boundedFeed.windowStartIndex,
+    loadMoreBoundedItems,
+    loadPreviousBoundedItems,
     focusedIndex,
     openItem,
     openItemDirect,
@@ -924,7 +999,7 @@ export function FeedView() {
     setCompactSelectionDirection(0);
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
-    setReaderOrderIds(null);
+    setReaderWindow(null);
   }, [activeFilter, searchQuery, savedContentSortMode]);
 
   const handleFocusChange = useCallback((index: number) => {

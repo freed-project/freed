@@ -41,6 +41,7 @@ import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
+import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
@@ -68,11 +69,6 @@ import {
   FeedCardDensitySlider,
   InterfaceZoomSlider,
 } from "../DisplayScaleControls.js";
-import {
-  collectArchivableFeedActionIds,
-  collectUnreadFeedActionIds,
-  getFeedActionCounts,
-} from "../../lib/feed-action-scope.js";
 import {
   dragRegionStyle as dragStyle,
   getPassiveDragRegionProps,
@@ -361,16 +357,17 @@ export function Header({
   const libraryItemVersion = useAppStore(
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
   );
+  const visibleFeedTotalCount = useAppStore(
+    (state) => state.visibleFeedTotalCount,
+  );
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
-  const archiveItems = useAppStore((s) => s.archiveItems);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -391,6 +388,25 @@ export function Header({
     deviceDisplay.friendsMode,
     libraryItemVersion,
   );
+  const {
+    archivableScopeCount: archivableCount,
+    archiveScopeRead,
+    markScopeRead,
+    unreadScopeCount: unreadCount,
+  } = useLibraryCommandPaletteReader({
+    activeFilter,
+    activeView,
+    commandScopeItems: filteredItems,
+    enabled:
+      isLibraryInitialized &&
+      activeView === "feed" &&
+      selectedItemId === null,
+    identityMode: deviceDisplay.friendsMode,
+    inputValue: searchQuery,
+    searchQuery,
+    selectedItemId: null,
+    sourceVersion: libraryItemVersion,
+  });
   const selectedItemDetail = useLibraryItemDetail(
     selectedItemId,
     libraryItemVersion,
@@ -498,11 +514,6 @@ export function Header({
     ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
     : undefined;
 
-  const {
-    unreadCount,
-    archivableCount,
-  } = useMemo(() => getFeedActionCounts(filteredItems), [filteredItems]);
-
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
       const nextFilter = { ...activeFilter };
@@ -578,7 +589,10 @@ export function Header({
       if (searchUnavailable) return "Search is temporarily unavailable";
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
-    return formatItemCount(fullScopeItemCount ?? filteredItems.length);
+    return formatItemCount(
+      fullScopeItemCount ??
+        (isSearching ? filteredItems.length : visibleFeedTotalCount),
+    );
   }, [
     activeView,
     effectiveFriendsMode,
@@ -594,6 +608,7 @@ export function Header({
     searchUnavailable,
     socialAccountCount,
     scopeLabel,
+    visibleFeedTotalCount,
   ]);
 
   const currentSubtitle = useMemo(() => {
@@ -904,12 +919,12 @@ export function Header({
   }, [unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
-    void markItemsAsRead(collectUnreadFeedActionIds(filteredItems));
-  }, [filteredItems, markItemsAsRead]);
+    void markScopeRead();
+  }, [markScopeRead]);
 
   const handleArchiveFilteredRead = useCallback(() => {
-    void archiveItems(collectArchivableFeedActionIds(filteredItems));
-  }, [archiveItems, filteredItems]);
+    void archiveScopeRead();
+  }, [archiveScopeRead]);
 
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];

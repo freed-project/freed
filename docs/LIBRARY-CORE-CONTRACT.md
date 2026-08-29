@@ -306,6 +306,12 @@ evidence is represented by a content-addressed blob digest whose descriptor
 must already exist. `feed_item_capture_upsert` strips these child fields and
 therefore cannot overwrite either owner.
 
+Desktop and PWA construct that capture payload through one shared pure
+projector. It sanitizes synchronized root fields, removes Primary-owned
+analysis plus device-authored highlights, and replaces capture tags with the
+required empty set before either host assembles a signed transaction. The two
+hosts cannot drift into separate capture side channels.
+
 The same executable contract defines the initial agent read profile. It grants
 only `friends_directory_page_v1`, `item_detail_v1`,
 `item_reader_body_v1`, `saved_feed_page_v2`, and `search_page_v1`. A version 2

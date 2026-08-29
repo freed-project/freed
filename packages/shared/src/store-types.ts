@@ -119,6 +119,8 @@ export interface BaseAppState {
   mapFriendLocationCount: number;
   /** Authors with recent mapped content. Derived off the render path. */
   mapAllContentLocationCount: number;
+  /** Exact SQLite count for the active bounded feed query. */
+  visibleFeedTotalCount: number;
 
   // UI state
   isLoading: boolean;
@@ -131,6 +133,8 @@ export interface BaseAppState {
   selectedAccountId: string | null;
   /** @deprecated Use selectedPersonId. */
   selectedFriendId: string | null;
+  /** Publish only the exact count for the current bounded feed query. */
+  setVisibleFeedTotalCount: (totalCount: number) => void;
 
   // Initialization
   initialize: () => Promise<void>;

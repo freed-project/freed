@@ -150,13 +150,40 @@ function ManagePane() {
     () => new Set(failingFeedByUrl.keys()),
     [failingFeedByUrl],
   );
+  const healthSearchMatchUrls = useMemo(() => {
+    const terms = deferredFeedSearch
+      .trim()
+      .toLocaleLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (terms.length === 0) return new Set<string>();
+    return new Set(
+      (health?.failingRssFeeds ?? [])
+        .filter((feed) => {
+          const status = isLikelyDeadFeed(feed.lastError)
+            ? "Likely dead"
+            : "Failing";
+          const searchable = getFeedSearchText(
+            { title: feed.feedTitle, url: feed.feedUrl },
+            `${status} ${feed.lastError ?? ""}`,
+          ).toLocaleLowerCase();
+          return terms.every((term) => searchable.includes(term));
+        })
+        .map((feed) => feed.feedUrl),
+    );
+  }, [deferredFeedSearch, health?.failingRssFeeds]);
   const feedPage = useLibraryRssFeedPage({
     includeUrls: feedFilter === "problem" ? failingFeedUrls : null,
     pageSize: 50,
     search: deferredFeedSearch,
+    searchMatchUrls: healthSearchMatchUrls,
     sourceVersion,
   });
   const filteredFeedList = feedPage.feeds;
+  const shownFeedUrls = useMemo(
+    () => new Set(filteredFeedList.map((feed) => feed.url)),
+    [filteredFeedList],
+  );
 
   const handleRemove = useCallback(async (url: string) => {
     setRemoving(url);
@@ -176,11 +203,13 @@ function ManagePane() {
       if (feedFilter === "all") {
         await removeAllFeeds(includeItems);
       } else {
-        for (const url of failingFeedUrls) {
+        for (const url of shownFeedUrls) {
           await removeFeed(url, { includeItems });
         }
       }
-      for (const url of failingFeedUrls) {
+      const healthUrlsToForget =
+        feedFilter === "all" ? failingFeedUrls : shownFeedUrls;
+      for (const url of healthUrlsToForget) {
         if (forgetRssFeedHealth) {
           await forgetRssFeedHealth(url);
         }
@@ -202,10 +231,10 @@ function ManagePane() {
   const bulkUnsubscribeLabel =
     feedFilter === "all"
       ? "Unsubscribe from all feeds"
-      : `Unsubscribe from feeds needing review (${failingFeedUrls.size.toLocaleString()})`;
+      : "Unsubscribe from shown feeds";
 
   const bulkUnsubscribeTitle =
-    feedFilter === "all" ? "Unsubscribe from all feeds?" : "Unsubscribe from feeds needing review?";
+    feedFilter === "all" ? "Unsubscribe from all feeds?" : "Unsubscribe from shown feeds?";
 
   const manageFeedSearchTextByUrl = useMemo(
     () =>
@@ -338,7 +367,7 @@ function ManagePane() {
           disabled={
             feedPage.loading ||
             feedPage.error !== null ||
-            (feedFilter === "problem" && failingFeedUrls.size === 0)
+            (feedFilter === "problem" && shownFeedUrls.size === 0)
           }
           className="text-xs text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-40 disabled:hover:text-red-400/70"
         >
@@ -387,7 +416,7 @@ function ManagePane() {
                 <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
                   {feedFilter === "all"
                     ? "Unsubscribes from every feed on each synced device."
-                    : `Unsubscribes from ${failingFeedUrls.size.toLocaleString()} feed${failingFeedUrls.size === 1 ? "" : "s"} needing review on each synced device.`}
+                    : `Unsubscribes from ${shownFeedUrls.size.toLocaleString()} shown feed${shownFeedUrls.size === 1 ? "" : "s"} on each synced device.`}
                 </p>
               </div>
             </div>

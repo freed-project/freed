@@ -1,5 +1,5 @@
 import {
-  sanitizeFeedItemWrite,
+  sanitizeFeedItemCaptureWrite,
   sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
@@ -553,21 +553,7 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     identities = new Set<string>();
   };
   for (const input of items) {
-    const sanitized = sanitizeFeedItemWrite(input) as FeedItem;
-    const {
-      contentSignals: _contentSignals,
-      eventCandidate: _eventCandidate,
-      ...root
-    } = sanitized;
-    const {
-      highlights: _highlights,
-      tags: _tags,
-      ...userState
-    } = root.userState;
-    const item = {
-      ...root,
-      userState: { ...userState, tags: [] },
-    } satisfies FeedItem;
+    const item = sanitizeFeedItemCaptureWrite(input);
     if (
       batch.length === PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT ||
       identities.has(item.globalId)

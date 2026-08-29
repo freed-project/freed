@@ -14,6 +14,8 @@ export interface BoundedFeedItemsState {
   readonly hasPrevious: boolean;
   /** Number of source rows traversed before the first resident row. */
   readonly windowStartIndex: number;
+  /** Exact count returned by the bounded SQLite reader. */
+  readonly totalCount: number;
 }
 
 const EMPTY_BOUNDED_FEED: BoundedFeedItemsState = {
@@ -22,6 +24,7 @@ const EMPTY_BOUNDED_FEED: BoundedFeedItemsState = {
   hasMore: false,
   hasPrevious: false,
   windowStartIndex: 0,
+  totalCount: 0,
 };
 
 interface ResidentPage {
@@ -99,6 +102,7 @@ export function useBoundedFeedItems({
         windowStartIndexRef.current > 0 &&
         (pages[0]?.previousCursor ?? null) !== null,
       windowStartIndex: windowStartIndexRef.current,
+      totalCount,
     });
   }, []);
 
@@ -113,6 +117,7 @@ export function useBoundedFeedItems({
         hasMore: false,
         hasPrevious: false,
         windowStartIndex: 0,
+        totalCount: 0,
       });
     },
     [closeReader, resetWindow],
@@ -140,6 +145,7 @@ export function useBoundedFeedItems({
       hasMore: false,
       hasPrevious: false,
       windowStartIndex: 0,
+      totalCount: 0,
     });
     void openReader(activeFilter, rankingClockMs)
       .then(async (reader) => {
@@ -174,6 +180,7 @@ export function useBoundedFeedItems({
             hasMore: false,
             hasPrevious: false,
             windowStartIndex: 0,
+            totalCount: 0,
           });
           return;
         }
@@ -202,6 +209,7 @@ export function useBoundedFeedItems({
             hasMore: false,
             hasPrevious: false,
             windowStartIndex: 0,
+            totalCount: 0,
           });
         }
       });

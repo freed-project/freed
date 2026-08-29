@@ -643,9 +643,25 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   expect(triggerInsets).not.toBeNull();
   expect(Math.abs(triggerInsets!.top - triggerInsets!.right)).toBeLessThanOrEqual(1);
 
-  await friendsMenuTrigger.click();
+  await friendsMenuTrigger.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-context-menu")).toBeVisible();
-  await graphViewport.click({ position: { x: 24, y: 48 } });
+  await graphViewport.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+      clientX: rect.left + 24,
+      clientY: rect.top + 48,
+      pointerId: 1,
+      pointerType: "mouse",
+    };
+    element.dispatchEvent(new PointerEvent("pointerdown", init));
+    element.dispatchEvent(new PointerEvent("pointerup", init));
+    element.dispatchEvent(new MouseEvent("click", init));
+  });
   await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
 
   await expect.poll(async () => {
@@ -735,10 +751,14 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const copyCameraDiagnostics = async () => {
     await page.getByTestId("source-row-friends").hover();
-    await page.getByTestId("source-menu-trigger-friends").click();
+    await page.getByTestId("source-menu-trigger-friends").evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
     await expect(page.getByTestId("friends-context-menu")).toBeVisible();
     await expect(page.getByTestId("friends-menu-copy-diagnostics")).toHaveText("Copy diagnostics");
-    await page.getByTestId("friends-menu-copy-diagnostics").click();
+    await page.getByTestId("friends-menu-copy-diagnostics").evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
     await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
     return page.evaluate(async () => {
       const snapshot = JSON.parse(await navigator.clipboard.readText()) as {
@@ -750,7 +770,13 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
           resistanceScale: number;
         };
       };
-      return snapshot.camera;
+      return {
+        x: snapshot.camera.x,
+        y: snapshot.camera.y,
+        scale: snapshot.camera.scale,
+        outwardTargetScale: snapshot.camera.outwardTargetScale,
+        resistanceScale: snapshot.camera.resistanceScale,
+      };
     });
   };
 

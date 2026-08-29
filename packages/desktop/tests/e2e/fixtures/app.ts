@@ -246,9 +246,6 @@ export class AppFixture {
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
-          friends: Record<string, unknown>;
-          accounts: Record<string, unknown>;
-          items: unknown[];
           setActiveView: (view: string) => void;
           setSelectedFriend: (id: string | null) => void;
         };
@@ -313,8 +310,16 @@ export class AppFixture {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
-          const state = store.getState();
-          if (state.friends["friend-ada"] && state.accounts["friend-ada:instagram:ada-ig"] && state.items.length > 0) {
+          const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+            accounts: Record<string, unknown>;
+            items: Record<string, unknown>;
+            persons: Record<string, unknown>;
+          };
+          if (
+            sqlite.persons["friend-ada"] &&
+            sqlite.accounts["friend-ada:instagram:ada-ig"] &&
+            sqlite.items["ig:ada:paris"]
+          ) {
             clearInterval(interval);
             resolve();
             return;
@@ -325,9 +330,6 @@ export class AppFixture {
               | { active?: boolean; items?: Record<string, unknown>; shell?: Record<string, unknown> }
               | undefined;
             reject(new Error(`seed timeout ${JSON.stringify({
-              storeItems: state.items.length,
-              friends: Object.keys(state.friends),
-              accounts: Object.keys(state.accounts),
               sqliteActive: sqlite?.active,
               sqliteItems: Object.keys(sqlite?.items ?? {}),
               sqliteShellKeys: Object.keys(sqlite?.shell ?? {}),
@@ -344,13 +346,6 @@ export class AppFixture {
       const libraryCore = w.__FREED_LIBRARY_CORE__ as {
         addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
-      const store = w.__FREED_STORE__ as {
-        getState: () => {
-          friends: Record<string, unknown>;
-          items: Array<{ globalId: string }>;
-        };
-      };
-
       const now = Date.now();
       await libraryCore.addLibraryFeedItems([
         {
@@ -445,9 +440,11 @@ export class AppFixture {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
-          const state = store.getState();
-          const hasNora = state.items.some((item) => item.globalId === "ig:nora:story");
-          const hasGhost = state.items.some((item) => item.globalId === "ig:ghost:story");
+          const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+            items: Record<string, unknown>;
+          };
+          const hasNora = Boolean(sqlite.items["ig:nora:story"]);
+          const hasGhost = Boolean(sqlite.items["ig:ghost:story"]);
           if (hasNora && hasGhost) {
             clearInterval(interval);
             resolve();

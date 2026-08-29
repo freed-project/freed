@@ -1939,21 +1939,22 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
         bytesMoved: 0,
       }));
 
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+    };
+    await libraryCore.addLibraryRssFeed({
+      url: "https://healthy.example/feed.xml",
+      title: "Healthy Feed",
+      enabled: true,
+      trackUnread: true,
+    });
+    await libraryCore.addLibraryRssFeed({
+      url: "https://broken.example/feed.xml",
+      title: "Broken Feed",
+      enabled: true,
+      trackUnread: true,
+    });
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 1,
         x: 0,
@@ -2043,20 +2044,6 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 0,
         x: 0,
@@ -2625,27 +2612,31 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await page.waitForFunction(
     ([failingFeedUrl, healthyFeedUrl]) => {
       const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
+      const sqliteLibrary = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
         | {
-            getState: () => {
-              feeds: Record<string, unknown>;
-            };
+            feeds: Record<string, unknown>;
           }
         | undefined;
-      const feeds = store?.getState().feeds ?? {};
+      const feeds = sqliteLibrary?.feeds ?? {};
       return !!feeds[failingFeedUrl] && !!feeds[healthyFeedUrl];
     },
     [failingFeedUrl, healthyFeedUrl],
   );
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { rssFeedCount: number } }
+      | undefined;
+    return store?.getState().rssFeedCount === 2;
+  });
 
-  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  const settingsBtn = page.getByTestId("sidebar-settings-button");
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
-  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const settingsDialog = page.getByTestId("settings-nav-panel").locator("..");
   await settingsDialog.getByRole("button", { name: "Feeds", exact: true }).click();
   await expect(settingsDialog.getByRole("heading", { name: "Feeds" })).toBeVisible();
 
-  await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-list-scroll")).toBeVisible();
   await settingsDialog.getByTestId("feeds-manage-filter").fill("healthy");
@@ -2662,7 +2653,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(needsReviewButton).toBeVisible();
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds", exact: true }),
   ).toBeVisible();
 
   await needsReviewButton.evaluate((element) => {
@@ -2670,7 +2661,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(settingsDialog.getByText("Healthy Feed")).toHaveCount(0);
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds", exact: true }),
   ).toBeVisible();
   await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
   await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();

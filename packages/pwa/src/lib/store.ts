@@ -263,6 +263,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
+  visibleFeedTotalCount: 0,
   syncConnected: false,
   isLoading: true,
   isSyncing: false,
@@ -276,6 +277,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
+  setVisibleFeedTotalCount: (totalCount) => {
+    set({ visibleFeedTotalCount: totalCount });
+  },
 
   // Initialize from the bounded OPFS SQLite Library window.
   initialize: () => {

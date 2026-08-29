@@ -183,6 +183,43 @@ describe("outbox processor", () => {
     teardown();
   });
 
+  it("drains normalized SQLite null synchronization receipts", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor } = await loadOutbox();
+    const pending = makeItem("x:normalized-null", {
+      hidden: false,
+      saved: false,
+      archived: false,
+      tags: [],
+      liked: true,
+      likedAt: 10,
+      likedSyncedAt: null,
+      readAt: 11,
+      seenSyncedAt: null,
+    } as unknown as FeedItem["userState"]);
+    const scanItems = scanFixtureItems(() => [pending]);
+    const like = vi.fn(async () => true);
+    const markSeen = vi.fn(async () => true);
+
+    const teardown = startOutboxProcessor(
+      scanItems,
+      () => () => {},
+      new Map([["x", {
+        like,
+        unlike: vi.fn(async () => true),
+        markSeen,
+        commentUrl: vi.fn(() => null),
+      }]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    await vi.runAllTimersAsync();
+
+    expect(like).toHaveBeenCalledWith(pending);
+    expect(markSeen).toHaveBeenCalledWith(pending);
+    teardown();
+  });
+
   it("makes no provider attempt before writer admission exists", async () => {
     vi.useFakeTimers();
     mockIsSqliteLibraryActive.mockReturnValue(true);

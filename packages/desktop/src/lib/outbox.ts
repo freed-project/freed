@@ -143,7 +143,7 @@ export function startOutboxProcessor(
       if (
         event.mutation === "TOGGLE_LIKED"
         && item.userState.liked
-        && item.userState.likedSyncedAt === undefined
+        && item.userState.likedSyncedAt == null
       ) {
         const intent = makeIntent(item, "like", item.userState.likedAt);
         if (intent) recordExplicitSocialOutboxIntent(intent);
@@ -192,7 +192,7 @@ export function startOutboxProcessor(
 
       const explicitLikeIntent = getExplicitSocialOutboxIntent(item.globalId, "like");
       const canRunLike = us.liked && (
-        us.likedSyncedAt === undefined
+        us.likedSyncedAt == null
         || (us.likedSyncedAt === -1 && explicitLikeIntent?.platform === item.platform)
       );
       if (canRunLike) {
@@ -204,7 +204,7 @@ export function startOutboxProcessor(
         }
       }
 
-      if (us.seenSyncedAt === undefined && item.sourceUrl) {
+      if (us.seenSyncedAt == null && item.sourceUrl) {
         const intent = makeIntent(item, "seen", us.readAt);
         if (intent) {
           seenQueue.push({ item, intent });

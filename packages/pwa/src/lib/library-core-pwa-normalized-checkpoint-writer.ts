@@ -10,8 +10,8 @@ import {
   readPwaNormalizedCheckpointReceipt,
 } from "./library-core-sqlite-runtime";
 
-interface PwaNormalizedCheckpointWriterRuntime
-  extends LibraryCoreNormalizedCheckpointStageRuntimeV2 {}
+type PwaNormalizedCheckpointWriterRuntime =
+  LibraryCoreNormalizedCheckpointStageRuntimeV2;
 
 export interface CreatePwaNormalizedCheckpointWriterInput {
   readonly checkpointGeneration: number;

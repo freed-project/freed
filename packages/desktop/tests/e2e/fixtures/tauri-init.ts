@@ -21,6 +21,12 @@ export function tauriInitScript(): string {
     }
     window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     var SQLITE_LIBRARY_WINDOW_PREFIX = '__freed_e2e_sqlite_library_v1__';
+    var CONTENT_SIGNAL_LABELS = [
+      'event', 'deadline', 'opportunity', 'how_to', 'reference',
+      'transaction', 'product_update', 'alert', 'deal', 'place', 'media',
+      'essay', 'moment', 'life_update', 'announcement', 'recommendation',
+      'request', 'discussion', 'promotion', 'news',
+    ];
     var persistedSqliteLibrary = null;
     try {
       persistedSqliteLibrary = window.name.indexOf(SQLITE_LIBRARY_WINDOW_PREFIX) === 0
@@ -54,6 +60,19 @@ export function tauriInitScript(): string {
     function sqliteItemState(item) {
       return item && item.userState ? item.userState : {};
     }
+    function sqliteFiniteNumber(value) {
+      if (typeof value === 'number') return value;
+      if (!value || value.codec !== 'ieee754_binary64_hex_v1' ||
+          typeof value.bits !== 'string' || !/^[0-9a-f]{16}$/.test(value.bits)) {
+        return null;
+      }
+      var bytes = new Uint8Array(8);
+      for (var index = 0; index < bytes.length; index += 1) {
+        bytes[index] = parseInt(value.bits.slice(index * 2, index * 2 + 2), 16);
+      }
+      var decoded = new DataView(bytes.buffer).getFloat64(0, false);
+      return Number.isFinite(decoded) ? decoded : null;
+    }
     function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -83,6 +102,38 @@ export function tauriInitScript(): string {
         observedFrontier: [],
       };
     }
+    function normalizedFollowerMutationContext() {
+      return {
+        libraryId: '2'.repeat(64),
+        epoch: 1,
+        epochId: '3'.repeat(64),
+        actorId: '9'.repeat(64),
+        actorPublicKey: 'b'.repeat(64),
+        nextCounter: 1,
+        previousOperationId: null,
+        previousChainDigest: 'c'.repeat(64),
+        observedFrontier: [],
+      };
+    }
+    function enqueueNormalizedFollowerIntent(args) {
+      var request = args.request || {};
+      var envelopes = (request.canonicalEnvelopeJson || []).map(function(value) {
+        return JSON.parse(value);
+      });
+      var first = envelopes[0];
+      envelopes.forEach(applyNormalizedEnvelope);
+      sqliteState().revision += 1;
+      persistSqliteState();
+      return {
+        transactionId: first.transaction_id,
+        actorId: first.actor_id,
+        firstCounter: first.actor_sequence,
+        lastCounter: envelopes[envelopes.length - 1].actor_sequence,
+        memberCount: envelopes.length,
+        optimisticFieldCount: envelopes.length,
+        state: 'pending',
+      };
+    }
     function applyNormalizedEnvelope(envelope) {
       var state = sqliteState();
       var payload = envelope.payload || {};
@@ -91,6 +142,60 @@ export function tauriInitScript(): string {
       switch (envelope.operation_type) {
         case 'feed_item_capture_upsert':
           state.items[envelope.entity_id] = JSON.parse(JSON.stringify(payload.item));
+          break;
+        case 'feed_item_annotations_replace':
+          if (user) {
+            user.tags = (payload.tags || []).slice();
+            user.highlights = (payload.highlights || []).map(function(highlight) {
+              var normalized = {
+                createdAt: highlight.createdAt,
+                text: highlight.text,
+              };
+              if (highlight.note != null) normalized.note = highlight.note;
+              return normalized;
+            });
+          }
+          break;
+        case 'feed_item_analysis_replace':
+          if (item) {
+            var contentSignals = payload.content_signals;
+            if (contentSignals == null) {
+              delete item.contentSignals;
+            } else {
+              var scores = {};
+              var tags = [];
+              (contentSignals.scores || []).forEach(function(score) {
+                scores[score.signal] = score.score_basis_points / 10000;
+                if (score.tagged) tags.push(score.signal);
+              });
+              item.contentSignals = {
+                inferredAt: contentSignals.inferred_at_ms,
+                method: contentSignals.method,
+                scores: scores,
+                tags: tags,
+                version: contentSignals.version,
+              };
+            }
+            var eventCandidate = payload.event_candidate;
+            if (eventCandidate == null) {
+              delete item.eventCandidate;
+            } else {
+              var event = {
+                confidence: eventCandidate.confidence_basis_points / 10000,
+                detectedAt: eventCandidate.detected_at_ms,
+                method: eventCandidate.method,
+                version: eventCandidate.version,
+              };
+              if (eventCandidate.ends_at_ms != null) event.endsAt = eventCandidate.ends_at_ms;
+              if (eventCandidate.evidence != null) event.evidence = eventCandidate.evidence;
+              if (eventCandidate.location_name != null) event.locationName = eventCandidate.location_name;
+              if (eventCandidate.location_url != null) event.locationUrl = eventCandidate.location_url;
+              if (eventCandidate.starts_at_ms != null) event.startsAt = eventCandidate.starts_at_ms;
+              if (eventCandidate.timezone != null) event.timezone = eventCandidate.timezone;
+              if (eventCandidate.title != null) event.title = eventCandidate.title;
+              item.eventCandidate = event;
+            }
+          }
           break;
         case 'feed_item_read_assignment':
           if (user) user.readAt = payload.read_at_ms;
@@ -276,6 +381,121 @@ export function tauriInitScript(): string {
         return (right.publishedAt || 0) - (left.publishedAt || 0) || left.globalId.localeCompare(right.globalId);
       });
     }
+    function sqlitePreferenceRows() {
+      var rows = [];
+      function pathChild(path, key) {
+        return path + '.' + JSON.stringify(key);
+      }
+      function append(path, value) {
+        var row = {
+          booleanValue: null,
+          integerValue: null,
+          path: '',
+          realValue: null,
+          textValue: null,
+          updatedAt: Math.max(0, sqliteState().revision || 0),
+          valueType: 'null',
+        };
+        if (Array.isArray(value)) {
+          row.integerValue = value.length;
+          row.path = 'a:' + path;
+          row.valueType = 'integer';
+          rows.push(row);
+          value.forEach(function(child, index) {
+            append(path + '[' + index + ']', child);
+          });
+          return;
+        }
+        if (value && typeof value === 'object') {
+          row.path = 'o:' + path;
+          rows.push(row);
+          Object.keys(value).forEach(function(key) {
+            append(pathChild(path, key), value[key]);
+          });
+          return;
+        }
+        row.path = 'v:' + path;
+        if (typeof value === 'boolean') {
+          row.booleanValue = value;
+          row.valueType = 'boolean';
+        } else if (typeof value === 'number' && Number.isSafeInteger(value)) {
+          row.integerValue = value;
+          row.valueType = 'integer';
+        } else if (typeof value === 'number') {
+          row.realValue = value;
+          row.valueType = 'real';
+        } else if (typeof value === 'string') {
+          row.textValue = value;
+          row.valueType = 'text';
+        }
+        rows.push(row);
+      }
+      Object.keys(sqliteState().preferences || {}).forEach(function(key) {
+        append(pathChild('$', key), sqliteState().preferences[key]);
+      });
+      return rows.sort(function(left, right) {
+        return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+      });
+    }
+    async function sha256HexText(value) {
+      var bytes = new TextEncoder().encode(value);
+      var digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+      return Array.from(digest).map(function(byte) {
+        return byte.toString(16).padStart(2, '0');
+      }).join('');
+    }
+    async function feedBrowseBindingDigest(request) {
+      var filter = request.filter || {};
+      var filterDigest = await sha256HexText(JSON.stringify([
+        filter.schemaVersion,
+        filter.archivedOnly,
+        filter.authorId,
+        filter.feedUrl,
+        filter.platform,
+        filter.savedOnly,
+        filter.showHidden,
+        filter.signals,
+        filter.socialContentFilter,
+        filter.tags,
+      ]));
+      return sha256HexText(JSON.stringify([
+        request.friendsPredicateSchemaVersion,
+        request.identityMode,
+        filterDigest,
+      ]));
+    }
+    function lowercaseHexBytes(value) {
+      var bytes = new Uint8Array(value.length / 2);
+      for (var index = 0; index < bytes.length; index += 1) {
+        bytes[index] = parseInt(value.slice(index * 2, index * 2 + 2), 16);
+      }
+      return bytes;
+    }
+    function encodeFeedBrowseCursor(source, filterDigest, item) {
+      var globalId = new TextEncoder().encode(item.globalId);
+      var bytes = new Uint8Array(92 + globalId.length);
+      var view = new DataView(bytes.buffer);
+      bytes[0] = 2;
+      bytes.set(lowercaseHexBytes(source.generationId), 1);
+      bytes.set(lowercaseHexBytes(filterDigest), 33);
+      view.setBigUint64(65, BigInt(source.transitionSequence), false);
+      view.setBigUint64(73, BigInt(source.projectionRevision), false);
+      bytes[81] = 0;
+      view.setBigUint64(82, BigInt(item.publishedAt || 0), false);
+      view.setUint16(90, globalId.length, false);
+      bytes.set(globalId, 92);
+      return btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+        .split('+').join('-').split('/').join('_').replace(/=+$/g, '');
+    }
+    function decodeFeedBrowseCursorGlobalId(value) {
+      var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var binary = atob(base64);
+      var bytes = Uint8Array.from(binary, function(character) {
+        return character.charCodeAt(0);
+      });
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(92));
+    }
     function sqliteNormalizedQuery(args) {
       var request = args && args.request || {};
       var state = sqliteState();
@@ -358,6 +578,7 @@ export function tauriInitScript(): string {
           .map(function(person) {
             return {
               avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              careLevel: person.careLevel,
               id: person.id,
               name: person.name,
               relationshipStatus: person.relationshipStatus,
@@ -691,7 +912,199 @@ export function tauriInitScript(): string {
       if (request.queryId === 'preferences_snapshot_v1') {
         return {
           queryId: request.queryId,
-          rows: [],
+          rows: sqlitePreferenceRows(),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'friend_candidate_review_v1') {
+        var supportedCandidateProviders = new Set([
+          'x', 'facebook', 'instagram', 'linkedin', 'substack', 'medium',
+        ]);
+        var candidateGroups = new Map();
+        Object.values(state.accounts || {}).forEach(function(account) {
+          if (account.kind !== 'social' || !supportedCandidateProviders.has(account.provider)) return;
+          var person = account.personId && state.persons && state.persons[account.personId] || null;
+          if (person && person.relationshipStatus !== 'connection') return;
+          var kind = person ? 'connection_person' : 'unlinked_account';
+          var targetId = person ? person.id : account.id;
+          var key = kind + ':' + targetId;
+          var group = candidateGroups.get(key);
+          if (!group) {
+            group = {
+              accounts: [],
+              displayName: person ? person.name : account.displayName || account.handle || account.externalId,
+              kind: kind,
+              personId: person ? person.id : null,
+              targetId: targetId,
+            };
+            candidateGroups.set(key, group);
+          }
+          group.accounts.push(account);
+        });
+        var candidateRows = [];
+        candidateGroups.forEach(function(group) {
+          var accountIds = group.accounts.map(function(account) { return account.id; }).sort();
+          var activity = Object.values(state.items || {}).filter(function(item) {
+            return item && !item.__deleted && !sqliteItemState(item).hidden &&
+              group.accounts.some(function(account) {
+                return item.platform === account.provider && item.author &&
+                  item.author.id === account.externalId;
+              });
+          }).sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+          var signalCounts = {};
+          activity.forEach(function(item) {
+            (item.contentSignals && item.contentSignals.tags || []).forEach(function(signal) {
+              signalCounts[signal] = (signalCounts[signal] || 0) + 1;
+            });
+          });
+          function sumSignals(labels) {
+            return labels.reduce(function(total, label) {
+              return total + (signalCounts[label] || 0);
+            }, 0);
+          }
+          var personalCount = sumSignals(['life_update', 'moment']);
+          var lifeEventCount = sumSignals(['event', 'opportunity']);
+          var directRequestCount = sumSignals(['request', 'recommendation', 'discussion']);
+          var placeMomentCount = sumSignals(['place', 'moment']);
+          var negativeScore =
+            (signalCounts.news || 0) * 16 +
+            (signalCounts.promotion || 0) * 14 +
+            (signalCounts.product_update || 0) * 12 +
+            (signalCounts.deal || 0) * 12 +
+            (signalCounts.transaction || 0) * 16;
+          var personalScore = Math.min(36, personalCount * 13);
+          var lifeEventsScore = Math.min(24, lifeEventCount * 12);
+          var directRequestsScore = Math.min(22, directRequestCount * 9);
+          var placesMomentsScore = Math.min(22, placeMomentCount * 8);
+          var multiChannelScore = accountIds.length > 1 ? 18 : 0;
+          var recentCount = activity.filter(function(item) {
+            return (item.publishedAt || 0) <= request.nowMs &&
+              (item.publishedAt || 0) >= request.nowMs - 3888000000;
+          }).length;
+          var recentActivityScore = Math.min(
+            18,
+            (recentCount > 0 ? 10 : 0) + Math.min(8, Math.floor(activity.length / 2) * 4),
+          );
+          var contactOverlap = group.personId
+            ? (request.contactPersonIds || []).includes(group.personId) ||
+              accountIds.some(function(id) { return (request.contactAccountIds || []).includes(id); })
+            : (request.contactAccountIds || []).includes(group.targetId);
+          var contactOverlapScore = contactOverlap ? 14 : 0;
+          var nameScore = String(group.displayName).trim().includes(' ') ? 10 : 5;
+          var score = Math.max(0, Math.min(100,
+            personalScore + lifeEventsScore + directRequestsScore + placesMomentsScore +
+            multiChannelScore + recentActivityScore + contactOverlapScore + nameScore - negativeScore
+          ));
+          var lastActivityAt = Math.max(
+            group.accounts.reduce(function(latest, account) {
+              return Math.max(latest, account.lastSeenAt || 0);
+            }, 0),
+            activity.reduce(function(latest, item) {
+              return Math.max(latest, item.publishedAt || 0);
+            }, 0),
+          );
+          var id = [
+            'friend-suggestion', group.kind, group.targetId, lastActivityAt,
+            activity.length, personalCount, lifeEventCount, directRequestCount,
+            placeMomentCount, negativeScore,
+          ].join(':');
+          if (
+            score < 60 ||
+            personalScore + lifeEventsScore + directRequestsScore + placesMomentsScore +
+              multiChannelScore + recentActivityScore + contactOverlapScore <= 0 ||
+            (request.dismissedSuggestionIds || []).includes(id)
+          ) return;
+          candidateRows.push({
+            accountIdsJson: JSON.stringify(accountIds.slice(0, 16)),
+            confidence: score >= 80 ? 'high' : 'medium',
+            contactOverlapScore: contactOverlapScore,
+            directRequestsScore: directRequestsScore,
+            displayName: String(group.displayName).slice(0, 4096),
+            id: id,
+            kind: group.kind,
+            lastActivityAt: lastActivityAt || null,
+            lifeEventsScore: lifeEventsScore,
+            multiChannelScore: multiChannelScore,
+            personId: group.personId,
+            personalUpdatesScore: personalScore,
+            placesMomentsScore: placesMomentsScore,
+            recentActivityScore: recentActivityScore,
+            sampleItemIdsJson: JSON.stringify(activity.slice(0, 5).map(function(item) { return item.globalId; })),
+            score: score,
+            signalCountsJson: JSON.stringify(signalCounts),
+          });
+        });
+        candidateRows.sort(function(left, right) {
+          return right.score - left.score ||
+            (right.lastActivityAt || 0) - (left.lastActivityAt || 0) ||
+            left.displayName.localeCompare(right.displayName) ||
+            left.id.localeCompare(right.id);
+        });
+        return {
+          queryId: request.queryId,
+          rows: candidateRows.slice(0, request.limit || 10),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'person_detail_v1') {
+        var person = state.persons && state.persons[request.personId] || null;
+        var personFingerprint = person && person.sampleDataFingerprint || null;
+        var linkedAccounts = person ? Object.values(state.accounts || {})
+          .filter(function(account) { return account.personId === person.id; })
+          .sort(function(left, right) { return left.id.localeCompare(right.id); }) : [];
+        return {
+          linkedAccountCount: linkedAccounts.length,
+          linkedAccounts: linkedAccounts.slice(0, 64).map(function(account) {
+            return {
+              address: account.address == null ? null : account.address,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              createdAt: account.createdAt,
+              discoveredFrom: account.discoveredFrom,
+              displayName: account.displayName == null ? null : account.displayName,
+              email: account.email == null ? null : account.email,
+              externalId: account.externalId,
+              firstSeenAt: account.firstSeenAt,
+              handle: account.handle == null ? null : account.handle,
+              id: account.id,
+              importedAt: account.importedAt == null ? null : account.importedAt,
+              kind: account.kind,
+              lastSeenAt: account.lastSeenAt,
+              phone: account.phone == null ? null : account.phone,
+              profileUrl: account.profileUrl == null ? null : account.profileUrl,
+              provider: account.provider,
+              updatedAt: account.updatedAt,
+            };
+          }),
+          person: person ? {
+            avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+            bio: person.bio == null ? null : person.bio,
+            careLevel: person.careLevel,
+            createdAt: person.createdAt,
+            id: person.id,
+            name: person.name,
+            notes: person.notes == null ? null : person.notes,
+            reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+            reachOuts: (person.reachOutLog || []).slice(0, 20).map(function(reachOut, index) {
+              return {
+                channel: reachOut.channel == null ? null : reachOut.channel,
+                loggedAt: reachOut.loggedAt,
+                notes: reachOut.notes == null ? null : reachOut.notes,
+                reachOutId: person.id + ':reach-out:' + index,
+              };
+            }),
+            relationshipStatus: person.relationshipStatus,
+            sampleBatchId: personFingerprint ? personFingerprint.batchId : null,
+            sampleGeneratedAt: personFingerprint ? personFingerprint.generatedAt : null,
+            sampleGeneratorVersion: personFingerprint ? personFingerprint.generatorVersion : null,
+            tags: (person.tags || []).slice(0, 64),
+            updatedAt: person.updatedAt,
+          } : null,
+          queryId: request.queryId,
           schemaVersion: request.schemaVersion,
           source: source,
         };
@@ -731,6 +1144,214 @@ export function tauriInitScript(): string {
           source: source,
         };
       }
+      if (request.queryId === 'account_timeline_v1') {
+        var timelineAccount = state.accounts && state.accounts[request.accountId] || null;
+        var accountTimelineRows = timelineAccount ? Object.values(state.items || {})
+          .filter(function(candidate) {
+            return candidate && !candidate.__deleted &&
+              candidate.platform === timelineAccount.provider &&
+              candidate.author && candidate.author.id === timelineAccount.externalId;
+          })
+          .sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          }) : [];
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: accountTimelineRows.slice(0, request.limit || 50).map(sqliteFeedCard),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: accountTimelineRows.length,
+        };
+      }
+      if (request.queryId === 'person_timeline_v1') {
+        var personAccountKeys = Object.values(state.accounts || {})
+          .filter(function(account) { return account.personId === request.personId; })
+          .map(function(account) { return account.provider + ':' + account.externalId; });
+        var personTimelineRows = Object.values(state.items || {})
+          .filter(function(candidate) {
+            return candidate && !candidate.__deleted && candidate.author &&
+              personAccountKeys.includes(candidate.platform + ':' + candidate.author.id);
+          })
+          .sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: personTimelineRows.slice(0, request.limit || 50).map(sqliteFeedCard),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: personTimelineRows.length,
+        };
+      }
+      if (request.queryId === 'rss_feed_detail_v1') {
+        var detailFeed = state.feeds && state.feeds[request.url] || null;
+        var detailFingerprint = detailFeed && detailFeed.sampleDataFingerprint || null;
+        return {
+          feed: detailFeed ? {
+            enabled: detailFeed.enabled !== false,
+            folder: detailFeed.folder == null ? null : detailFeed.folder,
+            imageUrl: detailFeed.imageUrl == null ? null : detailFeed.imageUrl,
+            lastFetched: detailFeed.lastFetched == null ? null : detailFeed.lastFetched,
+            pollInterval: detailFeed.pollInterval == null ? null : detailFeed.pollInterval,
+            sampleBatchId: detailFingerprint ? detailFingerprint.batchId : null,
+            sampleGeneratedAt: detailFingerprint ? detailFingerprint.generatedAt : null,
+            sampleGeneratorVersion: detailFingerprint ? detailFingerprint.generatorVersion : null,
+            siteUrl: detailFeed.siteUrl == null ? null : detailFeed.siteUrl,
+            title: detailFeed.title || detailFeed.url,
+            trackUnread: detailFeed.trackUnread !== false,
+            updatedAt: detailFeed.updatedAt || detailFeed.lastFetched || 0,
+            url: detailFeed.url,
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'persons_graph_v1') {
+        function graphItemsForSource(platform, authorId, feedUrl) {
+          return Object.values(state.items || {}).filter(function(candidate) {
+            if (!candidate || candidate.__deleted || sqliteItemState(candidate).hidden) return false;
+            if (feedUrl != null) {
+              return candidate.rssSource && candidate.rssSource.feedUrl === feedUrl;
+            }
+            return candidate.platform === platform && candidate.author && candidate.author.id === authorId;
+          }).sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+        }
+        function graphLocations(items) {
+          return items.filter(function(item) {
+            return item.location && (
+              item.location.name != null || item.location.url != null ||
+              item.location.coordinates && (
+                item.location.coordinates.lat != null || item.location.coordinates.lng != null
+              )
+            );
+          }).slice(0, 8).map(function(item) {
+            return {
+              effectiveAt: item.timeRange && item.timeRange.startsAt || item.publishedAt || 0,
+              globalId: item.globalId,
+              publishedAt: item.publishedAt || 0,
+            };
+          });
+        }
+        function graphBase(items) {
+          var locations = graphLocations(items);
+          var avatarItem = items.find(function(item) {
+            return item.author && item.author.avatarUrl;
+          }) || null;
+          return {
+            avatarGlobalId: avatarItem ? avatarItem.globalId : null,
+            avatarPublishedAt: avatarItem ? avatarItem.publishedAt || 0 : null,
+            avatarUrl: avatarItem ? avatarItem.author.avatarUrl : null,
+            hasLocation: locations.length > 0,
+            itemCount: items.length,
+            latestActivityAt: items.reduce(function(latest, item) {
+              return Math.max(latest, item.publishedAt || 0);
+            }, 0),
+            locationCandidateCount: locations.length,
+            locationCandidates: locations,
+            sampleItems: items.slice(0, 5).map(function(item) {
+              return { globalId: item.globalId, publishedAt: item.publishedAt || 0 };
+            }),
+          };
+        }
+        var socialGraphRows = (request.sources || []).map(function(requested) {
+          var items = graphItemsForSource(requested.platform, requested.authorId, null);
+          return Object.assign(graphBase(items), {
+            authorId: requested.authorId,
+            platform: requested.platform,
+            recentCount: items.filter(function(item) {
+              return item.publishedAt >= request.recentWindow.startMs &&
+                item.publishedAt < request.recentWindow.endMs;
+            }).length,
+            signalCounts: CONTENT_SIGNAL_LABELS.map(function(label) {
+              return {
+                count: items.filter(function(item) {
+                  return item.contentSignals &&
+                    (item.contentSignals.tags || []).includes(label);
+                }).length,
+                label: label,
+              };
+            }),
+          });
+        });
+        var rssGraphRows = (request.rssFeedUrls || []).map(function(feedUrl) {
+          return Object.assign(graphBase(graphItemsForSource(null, null, feedUrl)), {
+            feedUrl: feedUrl,
+          });
+        });
+        return {
+          queryId: request.queryId,
+          rss: rssGraphRows,
+          schemaVersion: request.schemaVersion,
+          social: socialGraphRows,
+          source: source,
+          totalItemCount: socialGraphRows.reduce(function(total, row) {
+            return total + row.itemCount;
+          }, 0) + rssGraphRows.reduce(function(total, row) {
+            return total + row.itemCount;
+          }, 0),
+        };
+      }
+      if (request.queryId === 'map_markers_v1') {
+        var mapItems = Object.values(state.items || {}).filter(function(candidate) {
+          return candidate && !candidate.__deleted &&
+            !sqliteItemState(candidate).hidden && !sqliteItemState(candidate).archived &&
+            candidate.location && (
+              candidate.location.name != null ||
+              candidate.location.coordinates && candidate.location.coordinates.lat != null &&
+                candidate.location.coordinates.lng != null
+            );
+        }).sort(function(left, right) {
+          return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+            left.globalId.localeCompare(right.globalId);
+        });
+        var mapLimit = request.limit || 500;
+        return {
+          hasMore: mapItems.length > mapLimit,
+          queryId: request.queryId,
+          rows: mapItems.slice(0, mapLimit).map(function(mapItem) {
+            var mapAccount = Object.values(state.accounts || {}).find(function(account) {
+              return account.provider === mapItem.platform &&
+                mapItem.author && account.externalId === mapItem.author.id;
+            }) || null;
+            var mapPerson = mapAccount && state.persons && state.persons[mapAccount.personId] || null;
+            var coordinates = mapItem.location && mapItem.location.coordinates || {};
+            return {
+              authorAvatarUrl: mapItem.author && mapItem.author.avatarUrl || null,
+              authorDisplayName: mapItem.author && mapItem.author.displayName || '',
+              authorHandle: mapItem.author && mapItem.author.handle || '',
+              authorId: mapItem.author && mapItem.author.id || '',
+              capturedAt: mapItem.capturedAt || 0,
+              contentText: mapItem.content && mapItem.content.text || null,
+              contentType: mapItem.contentType,
+              friendAvatarUrl: mapPerson && mapPerson.avatarUrl || null,
+              friendName: mapPerson && mapPerson.name || null,
+              friendPersonId: mapPerson && mapPerson.id || null,
+              friendRelationshipStatus: mapPerson && mapPerson.relationshipStatus || null,
+              globalId: mapItem.globalId,
+              linkedAccountId: mapAccount && mapAccount.id || null,
+              locationLat: coordinates.lat == null ? null : sqliteFiniteNumber(coordinates.lat),
+              locationLng: coordinates.lng == null ? null : sqliteFiniteNumber(coordinates.lng),
+              locationName: mapItem.location && mapItem.location.name || null,
+              locationUrl: mapItem.location && mapItem.location.url || null,
+              platform: mapItem.platform,
+              publishedAt: mapItem.publishedAt || 0,
+              sourceUrl: mapItem.sourceUrl || null,
+              timeRangeEndsAt: mapItem.timeRange && mapItem.timeRange.endsAt || null,
+              timeRangeStartsAt: mapItem.timeRange && mapItem.timeRange.startsAt || null,
+            };
+          }),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'item_detail_v1') {
         var item = state.items[request.globalId];
         return {
@@ -740,7 +1361,7 @@ export function tauriInitScript(): string {
               blobDigest: null,
               storage: item.content && item.content.text ? 'inline' : 'none',
             },
-            mediaBlobDigests: (item.content && item.content.media || []).map(function() { return null; }),
+            mediaBlobDigests: (item.content && item.content.mediaUrls || []).map(function() { return null; }),
             preservedBody: {
               blobDigest: null,
               storage: 'none',
@@ -762,12 +1383,20 @@ export function tauriInitScript(): string {
             var rss = item.rssSource || null;
             return Object.assign({}, sqliteFeedCard(item), {
               hidden: !!sqliteItemState(item).hidden,
+              rankingCareLevel: item.rankingCareLevel == null ? null : item.rankingCareLevel,
+              rankingEngagementReposts: !item.engagement || item.engagement.reposts == null
+                ? null
+                : item.engagement.reposts,
+              rankingEngagementViews: !item.engagement || item.engagement.views == null
+                ? null
+                : item.engagement.views,
               rssSource: rss ? {
                 feedTitle: rss.feedTitle || '',
                 feedUrl: rss.feedUrl,
                 siteUrl: rss.siteUrl || '',
               } : null,
               sampleDataFingerprint: item.sampleDataFingerprint || null,
+              topics: (item.topics || []).slice(),
             });
           });
         return {
@@ -807,7 +1436,25 @@ export function tauriInitScript(): string {
         return null;
       }
       var candidates = sqliteQueryItems(request);
-      var rows = candidates.slice(0, request.limit || 128).map(sqliteFeedCard);
+      var limit = request.limit || 128;
+      var startIndex = 0;
+      var endIndex = Math.min(candidates.length, limit);
+      if (request.queryId === 'feed_browse_page_v3' && request.cursor) {
+        var cursorGlobalId = decodeFeedBrowseCursorGlobalId(request.cursor);
+        var cursorIndex = candidates.findIndex(function(item) {
+          return item.globalId === cursorGlobalId;
+        });
+        if (cursorIndex < 0) return null;
+        if (request.direction === 'previous') {
+          endIndex = cursorIndex;
+          startIndex = Math.max(0, endIndex - limit);
+        } else {
+          startIndex = cursorIndex + 1;
+          endIndex = Math.min(candidates.length, startIndex + limit);
+        }
+      }
+      var pageCandidates = candidates.slice(startIndex, endIndex);
+      var rows = pageCandidates.map(sqliteFeedCard);
       if (request.queryId === 'saved_feed_page_v2') {
         return {
           filter: request.filter,
@@ -818,7 +1465,7 @@ export function tauriInitScript(): string {
           queryId: request.queryId,
           rows: rows.map(function(row, index) {
             return Object.assign({}, row, {
-              savedAt: sqliteItemState(candidates[index]).savedAt || null,
+              savedAt: sqliteItemState(pageCandidates[index]).savedAt || null,
             });
           }),
           schemaVersion: request.schemaVersion,
@@ -827,22 +1474,40 @@ export function tauriInitScript(): string {
           totalCount: candidates.length,
         };
       }
-      return {
-        filter: request.filter,
-        friendsPredicateSchemaVersion: request.friendsPredicateSchemaVersion,
-        identityMode: request.identityMode,
-        nextCursor: null,
-        nextOrder: null,
-        previousCursor: null,
-        previousOrder: null,
-        queryId: request.queryId,
-        rankingClockMs: request.rankingClockMs,
-        recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
-        rows: rows,
-        schemaVersion: request.schemaVersion,
-        source: source,
-        totalCount: candidates.length,
-      };
+      return feedBrowseBindingDigest(request).then(function(filterDigest) {
+        var firstItem = pageCandidates[0] || null;
+        var lastItem = pageCandidates[pageCandidates.length - 1] || null;
+        var nextCursor = lastItem && endIndex < candidates.length
+          ? encodeFeedBrowseCursor(source, filterDigest, lastItem)
+          : null;
+        var previousCursor = firstItem && startIndex > 0
+          ? encodeFeedBrowseCursor(source, filterDigest, firstItem)
+          : null;
+        return {
+          filter: request.filter,
+          friendsPredicateSchemaVersion: request.friendsPredicateSchemaVersion,
+          identityMode: request.identityMode,
+          nextCursor: nextCursor,
+          nextOrder: nextCursor ? {
+            globalId: lastItem.globalId,
+            priority: 0,
+            publishedAt: lastItem.publishedAt || 0,
+          } : null,
+          previousCursor: previousCursor,
+          previousOrder: previousCursor ? {
+            globalId: firstItem.globalId,
+            priority: 0,
+            publishedAt: firstItem.publishedAt || 0,
+          } : null,
+          queryId: request.queryId,
+          rankingClockMs: request.rankingClockMs,
+          recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
+          rows: rows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: candidates.length,
+        };
+      });
     }
     function deviceContactState() {
       if (!window.__TAURI_MOCK_DEVICE_CONTACT_STATE__) {
@@ -975,6 +1640,60 @@ export function tauriInitScript(): string {
         schemaVersion: 1,
       };
     }
+    var normalizedScopeActions = {};
+    function beginNormalizedScopeAction(args) {
+      normalizedScopeActions[args.stageId] = {
+        actionKind: args.actionKind,
+        entityIds: [],
+        state: 'staging',
+      };
+      return {
+        memberCount: 0,
+        stageId: args.stageId,
+        state: 'staging',
+      };
+    }
+    function appendNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.state !== 'staging' || stage.entityIds.length !== args.expectedOrdinal) {
+        throw new Error('normalized scope action append fence is stale');
+      }
+      stage.entityIds = stage.entityIds.concat(args.entityIds || []);
+      return {
+        memberCount: stage.entityIds.length,
+        stageId: args.stageId,
+        state: 'staging',
+      };
+    }
+    function finalizeNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.entityIds.length !== args.expectedMemberCount) {
+        throw new Error('normalized scope action final count changed');
+      }
+      stage.state = 'ready';
+      return {
+        memberCount: stage.entityIds.length,
+        stageId: args.stageId,
+        state: 'ready',
+      };
+    }
+    function pageNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.state !== 'ready') {
+        throw new Error('normalized scope action is not ready');
+      }
+      var start = args.afterOrdinal + 1;
+      var entityIds = stage.entityIds.slice(start, start + 1000);
+      return {
+        entityIds: entityIds,
+        nextOrdinal: entityIds.length === 0 ? args.afterOrdinal : start + entityIds.length - 1,
+        stageId: args.stageId,
+      };
+    }
+    function closeNormalizedScopeAction(args) {
+      delete normalizedScopeActions[args.stageId];
+      return null;
+    }
     window.__TAURI_MOCK_HANDLERS__ = {
       ensure_fresh_normalized_desktop_library: () => {
         sqliteState().active = true;
@@ -984,13 +1703,24 @@ export function tauriInitScript(): string {
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       query_normalized_library: sqliteNormalizedQuery,
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
-      normalized_library_follower_mutation_context: () => null,
+      normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
       sign_normalized_library_operation: (args) => ({
         actorId: args.request.actorId,
         operationSigningBodyDigest: args.request.operationSigningBodyDigest,
         signature: 'a'.repeat(128),
       }),
+      sign_normalized_library_follower_operation: (args) => ({
+        actorId: args.request.actorId,
+        operationSigningBodyDigest: args.request.operationSigningBodyDigest,
+        signature: 'd'.repeat(128),
+      }),
+      enqueue_normalized_library_follower_intent: enqueueNormalizedFollowerIntent,
       commit_normalized_library_transaction: commitNormalizedLibraryTransaction,
+      begin_normalized_scope_action: beginNormalizedScopeAction,
+      append_normalized_scope_action: appendNormalizedScopeAction,
+      finalize_normalized_scope_action: finalizeNormalizedScopeAction,
+      page_normalized_scope_action: pageNormalizedScopeAction,
+      close_normalized_scope_action: closeNormalizedScopeAction,
       mutate_normalized_device_graph_layout: mutateDeviceGraphLayout,
       mutate_normalized_device_contacts: mutateDeviceContacts,
       query_normalized_device_contact_status: deviceContactStatus,

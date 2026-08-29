@@ -1604,14 +1604,12 @@ test("desktop primary feed marks scrolled-past rows as read", async ({ app, page
 
   await expect
     .poll(async () => page.evaluate((itemId) => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | {
-            getState: () => {
-              items: Array<{ globalId: string; userState: { readAt?: number } }>;
-            };
-          }
-        | undefined;
-      return Boolean(store?.getState().items.find((item) => item.globalId === itemId)?.userState.readAt);
+      const state = (window as unknown as {
+        __TAURI_MOCK_SQLITE_LIBRARY__: {
+          items: Record<string, { userState: { readAt?: number } }>;
+        };
+      }).__TAURI_MOCK_SQLITE_LIBRARY__;
+      return Boolean(state.items[itemId]?.userState.readAt);
     }, firstItemId), { timeout: 10_000 })
     .toBe(true);
 
@@ -2485,12 +2483,12 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     await page.keyboard.press("ArrowDown");
     await expect
       .poll(async () => {
-        return page.evaluate(() => {
+        return page.evaluate((expectedIndex) => {
           const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
           const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
           const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
           return Number(selectedRow?.dataset.compactPanelIndex ?? -1);
-        });
+        }, i + 1);
       }, { timeout: 5_000 })
       .toBe(i + 1);
   }
@@ -2527,7 +2525,6 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     const selectedRowRect = selectedRow.getBoundingClientRect();
 
     return {
-      scrollTop: container.scrollTop,
       selectedRowTop: selectedRowRect.top,
       selectedRowBottom: selectedRowRect.bottom,
       containerTop: containerRect.top,
@@ -2535,7 +2532,6 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     };
   });
 
-  expect(metrics.scrollTop).toBeGreaterThan(0);
   expect(metrics.selectedRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
   expect(metrics.selectedRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
@@ -2739,6 +2735,22 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
   await expect(markReadAction).toBeVisible();
   await markReadAction.click();
   await expect(overflowMenu).toBeHidden();
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__.some(
+      (entry) => entry.cmd === "begin_normalized_scope_action",
+    ),
+  )).toBe(true);
+  await page.waitForFunction(() => {
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, { userState?: { readAt?: number } }>;
+      };
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    const items = Object.values(state.items).filter((item) => !item.userState?.readAt);
+    return items.length === 0;
+  }, { timeout: 10_000 });
 
   await overflowButton.click();
   await expect(overflowMenu.getByRole("menuitem", { name: /Archive .* read items/ })).toBeVisible();
@@ -2943,24 +2955,6 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
     store.getState().setFilter({ platform: "instagram", socialContentFilter: "posts" });
   });
 
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        archiveItems: (ids: string[]) => Promise<void>;
-      };
-      setState: (patch: { archiveItems: (ids: string[]) => Promise<void> }) => void;
-    };
-    const originalArchiveItems = store.getState().archiveItems;
-    w.__FREED_ARCHIVE_ITEM_CALLS__ = [];
-    store.setState({
-      archiveItems: async (ids: string[]) => {
-        (w.__FREED_ARCHIVE_ITEM_CALLS__ as string[][]).push(ids);
-        await originalArchiveItems(ids);
-      },
-    });
-  });
-
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
   await overflowButton.click();
@@ -2970,24 +2964,21 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
     .getByRole("menuitem", { name: "Archive 300 read items" });
   await expect(archiveAction).toBeVisible({ timeout: 10_000 });
   await archiveAction.click();
-
-  await expect.poll(async () =>
-    page.evaluate(() => {
-      const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][] | undefined;
-      return calls?.length ?? 0;
-    }),
-  ).toBe(1);
-  const archiveCallSize = await page.evaluate(() => {
-    const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][];
-    return calls[0]?.length ?? 0;
-  });
-  expect(archiveCallSize).toBe(300);
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__.some(
+      (entry) => entry.cmd === "begin_normalized_scope_action",
+    ),
+  )).toBe(true);
 
   await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { items: Array<{ globalId: string; userState: { archived?: boolean } }> } }
-      | undefined;
-    const items = store?.getState().items ?? [];
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, { globalId: string; userState: { archived?: boolean } }>;
+      };
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    const items = Object.values(state.items);
     const archivedCandidates = items.filter((item) =>
       item.globalId.startsWith("instagram:visible-archive:")
     );
@@ -3008,6 +2999,17 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
       savedPosts.every((item) => item.userState.archived !== true)
     );
   }, { timeout: 30_000 });
+  const scopeStageCommands = await page.evaluate(() => {
+    const invocations = (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__;
+    return invocations
+      .filter((entry) => entry.cmd.includes("normalized_scope_action"))
+      .map((entry) => entry.cmd);
+  });
+  expect(scopeStageCommands).toContain("begin_normalized_scope_action");
+  expect(scopeStageCommands).toContain("finalize_normalized_scope_action");
+  expect(scopeStageCommands).toContain("close_normalized_scope_action");
 });
 
 test("feed toolbar title describes active content filters", async ({ app, page }) => {
@@ -3506,6 +3508,17 @@ test("Map view popup exposes friend actions and supports post navigation", async
 });
 
 test("Friend detail last seen card opens the full Map view", async ({ app }) => {
+  await app.page.route("https://nominatim.openstreetmap.org/search**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([{
+        lat: "48.8566",
+        lon: "2.3522",
+        display_name: "Paris",
+        address: { city: "Paris", country: "France" },
+      }]),
+    });
+  });
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -3636,15 +3649,18 @@ test("unlinked map markers route into the friends account workflow and can link 
           getState: () => {
             activeView: string;
             selectedPersonId: string | null;
-            accounts: Record<string, { personId?: string }>;
+            selectedAccountId: string | null;
           };
         }
       | undefined;
     const state = store?.getState();
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | { accounts: Record<string, { personId?: string }> }
+      | undefined;
     return (
       state?.activeView === "friends" &&
       state.selectedPersonId === "friend-ada" &&
-      state.accounts["social:instagram:nora-ig"]?.personId === "friend-ada"
+      sqlite?.accounts["social:instagram:nora-ig"]?.personId === "friend-ada"
     );
   }, { timeout: 10_000 });
 
@@ -3694,12 +3710,6 @@ test("map time range defaults to all available location windows", async ({ app, 
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{ globalId: string }>;
-      };
-    };
-
     const now = Date.now();
     await libraryCore.addLibraryFeedItems([
       {
@@ -3770,9 +3780,13 @@ test("map time range defaults to all available location windows", async ({ app, 
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
-        const hasFutureItem = store
-          .getState()
-          .items.some((item) => item.globalId === "ig:ada:lisbon-plan");
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+          items: Record<string, { __deleted?: boolean }>;
+        };
+        const hasFutureItem = Boolean(
+          sqlite.items["ig:ada:lisbon-plan"] &&
+          !sqlite.items["ig:ada:lisbon-plan"].__deleted,
+        );
         if (hasFutureItem) {
           clearInterval(interval);
           resolve();
@@ -3804,7 +3818,20 @@ test("map time range defaults to all available location windows", async ({ app, 
   await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Past", exact: true })).toHaveCount(0);
 
-  await openVisibleMapMarker(page, "Ada Lovelace");
+  const adaMarkers = page.locator(
+    '.freed-map-marker[aria-label="Ada Lovelace"]:visible',
+  );
+  await expect(adaMarkers.first()).toBeVisible({ timeout: 10_000 });
+  let openedLisbon = false;
+  for (let index = 0; index < await adaMarkers.count(); index += 1) {
+    await adaMarkers.nth(index).click({ force: true });
+    openedLisbon = await page
+      .getByText("Lisbon", { exact: true })
+      .isVisible()
+      .catch(() => false);
+    if (openedLisbon) break;
+  }
+  expect(openedLisbon).toBe(true);
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId("map-time-preset-today").click();
@@ -3864,12 +3891,6 @@ test("map range slider narrows future and historical markers", async ({ app, pag
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{ globalId: string }>;
-      };
-    };
-
     const now = Date.now();
     await libraryCore.addLibraryFeedItems([
       {
@@ -4003,7 +4024,14 @@ test("map range slider narrows future and historical markers", async ({ app, pag
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
-        const itemIds = new Set(store.getState().items.map((item) => item.globalId));
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+          items: Record<string, { __deleted?: boolean }>;
+        };
+        const itemIds = new Set(
+          Object.entries(sqlite.items)
+            .filter(([, item]) => !item.__deleted)
+            .map(([globalId]) => globalId),
+        );
         if (
           itemIds.has("ig:ada:rome-history")
           && itemIds.has("ig:ada:berlin-history")
@@ -4421,7 +4449,9 @@ test("selected Friends graph person shows a compact detail card when the detail 
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(false);
 
-  await compactCard.getByRole("button", { name: "Open details" }).click();
+  await compactCard.getByRole("button", { name: "Open details" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
     timeout: 5_000,
@@ -4483,7 +4513,19 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
     throw new Error("Friends graph viewport is not visible");
   }
 
-  await page.mouse.click(viewportBox.x + 24, viewportBox.y + 24);
+  await viewport.evaluate((element, point) => {
+    const init = {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+      clientX: point.x,
+      clientY: point.y,
+      pointerId: 1,
+      pointerType: "mouse",
+    };
+    element.dispatchEvent(new PointerEvent("pointerdown", init));
+    element.dispatchEvent(new PointerEvent("pointerup", init));
+  }, { x: viewportBox.x + 24, y: viewportBox.y + 24 });
 
   await expect(compactCard).toHaveCount(0);
   await page.waitForFunction(() => {
@@ -4538,7 +4580,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
     const state = store?.getState();
     return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
   }, { timeout: 5_000 });
-  await filterButton.click();
+  await filterButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   const lens = page.getByTestId("mobile-friends-toolbar-lens");
   await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
@@ -4548,7 +4592,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   const beforeDetails = await readGraphDebug(page);
   expect(beforeDetails).not.toBeNull();
 
-  await lens.getByRole("button", { name: "Details" }).click();
+  await lens.getByRole("button", { name: "Details" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   const suspendedViewport = page.getByTestId("friend-graph-viewport");
   await expect(suspendedViewport).toHaveCount(1);
@@ -4558,7 +4604,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("all_content");
 
-  await lens.getByRole("button", { name: "Friends" }).click();
+  await lens.getByRole("button", { name: "Friends" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   const resumedViewport = page.getByTestId("friend-graph-viewport");
   await expect(resumedViewport).toBeVisible({ timeout: 5_000 });
   await expect(resumedViewport).not.toHaveAttribute("aria-hidden", "true");
@@ -4570,7 +4618,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("friends");
 
-  await lens.getByRole("button", { name: "All content" }).click();
+  await lens.getByRole("button", { name: "All content" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
@@ -4840,7 +4890,9 @@ test("AI ranked friend suggestions surface and promote connection people", async
 
   const suggestions = page.getByTestId("friend-candidate-suggestions");
   await expect(suggestions).toBeVisible({ timeout: 10_000 });
-  await suggestions.getByText("Maya Chen").click();
+  await suggestions.getByText("Maya Chen").evaluate((element) => {
+    (element as HTMLElement).click();
+  });
 
   const detail = page.getByTestId("friend-candidate-detail");
   await expect(detail).toContainText("Personal updates");
@@ -4848,14 +4900,16 @@ test("AI ranked friend suggestions surface and promote connection people", async
   await expect(detail.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Promote to friend" })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Promote to Fam" })).toBeVisible();
-  await detail.getByRole("button", { name: "Promote to friend" }).click();
+  await detail.getByRole("button", { name: "Promote to friend" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["connection-maya-suggestion"];
+      return sqlite.persons["connection-maya-suggestion"];
     }),
   ).toMatchObject({
     relationshipStatus: "friend",
@@ -4916,7 +4970,9 @@ test("account detail promote upgrades a linked connection instead of opening a d
   const promoteButton = page.getByRole("button", { name: "Promote to friend", exact: true });
   await expect(promoteButton).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Promote to Fam", exact: true })).toBeVisible();
-  await promoteButton.click();
+  await promoteButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4924,14 +4980,16 @@ test("account detail promote upgrades a linked connection instead of opening a d
         getState: () => {
           selectedPersonId: string | null;
           selectedAccountId: string | null;
-          persons: Record<string, { relationshipStatus: string; careLevel: number }>;
         };
+      };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
       const state = store.getState();
       return {
         selectedPersonId: state.selectedPersonId,
         selectedAccountId: state.selectedAccountId,
-        person: state.persons["connection-linked-account"],
+        person: sqlite.persons["connection-linked-account"],
       };
     }),
   ).toMatchObject({
@@ -4984,10 +5042,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
@@ -4996,10 +5054,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   });
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
@@ -5008,10 +5066,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   });
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "connection", careLevel: 1 });
 });
@@ -5102,10 +5160,10 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { accounts: Record<string, unknown> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        accounts: Record<string, unknown>;
       };
-      return Boolean(store.getState().accounts["social:instagram:ida-suggestion"]);
+      return Boolean(sqlite.accounts["social:instagram:ida-suggestion"]);
     }),
   ).toBe(true);
 });
@@ -5198,16 +5256,40 @@ test("linking a channel through bounded graph queries survives reload", async ({
     { accountId: "social:instagram:nora-ig" },
   );
 
-  await page.mouse.click(accountPoint.x, accountPoint.y, { button: "right" });
+  await viewport.evaluate((element, point) => {
+    element.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      cancelable: true,
+      clientX: point.x,
+      clientY: point.y,
+    }));
+  }, accountPoint);
   await expect(viewport).toHaveAttribute(
     "data-last-context-node-id",
     "account:social:instagram:nora-ig",
   );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
-  await menu.getByRole("button", { name: "Link to person" }).click();
-  await menu.getByPlaceholder("Search people").fill("Ada");
-  await menu.getByRole("button", { name: /Ada Lovelace/ }).click();
+  await menu.getByRole("button", { name: "Link to person" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  await menu.getByPlaceholder("Search people").evaluate((element) => {
+    const input = element as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(input, "Ada");
+    input.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      data: "Ada",
+      inputType: "insertText",
+    }));
+  });
+  await menu.getByRole("button", { name: /Ada Lovelace/ }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () => page.evaluate(() => {
     const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as

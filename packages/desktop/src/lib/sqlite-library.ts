@@ -6,6 +6,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
   sanitizeAccountWrite,
+  sanitizeFeedItemCaptureWrite,
   sanitizePersonRootWrite,
   sanitizeReachOutLogWrite,
   sanitizeRssFeedWrite,
@@ -923,20 +924,7 @@ async function maybeSubmitFeedItemCaptures(
     const transactionId =
       `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((sourceItem, index) => {
-      const {
-        contentSignals: _contentSignals,
-        eventCandidate: _eventCandidate,
-        ...root
-      } = sourceItem;
-      const {
-        highlights: _highlights,
-        tags: _tags,
-        ...userState
-      } = root.userState;
-      const item = {
-        ...root,
-        userState: { ...userState, tags: [] },
-      } satisfies FeedItem;
+      const item = sanitizeFeedItemCaptureWrite(sourceItem);
       return FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
