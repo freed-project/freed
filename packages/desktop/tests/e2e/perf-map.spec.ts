@@ -133,12 +133,7 @@ async function collectLongTasksDuring<T>(
 test("Map view handles 1,600 visible location authors within frame budget", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => {
-    (
-      window as Window & {
-        __FREED_E2E_SQLITE_SHELL_ONLY__?: boolean;
-        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
-      }
-    ).__FREED_E2E_SQLITE_SHELL_ONLY__ = true;
+    window.localStorage.setItem("freed-theme", "scriptorium");
     (
       window as Window & {
         __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
@@ -181,13 +176,12 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { mapMode: "all_content"; themeId: string } }) => Promise<void>;
+        updatePreferences: (patch: { display: { mapMode: "all_content" } }) => Promise<void>;
       };
     };
     await store.getState().updatePreferences({
       display: {
         mapMode: "all_content",
-        themeId: "scriptorium",
       },
     });
   });

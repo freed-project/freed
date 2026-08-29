@@ -104,12 +104,14 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
   const profileRoot = await mkdtemp(
     join(tmpdir(), "freed-pwa-opfs-webkit-"),
   );
-  const {
-    defaultBrowserType: _defaultBrowserType,
-    ...iphone
-  } = devices["iPhone 14"];
+  const iphone = devices["iPhone 14"];
   const context = await webkit.launchPersistentContext(profileRoot, {
-    ...iphone,
+    userAgent: iphone.userAgent,
+    viewport: iphone.viewport,
+    screen: iphone.screen,
+    deviceScaleFactor: iphone.deviceScaleFactor,
+    isMobile: iphone.isMobile,
+    hasTouch: iphone.hasTouch,
     baseURL: pwaOpfsE2eBaseUrl,
     headless: true,
   });
