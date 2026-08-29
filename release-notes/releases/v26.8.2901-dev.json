@@ -3,7 +3,7 @@
   "version": "26.8.2901-dev",
   "channel": "dev",
   "dayKey": "26.8.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-29T20:58:05.800Z",
   "model": "heuristic",
@@ -106,9 +106,10 @@
     ]
   },
   "release": {
-    "deck": "Replace library authority with SQLite, support trusted automation launchers on Linux, and bump globals from 16.5.0 to 17.11.0",
+    "deck": "Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support",
     "features": [
-      "Replace library authority with SQLite",
+      "Run every Library view from bounded SQLite queries",
+      "Store and sync normalized Library records without the historical engines",
       "Support trusted automation launchers on Linux"
     ],
     "fixes": [
@@ -127,5 +128,5 @@
       "Bump undici from 7.28.0 to 7.29.0"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2901-dev\n\nReplace library authority with SQLite, support trusted automation launchers on Linux, and bump globals from 16.5.0 to 17.11.0\n\n### Features\n\n- Replace library authority with SQLite\n- Support trusted automation launchers on Linux\n\n### Fixes\n\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n\n### Follow-ups\n\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2901-dev\n\nFreed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support\n\n### Features\n\n- Run every Library view from bounded SQLite queries\n- Store and sync normalized Library records without the historical engines\n- Support trusted automation launchers on Linux\n\n### Fixes\n\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n\n### Follow-ups\n\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
