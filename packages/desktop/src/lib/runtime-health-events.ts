@@ -4,7 +4,7 @@
  * Small fixed-shape events appended to runtime-health.jsonl through the
  * record_runtime_health_event Tauri command so soak tooling can count the
  * verified idle-churn loops (cloud upload echo, relay broadcast volume,
- * worker INIT churn, scrape outcomes). Logging only: every helper swallows
+ * scrape outcomes). Logging only: every helper swallows
  * failures so counters can never affect sync or capture behavior.
  */
 
@@ -18,10 +18,18 @@ export interface RuntimeHealthIdentityFields {
   appSessionId: string;
 }
 
-const RUNTIME_APP_SESSION_ID =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `session-${Date.now().toLocaleString()}-${Math.random().toString(36).slice(2)}`;
+function createRuntimeAppSessionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const words = crypto.getRandomValues(new Uint32Array(4));
+    return `session-${Array.from(words, (word) => word.toString(36)).join("")}`;
+  }
+  return `session-${Date.now().toLocaleString()}`;
+}
+
+const RUNTIME_APP_SESSION_ID = createRuntimeAppSessionId();
 
 export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   return {

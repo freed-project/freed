@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
 import {
-  reloadDesktopLibraryRuntimeState,
+  reloadSqliteLibraryState,
   subscribeDesktopLibraryRuntime,
 } from "./library-client";
 import {
@@ -133,7 +133,7 @@ async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSumm
   pendingRestoreOperations.set(snapshotId, operation);
   await restoreNormalizedLocalSnapshot(snapshotId, operation);
   pendingRestoreOperations.delete(snapshotId);
-  await reloadDesktopLibraryRuntimeState();
+  await reloadSqliteLibraryState();
   notifySnapshotListeners();
   log.info(`[snapshots] restored normalized snapshot ...${snapshotId.slice(-8)}`);
   return snapshot;

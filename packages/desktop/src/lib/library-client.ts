@@ -349,7 +349,7 @@ export function getDesktopLibraryRuntimeState(): LibraryCoreRuntimeStateV1 | nul
   return lastState;
 }
 
-export async function reloadDesktopLibraryRuntimeState(): Promise<LibraryCoreRuntimeStateV1> {
+export async function reloadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
   const previousRevision = lastState?.searchCorpusVersion ?? null;
   const previousLocalSequence = lastLocalChangeSequence;
   const state = await loadSqliteLibraryState();
@@ -561,7 +561,7 @@ export async function backfillLibraryContentSignals(
         };
       });
       await commitDesktopLibraryFeedItemAnalysisSets(analyses, inferredAt);
-      const state = await reloadDesktopLibraryRuntimeState();
+      const state = await reloadSqliteLibraryState();
       const counts = Object.fromEntries(
         CONTENT_SIGNAL_KEYS.map((signal) => [
           signal,
@@ -632,7 +632,7 @@ export async function backfillLibraryPriorities(
         })),
         passStartedAt,
       );
-      await reloadDesktopLibraryRuntimeState();
+      await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
       passStartedAt,

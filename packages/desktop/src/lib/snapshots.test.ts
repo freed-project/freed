@@ -11,7 +11,7 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
   waitForFactoryResetDrain: vi.fn(),
 }));
 vi.mock("./library-client", () => ({
-  reloadDesktopLibraryRuntimeState: vi.fn(),
+  reloadSqliteLibraryState: vi.fn(),
   subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
 }));
 vi.mock("./sqlite-library", () => ({
