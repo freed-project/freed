@@ -22,15 +22,15 @@
     "@freed/sync": "*",
     "@freed/ui": "*",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
-    "@tanstack/react-virtual": "^3.14.8",
+    "@tanstack/react-virtual": "^3.14.10",
     "date-fns": "^4.4.0",
     "jszip": "^3.10.1",
-    "ipaddr.js": "^2.4.0",
+    "ipaddr.js": "^2.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "undici": "^8.9.0",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
