@@ -1,6 +1,7 @@
 use rusqlite::{Connection, OpenFlags};
 #[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::fs::File;
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};

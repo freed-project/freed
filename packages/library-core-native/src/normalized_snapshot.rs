@@ -490,7 +490,7 @@ fn acquire_snapshot_operation(
     }
     #[cfg(windows)]
     {
-        let mut lock = fslock::LockFile::open(snapshot_root.path.join(SNAPSHOT_LOCK_FILE))
+        let mut lock = fslock::LockFile::open(&snapshot_root.path.join(SNAPSHOT_LOCK_FILE))
             .map_err(|error| snapshot_error(error.to_string()))?;
         if !lock
             .try_lock()
@@ -1172,6 +1172,7 @@ pub(crate) fn restore_normalized_local_snapshot_bound_v1(
     )
 }
 
+#[cfg(unix)]
 pub(crate) fn clear_normalized_local_snapshots_bound_v1(
     snapshot_directory: RawFd,
 ) -> Result<(), NormalizedSqliteError> {
