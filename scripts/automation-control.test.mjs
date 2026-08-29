@@ -3985,6 +3985,147 @@ test("task lifecycle events stay inside their exact lease authority window", () 
   }
 });
 
+test("factory claim freshness covers trusted launcher transit and stays bounded", () => {
+  const stateRoot = temporaryStateRoot();
+  const baseMs = Date.now();
+  const controller = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs: baseMs,
+  });
+  const createPilotTask = (taskId, issueNumber, offset) => {
+    createTask({
+      stateRoot,
+      taskId,
+      ...controller,
+      observerAuthority: "pr-only",
+      providerAuthority: "forbidden",
+      details: {
+        behavioral: false,
+        estimatedMinutes: 30,
+        githubIssue: {
+          number: issueNumber,
+          url: `https://github.com/freed-project/freed/issues/${issueNumber}`,
+        },
+      },
+      nowMs: baseMs + offset,
+    });
+    transitionTask({
+      stateRoot,
+      taskId,
+      ...controller,
+      toState: "triaged",
+      nowMs: baseMs + offset + 1,
+    });
+    transitionTask({
+      stateRoot,
+      taskId,
+      ...controller,
+      toState: "approved_for_pr",
+      nowMs: baseMs + offset + 2,
+    });
+  };
+  createPilotTask("factory-freshness-accepted", 1636, 1);
+  createPilotTask("factory-freshness-stale", 1637, 4);
+  createPilotTask("factory-freshness-future", 1638, 7);
+
+  const coordinator = actorLease(stateRoot, "freed-nightly-runner", {
+    nowMs: baseMs + 20,
+  });
+  const requestFor = ({ taskId, issueNumber, operationId, requestedAt }) => {
+    const conflictDomains = [`logical:${taskId}`];
+    return {
+      schemaVersion: 1,
+      operationId,
+      taskId,
+      expectedTaskRevision: 3,
+      bindingDigest: "a".repeat(64),
+      claim: {
+        claimId: `${taskId}-claim`,
+        githubIssue: {
+          number: issueNumber,
+          url: `https://github.com/freed-project/freed/issues/${issueNumber}`,
+        },
+        custodyEpoch: 1,
+        hostId: "linux-one",
+        workerId: "worker-one",
+        branch: `fix/${taskId}`,
+        worktree: `/tmp/${taskId}`,
+        conflictDomains,
+        conflictDomainDigest: createHash("sha256")
+          .update(JSON.stringify(conflictDomains))
+          .digest("hex"),
+        claimedAt: requestedAt,
+        baseHead: "b".repeat(40),
+        accountId: "account-one",
+        driverId: "codex-app-server",
+        target: "shared",
+        workLane: "runtime-neutral",
+        publicationCeiling: "draft-pr",
+      },
+      requestedAt,
+    };
+  };
+
+  const acceptedAt = baseMs + 21;
+  const accepted = requestFor({
+    taskId: "factory-freshness-accepted",
+    issueNumber: 1636,
+    operationId: "905968c8-e7d4-4668-94e2-88bcd9b9204a",
+    requestedAt: new Date(acceptedAt).toISOString(),
+  });
+  assert.equal(
+    acquireFactoryExecutionClaim({
+      stateRoot,
+      ...coordinator,
+      request: accepted,
+      // 380 seconds for the trusted launcher plus 90 seconds for the bounded
+      // claim command remains inside the eight-minute freshness contract.
+      nowMs: acceptedAt + 470_000,
+    }).authorityClaimId,
+    "factory-freshness-accepted-claim",
+  );
+
+  const staleAt = baseMs + 22;
+  const stale = requestFor({
+    taskId: "factory-freshness-stale",
+    issueNumber: 1637,
+    operationId: "72640ee7-8f3e-4aae-9140-74e7902f1cc0",
+    requestedAt: new Date(staleAt).toISOString(),
+  });
+  assert.throws(
+    () =>
+      acquireFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: stale,
+        nowMs: staleAt + 8 * 60_000 + 1,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "claim_time_invalid",
+  );
+
+  const futureNowMs = baseMs + 23;
+  const future = requestFor({
+    taskId: "factory-freshness-future",
+    issueNumber: 1638,
+    operationId: "59aa1a13-b90c-4be5-b251-a2936193c814",
+    requestedAt: new Date(futureNowMs + 30_001).toISOString(),
+  });
+  assert.throws(
+    () =>
+      acquireFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: future,
+        nowMs: futureNowMs,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "claim_time_invalid",
+  );
+  assert.equal(listFactoryExecutionClaims({ stateRoot }).claims.length, 1);
+});
+
 test("task-scoped factory claims survive retries, fence custody, and release exactly", () => {
   const stateRoot = temporaryStateRoot();
   const nowMs = Date.now();
