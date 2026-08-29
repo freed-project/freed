@@ -344,8 +344,8 @@ channel. WebRTC supplies encrypted peer-to-peer transport from a secure page,
 but Freed would need a signaling exchange, bounded message sizes, flow control,
 resume offsets, and its own chunk protocol. A local HTTPS endpoint gives normal
 range requests but requires a certificate chain that the iPhone accepts. The
-existing document relay should not be stretched into a media pipe until one of
-these transports passes real-device proof.
+retired LAN relay is not a media transport. Any future direct-device transport
+must pass real-device proof before it enters the product.
 
 This path keeps provider acquisition and media transfer on the user's devices.
 It also avoids cloud storage and hosted bandwidth.
@@ -354,7 +354,7 @@ It also avoids cloud storage and hosted bandwidth.
 
 When the phone cannot reach Freed Desktop, Desktop may upload the package to the
 user's configured cloud storage. This reuses the user's sync choice, but media
-objects remain separate from the Automerge document.
+objects remain separate from synchronized normalized records.
 
 The cloud package should use:
 
@@ -369,7 +369,7 @@ The cloud package should use:
   then used to wrap each random package key. It must not reuse the long-lived LAN
   pairing token as encryption key material.
 - Wrapped keys may travel with encrypted cloud metadata. Raw package keys and
-  the raw media root key must never appear in Automerge or cloud metadata.
+  the raw media root key must never appear in Library records or cloud metadata.
 - Explicit retention, delete, and orphan cleanup records.
 - A cloud quota check before upload and a PWA quota check before download.
 
@@ -382,7 +382,7 @@ Authenticated encryption detects tampering for each chunk. The final SHA-256
 checksum verifies that the decrypted asset exactly matches what Desktop
 packaged. A checksum alone is not an authentication mechanism.
 
-Cloud encryption is future work. Existing document sync does not automatically
+Cloud encryption is future work. Normalized record sync does not automatically
 make large media end-to-end encrypted or suitable for partial download. This
 requires a purpose-built object format and key exchange.
 
@@ -549,7 +549,7 @@ boundaries than metadata capture:
   media bytes.
 - Device-local PWA storage is protected by browser origin isolation. It is not a
   hardware-backed media vault and should not be described as one.
-- Media bytes, keys, provider cookies, and source URLs stay out of Automerge,
+- Media bytes, keys, provider cookies, and source URLs stay out of checkpoints,
   telemetry payloads, logs, snapshots, and bug reports.
 - Deleting an offline item removes local renditions, partial files, keys, and
   queued cloud objects. Cloud deletion must be retried until confirmed.
@@ -617,7 +617,7 @@ Expected health directions are:
 | ----- | ---------- | -------------- |
 | 1 | Authenticated website capture and playlist actions | No YouTube developer project or API credentials remain. Roster, recent videos, and playlist actions work through one persistent Desktop session with focused automated coverage. |
 | 2 | Desktop audio resolver laboratory | One explicit public video produces a validated, seekable AAC package. Resolver version, source class, transform, checksums, and classified failures are observable locally. |
-| 3 | LAN PWA audio download | A paired iPhone downloads, resumes, verifies, stores, deletes, and re-downloads one audio package from Desktop without media bytes entering Automerge. |
+| 3 | PWA audio download | An iPhone downloads, resumes, verifies, stores, deletes, and re-downloads one audio package without media bytes entering normalized checkpoints. |
 | 4 | Real iPhone offline and lock-screen proof | A long audio file survives airplane mode, cold launch, lock, seek, interruption, Bluetooth, and repeated resume tests on the supported iOS matrix. |
 | 5 | Encrypted user-cloud media | Desktop uploads chunk-encrypted opaque objects, a paired PWA decrypts and verifies them, and deletion removes package objects and key material. |
 | 6 | Audio-first playlist queue | The user can prepare several saved videos, download them in a foreground queue, see exact storage cost, and recover from interruption or eviction. |
@@ -638,7 +638,7 @@ Expected health directions are:
 - Select the approved audio and video profiles from representative format sets.
 - Verify manifest canonicalization, chunk authentication, SHA-256 checksums,
   atomic publish, partial resume, and delete behavior.
-- Prove media bytes and keys cannot enter Automerge or exported diagnostics.
+- Prove media bytes and keys cannot enter normalized checkpoints or exported diagnostics.
 
 ### Desktop Integration Tests
 

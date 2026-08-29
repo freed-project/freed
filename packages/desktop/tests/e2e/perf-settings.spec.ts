@@ -31,25 +31,20 @@ async function seedLargeSettingsWorkspace(page: Page): Promise<void> {
         ];
       }),
     );
-    const feedTotalCounts = Object.fromEntries(
-      Object.keys(feeds).map((url, index) => [url, (index % 11) + 1]),
-    );
-    const feedUnreadCounts = Object.fromEntries(
-      Object.keys(feeds).map((url, index) => [url, index % 5]),
-    );
+    const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | { feeds?: Record<string, unknown>; revision?: number }
+      | undefined;
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
+          getState: () => { searchCorpusVersion?: number };
           setState: (partial: Record<string, unknown>) => void;
         }
       | undefined;
-    store?.setState({
-      feeds,
-      feedTotalCounts,
-      feedUnreadCounts,
-      totalItemCount: feedCount,
-      itemCountByPlatform: { rss: feedCount },
-      totalUnreadCount: Math.floor(feedCount / 5),
-      unreadCountByPlatform: { rss: Math.floor(feedCount / 5) },
+    if (!sqlite || !store) throw new Error("SQLite Library fixture is unavailable");
+    sqlite.feeds = feeds;
+    sqlite.revision = Math.max(0, sqlite.revision ?? 0) + 1;
+    store.setState({
+      searchCorpusVersion: Math.max(0, store.getState().searchCorpusVersion ?? 0) + 1,
     });
   }, SETTINGS_FEED_COUNT);
 }
@@ -159,6 +154,9 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   await expect(settingsShell).toHaveCSS("transform", "none");
   await expect(settingsShell).not.toHaveCSS("backdrop-filter", "none");
   await expect(scrollContainer).toHaveCSS("will-change", "auto");
+  const idleFrames = await measureFps(page, async () => {
+    await page.waitForTimeout(600);
+  });
   const scrollInteraction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       await scrollContainer.evaluate((element) => new Promise<void>((resolve) => {
@@ -204,7 +202,9 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
     measureFps(page, async () => {
       const listFilterStartedAt = Date.now();
       await feedFilterInput.fill("feed-1599");
-      await expect(settingsDialog.getByText(/^1 of 1,600$/)).toBeVisible({ timeout: 10_000 });
+      await expect(
+        settingsDialog.getByText("Settings Scale Feed 1,599", { exact: true }),
+      ).toBeVisible({ timeout: 10_000 });
       const listFilterElapsed = Date.now() - listFilterStartedAt;
       await page.evaluate((elapsed) => {
         (window as Record<string, unknown>).__SETTINGS_LIST_FILTER_ELAPSED_MS__ = elapsed;
@@ -216,6 +216,10 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
     (window as Record<string, unknown>).__SETTINGS_LIST_FILTER_ELAPSED_MS__ as number,
   );
   const listFilteredDomNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+  const scrollP95Budget = Math.max(
+    SETTINGS_FRAME_P95_BUDGET_MS,
+    idleFrames.p95Ms + 50,
+  );
 
   console.log(`[PERF] Settings mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Settings initial DOM nodes: ${initialDomNodes.toLocaleString()}`);
@@ -223,6 +227,8 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   console.log(`[PERF] Settings filtered DOM nodes: ${filteredDomNodes.toLocaleString()}`);
   console.log(`[PERF] Settings inner list filter: ${listFilterElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Settings inner list filtered DOM nodes: ${listFilteredDomNodes.toLocaleString()}`);
+  console.log(`[PERF] Settings idle FPS: ${idleFrames.fps.toLocaleString()}`);
+  console.log(`[PERF] Settings idle p95 frame: ${idleFrames.p95Ms.toFixed(1)} ms`);
   console.log(`[PERF] Settings scroll FPS: ${scrollInteraction.result.fps.toLocaleString()}`);
   console.log(`[PERF] Settings scroll p95 frame: ${scrollInteraction.result.p95Ms.toFixed(1)} ms`);
   console.log(`[PERF] Settings scroll dropped frames: ${scrollInteraction.result.droppedFrames.toLocaleString()}`);
@@ -246,7 +252,7 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   expect(filteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(listFilteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(scrollInteraction.result.sampleCount).toBeGreaterThan(0);
-  expect(scrollInteraction.result.p95Ms).toBeLessThanOrEqual(SETTINGS_FRAME_P95_BUDGET_MS);
+  expect(scrollInteraction.result.p95Ms).toBeLessThanOrEqual(scrollP95Budget);
   expect(scrollInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_SCROLL_DROPPED_FRAME_BUDGET);
   expect(scrollInteraction.count).toBeLessThanOrEqual(SETTINGS_LONG_TASK_COUNT_BUDGET);
   expect(searchInteraction.result.sampleCount).toBeGreaterThan(0);

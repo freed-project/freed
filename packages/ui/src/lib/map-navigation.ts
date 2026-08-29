@@ -1,4 +1,4 @@
-import { socialAccountForAuthor, type Account, type LocationMarkerSummary } from "@freed/shared";
+import type { LocationMarkerSummary } from "@freed/shared";
 
 interface MapNavigationActions {
   setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
@@ -7,13 +7,6 @@ interface MapNavigationActions {
   setSelectedItem: (id: string | null) => void;
   setFilter: (filter: Record<string, never>) => void;
   setSearchQuery: (query: string) => void;
-}
-
-function findMarkerAccount(
-  marker: LocationMarkerSummary,
-  accounts: Record<string, Account>,
-): Account | null {
-  return socialAccountForAuthor(accounts, marker.item.platform, marker.item.author.id);
 }
 
 export function openFriendFromMap(
@@ -31,16 +24,14 @@ export function openFriendFromMap(
 
 export function openAccountFromMap(
   marker: LocationMarkerSummary,
-  accounts: Record<string, Account>,
   actions: Pick<
     MapNavigationActions,
     "setActiveView" | "setSelectedPerson" | "setSelectedAccount" | "setSelectedItem"
   >,
 ): void {
-  const account = findMarkerAccount(marker, accounts);
-  if (!account) return;
+  if (!marker.accountId) return;
   actions.setSelectedPerson(null);
-  actions.setSelectedAccount(account.id);
+  actions.setSelectedAccount(marker.accountId);
   actions.setSelectedItem(null);
   actions.setActiveView("friends");
 }

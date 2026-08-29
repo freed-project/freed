@@ -333,6 +333,28 @@ test("feature validation installs Playwright for every desktop e2e plan", () => 
   assert.doesNotMatch(ciWorkflow, /grep -q '\^desktop e2e '/);
 });
 
+test("feature and dev validation route OPFS durability to macOS WebKit", () => {
+  const featureJob = ciWorkflow.slice(
+    ciWorkflow.indexOf("\n  feature:"),
+    ciWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
+  );
+  const opfsJob = ciWorkflow.slice(
+    ciWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
+    ciWorkflow.indexOf("\n  dev:"),
+  );
+  const devJob = ciWorkflow.slice(ciWorkflow.indexOf("\n  dev:"));
+
+  assert.match(featureJob, /grep -q '\^pwa WebKit OPFS durability\$'/);
+  assert.match(featureJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
+  assert.doesNotMatch(featureJob, /browsers\+=\(webkit\)/);
+  assert.match(opfsJob, /runs-on: macos-latest/);
+  assert.match(opfsJob, /npx playwright install webkit/);
+  assert.match(opfsJob, /npm run test:e2e:opfs/);
+  assert.match(devJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
+  assert.match(devJob, /playwright install --with-deps chromium/);
+  assert.doesNotMatch(devJob, /playwright install --with-deps chromium webkit/);
+});
+
 test("main PR validation inspects the actual PR head instead of the synthetic merge", () => {
   assert.match(
     ciWorkflow,

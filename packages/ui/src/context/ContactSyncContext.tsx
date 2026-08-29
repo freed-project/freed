@@ -7,14 +7,25 @@
  */
 
 import { createContext, useContext } from "react";
-import type { ContactMatch, ContactSyncState } from "@freed/shared";
+import type {
+  LibraryCoreDeviceContactStatusResponseV1,
+  LibraryCoreDeviceContactSuggestionPageResponseV1,
+  LibraryCoreDeviceContactUnmatchedPageResponseV1,
+} from "@freed/shared/library-core";
 
 export interface ContactSyncContextValue {
-  syncState: ContactSyncState;
-  getSyncState: () => ContactSyncState;
-  syncNow: (options?: { force?: boolean }) => Promise<ContactSyncState>;
-  dismissSuggestion: (suggestionId: string) => void;
-  getMatchForSuggestion: (suggestionId: string) => ContactMatch | null;
+  syncState: LibraryCoreDeviceContactStatusResponseV1;
+  suggestionPage: LibraryCoreDeviceContactSuggestionPageResponseV1;
+  unmatchedPage: LibraryCoreDeviceContactUnmatchedPageResponseV1;
+  syncNow: (
+    options?: { force?: boolean },
+  ) => Promise<LibraryCoreDeviceContactStatusResponseV1>;
+  dismissSuggestion: (suggestionId: string) => Promise<void>;
+  loadNextSuggestionPage: () => Promise<LibraryCoreDeviceContactSuggestionPageResponseV1>;
+  loadNextUnmatchedPage: () => Promise<LibraryCoreDeviceContactUnmatchedPageResponseV1>;
+  refreshReview: () => Promise<void>;
+  resetSuggestionPage: () => Promise<LibraryCoreDeviceContactSuggestionPageResponseV1>;
+  resetUnmatchedPage: () => Promise<LibraryCoreDeviceContactUnmatchedPageResponseV1>;
   openReview: () => Promise<void>;
 }
 

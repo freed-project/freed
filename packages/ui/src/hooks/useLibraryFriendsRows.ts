@@ -11,10 +11,10 @@ import {
   type LibraryFriendsLocationItemRequest,
   type LibraryFriendsGraphRequest,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
   type LibraryPersonTimelinePage,
 } from "../context/PlatformContext.js";
 import { friendActivitySourceKey } from "../lib/friends-workspace.js";
-import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 const TIMELINE_PAGE_SIZE = 50;
 const MAX_LOCATION_ITEMS = 8;
@@ -56,10 +56,6 @@ interface TimelineCursorAttempt extends TimelineAttempt {
   readonly cursor: string | null;
 }
 
-interface LocationAttempt extends TimelineAttempt {
-  readonly attemptKey: string;
-}
-
 interface LocationReadPlan {
   readonly attemptKey: string;
   readonly complete: boolean;
@@ -69,31 +65,15 @@ interface LocationReadPlan {
 export interface LibraryFriendsRowsState {
   readonly graph: LibraryFriendsGraph | null;
   readonly graphLoading: boolean;
-  readonly graphUsingFallback: boolean;
-  readonly legacyItemsReady: boolean;
   readonly locationItems: readonly FeedItem[];
-  readonly locationUsingFallback: boolean;
   readonly timelineItems: readonly FeedItem[];
   readonly timelineTotalCount: number;
   readonly timelineLoading: boolean;
   readonly timelineLoadingMore: boolean;
   readonly timelineHasMore: boolean;
   readonly timelineAwayFromNewest: boolean;
-  readonly timelineUsingFallback: boolean;
   loadMoreTimeline(): void;
   showNewestTimeline(): void;
-}
-
-function locationAttemptMatches(
-  attempt: LocationAttempt | null,
-  sourceVersion: number,
-  sources: readonly LibraryFriendsSource[],
-  attemptKey: string,
-): boolean {
-  return (
-    timelineAttemptMatches(attempt, sourceVersion, sources) &&
-    attempt?.attemptKey === attemptKey
-  );
 }
 
 function graphAttemptMatches(
@@ -125,44 +105,6 @@ function timelineCursorAttemptMatches(
   return (
     timelineAttemptMatches(attempt, sourceVersion, sources) &&
     attempt?.cursor === cursor
-  );
-}
-
-function visibleTimelineItems(
-  items: readonly FeedItem[],
-  sources: readonly LibraryFriendsSource[],
-): FeedItem[] {
-  const sourceKeys = new Set(
-    sources.map((source) =>
-      friendActivitySourceKey(source.platform, source.authorId),
-    ),
-  );
-  return items
-    .filter(
-      (item) =>
-        !item.userState.hidden &&
-        sourceKeys.has(friendActivitySourceKey(item.platform, item.author.id)),
-    )
-    .sort(
-      (left, right) =>
-        right.publishedAt - left.publishedAt ||
-        compareUtf8Binary(left.globalId, right.globalId),
-    );
-}
-
-function visibleLocationSourceItems(
-  items: readonly FeedItem[],
-  sources: readonly LibraryFriendsSource[],
-): FeedItem[] {
-  const sourceKeys = new Set(
-    sources.map((source) =>
-      friendActivitySourceKey(source.platform, source.authorId),
-    ),
-  );
-  return items.filter(
-    (item) =>
-      !item.userState.hidden &&
-      sourceKeys.has(friendActivitySourceKey(item.platform, item.author.id)),
   );
 }
 
@@ -232,8 +174,8 @@ function buildLocationReadPlan(
   for (const request of requests) {
     const candidateTime = `${request.effectiveAt}:${request.publishedAt}`;
     if (candidateTimes.has(candidateTime)) {
-      // The legacy map resolves equal effective timestamps by stable source
-      // order. Binary ID ordering would silently choose a different place.
+      // Equal effective timestamps cannot be resolved to one deterministic
+      // map position without an explicit ordering contract.
       complete = false;
     }
     candidateTimes.add(candidateTime);
@@ -314,22 +256,18 @@ function replaceTimelinePage(
   };
 }
 
-/**
- * Read compact Friends activity and one selected bounded timeline. The single
- * compatibility lease is acquired only when the applicable native read is
- * absent or fails, then released after a later successful retry.
- */
+/** Read compact Friends activity and one selected bounded SQLite timeline. */
 export function useLibraryFriendsRows({
   graphRequest,
   locationSources,
+  timelineIdentity,
   timelineSources,
-  fallbackItems,
   sourceVersion,
 }: {
   graphRequest: LibraryFriendsGraphRequest;
   locationSources: readonly LibraryFriendsSource[];
+  timelineIdentity: LibraryPersonTimelineRequest | null;
   timelineSources: readonly LibraryFriendsSource[];
-  fallbackItems: readonly FeedItem[];
   sourceVersion: number;
 }): LibraryFriendsRowsState {
   const {
@@ -337,40 +275,22 @@ export function useLibraryFriendsRows({
     readLibraryFriendsLocationItem,
     readLibraryPersonTimeline,
   } = usePlatform();
-  const timelineActive = timelineSources.length > 0;
+  const timelineActive = timelineIdentity !== null;
   const locationActive = locationSources.length > 0;
   const [versionedGraph, setVersionedGraph] =
     useState<VersionedFriendsGraph | null>(null);
   const [failedGraphAttempt, setFailedGraphAttempt] =
     useState<GraphAttempt | null>(null);
-  const graphRetriedAttemptRef = useRef<GraphAttempt | null>(null);
-  const [graphRetrySequence, setGraphRetrySequence] = useState(0);
   const [versionedTimeline, setVersionedTimeline] =
     useState<VersionedTimeline | null>(null);
   const [failedTimelineAttempt, setFailedTimelineAttempt] =
     useState<TimelineAttempt | null>(null);
-  const timelineRetriedAttemptRef = useRef<TimelineAttempt | null>(null);
-  const [timelineRetrySequence, setTimelineRetrySequence] = useState(0);
-  const [fallbackTimelineOffset, setFallbackTimelineOffset] = useState(0);
   const inFlightTimelineCursorRef = useRef<TimelineCursorAttempt | null>(null);
   const [versionedLocationItems, setVersionedLocationItems] =
     useState<VersionedLocationItems | null>(null);
-  const [failedLocationAttempt, setFailedLocationAttempt] =
-    useState<LocationAttempt | null>(null);
-  const locationRetriedAttemptRef = useRef<LocationAttempt | null>(null);
-  const [locationRetrySequence, setLocationRetrySequence] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    if (
-      !graphAttemptMatches(
-        graphRetriedAttemptRef.current,
-        sourceVersion,
-        graphRequest,
-      )
-    ) {
-      graphRetriedAttemptRef.current = null;
-    }
     setFailedGraphAttempt((failedAttempt) =>
       graphAttemptMatches(failedAttempt, sourceVersion, graphRequest)
         ? failedAttempt
@@ -391,15 +311,6 @@ export function useLibraryFriendsRows({
             ? null
             : failedAttempt,
         );
-        if (
-          graphAttemptMatches(
-            graphRetriedAttemptRef.current,
-            sourceVersion,
-            graphRequest,
-          )
-        ) {
-          graphRetriedAttemptRef.current = null;
-        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -411,28 +322,16 @@ export function useLibraryFriendsRows({
     };
   }, [
     graphRequest,
-    graphRetrySequence,
     readLibraryFriendsGraph,
     sourceVersion,
   ]);
 
   useEffect(() => {
-    setFallbackTimelineOffset(0);
     inFlightTimelineCursorRef.current = null;
     if (!timelineActive) {
       setVersionedTimeline(null);
       setFailedTimelineAttempt(null);
-      timelineRetriedAttemptRef.current = null;
       return;
-    }
-    if (
-      !timelineAttemptMatches(
-        timelineRetriedAttemptRef.current,
-        sourceVersion,
-        timelineSources,
-      )
-    ) {
-      timelineRetriedAttemptRef.current = null;
     }
     setFailedTimelineAttempt((failedAttempt) =>
       timelineAttemptMatches(failedAttempt, sourceVersion, timelineSources)
@@ -447,7 +346,7 @@ export function useLibraryFriendsRows({
       };
     }
     void readLibraryPersonTimeline({
-      sources: timelineSources,
+      ...timelineIdentity,
       limit: TIMELINE_PAGE_SIZE,
       cursor: null,
     })
@@ -468,15 +367,6 @@ export function useLibraryFriendsRows({
             ? null
             : failedAttempt,
         );
-        if (
-          timelineAttemptMatches(
-            timelineRetriedAttemptRef.current,
-            sourceVersion,
-            timelineSources,
-          )
-        ) {
-          timelineRetriedAttemptRef.current = null;
-        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -490,7 +380,7 @@ export function useLibraryFriendsRows({
     readLibraryPersonTimeline,
     sourceVersion,
     timelineActive,
-    timelineRetrySequence,
+    timelineIdentity,
     timelineSources,
   ]);
 
@@ -515,26 +405,6 @@ export function useLibraryFriendsRows({
   useEffect(() => {
     let cancelled = false;
     const attemptKey = locationReadPlan?.attemptKey ?? "";
-    if (
-      !locationAttemptMatches(
-        locationRetriedAttemptRef.current,
-        sourceVersion,
-        locationSources,
-        attemptKey,
-      )
-    ) {
-      locationRetriedAttemptRef.current = null;
-    }
-    setFailedLocationAttempt((failedAttempt) =>
-      locationAttemptMatches(
-        failedAttempt,
-        sourceVersion,
-        locationSources,
-        attemptKey,
-      )
-        ? failedAttempt
-        : null,
-    );
     if (
       !locationActive ||
       !locationReadPlan?.complete ||
@@ -565,195 +435,34 @@ export function useLibraryFriendsRows({
           sources: locationSources,
           items: resolvedItems,
         });
-        setFailedLocationAttempt((failedAttempt) =>
-          locationAttemptMatches(
-            failedAttempt,
-            sourceVersion,
-            locationSources,
-            attemptKey,
-          )
-            ? null
-            : failedAttempt,
-        );
-        if (
-          locationAttemptMatches(
-            locationRetriedAttemptRef.current,
-            sourceVersion,
-            locationSources,
-            attemptKey,
-          )
-        ) {
-          locationRetriedAttemptRef.current = null;
-        }
       })
       .catch(() => {
-        if (!cancelled) {
-          setFailedLocationAttempt({
-            attemptKey,
-            sourceVersion,
-            sources: locationSources,
-          });
-        }
+        if (!cancelled) setVersionedLocationItems(null);
       });
     return () => {
       cancelled = true;
     };
   }, [
     locationReadPlan,
-    locationRetrySequence,
     locationActive,
     locationSources,
     readLibraryFriendsLocationItem,
     sourceVersion,
   ]);
 
-  const graphUsingFallback =
-    !readLibraryFriendsGraph ||
-    graphAttemptMatches(failedGraphAttempt, sourceVersion, graphRequest);
-  const timelineUsingFallback =
-    timelineActive &&
-    (!readLibraryPersonTimeline ||
-      timelineAttemptMatches(
-        failedTimelineAttempt,
-        sourceVersion,
-        timelineSources,
-      ));
   const locationAttemptKey = locationReadPlan?.attemptKey ?? "";
-  const locationUsingFallback =
-    locationActive &&
-    (graphUsingFallback ||
-      (currentGraph !== null &&
-        (!locationReadPlan?.complete ||
-          (locationReadPlan.requests.length > 0 &&
-            (!readLibraryFriendsLocationItem ||
-              locationAttemptMatches(
-                failedLocationAttempt,
-                sourceVersion,
-                locationSources,
-                locationAttemptKey,
-              ))))));
-  const legacyItemsReady = useLegacyLibraryItems(
-    graphUsingFallback || timelineUsingFallback || locationUsingFallback,
-  );
-
-  useEffect(() => {
-    if (
-      graphAttemptMatches(failedGraphAttempt, sourceVersion, graphRequest) &&
-      legacyItemsReady &&
-      readLibraryFriendsGraph &&
-      !graphAttemptMatches(
-        graphRetriedAttemptRef.current,
-        sourceVersion,
-        graphRequest,
-      )
-    ) {
-      graphRetriedAttemptRef.current = { sourceVersion, request: graphRequest };
-      setGraphRetrySequence((sequence) => sequence + 1);
-    }
-    if (
-      timelineAttemptMatches(
-        failedTimelineAttempt,
-        sourceVersion,
-        timelineSources,
-      ) &&
-      timelineActive &&
-      legacyItemsReady &&
-      readLibraryPersonTimeline &&
-      !timelineAttemptMatches(
-        timelineRetriedAttemptRef.current,
-        sourceVersion,
-        timelineSources,
-      )
-    ) {
-      timelineRetriedAttemptRef.current = {
-        sourceVersion,
-        sources: timelineSources,
-      };
-      setTimelineRetrySequence((sequence) => sequence + 1);
-    }
-    if (
-      locationReadPlan?.complete &&
-      locationReadPlan.requests.length > 0 &&
-      locationAttemptMatches(
-        failedLocationAttempt,
-        sourceVersion,
-        locationSources,
-        locationAttemptKey,
-      ) &&
-      legacyItemsReady &&
-      readLibraryFriendsLocationItem &&
-      !locationAttemptMatches(
-        locationRetriedAttemptRef.current,
-        sourceVersion,
-        locationSources,
-        locationAttemptKey,
-      )
-    ) {
-      locationRetriedAttemptRef.current = {
-        attemptKey: locationAttemptKey,
-        sourceVersion,
-        sources: locationSources,
-      };
-      setLocationRetrySequence((sequence) => sequence + 1);
-    }
-  }, [
-    failedLocationAttempt,
-    failedGraphAttempt,
-    failedTimelineAttempt,
-    graphRequest,
-    legacyItemsReady,
-    locationActive,
-    locationAttemptKey,
-    locationReadPlan,
-    locationSources,
-    readLibraryFriendsGraph,
-    readLibraryFriendsLocationItem,
-    readLibraryPersonTimeline,
-    timelineActive,
-    timelineSources,
-    sourceVersion,
-  ]);
-  const fallbackVisibleItems = useMemo(
-    () =>
-      timelineUsingFallback && legacyItemsReady
-        ? visibleTimelineItems(fallbackItems, timelineSources)
-        : null,
-    [fallbackItems, legacyItemsReady, timelineSources, timelineUsingFallback],
-  );
-  const fallbackLocationSourceItems = useMemo(
-    () =>
-      locationUsingFallback && legacyItemsReady
-        ? visibleLocationSourceItems(fallbackItems, locationSources)
-        : null,
-    [fallbackItems, legacyItemsReady, locationSources, locationUsingFallback],
-  );
-  const fallbackLocationItems = useMemo(
-    () =>
-      fallbackLocationSourceItems?.filter(
-        (item) =>
-          Boolean(extractLocationFromItem(item)) &&
-          isLocationItemVisibleInTimeMode(
-            item,
-            "current",
-            graphRequest.recentWindow.endMs,
-          ),
-      ) ?? [],
-    [fallbackLocationSourceItems, graphRequest.recentWindow.endMs],
-  );
-  const currentLocationItems =
+  const locationItems =
     versionedLocationItems?.sourceVersion === sourceVersion &&
     versionedLocationItems.sources === locationSources &&
     versionedLocationItems.attemptKey === locationAttemptKey
       ? versionedLocationItems.items
       : [];
-  const locationItems = locationUsingFallback
-    ? fallbackLocationItems
-    : currentLocationItems;
 
   const requestNativeTimelinePage = useCallback(
     (cursor: string | null) => {
       if (
         !readLibraryPersonTimeline ||
+        timelineIdentity === null ||
         !currentTimeline ||
         currentTimeline.loadingMore ||
         timelineAttemptMatches(
@@ -771,7 +480,7 @@ export function useLibraryFriendsRows({
       };
       setVersionedTimeline({ ...currentTimeline, loadingMore: true });
       void readLibraryPersonTimeline({
-        sources: timelineSources,
+        ...timelineIdentity,
         limit: TIMELINE_PAGE_SIZE,
         cursor,
       })
@@ -824,86 +533,46 @@ export function useLibraryFriendsRows({
       currentTimeline,
       readLibraryPersonTimeline,
       sourceVersion,
+      timelineIdentity,
       timelineSources,
     ],
   );
 
   const loadMoreTimeline = useCallback(() => {
-    if (timelineUsingFallback) {
-      setFallbackTimelineOffset((offset) => {
-        const nextOffset = offset + TIMELINE_PAGE_SIZE;
-        return nextOffset < (fallbackVisibleItems?.length ?? 0)
-          ? nextOffset
-          : offset;
-      });
-      return;
-    }
     if (currentTimeline?.nextCursor) {
       requestNativeTimelinePage(currentTimeline.nextCursor);
     }
-  }, [
-    currentTimeline?.nextCursor,
-    fallbackVisibleItems?.length,
-    requestNativeTimelinePage,
-    timelineUsingFallback,
-  ]);
+  }, [currentTimeline?.nextCursor, requestNativeTimelinePage]);
 
   const showNewestTimeline = useCallback(() => {
-    if (timelineUsingFallback) {
-      setFallbackTimelineOffset(0);
-      return;
-    }
     if (currentTimeline && currentTimeline.pageCursor !== null) {
       requestNativeTimelinePage(null);
     }
-  }, [currentTimeline, requestNativeTimelinePage, timelineUsingFallback]);
-
-  if (timelineUsingFallback) {
-    const items =
-      fallbackVisibleItems?.slice(
-        fallbackTimelineOffset,
-        fallbackTimelineOffset + TIMELINE_PAGE_SIZE,
-      ) ?? [];
-    const totalCount = fallbackVisibleItems?.length ?? 0;
-    return {
-      graph: currentGraph,
-      graphLoading: graphUsingFallback
-        ? !legacyItemsReady
-        : currentGraph === null,
-      graphUsingFallback,
-      legacyItemsReady,
-      locationItems,
-      locationUsingFallback,
-      timelineItems: items,
-      timelineTotalCount: totalCount,
-      timelineLoading: !legacyItemsReady,
-      timelineLoadingMore: false,
-      timelineHasMore: fallbackTimelineOffset + items.length < totalCount,
-      timelineAwayFromNewest: fallbackTimelineOffset > 0,
-      timelineUsingFallback,
-      loadMoreTimeline,
-      showNewestTimeline,
-    };
-  }
+  }, [currentTimeline, requestNativeTimelinePage]);
 
   return {
     graph: currentGraph,
-    graphLoading: graphUsingFallback
-      ? !legacyItemsReady
-      : currentGraph === null,
-    graphUsingFallback,
-    legacyItemsReady,
+    graphLoading:
+      Boolean(readLibraryFriendsGraph) &&
+      currentGraph === null &&
+      !graphAttemptMatches(failedGraphAttempt, sourceVersion, graphRequest),
     locationItems,
-    locationUsingFallback,
     timelineItems: currentTimeline?.items ?? [],
     timelineTotalCount: currentTimeline?.totalCount ?? 0,
-    timelineLoading: timelineActive && currentTimeline === null,
+    timelineLoading:
+      timelineActive &&
+      Boolean(readLibraryPersonTimeline) &&
+      currentTimeline === null &&
+      !timelineAttemptMatches(
+        failedTimelineAttempt,
+        sourceVersion,
+        timelineSources,
+      ),
     timelineLoadingMore: currentTimeline?.loadingMore ?? false,
     timelineHasMore: Boolean(currentTimeline?.nextCursor),
     timelineAwayFromNewest: Boolean(
       currentTimeline && currentTimeline.pageCursor !== null,
     ),
-    timelineUsingFallback,
     loadMoreTimeline,
     showNewestTimeline,
   };

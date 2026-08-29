@@ -3,15 +3,16 @@
  *
  * Rendered via the SettingsExtraSections platform slot. Two views:
  *
- * - Not connected: shows the full connect UI (SyncConnectContent) inline with
+ * - Not connected: shows the Google Drive connect UI inline with
  *   a small "not connected" pill at the top for context. No two-step flow.
  * - Connected: polished status card with provider logo, connection label,
  *   last-synced time, and a Disconnect action.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
+import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
   useDebugStore,
   type CloudProviderDebugState,
@@ -22,19 +23,18 @@ import {
   getCloudProvider,
   clearCloudSync,
   stopCloudSync,
-  clearStoredRelayUrl,
-  disconnect,
   syncCloudProviderNow,
 } from "../lib/sync";
-import { SyncConnectContent } from "./SyncConnectDialog";
+import { PwaCloudSyncConnect } from "./PwaCloudSyncConnect";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
-import { readPwaLibraryCoreSelectedCheckpointReceipt } from "../lib/library-core-runtime";
-import type { PwaLibraryCoreSelectedCheckpointReceiptV1 } from "../lib/library-core-portable-checkpoint-store";
+import {
+  readPwaLibraryCoreCloudReceiptV2,
+  type PwaLibraryCoreCloudReceiptV2,
+} from "../lib/library-core-runtime";
 
-type Provider = "gdrive" | "dropbox" | "local";
+type Provider = "gdrive";
 
 function getProviderInfo(
-  syncConnected: boolean,
   configuredProvider: ReturnType<typeof getCloudProvider>,
 ): {
   label: string;
@@ -43,9 +43,7 @@ function getProviderInfo(
   const provider = configuredProvider;
   if (provider === "gdrive")
     return { label: "Google Drive", provider: "gdrive" };
-  if (provider === "dropbox") return { label: "Dropbox", provider: "dropbox" };
-  if (!syncConnected) return { label: "Not connected", provider: null };
-  return { label: "Local Desktop", provider: "local" };
+  return { label: "Not connected", provider: null };
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -132,83 +130,40 @@ function describeProviderError(message: string): string {
   return "Sync needs attention. Review Sync diagnostics below.";
 }
 
-function ProviderLogo({ provider }: { provider: Provider }) {
-  switch (provider) {
-    case "gdrive":
-      return (
-        <svg
-          className="theme-icon-media h-8 w-8 flex-shrink-0"
-          viewBox="0 0 87.3 78"
-          fill="currentColor"
-        >
-          <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" />
-          <path
-            d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5C.4 49.9 0 51.45 0 53h27.5z"
-            opacity="0.86"
-          />
-          <path
-            d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85l5.85 11.2z"
-            opacity="0.94"
-          />
-          <path
-            d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.45-4.45 1.2z"
-            opacity="0.72"
-          />
-          <path
-            d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2z"
-            opacity="0.8"
-          />
-          <path
-            d="M73.4 26.5l-12.8-22.2C59.8 2.9 58.65 1.8 57.3 1L43.55 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z"
-            opacity="0.64"
-          />
-        </svg>
-      );
-    case "dropbox":
-      return (
-        <svg
-          className="theme-icon-media h-8 w-8 flex-shrink-0"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-        >
-          <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4-6-4zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zm-6 14l-6-4-6 4 6 4 6-4z" />
-        </svg>
-      );
-    case "local":
-      return (
-        <svg
-          className="h-8 w-8 flex-shrink-0 text-[var(--theme-text-secondary)]"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-          />
-        </svg>
-      );
-  }
+function ProviderLogo() {
+  return (
+    <svg
+      className="theme-icon-media h-8 w-8 flex-shrink-0"
+      viewBox="0 0 87.3 78"
+      fill="currentColor"
+    >
+      <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" />
+      <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5C.4 49.9 0 51.45 0 53h27.5z" opacity="0.86" />
+      <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85l5.85 11.2z" opacity="0.94" />
+      <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.45-4.45 1.2z" opacity="0.72" />
+      <path d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2z" opacity="0.8" />
+      <path d="M73.4 26.5l-12.8-22.2C59.8 2.9 58.65 1.8 57.3 1L43.55 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" opacity="0.64" />
+    </svg>
+  );
 }
 
 export function PwaSyncSettings() {
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
-  const feeds = useAppStore((s) => s.feeds);
-  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<
-    "gdrive" | "dropbox" | null
+    "gdrive" | null
   >(null);
   const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const [configuredCloudProvider, setConfiguredCloudProvider] = useState(() =>
     getCloudProvider(),
   );
-  const [selectedCheckpoint, setSelectedCheckpoint] =
-    useState<PwaLibraryCoreSelectedCheckpointReceiptV1 | null>(null);
+  const [cloudReceipt, setCloudReceipt] =
+    useState<PwaLibraryCoreCloudReceiptV2 | null>(null);
   const [selectedCheckpointError, setSelectedCheckpointError] = useState<
     string | null
   >(null);
@@ -216,57 +171,40 @@ export function PwaSyncSettings() {
     useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
-  const lastSyncTime = useMemo(() => {
-    const times = Object.values(feeds)
-      .map((f) => f.lastFetched)
-      .filter((t): t is number => !!t);
-    return times.length > 0 ? Math.max(...times) : null;
-  }, [feeds]);
+  const lastSyncTime = libraryFacets.latestRssFeedFetchedAt;
 
-  const { label, provider } = getProviderInfo(
-    syncConnected,
-    configuredCloudProvider,
-  );
-  const cloudProviderState =
-    provider === "gdrive" || provider === "dropbox"
-      ? cloudProviders?.[provider]
-      : null;
-  const activeCloudProvider =
-    provider === "gdrive" || provider === "dropbox" ? provider : null;
-  const activeCloudProviderName =
-    activeCloudProvider === "dropbox" ? "Dropbox" : "Google Drive";
-  const cloudActivity = useCloudSyncActivity(
-    cloudProviderState,
-    activeCloudProviderName,
-  );
+  const { label, provider } = getProviderInfo(configuredCloudProvider);
+  const cloudProviderState = provider ? cloudProviders?.gdrive : null;
+  const activeCloudProvider = provider;
+  const cloudActivity = useCloudSyncActivity(cloudProviderState);
   const isManualSyncing = manualSyncingProvider !== null;
   const uploadExplanation = describeUploadGap(cloudProviderState ?? null);
   const diagnosticError = cloudProviderState?.error ?? manualSyncError;
+  const selectedCheckpoint = cloudReceipt?.checkpoint ?? null;
+  const followerReceipt = cloudReceipt?.follower ?? null;
 
   const refreshSelectedCheckpoint = useCallback(async () => {
     if (activeCloudProvider !== "gdrive") {
-      setSelectedCheckpoint(null);
+      setCloudReceipt(null);
       setSelectedCheckpointError(null);
       return;
     }
     try {
-      setSelectedCheckpoint(
-        await readPwaLibraryCoreSelectedCheckpointReceipt(),
-      );
+      setCloudReceipt(await readPwaLibraryCoreCloudReceiptV2());
       setSelectedCheckpointError(null);
     } catch (error) {
       setSelectedCheckpointError(
         error instanceof Error
           ? error.message
-          : "IndexedDB checkpoint receipt is unavailable.",
+          : "SQLite checkpoint receipt is unavailable.",
       );
     }
   }, [activeCloudProvider]);
 
   const copySelectedCheckpoint = useCallback(async () => {
-    if (!selectedCheckpoint) return;
+    if (!cloudReceipt?.checkpoint) return;
     try {
-      await copyExactJsonToClipboard(selectedCheckpoint);
+      await copyExactJsonToClipboard(cloudReceipt);
       setSelectedCheckpointCopied(true);
       setSelectedCheckpointError(null);
     } catch (error) {
@@ -274,10 +212,10 @@ export function PwaSyncSettings() {
       setSelectedCheckpointError(
         error instanceof Error
           ? error.message
-          : "IndexedDB checkpoint receipt could not be copied.",
+          : "SQLite checkpoint receipt could not be copied.",
       );
     }
-  }, [selectedCheckpoint]);
+  }, [cloudReceipt]);
 
   useEffect(() => {
     queueMicrotask(() => void refreshSelectedCheckpoint());
@@ -289,12 +227,7 @@ export function PwaSyncSettings() {
   }, [refreshSelectedCheckpoint]);
 
   const handleDisconnect = () => {
-    // Capture the configured provider before clearing the connection store.
-    // disconnect() removes the provider marker, so looking it up afterward
-    // leaves the OAuth credentials behind and makes Disconnect appear inert.
     const cloudProvider = getCloudProvider();
-    clearStoredRelayUrl();
-    disconnect();
     if (cloudProvider) {
       clearCloudSync(cloudProvider);
       stopCloudSync();
@@ -386,7 +319,7 @@ export function PwaSyncSettings() {
             </div>
           </div>
         </div>
-        <SyncConnectContent onDone={() => {}} />
+        <PwaCloudSyncConnect />
       </div>
     );
   }
@@ -419,7 +352,7 @@ export function PwaSyncSettings() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-4">
-        {provider && <ProviderLogo provider={provider} />}
+        {provider && <ProviderLogo />}
         <div className="min-w-0 flex-1">
           <p className="text-base font-semibold leading-none text-[var(--theme-text-primary)]">
             {label}
@@ -526,11 +459,11 @@ export function PwaSyncSettings() {
         <div className="grid grid-cols-2 gap-2">
           <SyncDiagnosticCell
             label="Local items"
-            value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"}
+            value={librarySnapshot ? librarySnapshot.itemCount.toLocaleString() : "-"}
           />
           <SyncDiagnosticCell
             label="Local size"
-            value={formatBytes(docSnapshot?.binarySize)}
+            value={formatBytes(librarySnapshot?.storageBytes)}
           />
           <SyncDiagnosticCell
             label="Last download"
@@ -551,55 +484,119 @@ export function PwaSyncSettings() {
           <SyncDiagnosticCell
             label="Checkpoint"
             value={
-              selectedCheckpoint?.manifestGeneration.toLocaleString() ?? "-"
+              selectedCheckpoint?.checkpointGeneration.toLocaleString() ?? "-"
             }
           />
           <SyncDiagnosticCell
-            label="Imported revision"
+            label="Source revision"
             value={
-              selectedCheckpoint?.importedThroughIngestSequence.toLocaleString() ??
-              "-"
+              selectedCheckpoint?.sourceRevision.toLocaleString() ?? "-"
             }
           />
           <SyncDiagnosticCell
-            label="Manifest records"
-            value={selectedCheckpoint?.totalRecordCount.toLocaleString() ?? "-"}
+            label="Installed"
+            value={formatDiagnosticTime(selectedCheckpoint?.installedAt)}
           />
           <SyncDiagnosticCell
-            label="Receipt items"
-            value={selectedCheckpoint?.itemCount?.toLocaleString() ?? "-"}
-          />
-          <SyncDiagnosticCell
-            label="Checkpoint bytes"
-            value={formatBytes(
-              selectedCheckpoint?.checkpointStoredByteLength ?? undefined,
-            )}
-          />
-          <SyncDiagnosticCell
-            label="Selection"
+            label="Writer"
+            title={selectedCheckpoint?.writerActorId}
             value={
-              selectedCheckpoint?.selectionSequence.toLocaleString() ?? "-"
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.writerActorId)
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Follower actor"
+            title={followerReceipt?.actorId}
+            value={
+              followerReceipt
+                ? formatIdentityTail(followerReceipt.actorId)
+                : "Enrollment pending"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Storage epoch"
+            title={selectedCheckpoint?.authorityEpoch}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.authorityEpoch)
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Next intent"
+            value={
+              followerReceipt?.nextIntentActorCounter.toLocaleString() ?? "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Intent head"
+            title={followerReceipt?.previousIntentSegmentDigest ?? undefined}
+            value={
+              followerReceipt?.previousIntentSegmentDigest
+                ? formatIdentityTail(
+                    followerReceipt.previousIntentSegmentDigest,
+                  )
+                : followerReceipt
+                  ? "None"
+                  : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Next result"
+            value={
+              followerReceipt?.nextResultSequence.toLocaleString() ?? "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Result head"
+            title={followerReceipt?.previousResultSegmentDigest ?? undefined}
+            value={
+              followerReceipt?.previousResultSegmentDigest
+                ? formatIdentityTail(
+                    followerReceipt.previousResultSegmentDigest,
+                  )
+                : followerReceipt
+                  ? "None"
+                  : "-"
             }
           />
           <SyncDiagnosticCell
             label="Manifest digest"
-            title={selectedCheckpoint?.manifest.descriptor.contentDigest}
+            title={selectedCheckpoint?.manifestContentDigest}
             value={
               selectedCheckpoint
-                ? formatIdentityTail(
-                    selectedCheckpoint.manifest.descriptor.contentDigest,
-                  )
+                ? formatIdentityTail(selectedCheckpoint.manifestContentDigest)
                 : "-"
             }
           />
           <SyncDiagnosticCell
             label="Drive object"
-            title={selectedCheckpoint?.manifest.transportObjectId}
+            title={selectedCheckpoint?.manifestTransportObjectId}
             value={
               selectedCheckpoint
                 ? formatIdentityTail(
-                    selectedCheckpoint.manifest.transportObjectId,
+                    selectedCheckpoint.manifestTransportObjectId,
                   )
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Checkpoint digest"
+            title={selectedCheckpoint?.checkpointDigest}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.checkpointDigest)
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Control revision"
+            title={selectedCheckpoint?.controlRevision}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.controlRevision)
                 : "-"
             }
           />
@@ -612,8 +609,8 @@ export function PwaSyncSettings() {
           className="btn-secondary mt-3 w-full rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
         >
           {selectedCheckpointCopied
-            ? "PWA receipt copied"
-            : "Copy exact PWA receipt"}
+            ? "PWA sync receipt copied"
+            : "Copy exact PWA sync receipt"}
         </button>
 
         {cloudProviderState?.events && cloudProviderState.events.length > 0 && (

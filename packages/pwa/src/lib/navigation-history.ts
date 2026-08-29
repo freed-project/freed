@@ -6,6 +6,8 @@ import {
   serializeNavigationState,
   type NavigationState,
 } from "@freed/shared";
+import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
+import { readPwaLibraryCoreItemDetail } from "./library-core-runtime";
 import { useAppStore } from "./store";
 
 function currentPathWithSearch(): string {
@@ -25,8 +27,15 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
   const activeView = useAppStore((state) => state.activeView);
   const activeFilter = useAppStore((state) => state.activeFilter);
   const selectedItemId = useAppStore((state) => state.selectedItemId);
+  const setSelectedItem = useAppStore((state) => state.setSelectedItem);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  const items = useAppStore((state) => state.items);
+  useSelectedLibraryItemValidity({
+    enabled,
+    isInitialized,
+    readLibraryItemDetail: readPwaLibraryCoreItemDetail,
+    selectedItemId,
+    setSelectedItem,
+  });
 
   const bootstrappedRef = useRef(false);
   const skipWriteRef = useRef(false);
@@ -40,7 +49,6 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
       activeView: parsed.activeView,
       activeFilter: parsed.activeFilter,
       selectedItemId: parsed.selectedItemId,
-      selectedFriendId: null,
     });
     window.history.replaceState(window.history.state, "", serializeNavigationState(parsed));
     bootstrappedRef.current = true;
@@ -56,20 +64,12 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
         activeView: parsed.activeView,
         activeFilter: parsed.activeFilter,
         selectedItemId: parsed.selectedItemId,
-        selectedFriendId: null,
       });
     };
 
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled || !bootstrappedRef.current || !isInitialized || !selectedItemId) return;
-    if (items.some((item) => item.globalId === selectedItemId)) return;
-
-    useAppStore.setState({ selectedItemId: null });
-  }, [enabled, isInitialized, items, selectedItemId]);
 
   useEffect(() => {
     if (!enabled || !bootstrappedRef.current) return;
@@ -81,9 +81,8 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
     writeTimerRef.current = window.setTimeout(() => {
       writeTimerRef.current = null;
 
-      const knownItemIds = isInitialized ? new Set(items.map((item) => item.globalId)) : null;
       const rawState = snapshotNavigationState();
-      const canonicalState = canonicalizeNavigationState(rawState, { knownItemIds });
+      const canonicalState = canonicalizeNavigationState(rawState);
       const nextUrl = serializeNavigationState(canonicalState);
       const currentUrl = currentPathWithSearch();
 
@@ -107,5 +106,5 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
         writeTimerRef.current = null;
       }
     };
-  }, [activeFilter, activeView, enabled, isInitialized, items, selectedItemId]);
+  }, [activeFilter, activeView, enabled, isInitialized, selectedItemId]);
 }

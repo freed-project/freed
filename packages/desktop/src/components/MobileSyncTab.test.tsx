@@ -2,7 +2,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
-import { useAppStore } from "../lib/store";
 import { readLibraryCoreDesktopRole } from "../lib/library-core-desktop-role";
 import { MobileSyncTab } from "./MobileSyncTab";
 
@@ -55,10 +54,10 @@ const mocks = vi.hoisted(() => ({
   followerStatus: {
     state: "active" as const,
     libraryId: "a".repeat(64),
-    epochId: "b".repeat(64),
+    authorityEpochId: "b".repeat(64),
     actorId: "c".repeat(64),
     checkpointGeneration: 12,
-    remoteIngestSequence: 345,
+    sourceRevision: 345,
     pendingIntentCount: 6,
     publishedIntentCount: 7,
     importedResultCount: 8,
@@ -94,7 +93,7 @@ vi.mock("../lib/sync", () => ({
 }));
 
 vi.mock("../lib/sqlite-library", () => ({
-  readSqliteLibraryFollowerRuntimeStatus: vi.fn(
+  readNormalizedLibraryFollowerRuntimeStatus: vi.fn(
     async () => mocks.followerStatus,
   ),
 }));
@@ -124,13 +123,12 @@ describe("MobileSyncTab cloud diagnostics", () => {
     });
     mocks.providers.gdrive = { status: "connected", error: undefined };
     window.localStorage.clear();
-    useAppStore.setState({ desktopClientIds: ["desktop-current"] });
     useDebugStore.setState({
-      docSnapshot: {
-        documentId: "document-1",
+      librarySnapshot: {
+        libraryId: "document-1",
         itemCount: 10288,
         feedCount: 106,
-        binarySize: 12_900_000,
+        storageBytes: 12_900_000,
         savedAt: Date.now(),
       },
       cloudProviders: {
@@ -164,8 +162,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
       root.unmount();
     });
     container.remove();
-    useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
-    useAppStore.setState({ desktopClientIds: [] });
+    useDebugStore.setState({ librarySnapshot: null, cloudProviders: null });
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;
@@ -205,11 +202,6 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(
       controlReceipt?.querySelector("p[title]")?.getAttribute("title"),
     ).toBe('"control-revision-12345678"');
-    expect(
-      container.querySelector(
-        "[data-testid='multiple-desktop-client-warning']",
-      ),
-    ).toBeNull();
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
     expect(copyReceipt).toBeInstanceOf(HTMLButtonElement);
@@ -268,7 +260,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     const diagnostics = container.querySelector(
       "[data-testid='library-core-follower-diagnostics']",
     );
-    expect(diagnostics?.textContent).toContain("Follower journal is active.");
+    expect(diagnostics?.textContent).toContain("Follower SQLite is active.");
     expect(diagnostics?.textContent).toContain("Queued edits");
     expect(diagnostics?.textContent).toContain("6");
     expect(diagnostics?.textContent).toContain("Published edits");
@@ -306,43 +298,6 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(
       container.querySelector("[data-testid='cloud-sync-activity-spinner']"),
     ).not.toBeNull();
-  });
-
-  it("warns when the synced library has multiple Freed Desktop clients", async () => {
-    useAppStore.setState({
-      desktopClientIds: ["desktop-current", "desktop-other"],
-    });
-
-    await act(async () => {
-      root.render(<MobileSyncTab />);
-    });
-
-    const warning = container.querySelector(
-      "[data-testid='multiple-desktop-client-warning']",
-    );
-    expect(warning?.getAttribute("role")).toBe("alert");
-    expect(warning?.textContent).toContain(
-      "Multiple Freed Desktop clients detected",
-    );
-    expect(warning?.textContent).toContain(
-      "2 Freed Desktop clients are registered",
-    );
-    expect(warning?.textContent).toContain(
-      "Only the current writer may publish SQLite Library revisions",
-    );
-
-    const dismiss = Array.from(warning?.querySelectorAll("button") ?? []).find(
-      (button) => button.textContent === "Got it",
-    );
-    expect(dismiss).toBeDefined();
-    await act(async () => {
-      dismiss?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(
-      container.querySelector(
-        "[data-testid='multiple-desktop-client-warning']",
-      ),
-    ).toBeNull();
   });
 
   it("offers one confirmed action when another Freed Desktop owns SQLite writes", async () => {

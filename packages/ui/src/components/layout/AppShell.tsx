@@ -26,16 +26,14 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
-  buildProvisionalPersonCandidates,
-  buildDiscoveredAccountsFromItems,
-  isPrunableInvalidDiscoveredSocialAccount,
-  provisionalPersonRepairSignature,
+  type Account,
   type GoogleContact,
-  type IdentitySuggestion,
   type SidebarMode,
 } from "@freed/shared";
+import type {
+  LibraryCoreDeviceContactSuggestionReviewRowV1,
+} from "@freed/shared/library-core";
 import {
-  buildSocialAccountsFromAuthorIds,
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
 import {
@@ -105,15 +103,14 @@ export function AppShell({ children }: AppShellProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const items = useAppStore((s) => s.items);
-  const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
+  const {
+    queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+    releaseMapRendererMemory,
+    replaceLibraryFriend,
+  } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
-  const accounts = useAppStore((s) => s.accounts);
-  const persons = useAppStore((s) => s.persons);
-  const addPerson = useAppStore((s) => s.addPerson);
-  const addAccounts = useAppStore((s) => s.addAccounts);
-  const removeAccount = useAppStore((s) => s.removeAccount);
-  const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
@@ -171,8 +168,6 @@ export function AppShell({ children }: AppShellProps) {
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
-  const provisionalPersonScanRef = useRef("");
-  const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
     settingsOpen ||
     addFeedOpen ||
@@ -402,120 +397,111 @@ export function AppShell({ children }: AppShellProps) {
     setFriendsMobileSurface("graph");
   }, [activeView, isMobileViewport]);
 
-  useEffect(() => {
-    if (!isInitialized) return;
-    const prunableAccounts = Object.values(accounts).filter(isPrunableInvalidDiscoveredSocialAccount);
-    if (prunableAccounts.length === 0) return;
-    const cleanupSignature = prunableAccounts.map((account) => account.id).sort().join("|");
-    if (cleanupSignature === invalidAccountCleanupRef.current) return;
-    invalidAccountCleanupRef.current = cleanupSignature;
-    void Promise.all(prunableAccounts.map((account) => removeAccount(account.id)))
-      .then(() => {
-        invalidAccountCleanupRef.current = "";
-        addDebugEvent(
-          "change",
-          `[Identity] removed ${prunableAccounts.length.toLocaleString()} invalid Facebook account${prunableAccounts.length === 1 ? "" : "s"}`,
-        );
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        addDebugEvent("error", `[Identity] invalid Facebook account cleanup failed: ${message}`);
-        invalidAccountCleanupRef.current = "";
-      });
-  }, [accounts, isInitialized, removeAccount]);
-
-  useEffect(() => {
-    if (!isInitialized || scanLibraryItems) return;
-    const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
-    if (missingAccounts.length > 0) void addAccounts(missingAccounts);
-  }, [
-    accounts,
-    addAccounts,
-    isInitialized,
-    items,
-    scanLibraryItems,
-  ]);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    const signature = provisionalPersonRepairSignature(persons, accounts);
-    if (signature === provisionalPersonScanRef.current) return;
-    provisionalPersonScanRef.current = signature;
-    const candidates = buildProvisionalPersonCandidates(persons, accounts);
-    if (candidates.length === 0) return;
-    void createConnectionPersonsFromCandidates(candidates).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      addDebugEvent("error", `[Identity] provisional person repair failed: ${message}`);
-    });
-  }, [accounts, createConnectionPersonsFromCandidates, isInitialized, persons]);
-
-  const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
-    const match = contactSync.getMatchForSuggestion(suggestion.id);
-    if (!match) return;
+  const handleLinkSuggestion = useCallback(async (
+    row: LibraryCoreDeviceContactSuggestionReviewRowV1,
+  ) => {
+    const { contact, suggestion } = row;
+    if (
+      !queryLibraryCore ||
+      !readLibraryAccountDetail ||
+      !replaceLibraryFriend
+    ) {
+      toast.error("Freed could not query the local Library.");
+      return;
+    }
 
     const now = Date.now();
-    const personId = match.person?.id ?? crypto.randomUUID();
-    const person = match.person ?? {
+    const matchedPersonId = suggestion.personId ?? null;
+    const personId = matchedPersonId ?? crypto.randomUUID();
+    const currentPerson = matchedPersonId
+      ? readLibraryPersonDetail
+        ? await readLibraryPersonDetail(matchedPersonId)
+        : null
+      : null;
+    if (matchedPersonId && !currentPerson) {
+      throw new Error("The matched Person is unavailable.");
+    }
+    const person = currentPerson ?? {
       id: personId,
-      name: match.contact.name.displayName ?? match.contact.name.givenName ?? "Unknown",
+      name:
+        contact.name.displayName ??
+        contact.name.givenName ??
+        "Unknown",
       relationshipStatus: "friend" as const,
       careLevel: 3 as const,
       createdAt: now,
       updatedAt: now,
     };
-
-    if (!match.person) {
-      await addPerson(person);
-    }
-
-    const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
-    let sourceItems = items;
-    if (scanLibraryItems) {
-      const authorIds = new Set(match.authorIds);
-      const matches = new Map<string, typeof items[number]>();
-      await scanLibraryItems((page) => {
-        for (const item of page) {
-          if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
-          matches.set(item.author.id, item);
-        }
-        return matches.size >= authorIds.size ? "stop" : "continue";
+    const linkedAccountIds = new Set(suggestion.accountIds);
+    if (matchedPersonId) {
+      const detail = await queryLibraryCore({
+        personId: matchedPersonId,
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
       });
-      sourceItems = [...matches.values()];
+      if (detail.linkedAccountCount !== detail.linkedAccounts.length) {
+        throw new Error("The matched Person has too many linked Accounts.");
+      }
+      for (const account of detail.linkedAccounts) {
+        linkedAccountIds.add(account.id);
+      }
     }
-    const socialAccounts = buildSocialAccountsFromAuthorIds(sourceItems, match.authorIds, now, personId);
-    const mergedAccounts = [
-      contactAccount,
-      ...socialAccounts.filter((account) => !accounts[account.id]),
-    ];
-    if (mergedAccounts.length > 0) {
-      await addAccounts(mergedAccounts);
-    }
+    const accounts = await Promise.all(
+      [...linkedAccountIds].map(async (accountId) => {
+        const account = await readLibraryAccountDetail(accountId);
+        if (!account) {
+          throw new Error("A matched social Account no longer exists.");
+        }
+        return { ...account, personId, updatedAt: now };
+      }),
+    );
+    const contactAccount = createContactAccountFromGoogleContact(
+      contact,
+      now,
+      personId,
+    );
+    const desiredById = new Map<string, Account>(
+      accounts.map((account) => [account.id, account]),
+    );
+    desiredById.set(contactAccount.id, contactAccount);
+    await replaceLibraryFriend(person, [...desiredById.values()]);
 
-    contactSync.dismissSuggestion(suggestion.id);
-  }, [accounts, addAccounts, addPerson, contactSync, items, scanLibraryItems]);
+    await contactSync.dismissSuggestion(suggestion.id);
+  }, [
+    contactSync,
+    queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+    replaceLibraryFriend,
+  ]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
+    if (!replaceLibraryFriend) {
+      throw new Error("The atomic Friend SQLite mutation is unavailable.");
+    }
     const now = Date.now();
     const personId = crypto.randomUUID();
-    await addPerson({
+    const person = {
       id: personId,
       name: contact.name.displayName ?? contact.name.givenName ?? "",
-      relationshipStatus: "friend",
-      careLevel: 3,
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
       createdAt: now,
       updatedAt: now,
-    });
-    await addAccounts([
+    };
+    await replaceLibraryFriend(person, [
       createContactAccountFromGoogleContact(contact, now, personId),
     ]);
-  }, [addAccounts, addPerson]);
+    await contactSync.refreshReview();
+  }, [contactSync, replaceLibraryFriend]);
 
   const openReview = useCallback(async () => {
     const result = await contactSync.syncNow();
+    await contactSync.refreshReview();
     const shouldOpen =
       result.authStatus === "connected" ||
-      result.pendingSuggestions.length > 0 ||
-      result.cachedContacts.length > 0;
+      result.pendingSuggestionCount > 0 ||
+      result.activeContactCount > 0;
     setShowContactReview(shouldOpen);
   }, [contactSync]);
 
@@ -640,9 +626,15 @@ export function AppShell({ children }: AppShellProps) {
           <ContactSyncModal
             onClose={() => setShowContactReview(false)}
             syncState={contactSync.syncState}
+            suggestionPage={contactSync.suggestionPage}
+            unmatchedPage={contactSync.unmatchedPage}
             onLinkSuggestion={handleLinkSuggestion}
             onSkipSuggestion={contactSync.dismissSuggestion}
             onCreateFriend={handleCreateFriend}
+            onNextSuggestionPage={contactSync.loadNextSuggestionPage}
+            onNextUnmatchedPage={contactSync.loadNextUnmatchedPage}
+            onResetSuggestionPage={contactSync.resetSuggestionPage}
+            onResetUnmatchedPage={contactSync.resetUnmatchedPage}
           />
         )}
       </div>

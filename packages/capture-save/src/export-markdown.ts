@@ -82,15 +82,20 @@ export function feedItemToMarkdown(
 }
 
 /**
- * Export an array of FeedItems as a zipped Freed Markdown archive.
+ * Export bounded pages of FeedItems as a zipped Freed Markdown archive.
  *
- * @param items - Items to export
+ * @param scanItems - Visits one SQLite query page at a time. The exporter does
+ *   not retain a FeedItem page after its callback resolves.
  * @param getHtml - Async function that fetches HTML from the device content
  *   cache for a given globalId. Returns null when no cached HTML is available.
  * @returns A Blob containing the zip archive
  */
 export async function exportLibraryAsMarkdown(
-  items: FeedItem[],
+  scanItems: (
+    visit: (
+      items: readonly FeedItem[],
+    ) => "continue" | Promise<"continue">,
+  ) => Promise<void>,
   getHtml: (globalId: string) => Promise<string | null>,
 ): Promise<Blob> {
   const zip = new JSZip();
@@ -98,8 +103,8 @@ export async function exportLibraryAsMarkdown(
   // Track used paths to avoid collisions (append index when needed)
   const usedPaths = new Map<string, number>();
 
-  await Promise.all(
-    items.map(async (item) => {
+  await scanItems(async (items) => {
+    for (const item of items) {
       // Prefer cached HTML text content; fall back to preservedContent.text
       const html = await getHtml(item.globalId);
       // For the markdown body, use preservedContent.text regardless of html presence
@@ -120,8 +125,9 @@ export async function exportLibraryAsMarkdown(
         const htmlPath = finalPath.replace(/\.md$/, ".html");
         zip.file(htmlPath, html);
       }
-    }),
-  );
+    }
+    return "continue" as const;
+  });
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
 }

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, type ReactNode } from "react";
+import { act, useMemo, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   afterAll,
@@ -12,17 +12,42 @@ import {
   it,
   vi,
 } from "vitest";
-import type { FeedItem } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FilterOptions,
+  FriendCandidateSuggestion,
+  IdentitySuggestion,
+  LibraryMapLocationCandidate,
+  Person,
+  StoryWallCandidate,
+} from "@freed/shared";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreAccountGraphPageResponseV1,
+  LibraryCoreAccountGraphRowV1,
+  LibraryCoreFriendsDirectoryPageResponseV1,
+  LibraryCoreFriendsDirectoryPageRequestV1,
+  LibraryCoreFriendsDirectoryRowV1,
+  LibraryCorePersonPickerRowV1,
+  LibraryCoreRssFeedPageResponseV1,
+  LibraryCoreRssFeedPageRowV1,
+} from "@freed/shared/library-core";
+import {
+  decodeLibraryCoreFriendsDirectoryCursorV1,
+  encodeLibraryCoreFriendsDirectoryCursorV1,
+  libraryCoreFriendsDirectoryBindingDigestV1,
+} from "@freed/shared/library-core";
 import {
   PlatformProvider,
   type LibraryFacetSummary,
   type LibraryFriendsGraph,
   type LibraryFriendsGraphRequest,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
   type LibraryPersonTimelinePage,
   type LibrarySavedAnalytics,
   type LibrarySavedAnalyticsRequest,
-  type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
@@ -30,12 +55,40 @@ import {
   useLibrarySavedAnalytics,
   type LibrarySavedAnalyticsState,
 } from "./useLibrarySavedAnalytics.js";
-import { useLibrarySurfaceItems } from "./useLibrarySurfaceItems.js";
+import {
+  useLibraryMapCandidates,
+  useLibraryStoryWallCandidates,
+} from "./useLibrarySurfaceItems.js";
+import {
+  useLibraryAccountDetail,
+  useLibraryPersonDetail,
+  type LibraryIdentityDetailResult,
+} from "./useLibraryIdentityDetail.js";
 import {
   useLibraryFriendsRows,
   type LibraryFriendsRowsState,
 } from "./useLibraryFriendsRows.js";
 import { createLibrarySavedAnalyticsRequest } from "../lib/saved-library-analytics.js";
+import {
+  useLibraryRssFeedPage,
+  type LibraryRssFeedPageState,
+} from "./useLibraryRssFeedPage.js";
+import {
+  useLibrarySocialChannelPage,
+  type LibrarySocialChannelPageState,
+} from "./useLibrarySocialChannelPage.js";
+import {
+  useLibraryFilterScopeSummary,
+  type LibraryFilterScopeSummaryState,
+} from "./useLibraryFilterScopeSummary.js";
+import {
+  useLibraryFriendsDirectory,
+  type LibraryFriendsDirectoryState,
+} from "./useLibraryFriendsDirectory.js";
+import { useLibraryAccountLinkCandidates } from "./useLibraryAccountLinkCandidates.js";
+import { useLibraryFriendCandidateReview } from "./useLibraryFriendCandidateReview.js";
+import { useLibraryPersonPicker } from "./useLibraryPersonPicker.js";
+import type { AccountLinkSuggestion } from "../lib/account-link-suggestion.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -51,38 +104,20 @@ function item(globalId: string): FeedItem {
   };
 }
 
-function savedItem(
-  globalId: string,
-  savedAt: number,
-  sourceUrl: string,
-  contentType: FeedItem["contentType"] = "article",
-): FeedItem {
-  return {
-    ...item(globalId),
-    platform: "saved",
-    contentType,
-    sourceUrl,
-    userState: {
-      hidden: false,
-      saved: true,
-      savedAt,
-      archived: false,
-      tags: [],
-    },
-  };
-}
-
 function platformConfig(
   overrides: Partial<
     Pick<
       PlatformConfig,
-      | "acquireLegacyLibraryItems"
+      | "readLibraryAccountDetail"
       | "readLibraryFacetSummary"
       | "readLibraryFriendsGraph"
       | "readLibraryFriendsLocationItem"
+      | "readLibraryMapCandidates"
       | "readLibraryPersonTimeline"
+      | "readLibraryPersonDetail"
       | "readLibrarySavedAnalytics"
-      | "readLibrarySurfaceItems"
+      | "readLibraryStoryWallCandidates"
+      | "queryLibraryCore"
     >
   >,
 ): PlatformConfig {
@@ -104,16 +139,95 @@ function platformConfig(
   };
 }
 
+function IdentityDetailHarness({
+  accountId,
+  onAccount,
+  onPerson,
+  personId,
+}: {
+  accountId: string | null;
+  onAccount: (state: LibraryIdentityDetailResult<Account>) => void;
+  onPerson: (state: LibraryIdentityDetailResult<Person>) => void;
+  personId: string | null;
+}) {
+  onAccount(useLibraryAccountDetail(accountId, 12));
+  onPerson(useLibraryPersonDetail(personId, 12));
+  return null;
+}
+
+function AccountLinkCandidatesHarness({
+  entityId,
+  entityKind,
+  onRows,
+  sourceVersion,
+}: {
+  entityId: string | null;
+  entityKind: "account" | "person";
+  onRows: (rows: readonly AccountLinkSuggestion[]) => void;
+  sourceVersion: number;
+}) {
+  onRows(
+    useLibraryAccountLinkCandidates({ entityId, entityKind, sourceVersion }),
+  );
+  return null;
+}
+
+function FriendCandidateReviewHarness({
+  contactSuggestions,
+  dismissedSuggestionIds,
+  onRows,
+  sourceVersion,
+}: {
+  contactSuggestions: readonly IdentitySuggestion[];
+  dismissedSuggestionIds: readonly string[];
+  onRows: (rows: readonly FriendCandidateSuggestion[]) => void;
+  sourceVersion: number;
+}) {
+  onRows(
+    useLibraryFriendCandidateReview({
+      contactSuggestions,
+      dismissedSuggestionIds,
+      sourceVersion,
+    }),
+  );
+  return null;
+}
+
+function PersonPickerHarness({
+  enabled,
+  onState,
+  query,
+  search,
+  sourceVersion,
+}: {
+  enabled: boolean;
+  onState: (state: {
+    readonly loading: boolean;
+    readonly rows: readonly LibraryCorePersonPickerRowV1[];
+  }) => void;
+  query: LibraryCoreNormalizedQueryExecutor;
+  search: string;
+  sourceVersion: number;
+}) {
+  onState(useLibraryPersonPicker({ enabled, query, search, sourceVersion }));
+  return null;
+}
+
 function SurfaceHarness({
   onItems,
-  readFallbackItems,
-  surface = "map",
 }: {
-  onItems: (items: readonly FeedItem[]) => void;
-  readFallbackItems: () => FeedItem[];
-  surface?: LibrarySurface;
+  onItems: (items: readonly StoryWallCandidate[]) => void;
 }) {
-  onItems(useLibrarySurfaceItems(surface, readFallbackItems, 7));
+  onItems(useLibraryStoryWallCandidates(7));
+  return null;
+}
+
+function MapHarness({
+  onCandidates,
+}: {
+  onCandidates: (candidates: readonly LibraryMapLocationCandidate[]) => void;
+}) {
+  onCandidates(useLibraryMapCandidates(7));
   return null;
 }
 
@@ -122,20 +236,33 @@ function FacetHarness({
 }: {
   onSummaries: (summaries: readonly LibraryFacetSummary[]) => void;
 }) {
-  const first = useLibraryFacetSummary([], 8);
-  const second = useLibraryFacetSummary([], 8);
+  const first = useLibraryFacetSummary(8);
+  const second = useLibraryFacetSummary(8);
   onSummaries([first, second]);
   return null;
 }
 
+function FilterScopeHarness({
+  filter,
+  onState,
+  sourceVersion = 8,
+}: {
+  filter: FilterOptions;
+  onState: (state: LibraryFilterScopeSummaryState) => void;
+  sourceVersion?: number;
+}) {
+  onState(useLibraryFilterScopeSummary(filter, sourceVersion));
+  return null;
+}
+
 function SavedAnalyticsHarness({
-  fallbackItems,
+  sourceVersion = 9,
   onState,
 }: {
-  fallbackItems: readonly FeedItem[];
+  sourceVersion?: number;
   onState: (state: LibrarySavedAnalyticsState) => void;
 }) {
-  onState(useLibrarySavedAnalytics(fallbackItems, 9));
+  onState(useLibrarySavedAnalytics(sourceVersion));
   return null;
 }
 
@@ -212,28 +339,211 @@ function coordinateLocationItem(
 }
 
 function FriendsHarness({
-  fallbackItems,
   locationSources,
   sourceVersion,
+  timelineIdentity,
   timelineSources = friendsGraphRequest.sources,
   onState,
 }: {
-  fallbackItems: readonly FeedItem[];
   locationSources?: readonly LibraryFriendsSource[];
   sourceVersion: number;
+  timelineIdentity?: LibraryPersonTimelineRequest | null;
   timelineSources?: readonly LibraryFriendsSource[];
   onState: (state: LibraryFriendsRowsState) => void;
 }) {
+  const resolvedTimelineIdentity = useMemo<LibraryPersonTimelineRequest | null>(
+    () =>
+      timelineIdentity === undefined
+        ? timelineSources.length > 0
+          ? { personId: "person-1" }
+          : null
+        : timelineIdentity,
+    [timelineIdentity, timelineSources.length],
+  );
   onState(
     useLibraryFriendsRows({
       graphRequest: friendsGraphRequest,
       locationSources: locationSources ?? timelineSources,
+      timelineIdentity: resolvedTimelineIdentity,
       timelineSources,
-      fallbackItems,
       sourceVersion,
     }),
   );
   return null;
+}
+
+function RssFeedPageHarness({
+  onState,
+  search,
+}: {
+  onState: (state: LibraryRssFeedPageState) => void;
+  search: string;
+}) {
+  onState(
+    useLibraryRssFeedPage({
+      enabledOnly: true,
+      pageSize: 2,
+      search,
+      sourceVersion: 1,
+    }),
+  );
+  return null;
+}
+
+function SocialChannelPageHarness({
+  enabled = true,
+  onState,
+  query,
+}: {
+  enabled?: boolean;
+  onState: (state: LibrarySocialChannelPageState) => void;
+  query: string;
+}) {
+  onState(useLibrarySocialChannelPage({ enabled, query, sourceVersion: 1 }));
+  return null;
+}
+
+function FriendsDirectoryHarness({
+  onState,
+  search = "",
+}: {
+  onState: (state: LibraryFriendsDirectoryState) => void;
+  search?: string;
+}) {
+  onState(
+    useLibraryFriendsDirectory({
+      filters: [],
+      search,
+      sort: "name",
+      sourceVersion: 1,
+    }),
+  );
+  return null;
+}
+
+function rssFeedRow(
+  url: string,
+  title: string,
+  enabled = true,
+): LibraryCoreRssFeedPageRowV1 {
+  return {
+    activityCount: 3,
+    enabled,
+    folder: null,
+    imageUrl: null,
+    lastFetched: null,
+    latestActivityAt: null,
+    pollInterval: null,
+    sampleBatchId: null,
+    sampleGeneratedAt: null,
+    sampleGeneratorVersion: null,
+    siteUrl: null,
+    title,
+    trackUnread: true,
+    unreadCount: 2,
+    updatedAt: 1,
+    url,
+  };
+}
+
+function rssFeedResponse(
+  rows: readonly LibraryCoreRssFeedPageRowV1[],
+  nextCursor: string | null,
+): LibraryCoreRssFeedPageResponseV1 {
+  return {
+    layoutRevision: 1,
+    nextCursor,
+    queryId: "rss_feed_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+  };
+}
+
+function accountGraphRow(
+  id: string,
+  personName: string | null,
+): LibraryCoreAccountGraphRowV1 {
+  return {
+    activityCount: 3,
+    avatarUrl: null,
+    discoveredFrom: "captured_item",
+    displayName: id,
+    externalId: id,
+    firstSeenAt: 1,
+    followRosterActive: true,
+    graphPinned: false,
+    graphUpdatedAt: null,
+    graphX: null,
+    graphY: null,
+    handle: id,
+    id,
+    kind: "social",
+    lastSeenAt: 2,
+    latestActivityAt: 2,
+    personId: personName ? `person-${id}` : null,
+    personName,
+    provider: "x",
+    updatedAt: 2,
+  };
+}
+
+function accountGraphResponse(
+  rows: readonly LibraryCoreAccountGraphRowV1[],
+  nextCursor: string | null,
+): LibraryCoreAccountGraphPageResponseV1 {
+  return {
+    layoutRevision: 1,
+    nextCursor,
+    queryId: "account_graph_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+  };
+}
+
+function friendsDirectoryRow(id: string): LibraryCoreFriendsDirectoryRowV1 {
+  return {
+    avatarUrl: null,
+    bio: null,
+    careLevel: 3,
+    hasLocation: false,
+    id,
+    isRecentlyActive: false,
+    lastContactAt: null,
+    latestActivityAt: null,
+    latestAvatarUrl: null,
+    name: id,
+    needsOutreach: false,
+    reachOutIntervalDays: null,
+    relationshipStatus: "friend",
+  };
+}
+
+function friendsDirectoryResponse(
+  rows: readonly LibraryCoreFriendsDirectoryRowV1[],
+  nextCursor: string | null,
+): LibraryCoreFriendsDirectoryPageResponseV1 {
+  return {
+    nextCursor,
+    queryId: "friends_directory_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+    totalCount: 130,
+  };
 }
 
 async function flush(): Promise<void> {
@@ -244,6 +554,255 @@ async function flush(): Promise<void> {
 }
 
 describe("Library row query hooks", () => {
+  it("retains only the exact selected Person and Account SQLite rows", async () => {
+    const person: Person = {
+      careLevel: 5,
+      createdAt: 1,
+      id: "person-ada",
+      name: "Ada",
+      relationshipStatus: "friend",
+      updatedAt: 2,
+    };
+    const account: Account = {
+      createdAt: 1,
+      discoveredFrom: "captured_item",
+      externalId: "ada",
+      firstSeenAt: 1,
+      id: "account-ada",
+      kind: "social",
+      lastSeenAt: 2,
+      personId: person.id,
+      provider: "x",
+      updatedAt: 2,
+    };
+    const readLibraryPersonDetail = vi.fn(async () => person);
+    const readLibraryAccountDetail = vi.fn(async () => account);
+    const config = platformConfig({
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+    });
+    let personState: LibraryIdentityDetailResult<Person> | null = null;
+    let accountState: LibraryIdentityDetailResult<Account> | null = null;
+
+    renderHarness(
+      <PlatformProvider value={config}>
+        <IdentityDetailHarness
+          accountId={account.id}
+          onAccount={(state) => {
+            accountState = state;
+          }}
+          onPerson={(state) => {
+            personState = state;
+          }}
+          personId={person.id}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(personState).toEqual({ status: "ready", value: person });
+    expect(accountState).toEqual({ status: "ready", value: account });
+    expect(readLibraryPersonDetail).toHaveBeenCalledOnce();
+    expect(readLibraryAccountDetail).toHaveBeenCalledOnce();
+  });
+
+  it("retains only selected Account link candidates from SQLite", async () => {
+    const queryLibraryCore = vi.fn(async () => ({
+      queryId: "account_link_candidates_v1",
+      rows: [
+        {
+          accountAvatarUrl: null,
+          accountDisplayName: "Ada",
+          accountExternalId: "ada",
+          accountHandle: "ada",
+          accountId: "account-ada",
+          accountProvider: "x",
+          confidence: "high",
+          personAvatarUrl: null,
+          personId: "person-ada",
+          personName: "Ada Lovelace",
+          reason: "Same handle as an account already linked to this friend.",
+          score: 95,
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let rows: readonly AccountLinkSuggestion[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <AccountLinkCandidatesHarness
+          entityId="account-ada"
+          entityKind="account"
+          onRows={(next) => {
+            rows = next;
+          }}
+          sourceVersion={12}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: "account-ada",
+        entityKind: "account",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        schemaVersion: 1,
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        accountId: "account-ada",
+        personId: "person-ada",
+        score: 95,
+      }),
+    ]);
+  });
+
+  it("retains only the bounded SQLite Friend candidate review", async () => {
+    const queryLibraryCore = vi.fn(async () => ({
+      queryId: "friend_candidate_review_v1",
+      rows: [
+        {
+          accountIdsJson: '["account-ada"]',
+          confidence: "high",
+          contactOverlapScore: 14,
+          directRequestsScore: 9,
+          displayName: "Ada Lovelace",
+          id: "friend-suggestion:unlinked_account:account-ada:12:1:1:0:1:0:0",
+          kind: "unlinked_account",
+          lastActivityAt: 12,
+          lifeEventsScore: 0,
+          multiChannelScore: 0,
+          personId: null,
+          personalUpdatesScore: 13,
+          placesMomentsScore: 0,
+          recentActivityScore: 10,
+          sampleItemIdsJson: '["item-ada"]',
+          score: 80,
+          signalCountsJson: '{"life_update":1,"request":1}',
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const contactSuggestions: IdentitySuggestion[] = [
+      {
+        accountIds: ["account-zed", "account-ada", "account-ada"],
+        confidence: "high",
+        createdAt: 1,
+        id: "contact-1",
+        kind: "attach_accounts_to_person",
+        label: "Ada",
+        personId: "person-ada",
+      },
+    ];
+    let rows: readonly FriendCandidateSuggestion[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <FriendCandidateReviewHarness
+          contactSuggestions={contactSuggestions}
+          dismissedSuggestionIds={["suggestion-zed", "suggestion-ada"]}
+          onRows={(next) => {
+            rows = next;
+          }}
+          sourceVersion={12}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactAccountIds: ["account-ada", "account-zed"],
+        contactPersonIds: ["person-ada"],
+        dismissedSuggestionIds: ["suggestion-ada", "suggestion-zed"],
+        limit: 10,
+        queryId: "friend_candidate_review_v1",
+        schemaVersion: 1,
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        accountIds: ["account-ada"],
+        displayName: "Ada Lovelace",
+        sampleItemIds: ["item-ada"],
+        score: 80,
+      }),
+    ]);
+  });
+
+  it("retains only one bounded Person picker window", async () => {
+    const query = vi.fn(async () => ({
+      queryId: "person_picker_page_v1",
+      rows: [
+        {
+          avatarUrl: null,
+          careLevel: 5,
+          id: "person-ada",
+          name: "Ada Lovelace",
+          relationshipStatus: "friend",
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "b".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let state: {
+      readonly loading: boolean;
+      readonly rows: readonly LibraryCorePersonPickerRowV1[];
+    } = { loading: false, rows: [] };
+
+    renderHarness(
+      <PersonPickerHarness
+        enabled
+        onState={(next) => {
+          state = next;
+        }}
+        query={query}
+        search=" Ada "
+        sourceVersion={12}
+      />,
+    );
+    await flush();
+    await flush();
+
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 12,
+        queryId: "person_picker_page_v1",
+        schemaVersion: 1,
+        search: "Ada",
+      }),
+    );
+    expect(state).toEqual({
+      loading: false,
+      rows: [
+        expect.objectContaining({
+          careLevel: 5,
+          id: "person-ada",
+          name: "Ada Lovelace",
+        }),
+      ],
+    });
+  });
+
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -301,71 +860,111 @@ describe("Library row query hooks", () => {
     }
   });
 
-  it("loads bounded native rows without materializing the fallback corpus", async () => {
-    const readLibrarySurfaceItems = vi.fn(async () => [item("native-map")]);
-    const readFallbackItems = vi.fn(() => [item("fallback")]);
-    let current: readonly FeedItem[] = [];
+  it("loads bounded native Story Wall rows", async () => {
+    const candidate = {
+      accountId: "account-1",
+      item: item("native-story"),
+      personId: "person-1",
+    };
+    const readLibraryStoryWallCandidates = vi.fn(async () => [candidate]);
+    let current: readonly StoryWallCandidate[] = [];
     renderHarness(
-      <PlatformProvider value={platformConfig({ readLibrarySurfaceItems })}>
+      <PlatformProvider
+        value={platformConfig({ readLibraryStoryWallCandidates })}
+      >
         <SurfaceHarness
           onItems={(items) => {
             current = items;
           }}
-          readFallbackItems={readFallbackItems}
         />
       </PlatformProvider>,
     );
 
     expect(current).toEqual([]);
     await flush();
-    expect(current.map((candidate) => candidate.globalId)).toEqual([
-      "native-map",
+    expect(current.map((candidate) => candidate.item.globalId)).toEqual([
+      "native-story",
     ]);
-    expect(readFallbackItems).not.toHaveBeenCalled();
-    expect(readLibrarySurfaceItems).toHaveBeenCalledOnce();
-    expect(readLibrarySurfaceItems).toHaveBeenCalledWith("map");
+    expect(readLibraryStoryWallCandidates).toHaveBeenCalledOnce();
   });
 
-  it("leases the compatibility corpus only when a native surface reader is unavailable", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const readFallbackItems = vi.fn(() => [item("fallback")]);
-    let current: readonly FeedItem[] = [];
+  it("loads bounded Map rows with their SQLite-joined Friend identity", async () => {
+    const candidate: LibraryMapLocationCandidate = {
+      accountId: "account-1",
+      item: item("native-map"),
+      friend: {
+        id: "person-1",
+        name: "Ada",
+        relationshipStatus: "friend",
+      },
+    };
+    const readLibraryMapCandidates = vi.fn(async () => [candidate]);
+    let current: readonly LibraryMapLocationCandidate[] = [];
     renderHarness(
-      <PlatformProvider value={platformConfig({ acquireLegacyLibraryItems })}>
-        <SurfaceHarness
-          onItems={(items) => {
-            current = items;
+      <PlatformProvider value={platformConfig({ readLibraryMapCandidates })}>
+        <MapHarness
+          onCandidates={(rows) => {
+            current = rows;
           }}
-          readFallbackItems={readFallbackItems}
-          surface="story_wall"
         />
       </PlatformProvider>,
     );
 
-    expect(current.map((candidate) => candidate.globalId)).toEqual([
-      "fallback",
-    ]);
+    expect(current).toEqual([]);
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(readFallbackItems).toHaveBeenCalledOnce();
+    expect(current).toEqual([candidate]);
+    expect(readLibraryMapCandidates).toHaveBeenCalledOnce();
+  });
 
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    expect(release).toHaveBeenCalledOnce();
+  it("fails closed when the surface query boundary is unavailable", async () => {
+    let current: readonly StoryWallCandidate[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({})}>
+        <SurfaceHarness
+          onItems={(items) => {
+            current = items;
+          }}
+        />
+      </PlatformProvider>,
+    );
+
+    expect(current).toEqual([]);
+    await flush();
+    expect(current).toEqual([]);
   });
 
   it("shares one exact facet query across multiple consumers", async () => {
     const summary: LibraryFacetSummary = {
       archivedCount: 2,
+      archivableCount: 1,
+      contactAccountCount: 1,
+      contactLinkedPersonCount: 1,
+      enabledRssFeedCount: 1,
+      friendPersonCount: 2,
+      latestContactImportedAt: 3,
+      latestRssFeedFetchedAt: 2,
+      platformCounts: [
+        {
+          archivableCount: 1,
+          latestCapturedAt: 2,
+          latestPublishedAt: 1,
+          platform: "rss",
+          totalCount: 10,
+          unreadCount: 4,
+        },
+      ],
+      rssFeedCount: 1,
+      sampleAccountCount: 1,
+      sampleFeedCount: 1,
       sampleItemCount: 5,
+      samplePersonCount: 1,
       savedArchivedCount: 1,
       savedCount: 3,
       savedPlatformCount: 4,
+      socialAccountCount: 3,
       tags: ["alpha", "beta"],
       totalCount: 10,
+      unreadCount: 4,
     };
     const readLibraryFacetSummary = vi.fn(async () => summary);
     let current: readonly LibraryFacetSummary[] = [];
@@ -384,7 +983,7 @@ describe("Library row query hooks", () => {
     expect(current).toEqual([summary, summary]);
   });
 
-  it("loads Saved analytics natively without leasing the compatibility corpus", async () => {
+  it("loads Saved analytics through the typed query boundary", async () => {
     const analytics: LibrarySavedAnalytics = {
       totalCount: 9,
       latestSavedAt: 900,
@@ -406,19 +1005,14 @@ describe("Library row query hooks", () => {
     const readLibrarySavedAnalytics = vi.fn(
       async (_request: LibrarySavedAnalyticsRequest) => analytics,
     );
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibrarySavedAnalyticsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibrarySavedAnalytics,
         })}
       >
         <SavedAnalyticsHarness
-          fallbackItems={[
-            savedItem("fallback", Date.now(), "https://fallback.example/a"),
-          ]}
           onState={(state) => {
             current = state;
           }}
@@ -436,7 +1030,6 @@ describe("Library row query hooks", () => {
     const request = readLibrarySavedAnalytics.mock.calls[0][0];
     expect(request.dailyWindows).toHaveLength(7);
     expect(request.hourlyWindows).toHaveLength(24);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics?.sourceCounts,
     ).toEqual([
@@ -454,7 +1047,7 @@ describe("Library row query hooks", () => {
     ]);
   });
 
-  it("refreshes native Saved analytics after an item patch without a search version change", async () => {
+  it("refreshes Saved analytics when the SQLite source version changes", async () => {
     const first: LibrarySavedAnalytics = {
       totalCount: 1,
       latestSavedAt: 100,
@@ -482,10 +1075,10 @@ describe("Library row query hooks", () => {
       .mockResolvedValueOnce(second);
     const config = platformConfig({ readLibrarySavedAnalytics });
     let current: LibrarySavedAnalyticsState | null = null;
-    const renderSaved = (fallbackItems: readonly FeedItem[]) => (
+    const renderSaved = (sourceVersion: number) => (
       <PlatformProvider value={config}>
         <SavedAnalyticsHarness
-          fallbackItems={fallbackItems}
+          sourceVersion={sourceVersion}
           onState={(state) => {
             current = state;
           }}
@@ -493,13 +1086,13 @@ describe("Library row query hooks", () => {
       </PlatformProvider>
     );
 
-    renderHarness(renderSaved([]));
+    renderHarness(renderSaved(9));
     await flush();
     expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
     ).toBe(1);
 
-    act(() => root?.render(renderSaved([])));
+    act(() => root?.render(renderSaved(10)));
     await flush();
 
     expect(readLibrarySavedAnalytics).toHaveBeenCalledTimes(2);
@@ -508,21 +1101,14 @@ describe("Library row query hooks", () => {
     ).toBe(2);
   });
 
-  it("leases and exactly reduces the compatibility corpus without a native Saved reader", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-02-14T12:30:00-08:00"));
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const savedAt = Date.now();
+  it("fails closed when a Saved analytics query rejects", async () => {
+    const readLibrarySavedAnalytics = vi.fn(async () => {
+      throw new Error("stale source");
+    });
     let current: LibrarySavedAnalyticsState | null = null;
     renderHarness(
-      <PlatformProvider value={platformConfig({ acquireLegacyLibraryItems })}>
+      <PlatformProvider value={platformConfig({ readLibrarySavedAnalytics })}>
         <SavedAnalyticsHarness
-          fallbackItems={[
-            savedItem("one", savedAt - 1, "https://www.example.com/one"),
-            savedItem("two", savedAt, "https://example.com/two", "video"),
-            item("not-saved-platform"),
-          ]}
           onState={(state) => {
             current = state;
           }}
@@ -537,99 +1123,9 @@ describe("Library row query hooks", () => {
     await flush();
     expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(false);
     expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
-    ).toBe(2);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.latestSavedAt,
-    ).toBe(savedAt);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.dailyCounts.at(
-        -1,
-      ),
-    ).toBe(2);
-    expect(
-      (
-        current as LibrarySavedAnalyticsState | null
-      )?.analytics?.hourlyCounts.at(-1),
-    ).toBe(2);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.sourceCounts,
-    ).toEqual([{ label: "example.com", count: 2 }]);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.contentMix,
-    ).toEqual([
-      { label: "article", count: 1 },
-      { label: "video", count: 1 },
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    expect(release).toHaveBeenCalledOnce();
-  });
-
-  it("waits for compatibility hydration before reducing after a native Saved read rejects", async () => {
-    const release = vi.fn();
-    let resolveAcquisition: ((release: () => void) => void) | null = null;
-    const acquireLegacyLibraryItems = vi.fn(
-      () =>
-        new Promise<() => void>((resolve) => {
-          resolveAcquisition = resolve;
-        }),
-    );
-    const readLibrarySavedAnalytics = vi.fn(
-      async (_request: LibrarySavedAnalyticsRequest) => {
-        throw new Error("stale source");
-      },
-    );
-    let current: LibrarySavedAnalyticsState | null = null;
-    const renderSaved = (fallbackItems: readonly FeedItem[]) => (
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibrarySavedAnalytics,
-        })}
-      >
-        <SavedAnalyticsHarness
-          fallbackItems={fallbackItems}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>
-    );
-    renderHarness(renderSaved([]));
-
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    await flush();
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics,
     ).toBeNull();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    act(() => {
-      root?.render(
-        renderSaved([
-          savedItem("fallback", Date.now(), "https://fallback.example/item"),
-        ]),
-      );
-    });
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics,
-    ).toBeNull();
-
-    await act(async () => {
-      resolveAcquisition?.(release);
-      await Promise.resolve();
-    });
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(false);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
-    ).toBe(1);
+    expect(readLibrarySavedAnalytics).toHaveBeenCalledOnce();
   });
 
   it("walks a native Friends timeline past the third page, replaces each row window, and returns to newest", async () => {
@@ -665,19 +1161,25 @@ describe("Library row query hooks", () => {
         items: firstPage,
         totalCount: 130,
         nextCursor: "page-2",
+      })
+      .mockResolvedValueOnce({
+        items: firstPage,
+        totalCount: 130,
+        nextCursor: "page-2",
       });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     const config = platformConfig({
-      acquireLegacyLibraryItems,
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
-    const renderFriends = (fallbackItems: readonly FeedItem[]) => (
+    const renderFriends = (
+      fallbackItems: readonly FeedItem[],
+      timelineIdentity?: LibraryPersonTimelineRequest,
+    ) => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={fallbackItems}
           sourceVersion={1}
+          timelineIdentity={timelineIdentity}
           onState={(state) => {
             current = state;
           }}
@@ -694,7 +1196,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(false);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(1, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: null,
     });
@@ -719,7 +1221,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(true);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(2, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: "page-2",
     });
@@ -741,7 +1243,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(true);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(3, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: "page-3",
     });
@@ -762,12 +1264,21 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(false);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(4, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: null,
     });
     expect(readLibraryPersonTimeline).toHaveBeenCalledTimes(4);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+
+    act(() =>
+      root?.render(renderFriends([], { accountId: "account-unlinked" })),
+    );
+    await flush();
+    expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(5, {
+      accountId: "account-unlinked",
+      limit: 50,
+      cursor: null,
+    });
   });
 
   it("keeps an exact location older than the current 50-row timeline window", async () => {
@@ -787,12 +1298,10 @@ describe("Library row query hooks", () => {
       ],
     });
     const readLibraryFriendsLocationItem = vi.fn(async () => olderLocation);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -803,7 +1312,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -830,90 +1338,6 @@ describe("Library row query hooks", () => {
       referenceTimeMs: friendsGraphRequest.recentWindow.endMs,
       sourceToken: graph.sourceToken,
     });
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-  });
-
-  it("shares compatibility after a location failure and releases it after one retry", async () => {
-    const olderLocation = locationItem("rss:fallback-location", 10);
-    const fallbackItems = [
-      ...Array.from({ length: 60 }, (_, index) => ({
-        ...item(`rss:fallback-${index.toLocaleString()}`),
-        publishedAt: 100 - index,
-      })),
-      olderLocation,
-    ];
-    const graph = friendsGraph(fallbackItems.length, {
-      locationCandidateCount: 1,
-      locationCandidates: [
-        {
-          globalId: olderLocation.globalId,
-          publishedAt: olderLocation.publishedAt,
-          effectiveAt: olderLocation.publishedAt,
-        },
-      ],
-    });
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    let resolveRetry: ((value: FeedItem | null) => void) | null = null;
-    const readLibraryFriendsLocationItem = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("location read failed"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<FeedItem | null>((resolve) => {
-            resolveRetry = resolve;
-          }),
-      );
-    let current: LibraryFriendsRowsState | null = null;
-    renderHarness(
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibraryFriendsGraph: vi.fn(async () => graph),
-          readLibraryFriendsLocationItem,
-          readLibraryPersonTimeline: vi.fn(async () => ({
-            items: fallbackItems.slice(0, 50),
-            totalCount: fallbackItems.length,
-            nextCursor: "older-page",
-          })),
-        })}
-      >
-        <FriendsHarness
-          fallbackItems={fallbackItems}
-          sourceVersion={1}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>,
-    );
-
-    await flush();
-    await flush();
-    await flush();
-
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      olderLocation,
-    ]);
-    expect(readLibraryFriendsLocationItem).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      resolveRetry?.(olderLocation);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      olderLocation,
-    ]);
-    expect(release).toHaveBeenCalledOnce();
   });
 
   it("ignores a stale location batch after the graph source changes", async () => {
@@ -974,7 +1398,6 @@ describe("Library row query hooks", () => {
     const renderFriends = (sourceVersion: number) => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={sourceVersion}
           onState={(state) => {
             current = state;
@@ -1008,8 +1431,7 @@ describe("Library row query hooks", () => {
     ]);
   });
 
-  it("uses compatibility when selected sources advertise more than eight location candidates", async () => {
-    const fallbackLocation = locationItem("rss:fallback-only", 5);
+  it("fails closed when selected sources exceed the bounded location candidates", async () => {
     const candidates = Array.from({ length: 8 }, (_, index) => ({
       globalId: `rss:location-${index.toLocaleString()}`,
       publishedAt: 100 - index,
@@ -1019,13 +1441,11 @@ describe("Library row query hooks", () => {
       locationCandidateCount: 9,
       locationCandidates: candidates,
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -1036,7 +1456,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[fallbackLocation]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1048,17 +1467,13 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      fallbackLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
-  it("preserves legacy map order when equal-time location candidates are ambiguous", async () => {
+  it("fails closed when equal-time location candidates are ambiguous", async () => {
     const firstLocation = coordinateLocationItem("rss:z-location", 50, 1, 2);
     const secondLocation = coordinateLocationItem("rss:a-location", 50, 3, 4);
     const graph = friendsGraph(2, {
@@ -1069,13 +1484,11 @@ describe("Library row query hooks", () => {
         effectiveAt: entry.publishedAt,
       })),
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -1086,7 +1499,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[firstLocation, secondLocation]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1098,14 +1510,9 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      firstLocation,
-      secondLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
@@ -1133,7 +1540,6 @@ describe("Library row query hooks", () => {
         },
       ],
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn(
       async () => mismatchedLocation,
     );
@@ -1141,7 +1547,6 @@ describe("Library row query hooks", () => {
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -1152,51 +1557,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[fallbackLocation]}
-          sourceVersion={1}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>,
-    );
-
-    await flush();
-    await flush();
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      fallbackLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-  });
-
-  it("accepts all-time location history with no current-visible candidates", async () => {
-    const graph = friendsGraph(1, {
-      hasLocation: true,
-      locationCandidateCount: 0,
-      locationCandidates: [],
-    });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
-    const readLibraryFriendsLocationItem = vi.fn();
-    let current: LibraryFriendsRowsState | null = null;
-    renderHarness(
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibraryFriendsGraph: vi.fn(async () => graph),
-          readLibraryFriendsLocationItem,
-          readLibraryPersonTimeline: vi.fn(async () => ({
-            items: [],
-            totalCount: 0,
-            nextCursor: null,
-          })),
-        })}
-      >
-        <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1211,14 +1571,47 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+  });
+
+  it("accepts all-time location history with no current-visible candidates", async () => {
+    const graph = friendsGraph(1, {
+      hasLocation: true,
+      locationCandidateCount: 0,
+      locationCandidates: [],
+    });
+    const readLibraryFriendsLocationItem = vi.fn();
+    let current: LibraryFriendsRowsState | null = null;
+    renderHarness(
+      <PlatformProvider
+        value={platformConfig({
+          readLibraryFriendsGraph: vi.fn(async () => graph),
+          readLibraryFriendsLocationItem,
+          readLibraryPersonTimeline: vi.fn(async () => ({
+            items: [],
+            totalCount: 0,
+            nextCursor: null,
+          })),
+        })}
+      >
+        <FriendsHarness
+          sourceVersion={1}
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>,
+    );
+
+    await flush();
+    await flush();
+
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
-  it("does not read or lease location candidates for standalone account detail", async () => {
+  it("does not read location candidates for standalone account detail", async () => {
     const candidates = Array.from({ length: 8 }, (_, index) => ({
       globalId: `rss:account-location-${index.toLocaleString()}`,
       publishedAt: 100 - index,
@@ -1228,13 +1621,11 @@ describe("Library row query hooks", () => {
       locationCandidateCount: 9,
       locationCandidates: candidates,
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -1245,7 +1636,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           locationSources={[]}
           sourceVersion={1}
           onState={(state) => {
@@ -1261,77 +1651,7 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-  });
-
-  it("matches native Friends paging in the bounded compatibility fallback", async () => {
-    const fallbackItems = Array.from({ length: 130 }, (_, index) => ({
-      ...item(`fallback-${index.toLocaleString().padStart(3, "0")}`),
-      publishedAt: 130 - index,
-    }));
-    const graph = friendsGraph(fallbackItems.length);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
-    let current: LibraryFriendsRowsState | null = null;
-    renderHarness(
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibraryFriendsGraph: vi.fn(async () => graph),
-        })}
-      >
-        <FriendsHarness
-          fallbackItems={fallbackItems}
-          sourceVersion={1}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>,
-    );
-
-    await flush();
-    await flush();
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(0, 50),
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineTotalCount,
-    ).toBe(130);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(false);
-
-    act(() => current?.loadMoreTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(50, 100),
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(true);
-
-    act(() => current?.loadMoreTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(100, 130),
-    );
-    expect((current as LibraryFriendsRowsState | null)?.timelineHasMore).toBe(
-      false,
-    );
-
-    act(() => current?.showNewestTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(0, 50),
-    );
-    expect((current as LibraryFriendsRowsState | null)?.timelineHasMore).toBe(
-      true,
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(false);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
   });
 
   it("does not read a timeline or lease the corpus on the overview", async () => {
@@ -1342,18 +1662,15 @@ describe("Library row query hooks", () => {
       totalCount: 0,
       nextCursor: null,
     }));
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph,
           readLibraryPersonTimeline,
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           timelineSources={[]}
           onState={(state) => {
@@ -1369,171 +1686,61 @@ describe("Library row query hooks", () => {
       false,
     );
     expect(readLibraryPersonTimeline).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
-  it("does not carry a failed graph lease into a newer source version", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const never = () => new Promise<LibraryFriendsGraph>(() => undefined);
-    const readLibraryFriendsGraph = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale graph"))
-      .mockImplementation(never);
-    const config = platformConfig({
-      acquireLegacyLibraryItems,
-      readLibraryFriendsGraph,
+  it("fails closed when Friends SQLite reads reject", async () => {
+    const readLibraryFriendsGraph = vi.fn(async () => {
+      throw new Error("graph read failed");
     });
-    let current: LibraryFriendsRowsState | null = null;
-    const renderFriends = (sourceVersion: number) => (
-      <PlatformProvider value={config}>
-        <FriendsHarness
-          fallbackItems={[item("fallback")]}
-          sourceVersion={sourceVersion}
-          timelineSources={[]}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>
-    );
-    renderHarness(renderFriends(1));
-    await flush();
-    await flush();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(true);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    act(() => root?.render(renderFriends(2)));
-    await flush();
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(
-      true,
-    );
-    expect(release).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-  });
-
-  it("shares one fallback lease across failed Friends reads and releases it after retry", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const graph = friendsGraph(1);
-    let resolveGraphRetry: ((graph: LibraryFriendsGraph) => void) | null = null;
-    let resolveTimelineRetry:
-      ((page: LibraryPersonTimelinePage) => void) | null = null;
-    const readLibraryFriendsGraph = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale graph"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<LibraryFriendsGraph>((resolve) => {
-            resolveGraphRetry = resolve;
-          }),
-      );
-    const readLibraryPersonTimeline = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale timeline"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<LibraryPersonTimelinePage>((resolve) => {
-            resolveTimelineRetry = resolve;
-          }),
-      );
-    const successfulTimelinePage = {
-      items: [item("native")],
-      totalCount: 1,
-      nextCursor: null,
-    };
+    const readLibraryPersonTimeline = vi.fn(async () => {
+      throw new Error("timeline read failed");
+    });
     const config = platformConfig({
-      acquireLegacyLibraryItems,
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
     let current: LibraryFriendsRowsState | null = null;
-    const renderFriends = (sourceVersion: number) => (
+    const renderFriends = () => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={[item("fallback")]}
-          sourceVersion={sourceVersion}
+          sourceVersion={1}
           onState={(state) => {
             current = state;
           }}
         />
       </PlatformProvider>
     );
-    renderHarness(renderFriends(1));
+    renderHarness(renderFriends());
     await flush();
     await flush();
 
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(true);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(true);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineItems.map(
-        (candidate) => candidate.globalId,
-      ),
-    ).toEqual(["fallback"]);
-
-    await act(async () => {
-      resolveGraphRetry?.(graph);
-      resolveTimelineRetry?.(successfulTimelinePage);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineItems.map(
-        (candidate) => candidate.globalId,
-      ),
-    ).toEqual(["native"]);
-    expect(readLibraryFriendsGraph).toHaveBeenCalledTimes(2);
-    expect(readLibraryPersonTimeline).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
+    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(
+      false,
+    );
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
+      [],
+    );
+    expect((current as LibraryFriendsRowsState | null)?.timelineLoading).toBe(
+      false,
+    );
+    expect(readLibraryFriendsGraph).toHaveBeenCalledOnce();
+    expect(readLibraryPersonTimeline).toHaveBeenCalledOnce();
   });
 
-  it("rearms both Friends retries after a successful recovery", async () => {
-    const firstRelease = vi.fn();
-    const secondRelease = vi.fn();
-    const acquireLegacyLibraryItems = vi
-      .fn()
-      .mockResolvedValueOnce(firstRelease)
-      .mockResolvedValueOnce(secondRelease);
-    const graph = friendsGraph(1);
-    const timelinePage: LibraryPersonTimelinePage = {
-      items: [item("native")],
-      totalCount: 1,
-      nextCursor: null,
-    };
-    const firstGraphReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("first graph failure"))
-      .mockResolvedValueOnce(graph);
-    const firstTimelineReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("first timeline failure"))
-      .mockResolvedValueOnce(timelinePage);
-    const secondGraphReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("second graph failure"))
-      .mockResolvedValueOnce(graph);
-    const secondTimelineReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("second timeline failure"))
-      .mockResolvedValueOnce(timelinePage);
+  it("retries failed Friends reads when the native reader changes", async () => {
+    const firstGraphReader = vi.fn(async () => {
+      throw new Error("first graph failure");
+    });
+    const firstTimelineReader = vi.fn(async () => {
+      throw new Error("first timeline failure");
+    });
+    const secondGraphReader = vi.fn(async () => {
+      throw new Error("second graph failure");
+    });
+    const secondTimelineReader = vi.fn(async () => {
+      throw new Error("second timeline failure");
+    });
     let current: LibraryFriendsRowsState | null = null;
     const renderFriends = (
       readLibraryFriendsGraph: typeof firstGraphReader,
@@ -1541,13 +1748,11 @@ describe("Library row query hooks", () => {
     ) => (
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph,
           readLibraryPersonTimeline,
         })}
       >
         <FriendsHarness
-          fallbackItems={[item("fallback")]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1561,15 +1766,8 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(firstGraphReader).toHaveBeenCalledTimes(2);
-    expect(firstTimelineReader).toHaveBeenCalledTimes(2);
-    expect(firstRelease).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
+    expect(firstGraphReader).toHaveBeenCalledOnce();
+    expect(firstTimelineReader).toHaveBeenCalledOnce();
 
     act(() => {
       root?.render(renderFriends(secondGraphReader, secondTimelineReader));
@@ -1578,15 +1776,290 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(secondGraphReader).toHaveBeenCalledTimes(2);
-    expect(secondTimelineReader).toHaveBeenCalledTimes(2);
-    expect(secondRelease).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(2);
+    expect(secondGraphReader).toHaveBeenCalledOnce();
+    expect(secondTimelineReader).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
+      [],
+    );
+  });
+
+  it("retains only the visible SQLite page for the Friends directory", async () => {
+    vi.useFakeTimers();
+    const firstRows = Array.from({ length: 64 }, (_, index) =>
+      friendsDirectoryRow(
+        `friend-a-${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const secondRows = Array.from({ length: 64 }, (_, index) =>
+      friendsDirectoryRow(
+        `friend-b-${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const queryLibraryCoreMock = vi.fn(
+      async (request: LibraryCoreFriendsDirectoryPageRequestV1) => {
+        const source = {
+          generationId: "a".repeat(64) as never,
+          projectionRevision: 1,
+          transitionSequence: 1,
+        };
+        const cursor = request.cursor
+          ? decodeLibraryCoreFriendsDirectoryCursorV1(request.cursor)
+          : null;
+        const offset = cursor?.ok ? cursor.value.offset : 0;
+        return friendsDirectoryResponse(
+          offset === 0 ? firstRows : secondRows,
+          offset === 0
+            ? encodeLibraryCoreFriendsDirectoryCursorV1({
+                bindingDigest:
+                  libraryCoreFriendsDirectoryBindingDigestV1(request),
+                generationId: source.generationId,
+                offset: 64,
+                projectionRevision: 1,
+                transitionSequence: 1,
+              })
+            : null,
+        );
+      },
+    );
+    const queryLibraryCore =
+      queryLibraryCoreMock as unknown as LibraryCoreNormalizedQueryExecutor;
+    let current: LibraryFriendsDirectoryState | null = null;
+
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <FriendsDirectoryHarness
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    await expect(
+      queryLibraryCoreMock.mock.results[0]?.value,
+    ).resolves.toMatchObject({
+      rows: firstRows,
+    });
+    expect((current as LibraryFriendsDirectoryState | null)?.rows).toHaveLength(
+      64,
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.totalCount).toBe(
+      130,
+    );
+
+    act(() => (current as LibraryFriendsDirectoryState | null)?.nextPage());
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledTimes(2);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: expect.any(String),
+        limit: 64,
+        queryId: "friends_directory_page_v1",
+      }),
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows).toHaveLength(
+      64,
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows[0]?.id).toBe(
+      "friend-b-0",
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.pageNumber).toBe(
+      2,
+    );
+
+    act(() => (current as LibraryFriendsDirectoryState | null)?.previousPage());
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledTimes(3);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: null }),
+    );
+    expect((current as LibraryFriendsDirectoryState | null)?.rows[0]?.id).toBe(
+      "friend-a-0",
+    );
+  });
+
+  it("keeps RSS catalog search bounded to visible rows and opaque cursors", async () => {
+    const firstRawPage = Array.from({ length: 128 }, (_, index) =>
+      rssFeedRow(
+        `https://feed-${index.toLocaleString("en-US", { useGrouping: false })}.example/rss`,
+        `Unrelated ${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const matchingRows = [
+      rssFeedRow("https://alpha.example/rss", "Target Alpha"),
+      rssFeedRow("https://beta.example/rss", "Target Beta"),
+      rssFeedRow("https://gamma.example/rss", "Target Gamma"),
+    ];
+    const queryLibraryCore = vi.fn(
+      async (request: { cursor: string | null }) => {
+        if (request.cursor === null) {
+          return rssFeedResponse(firstRawPage, "second-raw-page");
+        }
+        return rssFeedResponse(matchingRows, null);
+      },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let current: LibraryRssFeedPageState | null = null;
+
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <RssFeedPageHarness
+          search="target"
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledTimes(2);
     expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
+      (current as LibraryRssFeedPageState | null)?.rows.map((row) => row.title),
+    ).toEqual(["Target Alpha", "Target Beta"]);
+    expect((current as LibraryRssFeedPageState | null)?.hasNext).toBe(true);
+    expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(1);
+    expect((current as LibraryRssFeedPageState | null)?.rows).toHaveLength(2);
+
+    act(() => {
+      (current as LibraryRssFeedPageState | null)?.nextPage();
+    });
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledTimes(3);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: expect.any(String),
+        limit: 128,
+        queryId: "rss_feed_page_v1",
+      }),
+    );
+    expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(2);
+  });
+
+  it("queries social channels only while the palette is open and matches linked Person names", async () => {
+    const queryLibraryCore = vi.fn(async () =>
+      accountGraphResponse(
+        [
+          accountGraphRow("unrelated", null),
+          accountGraphRow("target-account", "Ada Lovelace"),
+        ],
+        null,
+      ),
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const config = platformConfig({ queryLibraryCore });
+    let current: LibrarySocialChannelPageState | null = null;
+    const renderChannels = (enabled: boolean) => (
+      <PlatformProvider value={config}>
+        <SocialChannelPageHarness
+          enabled={enabled}
+          query="lovelace"
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>
+    );
+
+    renderHarness(renderChannels(false));
+    await flush();
+    expect(queryLibraryCore).not.toHaveBeenCalled();
+
+    act(() => root?.render(renderChannels(true)));
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    expect(queryLibraryCore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: null,
+        limit: 128,
+        queryId: "account_graph_page_v1",
+      }),
+    );
+    expect((current as LibrarySocialChannelPageState | null)?.channels).toEqual(
+      [
+        expect.objectContaining({
+          account: expect.objectContaining({ id: "target-account" }),
+          personName: "Ada Lovelace",
+        }),
+      ],
+    );
+  });
+
+  it("queries only exact Feed and provider-author filter identities", async () => {
+    const queryLibraryCore = vi.fn(
+      async (request: { feedUrl: string | null }) => ({
+        accountId: request.feedUrl ? null : "account-ada",
+        itemCount: request.feedUrl ? 4 : 7,
+        label: request.feedUrl ? "Example Feed" : "Ada",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+        source: {
+          generationId: "a".repeat(64),
+          projectionRevision: 8,
+          transitionSequence: 0,
+        },
+      }),
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const config = platformConfig({ queryLibraryCore });
+    let current: LibraryFilterScopeSummaryState | null = null;
+    const renderScope = (filter: FilterOptions) => (
+      <PlatformProvider value={config}>
+        <FilterScopeHarness
+          filter={filter}
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>
+    );
+
+    renderHarness(renderScope({ savedOnly: true }));
+    await flush();
+    expect(queryLibraryCore).not.toHaveBeenCalled();
+
+    act(() =>
+      root?.render(renderScope({ feedUrl: "https://example.com/feed" })),
+    );
+    await flush();
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledWith({
+      authorId: null,
+      feedUrl: "https://example.com/feed",
+      platform: null,
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+    });
     expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
+      (current as LibraryFilterScopeSummaryState | null)?.summary,
+    ).toMatchObject({
+      itemCount: 4,
+      label: "Example Feed",
+    });
+
+    act(() => root?.render(renderScope({ authorId: "ada", platform: "x" })));
+    await flush();
+    await flush();
+    expect(queryLibraryCore).toHaveBeenLastCalledWith({
+      authorId: "ada",
+      feedUrl: null,
+      platform: "x",
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+    });
+    expect(
+      (current as LibraryFilterScopeSummaryState | null)?.summary,
+    ).toMatchObject({
+      itemCount: 7,
+      label: "Ada",
+    });
   });
 });

@@ -53,15 +53,14 @@ url = "2"
 sysinfo = "0.39"
 sha2 = "0.11"
 ring = "0.17"
-# The Library Core shadow store runs in the native process rather than the
-# renderer, which is the entire point: the renderer is the process fighting for
-# memory. `bundled` compiles SQLite from source so every install runs the same
+# The authoritative Library Core runs in the native process. The renderer keeps
+# only bounded visible query windows and ephemeral UI state. `bundled` compiles
+# SQLite from source so every install runs the same
 # engine version. Linking whatever libsqlite3 a user's machine happens to ship
 # would make STRICT table support and FTS5 availability vary per machine, and
 # the projection contract depends on STRICT.
 rusqlite = { version = "0.32", features = ["blob", "bundled", "limits"] }
 tempfile = "3"
-unicode-normalization = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -82,16 +81,14 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
 tauri = { version = "=2.11.5", features = ["test"] }
-
-[[bench]]
-name = "relay"
-harness = false
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# Select a closed, nonproduction application data root for local release-build
+# verification. Production and dev release workflows never enable this feature.
+isolated-preview-data-root = []
 # Enable structured tracing instrumentation for performance analysis.
 # cargo build --features perf  /  RUST_LOG=freed_desktop=trace cargo run
 perf = ["dep:tracing", "dep:tracing-subscriber"]

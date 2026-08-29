@@ -267,7 +267,7 @@ export function PosseSettings() {
 - **Lightweight bundled POSSE** — For users without existing POSSE setup
 - **Webmention support** — Receive replies from the IndieWeb
 - **Micropub compatibility** — Standard protocol for posting
-- **Draft sync** — Save drafts to Automerge document
+- **Draft sync** — Save drafts through registered normalized SQLite mutations
 
 ---
 

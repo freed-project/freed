@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  CONTACT_SYNC_STATE_VERSION,
-  createEmptyContactSyncState,
-  parseContactSyncState,
-  serializeContactSyncState,
+  LEGACY_CONTACT_SYNC_STATE_VERSION,
+  parseLegacyContactSyncStateForMigration,
 } from "./contact-sync-state";
 
-describe("contact sync state", () => {
+describe("legacy contact sync migration", () => {
   it("preserves corrupt JSON and requires manual repair", () => {
     const raw = "{not-json";
 
-    const parsed = parseContactSyncState(raw);
+    const parsed = parseLegacyContactSyncStateForMigration(raw);
 
     expect(parsed).toMatchObject({
       status: "corrupt",
@@ -25,12 +23,12 @@ describe("contact sync state", () => {
 
   it("rejects structurally malformed state without discarding the raw value", () => {
     const raw = JSON.stringify({
-      version: CONTACT_SYNC_STATE_VERSION,
+      version: LEGACY_CONTACT_SYNC_STATE_VERSION,
       syncToken: "token",
       cachedContacts: "not-an-array",
     });
 
-    const parsed = parseContactSyncState(raw);
+    const parsed = parseLegacyContactSyncStateForMigration(raw);
 
     expect(parsed).toMatchObject({ status: "corrupt", raw });
     expect(parsed.state.cachedContacts).toEqual([]);
@@ -38,16 +36,16 @@ describe("contact sync state", () => {
 
   it("preserves unsupported versions for explicit repair", () => {
     const raw = JSON.stringify({
-      version: CONTACT_SYNC_STATE_VERSION + 1,
+      version: LEGACY_CONTACT_SYNC_STATE_VERSION + 1,
       syncToken: "future-token",
     });
 
-    const parsed = parseContactSyncState(raw);
+    const parsed = parseLegacyContactSyncStateForMigration(raw);
 
     expect(parsed).toMatchObject({
       status: "unsupported",
       raw,
-      version: CONTACT_SYNC_STATE_VERSION + 1,
+      version: LEGACY_CONTACT_SYNC_STATE_VERSION + 1,
       state: { syncStatus: "error" },
     });
     expect(parsed.state.lastErrorMessage).toContain("newer version");
@@ -73,7 +71,7 @@ describe("contact sync state", () => {
       autoCreatedCount: 2,
     });
 
-    const parsed = parseContactSyncState(raw);
+    const parsed = parseLegacyContactSyncStateForMigration(raw);
 
     expect(parsed).toMatchObject({
       status: "valid",
@@ -92,22 +90,4 @@ describe("contact sync state", () => {
     expect(parsed.state.dismissedSuggestionIds).toEqual([]);
   });
 
-  it("round trips the current versioned format", () => {
-    const raw = serializeContactSyncState({
-      ...createEmptyContactSyncState(),
-      authStatus: "connected",
-      syncToken: "current-token",
-    });
-
-    const parsed = parseContactSyncState(raw);
-
-    expect(parsed).toMatchObject({
-      status: "valid",
-      format: "current",
-      state: {
-        authStatus: "connected",
-        syncToken: "current-token",
-      },
-    });
-  });
 });

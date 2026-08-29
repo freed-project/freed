@@ -14,20 +14,14 @@ import {
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { CloudProviderCard } from "./CloudProviderCard";
 import { DesktopSnapshotsSection } from "./DesktopSnapshotsSection";
-import { useAppStore } from "../lib/store";
-import {
-  acknowledgeDesktopClientWarning,
-  desktopClientWarningSignature,
-  isDesktopClientWarningAcknowledged,
-} from "../lib/desktop-client-warning";
 import {
   readLibraryCoreDesktopRole,
   writeLibraryCoreDesktopRole,
   type LibraryCoreDesktopRole,
 } from "../lib/library-core-desktop-role";
 import {
-  readSqliteLibraryFollowerRuntimeStatus,
-  type SqliteLibraryFollowerRuntimeStatus,
+  readNormalizedLibraryFollowerRuntimeStatus,
+  type NormalizedLibraryFollowerRuntimeStatus,
 } from "../lib/sqlite-library";
 import {
   readSqliteLibraryGoogleDrivePublicationReceipt,
@@ -99,7 +93,7 @@ function isWriterOwnershipWarning(message?: string | null): boolean {
 }
 
 function describeFollowerState(
-  state: SqliteLibraryFollowerRuntimeStatus["state"],
+  state: NormalizedLibraryFollowerRuntimeStatus["state"],
 ): string {
   switch (state) {
     case "awaiting_checkpoint":
@@ -109,18 +103,13 @@ function describeFollowerState(
     case "enrollment_pending":
       return "Waiting for the primary source to accept this follower.";
     case "active":
-      return "Follower journal is active.";
+      return "Follower SQLite is active.";
   }
 }
 
 export function MobileSyncTab() {
-  const docSnapshot = useDebugStore((state) => state.docSnapshot);
+  const librarySnapshot = useDebugStore((state) => state.librarySnapshot);
   const cloudProviders = useDebugStore((state) => state.cloudProviders);
-  const desktopClientIds = useAppStore((state) => state.desktopClientIds);
-  const warningSignature = desktopClientWarningSignature(desktopClientIds);
-  const [warningDismissed, setWarningDismissed] = useState(() =>
-    isDesktopClientWarningAcknowledged(warningSignature),
-  );
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(
     null,
@@ -132,7 +121,7 @@ export function MobileSyncTab() {
     readLibraryCoreDesktopRole(),
   );
   const [followerStatus, setFollowerStatus] =
-    useState<SqliteLibraryFollowerRuntimeStatus | null>(null);
+    useState<NormalizedLibraryFollowerRuntimeStatus | null>(null);
   const [followerStatusError, setFollowerStatusError] = useState<string | null>(
     null,
   );
@@ -171,10 +160,6 @@ export function MobileSyncTab() {
   );
 
   useEffect(() => {
-    setWarningDismissed(isDesktopClientWarningAcknowledged(warningSignature));
-  }, [warningSignature]);
-
-  useEffect(() => {
     if (desktopRole !== "follower") {
       setFollowerStatus(null);
       setFollowerStatusError(null);
@@ -183,7 +168,7 @@ export function MobileSyncTab() {
     let disposed = false;
     const refresh = async () => {
       try {
-        const status = await readSqliteLibraryFollowerRuntimeStatus();
+        const status = await readNormalizedLibraryFollowerRuntimeStatus();
         if (!disposed) {
           setFollowerStatus(status);
           setFollowerStatusError(null);
@@ -246,11 +231,6 @@ export function MobileSyncTab() {
     return () => window.clearInterval(timer);
   }, [refreshPublicationReceipt]);
 
-  const dismissWarning = useCallback(() => {
-    acknowledgeDesktopClientWarning(warningSignature);
-    setWarningDismissed(true);
-  }, [warningSignature]);
-
   const syncNow = useCallback(async () => {
     if (!connected || syncing) return;
     setSyncing(true);
@@ -297,30 +277,6 @@ export function MobileSyncTab() {
           Mobile Sync
         </h3>
         <div className="mb-4 space-y-3">
-          {desktopClientIds.length > 1 && !warningDismissed && (
-            <div
-              role="alert"
-              data-testid="multiple-desktop-client-warning"
-              className="rounded-xl border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-4 py-3"
-            >
-              <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
-                Multiple Freed Desktop clients detected
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-secondary)]">
-                {desktopClientIds.length.toLocaleString()} Freed Desktop clients
-                are registered with this Library. Only the current writer may
-                publish SQLite Library revisions or provider results.
-              </p>
-              <button
-                type="button"
-                onClick={dismissWarning}
-                className="btn-secondary mt-3 px-3 py-1.5 text-xs font-semibold"
-              >
-                Got it
-              </button>
-            </div>
-          )}
-
           <div
             data-testid="library-core-desktop-role"
             className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4"
@@ -426,9 +382,9 @@ export function MobileSyncTab() {
                       <DiagnosticCell
                         label="Remote revision"
                         value={
-                          followerStatus.remoteIngestSequence === null
+                          followerStatus.sourceRevision === null
                             ? "-"
-                            : followerStatus.remoteIngestSequence.toLocaleString()
+                            : followerStatus.sourceRevision.toLocaleString()
                         }
                       />
                       <DiagnosticCell
@@ -558,12 +514,12 @@ export function MobileSyncTab() {
               <DiagnosticCell
                 label="Local items"
                 value={
-                  docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"
+                  librarySnapshot ? librarySnapshot.itemCount.toLocaleString() : "-"
                 }
               />
               <DiagnosticCell
                 label="Local size"
-                value={formatBytes(docSnapshot?.binarySize)}
+                value={formatBytes(librarySnapshot?.storageBytes)}
               />
               <DiagnosticCell
                 label="Last upload"

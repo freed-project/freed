@@ -11,10 +11,6 @@ const MAX_CANONICAL_NODES: usize = 65_536;
 /// literal tuples to the same file at module load, and this side embeds it at
 /// compile time the way the SQL schemas are shared. Neither side keeps its own
 /// copy, so the two cannot drift.
-///
-/// They had drifted before this: `operation-segment-body` and
-/// `intent-segment-body` were registered in TypeScript and missing here, which
-/// would have made a digest computed there unverifiable on this side.
 const CANONICAL_DOMAINS_JSON: &str =
     include_str!("../../shared/src/library-core/canonical-domains-v1.json");
 
@@ -577,46 +573,6 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{} failed: {error:?}", vector.name));
             assert_eq!(encoded, vector.canonical.as_bytes(), "{}", vector.name);
         }
-    }
-
-    /// Every legacy epoch bootstrap domain must be digestible.
-    ///
-    /// All five threw `UnregisteredDomain` before the lists were unified,
-    /// which made the bootstrap contract's `digest` dependency impossible to
-    /// satisfy and blocked establishing authority at all.
-    #[test]
-    fn digests_every_legacy_epoch_bootstrap_domain() {
-        let body = serde_json::json!({ "probe": 1 });
-        for domain in [
-            "automerge-heads",
-            "legacy-epoch-bootstrap-record",
-            "legacy-library-control",
-            "legacy-epoch-bootstrap-prepared",
-            "legacy-epoch-bootstrap-receipt",
-        ] {
-            assert!(
-                is_digest_domain(domain),
-                "{domain} must be registered in the embedded list"
-            );
-            let encoded = encode_operation_digest_input(domain, &body, 4096)
-                .unwrap_or_else(|error| panic!("{domain} must encode: {error:?}"));
-            // Encoding must actually separate by domain, not merely accept it.
-            let expected = format!("freed.library-core.v1/digest/{domain}\0");
-            assert!(
-                encoded.starts_with(expected.as_bytes()),
-                "{domain} must be domain separated"
-            );
-        }
-
-        // The two that had drifted out of this side entirely.
-        for domain in ["operation-segment-body", "intent-segment-body"] {
-            assert!(is_digest_domain(domain), "{domain} must be registered here");
-        }
-
-        // Positive control: a codec that accepted everything would satisfy the
-        // assertions above while providing no domain separation.
-        assert!(!is_digest_domain("not-a-registered-domain"));
-        assert!(!is_signature_domain("not-a-registered-domain"));
     }
 
     #[test]

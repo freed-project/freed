@@ -4,7 +4,10 @@ import {
   decodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreFractionalNumbersV1,
 } from "./fractional-number-codec.js";
-import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
+import {
+  decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
+} from "./canonical-codec.js";
 
 describe("Library Core fractional number codec", () => {
   it("preserves finite binary64 values while leaving safe integers canonical", () => {
@@ -17,6 +20,13 @@ describe("Library Core fractional number codec", () => {
     const encoded = encodeLibraryCoreFractionalNumbersV1(source);
     expect(() => encodeLibraryCoreCanonicalValue(encoded)).not.toThrow();
     expect(decodeLibraryCoreFractionalNumbersV1(encoded)).toEqual(source);
+    expect(
+      decodeLibraryCoreFractionalNumbersV1(
+        decodeLibraryCoreCanonicalValue(
+          encodeLibraryCoreCanonicalValue(encoded),
+        ),
+      ),
+    ).toEqual(source);
     expect(
       Object.is(
         (

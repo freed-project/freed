@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   recordScrapeOutcome: vi.fn(),
   runBackgroundJob: vi.fn(),
   applyLockedSessionDeferredDiag: vi.fn(),
-  docReconcileFollowRosterCapture: vi.fn(),
+  reconcileFollowRosterLibraryCapture: vi.fn(),
   getPlatformUA: vi.fn(() => "Freed Test UA"),
   storeState: {
     items: [],
@@ -38,7 +38,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 }));
 
 vi.mock("./library-client", () => ({
-  docReconcileFollowRosterCapture: mocks.docReconcileFollowRosterCapture,
+  reconcileFollowRosterLibraryCapture: mocks.reconcileFollowRosterLibraryCapture,
 }));
 
 vi.mock("./background-runtime-coordinator", () => ({
@@ -163,7 +163,7 @@ describe("authenticated essay capture safety gates", () => {
 
     expect(mocks.hasAcceptedProviderRisk).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(mocks.docReconcileFollowRosterCapture).not.toHaveBeenCalled();
+    expect(mocks.reconcileFollowRosterLibraryCapture).not.toHaveBeenCalled();
   });
 
   it("stops before native work while the provider is paused", async () => {
@@ -247,7 +247,7 @@ describe("authenticated essay extraction events", () => {
       lastCandidateCount: null,
       lastUrl: null,
     });
-    expect(mocks.docReconcileFollowRosterCapture).not.toHaveBeenCalled();
+    expect(mocks.reconcileFollowRosterLibraryCapture).not.toHaveBeenCalled();
   });
 
   it("keeps extractor diagnostics instead of replacing them with completion defaults", async () => {
@@ -277,7 +277,7 @@ describe("authenticated essay extraction events", () => {
       windowMode: "hidden",
       userAgent: "Freed Test UA",
     });
-    expect(mocks.docReconcileFollowRosterCapture).toHaveBeenCalledTimes(1);
+    expect(mocks.reconcileFollowRosterLibraryCapture).toHaveBeenCalledTimes(1);
     dateNow.mockRestore();
   });
 
@@ -320,7 +320,7 @@ describe("authenticated essay extraction events", () => {
     ).rejects.toThrow("Factory reset is in progress");
 
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
-    expect(mocks.docReconcileFollowRosterCapture).not.toHaveBeenCalled();
+    expect(mocks.reconcileFollowRosterLibraryCapture).not.toHaveBeenCalled();
     expect(storeAuth).not.toHaveBeenCalled();
   });
 });

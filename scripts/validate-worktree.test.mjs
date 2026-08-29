@@ -10,6 +10,7 @@ import {
   executeReleaseIdentityValidation,
   isDesktopNativeSurface,
   isLibraryCoreReleaseActivationPath,
+  isPwaOpfsDurabilityPath,
   isPullRequestPublisherToolingPath,
   isReleasePublisherToolingPath,
   isReleaseAdmissionPath,
@@ -69,10 +70,72 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
+});
+
+test("OPFS durability changes run the persistent WebKit data integrity proof", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  const paths = [
+    "package-lock.json",
+    "packages/pwa/package.json",
+    "packages/pwa/playwright.opfs.config.ts",
+    "packages/pwa/src/lib/library-core-sqlite-worker.ts",
+    "packages/pwa/src/main.tsx",
+    "packages/pwa/tests/opfs-e2e-settings.ts",
+    "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+    "packages/shared/src/library-core/normalized-schema-v1.sql",
+  ];
+  try {
+    for (const filePath of paths) {
+      assert.equal(isPwaOpfsDurabilityPath(filePath), true, filePath);
+      assert.ok(
+        describePlan(buildValidationPlan("feature", [filePath])).includes(
+          "pwa WebKit OPFS durability",
+        ),
+        filePath,
+      );
+    }
+    assert.equal(
+      isPwaOpfsDurabilityPath("packages/pwa/src/components/SyncDialog.tsx"),
+      false,
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    } else {
+      process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+    }
+  }
+});
+
+test("OPFS durability proof can be routed to the supported WebKit runner", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  process.env.FREED_SKIP_PWA_OPFS_DURABILITY = "true";
+  try {
+    assert.equal(
+      describePlan(
+        buildValidationPlan("feature", [
+          "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+        ]),
+      ).includes("pwa WebKit OPFS durability"),
+      false,
+    );
+    assert.equal(
+      describePlan(buildValidationPlan("dev", [])).includes(
+        "pwa WebKit OPFS durability",
+      ),
+      false,
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    } else {
+      process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+    }
+  }
 });
 
 test("feature plan for sync changes runs the sync package tests", () => {
@@ -86,7 +149,6 @@ test("feature plan for sync changes runs the sync package tests", () => {
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -114,7 +176,6 @@ test("feature plan for feed UI changes leaves raw timing checks to nightly", () 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -132,7 +193,6 @@ test("feature plan for Friends UI changes leaves raw timing checks to nightly", 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -150,7 +210,6 @@ test("feature plan for sidebar UI changes leaves raw timing checks to nightly", 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
-    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
   ]);
@@ -567,7 +626,6 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
-  assert.ok(labels.includes("pwa performance tests"));
   assert.ok(labels.includes("shared unit tests"));
   assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("native rust clippy"));

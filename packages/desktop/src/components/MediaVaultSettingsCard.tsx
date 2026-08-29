@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import type { FeedItem } from "@freed/shared";
 import { SettingsToggle } from "@freed/ui/components/SettingsToggle";
 import { toast } from "@freed/ui/components/Toast";
-import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
 import {
   archiveLibraryCoreProviderMedia,
-  archiveRecentProviderMedia,
   getMediaVaultProviderDir,
   setMediaVaultEnabled,
   subscribeMediaVault,
@@ -16,11 +13,7 @@ import {
   type MediaVaultSummary,
 } from "../lib/media-vault";
 import { importMetaExportFiles } from "../lib/meta-export-import";
-import {
-  isLibraryCoreProviderSettingsReaderDisabled,
-  scanLibraryCoreProviderItems,
-} from "../lib/library-core-provider-settings-runtime";
-import { useAppStore } from "../lib/store";
+import { scanLibraryCoreProviderItems } from "../lib/library-core-provider-settings-runtime";
 
 interface MediaVaultSettingsCardProps {
   provider: MediaVaultProvider;
@@ -33,7 +26,6 @@ type JobKind = "import" | "backup" | "backfill" | null;
 const BYTE_FORMAT = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
-const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes.toLocaleString()} B`;
@@ -77,15 +69,6 @@ export function MediaVaultSettingsCard({
     emptySummary(),
   );
   const [job, setJob] = useState<JobKind>(null);
-  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
-  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
-  const legacyItems = useAppStore((state) =>
-    useLegacyItems ? state.items : EMPTY_FEED_ITEMS,
-  );
-  const providerItems = useMemo(
-    () => legacyItems.filter((item) => item.platform === provider),
-    [legacyItems, provider],
-  );
 
   const refreshSummary = useCallback(() => {
     void summarizeMediaVault(provider).then(setSummary);
@@ -131,24 +114,13 @@ export function MediaVaultSettingsCard({
   const archiveProviderItems = useCallback(
     async (
       importSource: Exclude<MediaVaultImportSource, "meta_export">,
-    ): Promise<number> => {
-      if (useLegacyItems) {
-        if (!legacyItemsReady) {
-          throw new Error("Library items are temporarily unavailable.");
-        }
-        return archiveRecentProviderMedia(
-          provider,
-          providerItems,
-          importSource,
-        );
-      }
-      return archiveLibraryCoreProviderMedia(
+    ): Promise<number> =>
+      archiveLibraryCoreProviderMedia(
         provider,
         importSource,
         scanLibraryCoreProviderItems,
-      );
-    },
-    [legacyItemsReady, provider, providerItems, useLegacyItems],
+      ),
+    [provider],
   );
 
   const handleBackupNow = useCallback(async () => {
@@ -277,12 +249,6 @@ export function MediaVaultSettingsCard({
         </p>
       ) : null}
 
-      {useLegacyItems && !legacyItemsReady ? (
-        <p className="text-xs leading-relaxed text-amber-400">
-          Library items are temporarily unavailable.
-        </p>
-      ) : null}
-
       <input
         ref={inputRef}
         type="file"
@@ -308,12 +274,7 @@ export function MediaVaultSettingsCard({
           onClick={() => {
             void handleBackfill();
           }}
-          disabled={
-            busy ||
-            !summary.enabled ||
-            !authenticated ||
-            (useLegacyItems && !legacyItemsReady)
-          }
+          disabled={busy || !summary.enabled || !authenticated}
           className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 disabled:opacity-50 transition-colors"
         >
           Backfill from profile
@@ -323,12 +284,7 @@ export function MediaVaultSettingsCard({
           onClick={() => {
             void handleBackupNow();
           }}
-          disabled={
-            busy ||
-            !summary.enabled ||
-            !authenticated ||
-            (useLegacyItems && !legacyItemsReady)
-          }
+          disabled={busy || !summary.enabled || !authenticated}
           className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 disabled:opacity-50 transition-colors"
         >
           Back up now

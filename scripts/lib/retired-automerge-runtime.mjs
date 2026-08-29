@@ -1,14 +1,15 @@
-import {
-  lstatSync,
-  readdirSync,
-  readFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export const RETIRED_LIBRARY_CORE_PUBLIC_MODULES = Object.freeze([
   "census",
   "field-registry",
+  "feed-item-merge-idempotency",
   "local-authority-registry",
+  "operation-field-algebra-contracts",
+  "operation-materializer-contracts",
+  "operation-registry",
+  "operation-touched-fields",
   "protocol-registry",
   "query-registry",
   "store-surface-registry",
@@ -49,6 +50,11 @@ const RETIRED_MODULE_PATH_PATTERNS = Object.freeze([
   {
     id: "legacy-relay-module",
     pattern: /\/src\/network\/local-relay(?:[.-]|$)/i,
+  },
+  {
+    id: "pwa-indexeddb-library-module",
+    pattern:
+      /\/src\/lib\/library-core-(?:indexeddb(?:-readers)?|intent-overlay|portable-checkpoint-store|search-index)(?:[.-]|$)/i,
   },
 ]);
 
@@ -99,7 +105,40 @@ const RETIRED_ARTIFACT_TOKENS = Object.freeze([
   },
   {
     id: "retired-library-core-store-registry",
-    needle: "current method writes legacy Automerge and its successor payload is unresolved",
+    needle:
+      "current method writes legacy Automerge and its successor payload is unresolved",
+  },
+  {
+    id: "retired-library-core-operation-registry",
+    needle: "runtime_authority_inactive",
+  },
+  {
+    id: "retired-library-shell-record",
+    needle: "00_library_shell",
+  },
+  {
+    id: "retired-library-shell-json",
+    needle: "shellJson",
+  },
+  {
+    id: "retired-library-shell-type",
+    needle: "DesktopLibraryShell",
+  },
+  {
+    id: "retired-library-document-state",
+    needle: "DocState",
+  },
+  {
+    id: "pwa-indexeddb-checkpoint-database",
+    needle: "freed-library-core-portable-v1",
+  },
+  {
+    id: "pwa-indexeddb-search-database",
+    needle: "freed-library-core-search-v1",
+  },
+  {
+    id: "pwa-indexeddb-read-model-database",
+    needle: "freed-library-core-read-model-v1",
   },
 ]);
 
@@ -193,7 +232,7 @@ function formatFindings(surface, findings) {
     .map((finding) => `${finding.id}: ${finding.location}`)
     .sort();
   return [
-    `The ${surface} release bundle contains retired Automerge runtime residue:`,
+    `The ${surface} release bundle contains retired Library runtime residue:`,
     ...lines.map((line) => `  ${line}`),
   ].join("\n");
 }
@@ -299,6 +338,36 @@ export function assertNoRetiredLibraryCorePublicExports(repoRoot) {
   if (retired.length > 0) {
     throw new Error(
       `The Library Core public entrypoint reexports retired registry modules: ${retired.join(", ")}.`,
+    );
+  }
+}
+
+export function assertNoRetiredNativeWholeRecordProjection(repoRoot) {
+  const nativeSourceRoot = path.join(
+    repoRoot,
+    "packages",
+    "library-core-native",
+    "src",
+  );
+  const retiredModulePath = path.join(
+    nativeSourceRoot,
+    "product_projection.rs",
+  );
+  const entrypointPath = path.join(nativeSourceRoot, "lib.rs");
+  const entrypoint = readFileSync(entrypointPath, "utf8");
+  const findings = [];
+  if (existsSync(retiredModulePath)) {
+    findings.push("product_projection.rs");
+  }
+  if (/\bmod\s+product_projection\s*;/.test(entrypoint)) {
+    findings.push("mod product_projection");
+  }
+  if (/\bpub\s+use\s+product_projection\s*::\s*upsert_item\s*;/.test(entrypoint)) {
+    findings.push("pub use product_projection::upsert_item");
+  }
+  if (findings.length > 0) {
+    throw new Error(
+      `The native Library Core exposes the retired whole-record projection: ${findings.join(", ")}.`,
     );
   }
 }

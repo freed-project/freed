@@ -9,10 +9,10 @@
 > has full article extraction, local HTML caching, Markdown import/export,
 > background fetch healing, user-visible AI controls, and hierarchical tag
 > navigation. PWA saves sync-healed stubs for Freed Desktop to hydrate. Saved
-> content is pinned in the device-local reader cache by default. The current
-> PWA transition implementation pages the complete Saved collection from
-> IndexedDB. The Library Core stores it in SQLite
-> WebAssembly over OPFS while preserving the bounded query contract.
+> content is pinned in the device-local reader cache by default. Freed Desktop
+> and the PWA page Saved rows through the same bounded SQLite query contract.
+> The PWA uses SQLite WebAssembly over OPFS and retains no IndexedDB Library
+> rows.
 
 ---
 
@@ -40,7 +40,7 @@ architecture is now:
 
 - **Desktop:** writes a saved stub immediately, closes the Save Content dialog,
   and queues a priority background detail fetch that caches readable HTML
-  locally and updates Automerge with compact preserved text.
+  locally and commits compact preserved text through a typed SQLite mutation.
 - **PWA:** writes a saved stub immediately. Freed Desktop can hydrate the
   details after sync.
 - **Saved cache pinning:** saved URLs, posts, and stories enter the permanent
@@ -92,8 +92,8 @@ architecture is now:
 | 3.8 | User-facing AI summarization controls | ✓ Complete | Settings UI is live, desktop-only key storage stays local |
 | 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
 | 3.10 | Saved content pinned in local reader cache | ✓ Complete | Saved URLs, saved posts, and saved stories enter the high-priority local cache path |
-| 3.11 | Bound Saved overview analytics on Freed Desktop | ✓ Complete | The overview now reads exact source, content, and time-bucket aggregates from the authenticated SQLite generation without retaining the Library corpus; stale or unavailable derived state falls back to the existing Automerge-compatible reducer |
-| 3.12 | Complete bounded Saved reads on the PWA transition store | ✓ Complete | IndexedDB query generations proved the bounded contract. Phase 6 replaces the engine with SQLite WebAssembly over OPFS while preserving the named queries and ordering. |
+| 3.11 | Bound Saved overview analytics on Freed Desktop | ✓ Complete | The overview reads exact source, content, and time-bucket aggregates from authenticated SQLite and fails closed when that bounded source is unavailable. |
+| 3.12 | Complete bounded Saved reads on the PWA SQLite store | ✓ Complete | Official SQLite WebAssembly over OPFS executes the same named Saved queries and ordering contract as Freed Desktop. |
 
 ---
 

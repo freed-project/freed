@@ -10,7 +10,10 @@
 type Handler = (args: Record<string, unknown>) => unknown;
 
 type MockInternals = {
-  invoke?: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+  invoke?: <T = unknown>(
+    cmd: string,
+    args?: Record<string, unknown>,
+  ) => Promise<T>;
   transformCallback?: (callback: unknown, once?: boolean) => number;
   unregisterCallback?: (id: number) => void;
   callbacks?: Record<number, unknown>;
@@ -41,7 +44,9 @@ function mockArray<T>(name: string): T[] {
 }
 
 function setMockYouTubeWindowVisible(visible: boolean): null {
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
+  (
+    window as unknown as Record<string, unknown>
+  ).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
   return null;
 }
 
@@ -65,7 +70,9 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
   return resp.text();
 }
 
-async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]> {
+async function proxyFetchBinary(
+  args: Record<string, unknown>,
+): Promise<number[]> {
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -103,9 +110,10 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
   headers: Array<[string, string]>;
   bodyB64: string;
 }> {
-  const requestBody = typeof args.bodyB64 === "string"
-    ? Array.from(mockBase64ToBytes(args.bodyB64))
-    : [];
+  const requestBody =
+    typeof args.bodyB64 === "string"
+      ? Array.from(mockBase64ToBytes(args.bodyB64))
+      : [];
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -174,18 +182,10 @@ type MockSqliteLibrary = {
   };
 };
 
-type MockSqliteImportStage = Pick<
-  MockSqliteLibrary,
-  | "sourceGeneration"
-  | "sourceRevision"
-  | "sourceDigest"
-  | "expectedItemCount"
-  | "shell"
-  | "items"
->;
-
 function sqliteLibrary(): MockSqliteLibrary {
-  const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
+  const w = window as unknown as {
+    __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary;
+  };
   w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
     active: false,
     revision: 0,
@@ -199,454 +199,33 @@ function sqliteLibrary(): MockSqliteLibrary {
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
 }
 
-function sqliteImportStage(): MockSqliteImportStage | null {
-  return (
-    (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ ?? null
-  );
-}
-
-function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
-  item.userState ??= {};
-  return item.userState;
-}
-
-function sqliteShellResult() {
-  const state = sqliteLibrary();
-  const items = Object.values(state.items).filter((item) => !item.__deleted);
-  const countsByPlatform: Record<string, number> = {};
-  const unreadByPlatform: Record<string, number> = {};
-  for (const item of items) {
-    const platform = item.platform ?? "unknown";
-    countsByPlatform[platform] = (countsByPlatform[platform] ?? 0) + 1;
-    if (sqliteItemUserState(item).readAt == null) {
-      unreadByPlatform[platform] = (unreadByPlatform[platform] ?? 0) + 1;
-    }
-  }
-  return {
-    shellJson: JSON.stringify(state.shell),
-    revision: state.revision,
-    itemCount: items.length,
-    unreadCount: items.filter((item) => sqliteItemUserState(item).readAt == null).length,
-    archivableCount: items.filter((item) => {
-      const user = sqliteItemUserState(item);
-      return user.readAt != null && !user.saved && !user.archived && !user.hidden;
-    }).length,
-    countsByPlatform,
-    unreadByPlatform,
-  };
-}
-
-function sqliteCountsResult() {
-  const state = sqliteLibrary();
-  const shell = sqliteShellResult();
-  const archivableByPlatform: Record<string, number> = {};
-  const feedCounts: Record<string, number> = {};
-  const unreadFeedCounts: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  for (const item of Object.values(state.items).filter((entry) => !entry.__deleted)) {
-    const user = sqliteItemUserState(item);
-    const platform = item.platform ?? "unknown";
-    const archivable = user.readAt != null && !user.saved;
-    if (archivable) {
-      archivableByPlatform[platform] = (archivableByPlatform[platform] ?? 0) + 1;
-    }
-    const feedUrl = item.rssSource?.feedUrl;
-    if (!feedUrl) continue;
-    feedCounts[feedUrl] = (feedCounts[feedUrl] ?? 0) + 1;
-    if (user.readAt == null) {
-      unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] ?? 0) + 1;
-    }
-    if (archivable) {
-      archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] ?? 0) + 1;
-    }
-  }
-  return {
-    revision: shell.revision,
-    itemCount: shell.itemCount,
-    unreadCount: shell.unreadCount,
-    archivableCount: shell.archivableCount,
-    countsByPlatform: shell.countsByPlatform,
-    unreadByPlatform: shell.unreadByPlatform,
-    archivableByPlatform,
-    feedCounts,
-    unreadFeedCounts,
-    archivableFeedCounts,
-  };
-}
-
-function sqliteFacetSummary() {
-  const items = Object.values(sqliteLibrary().items).filter((item) => !item.__deleted);
-  const tags = new Set<string>();
-  for (const item of items) {
-    for (const tag of (sqliteItemUserState(item).tags as string[] | undefined) ?? []) {
-      tags.add(tag);
-    }
-  }
-  return {
-    archivedCount: items.filter((item) => Boolean(sqliteItemUserState(item).archived)).length,
-    sampleItemCount: items.filter((item) => Boolean(item.sampleData)).length,
-    savedArchivedCount: items.filter((item) => {
-      const user = sqliteItemUserState(item);
-      return Boolean(user.saved) && Boolean(user.archived);
-    }).length,
-    savedCount: items.filter((item) => Boolean(sqliteItemUserState(item).saved)).length,
-    savedPlatformCount: new Set(items.filter((item) =>
-      Boolean(sqliteItemUserState(item).saved)
-    ).map((item) => item.platform)).size,
-    tags: [...tags].sort(),
-    totalCount: items.length,
-  };
-}
-
-function sqliteUpsertItems(args: Record<string, unknown>): null {
-  const state = sqliteLibrary();
-  const request = (args.request ?? {}) as { itemsBase64?: string[] };
-  for (const encoded of request.itemsBase64 ?? []) {
-    const binary = atob(encoded);
-    const json = new TextDecoder().decode(
-      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
-    );
-    const item = JSON.parse(json) as MockSqliteItem;
-    state.items[item.globalId] = item;
-  }
-  state.revision += 1;
-  return null;
-}
-
-function sqliteAppendImportItems(args: Record<string, unknown>): null {
-  const stage = sqliteImportStage();
-  if (!stage) throw new Error("SQLite Library has no active staged import");
-  const request = (args.request ?? {}) as { itemsBase64?: string[] };
-  for (const encoded of request.itemsBase64 ?? []) {
-    const binary = atob(encoded);
-    const json = new TextDecoder().decode(
-      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
-    );
-    const item = JSON.parse(json) as MockSqliteItem;
-    stage.items[item.globalId] = item;
-  }
-  return null;
-}
-
-function sqliteSyncDescriptor(): Record<string, unknown> {
+function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
   return {
-    revision: state.revision,
+    format: "freed_normalized_checkpoint_export_v2",
+    protocolVersion: 2,
+    libraryId: "2".repeat(64),
+    authorityEpoch: "3".repeat(64),
+    writerId: "6".repeat(64),
+    sourceRevision: state.sourceRevision,
+    causalFrontierDigest: "a".repeat(64),
+    recordCount: items.length + 1,
     itemCount: items.length,
-    sourceDigest: state.sourceDigest || "0".repeat(64),
-    shellJson: JSON.stringify(state.shell ?? {}),
-    materializedDigest: "1".repeat(64),
-  };
-}
-
-function sqliteAuthorityBootstrap(): Record<string, unknown> {
-  return {
-    authority: {
-      library_id: "2".repeat(64),
-      epoch: 1,
-      epoch_id: "3".repeat(64),
-      authority_key_id: "4".repeat(64),
-      authority_public_key: "5".repeat(64),
-      observed_frontier: [],
-    },
-    actor: {
-      actor_id: "6".repeat(64),
-      actor_public_key: "7".repeat(64),
-      enrollment_operation_id: "mock-local-authority-enrollment",
-      enrollment_certificate_digest: "8".repeat(64),
-      canonical_enrollment_certificate_json: "{}",
-      actor_chain_genesis: "9".repeat(64),
-    },
-    protocol: {
-      format: "freed_library_core_native_authority_protocol_v1",
-      active_engine: "library_core_v1",
-      schema_version: 12,
-      replication_protocol: "op_segments_v1",
-      checkpoint_format: "freed_logical_checkpoint_v1",
-      transition_certificate_digest: "a".repeat(64),
-      native_protocol_certificate_digest: "b".repeat(64),
-      prior_transition_certificate_digest: null,
-      source_manifest_digest: "c".repeat(64),
-    },
+    localActorId: "6".repeat(64),
   };
 }
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  sqlite_library_status: () => {
-    const state = sqliteLibrary();
-    return state.active ? {
-      active: true,
-      revision: state.revision,
-      expectedItemCount: state.expectedItemCount,
-      importedItemCount: Object.keys(state.items).length,
-      sourceGeneration: state.sourceGeneration,
-      sourceRevision: state.sourceRevision,
-      sourceDigest: state.sourceDigest,
-    } : null;
+  ensure_fresh_normalized_desktop_library: () => {
+    sqliteLibrary().active = true;
+    return true;
   },
-  begin_sqlite_library_import: (args: Record<string, unknown>) => {
-    const request = args.request as {
-      sourceGeneration: number;
-      sourceRevision: number;
-      sourceDigest: string;
-      expectedItemCount: number;
-      shellJson: string;
-    };
-    (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
-      sourceGeneration: request.sourceGeneration,
-      sourceRevision: request.sourceRevision,
-      sourceDigest: request.sourceDigest,
-      expectedItemCount: request.expectedItemCount,
-      shell: JSON.parse(request.shellJson) as Record<string, unknown>,
-      items: {},
-    };
-    return null;
-  },
-  append_sqlite_library_import: sqliteAppendImportItems,
-  finalize_sqlite_library_import: () => {
-    const stage = sqliteImportStage();
-    if (!stage) throw new Error("SQLite Library has no complete staged import");
-    if (Object.keys(stage.items).length !== stage.expectedItemCount) {
-      throw new Error("SQLite Library import count mismatch");
-    }
-    const state = sqliteLibrary();
-    Object.assign(state, stage, { active: true, revision: 1 });
-    delete (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-    return {
-      active: true,
-      revision: state.revision,
-      expectedItemCount: state.expectedItemCount,
-      importedItemCount: Object.keys(state.items).length,
-      sourceGeneration: state.sourceGeneration,
-      sourceRevision: state.sourceRevision,
-      sourceDigest: state.sourceDigest,
-    };
-  },
-  recover_sqlite_library_follower_overlay: () => ({
-    transactionCount: 0,
-    operationCount: 0,
-    materializedRowCount: 0,
-    revisionAdvanced: false,
-  }),
-  read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
-  bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
-  read_sqlite_library_shell: sqliteShellResult,
-  read_sqlite_library_counts: sqliteCountsResult,
-  read_sqlite_library_facet_summary: sqliteFacetSummary,
-  replace_sqlite_library_shell: (args: Record<string, unknown>) => {
-    const state = sqliteLibrary();
-    const request = args.request as { shellJson: string };
-    state.shell = JSON.parse(request.shellJson) as Record<string, unknown>;
-    state.revision += 1;
-    return null;
-  },
-  upsert_sqlite_library_items: sqliteUpsertItems,
-  read_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = args.request as { ids?: string[] };
-    return (request.ids ?? []).flatMap((id) => {
-      const item = sqliteLibrary().items[id];
-      return item && !item.__deleted ? [JSON.stringify(item)] : [];
-    });
-  },
-  query_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as {
-      query?: string | null;
-      platform?: string | null;
-      authorId?: string | null;
-      authorKeys?: Array<{ platform: string; authorId: string }> | null;
-      feedUrl?: string | null;
-      contentType?: string | null;
-      excludeContentType?: string | null;
-      tags?: string[] | null;
-      signals?: string[] | null;
-      saved?: boolean | null;
-      archived?: boolean | null;
-      showHidden?: boolean;
-      offset?: number;
-      limit?: number;
-    };
-    const query = request.query?.toLowerCase() ?? "";
-    const items = Object.values(sqliteLibrary().items)
-      .filter((item) => {
-        const user = sqliteItemUserState(item);
-        const itemSignals = ((item.contentSignals as { tags?: string[] } | undefined)?.tags ?? []);
-        const authorKeys = request.authorKeys ?? [];
-        return !item.__deleted
-          && (!request.platform || item.platform === request.platform)
-          && (!request.contentType || item.contentType === request.contentType)
-          && (!request.excludeContentType || item.contentType !== request.excludeContentType)
-          && (request.saved == null || Boolean(user.saved) === request.saved)
-          && (request.archived == null || Boolean(user.archived) === request.archived)
-          && (request.showHidden || !user.hidden)
-          && (!request.authorId || item.author?.id === request.authorId)
-          && (!request.feedUrl || item.rssSource?.feedUrl === request.feedUrl)
-          && (authorKeys.length === 0 || authorKeys.some((key) =>
-            key.platform === item.platform && key.authorId === item.author?.id
-          ))
-          && (!request.tags?.length || request.tags.some((tag) =>
-            ((user.tags as string[] | undefined) ?? []).includes(tag)
-          ))
-          && (!request.signals?.length || request.signals.some((signal) =>
-            itemSignals.includes(signal)
-          ))
-          && (!query || JSON.stringify(item).toLowerCase().includes(query));
-      })
-      .sort((left, right) => {
-        const published = Number(right.publishedAt ?? 0) - Number(left.publishedAt ?? 0);
-        if (published !== 0) return published;
-        const captured = Number(right.capturedAt ?? 0) - Number(left.capturedAt ?? 0);
-        return captured !== 0 ? captured : left.globalId.localeCompare(right.globalId);
-      });
-    const offset = request.offset ?? 0;
-    const limit = Math.max(1, Math.min(request.limit ?? 64, 128));
-    const page = items.slice(offset, offset + limit);
-    return {
-      itemsJson: page.map((item) => JSON.stringify(item)),
-      nextOffset: offset + page.length < items.length ? offset + page.length : null,
-      totalCount: items.length,
-    };
-  },
-  search_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as {
-      query?: string;
-      afterGlobalId?: string | null;
-      expectedRevision?: number;
-      limit?: number;
-    };
-    const state = sqliteLibrary();
-    if (request.expectedRevision !== state.revision) {
-      throw new Error("SQLite Library changed during its bounded search");
-    }
-    const candidates = Object.values(state.items)
-      .filter((item) => !item.__deleted && (!request.afterGlobalId || item.globalId > request.afterGlobalId))
-      .sort((left, right) => left.globalId.localeCompare(right.globalId));
-    const query = (request.query ?? "").toLowerCase();
-    const limit = Math.max(1, Math.min(request.limit ?? 32, 32));
-    let scanned = 0;
-    const matches: Array<{ itemJson: string; score: number }> = [];
-    let lastScanned: string | null = null;
-    while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
-      const item = candidates[scanned]!;
-      lastScanned = item.globalId;
-      if (JSON.stringify(item).toLowerCase().includes(query)) {
-        matches.push({ itemJson: JSON.stringify(item), score: 1 });
-      }
-      scanned += 1;
-    }
-    return {
-      matches,
-      nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
-      sourceRevision: state.revision,
-    };
-  },
-  mutate_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as {
-      mutation?: string;
-      ids?: string[];
-      platform?: string | null;
-      feedUrl?: string | null;
-      timestampMs?: number;
-      maxAgeMs?: number;
-    };
-    const state = sqliteLibrary();
-    const candidates = request.ids?.length
-      ? request.ids.flatMap((id) => state.items[id] ? [state.items[id]] : [])
-      : Object.values(state.items);
-    let affected = 0;
-    for (const item of candidates) {
-      if (item.__deleted || (request.platform && item.platform !== request.platform)) continue;
-      if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
-      const user = sqliteItemUserState(item);
-      const timestampMs = request.timestampMs ?? Date.now();
-      switch (request.mutation) {
-        case "mark_read":
-        case "mark_all_read":
-          user.readAt ??= timestampMs;
-          break;
-        case "toggle_saved":
-          user.saved = !user.saved;
-          if (user.saved) {
-            user.savedAt = timestampMs;
-            user.archived = false;
-            delete user.archivedAt;
-          } else {
-            delete user.savedAt;
-          }
-          break;
-        case "toggle_archived":
-          if (user.saved) continue;
-          user.archived = !user.archived;
-          if (user.archived) user.archivedAt = timestampMs;
-          else delete user.archivedAt;
-          break;
-        case "archive":
-        case "archive_all_read_unsaved":
-          if (user.saved || user.hidden || user.readAt == null) continue;
-          user.archived = true;
-          user.archivedAt ??= timestampMs;
-          break;
-        case "toggle_liked":
-          user.liked = !user.liked;
-          if (user.liked) user.likedAt = timestampMs;
-          else {
-            delete user.likedAt;
-            delete user.likedSyncedAt;
-          }
-          break;
-        case "confirm_liked":
-          user.likedSyncedAt = timestampMs;
-          break;
-        case "confirm_seen":
-          user.seenSyncedAt = timestampMs;
-          break;
-        case "unarchive_saved":
-          if (!user.saved || !user.archived) continue;
-          user.archived = false;
-          delete user.archivedAt;
-          break;
-        case "delete_all_archived":
-          if (!user.archived || user.saved) continue;
-          item.__deleted = true;
-          break;
-        case "prune_archived":
-          if (!user.archived || user.saved || user.archivedAt == null
-            || Number(user.archivedAt) > timestampMs - (request.maxAgeMs ?? 0)) continue;
-          item.__deleted = true;
-          break;
-        case "delete_rss":
-          if (item.platform !== "rss") continue;
-          item.__deleted = true;
-          break;
-        case "delete":
-          item.__deleted = true;
-          break;
-        case "clear_sample":
-          if (!item.sampleData) continue;
-          item.__deleted = true;
-          break;
-        default:
-          continue;
-      }
-      affected += 1;
-    }
-    state.revision += 1;
-    return affected;
-  },
-  set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
+  describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+  set_sqlite_library_cloud_writer_admission: (
+    args: Record<string, unknown>,
+  ) => {
     const request = args.request as {
       localWriterId: string;
       activeWriterId: string;
@@ -676,54 +255,96 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
-  sqlite_library_follower_intent_context: () => null,
-  sqlite_library_follower_runtime_status: () => ({
+  normalized_library_follower_runtime_status: () => ({
     state: "awaiting_checkpoint",
     libraryId: null,
-    epochId: null,
+    authorityEpochId: null,
     actorId: null,
     checkpointGeneration: null,
-    remoteIngestSequence: null,
+    sourceRevision: null,
     pendingIntentCount: 0,
     publishedIntentCount: 0,
     importedResultCount: 0,
   }),
-  read_sqlite_library_follower_intent_outbox_candidate: () => null,
-  record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as Record<string, unknown>;
+  normalized_library_follower_transport_context: () => ({
+    actorId: "11".repeat(32),
+    libraryId: "22".repeat(32),
+    nextIntentActorCounter: 1,
+    nextResultSequence: 1,
+    previousIntentSegmentDigest: null,
+    previousResultSegmentDigest: null,
+    schemaVersion: 2,
+    storageEpochId: "33".repeat(32),
+  }),
+  page_normalized_library_follower_transport: (
+    args: Record<string, unknown>,
+  ) => {
+    const page = (args.page ?? {}) as Record<string, unknown>;
     return {
-      firstIntentSequence: request.firstIntentSequence,
-      lastIntentSequence: request.lastIntentSequence,
-      operationCount: Number(request.lastIntentSequence) - Number(request.firstIntentSequence) + 1,
-      publishedSegmentDigest: request.publishedSegmentDigest,
-      status: "recorded",
+      actorId: page.actorId,
+      canonicalEnvelopes: [],
+      done: true,
+      firstActorCounter: page.firstActorCounter,
+      lastActorCounter: null,
+      schemaVersion: 2,
     };
   },
-  read_sqlite_library_follower_result_import_cursor: () => null,
-  append_sqlite_library_follower_result_segment: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as Record<string, unknown>;
+  record_normalized_library_follower_intent_transport_publication: (
+    args: Record<string, unknown>,
+  ) => {
+    const publication = (args.publication ?? {}) as Record<string, unknown>;
     return {
-      firstResultSequence: request.firstResultSequence,
-      lastResultSequence: request.lastResultSequence,
-      resultCount: Array.isArray(request.entries) ? request.entries.length : 0,
-      segmentDigest: request.segmentDigest,
-      status: "imported",
+      actorId: publication.actorId,
+      firstActorCounter: publication.firstActorCounter,
+      lastActorCounter: publication.lastActorCounter,
+      newlyPublishedTransactionCount: 1,
+      nextActorCounter: Number(publication.lastActorCounter) + 1,
+      publishedAt: publication.publishedAt,
+      semanticSegmentDigest: publication.semanticSegmentDigest,
+      storedSegmentDigest: publication.storedSegmentDigest,
     };
   },
-  fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
-  google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
-    url: args.url,
-    method: "GET",
-    headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
-  }),
-  google_oauth_proxy_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
-    url: args.url,
-    method: "POST",
-    headers: { "Content-Type": String(args.contentType ?? "application/json") },
-    body: args.body,
-  }),
-  google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
-  fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
+  import_normalized_library_follower_result_transport_segment: (
+    args: Record<string, unknown>,
+  ) => {
+    const publication = (args.publication ?? {}) as Record<string, unknown>;
+    const records = Array.isArray(publication.records)
+      ? publication.records
+      : [];
+    return {
+      acceptedTransactionCount: records.length,
+      actorId: publication.actorId,
+      firstResultSequence: 1,
+      lastResultSequence: records.length,
+      nextResultSequence: records.length + 1,
+      receivedAt: publication.receivedAt,
+      rejectedTransactionCount: 0,
+      resultCount: records.length,
+      semanticSegmentDigest: publication.semanticSegmentDigest,
+      storedSegmentDigest: publication.storedSegmentDigest,
+    };
+  },
+  fetch_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
+  google_api_request: (args: Record<string, unknown>) =>
+    proxyNativeHttpRequest({
+      url: args.url,
+      method: "GET",
+      headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+    }),
+  google_oauth_proxy_request: (args: Record<string, unknown>) =>
+    proxyNativeHttpRequest({
+      url: args.url,
+      method: "POST",
+      headers: {
+        "Content-Type": String(args.contentType ?? "application/json"),
+      },
+      body: args.body,
+    }),
+  google_drive_request: (args: Record<string, unknown>) =>
+    proxyGoogleDriveRequest(args),
+  fetch_binary_url: (args: Record<string, unknown>) =>
+    proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
@@ -732,13 +353,15 @@ const handlers: Record<string, Handler> = {
   },
   cancel_local_ai_model_download: () => null,
   get_desktop_session_state: () =>
-    (window as unknown as {
-      __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
-        available: boolean;
-        screenLocked: boolean;
-        error?: string | null;
-      };
-    }).__TAURI_MOCK_DESKTOP_SESSION_STATE__ ?? {
+    (
+      window as unknown as {
+        __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
+          available: boolean;
+          screenLocked: boolean;
+          error?: string | null;
+        };
+      }
+    ).__TAURI_MOCK_DESKTOP_SESSION_STATE__ ?? {
       available: true,
       screenLocked: false,
       error: null,
@@ -751,12 +374,14 @@ const handlers: Record<string, Handler> = {
     return {
       available: session.available,
       eligible: !session.available || !session.screenLocked,
-      reason: session.available && session.screenLocked ? "screen_locked" : null,
+      reason:
+        session.available && session.screenLocked ? "screen_locked" : null,
     };
   },
   replace_provider_schedule_wake: (args: Record<string, unknown>) => {
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ =
-      args.wake ?? null;
+    (
+      window as unknown as Record<string, unknown>
+    ).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ = args.wake ?? null;
     return null;
   },
   get_background_runtime_active_operation: () => ({
@@ -783,15 +408,17 @@ const handlers: Record<string, Handler> = {
     webkitLargestCpuUsage: 0,
     webkitLargestAgeSeconds: 10,
     webkitLargestRole: "freed-webcontent",
-    webkitProcesses: [{
-      processId: 12345,
-      residentBytes: 96 * 1024 * 1024,
-      footprintBytes: 96 * 1024 * 1024,
-      virtualBytes: 512 * 1024 * 1024,
-      cpuUsage: 0,
-      ageSeconds: 10,
-      role: "freed-webcontent",
-    }],
+    webkitProcesses: [
+      {
+        processId: 12345,
+        residentBytes: 96 * 1024 * 1024,
+        footprintBytes: 96 * 1024 * 1024,
+        virtualBytes: 512 * 1024 * 1024,
+        cpuUsage: 0,
+        ageSeconds: 10,
+        role: "freed-webcontent",
+      },
+    ],
     webkitTelemetryAvailable: true,
     webkitAttributionPrecise: true,
     indexedDbBytes: 8 * 1024 * 1024,
@@ -800,8 +427,6 @@ const handlers: Record<string, Handler> = {
     sampleDurationMs: 1,
     memoryHighBytes: 2508 * 1024 * 1024,
     memoryCriticalBytes: 3584 * 1024 * 1024,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   }),
   trim_webkit_network_cache_now: () => ({
     beforeBytes: 16 * 1024 * 1024,
@@ -830,11 +455,12 @@ const handlers: Record<string, Handler> = {
   get_desktop_installation_witness: () => "a".repeat(64),
   get_updater_target: () => "darwin-aarch64",
   retry_startup_after_crash: () => null,
-  export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
+  export_startup_diagnostics: () =>
+    "/Users/test/Downloads/freed-diagnostics-test.json",
   clear_factory_reset_runtime_artifacts: () => null,
   get_recent_logs: () => [],
   show_window: () => null,
-  list_snapshots: () => [],
+  list_normalized_local_snapshots: () => [],
   save_url_content: () => null,
   get_x_cookies: () => null,
   open_x_login_window: () => null,
@@ -843,8 +469,12 @@ const handlers: Record<string, Handler> = {
   pick_contact: () => null,
   get_social_provider_cookie_state: (args?: { provider?: string }) => ({
     provider: args?.provider ?? "facebook",
-    ...(((window as unknown as { __TAURI_MOCK_SOCIAL_COOKIE_STATES__?: Record<string, unknown> })
-      .__TAURI_MOCK_SOCIAL_COOKIE_STATES__?.[args?.provider ?? "facebook"] as Record<string, unknown> | undefined) ?? {
+    ...(((
+      window as unknown as {
+        __TAURI_MOCK_SOCIAL_COOKIE_STATES__?: Record<string, unknown>;
+      }
+    ).__TAURI_MOCK_SOCIAL_COOKIE_STATES__?.[args?.provider ?? "facebook"] as
+      Record<string, unknown> | undefined) ?? {
       available: false,
       hasAuthCookie: false,
       cookieCount: 0,
@@ -857,7 +487,10 @@ const handlers: Record<string, Handler> = {
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
   fb_scrape_groups: () => [],
-  fb_check_group_membership: (args?: { groupId?: string; groupUrl?: string }) => ({
+  fb_check_group_membership: (args?: {
+    groupId?: string;
+    groupUrl?: string;
+  }) => ({
     id: args?.groupId ?? "",
     url: args?.groupUrl ?? "",
     name: null,
@@ -901,43 +534,52 @@ const handlers: Record<string, Handler> = {
   // The init script runs before the Vite module graph and owns persistent or
   // test-specific handlers. Keep those overrides last so this module's
   // convenient defaults cannot silently replace them.
-  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
+  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ??
+    {}) as Record<string, Handler>),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ = handlers;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ =
+  handlers;
 // Append-only log of every invoke() call for test assertions.
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ = [] as Array<{
-  cmd: string;
-  args: Record<string, unknown> | undefined;
-}>;
-(window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ =
+  [] as Array<{
+    cmd: string;
+    args: Record<string, unknown> | undefined;
+  }>;
+(
+  window as unknown as Record<string, unknown>
+).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
 
-const callbackStore = (
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ = {})
-) as Record<number, unknown>;
-const pluginEventListeners = (
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {})
-) as Record<number, PluginEventRecord>;
+const callbackStore = ((window as unknown as Record<string, unknown>)
+  .__TAURI_MOCK_CALLBACKS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ =
+    {})) as Record<number, unknown>;
+const pluginEventListeners = ((window as unknown as Record<string, unknown>)
+  .__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ ??
+  ((
+    window as unknown as Record<string, unknown>
+  ).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {})) as Record<
+  number,
+  PluginEventRecord
+>;
 
-const tauriInternals = (
-  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ ??
-  ((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {})
-) as MockInternals;
+const tauriInternals = ((window as unknown as Record<string, unknown>)
+  .__TAURI_INTERNALS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ =
+    {})) as MockInternals;
 
 export async function invoke<T = unknown>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  mockArray<{ cmd: string; args: typeof args }>("__TAURI_MOCK_INVOCATIONS__").push({ cmd, args });
+  mockArray<{ cmd: string; args: typeof args }>(
+    "__TAURI_MOCK_INVOCATIONS__",
+  ).push({ cmd, args });
   const handler =
     (
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
-        string,
-        Handler
-      >
+      (window as unknown as Record<string, unknown>)
+        .__TAURI_MOCK_HANDLERS__ as Record<string, Handler>
     )[cmd] ?? (() => null);
   return (await handler(args ?? {})) as T;
 }
@@ -968,7 +610,9 @@ tauriInternals.plugins = tauriInternals.plugins ?? {
   },
 };
 
-(window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+(
+  window as unknown as Record<string, unknown>
+).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener(event: string, eventId: number) {
     const record = pluginEventListeners[eventId];
     if (record?.event === event) {
@@ -1003,7 +647,12 @@ tauriInternals.invoke = async <T = unknown>(
     for (const [eventId, record] of Object.entries(pluginEventListeners)) {
       if (record.event !== eventName) continue;
       const callback = callbackStore[record.callbackId] as
-        | ((event: { event: string; id: number; payload: unknown; windowLabel: string }) => void)
+        | ((event: {
+            event: string;
+            id: number;
+            payload: unknown;
+            windowLabel: string;
+          }) => void)
         | undefined;
       callback?.({
         event: eventName,

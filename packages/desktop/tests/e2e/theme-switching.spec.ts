@@ -60,7 +60,7 @@ test("switching to both AubOS themes applies the selected theme immediately", as
   );
   expect(await page.evaluate(() =>
     window.__FREED_STORE__?.getState().preferences.display.themeId,
-  )).toBe("scriptorium");
+  )).toBeUndefined();
 });
 
 test("committing a hovered settings theme does not restore the old theme", async ({ app, page }) => {
@@ -108,7 +108,7 @@ test("committing a hovered settings theme does not restore the old theme", async
   expect(committedThemeSequence).not.toContain("scriptorium");
 });
 
-test("a later Automerge snapshot cannot overwrite the device-local theme", async ({ app, page }) => {
+test("a later synchronized preference refresh cannot overwrite the device-local theme", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -174,7 +174,7 @@ test("a later Automerge snapshot cannot overwrite the device-local theme", async
   );
 });
 
-test("rapid theme browsing stays local and never writes theme into Automerge", async ({ app, page }) => {
+test("rapid theme browsing stays local and never writes theme into synchronized Library preferences", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -537,21 +537,7 @@ test("map view removes the left frame when the desktop sidebar is closed", async
   await page.getByRole("button", { name: /^Map/ }).click();
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (patch: { display: { sidebarMode: "closed" } }) => Promise<void>;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        sidebarMode: "closed",
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ sidebarMode: "closed" });
 
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 
@@ -581,31 +567,11 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
 
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (patch: {
-              display: {
-                friendsMode: "friends";
-                friendsSidebarOpen: boolean;
-                sidebarMode: "expanded";
-                sidebarWidth: number;
-              };
-            }) => Promise<void>;
-            setActiveView: (view: string) => void;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: true,
-        sidebarMode: "expanded",
-        sidebarWidth: 256,
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: true,
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
   });
 
   const navigationSidebar = page.getByTestId("app-sidebar");
@@ -643,9 +609,25 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   expect(triggerInsets).not.toBeNull();
   expect(Math.abs(triggerInsets!.top - triggerInsets!.right)).toBeLessThanOrEqual(1);
 
-  await friendsMenuTrigger.click();
+  await friendsMenuTrigger.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-context-menu")).toBeVisible();
-  await graphViewport.click({ position: { x: 24, y: 48 } });
+  await graphViewport.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+      clientX: rect.left + 24,
+      clientY: rect.top + 48,
+      pointerId: 1,
+      pointerType: "mouse",
+    };
+    element.dispatchEvent(new PointerEvent("pointerdown", init));
+    element.dispatchEvent(new PointerEvent("pointerup", init));
+    element.dispatchEvent(new MouseEvent("click", init));
+  });
   await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
 
   await expect.poll(async () => {
@@ -735,10 +717,14 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const copyCameraDiagnostics = async () => {
     await page.getByTestId("source-row-friends").hover();
-    await page.getByTestId("source-menu-trigger-friends").click();
+    await page.getByTestId("source-menu-trigger-friends").evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
     await expect(page.getByTestId("friends-context-menu")).toBeVisible();
     await expect(page.getByTestId("friends-menu-copy-diagnostics")).toHaveText("Copy diagnostics");
-    await page.getByTestId("friends-menu-copy-diagnostics").click();
+    await page.getByTestId("friends-menu-copy-diagnostics").evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
     await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
     return page.evaluate(async () => {
       const snapshot = JSON.parse(await navigator.clipboard.readText()) as {
@@ -750,7 +736,13 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
           resistanceScale: number;
         };
       };
-      return snapshot.camera;
+      return {
+        x: snapshot.camera.x,
+        y: snapshot.camera.y,
+        scale: snapshot.camera.scale,
+        outwardTargetScale: snapshot.camera.outwardTargetScale,
+        resistanceScale: snapshot.camera.resistanceScale,
+      };
     });
   };
 

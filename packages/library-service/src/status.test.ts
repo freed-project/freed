@@ -48,6 +48,7 @@ describe("Library service local status", () => {
       nowMs: Date.parse("2026-08-19T00:00:00.000Z"),
       startedAt: "2026-08-19T00:00:00.000Z",
       sidecarPid: 4_242,
+      localActorEndpoint: "/safe/state/library-actor-v1.sock",
       reasonCode: null,
     });
 
@@ -75,6 +76,7 @@ describe("Library service local status", () => {
         updatedAt: "2026-08-19T00:00:00.000Z",
         startedAt: null,
         sidecarPid: null,
+        localActorEndpoint: null,
         reasonCode: "token=must-not-escape",
       })}\n`,
     );

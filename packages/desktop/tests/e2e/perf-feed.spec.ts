@@ -8,8 +8,8 @@
  * Scenarios covered:
  *   1. Cold load         - time from navigate() to isInitialized with 3k items
  *   2. Scroll            - frame budget while fast-scrolling 3k-item feed
- *   3. Mark-as-read      - hydrateFromDoc cost across 20 rapid mutations
- *   4. Search input      - async MiniSearch index preparation while typing a query
+ *   3. Mark-as-read      - enqueue cost across 20 rapid bounded mutations
+ *   4. Search input      - bounded SQLite search while typing a query
  *   5. Reader view open  - simultaneous setSelectedItem + markAsRead with 3k items
  *   6. CPU profile       - V8 call-stack profile of markAsRead with 3k items
  */
@@ -123,8 +123,8 @@ async function injectPreservedRssItems(
   await page.evaluate(
     async ({ count, feedUrl, preservedTextLength }) => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+        importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
 
       const now = Date.now();
@@ -166,7 +166,7 @@ async function injectPreservedRssItems(
         },
       }));
 
-      await automerge.docBatchImportItems(items);
+      await libraryCore.importLibraryItems(items);
     },
     { count, feedUrl, preservedTextLength },
   );
@@ -238,17 +238,13 @@ async function collectHeapUsageBytes(
 
 test.describe("Cold load with pre-populated corpus", () => {
   test("1k items - time-to-interactive", async ({ app, page }) => {
-    // Pre-populate IndexedDB BEFORE the app loads by navigating, injecting,
-    // then measuring a hard reload. This mirrors the real-world startup path.
+    // Populate the native SQLite fixture, then measure a hard reload. This
+    // mirrors a returning user whose Library is already present at startup.
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_MEDIUM);
 
-    // Wait for the Automerge 400ms debounced save to flush to IndexedDB before
-    // reloading, otherwise the injected items are lost on page refresh.
-    await page.waitForTimeout(600);
-
-    // Hard reload - IndexedDB now has data, simulating a returning user.
+    // The typed import resolves only after the SQLite transaction is durable.
     const elapsed = await measureBrowserMs(page, "Cold load 1k items", async () => {
       await page.reload();
       await app.waitForReady();
@@ -263,8 +259,6 @@ test.describe("Cold load with pre-populated corpus", () => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
-    await page.waitForTimeout(600);
-
     const elapsed = await measureBrowserMs(page, "Cold load 3k items", async () => {
       await page.reload();
       await app.waitForReady();
@@ -278,8 +272,6 @@ test.describe("Cold load with pre-populated corpus", () => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_XLARGE);
-    await page.waitForTimeout(600);
-
     const elapsed = await measureBrowserMs(page, "Cold load 5k items", async () => {
       await page.reload();
       await app.waitForReady();
@@ -398,8 +390,8 @@ test.describe("Mark-as-read enqueue storm", () => {
       `[PERF] Per-call timings: [${timings.map((t) => t.toFixed(1)).join(", ")}]`,
     );
 
-    // Single-item read marks should not wait for the durable Automerge batch.
-    // Scrolling and reader open both call markAsRead on the paint path.
+    // Single-item read marks enqueue into the bounded read-state batch without
+    // making scrolling or reader open wait for its SQLite transaction.
     expect(worst).toBeLessThan(50);
   });
 });
@@ -473,10 +465,8 @@ test.describe("Search input (bounded native Library search)", () => {
 test.describe("Reader view open (the worst offender)", () => {
   /**
    * This is the double-whammy: clicking a card fires setSelectedItem() AND
-   * markAsRead() simultaneously. markAsRead triggers an Automerge mutation ->
-   * hydrateFromDoc (O(n) sort + rank) -> items array recreated ->
-   * useSearchResults MiniSearch rebuild, all while React mounts the heavy
-   * ReaderView component and starts its async content waterfall.
+   * markAsRead() simultaneously. The read mark enters a bounded mutation batch
+   * while React mounts ReaderView and starts its async content waterfall.
    *
    * We measure the time from click to ReaderView visible (first meaningful paint
    * of the reader panel), and the long tasks that fire during that window.
@@ -536,7 +526,8 @@ test.describe("Reader view open (the worst offender)", () => {
     }
 
     // The reader panel should appear within 1 second even at 3k items.
-    // If it doesn't, hydrateFromDoc is blocking the React paint.
+    // A regression here means the visible-window or reader-content path is
+    // blocking the first meaningful paint.
     expect(elapsed).toBeLessThan(2_000);
   });
 
@@ -546,8 +537,8 @@ test.describe("Reader view open (the worst offender)", () => {
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
     // Time markAsRead in isolation without React re-render overhead.
-    // This should measure enqueue cost only. Durable Automerge writes flush in
-    // the shared read-state batch instead of blocking the paint path.
+    // This measures enqueue cost only. The shared read-state batch commits the
+    // durable SQLite mutation without blocking the paint path.
     const [targetId] = await sqliteItemIds(page, 1);
     const markAsReadMs = await page.evaluate(async (id) => {
       const w = window as Record<string, unknown>;
@@ -575,8 +566,8 @@ test.describe("Reader view open (the worst offender)", () => {
 
 /**
  * Use the Chrome DevTools Protocol to capture a V8 CPU profile of the
- * markAsRead operation with 3k items loaded. The profile shows exactly which
- * functions within hydrateFromDoc, A.change(), and rankFeedItems consume time.
+ * markAsRead enqueue path with 3k items loaded. The profile shows which
+ * visible-store and bounded mutation functions consume time.
  *
  * Profile JSON is written to playwright-report/cpu-profile-mark-as-read.json.
  */
@@ -801,8 +792,6 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
               webkitResidentBytes?: number;
               webkitTotalResidentBytes?: number;
               memoryCriticalBytes?: number;
-              automergeBinaryBytes?: number;
-              automergeItemCount?: number;
               indexedDbBytes?: number;
               webkitCacheBytes?: number;
             };
@@ -815,8 +804,6 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
         appResidentBytes: memory?.appResidentBytes ?? 0,
         webkitResidentBytes: memory?.webkitTotalResidentBytes ?? memory?.webkitResidentBytes ?? 0,
         memoryCriticalBytes: memory?.memoryCriticalBytes ?? 3_500 * 1024 * 1024,
-        automergeBinaryBytes: memory?.automergeBinaryBytes ?? 0,
-        automergeItemCount: memory?.automergeItemCount ?? 0,
         indexedDbBytes: memory?.indexedDbBytes ?? 0,
         webkitCacheBytes: memory?.webkitCacheBytes ?? 0,
       };
@@ -826,15 +813,11 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
     console.log(`[PERF] Runtime app RSS: ${(telemetry.appResidentBytes / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Runtime WebKit RSS: ${(telemetry.webkitResidentBytes / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Runtime critical threshold: ${(telemetry.memoryCriticalBytes / (1024 * 1024)).toFixed(1)} MB`);
-    console.log(`[PERF] Runtime Automerge binary: ${(telemetry.automergeBinaryBytes / (1024 * 1024)).toFixed(1)} MB`);
-    console.log(`[PERF] Runtime Automerge item count: ${telemetry.automergeItemCount.toLocaleString()}`);
     console.log(`[PERF] Runtime IndexedDB bytes: ${telemetry.indexedDbBytes.toLocaleString()}`);
     console.log(`[PERF] Runtime WebKit cache bytes: ${telemetry.webkitCacheBytes.toLocaleString()}`);
 
     expect(telemetry.pressureLevel).not.toBe("critical");
     expect(telemetry.appResidentBytes).toBeLessThan(telemetry.memoryCriticalBytes);
-    expect(telemetry.automergeBinaryBytes).toBeLessThan(4_096);
-    expect(telemetry.automergeItemCount).toBe(0);
   });
 
   test("search index heap stays bounded after clearing a heavy query", async ({ app, page }) => {

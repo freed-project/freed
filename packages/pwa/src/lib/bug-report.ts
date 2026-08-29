@@ -48,10 +48,16 @@ function getPwaRuntimeInfo() {
   };
 }
 
-function createStateSummary() {
+async function createStateSummary() {
   const state = useAppStore.getState();
   return summarizeStateForReport({
     state,
+    library: {
+      totalArchived: state.archivedItemCount,
+      totalFeeds: state.rssFeedCount,
+      totalFriends: state.friendPersonCount,
+      totalItems: state.totalItemCount,
+    },
     platformAuth: {},
     cloudProviders: getCloudProvider() ? { current: getCloudProvider() as string } : undefined,
   });
@@ -81,7 +87,7 @@ async function buildPwaBundle(input: {
       bytes: event.bytes,
       ts: event.ts,
     }));
-  const stateSummary = createStateSummary();
+  const stateSummary = await createStateSummary();
   const manifest = buildBugReportManifest({
     appName: APP_NAME,
     appSlug: "freed-pwa",

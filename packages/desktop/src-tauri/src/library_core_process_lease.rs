@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(not(feature = "isolated-preview-data-root"))]
 const FREED_DESKTOP_IDENTIFIER: &str = "wtf.freed.desktop";
+#[cfg(feature = "isolated-preview-data-root")]
+const FREED_DESKTOP_IDENTIFIER: &str = "wtf.freed.desktop.sqlite-native-preview";
 const LIBRARY_CORE_DIRECTORY: &str = "library-core";
 const DESKTOP_IDENTITY: freed_library_core::ProcessLeaseIdentity<'static> =
     freed_library_core::ProcessLeaseIdentity::new(
@@ -88,6 +91,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "isolated-preview-data-root"))]
     fn desktop_data_root_matches_tauri_path_resolution() {
         use tauri::Manager;
 
@@ -102,6 +106,18 @@ mod tests {
         assert_eq!(
             freed_desktop_library_core_data_root().expect("resolve pre-Tauri data root"),
             tauri_data_root
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "isolated-preview-data-root")]
+    fn isolated_preview_uses_a_closed_nonproduction_data_root() {
+        assert_eq!(
+            freed_desktop_library_core_data_root().expect("resolve preview data root"),
+            dirs::data_dir()
+                .expect("resolve operating system data directory")
+                .join("wtf.freed.desktop.sqlite-native-preview")
+                .join(LIBRARY_CORE_DIRECTORY)
         );
     }
 }

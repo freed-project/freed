@@ -542,17 +542,13 @@ async function captureIgFeedInternal(
         "change",
         `[IG] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
-      const before =
-        store.itemCountByPlatform?.instagram ??
-        store.items.filter((item) => item.platform === "instagram").length;
+      const before = store.itemCountByPlatform?.instagram ?? 0;
       const writeStartedAt = performance.now();
       await store.addItems(result.items);
       assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const afterState = useAppStore.getState();
-      const after =
-        afterState.itemCountByPlatform?.instagram ??
-        afterState.items.filter((item) => item.platform === "instagram").length;
+      const after = afterState.itemCountByPlatform?.instagram ?? before;
       result.diag.itemsAdded = Math.max(0, after - before);
       log.info(
         `[IG] store write complete candidates=${result.items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} duration=${formatSocialCaptureDuration(writeDurationMs)}`,

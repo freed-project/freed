@@ -5,36 +5,7 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { Account, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
-import {
-  matchesLibraryCoreFeedBrowseFilterV1,
-  normalizeLibraryCoreFeedBrowseFilterV1,
-  type LibraryCoreFeedBrowseFilterInputV1,
-} from "./library-core/feed-browse-filter-contract.js";
-import {
-  compareLibraryCoreFeedPriorityV1,
-  sortLibraryCoreFeedRecommendationV1,
-} from "./library-core/feed-recommendation-order-contract.js";
-
-export {
-  matchesLibraryCoreFeedBrowseFilterV1,
-  normalizeLibraryCoreFeedBrowseFilterV1,
-} from "./library-core/feed-browse-filter-contract.js";
-export type {
-  LibraryCoreFeedBrowseFilterInputV1,
-  LibraryCoreFeedBrowseFilterSourceV1,
-  LibraryCoreFeedBrowseFilterV1,
-} from "./library-core/feed-browse-filter-contract.js";
-export {
-  compareLibraryCoreFeedPriorityV1,
-  compareLibraryCoreFeedPublishedAtV1,
-  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
-  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_V1,
-  sortLibraryCoreFeedRecommendationV1,
-} from "./library-core/feed-recommendation-order-contract.js";
-export type {
-  LibraryCoreFeedRecommendationOrderSourceV1,
-} from "./library-core/feed-recommendation-order-contract.js";
+import type { Account, FeedItem, Person, WeightPreferences } from "./types.js";
 
 /**
  * Default weights for ranking factors
@@ -48,32 +19,47 @@ const DEFAULT_WEIGHTS = {
   platform: 5,
 };
 
-interface RelationshipPriorityContext {
+export interface PriorityCalculationContext {
   persons?: Record<string, Person>;
   accounts?: Record<string, Account>;
   personByAuthorKey?: Map<string, Person | null>;
+  careLevel?: number | null;
 }
 
 function authorKey(item: Pick<FeedItem, "platform" | "author">): string {
   return `${item.platform}:${item.author.id}`;
 }
 
-function buildPersonByAuthorKey(context?: RelationshipPriorityContext): Map<string, Person | null> | null {
+function buildPersonByAuthorKey(
+  context?: PriorityCalculationContext,
+): Map<string, Person | null> | null {
   if (!context?.persons || !context.accounts) return null;
   const map = new Map<string, Person | null>();
   for (const account of Object.values(context.accounts)) {
     if (account.kind !== "social") continue;
-    map.set(`${account.provider}:${account.externalId}`, account.personId ? context.persons[account.personId] ?? null : null);
+    map.set(
+      `${account.provider}:${account.externalId}`,
+      account.personId ? (context.persons[account.personId] ?? null) : null,
+    );
   }
   return map;
 }
 
 function relationshipPriorityBoost(
   item: FeedItem,
-  context?: RelationshipPriorityContext,
+  context?: PriorityCalculationContext,
 ): { score: number; weight: number } | null {
+  if (context?.careLevel !== undefined) {
+    const careLevel = context.careLevel;
+    if (careLevel === null) return null;
+    if (careLevel >= 5) return { score: 100, weight: 28 };
+    if (careLevel >= 4) return { score: 100, weight: 22 };
+    if (careLevel >= 3) return { score: 100, weight: 14 };
+    return { score: 80, weight: 8 };
+  }
   if (!context?.persons || !context.accounts) return null;
-  const personMap = context.personByAuthorKey ?? buildPersonByAuthorKey(context);
+  const personMap =
+    context.personByAuthorKey ?? buildPersonByAuthorKey(context);
   const person = personMap?.get(authorKey(item)) ?? null;
   if (!person || person.relationshipStatus !== "friend") return null;
   if (person.careLevel >= 5) return { score: 100, weight: 28 };
@@ -86,7 +72,7 @@ function relationshipPriorityBoost(
  * Calculate a priority score (0-100) for a feed item
  */
 /** Hours after which the recency term reaches zero and stops changing. */
-export const RECENCY_HORIZON_HOURS = 168;
+const RECENCY_HORIZON_HOURS = 168;
 
 /**
  * The recency term, which is the ONLY part of priority that varies with time.
@@ -96,65 +82,9 @@ export const RECENCY_HORIZON_HOURS = 168;
  * almost every row this contributes a constant zero and the whole priority is
  * time-invariant. That is what makes an indexed feed ordering possible.
  */
-export function recencyScoreFor(
-  publishedAt: number,
-  now: number,
-): number {
+function recencyScoreFor(publishedAt: number, now: number): number {
   const ageHours = (now - publishedAt) / (1000 * 60 * 60);
   return Math.max(0, 100 - (ageHours / RECENCY_HORIZON_HOURS) * 100);
-}
-
-/** True once an item's priority can no longer change with the passage of time. */
-export function isPriorityTimeInvariant(
-  publishedAt: number,
-  now: number,
-): boolean {
-  return recencyScoreFor(publishedAt, now) === 0;
-}
-
-export interface StaticPriorityComponents {
-  /** Weighted sum of every term EXCEPT recency. */
-  num: number;
-  /** Sum of those terms' weights. */
-  den: number;
-  /** The recency weight, kept alongside so a reader can reconstitute the average. */
-  recencyWeight: number;
-}
-
-/**
- * The time-invariant part of priority.
- *
- * Recomputing this only when its inputs change (preferences, saved state,
- * topics, engagement, relationship graph) rather than on every read is what
- * lets feed ordering become an index scan instead of a full-corpus rank and
- * sort. Combine with `effectivePriority` to get the same number
- * `calculatePriority` returns.
- */
-export function calculateStaticPriority(
-  item: FeedItem,
-  preferences: WeightPreferences,
-  context?: RelationshipPriorityContext,
-): StaticPriorityComponents {
-  const scores: number[] = [];
-  const weights: number[] = [];
-  collectStaticPriorityTerms(item, preferences, scores, weights, context);
-  return {
-    num: scores.reduce((sum, score, i) => sum + score * weights[i], 0),
-    den: weights.reduce((a, b) => a + b, 0),
-    recencyWeight: preferences.recency || DEFAULT_WEIGHTS.recency,
-  };
-}
-
-/** Reconstitute the full priority from stored static components plus the clock. */
-export function effectivePriority(
-  statics: StaticPriorityComponents,
-  publishedAt: number,
-  now = Date.now(),
-): number {
-  const recencyScore = recencyScoreFor(publishedAt, now);
-  const totalWeight = statics.den + statics.recencyWeight;
-  const weightedSum = statics.num + recencyScore * statics.recencyWeight;
-  return Math.round(weightedSum / totalWeight);
 }
 
 function collectStaticPriorityTerms(
@@ -162,7 +92,7 @@ function collectStaticPriorityTerms(
   preferences: WeightPreferences,
   scores: number[],
   weights: number[],
-  context?: RelationshipPriorityContext,
+  context?: PriorityCalculationContext,
 ): void {
   // 2. Author boost (0-100)
   const authorWeight = preferences.authors[item.author.id] ?? 50;
@@ -206,21 +136,23 @@ function collectStaticPriorityTerms(
 /**
  * Full priority for an item at a point in time.
  *
- * Kept as the single source of truth for the formula. It is now expressed in
- * terms of the decomposed parts so the stored static components and this
- * function can never drift apart, which is the failure mode that would make an
- * index silently disagree with the UI.
+ * This is the single source of truth for the Primary ranking transform.
  */
 export function calculatePriority(
   item: FeedItem,
   preferences: WeightPreferences,
   now = Date.now(),
-  context?: RelationshipPriorityContext,
+  context?: PriorityCalculationContext,
 ): number {
-  return effectivePriority(
-    calculateStaticPriority(item, preferences, context),
-    item.publishedAt,
-    now,
+  const scores = [recencyScoreFor(item.publishedAt, now)];
+  const weights = [preferences.recency || DEFAULT_WEIGHTS.recency];
+  collectStaticPriorityTerms(item, preferences, scores, weights, context);
+  const weightedSum = scores.reduce(
+    (sum, score, index) => sum + score * weights[index]!,
+    0,
+  );
+  return Math.round(
+    weightedSum / weights.reduce((sum, weight) => sum + weight, 0),
   );
 }
 
@@ -243,108 +175,4 @@ function normalizeEngagement(engagement: {
   if (raw <= 0) return 0;
   const logScore = Math.log10(raw + 1) * 33;
   return Math.min(100, Math.round(logScore));
-}
-
-/**
- * Sort feed items by priority (highest first)
- */
-export function sortByPriority(items: FeedItem[]): FeedItem[] {
-  return [...items].sort(compareLibraryCoreFeedPriorityV1);
-}
-
-function compareNewestTimestamp(
-  left: FeedItem,
-  right: FeedItem,
-  timestamp: (item: FeedItem) => number,
-): number {
-  const delta = timestamp(right) - timestamp(left);
-  return delta || left.globalId.localeCompare(right.globalId);
-}
-
-/**
- * Sort saved items for the Saved view.
- */
-export function sortSavedFeedItems(
-  items: FeedItem[],
-  mode: SavedContentSortMode = "date_saved",
-): FeedItem[] {
-  if (mode === "recommended") {
-    return sortByPriority(items);
-  }
-
-  return [...items].sort((left, right) => {
-    if (mode === "date_published") {
-      return compareNewestTimestamp(left, right, (item) => item.publishedAt || item.capturedAt);
-    }
-
-    if (mode === "shortest_read") {
-      const delta = (left.preservedContent?.readingTime ?? Number.POSITIVE_INFINITY) -
-        (right.preservedContent?.readingTime ?? Number.POSITIVE_INFINITY);
-      return delta || compareNewestTimestamp(left, right, (item) => item.userState.savedAt ?? item.capturedAt);
-    }
-
-    return compareNewestTimestamp(left, right, (item) => item.userState.savedAt ?? item.capturedAt);
-  });
-}
-
-/**
- * Compute priorities for all items and return updated items.
- *
- * Preserves object identity for items whose priority score has not changed.
- * This is critical for React.memo and useMemo to bail out correctly — if every
- * item gets a new object reference on every call (even for unrelated mutations
- * like markAsRead on a different item), every mounted card re-renders.
- */
-export function rankFeedItems(
-  items: FeedItem[],
-  preferences: WeightPreferences,
-  context?: RelationshipPriorityContext,
-  now = Date.now(),
-): FeedItem[] {
-  const rankingContext = context
-    ? { ...context, personByAuthorKey: context.personByAuthorKey ?? buildPersonByAuthorKey(context) ?? undefined }
-    : undefined;
-
-  return items.map((item) => {
-    const newPriority = calculatePriority(item, preferences, now, rankingContext);
-    if (item.priority === newPriority) return item;
-    return { ...item, priority: newPriority, priorityComputedAt: now };
-  });
-}
-
-/**
- * Rank and order one worker hydration with the exact cross-runtime contract.
- */
-export function rankFeedItemsInRecommendedOrder(
-  items: FeedItem[],
-  preferences: WeightPreferences,
-  context?: RelationshipPriorityContext,
-  now = Date.now(),
-): FeedItem[] {
-  return sortLibraryCoreFeedRecommendationV1(
-    rankFeedItems(items, preferences, context, now),
-  );
-}
-
-/**
- * Filter items based on user state
- */
-export function filterFeedItems(
-  items: FeedItem[],
-  options: LibraryCoreFeedBrowseFilterInputV1 = {},
-): FeedItem[] {
-  const normalized = normalizeLibraryCoreFeedBrowseFilterV1(options);
-  return items.filter((item) =>
-    matchesLibraryCoreFeedBrowseFilterV1(item, normalized)
-  );
-}
-
-export function matchesFeedFilter(
-  item: FeedItem,
-  options: LibraryCoreFeedBrowseFilterInputV1 = {},
-): boolean {
-  return matchesLibraryCoreFeedBrowseFilterV1(
-    item,
-    normalizeLibraryCoreFeedBrowseFilterV1(options),
-  );
 }

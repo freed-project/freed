@@ -341,6 +341,19 @@ export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
 }
 
+export function isPwaOpfsDurabilityPath(filePath) {
+  return (
+    filePath === "package-lock.json" ||
+    filePath === "packages/pwa/package.json" ||
+    filePath === "packages/pwa/playwright.opfs.config.ts" ||
+    filePath === "packages/pwa/src/main.tsx" ||
+    filePath === "packages/pwa/tests/opfs-e2e-settings.ts" ||
+    filePath === "packages/pwa/tests/sqlite-opfs-durability.spec.ts" ||
+    filePath.startsWith("packages/pwa/src/lib/library-core-sqlite") ||
+    filePath.startsWith("packages/shared/src/library-core/")
+  );
+}
+
 export function isDesktopNativeSurface(filePath) {
   return filePath.startsWith("packages/desktop/src-tauri/");
 }
@@ -601,8 +614,19 @@ function socialProviderFocusedE2eCommand() {
 function pwaTestCommands() {
   return [
     npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    npmCommand("pwa performance tests", ["run", "test:perf"], "packages/pwa"),
   ];
+}
+
+function pwaOpfsDurabilityCommand() {
+  return npmCommand(
+    "pwa WebKit OPFS durability",
+    ["run", "test:e2e:opfs"],
+    "packages/pwa",
+  );
+}
+
+function shouldRunPwaOpfsDurability() {
+  return process.env.FREED_SKIP_PWA_OPFS_DURABILITY !== "true";
 }
 
 function addCaptureWorkspaceChecks(plan, workspacePath) {
@@ -869,6 +893,9 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/library-service",
       ),
       ...pwaTestCommands(),
+      ...(shouldRunPwaOpfsDurability()
+        ? [pwaOpfsDurabilityCommand()]
+        : []),
       npmCommand(
         "desktop unit tests",
         ["run", "test:unit"],
@@ -1033,6 +1060,7 @@ export function buildValidationPlan(mode, changedFiles) {
     changedFiles.some(isDesktopNativeSurface);
   const pwaSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
+  const pwaOpfsDurabilityChanged = changedFiles.some(isPwaOpfsDurabilityPath);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(
     (filePath) =>
@@ -1167,6 +1195,16 @@ export function buildValidationPlan(mode, changedFiles) {
     for (const check of pwaTestCommands()) {
       addCommand(plan, check);
     }
+    if (pwaOpfsDurabilityChanged && shouldRunPwaOpfsDurability()) {
+      addCommand(plan, pwaOpfsDurabilityCommand());
+    }
+  }
+  if (
+    pwaOpfsDurabilityChanged &&
+    !pwaSurfaceChanged &&
+    shouldRunPwaOpfsDurability()
+  ) {
+    addCommand(plan, pwaOpfsDurabilityCommand());
   }
 
   if (desktopSurfaceChanged) {

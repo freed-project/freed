@@ -105,9 +105,37 @@ The schema includes:
 - content descriptors, renditions, chunk indexes, cache policy, and local
   hydration state
 
+The Primary owns canonical ranking materialization. It reads bounded stale
+candidate pages through an indexed SQLite query, computes scores through the
+shared ranking transform, and commits signed priority assignments. Desktop,
+headless, and PWA readers order their local SQLite rows by those accepted
+scores. Capture cannot write priority, and React never ranks or sorts a Library
+corpus.
+
 Device-local state such as window geometry, graph pin coordinates, temporary
 filters, provider session cookies, retry timers, machine endpoints, and cache
-residency remains outside synchronized Library state.
+residency remains outside synchronized Library state. The last verified cloud
+writer lease is also device-local, but it lives in the selected normalized
+SQLite catalog so provider workers never reopen historical storage to decide
+whether this installation may act. Checkpoints exclude that lease.
+
+Cloud coordination reads Library identity, accepted authority epoch, admitted
+writer, source revision, causal frontier, and bounded record counts directly
+from normalized SQLite. The native key store separately derives the current
+installation's actor ID. A copied Library therefore retains its admitted
+writer while the receiving installation has a distinct candidate actor for an
+explicit writer transfer. No whole-item digest or compatibility authority
+bootstrap mediates this distinction.
+
+Desktop follower checkpoint status, actor enrollment requests, and installed
+enrollment certificates use the selected normalized SQLite catalog directly.
+The sync settings view reads that same bounded status contract. It never opens
+the retired journal database to reconstruct follower state.
+
+Follower mutations use the normalized mutation context, signer, and intent
+commit commands only. Sparse optimistic fields are durable SQLite rows, so an
+application restart reads them in place. There is no follower overlay replay
+command and no historical actor context to rebuild before queries begin.
 
 No `shellJson`, `DocState`, monolithic FeedItem record, generic JSON patch, or
 equivalent catch-all object is part of the runtime model.

@@ -5,8 +5,9 @@ import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
-  type Account,
   type FeedItem,
+  type LibraryMapLocationCandidate,
+  type LocationPersonIdentity,
   type Person,
   type LocationMarkerSummary,
   type MapMode,
@@ -31,8 +32,9 @@ interface ResolvedLocationsCacheState {
 }
 
 interface NamedLocationRequest {
+  accountId: string | null;
   item: FeedItem;
-  friend: Person | null;
+  friend: LocationPersonIdentity | null;
   name: string;
 }
 
@@ -71,10 +73,8 @@ function groupNamedLocationRequests(requests: NamedLocationRequest[]): NamedLoca
   return Array.from(groups.values());
 }
 
-export function useResolvedLocations(
-  feedItems: FeedItem[],
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
+export function useResolvedLocationCandidates(
+  candidates: readonly LibraryMapLocationCandidate[],
   options: {
     timeMode?: MapTimeMode;
     now?: number;
@@ -83,25 +83,15 @@ export function useResolvedLocations(
   const [state, setState] = useState<ResolvedLocationsCacheState>(EMPTY_STATE);
   const timeMode = options.timeMode ?? "current";
   const now = options.now;
-  const personBySourceKey = useMemo(() => {
-    const next = new Map<string, Person>();
-    for (const account of Object.values(accounts)) {
-      if (account.kind !== "social" || !account.personId) continue;
-      const person = persons[account.personId];
-      if (!person) continue;
-      next.set(`${account.provider}:${account.externalId}`, person);
-    }
-    return next;
-  }, [accounts, persons]);
   const locationPlan = useMemo(() => {
     const coordinateItems: ResolvedLocationItem[] = [];
     const namedRequests: NamedLocationRequest[] = [];
 
-    for (const item of feedItems) {
-      const friend = personBySourceKey.get(`${item.platform}:${item.author.id}`) ?? null;
+    for (const { accountId, item, friend } of candidates) {
       const signal = extractLocationFromItem(item);
       if (signal && "coordinates" in signal) {
         coordinateItems.push({
+          accountId,
           item,
           friend,
           lat: signal.coordinates.lat,
@@ -113,6 +103,7 @@ export function useResolvedLocations(
 
       if (!signal || "coordinates" in signal) continue;
       namedRequests.push({
+        accountId,
         item,
         friend,
         name: signal.name,
@@ -124,7 +115,7 @@ export function useResolvedLocations(
       namedGroups: groupNamedLocationRequests(namedRequests),
       namedRequestCount: namedRequests.length,
     };
-  }, [feedItems, personBySourceKey]);
+  }, [candidates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +148,8 @@ export function useResolvedLocations(
 
           remainingCount = Math.max(0, remainingCount - group.requests.length);
           const groupResolvedItems: ResolvedLocationItem[] = geo
-            ? group.requests.map(({ item, friend, name }) => ({
+            ? group.requests.map(({ accountId, item, friend, name }) => ({
+                accountId,
                 item,
                 friend,
                 lat: geo.latitude,
@@ -215,14 +207,22 @@ export function useResolvedLocations(
 
 export function useFriendLastSeenLocation(
   friend: Person,
-  accounts: Record<string, Account>,
-  feedItems: FeedItem[]
+  feedItems: FeedItem[],
 ): {
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
 } {
-  const friendMap = useMemo(() => ({ [friend.id]: friend }), [friend]);
-  const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap, accounts);
+  const candidates = useMemo<LibraryMapLocationCandidate[]>(
+    () => feedItems.map((item) => ({
+      accountId: null,
+      item,
+      friend,
+    })),
+    [feedItems, friend],
+  );
+  const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(
+    candidates,
+  );
   return {
     lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id, { timeMode: "current" }),
     resolvingCount,

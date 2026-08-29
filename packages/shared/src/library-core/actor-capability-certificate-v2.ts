@@ -1,6 +1,6 @@
-// Closed actor capability certificate construction and verification contract.
-// Construction remains dormant in production. The PWA consumes verification
-// only, so importing this module does not grant issuance or writer authority.
+// Closed actor capability request, certificate, and verification contract.
+// A follower may create only its proof-only request. The Primary remains the
+// sole holder of the authority key required to complete a certificate.
 import {
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -18,7 +18,14 @@ import {
   snapshotLibraryCoreCausalFrontier,
   type LibraryCoreCausalTipV1,
 } from "./operation-envelope-contracts.js";
-import CAPABILITY_OPERATIONS from "./actor-capability-operation-types-v2.json" with { type: "json" };
+import {
+  LIBRARY_CORE_AGENT_QUERY_IDS,
+  LIBRARY_CORE_CAPABILITY_OPERATION_IDS,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS,
+  LIBRARY_CORE_SCRAPER_OPERATION_IDS,
+  type LibraryCoreAgentQueryId,
+  type LibraryCoreCapabilityOperationId,
+} from "./sqlite-contract.generated.js";
 import {
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreEd25519SignatureHex,
@@ -32,75 +39,20 @@ import {
 export const LIBRARY_CORE_ACTOR_CAPABILITY_FORMAT_V2 =
   "freed_library_core_actor_capability_v2" as const;
 
-export const LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2 = Object.freeze([
-  "account_remove",
-  "account_upsert",
-  "feed_item_archive_assignment",
-  "feed_item_capture_upsert",
-  "feed_item_like_assignment",
-  "feed_item_read_assignment",
-  "feed_item_remove",
-  "feed_item_saved_assignment",
-  "person_remove_and_accounts",
-  "person_upsert",
-  "preferences_leaf_assignment",
-  "rss_feed_remove_keep_items",
-  "rss_feed_remove_with_items",
-  "rss_feed_upsert",
-] as const);
+export const LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2 =
+  LIBRARY_CORE_CAPABILITY_OPERATION_IDS;
 
 export type LibraryCoreActorCapabilityOperationTypeV2 =
-  (typeof LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2)[number];
+  LibraryCoreCapabilityOperationId;
 
-export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
-  Object.freeze([
-    "account_remove",
-    "account_upsert",
-    "feed_item_archive_assignment",
-    "feed_item_capture_upsert",
-    "feed_item_like_assignment",
-    "feed_item_read_assignment",
-    "feed_item_remove",
-    "feed_item_saved_assignment",
-    "person_remove_and_accounts",
-    "person_upsert",
-    "preferences_leaf_assignment",
-    "rss_feed_remove_keep_items",
-    "rss_feed_remove_with_items",
-    "rss_feed_upsert",
-  ] satisfies readonly LibraryCoreActorCapabilityOperationTypeV2[]);
+export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS;
 
 export const LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
-  Object.freeze([
-    "feed_item_capture_upsert",
-  ] satisfies readonly LibraryCoreActorCapabilityOperationTypeV2[]);
+  LIBRARY_CORE_SCRAPER_OPERATION_IDS;
 
-function assertSharedOperationRegistry(): void {
-  const entries = [
-    [
-      "canonical_operation_types",
-      LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
-    ],
-    [
-      "legacy_editor_operation_types",
-      LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
-    ],
-    ["scraper_operation_types", LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2],
-  ] as const;
-  for (const [field, expected] of entries) {
-    const actual = CAPABILITY_OPERATIONS[field];
-    if (
-      actual.length !== expected.length ||
-      actual.some((operation, index) => operation !== expected[index])
-    ) {
-      throw new Error(
-        `Library Core actor capability ${field} disagrees with its shared JSON registry`,
-      );
-    }
-  }
-}
-
-assertSharedOperationRegistry();
+export const LIBRARY_CORE_AGENT_QUERY_TYPES_V2 = LIBRARY_CORE_AGENT_QUERY_IDS;
+export type LibraryCoreActorCapabilityQueryTypeV2 = LibraryCoreAgentQueryId;
 
 export type LibraryCoreActorClassV2 = "editor" | "scraper" | "agent";
 
@@ -122,6 +74,7 @@ export interface LibraryCoreActorCapabilityBodyV2 {
   readonly actor_public_key: LibraryCoreEd25519PublicKeyHex;
   readonly actor_class: LibraryCoreActorClassV2;
   readonly allowed_operation_types: readonly LibraryCoreActorCapabilityOperationTypeV2[];
+  readonly allowed_query_ids: readonly LibraryCoreActorCapabilityQueryTypeV2[];
   readonly scope: LibraryCoreActorScopeV2;
   readonly issuance_identity: LibraryCoreLowercaseHex64;
   readonly retirement_identity: LibraryCoreLowercaseHex64;
@@ -143,6 +96,16 @@ export interface LibraryCoreActorCapabilityCertificateV2 {
   readonly authority_signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface LibraryCoreActorCapabilityRequestV2 {
+  readonly certificate_body: LibraryCoreActorCapabilityCertificateBodyV2;
+  readonly certificate_digest: LibraryCoreLowercaseHex64;
+}
+
+export interface LibraryCoreActorCapabilityRequestConstructionV2 {
+  readonly actor_chain_genesis: LibraryCoreLowercaseHex64;
+  readonly request: LibraryCoreActorCapabilityRequestV2;
+}
+
 export interface LibraryCoreActorCapabilityCertificateConstructionV2 {
   readonly certificate: LibraryCoreActorCapabilityCertificateV2;
   readonly actor_chain_genesis: LibraryCoreLowercaseHex64;
@@ -151,12 +114,18 @@ export interface LibraryCoreActorCapabilityCertificateConstructionV2 {
 export interface LibraryCoreActorCapabilityCertificateInputV2 {
   readonly actor_class: LibraryCoreActorClassV2;
   readonly allowed_operation_types: readonly LibraryCoreActorCapabilityOperationTypeV2[];
+  readonly allowed_query_ids: readonly LibraryCoreActorCapabilityQueryTypeV2[];
   readonly scope: LibraryCoreActorScopeV2;
 }
 
 export interface LibraryCoreActorCapabilityCertificateDependenciesV2 {
   readonly signActorProof: (input: Uint8Array) => Promise<unknown>;
   readonly signAuthorityCertificate: (input: Uint8Array) => Promise<unknown>;
+  readonly digest: (domain: LibraryCoreDigestDomain, value: unknown) => unknown;
+}
+
+export interface LibraryCoreActorCapabilityRequestDependenciesV2 {
+  readonly signActorProof: (input: Uint8Array) => Promise<unknown>;
   readonly digest: (domain: LibraryCoreDigestDomain, value: unknown) => unknown;
 }
 
@@ -179,6 +148,7 @@ export interface LibraryCoreActorCapabilityAuthorityStateV2 {
 }
 
 const CLOSED_CONSTRUCTIONS = new WeakSet<object>();
+const CLOSED_REQUEST_CONSTRUCTIONS = new WeakSet<object>();
 const CLOSED_VERIFICATIONS = new WeakSet<object>();
 const textEncoder = new TextEncoder();
 
@@ -212,8 +182,10 @@ function snapshotAllowedOperations(
   value: unknown,
   actorClass: LibraryCoreActorClassV2,
 ): readonly LibraryCoreActorCapabilityOperationTypeV2[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new TypeError("allowed operation types must be a nonempty array");
+  if (!Array.isArray(value) || (value.length === 0 && actorClass !== "agent")) {
+    throw new TypeError(
+      "allowed operation types must be nonempty unless the actor is an agent",
+    );
   }
   const known = new Set<string>(
     LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
@@ -238,6 +210,35 @@ function snapshotAllowedOperations(
     }
     result.push(operation as LibraryCoreActorCapabilityOperationTypeV2);
     previous = operation;
+  }
+  return Object.freeze(result);
+}
+
+function snapshotAllowedQueries(
+  value: unknown,
+  actorClass: LibraryCoreActorClassV2,
+): readonly LibraryCoreActorCapabilityQueryTypeV2[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("allowed query IDs must be an array");
+  }
+  const known = new Set<string>(LIBRARY_CORE_AGENT_QUERY_TYPES_V2);
+  const result: LibraryCoreActorCapabilityQueryTypeV2[] = [];
+  let previous: string | undefined;
+  for (const queryId of value) {
+    if (
+      typeof queryId !== "string" ||
+      !known.has(queryId) ||
+      (previous !== undefined && previous >= queryId)
+    ) {
+      throw new TypeError(
+        "allowed query IDs must be known, unique, and sorted",
+      );
+    }
+    result.push(queryId as LibraryCoreActorCapabilityQueryTypeV2);
+    previous = queryId;
+  }
+  if (actorClass !== "agent" && result.length !== 0) {
+    throw new TypeError("only agent capabilities may grant query IDs");
   }
   return Object.freeze(result);
 }
@@ -375,6 +376,13 @@ function constructCapabilityBody(
     input.allowed_operation_types,
     selectedClass,
   );
+  const queries = snapshotAllowedQueries(
+    input.allowed_query_ids,
+    selectedClass,
+  );
+  if (operations.length === 0 && queries.length === 0) {
+    throw new TypeError("agent capability must grant a mutation or query");
+  }
   const scope = snapshotScope(input.scope);
   const body = enrollment.body;
   const issuanceIdentity = digest(
@@ -408,6 +416,7 @@ function constructCapabilityBody(
     actor_public_key: body.actor_public_key,
     actor_class: selectedClass,
     allowed_operation_types: operations,
+    allowed_query_ids: queries,
     scope,
     issuance_identity: issuanceIdentity,
     retirement_identity: retirementIdentity,
@@ -427,33 +436,43 @@ export function isLibraryCoreActorCapabilityCertificateConstructionV2(
   );
 }
 
-export async function constructLibraryCoreActorCapabilityCertificateV2(
+export function isLibraryCoreActorCapabilityRequestConstructionV2(
+  value: unknown,
+): value is LibraryCoreActorCapabilityRequestConstructionV2 {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.isFrozen(value) &&
+    CLOSED_REQUEST_CONSTRUCTIONS.has(value)
+  );
+}
+
+/** Create the exact proof-only request that the Primary may countersign. */
+export async function constructLibraryCoreActorCapabilityRequestV2(
   enrollment: LibraryCoreActorEnrollmentBodyConstructionV1,
   input: LibraryCoreActorCapabilityCertificateInputV2,
-  dependencies: LibraryCoreActorCapabilityCertificateDependenciesV2,
-): Promise<LibraryCoreActorCapabilityCertificateConstructionV2> {
+  dependencies: LibraryCoreActorCapabilityRequestDependenciesV2,
+): Promise<LibraryCoreActorCapabilityRequestConstructionV2> {
   if (!isLibraryCoreActorEnrollmentBodyConstructionV1(enrollment)) {
     throw new TypeError(
       "actor enrollment body must use the closed v1 contract",
     );
   }
-  const signActorProof = dependencies.signActorProof;
-  const signAuthorityCertificate = dependencies.signAuthorityCertificate;
-  const digestDependency = dependencies.digest;
   if (
-    typeof signActorProof !== "function" ||
-    typeof signAuthorityCertificate !== "function" ||
-    typeof digestDependency !== "function"
+    typeof dependencies.signActorProof !== "function" ||
+    typeof dependencies.digest !== "function"
   ) {
-    throw new TypeError("actor capability dependencies must be callable");
+    throw new TypeError(
+      "actor capability request dependencies must be callable",
+    );
   }
   const capabilityBody = constructCapabilityBody(
     enrollment,
     input,
-    digestDependency,
+    dependencies.digest,
   );
   const actorProof = signature(
-    await signActorProof(
+    await dependencies.signActorProof(
       encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
         enrollment_body_digest: enrollment.enrollment_body_digest,
       }),
@@ -461,7 +480,7 @@ export async function constructLibraryCoreActorCapabilityCertificateV2(
     "actor proof",
   );
   const capabilityBodyDigest = digest(
-    digestDependency,
+    dependencies.digest,
     "actor-capability-body",
     capabilityBody,
   );
@@ -473,31 +492,65 @@ export async function constructLibraryCoreActorCapabilityCertificateV2(
     actor_capability_body_digest: capabilityBodyDigest,
   }) satisfies LibraryCoreActorCapabilityCertificateBodyV2;
   const certificateDigest = digest(
-    digestDependency,
+    dependencies.digest,
     "actor-capability-certificate",
     certificateBody,
+  );
+  const result = Object.freeze({
+    actor_chain_genesis: digest(dependencies.digest, "actor-chain-genesis", {
+      enrollment_certificate_digest: certificateDigest,
+      actor_id: enrollment.body.actor_id,
+      epoch_id: enrollment.body.epoch_id,
+    }),
+    request: Object.freeze({
+      certificate_body: certificateBody,
+      certificate_digest: certificateDigest,
+    }),
+  });
+  CLOSED_REQUEST_CONSTRUCTIONS.add(result);
+  return result;
+}
+
+export async function constructLibraryCoreActorCapabilityCertificateV2(
+  enrollment: LibraryCoreActorEnrollmentBodyConstructionV1,
+  input: LibraryCoreActorCapabilityCertificateInputV2,
+  dependencies: LibraryCoreActorCapabilityCertificateDependenciesV2,
+): Promise<LibraryCoreActorCapabilityCertificateConstructionV2> {
+  if (!isLibraryCoreActorEnrollmentBodyConstructionV1(enrollment)) {
+    throw new TypeError(
+      "actor enrollment body must use the closed v1 contract",
+    );
+  }
+  const signAuthorityCertificate = dependencies.signAuthorityCertificate;
+  if (
+    typeof signAuthorityCertificate !== "function" ||
+    typeof dependencies.digest !== "function"
+  ) {
+    throw new TypeError("actor capability dependencies must be callable");
+  }
+  const request = await constructLibraryCoreActorCapabilityRequestV2(
+    enrollment,
+    input,
+    {
+      digest: dependencies.digest,
+      signActorProof: dependencies.signActorProof,
+    },
   );
   const authoritySignature = signature(
     await signAuthorityCertificate(
       encodeLibraryCoreSignatureInput("actor-capability-authority", {
-        certificate_digest: certificateDigest,
+        certificate_digest: request.request.certificate_digest,
       }),
     ),
     "authority signature",
   );
   const certificate = Object.freeze({
-    certificate_body: certificateBody,
-    certificate_digest: certificateDigest,
+    ...request.request,
     authority_signature: authoritySignature,
   }) satisfies LibraryCoreActorCapabilityCertificateV2;
-  const actorChainGenesis = digest(digestDependency, "actor-chain-genesis", {
-    enrollment_certificate_digest: certificateDigest,
-    actor_id: enrollment.body.actor_id,
-    epoch_id: enrollment.body.epoch_id,
-  });
   const result = Object.freeze({
     certificate,
-    actor_chain_genesis: actorChainGenesis,
+    actor_chain_genesis: request.actor_chain_genesis,
   });
   CLOSED_CONSTRUCTIONS.add(result);
   return result;
@@ -635,6 +688,7 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
       "actor_public_key",
       "actor_class",
       "allowed_operation_types",
+      "allowed_query_ids",
       "scope",
       "issuance_identity",
       "retirement_identity",
@@ -650,6 +704,10 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
       actor_class: selectedClass,
       allowed_operation_types: snapshotAllowedOperations(
         capabilityInput.allowed_operation_types,
+        selectedClass,
+      ),
+      allowed_query_ids: snapshotAllowedQueries(
+        capabilityInput.allowed_query_ids,
         selectedClass,
       ),
       scope: snapshotScope(capabilityInput.scope),

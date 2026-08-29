@@ -14,6 +14,8 @@ export interface BoundedFeedItemsState {
   readonly hasPrevious: boolean;
   /** Number of source rows traversed before the first resident row. */
   readonly windowStartIndex: number;
+  /** Exact count returned by the bounded SQLite reader. */
+  readonly totalCount: number;
 }
 
 const EMPTY_BOUNDED_FEED: BoundedFeedItemsState = {
@@ -22,6 +24,7 @@ const EMPTY_BOUNDED_FEED: BoundedFeedItemsState = {
   hasMore: false,
   hasPrevious: false,
   windowStartIndex: 0,
+  totalCount: 0,
 };
 
 interface ResidentPage {
@@ -38,12 +41,11 @@ interface ResidentPage {
  *
  * The resident window is at most `maxResidentPages` whole reader pages. A
  * reader that offers `readPage` can restore an evicted leading page, so deep
- * scrolling evicts on both sides instead of growing one list until the feed has
- * to reacquire the full compatibility projection.
+ * scrolling evicts on both sides instead of growing one renderer-held list.
  *
- * Any source, filter, or reader failure closes the bounded session and returns
- * the caller to its existing in-memory path. SQLite is never allowed to leave
- * the shared feed stuck between two source revisions.
+ * Any source, filter, or reader failure closes the bounded session and fails
+ * the current window. It never falls back to a full-corpus renderer path or
+ * leaves the feed between two SQLite source revisions.
  */
 export function useBoundedFeedItems({
   activeFilter,
@@ -100,6 +102,7 @@ export function useBoundedFeedItems({
         windowStartIndexRef.current > 0 &&
         (pages[0]?.previousCursor ?? null) !== null,
       windowStartIndex: windowStartIndexRef.current,
+      totalCount,
     });
   }, []);
 
@@ -114,6 +117,7 @@ export function useBoundedFeedItems({
         hasMore: false,
         hasPrevious: false,
         windowStartIndex: 0,
+        totalCount: 0,
       });
     },
     [closeReader, resetWindow],
@@ -141,6 +145,7 @@ export function useBoundedFeedItems({
       hasMore: false,
       hasPrevious: false,
       windowStartIndex: 0,
+      totalCount: 0,
     });
     void openReader(activeFilter, rankingClockMs)
       .then(async (reader) => {
@@ -175,6 +180,7 @@ export function useBoundedFeedItems({
             hasMore: false,
             hasPrevious: false,
             windowStartIndex: 0,
+            totalCount: 0,
           });
           return;
         }
@@ -203,6 +209,7 @@ export function useBoundedFeedItems({
             hasMore: false,
             hasPrevious: false,
             windowStartIndex: 0,
+            totalCount: 0,
           });
         }
       });

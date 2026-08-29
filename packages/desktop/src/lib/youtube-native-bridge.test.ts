@@ -10,8 +10,8 @@ type EventHandler = (event: { payload: unknown }) => void;
 const mocks = vi.hoisted(() => {
   const listeners = new Map<string, EventHandler>();
   const state = {
-    accounts: {} as Record<string, unknown>,
-    items: [] as Array<{ globalId: string }>,
+    totalItemCount: 0,
+    socialAccountCount: 0,
     ytAuth: { isAuthenticated: true } as Record<string, unknown>,
     setYtAuth: vi.fn((next: Record<string, unknown>) => {
       state.ytAuth = next;
@@ -48,7 +48,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 }));
 
 vi.mock("./library-client", () => ({
-  docReconcileYouTubeCapture: mocks.reconcile,
+  reconcileYouTubeLibraryCapture: mocks.reconcile,
   getSavedYouTubeVideoUrls: mocks.getSavedUrls,
 }));
 
@@ -156,12 +156,16 @@ describe("YouTube native bridge", () => {
     mocks.listeners.clear();
     mocks.invoke.mockReset();
     mocks.reconcile.mockReset();
+    mocks.reconcile.mockImplementation(async (accounts: unknown[], items: unknown[]) => {
+      mocks.state.socialAccountCount += accounts.length;
+      mocks.state.totalItemCount += items.length;
+    });
     mocks.getSavedUrls.mockReset();
     mocks.recordHealth.mockReset();
     mocks.recordScrape.mockReset();
     mocks.recordRuntime.mockReset();
-    mocks.state.accounts = {};
-    mocks.state.items = [];
+    mocks.state.totalItemCount = 0;
+    mocks.state.socialAccountCount = 0;
     mocks.state.ytAuth = { isAuthenticated: true };
     mocks.state.setYtAuth.mockClear();
     localStorage.clear();
@@ -196,23 +200,23 @@ describe("YouTube native bridge", () => {
       "yt_capture",
       expect.anything(),
     ));
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
     const reset = runFactoryResetOperations({
       quiesceLocalWriters: [],
       clearDeviceStores: () => [],
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => undefined,
-      clearDocument,
+      clearLibrary,
     });
     await Promise.resolve();
-    expect(clearDocument).not.toHaveBeenCalled();
+    expect(clearLibrary).not.toHaveBeenCalled();
 
     resolveCapture({ stages: [] });
     await expect(capture).rejects.toThrow("Factory reset is in progress");
     await reset;
 
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("registers the auth listener before invoking the native check", async () => {

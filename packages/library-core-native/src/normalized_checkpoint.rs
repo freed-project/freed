@@ -1,8 +1,8 @@
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_hash::lower_hex;
 use crate::sqlite_contract_generated::{
-    CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES, NORMALIZED_CHECKPOINT_FORMAT,
-    SQLITE_PROTOCOL_VERSION,
+    CheckpointRecordKind, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
+    NORMALIZED_CHECKPOINT_FORMAT, SQLITE_PROTOCOL_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -33,21 +33,126 @@ pub struct NormalizedCheckpointRecordV2 {
     pub payload: Value,
 }
 
-fn blob_digest(bytes: &[u8]) -> String {
+fn binary64_wrapper(value: f64) -> Value {
+    json!({
+        "bits": format!("{:016x}", value.to_bits()),
+        "codec": "ieee754_binary64_hex_v1",
+    })
+}
+
+fn decode_binary64_wrapper(value: &Value) -> Result<f64, ContentRecordError> {
+    let object = value.as_object().ok_or_else(|| {
+        ContentRecordError("checkpoint fractional wrapper must be an object".into())
+    })?;
+    if object.len() != 2
+        || object.get("codec").and_then(Value::as_str) != Some("ieee754_binary64_hex_v1")
+    {
+        return Err(ContentRecordError(
+            "checkpoint fractional wrapper identity is invalid".into(),
+        ));
+    }
+    let bits = object
+        .get("bits")
+        .and_then(Value::as_str)
+        .filter(|bits| {
+            bits.len() == 16
+                && bits
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
+        .and_then(|bits| u64::from_str_radix(bits, 16).ok())
+        .ok_or_else(|| {
+            ContentRecordError("checkpoint fractional wrapper bits are invalid".into())
+        })?;
+    let decoded = f64::from_bits(bits);
+    if !decoded.is_finite() {
+        return Err(ContentRecordError(
+            "checkpoint fractional wrapper must be finite".into(),
+        ));
+    }
+    Ok(decoded)
+}
+
+pub(crate) fn encode_fractional_payload(
+    registry_key: &str,
+    payload: &mut Value,
+) -> Result<(), ContentRecordError> {
+    let kind = CheckpointRecordKind::from_registry_key(registry_key).ok_or_else(|| {
+        ContentRecordError("normalized checkpoint registry key is unsupported".into())
+    })?;
+    let object = payload.as_object_mut().ok_or_else(|| {
+        ContentRecordError("normalized checkpoint payload must be an object".into())
+    })?;
+    for field in kind.fractional_fields() {
+        let Some(value) = object.get_mut(*field) else {
+            continue;
+        };
+        if value.is_null() || value.as_i64().is_some() || value.as_u64().is_some() {
+            continue;
+        }
+        if let Some(number) = value.as_f64() {
+            if !number.is_finite() {
+                return Err(ContentRecordError(
+                    "checkpoint fractional value must be finite".into(),
+                ));
+            }
+            *value = binary64_wrapper(number);
+        } else {
+            decode_binary64_wrapper(value)?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn decode_fractional_payload(
+    registry_key: &str,
+    payload: &mut Value,
+) -> Result<(), ContentRecordError> {
+    let kind = CheckpointRecordKind::from_registry_key(registry_key).ok_or_else(|| {
+        ContentRecordError("normalized checkpoint registry key is unsupported".into())
+    })?;
+    let object = payload.as_object_mut().ok_or_else(|| {
+        ContentRecordError("normalized checkpoint payload must be an object".into())
+    })?;
+    for field in kind.fractional_fields() {
+        let Some(value) = object.get_mut(*field) else {
+            continue;
+        };
+        if value.is_null() || value.as_i64().is_some() || value.as_u64().is_some() {
+            continue;
+        }
+        let decoded = decode_binary64_wrapper(value)?;
+        *value =
+            Value::Number(serde_json::Number::from_f64(decoded).ok_or_else(|| {
+                ContentRecordError("checkpoint fractional value is invalid".into())
+            })?);
+    }
+    Ok(())
+}
+
+pub(crate) fn blob_digest(bytes: &[u8]) -> String {
     let mut digest = Sha256::new();
     digest.update(BLOB_CONTENT_DIGEST_PREFIX);
     digest.update(bytes);
     lower_hex(&digest.finalize())
 }
 
-fn checked_record(
+pub(crate) fn checked_record(
     registry_key: &str,
     primary_key: Value,
     payload: Value,
 ) -> Result<NormalizedCheckpointRecordV2, ContentRecordError> {
-    if registry_key.contains("shell") {
+    let kind = CheckpointRecordKind::from_registry_key(registry_key).ok_or_else(|| {
+        ContentRecordError("normalized checkpoint registry key is unsupported".into())
+    })?;
+    let payload_object = payload.as_object().ok_or_else(|| {
+        ContentRecordError("normalized checkpoint payload must be an object".into())
+    })?;
+    let mut actual_fields: Vec<&str> = payload_object.keys().map(String::as_str).collect();
+    actual_fields.sort_unstable();
+    if actual_fields != kind.payload_fields() {
         return Err(ContentRecordError(
-            "normalized checkpoint records cannot contain a Library shell".into(),
+            "normalized checkpoint payload has unknown or missing fields".into(),
         ));
     }
     let record = NormalizedCheckpointRecordV2 {
@@ -59,8 +164,10 @@ fn checked_record(
     };
     let value = serde_json::to_value(&record)
         .map_err(|error| ContentRecordError(format!("record encoding failed: {error}")))?;
-    encode_canonical_value(&value, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES).map_err(|_| {
-        ContentRecordError("normalized checkpoint record exceeds its canonical byte bound".into())
+    encode_canonical_value(&value, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES).map_err(|error| {
+        ContentRecordError(format!(
+            "normalized checkpoint record {registry_key} is not canonical within its byte bound: {error:?}"
+        ))
     })?;
     Ok(record)
 }
@@ -85,7 +192,14 @@ pub fn split_content_records_v1(
             "byteLength": bytes.len(),
             "chunkBytes": CONTENT_CHUNK_BYTES,
             "chunkCount": chunk_count,
+            "cloudAvailabilityCommitment": null,
+            "encoding": null,
             "mediaType": media_type,
+            "rangeCount": 0,
+            "rangeGranularity": null,
+            "rangeIndexRootDigest": null,
+            "renditionId": null,
+            "storageLayout": "inline_chunks",
         }),
     )?);
     for (chunk_index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {

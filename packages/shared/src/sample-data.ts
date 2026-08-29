@@ -2,8 +2,7 @@
  * Sample data generator for regression testing.
  *
  * Produces a showcase-scale local library with deterministic IDs so
- * repeated calls are idempotent
- * against the existing duplicate guard in Automerge mutations.
+ * repeated calls are idempotent against registered SQLite mutations.
  *
  * All feed URLs use the `https://sample.freed.wtf/` prefix to avoid
  * colliding with real subscriptions and to prevent actual fetch attempts.
@@ -12,7 +11,6 @@
 import type {
   Account,
   FeedItem,
-  Friend,
   Person,
   RssFeed,
   SampleDataFingerprint,
@@ -309,14 +307,20 @@ const FB_STORY_LOCATIONS: (string | null)[] = [
   "Portland, OR", null, null, null, "Joshua Tree", null, null,
 ];
 
-interface SampleFriendDef {
+interface SamplePersonDef {
   id: string;
   name: string;
-  careLevel: Friend["careLevel"];
+  careLevel: Person["careLevel"];
   bio: string;
   avatarUrl: string;
   notes?: string;
-  sources: Friend["sources"];
+  sources: Array<{
+    platform: FeedItem["platform"];
+    authorId: string;
+    handle: string;
+    displayName: string;
+    avatarUrl: string;
+  }>;
 }
 
 export interface SampleDataOptions {
@@ -371,7 +375,7 @@ interface ResolvedSampleDataOptions {
 const SAMPLE_FRIEND_PERSONAS: Array<{
   slug: string;
   name: string;
-  careLevel: Friend["careLevel"];
+  careLevel: Person["careLevel"];
   bio: string;
   notes?: string;
 }> = [
@@ -505,7 +509,7 @@ const UNLINKED_IDENTITY_NAMES = [
 function generatedPersona(index: number): {
   slug: string;
   name: string;
-  careLevel: Friend["careLevel"];
+  careLevel: Person["careLevel"];
   bio: string;
   notes?: string;
 } {
@@ -525,7 +529,7 @@ function generatedPersona(index: number): {
   return {
     slug: `${first}-${last}-${generatedIndex}`.toLowerCase(),
     name,
-    careLevel: (positiveModulo(generatedIndex, 5) + 1) as Friend["careLevel"],
+    careLevel: (positiveModulo(generatedIndex, 5) + 1) as Person["careLevel"],
     bio: "Sample friend with linked channels, recent activity, and enough graph signal to make the workspace worth opening.",
   };
 }
@@ -537,7 +541,7 @@ function sourceHandle(name: string, provider: SampleSourceProvider, index: numbe
   return `@${slug}.${index}`;
 }
 
-function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
+function buildSamplePersonDefs(options?: SampleDataOptions): SamplePersonDef[] {
   const { batchId, seed, friendCount, identitiesPerFriend } = resolveSampleDataOptions(options);
 
   return Array.from({ length: friendCount }, (_, rawIndex) => {
@@ -632,72 +636,69 @@ export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
   }));
 }
 
-export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
-  const resolvedOptions = resolveSampleDataOptions(options);
+function generateSamplePeopleGraph(
+  resolvedOptions: ResolvedSampleDataOptions,
+): Readonly<{ accounts: Account[]; persons: Person[] }> {
   const { seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
-  const sampleFriendDefs = buildSampleFriendDefs(resolvedOptions);
-  const now = Date.now();
-  return sampleFriendDefs.map((friend, index) => ({
-    id: friend.id,
-    name: friend.name,
+  const samplePersonDefs = buildSamplePersonDefs(resolvedOptions);
+  const now = resolvedOptions.generatedAt;
+  const persons = samplePersonDefs.map((person, index) => ({
+    id: person.id,
+    name: person.name,
     relationshipStatus: "friend",
-    careLevel: friend.careLevel,
-    bio: friend.bio,
-    avatarUrl: friend.avatarUrl,
-    ...(friend.notes ? { notes: friend.notes } : {}),
+    careLevel: person.careLevel,
+    bio: person.bio,
+    avatarUrl: person.avatarUrl,
+    ...(person.notes ? { notes: person.notes } : {}),
     tags: ["sample", "social"],
-    sources: friend.sources,
     sampleDataFingerprint: fingerprint,
     createdAt: now - (index + 1) * 7 * DAY - (seed % DAY),
     updatedAt: now - index * DAY,
-    ...(index === 0
-      ? {
-          reachOutLog: [
-            { loggedAt: now - 2 * DAY, channel: "text", notes: "Swapped notes on map styling." },
-          ],
-        }
-      : {}),
-  }));
+  })) satisfies Person[];
+  const linkedAccounts: Account[] = samplePersonDefs.flatMap((person, index) =>
+    person.sources.map((source) => ({
+      id: `social:${source.platform}:${source.authorId}`,
+      personId: person.id,
+      kind: "social" as const,
+      provider: source.platform,
+      externalId: source.authorId,
+      handle: source.handle,
+      displayName: source.displayName,
+      avatarUrl: source.avatarUrl,
+      sampleDataFingerprint: fingerprint,
+      firstSeenAt: persons[index]!.createdAt,
+      lastSeenAt: persons[index]!.updatedAt,
+      discoveredFrom: "captured_item" as const,
+      createdAt: persons[index]!.createdAt,
+      updatedAt: persons[index]!.updatedAt,
+    })),
+  );
+  return {
+    accounts: linkedAccounts.concat(buildSampleUnlinkedAccounts(resolvedOptions)),
+    persons,
+  };
 }
 
 export function generateSampleAccounts(options?: SampleDataOptions): Account[] {
-  const resolvedOptions = resolveSampleDataOptions(options);
-  const friends = generateSampleFriends(resolvedOptions);
-  const linkedAccounts: Account[] = friends.flatMap((friend) => friend.sources.map((source) => ({
-    id: `social:${source.platform}:${source.authorId}`,
-    personId: friend.id,
-    kind: "social" as const,
-    provider: source.platform,
-    externalId: source.authorId,
-    handle: source.handle,
-    displayName: source.displayName,
-    avatarUrl: source.avatarUrl,
-    profileUrl: source.profileUrl,
-    sampleDataFingerprint: friend.sampleDataFingerprint,
-    firstSeenAt: friend.createdAt,
-    lastSeenAt: friend.updatedAt,
-    discoveredFrom: "captured_item" as const,
-    createdAt: friend.createdAt,
-    updatedAt: friend.updatedAt,
-  })));
-  return linkedAccounts.concat(buildSampleUnlinkedAccounts(resolvedOptions));
+  return generateSamplePeopleGraph(resolveSampleDataOptions(options)).accounts;
 }
 
 export interface SampleLibraryData {
   feeds: RssFeed[];
   items: FeedItem[];
-  friends: Friend[];
+  persons: Person[];
   accounts: Account[];
 }
 
 export function generateSampleLibraryData(options?: SampleDataOptions): SampleLibraryData {
   const resolvedOptions = resolveSampleDataOptions(options);
+  const people = generateSamplePeopleGraph(resolvedOptions);
   return {
     feeds: generateSampleFeeds(resolvedOptions),
     items: generateSampleItems(resolvedOptions),
-    friends: generateSampleFriends(resolvedOptions),
-    accounts: generateSampleAccounts(resolvedOptions),
+    persons: people.persons,
+    accounts: people.accounts,
   };
 }
 
@@ -711,7 +712,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
  * across the last 22 hours (reflecting the ephemeral nature of real stories).
  * Items are spread across the last 14 days with varied user states (read,
  * saved, archived) to exercise all UI views. All IDs are deterministic so
- * repeated calls are idempotent against the Automerge duplicate guard.
+ * repeated calls are idempotent against normalized SQLite identity constraints.
  */
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const resolvedOptions = resolveSampleDataOptions(options);
@@ -720,7 +721,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const rand = mulberry32(seed);
   const now = Date.now();
   const items: FeedItem[] = [];
-  const sampleFriendDefs = buildSampleFriendDefs(resolvedOptions);
+  const sampleFriendDefs = buildSamplePersonDefs(resolvedOptions);
   const sampleUnlinkedAccounts = buildSampleUnlinkedAccounts(resolvedOptions);
   const feedDefs = rotateArray(FEED_DEFS, seed % FEED_DEFS.length);
   const rssHeadlines = rotateArray(RSS_HEADLINES, seed % RSS_HEADLINES.length);

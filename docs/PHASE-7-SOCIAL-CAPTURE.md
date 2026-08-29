@@ -114,9 +114,9 @@ Story replies are treated differently from post comments. Facebook and Instagram
 
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
 
-Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
+Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to SQLite Library maintenance.
 
-Startup memory attribution now primes a nonblocking native sample before document hydration and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as document or provider memory.
+Startup memory attribution now primes a nonblocking native sample before the SQLite Library runtime loads and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as Library or provider memory. Runtime events and snapshots name the pre-Library baseline and authoritative SQLite readiness directly. They contain no document-hydration or compatibility-shell vocabulary.
 
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
@@ -136,7 +136,7 @@ Facebook and Instagram feed scrapes now build a memory-aware pass plan after the
 
 Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive or removes that provider archive.
 
-The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
+The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are device-local. They do not enter normalized Library rows or synchronized checkpoints.
 
 Historical completeness comes from Meta export import. The importer accepts Accounts Center ZIP exports, prefers JSON-backed structures, scans Facebook and Instagram media folders defensively, skips message attachments, records discovered account handles, and copies media into the permanent vault with content-hash dedupe.
 
@@ -148,7 +148,7 @@ Profile backfill is user-started and visible in settings. The current implementa
 
 Freed Desktop now has a Story Wall settings section for owner-controlled memory publishing. It sits under a dedicated Beta settings group with AI, and stays out of the primary app sidebar while the feature is still early. The wall starts from existing Freed history, guides the user through Instagram Accounts Center ZIP export before import, can import those exports into the local media vault, and keeps the synced wall config small in `preferences.storyWall`. Media binaries stay in the device-local vault until a publish run writes static assets to the target. The settings section uses shared theme panels, inputs, and buttons, stays gated until the user enables Story Wall, and only previews media-backed memories from real Freed history or imported archives.
 
-On Freed Desktop, Story Wall now obtains its complete visible media candidate set through the authenticated local SQLite generation instead of retaining the full Library item corpus in the renderer. The native query caps the exact candidate set at 250 rows and falls back without truncation when the set is larger or the source changes. Existing year, provider, account, hidden-item, featured-item, preview, and manifest logic remains unchanged, and no publishing or provider behavior changes.
+Story Wall obtains its visible media candidate window directly from SQLite on Freed Desktop and the PWA. The typed query returns at most 250 rows, each with no more than eight media references and the nullable Account and Person identities resolved through the indexed provider identity join. Year, provider, account, person, hidden-item, featured-item, preview, and manifest logic operates only on that bounded window. Query overflow or source movement fails closed. React never retains a complete item or Account catalog, and no publishing or provider behavior changes.
 
 Facebook and Instagram media backup now source visible candidates from source-fenced 64-row SQLite pages. Freed stages only compact local candidate pages, performs no provider request until the final source check succeeds, then streams those pages through the existing user-triggered archive path. YouTube saved-video sync uses compact visible identities in deterministic SQLite order and retains the existing 25-action cap. No automatic provider work or cadence change is introduced.
 
@@ -242,7 +242,7 @@ const RATE_LIMITS = {
 - [x] Social settings share generated or custom cadence bounds, next opportunity and pace state, randomized reset, per-provider pause, a global automatic-sync kill switch, and a warning below 15 minutes while preserving manual Sync Now
 - [x] Deterministic injected-clock and injected-RNG simulation covers at least 100,000 installations and rejects bound violations, wake bursts, concurrent automatic work, release waves, shared provider state, starvation, and a default opportunity p95 above the legacy scheduler
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
-- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-hydration comparisons
+- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-Library-load comparisons
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
 - [x] Authenticated Substack and Medium beta capture serializes behind the same
       native social session lock, runs memory preflight before provider loads,
@@ -257,11 +257,12 @@ const RATE_LIMITS = {
 - [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
 - [x] Facebook and Instagram settings expose `(Beta) Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
 - [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
-- [x] Permanent media archive state stays outside Automerge and is not synced
+- [x] Permanent media archive state stays outside Library SQLite and is not synced
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
 - [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
 - [x] Story Wall beta preferences store selected years, source filters, layout, style, embed, publish target, hidden memories, and featured memories without syncing media binaries
 - [x] Story Wall settings section lives under the Beta settings group, stays hidden behind an enable gate, previews media-backed Freed history, applies style controls live, and imports Instagram archive ZIPs through the permanent media vault after an export guidance modal
+- [x] Story Wall reads at most 250 compact media candidates with their indexed Account and Person identities from SQLite, applies inclusion filters to that bounded window, and retains no complete item or Account catalog in React
 - [x] Story Wall beta GitHub Pages publisher generates a static destination with `index.html`, `embed.js`, static JSON, `.nojekyll`, and committed vault assets
 - [ ] Story Wall beta automatic publishing runs after capture settles with capped randomized backoff
 - [ ] Story Wall beta GitHub connector uses a GitHub App or scoped OAuth flow instead of manual token entry

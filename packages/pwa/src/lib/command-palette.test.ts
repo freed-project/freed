@@ -3,14 +3,21 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person } from "@freed/shared";
-import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
+import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person, type RssFeed } from "@freed/shared";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreRssFeedPageRowV1,
+  LibraryCoreAccountGraphRowV1,
+} from "@freed/shared/library-core";
+import type {
+  BoundedFeedReader,
+  PlatformConfig,
+} from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { SettingsDialog } from "../../../ui/src/components/SettingsDialog.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
 import { SearchJumpField } from "../../../ui/src/components/layout/SearchJumpField.tsx";
 import {
-  LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY,
   useLibraryCommandPaletteReader,
   type LibraryCommandPaletteReaderResult,
 } from "../../../ui/src/hooks/useLibraryCommandPaletteReader.ts";
@@ -92,23 +99,21 @@ function createItem(overrides: Partial<FeedItem> = {}): FeedItem {
 
 function createTestStore(overrides: Partial<BaseAppState> = {}) {
   return create<BaseAppState>((set) => ({
-    items: overrides.items ?? [],
     searchCorpusVersion: overrides.searchCorpusVersion ?? 0,
     libraryItemVersion: overrides.libraryItemVersion,
-    feeds: overrides.feeds ?? {},
-    persons: overrides.persons ?? {},
-    accounts: overrides.accounts ?? {},
-    friends: overrides.friends ?? {},
     preferences: overrides.preferences ?? createDefaultPreferences(),
-    feedUnreadCounts: overrides.feedUnreadCounts ?? {},
-    feedTotalCounts: overrides.feedTotalCounts ?? {},
     totalUnreadCount: overrides.totalUnreadCount ?? 0,
     unreadCountByPlatform: overrides.unreadCountByPlatform ?? {},
-    totalItemCount: overrides.totalItemCount ?? (overrides.items?.length ?? 0),
+    totalItemCount: overrides.totalItemCount ?? 0,
     itemCountByPlatform: overrides.itemCountByPlatform ?? {},
+    rssFeedCount: overrides.rssFeedCount ?? 0,
+    enabledRssFeedCount: overrides.enabledRssFeedCount ?? 0,
+    archivedItemCount: overrides.archivedItemCount ?? 0,
+    friendPersonCount: overrides.friendPersonCount ?? 0,
+    socialAccountCount: overrides.socialAccountCount ?? 0,
     totalArchivableCount: overrides.totalArchivableCount ?? 0,
     archivableCountByPlatform: overrides.archivableCountByPlatform ?? {},
-    archivableFeedCounts: overrides.archivableFeedCounts ?? {},
+    visibleFeedTotalCount: overrides.visibleFeedTotalCount ?? 0,
     mapFriendLocationCount: overrides.mapFriendLocationCount ?? 0,
     mapAllContentLocationCount: overrides.mapAllContentLocationCount ?? 0,
     isLoading: false,
@@ -119,130 +124,37 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     selectedItemId: overrides.selectedItemId ?? null,
     selectedPersonId: null,
     selectedAccountId: null,
-    selectedFriendId: null,
     initialize: overrides.initialize ?? noopAsync,
     addItems: overrides.addItems ?? noopAsync,
     updateItem: overrides.updateItem ?? noopAsync,
     markAsRead: overrides.markAsRead ?? noopAsync,
-    markItemsAsRead:
-      overrides.markItemsAsRead
-      ?? (async (ids: string[]) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            ids.includes(item.globalId)
-              ? {
-                  ...item,
-                  userState: {
-                    ...item.userState,
-                    readAt: item.userState.readAt ?? Date.now(),
-                  },
-                }
-              : item,
-          ),
-        }));
-      }),
+    markItemsAsRead: overrides.markItemsAsRead ?? noopAsync,
     markAllAsRead: overrides.markAllAsRead ?? noopAsync,
-    toggleSaved:
-      overrides.toggleSaved
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, saved: !item.userState.saved } }
-              : item,
-          ),
-        }));
-      }),
-    toggleArchived:
-      overrides.toggleArchived
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, archived: !item.userState.archived } }
-              : item,
-          ),
-        }));
-      }),
-    archiveItems:
-      overrides.archiveItems
-      ?? (async (ids: string[]) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            ids.includes(item.globalId)
-              ? { ...item, userState: { ...item.userState, archived: true, archivedAt: Date.now() } }
-              : item,
-          ),
-        }));
-      }),
+    toggleSaved: overrides.toggleSaved ?? noopAsync,
+    toggleArchived: overrides.toggleArchived ?? noopAsync,
+    archiveItems: overrides.archiveItems ?? noopAsync,
     archiveAllReadUnsaved: overrides.archiveAllReadUnsaved ?? noopAsync,
-    unarchiveSavedItems:
-      overrides.unarchiveSavedItems
-      ?? (async () => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.userState.saved
-              ? { ...item, userState: { ...item.userState, archived: false } }
-              : item,
-          ),
-        }));
-      }),
-    deleteAllArchived:
-      overrides.deleteAllArchived
-      ?? (async () => {
-        set((state) => ({
-          items: state.items.filter((item) => !item.userState.archived || item.userState.saved),
-        }));
-      }),
+    unarchiveSavedItems: overrides.unarchiveSavedItems ?? noopAsync,
+    deleteAllArchived: overrides.deleteAllArchived ?? noopAsync,
     removeItem: overrides.removeItem ?? noopAsync,
     clearSampleData:
       overrides.clearSampleData
       ?? (async () => ({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
     addSampleLibraryData: overrides.addSampleLibraryData ?? noopAsync,
-    toggleLiked:
-      overrides.toggleLiked
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, liked: !item.userState.liked } }
-              : item,
-          ),
-        }));
-      }),
+    toggleLiked: overrides.toggleLiked ?? noopAsync,
     addFeed: overrides.addFeed ?? noopAsync,
     removeFeed: overrides.removeFeed ?? noopAsync,
     renameFeed: overrides.renameFeed ?? noopAsync,
     removeAllFeeds: overrides.removeAllFeeds ?? noopAsync,
-    addPerson: overrides.addPerson ?? noopAsync,
-    addPersons: overrides.addPersons ?? noopAsync,
-    updatePerson: overrides.updatePerson ?? noopAsync,
-    removePerson: overrides.removePerson ?? noopAsync,
-    addFriend: overrides.addFriend ?? noopAsync,
-    addFriends: overrides.addFriends ?? noopAsync,
-    updateFriend: overrides.updateFriend ?? noopAsync,
-    removeFriend: overrides.removeFriend ?? noopAsync,
-    logReachOut: overrides.logReachOut ?? noopAsync,
-    addAccount: overrides.addAccount ?? noopAsync,
-    addAccounts: overrides.addAccounts ?? noopAsync,
-    updateAccount: overrides.updateAccount ?? noopAsync,
-    removeAccount: overrides.removeAccount ?? noopAsync,
-    linkAccountToPerson: overrides.linkAccountToPerson ?? noopAsync,
-    createConnectionPersonFromAccounts:
-      overrides.createConnectionPersonFromAccounts
-      ?? (async () => "connection-person-id"),
-    createConnectionPersonsFromCandidates:
-      overrides.createConnectionPersonsFromCandidates
-      ?? (async () => 0),
     updatePreferences: overrides.updatePreferences ?? noopAsync,
     setFilter: overrides.setFilter ?? ((filter: FilterOptions) => set({ activeFilter: filter })),
     setSelectedItem: overrides.setSelectedItem ?? ((id: string | null) => set({ selectedItemId: id })),
     setSelectedPerson: overrides.setSelectedPerson ?? noop,
     setSelectedAccount: overrides.setSelectedAccount ?? noop,
-    setSelectedFriend: overrides.setSelectedFriend ?? noop,
     setLoading: overrides.setLoading ?? noop,
     setSyncing: overrides.setSyncing ?? noop,
     setError: overrides.setError ?? noop,
+    setVisibleFeedTotalCount: overrides.setVisibleFeedTotalCount ?? noop,
     searchQuery: overrides.searchQuery ?? "",
     setSearchQuery: overrides.setSearchQuery ?? ((query: string) => set({ searchQuery: query })),
     activeView: overrides.activeView ?? "feed",
@@ -254,7 +166,6 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
           activeView: "map",
           selectedPersonId: personId,
           selectedAccountId: null,
-          selectedFriendId: personId,
           selectedItemId: null,
         })),
     pendingMatchCount: 0,
@@ -279,6 +190,116 @@ function createPlatform(store: PlatformConfig["store"], overrides: Partial<Platf
     GoogleContactsSettingsContent: null,
     ...overrides,
   };
+}
+
+function identityQueryFixture(
+  state: {
+    accounts?: Record<string, Account>;
+    feeds?: Record<string, RssFeed>;
+    persons?: Record<string, Person>;
+  },
+): LibraryCoreNormalizedQueryExecutor {
+  return (async (request: { queryId: string; limit?: number }) => {
+    const accounts = state.accounts ?? {};
+    const feeds = state.feeds ?? {};
+    const persons = state.persons ?? {};
+    const source = {
+      generationId: "a".repeat(64),
+      projectionRevision: 1,
+      transitionSequence: 1,
+    };
+    if (request.queryId === "rss_feed_page_v1") {
+      const rows: LibraryCoreRssFeedPageRowV1[] = Object.values(feeds)
+        .map((feed) => ({
+          activityCount: 0,
+          enabled: feed.enabled !== false,
+          folder: feed.folder ?? null,
+          imageUrl: feed.imageUrl ?? null,
+          lastFetched: feed.lastFetched ?? null,
+          latestActivityAt: null,
+          pollInterval: feed.pollInterval ?? null,
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          siteUrl: feed.siteUrl ?? null,
+          title: typeof feed.title === "string" && feed.title.trim()
+            ? feed.title
+            : feed.url,
+          trackUnread: feed.trackUnread === true,
+          unreadCount: 0,
+          updatedAt: 1,
+          url: feed.url,
+        }))
+        .sort((left, right) => left.url.localeCompare(right.url))
+        .slice(0, request.limit ?? 128);
+      return {
+        layoutRevision: 1,
+        nextCursor: null,
+        queryId: "rss_feed_page_v1",
+        rows,
+        schemaVersion: 1,
+        source,
+      };
+    }
+    if (request.queryId === "account_graph_page_v1") {
+      const rows: LibraryCoreAccountGraphRowV1[] = Object.values(accounts)
+        .filter((account) => typeof account.externalId === "string")
+        .map((account) => ({
+          activityCount: 0,
+          avatarUrl: account.avatarUrl ?? null,
+          discoveredFrom: account.discoveredFrom,
+          displayName: account.displayName ?? null,
+          externalId: account.externalId,
+          firstSeenAt: account.firstSeenAt,
+          followRosterActive: account.followRosterActive ?? null,
+          graphPinned: false,
+          graphUpdatedAt: null,
+          graphX: null,
+          graphY: null,
+          handle: account.handle ?? null,
+          id: account.id,
+          kind: account.kind,
+          lastSeenAt: account.lastSeenAt,
+          latestActivityAt: null,
+          personId: account.personId ?? null,
+          personName: account.personId
+            ? persons[account.personId]?.name ?? null
+            : null,
+          provider: account.provider,
+          updatedAt: account.updatedAt,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .slice(0, request.limit ?? 128);
+      return {
+        layoutRevision: 1,
+        nextCursor: null,
+        queryId: "account_graph_page_v1",
+        rows,
+        schemaVersion: 1,
+        source,
+      };
+    }
+    throw new Error(`Unexpected identity query: ${request.queryId}`);
+  }) as unknown as LibraryCoreNormalizedQueryExecutor;
+}
+
+function boundedReader(items: readonly FeedItem[]): BoundedFeedReader {
+  let read = false;
+  return {
+    totalCount: items.length,
+    async readNext() {
+      if (read) return [];
+      read = true;
+      return items;
+    },
+    async close() {},
+  };
+}
+
+function boundedReaderFactory(
+  items: readonly FeedItem[],
+): NonNullable<PlatformConfig["openBoundedFeedReader"]> {
+  return async () => boundedReader(items);
 }
 
 function ShortcutProbe({ onShortcut }: { onShortcut: () => void }) {
@@ -313,7 +334,6 @@ function LibraryCommandPaletteReaderProbe({
     activeView: "feed",
     commandScopeItems,
     enabled: true,
-    fallbackItems: commandScopeItems,
     identityMode: "all_content",
     inputValue,
     searchQuery,
@@ -378,7 +398,6 @@ describe("command palette", () => {
 
   beforeEach(() => {
     resetSurfaceStores();
-    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     document.body.innerHTML = "";
     setViewportWidth(1280);
     Object.defineProperty(window, "matchMedia", {
@@ -402,7 +421,6 @@ describe("command palette", () => {
       cleanups.pop()?.();
     }
     vi.restoreAllMocks();
-    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     resetSurfaceStores();
     document.body.innerHTML = "";
   });
@@ -657,15 +675,17 @@ describe("command palette", () => {
     const store = createTestStore({
       activeView: "friends",
       activeFilter: { platform: "rss", feedUrl: "https://alpha.example/feed.xml" },
-      feeds: {
+    });
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({ feeds: {
         "https://alpha.example/feed.xml": {
           url: "https://alpha.example/feed.xml",
           title: "Alpha Feed",
           enabled: true,
-        } as BaseAppState["feeds"][string],
-      },
+          trackUnread: false,
+        },
+      } }),
     });
-    const platform = createPlatform(store);
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -769,15 +789,17 @@ describe("command palette", () => {
   });
 
   it("renders with malformed stored feed and account labels", async () => {
-    const store = createTestStore({
-      feeds: {
+    const store = createTestStore();
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({
+        feeds: {
         "https://broken.example/feed.xml": {
           url: "https://broken.example/feed.xml",
           title: undefined,
           enabled: true,
-        } as unknown as BaseAppState["feeds"][string],
-      },
-      accounts: {
+        } as unknown as RssFeed,
+        },
+        accounts: {
         "social:x:broken": {
           id: "social:x:broken",
           kind: "social",
@@ -789,9 +811,9 @@ describe("command palette", () => {
           createdAt: 1,
           updatedAt: 1,
         } as unknown as Account,
-      },
+        },
+      }),
     });
-    const platform = createPlatform(store);
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -811,20 +833,19 @@ describe("command palette", () => {
     expect(document.body.textContent).toContain("https://broken.example/feed.xml");
   });
 
-  it("archives current scope read items with one visible ID batch", async () => {
+  it("archives current scope read items from bounded SQLite pages", async () => {
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const toggleArchived = vi.fn(async () => {});
     const visibleReadPost = createItem({
       globalId: "instagram:visible-read-post",
       platform: "instagram",
       contentType: "post",
       userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
-    });
-    const hiddenByContentFilter = createItem({
-      globalId: "instagram:story-read",
-      platform: "instagram",
-      contentType: "story",
-      userState: { hidden: false, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
     });
     const unreadPost = createItem({
       globalId: "instagram:unread-post",
@@ -840,11 +861,14 @@ describe("command palette", () => {
     });
     const store = createTestStore({
       activeFilter: { platform: "instagram", socialContentFilter: "posts" },
-      items: [visibleReadPost, hiddenByContentFilter, unreadPost, savedPost],
       archiveItems,
       toggleArchived,
     });
-    const platform = createPlatform(store);
+    const scopedItems = [visibleReadPost, unreadPost, savedPost];
+    const platform = createPlatform(store, {
+      executeLibraryScopeAction,
+      openBoundedFeedReader: boundedReaderFactory(scopedItems),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -866,13 +890,21 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(archiveItems).toHaveBeenCalledTimes(1);
-    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
+    expect(executeLibraryScopeAction).toHaveBeenCalledTimes(1);
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "archive", query: null }),
+    );
+    expect(archiveItems).not.toHaveBeenCalled();
     expect(toggleArchived).not.toHaveBeenCalled();
   });
 
   it("rejects a captured bulk action when the visible query is not committed", async () => {
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const scopedItem = createItem({
       globalId: "query-result",
       content: { text: "cats and dogs", mediaUrls: [], mediaTypes: [] },
@@ -887,10 +919,9 @@ describe("command palette", () => {
     });
     const store = createTestStore({
       archiveItems,
-      items: [scopedItem],
       searchQuery: "cats",
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, { executeLibraryScopeAction });
     let result: LibraryCommandPaletteReaderResult | null = null;
     const currentResult = () => result;
     const onResult = (next: LibraryCommandPaletteReaderResult) => {
@@ -919,8 +950,10 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).toHaveBeenCalledWith(["query-result"]);
-    archiveItems.mockClear();
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "archive", query: "cats" }),
+    );
+    executeLibraryScopeAction.mockClear();
 
     act(() => render.root.render(probe("dogs")));
     await flush();
@@ -929,7 +962,7 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
 
     act(() => render.root.render(probe("")));
     await flush();
@@ -937,7 +970,7 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
 
     act(() => render.root.render(probe("cats", 1)));
     await flush();
@@ -945,59 +978,50 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
     expect(archiveItems).not.toHaveBeenCalled();
   });
 
   it("reads SearchJump facets and simple-scope counts without hydrating the Desktop corpus", async () => {
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
-    const scannedItems = [
-      createItem({
-        globalId: "visible-archived",
-        userState: {
-          hidden: false,
-          saved: false,
-          archived: true,
-          readAt: 10,
-          tags: ["Architecture"],
-          highlights: [],
-        },
-      }),
-      createItem({
-        globalId: "visible-saved-archived",
-        userState: {
-          hidden: false,
-          saved: true,
-          archived: true,
-          readAt: 11,
-          tags: ["Research"],
-          highlights: [],
-        },
-      }),
-      createItem({
-        globalId: "hidden-archived",
-        userState: {
-          hidden: true,
-          saved: true,
-          archived: true,
-          readAt: 12,
-          tags: ["Secret"],
-          highlights: [],
-        },
-      }),
-    ];
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit(scannedItems);
-      },
-    );
+    const openBoundedFeedReader = vi.fn(boundedReaderFactory([]));
     const store = createTestStore({
-      items: [],
       totalArchivableCount: 9,
       totalUnreadCount: 17,
     });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
-      scanLibraryItems,
+      openBoundedFeedReader,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 3,
+        archivableCount: 9,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
+            platform: "rss",
+            totalCount: 3,
+            unreadCount: 0,
+          },
+        ],
+        rssFeedCount: 0,
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
+        sampleItemCount: 0,
+        samplePersonCount: 0,
+        savedArchivedCount: 2,
+        savedCount: 2,
+        savedPlatformCount: 0,
+        socialAccountCount: 0,
+        tags: ["Architecture", "Research", "Secret"],
+        totalCount: 17,
+        unreadCount: 17,
+      }),
     });
     const render = renderNode(
       createElement(
@@ -1008,8 +1032,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    expect(scanLibraryItems).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
 
     const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
@@ -1022,67 +1045,21 @@ describe("command palette", () => {
     expect(document.querySelector("[data-testid='search-command-action-go-tag-Research']")).not.toBeNull();
     expect(document.querySelector("[data-testid='search-command-action-go-tag-Secret']")).not.toBeNull();
     expect(document.querySelector("[data-testid='search-command-action-scope-unarchive-saved']")).not.toBeNull();
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when a native SearchJump tag exceeds its byte bound", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const oversizedTag = "x".repeat(1_025);
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit([createItem({
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            tags: [oversizedTag],
-            highlights: [],
-          },
-        })]);
-      },
-    );
-    const store = createTestStore({ items: [] });
-    const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
-      scanLibraryItems,
-    });
-    const render = renderNode(
-      createElement(
-        PlatformProvider,
-        { value: platform, children: createElement(SearchJumpField) },
-      ),
-    );
-    cleanups.push(render.cleanup);
-    await flush();
-
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
-    expect(input).not.toBeNull();
-    act(() => input!.focus());
-    await flush();
-    await flush();
-
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(document.body.textContent).not.toContain(oversizedTag);
-    expect(release).not.toHaveBeenCalled();
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
   });
 
   it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
-    const release = vi.fn();
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const visibleReadPost = createItem({
       globalId: "instagram:visible-read-post",
       platform: "instagram",
       contentType: "article",
       userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
-    });
-    const hiddenStory = createItem({
-      globalId: "instagram:hidden-story",
-      platform: "instagram",
-      contentType: "article",
-      userState: { hidden: true, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
     });
     const savedPost = createItem({
       globalId: "instagram:saved-post",
@@ -1090,24 +1067,15 @@ describe("command palette", () => {
       contentType: "article",
       userState: { hidden: false, saved: true, archived: false, readAt: 12, tags: [], highlights: [] },
     });
-    const scannedItems = [visibleReadPost, hiddenStory, savedPost];
+    const scopedItems = [visibleReadPost, savedPost];
     const store = createTestStore({
       activeFilter: { platform: "rss" },
       archiveItems,
-      items: [],
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => {
-      store.setState({ items: scannedItems });
-      return release;
-    });
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit(scannedItems);
-      },
-    );
+    const openBoundedFeedReader = vi.fn(boundedReaderFactory(scopedItems));
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
-      scanLibraryItems,
+      executeLibraryScopeAction,
+      openBoundedFeedReader,
     });
     const render = renderNode(
       createElement(
@@ -1123,8 +1091,11 @@ describe("command palette", () => {
     act(() => input!.focus());
     await flush();
 
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
+    expect(openBoundedFeedReader).toHaveBeenCalledWith(
+      { platform: "rss" },
+      expect.any(Number),
+    );
     changeInput(input!, "archive");
     await flush();
     expect(
@@ -1141,36 +1112,39 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
-    expect(release).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "archive",
+        filter: expect.objectContaining({ platform: "rss" }),
+        query: null,
+      }),
+    );
+    expect(archiveItems).not.toHaveBeenCalled();
 
-    archiveItems.mockRejectedValueOnce(new Error("mutation unavailable"));
+    executeLibraryScopeAction.mockRejectedValueOnce(
+      new Error("mutation unavailable"),
+    );
     click(archiveAction!);
     await flush();
     await flush();
-    expect(archiveItems).toHaveBeenCalledTimes(2);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-    expect(release).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps one compatibility lease across persistent native reader retries", async () => {
-    let scanFails = true;
+  it("fails closed across SQLite reader errors and recovers on a newer source", async () => {
+    let readerFails = true;
     let detailFails = true;
-    const release = vi.fn();
     const selectedItem = createItem({ globalId: "selected" });
     const store = createTestStore({
-      items: [],
+      activeFilter: { tags: ["Research"] },
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => {
-      store.setState({ items: [selectedItem] });
-      return release;
-    });
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+    const openBoundedFeedReader = vi.fn<
+      NonNullable<PlatformConfig["openBoundedFeedReader"]>
+    >(
       async () => {
-        if (scanFails) throw new Error("scan unavailable");
+        if (readerFails) throw new Error("reader unavailable");
+        return boundedReader([]);
       },
     );
     const readLibraryItemDetail = vi.fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>(
@@ -1180,9 +1154,31 @@ describe("command palette", () => {
       },
     );
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
+      openBoundedFeedReader,
       readLibraryItemDetail,
-      scanLibraryItems,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 0,
+        archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
+        platformCounts: [],
+        rssFeedCount: 0,
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
+        sampleItemCount: 0,
+        samplePersonCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        socialAccountCount: 0,
+        tags: ["Research"],
+        totalCount: 0,
+        unreadCount: 0,
+      }),
     });
     const render = renderNode(
       createElement(
@@ -1198,77 +1194,74 @@ describe("command palette", () => {
     act(() => input!.focus());
     await flush();
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
-    ).not.toBeNull();
-
-    act(() => store.setState({ persons: {}, accounts: {}, friends: {} }));
-    await flush();
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(readLibraryItemDetail).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    ).toBeNull();
 
     act(() => store.setState({ libraryItemVersion: 2 }));
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
-    ).not.toBeNull();
+    ).toBeNull();
     await flush();
     await flush();
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(openBoundedFeedReader).toHaveBeenCalledTimes(2);
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
 
-    scanFails = false;
+    readerFails = false;
+    detailFails = false;
     act(() => store.setState({ libraryItemVersion: 3 }));
     await flush();
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
-
-    act(() => {
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    });
-    await flush();
-    expect(release).toHaveBeenCalledOnce();
-
-    detailFails = false;
-    act(() => {
-      input!.blur();
-      input!.focus();
-    });
-    await flush();
-    await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).toHaveBeenCalledOnce();
-    expect(scanLibraryItems).toHaveBeenCalledTimes(4);
-    expect(readLibraryItemDetail).toHaveBeenCalledTimes(4);
+    expect(
+      document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
+    ).not.toBeNull();
+    expect(openBoundedFeedReader).toHaveBeenCalledTimes(3);
+    expect(readLibraryItemDetail).toHaveBeenCalledTimes(3);
   });
 
-  it("cancels a bounded scope scan without falling back to corpus hydration", async () => {
-    let visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0] | null = null;
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (nextVisit) => {
-        visit = nextVisit;
-        await new Promise<void>(() => {});
-      },
-    );
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+  it("closes an in-flight bounded scope reader when SearchJump unmounts", async () => {
+    const close = vi.fn(async () => {});
+    const readNext = vi.fn(async () => new Promise<readonly FeedItem[]>(() => {}));
+    const openBoundedFeedReader = vi.fn(async () => ({
+      totalCount: 17_000,
+      readNext,
+      close,
+    }));
     const store = createTestStore({ activeFilter: { tags: ["Research"] } });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
+        archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
+            platform: "rss",
+            totalCount: 17_000,
+            unreadCount: 0,
+          },
+        ],
+        rssFeedCount: 0,
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: ["Research"],
         totalCount: 17_000,
+        unreadCount: 0,
       }),
-      scanLibraryItems,
+      openBoundedFeedReader,
     });
     const render = renderNode(
       createElement(
@@ -1282,11 +1275,11 @@ describe("command palette", () => {
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
-    expect(visit).not.toBeNull();
+    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
+    expect(readNext).toHaveBeenCalledOnce();
 
     render.cleanup();
-    expect(await visit!([])).toBe("stop");
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("keeps the newest source-fenced selected item and ignores a stale detail response", async () => {
@@ -1302,16 +1295,12 @@ describe("command palette", () => {
       .fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>()
       .mockReturnValueOnce(first)
       .mockReturnValueOnce(second);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const store = createTestStore({
-      items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       readLibraryItemDetail,
-      scanLibraryItems: async () => {},
     });
     const render = renderNode(
       createElement(
@@ -1344,7 +1333,6 @@ describe("command palette", () => {
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
     expect(document.querySelector("[data-testid='search-command-action-item-toggle-saved']")?.textContent)
       .toContain("Unsave current item");
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
 
     readLibraryItemDetail.mockResolvedValueOnce(createItem({
       globalId: "selected",
@@ -1361,52 +1349,6 @@ describe("command palette", () => {
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
     ).not.toBeNull();
-  });
-
-  it("keeps the explicit SearchJump rollback on compatibility hydration", async () => {
-    localStorage.setItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY, "1");
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const readLibraryFacetSummary = vi.fn(async () => ({
-      archivedCount: 0,
-      sampleItemCount: 0,
-      savedArchivedCount: 0,
-      savedCount: 0,
-      savedPlatformCount: 0,
-      tags: [],
-      totalCount: 1,
-    }));
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async () => {},
-    );
-    const store = createTestStore({
-      items: [createItem()],
-      totalUnreadCount: 1,
-    });
-    const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
-      readLibraryFacetSummary,
-      scanLibraryItems,
-    });
-    const render = renderNode(
-      createElement(
-        PlatformProvider,
-        { value: platform, children: createElement(SearchJumpField) },
-      ),
-    );
-    cleanups.push(render.cleanup);
-    await flush();
-
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
-    expect(input).not.toBeNull();
-    act(() => input!.focus());
-    await flush();
-
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(readLibraryFacetSummary).not.toHaveBeenCalled();
-    expect(scanLibraryItems).not.toHaveBeenCalled();
   });
 
   it("renders command action icons and keeps reset confirmation mounted after blur", async () => {
@@ -1445,24 +1387,44 @@ describe("command palette", () => {
   });
 
   it("shows destructive confirmation and refuses to run before the token matches", async () => {
-    const archivedItem = createItem({
-      globalId: "archived-1",
-      userState: {
-        hidden: false,
-        saved: false,
-        archived: true,
-        readAt: Date.now(),
-        liked: false,
-        tags: [],
-        highlights: [],
-      },
-    });
     const deleteArchived = vi.fn(async () => {});
     const store = createTestStore({
-      items: [archivedItem],
       deleteAllArchived: deleteArchived,
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, {
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 1,
+        archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: null,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            latestCapturedAt: 1,
+            latestPublishedAt: 1,
+            platform: "rss",
+            totalCount: 1,
+            unreadCount: 0,
+          },
+        ],
+        rssFeedCount: 0,
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
+        sampleItemCount: 0,
+        samplePersonCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        socialAccountCount: 0,
+        tags: [],
+        totalCount: 1,
+        unreadCount: 0,
+      }),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -1509,15 +1471,17 @@ describe("command palette", () => {
   it("navigates to a feed destination and then applies explicit search without losing the feed scope", async () => {
     const store = createTestStore({
       activeView: "friends",
-      feeds: {
+    });
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({ feeds: {
         "https://alpha.example/feed.xml": {
           url: "https://alpha.example/feed.xml",
           title: "Alpha Feed",
           enabled: true,
-        } as BaseAppState["feeds"][string],
-      },
+          trackUnread: false,
+        },
+      } }),
     });
-    const platform = createPlatform(store);
     const render = renderNode(
       createElement(
         PlatformProvider,

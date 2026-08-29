@@ -1,6 +1,7 @@
 import { useAppStore } from "../lib/store";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
+import { useLibraryRssFeedDetail } from "@freed/ui/hooks/useLibraryRssFeedDetail";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
 
 const openSyncSettings = () =>
@@ -23,12 +24,14 @@ export function PwaFeedEmptyState() {
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
   const activeFilter = useAppStore((s) => s.activeFilter);
-  const feeds = useAppStore((s) => s.feeds);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const { feed: activeFeed } = useLibraryRssFeedDetail(
+    activeFilter.feedUrl ?? null,
+    searchCorpusVersion,
+  );
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
-  const activeCloudProvider = cloudProviders?.gdrive?.status !== "idle" ? "gdrive" : cloudProviders?.dropbox?.status !== "idle" ? "dropbox" : "gdrive";
-  const cloudState = activeCloudProvider === "gdrive" ? cloudProviders?.gdrive ?? null : cloudProviders?.dropbox ?? null;
-  const cloudProviderName = activeCloudProvider === "gdrive" ? "Google Drive" : "Dropbox";
-  const cloudActivity = useCloudSyncActivity(cloudState, cloudProviderName);
+  const cloudState = cloudProviders?.gdrive ?? null;
+  const cloudActivity = useCloudSyncActivity(cloudState);
   const cloudError = cloudState?.error;
   const syncBlocked = syncConnected && isMergeBlocked(cloudError);
   const cloudStage = cloudState?.stage;
@@ -44,7 +47,6 @@ export function PwaFeedEmptyState() {
 
   // Per-feed view: a specific feed is selected but has no items yet.
   // `lastFetched` is absent until Freed Desktop polls the feed.
-  const activeFeed = activeFilter.feedUrl ? feeds[activeFilter.feedUrl] : null;
   const isPendingSync = activeFeed != null && !activeFeed.lastFetched;
 
   if (isPendingSync) {

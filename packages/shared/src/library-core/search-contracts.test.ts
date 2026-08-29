@@ -60,7 +60,6 @@ describe("Library Core search contract", () => {
       },
       topics: Array.from({ length: 100 }, () => "p".repeat(10_000)),
       preservedContent: {
-        html: "<p>large</p>".repeat(100_000),
         text: "z".repeat(100_000),
         wordCount: 1,
         readingTime: 1,
@@ -79,7 +78,6 @@ describe("Library Core search contract", () => {
     expect(bytes.byteLength).toBeLessThanOrEqual(
       LIBRARY_CORE_SEARCH_RESULT_MAXIMUM_BYTES,
     );
-    expect(projected.preservedContent?.html).toBeUndefined();
     expect(projected.content.mediaUrls).toHaveLength(4);
     expect(projected.userState.highlights).toHaveLength(8);
     expect(projected.sampleDataFingerprint).toBeUndefined();

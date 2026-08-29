@@ -1,7 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createEmptyContactSyncState } from "@freed/shared";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import {
@@ -13,6 +12,78 @@ import {
   ContactSyncContext,
   type ContactSyncContextValue,
 } from "../../ui/src/context/ContactSyncContext";
+
+function createContactSyncValue(
+  overrides: Partial<ContactSyncContextValue> = {},
+): ContactSyncContextValue {
+  const status = {
+    activeContactCount: 0,
+    activeGenerationId: null,
+    authStatus: "reconnect_required" as const,
+    createdFriendCount: 0,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    lastSyncedAt: null,
+    pendingSuggestionCount: 0,
+    queryId: "device_contact_status_v1" as const,
+    revision: 0,
+    schemaVersion: 1 as const,
+    syncStartedAt: null,
+    syncStatus: "idle" as const,
+    syncToken: null,
+    updatedAt: 0,
+  };
+  return {
+    dismissSuggestion: vi.fn(async () => {}),
+    loadNextSuggestionPage: vi.fn(async () => ({
+      nextCursor: null,
+      queryId: "device_contact_suggestion_page_v1" as const,
+      revision: 0,
+      rows: [],
+      schemaVersion: 1 as const,
+    })),
+    loadNextUnmatchedPage: vi.fn(async () => ({
+      nextCursor: null,
+      queryId: "device_contact_unmatched_page_v1" as const,
+      revision: 0,
+      rows: [],
+      schemaVersion: 1 as const,
+    })),
+    openReview: vi.fn(async () => {}),
+    refreshReview: vi.fn(async () => {}),
+    resetSuggestionPage: vi.fn(async () => ({
+      nextCursor: null,
+      queryId: "device_contact_suggestion_page_v1" as const,
+      revision: 0,
+      rows: [],
+      schemaVersion: 1 as const,
+    })),
+    resetUnmatchedPage: vi.fn(async () => ({
+      nextCursor: null,
+      queryId: "device_contact_unmatched_page_v1" as const,
+      revision: 0,
+      rows: [],
+      schemaVersion: 1 as const,
+    })),
+    suggestionPage: {
+      nextCursor: null,
+      queryId: "device_contact_suggestion_page_v1",
+      revision: 0,
+      rows: [],
+      schemaVersion: 1,
+    },
+    syncNow: vi.fn(async () => status),
+    syncState: status,
+    unmatchedPage: {
+      nextCursor: null,
+      queryId: "device_contact_unmatched_page_v1",
+      revision: 0,
+      rows: [],
+      schemaVersion: 1,
+    },
+    ...overrides,
+  };
+}
 
 describe("GoogleContactsSection", () => {
   let container: HTMLDivElement;
@@ -42,7 +113,6 @@ describe("GoogleContactsSection", () => {
       new Error('Token exchange failed (400): { "error_description": "client_secret is missing." }'),
     );
     const syncNow = vi.fn();
-    const syncState = createEmptyContactSyncState();
 
     const platformValue = {
       googleContacts: {
@@ -51,14 +121,7 @@ describe("GoogleContactsSection", () => {
       },
     } as unknown as PlatformConfig;
 
-    const contactSyncValue: ContactSyncContextValue = {
-      syncState,
-      getSyncState: () => syncState,
-      syncNow,
-      dismissSuggestion: vi.fn(),
-      getMatchForSuggestion: vi.fn(() => null),
-      openReview: vi.fn(async () => {}),
-    };
+    const contactSyncValue = createContactSyncValue({ syncNow });
 
     await act(async () => {
       root.render(
@@ -91,8 +154,9 @@ describe("GoogleContactsSection", () => {
     const syncNow = vi.fn().mockRejectedValue(
       new Error("Google token refresh failed (400): client_secret is missing."),
     );
+    const baseContactSync = createContactSyncValue();
     const syncState = {
-      ...createEmptyContactSyncState(),
+      ...baseContactSync.syncState,
       authStatus: "connected" as const,
     };
 
@@ -103,14 +167,7 @@ describe("GoogleContactsSection", () => {
       },
     } as unknown as PlatformConfig;
 
-    const contactSyncValue: ContactSyncContextValue = {
-      syncState,
-      getSyncState: () => syncState,
-      syncNow,
-      dismissSuggestion: vi.fn(),
-      getMatchForSuggestion: vi.fn(() => null),
-      openReview: vi.fn(async () => {}),
-    };
+    const contactSyncValue = createContactSyncValue({ syncNow, syncState });
 
     await act(async () => {
       root.render(
@@ -151,7 +208,6 @@ describe("GoogleContactsSection", () => {
       });
     });
     const syncNow = vi.fn();
-    const syncState = createEmptyContactSyncState();
     const platformValue = {
       googleContacts: {
         getToken: () => null,
@@ -159,14 +215,7 @@ describe("GoogleContactsSection", () => {
       },
     } as unknown as PlatformConfig;
 
-    const contactSyncValue: ContactSyncContextValue = {
-      syncState,
-      getSyncState: () => syncState,
-      syncNow,
-      dismissSuggestion: vi.fn(),
-      getMatchForSuggestion: vi.fn(() => null),
-      openReview: vi.fn(async () => {}),
-    };
+    const contactSyncValue = createContactSyncValue({ syncNow });
 
     await act(async () => {
       root.render(

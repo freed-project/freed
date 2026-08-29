@@ -13,26 +13,36 @@ import type {
   DeviceContact,
   Friend,
   FriendCandidateSuggestion,
-  FriendCandidateConfidence,
   FriendSource,
+  MapMode,
   Person,
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
+import { compareUtf8Binary } from "@freed/shared";
 import {
-  buildFriendCandidateSuggestions,
-  buildFriendCandidateSuggestionsFromActivity,
-  compareUtf8Binary,
-  isInReconnectZone,
-} from "@freed/shared";
+  readLibraryCoreRssFeedV1,
+  type LibraryCoreFriendsDirectoryRowV1,
+  type LibraryCoreNormalizedQueryExecutor,
+} from "@freed/shared/library-core";
 import {
   useAppStore,
   usePlatform,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
 } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useLibraryFriendsRows } from "../../hooks/useLibraryFriendsRows.js";
+import {
+  useLibraryAccountDetail,
+  useLibraryFriendDetail,
+  useLibraryPersonDetail,
+} from "../../hooks/useLibraryIdentityDetail.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
+import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
+import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -44,44 +54,26 @@ import { SearchField } from "../SearchField.js";
 import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
-  buildFriendOverviewEntries,
   buildFriendOverviewEntriesFromActivity,
-  buildFriendsById,
-  buildFriendsWorkspaceIndexes,
   friendActivitySourceKey,
-  friendFromPersonWithIndexes,
-  filterAndSortFriendOverview,
-  type FriendOverviewEntry,
   type FriendOverviewFilter,
   type FriendOverviewSort,
 } from "../../lib/friends-workspace.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 import {
-  buildAccountLinkSuggestionGroups,
-  type AccountLinkSuggestion,
-} from "../../lib/account-link-suggestions.js";
-import {
   accountSubtitle,
   accountTitle,
   providerLabel,
 } from "../../lib/account-labels.js";
-import { buildIdentityGraphActivitySummaries } from "../../lib/identity-graph-activity-summary.js";
 import {
   buildFriendSourceActivityEvidence,
   buildFriendsActivityReadModel,
-  buildVisibleFriendsFallbackItems,
   createLibraryFriendsGraphRequest,
   friendSourceAccountProvenance,
   type FriendSourceActivityEvidence,
 } from "../../lib/friends-library-read-model.js";
 import { px } from "../layout/layoutConstants.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
-import {
-  applyDeviceGraphLayout,
-  setDeviceAccountGraphPosition,
-  setDevicePersonGraphPosition,
-  useDeviceGraphLayout,
-} from "../../lib/device-graph-layout.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
@@ -107,6 +99,12 @@ const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 const MAP_SURFACE_COMMIT_RETRY_MS = 150;
+
+const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor =
+  async () => {
+    throw new Error("The bounded SQLite Library query boundary is unavailable");
+  };
+const NEED_OUTREACH_DIRECTORY_FILTERS = ["need_outreach"] as const;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -251,24 +249,21 @@ function RelationshipTierControl({
 }
 
 function FriendListRow({
-  entry,
+  row,
   selected,
   onSelect,
 }: {
-  entry: FriendOverviewEntry;
+  row: LibraryCoreFriendsDirectoryRowV1;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const lastPost = entry.lastPostAt
-    ? formatDistanceToNow(entry.lastPostAt, { addSuffix: true })
+  const lastPost = row.latestActivityAt
+    ? formatDistanceToNow(row.latestActivityAt, { addSuffix: true })
     : "No posts yet";
-  const lastContact = entry.lastContactAt
-    ? formatDistanceToNow(entry.lastContactAt, { addSuffix: true })
+  const lastContact = row.lastContactAt
+    ? formatDistanceToNow(row.lastContactAt, { addSuffix: true })
     : "Never contacted";
-  const avatarUrl = resolveFriendAvatarUrl(
-    entry.friend,
-    entry.avatarUrlCandidates,
-  );
+  const avatarUrl = row.latestAvatarUrl ?? row.avatarUrl;
 
   return (
     <button
@@ -282,7 +277,7 @@ function FriendListRow({
     >
       <div className="flex items-start gap-3">
         <FriendAvatar
-          name={safeText(entry.friend.name, "Unnamed friend")}
+          name={safeText(row.name, "Unnamed friend")}
           avatarUrl={avatarUrl}
           size={40}
         />
@@ -290,23 +285,23 @@ function FriendListRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {safeText(entry.friend.name, "Unnamed friend")}
+              {safeText(row.name, "Unnamed friend")}
             </p>
             <div className="flex shrink-0 items-center gap-2">
-              <RelationshipTierBadge person={entry.friend} />
-              <CareDots level={entry.friend.careLevel} />
+              <RelationshipTierBadge person={row} />
+              <CareDots level={row.careLevel as 1 | 2 | 3 | 4 | 5} />
             </div>
           </div>
-          {entry.friend.bio && (
+          {row.bio && (
             <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
-              {entry.friend.bio}
+              {row.bio}
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
             <span>{lastPost}</span>
             <span className="text-[color:var(--theme-text-soft)]">•</span>
             <span>{lastContact}</span>
-            {entry.hasLocation && (
+            {row.hasLocation && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
                 <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
@@ -315,7 +310,7 @@ function FriendListRow({
                 </span>
               </>
             )}
-            {entry.needsOutreach && (
+            {row.needsOutreach && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
                 <span className="theme-feedback-text-warning">
@@ -608,19 +603,7 @@ export function FriendsView({
   onFriendsSidebarOpenChange,
   mobileSurface,
 }: FriendsViewProps) {
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
-  const feeds = useAppStore((s) => s.feeds);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const addPerson = useAppStore((s) => s.addPerson);
-  const updatePerson = useAppStore((s) => s.updatePerson);
-  const removePerson = useAppStore((s) => s.removePerson);
-  const addAccount = useAppStore((s) => s.addAccount);
-  const updateAccount = useAppStore((s) => s.updateAccount);
-  const removeAccount = useAppStore((s) => s.removeAccount);
-  const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
-  const logReachOut = useAppStore((s) => s.logReachOut);
   const selectedPersonId = useAppStore((s) => s.selectedPersonId);
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
@@ -629,7 +612,6 @@ export function FriendsView({
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
-  const deviceGraphLayout = useDeviceGraphLayout();
   const themeId = useAppliedThemeId();
   const friendSuggestionPreferences = useAppStore(
     (s) => s.preferences.friendSuggestions,
@@ -642,6 +624,7 @@ export function FriendsView({
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [editorState, setEditorState] = useState<EditorState>(null);
+  const [libraryMutationNonce, setLibraryMutationNonce] = useState(0);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(
@@ -651,77 +634,72 @@ export function FriendsView({
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedSidebarWidth, setCommittedSidebarWidth] =
     useState(savedSidebarWidth);
+  const [graphSourceCounts, setGraphSourceCounts] = useState<Readonly<{
+    channelCount: number;
+    linkedAccountCount: number;
+    mode: MapMode;
+    personCount: number;
+  }> | null>(null);
 
   const graphRef = useRef<FriendGraphHandle>(null);
   const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile();
+  const friendsReadVersion = searchCorpusVersion + libraryMutationNonce;
+  const directoryFilters = useMemo(
+    () => [...activeFilters].sort(),
+    [activeFilters],
+  );
+  const friendsDirectory = useLibraryFriendsDirectory({
+    filters: directoryFilters,
+    search: searchQuery,
+    sort: sortBy,
+    sourceVersion: friendsReadVersion,
+  });
+  const reconnectDirectory = useLibraryFriendsDirectory({
+    filters: NEED_OUTREACH_DIRECTORY_FILTERS,
+    limit: 1,
+    search: "",
+    sort: "last_contact",
+    sourceVersion: friendsReadVersion,
+  });
+  const libraryFacets = useLibraryFacetSummary(friendsReadVersion);
 
-  const { googleContacts } = usePlatform();
+  const {
+    appendLibraryPersonReachOut,
+    assignLibraryAccountToPerson,
+    googleContacts,
+    mutateDeviceGraphLayout,
+    queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryFriendDetail,
+    readLibraryPersonDetail,
+    removeLibraryPerson,
+    replaceLibraryFriend,
+    upsertLibraryPerson,
+  } = usePlatform();
+  const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
-  const friendsWorkspaceIndexes = useMemo(
-    () => buildFriendsWorkspaceIndexes(accounts, {}),
-    [accounts],
+  const friendCount = libraryFacets.friendPersonCount;
+  const socialAccountCount = libraryFacets.socialAccountCount;
+
+  const selectedFriendDetail = useLibraryFriendDetail(
+    selectedPersonId,
+    friendsReadVersion,
+  );
+  const selectedAccountDetail = useLibraryAccountDetail(
+    selectedAccountId,
+    friendsReadVersion,
+  );
+  const selectedFriend = selectedFriendDetail.value;
+  const selectedPerson = selectedFriend;
+  const selectedAccount = selectedAccountDetail.value;
+  const selectedAccountLinkedPersonDetail = useLibraryPersonDetail(
+    selectedAccount?.personId ?? null,
+    friendsReadVersion,
   );
 
-  const friendPersons = useMemo(
-    () =>
-      Object.values(persons)
-        .filter((person) => person.relationshipStatus === "friend")
-        .sort((left, right) =>
-          personName(left).localeCompare(personName(right)),
-        ),
-    [persons],
-  );
-  const allPersons = useMemo(
-    () =>
-      Object.values(persons).sort((left, right) =>
-        personName(left).localeCompare(personName(right)),
-      ),
-    [persons],
-  );
-  const graphEntities = useMemo(
-    () => applyDeviceGraphLayout(persons, accounts, deviceGraphLayout),
-    [accounts, deviceGraphLayout, persons],
-  );
-  const graphPersons = useMemo(
-    () =>
-      Object.values(graphEntities.persons).sort((left, right) =>
-        personName(left).localeCompare(personName(right)),
-      ),
-    [graphEntities.persons],
-  );
-  const friendsById = useMemo<Record<string, Friend>>(
-    () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
-    [friendPersons, friendsWorkspaceIndexes],
-  );
-  const friendList = useMemo(() => Object.values(friendsById), [friendsById]);
-  const socialAccountCount = useMemo(
-    () =>
-      Object.values(accounts).filter((account) => account.kind === "social")
-        .length,
-    [accounts],
-  );
-
-  const selectedPerson = selectedPersonId
-    ? (persons[selectedPersonId] ?? null)
-    : null;
-  const selectedFriend = useMemo(
-    () =>
-      selectedPerson
-        ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes)
-        : null,
-    [friendsWorkspaceIndexes, selectedPerson],
-  );
-  const selectedAccount = selectedAccountId
-    ? (accounts[selectedAccountId] ?? null)
-    : null;
-
-  const friendsGraphRequest = useMemo(
-    () => createLibraryFriendsGraphRequest(accounts, feeds),
-    [accounts, feeds, searchCorpusVersion],
-  );
   const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
     const sources = selectedFriend
       ? selectedFriend.sources.map((source) => ({
@@ -746,92 +724,56 @@ export function FriendsView({
         compareUtf8Binary(left.platform, right.platform) ||
         compareUtf8Binary(left.authorId, right.authorId),
     );
-  }, [selectedAccount, selectedFriend]);
+  }, [selectedAccount?.id, selectedAccount?.personId, selectedFriend?.id]);
+  const friendsGraphRequest = useMemo(
+    () => createLibraryFriendsGraphRequest(timelineSources),
+    [timelineSources],
+  );
   const locationSources = useMemo<LibraryFriendsSource[]>(
     () => (selectedFriend ? timelineSources : []),
     [selectedFriend, timelineSources],
   );
+  const timelineIdentity = useMemo<LibraryPersonTimelineRequest | null>(() => {
+    if (selectedFriend) return { personId: selectedFriend.id };
+    if (!selectedAccount) return null;
+    return selectedAccount.personId
+      ? { personId: selectedAccount.personId }
+      : { accountId: selectedAccount.id };
+  }, [selectedAccount, selectedFriend]);
   const friendsRows = useLibraryFriendsRows({
     graphRequest: friendsGraphRequest,
     locationSources,
+    timelineIdentity,
     timelineSources,
-    fallbackItems: items,
-    sourceVersion: searchCorpusVersion,
+    sourceVersion: friendsReadVersion,
   });
   const nativeActivity = useMemo(
     () =>
-      !friendsRows.graphUsingFallback && friendsRows.graph
+      friendsRows.graph
         ? buildFriendsActivityReadModel(friendsRows.graph)
         : null,
-    [friendsRows.graph, friendsRows.graphUsingFallback],
+    [friendsRows.graph],
   );
-  const fallbackFeedItems = useMemo(() => {
-    if (!friendsRows.graphUsingFallback || !friendsRows.legacyItemsReady) {
-      return {};
-    }
-    return buildVisibleFriendsFallbackItems(items);
-  }, [friendsRows.graphUsingFallback, friendsRows.legacyItemsReady, items]);
-  const fallbackWorkspaceIndexes = useMemo(
-    () => buildFriendsWorkspaceIndexes(accounts, fallbackFeedItems),
-    [accounts, fallbackFeedItems],
-  );
-  const graphActivitySummaries = useMemo(
-    () =>
-      nativeActivity?.graphActivitySummaries ??
-      buildIdentityGraphActivitySummaries(fallbackFeedItems),
-    [fallbackFeedItems, nativeActivity],
-  );
+  const reconnectCount = reconnectDirectory.totalCount;
 
-  const reconnectCount = useMemo(
-    () => friendPersons.filter((person) => isInReconnectZone(person)).length,
-    [friendPersons],
-  );
-
-  const accountLinkSuggestionGroups = useMemo(
-    () => buildAccountLinkSuggestionGroups(persons, accounts),
-    [accounts, persons],
-  );
-  const suggestionsByAccount = useMemo(
-    () => accountLinkSuggestionGroups.byAccount,
-    [accountLinkSuggestionGroups],
-  );
-  const suggestionsByPerson = useMemo(
-    () => accountLinkSuggestionGroups.byPerson,
-    [accountLinkSuggestionGroups],
-  );
-  const friendCandidateSuggestions = useMemo(() => {
-    const common = {
-      persons: allPersons,
-      accounts,
-      contactSuggestions: contactSync.syncState.pendingSuggestions,
-      preferences: friendSuggestionPreferences,
-      limit: 10,
-    } as const;
-    if (nativeActivity) {
-      return buildFriendCandidateSuggestionsFromActivity({
-        ...common,
-        activityBySourceKey: nativeActivity.candidateActivityBySourceKey,
-      });
-    }
-    if (friendsRows.graphUsingFallback && friendsRows.legacyItemsReady) {
-      return buildFriendCandidateSuggestions({
-        ...common,
-        feedItems: fallbackFeedItems,
-        now: friendsGraphRequest.recentWindow.endMs,
-      });
-    }
-    return [];
-  }, [
-    accounts,
-    allPersons,
-    contactSync.syncState.pendingSuggestions,
-    fallbackFeedItems,
-    friendSuggestionPreferences,
-    friendsRows.graphUsingFallback,
-    friendsRows.legacyItemsReady,
-    friendsGraphRequest.recentWindow.endMs,
-    nativeActivity,
-  ]);
+  const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
+    entityId: selectedAccountId,
+    entityKind: "account",
+    sourceVersion: friendsReadVersion,
+  });
+  const selectedPersonSuggestions = useLibraryAccountLinkCandidates({
+    entityId: selectedPersonId,
+    entityKind: "person",
+    sourceVersion: friendsReadVersion,
+  });
+  const friendCandidateSuggestions = useLibraryFriendCandidateReview({
+    contactSuggestions: contactSync.suggestionPage.rows.map(
+      (row) => row.suggestion,
+    ),
+    dismissedSuggestionIds:
+      friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
+    sourceVersion: friendsReadVersion,
+  });
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
     for (const suggestion of friendCandidateSuggestions) {
@@ -852,75 +794,13 @@ export function FriendsView({
     }
     return next;
   }, [friendCandidateSuggestions]);
-  const friendSuggestionStrengthByPerson = useMemo(() => {
-    const next = new Map<string, FriendCandidateConfidence>();
-    for (const suggestion of friendCandidateSuggestions) {
-      if (suggestion.personId) {
-        next.set(suggestion.personId, suggestion.confidence);
-      }
-    }
-    return next;
-  }, [friendCandidateSuggestions]);
-  const friendSuggestionStrengthByAccount = useMemo(() => {
-    const next = new Map<string, FriendCandidateConfidence>();
-    for (const suggestion of friendCandidateSuggestions) {
-      for (const accountId of suggestion.accountIds) {
-        next.set(accountId, suggestion.confidence);
-      }
-    }
-    return next;
-  }, [friendCandidateSuggestions]);
 
-  const overviewEntries = useMemo(() => {
-    if (nativeActivity) {
-      return buildFriendOverviewEntriesFromActivity(
-        friendsById,
-        nativeActivity.socialActivityBySourceKey,
-        friendsGraphRequest.recentWindow.endMs,
-      );
-    }
-    return buildFriendOverviewEntries(friendsById, fallbackFeedItems, {
-      indexes: fallbackWorkspaceIndexes,
-      now: friendsGraphRequest.recentWindow.endMs,
-    });
-  }, [
-    fallbackFeedItems,
-    fallbackWorkspaceIndexes,
-    friendsById,
-    friendsGraphRequest.recentWindow.endMs,
-    nativeActivity,
-  ]);
-  const filteredOverviewEntries = useMemo(
-    () =>
-      filterAndSortFriendOverview(
-        overviewEntries,
-        searchQuery,
-        activeFilters,
-        sortBy,
-      ),
-    [activeFilters, overviewEntries, searchQuery, sortBy],
-  );
   const sourceActivityEvidence = useMemo(
     () =>
       buildFriendSourceActivityEvidence({
-        accounts,
-        nativeActivityBySourceKey:
-          nativeActivity?.socialActivityBySourceKey ?? null,
-        compatibilityItems: nativeActivity ? {} : fallbackFeedItems,
+        activityBySourceKey: nativeActivity?.socialActivityBySourceKey ?? {},
       }),
-    [accounts, fallbackFeedItems, nativeActivity],
-  );
-  const selectedAccountSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () =>
-      selectedAccount
-        ? (suggestionsByAccount.get(selectedAccount.id) ?? [])
-        : [],
-    [selectedAccount, suggestionsByAccount],
-  );
-  const selectedPersonSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () =>
-      selectedPerson ? (suggestionsByPerson.get(selectedPerson.id) ?? []) : [],
-    [selectedPerson, suggestionsByPerson],
+    [nativeActivity],
   );
   const selectedPersonFriendSuggestion = selectedPerson
     ? (friendCandidateByPerson.get(selectedPerson.id) ?? null)
@@ -928,43 +808,52 @@ export function FriendsView({
   const selectedAccountFriendSuggestion = selectedAccount
     ? (friendCandidateByAccount.get(selectedAccount.id) ?? null)
     : null;
-  const selectedOverviewEntry = useMemo(
-    () =>
-      selectedPerson
-        ? (overviewEntries.find(
-            (entry) => entry.friend.id === selectedPerson.id,
-          ) ?? null)
-        : null,
-    [overviewEntries, selectedPerson],
-  );
+  const selectedOverviewEntry = useMemo(() => {
+    if (!selectedFriend) return null;
+    return (
+      buildFriendOverviewEntriesFromActivity(
+        { [selectedFriend.id]: selectedFriend },
+        nativeActivity?.socialActivityBySourceKey ?? {},
+        friendsGraphRequest.recentWindow.endMs,
+      )[0] ?? null
+    );
+  }, [friendsGraphRequest.recentWindow.endMs, nativeActivity, selectedFriend]);
   const friendOverviewVirtualizer = useVirtualizer({
-    count: filteredOverviewEntries.length,
+    count: friendsDirectory.rows.length,
     getScrollElement: () => friendOverviewScrollRef.current,
     estimateSize: () => FRIEND_OVERVIEW_ROW_ESTIMATE,
     overscan: 8,
-    getItemKey: (index) => filteredOverviewEntries[index]?.friend.id ?? index,
+    getItemKey: (index) => friendsDirectory.rows[index]?.id ?? index,
   });
 
   useEffect(() => {
     friendOverviewVirtualizer.measure();
   }, [
-    filteredOverviewEntries.length,
+    friendsDirectory.rows.length,
     friendOverviewVirtualizer,
     searchQuery,
     sortBy,
   ]);
 
   useEffect(() => {
-    if (selectedPersonId && !persons[selectedPersonId]) {
+    if (
+      selectedPersonId &&
+      selectedFriendDetail.status === "ready" &&
+      selectedFriendDetail.value === null
+    ) {
       setSelectedPerson(null);
     }
-  }, [persons, selectedPersonId, setSelectedPerson]);
+  }, [selectedFriendDetail, selectedPersonId, setSelectedPerson]);
 
   useEffect(() => {
-    if (selectedAccountId && !accounts[selectedAccountId]) {
+    if (
+      selectedAccountId &&
+      selectedAccountDetail.status === "ready" &&
+      selectedAccountDetail.value === null
+    ) {
       setSelectedAccount(null);
     }
-  }, [accounts, selectedAccountId, setSelectedAccount]);
+  }, [selectedAccountDetail, selectedAccountId, setSelectedAccount]);
 
   useEffect(() => {
     if (dragWidth !== null || isDraggingSidebar.current) return;
@@ -972,28 +861,18 @@ export function FriendsView({
   }, [dragWidth, savedSidebarWidth]);
 
   const sidebarWidth = dragWidth ?? committedSidebarWidth;
-  const focusGraphNode = useCallback((id: string) => {
-    graphRef.current?.focusNode(id);
+  const focusGraphNode = useCallback((nodeId: string) => {
+    graphRef.current?.focusNode(nodeId);
   }, []);
 
   const handleSelectPerson = useCallback(
     (person: Person, focusGraph: boolean = false) => {
       setSelectedPerson(person.id);
       if (focusGraph) {
-        focusGraphNode(person.id);
+        focusGraphNode(`person:${person.id}`);
       }
     },
     [focusGraphNode, setSelectedPerson],
-  );
-
-  const handleSelectAccount = useCallback(
-    (account: Account, focusGraph: boolean = false) => {
-      setSelectedAccount(account.id);
-      if (focusGraph) {
-        focusGraphNode(account.id);
-      }
-    },
-    [focusGraphNode, setSelectedAccount],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -1023,9 +902,13 @@ export function FriendsView({
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
       if (!selectedPerson) return;
-      await logReachOut(selectedPerson.id, entry);
+      if (!appendLibraryPersonReachOut) {
+        throw new Error("The Person reach-out SQLite mutation is unavailable.");
+      }
+      await appendLibraryPersonReachOut(selectedPerson.id, entry);
+      setLibraryMutationNonce((value) => value + 1);
     },
-    [logReachOut, selectedPerson],
+    [appendLibraryPersonReachOut, selectedPerson],
   );
 
   const persistFriend = useCallback(
@@ -1035,7 +918,17 @@ export function FriendsView({
       editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
     ) => {
       const now = Date.now();
-      const existingPerson = personId ? (persons[personId] ?? null) : null;
+      const existingFriend = personId
+        ? selectedFriend?.id === personId
+          ? selectedFriend
+          : readLibraryFriendDetail
+            ? await readLibraryFriendDetail(personId)
+            : null
+        : null;
+      if (personId && !existingFriend) {
+        throw new Error("The selected Friend SQLite detail is unavailable.");
+      }
+      const existingPerson = existingFriend;
       const nextPersonId = existingPerson?.id ?? crypto.randomUUID();
 
       const nextPerson: Person = {
@@ -1046,129 +939,48 @@ export function FriendsView({
         relationshipStatus: "friend",
         careLevel: data.careLevel,
         reachOutIntervalDays: data.reachOutIntervalDays,
-        reachOutLog: existingPerson?.reachOutLog,
         tags: data.tags,
         notes: data.notes?.trim() || undefined,
         createdAt: existingPerson?.createdAt ?? now,
         updatedAt: now,
       };
 
-      if (existingPerson) {
-        await updatePerson(nextPersonId, {
-          name: nextPerson.name,
-          avatarUrl: nextPerson.avatarUrl,
-          bio: nextPerson.bio,
-          relationshipStatus: nextPerson.relationshipStatus,
-          careLevel: nextPerson.careLevel,
-          reachOutIntervalDays: nextPerson.reachOutIntervalDays,
-          tags: nextPerson.tags,
-          notes: nextPerson.notes,
-        });
-      } else {
-        await addPerson(nextPerson);
+      if (!replaceLibraryFriend) {
+        throw new Error("The atomic Friend SQLite mutation is unavailable.");
       }
-
-      const desiredSocialIds = new Set(
-        data.sources.map((source) => socialAccountId(source)),
-      );
-      const existingSocialAccounts = Object.values(accounts).filter(
-        (account) =>
-          account.kind === "social" && account.personId === nextPersonId,
-      );
-
-      await Promise.all(
-        existingSocialAccounts
-          .filter((account) => !desiredSocialIds.has(account.id))
-          .map((account) => updateAccount(account.id, { personId: undefined })),
-      );
-
-      await Promise.all(
-        data.sources.map(async (source) => {
-          const accountId = socialAccountId(source);
-          const existingAccount = accounts[accountId];
-          const activity =
-            editorSourceActivity?.get(
-              friendActivitySourceKey(source.platform, source.authorId),
-            ) ??
-            sourceActivityEvidence.get(
-              friendActivitySourceKey(source.platform, source.authorId),
-            ) ??
-            null;
-          if (existingAccount) {
-            await updateAccount(accountId, {
-              personId: nextPersonId,
-              handle: source.handle ?? existingAccount.handle,
-              displayName: source.displayName ?? existingAccount.displayName,
-              avatarUrl: source.avatarUrl ?? existingAccount.avatarUrl,
-              profileUrl: source.profileUrl ?? existingAccount.profileUrl,
-              firstSeenAt: activity
-                ? Math.min(existingAccount.firstSeenAt, activity.firstSeenAt)
-                : existingAccount.firstSeenAt,
-              lastSeenAt: activity
-                ? Math.max(existingAccount.lastSeenAt, activity.lastSeenAt)
-                : existingAccount.lastSeenAt,
-            });
-            return;
-          }
-          await addAccount(
-            socialAccountDraftFromSource(source, nextPersonId, activity, now),
-          );
-        }),
-      );
-
-      const existingContactAccounts = Object.values(accounts).filter(
-        (account) =>
-          account.kind === "contact" && account.personId === nextPersonId,
-      );
-
-      if (!data.contact) {
-        await Promise.all(
-          existingContactAccounts.map((account) => removeAccount(account.id)),
-        );
-      } else {
-        const nextContact = contactAccountDraft(
+      const desiredAccounts = data.sources.map((source) => {
+        const activity =
+          editorSourceActivity?.get(
+            friendActivitySourceKey(source.platform, source.authorId),
+          ) ??
+          sourceActivityEvidence.get(
+            friendActivitySourceKey(source.platform, source.authorId),
+          ) ??
+          null;
+        return socialAccountDraftFromSource(
+          source,
           nextPersonId,
-          data.contact,
+          activity,
           now,
         );
-        await Promise.all(
-          existingContactAccounts
-            .filter((account) => account.id !== nextContact.id)
-            .map((account) => removeAccount(account.id)),
+      });
+      if (data.contact) {
+        desiredAccounts.push(
+          contactAccountDraft(nextPersonId, data.contact, now),
         );
-
-        if (accounts[nextContact.id]) {
-          await updateAccount(nextContact.id, {
-            personId: nextPersonId,
-            provider: nextContact.provider,
-            externalId: nextContact.externalId,
-            displayName: nextContact.displayName,
-            email: nextContact.email,
-            phone: nextContact.phone,
-            address: nextContact.address,
-            importedAt: nextContact.importedAt,
-            firstSeenAt:
-              accounts[nextContact.id]?.firstSeenAt ?? nextContact.firstSeenAt,
-            lastSeenAt: nextContact.lastSeenAt,
-          });
-        } else {
-          await addAccount(nextContact);
-        }
       }
+      await replaceLibraryFriend(nextPerson, desiredAccounts);
+      setLibraryMutationNonce((value) => value + 1);
 
       setEditorState(null);
       setSelectedPerson(nextPersonId);
     },
     [
-      accounts,
-      addAccount,
-      addPerson,
-      persons,
-      removeAccount,
+      readLibraryFriendDetail,
+      replaceLibraryFriend,
+      selectedFriend,
       setSelectedPerson,
       sourceActivityEvidence,
-      updateAccount,
-      updatePerson,
     ],
   );
 
@@ -1187,64 +999,108 @@ export function FriendsView({
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await removePerson(id);
+      if (!removeLibraryPerson) {
+        throw new Error("The Person removal SQLite mutation is unavailable.");
+      }
+      await removeLibraryPerson(id);
+      setLibraryMutationNonce((value) => value + 1);
       if (selectedPersonId === id) {
         handleClearSelection();
       }
       setEditorState(null);
     },
-    [handleClearSelection, removePerson, selectedPersonId],
+    [handleClearSelection, removeLibraryPerson, selectedPersonId],
   );
 
   const handleLinkAccountToPerson = useCallback(
     async (accountId: string, personId: string) => {
-      await linkAccountToPerson(accountId, personId);
+      if (!assignLibraryAccountToPerson) {
+        throw new Error("The Account assignment SQLite mutation is unavailable.");
+      }
+      await assignLibraryAccountToPerson(accountId, personId);
+      setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(personId);
     },
-    [linkAccountToPerson, setSelectedPerson],
+    [assignLibraryAccountToPerson, setSelectedPerson],
   );
 
   const handlePinPersonPosition = useCallback(
-    (personId: string, x: number, y: number) => {
-      if (
-        !setDevicePersonGraphPosition(personId, Math.round(x), Math.round(y))
-      ) {
+    async (personId: string, x: number, y: number) => {
+      if (!mutateDeviceGraphLayout) {
+        toast.error("Freed could not save this graph position on this device.");
+        return;
+      }
+      try {
+        const result = await mutateDeviceGraphLayout({
+          entityId: personId,
+          graphX: Math.round(x),
+          graphY: Math.round(y),
+          mutationId: "person_graph_position_set_v1",
+          schemaVersion: 1,
+          updatedAt: Date.now(),
+        });
+        if (result.changed) setLibraryMutationNonce((value) => value + 1);
+      } catch {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
-    [],
+    [mutateDeviceGraphLayout],
   );
 
   const handlePinAccountPosition = useCallback(
-    (accountId: string, x: number, y: number) => {
-      if (
-        !setDeviceAccountGraphPosition(accountId, Math.round(x), Math.round(y))
-      ) {
+    async (accountId: string, x: number, y: number) => {
+      if (!mutateDeviceGraphLayout) {
+        toast.error("Freed could not save this graph position on this device.");
+        return;
+      }
+      try {
+        const result = await mutateDeviceGraphLayout({
+          entityId: accountId,
+          graphX: Math.round(x),
+          graphY: Math.round(y),
+          mutationId: "account_graph_position_set_v1",
+          schemaVersion: 1,
+          updatedAt: Date.now(),
+        });
+        if (result.changed) setLibraryMutationNonce((value) => value + 1);
+      } catch {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
-    [],
+    [mutateDeviceGraphLayout],
   );
 
   const handleSetPersonRelationshipLevel = useCallback(
     async (person: Person, level: RelationshipTierLevel) => {
-      await updatePerson(person.id, {
+      if (!upsertLibraryPerson) {
+        throw new Error("The Person SQLite mutation is unavailable.");
+      }
+      await upsertLibraryPerson({
+        ...person,
         ...relationshipPatchForLevel(level),
         updatedAt: Date.now(),
       });
+      setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(person.id);
     },
-    [setSelectedPerson, updatePerson],
+    [setSelectedPerson, upsertLibraryPerson],
   );
 
   const handlePromoteSelectedAccount = useCallback(
     async (level: 3 | 5 = 3) => {
       if (!selectedAccount) return;
       const linkedPerson = selectedAccount.personId
-        ? (persons[selectedAccount.personId] ?? null)
+        ? (selectedAccountLinkedPersonDetail.value ??
+          (readLibraryPersonDetail
+            ? await readLibraryPersonDetail(selectedAccount.personId)
+            : null))
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
+        return;
+      }
+      if (selectedAccount.personId) {
+        toast.error("Freed could not load that person's SQLite record.");
         return;
       }
       setEditorState({
@@ -1252,7 +1108,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(selectedAccount, level),
       });
     },
-    [handleSetPersonRelationshipLevel, persons, selectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryPersonDetail,
+      selectedAccount,
+      selectedAccountLinkedPersonDetail.value,
+    ],
   );
 
   const handlePromoteSelectedPerson = useCallback(
@@ -1266,18 +1127,24 @@ export function FriendsView({
   const handlePromoteFriendSuggestion = useCallback(
     async (suggestion: FriendCandidateSuggestion, level: 3 | 5) => {
       if (suggestion.personId) {
-        const person = persons[suggestion.personId];
+        const person = readLibraryPersonDetail
+          ? await readLibraryPersonDetail(suggestion.personId)
+          : null;
         if (person) {
           await handleSetPersonRelationshipLevel(person, level);
           return;
         }
       }
-      const account = suggestion.accountIds
-        .map((accountId) => accounts[accountId])
-        .find(Boolean);
+      const accountId = suggestion.accountIds[0];
+      const account =
+        accountId && readLibraryAccountDetail
+          ? await readLibraryAccountDetail(accountId)
+          : null;
       if (!account) return;
       const linkedPerson = account.personId
-        ? (persons[account.personId] ?? null)
+        ? readLibraryPersonDetail
+          ? await readLibraryPersonDetail(account.personId)
+          : null
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
@@ -1289,7 +1156,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(account, level),
       });
     },
-    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+      setSelectedAccount,
+    ],
   );
 
   const handleDropGraphNodeToRelationshipTier = useCallback(
@@ -1303,7 +1175,9 @@ export function FriendsView({
       level: RelationshipTierLevel;
     }) => {
       if (personId) {
-        const person = persons[personId];
+        const person = readLibraryPersonDetail
+          ? await readLibraryPersonDetail(personId)
+          : null;
         if (person) {
           await handleSetPersonRelationshipLevel(person, level);
         }
@@ -1311,10 +1185,14 @@ export function FriendsView({
       }
 
       if (!accountId || level === 1) return;
-      const account = accounts[accountId];
+      const account = readLibraryAccountDetail
+        ? await readLibraryAccountDetail(accountId)
+        : null;
       if (!account) return;
       const linkedPerson = account.personId
-        ? (persons[account.personId] ?? null)
+        ? readLibraryPersonDetail
+          ? await readLibraryPersonDetail(account.personId)
+          : null
         : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
@@ -1326,7 +1204,12 @@ export function FriendsView({
         draft: friendDraftFromAccount(account, level),
       });
     },
-    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+    [
+      handleSetPersonRelationshipLevel,
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+      setSelectedAccount,
+    ],
   );
 
   const handleDismissFriendSuggestion = useCallback(
@@ -1347,20 +1230,17 @@ export function FriendsView({
   const handleSelectFriendCandidate = useCallback(
     (suggestion: FriendCandidateSuggestion) => {
       if (suggestion.personId) {
-        const person = persons[suggestion.personId];
-        if (person) {
-          handleSelectPerson(person, true);
-          return;
-        }
+        setSelectedPerson(suggestion.personId);
+        focusGraphNode(`person:${suggestion.personId}`);
+        return;
       }
-      const account = suggestion.accountIds
-        .map((accountId) => accounts[accountId])
-        .find(Boolean);
-      if (account) {
-        handleSelectAccount(account, true);
+      const accountId = suggestion.accountIds[0];
+      if (accountId) {
+        setSelectedAccount(accountId);
+        focusGraphNode(`account:${accountId}`);
       }
     },
-    [accounts, handleSelectAccount, handleSelectPerson, persons],
+    [focusGraphNode, setSelectedAccount, setSelectedPerson],
   );
 
   const handleOpenSyncModal = useCallback(async () => {
@@ -1486,7 +1366,7 @@ export function FriendsView({
               Friends
             </h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {friendList.length.toLocaleString()} total,{" "}
+              {friendCount.toLocaleString()} total,{" "}
               {socialAccountCount.toLocaleString()} account
               {socialAccountCount === 1 ? "" : "s"},{" "}
               {reconnectCount.toLocaleString()} due to reconnect
@@ -1578,8 +1458,8 @@ export function FriendsView({
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-[color:var(--theme-text-muted)]">
-            Showing {filteredOverviewEntries.length.toLocaleString()} of{" "}
-            {friendList.length.toLocaleString()}
+            Showing {friendsDirectory.rows.length.toLocaleString()} of{" "}
+            {friendsDirectory.totalCount.toLocaleString()}
           </p>
           <select
             value={sortBy}
@@ -1602,7 +1482,7 @@ export function FriendsView({
         data-testid="friends-overview-scroll"
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        {friendsRows.graphLoading ? (
+        {friendsDirectory.loading ? (
           <div
             className="theme-panel-muted rounded-xl px-4 py-6 text-center"
             data-testid="friends-activity-loading"
@@ -1611,7 +1491,8 @@ export function FriendsView({
               Loading friend activity...
             </p>
           </div>
-        ) : friendCandidateSuggestions.length > 0 ? (
+        ) : !friendsRows.graphLoading &&
+          friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1645,7 +1526,7 @@ export function FriendsView({
           </div>
         ) : null}
 
-        {!friendsRows.graphLoading && filteredOverviewEntries.length === 0 ? (
+        {!friendsDirectory.loading && friendsDirectory.rows.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               No friends match those filters
@@ -1654,15 +1535,15 @@ export function FriendsView({
               Try clearing a filter or changing the search query.
             </p>
           </div>
-        ) : !friendsRows.graphLoading ? (
+        ) : !friendsDirectory.loading ? (
           <div
             data-testid="friends-overview-list"
             className="relative"
             style={{ height: friendOverviewVirtualizer.getTotalSize() }}
           >
             {friendOverviewVirtualizer.getVirtualItems().map((virtualItem) => {
-              const entry = filteredOverviewEntries[virtualItem.index];
-              if (!entry) return null;
+              const row = friendsDirectory.rows[virtualItem.index];
+              if (!row) return null;
               return (
                 <div
                   key={virtualItem.key}
@@ -1673,18 +1554,49 @@ export function FriendsView({
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
                   <FriendListRow
-                    entry={entry}
-                    selected={entry.friend.id === selectedPerson?.id}
-                    onSelect={() =>
-                      handleSelectPerson(
-                        persons[entry.friend.id] ?? friendPersons[0],
-                        true,
-                      )
-                    }
+                    row={row}
+                    selected={row.id === selectedPerson?.id}
+                    onSelect={() => {
+                      setSelectedPerson(row.id);
+                      focusGraphNode(`person:${row.id}`);
+                    }}
                   />
                 </div>
               );
             })}
+          </div>
+        ) : null}
+        {friendsDirectory.hasPrevious || friendsDirectory.hasNext ? (
+          <div className="flex items-center justify-between gap-3 py-3">
+            <button
+              type="button"
+              className={BUTTON_CHROME}
+              disabled={
+                !friendsDirectory.hasPrevious || friendsDirectory.loadingPage
+              }
+              onClick={() => {
+                friendsDirectory.previousPage();
+                friendOverviewScrollRef.current?.scrollTo({ top: 0 });
+              }}
+            >
+              Previous
+            </button>
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
+              Page {friendsDirectory.pageNumber.toLocaleString()}
+            </span>
+            <button
+              type="button"
+              className={BUTTON_CHROME}
+              disabled={
+                !friendsDirectory.hasNext || friendsDirectory.loadingPage
+              }
+              onClick={() => {
+                friendsDirectory.nextPage();
+                friendOverviewScrollRef.current?.scrollTo({ top: 0 });
+              }}
+            >
+              Next
+            </button>
           </div>
         ) : null}
       </div>
@@ -1775,15 +1687,17 @@ export function FriendsView({
           </div>
           <div className="mt-3 space-y-2">
             {selectedPersonSuggestions.map((suggestion) => {
-              const account = accounts[suggestion.accountId];
-              if (!account) return null;
+              const accountLabel =
+                suggestion.accountDisplayName ??
+                suggestion.accountHandle ??
+                suggestion.accountExternalId;
               return (
                 <button
                   key={`${suggestion.personId}:${suggestion.accountId}`}
                   type="button"
                   onClick={() =>
                     void handleLinkAccountToPerson(
-                      account.id,
+                      suggestion.accountId,
                       selectedPerson.id,
                     )
                   }
@@ -1791,9 +1705,7 @@ export function FriendsView({
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                      {account.displayName ??
-                        account.handle ??
-                        account.externalId}
+                      {accountLabel}
                     </p>
                     <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                       {suggestion.reason}
@@ -1845,16 +1757,14 @@ export function FriendsView({
 
   const renderSelectedAccountSidebar = () => {
     if (!selectedAccount) return null;
-    const linkedPerson = selectedAccount.personId
-      ? (persons[selectedAccount.personId] ?? null)
-      : null;
+    const linkedPerson = selectedAccountLinkedPersonDetail.value;
     return (
       <AccountDetailPanel
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
         friendSuggestion={selectedAccountFriendSuggestion}
-        persons={allPersons}
+        sourceVersion={friendsReadVersion}
         feedItems={friendsRows.timelineItems}
         timelineLoading={friendsRows.timelineLoading}
         timelineTotalCount={friendsRows.timelineTotalCount}
@@ -1866,10 +1776,7 @@ export function FriendsView({
           void handleLinkAccountToPerson(selectedAccount.id, personId)
         }
         onOpenPerson={(personId) => {
-          const person = persons[personId];
-          if (person) {
-            handleSelectPerson(person);
-          }
+          setSelectedPerson(personId);
         }}
       />
     );
@@ -1884,12 +1791,12 @@ export function FriendsView({
           </div>
           <div>
             <p className="font-medium text-[color:var(--theme-text-primary)]">
-              {friendList.length === 0
+              {friendCount === 0
                 ? "No friends yet"
                 : "No friend graph nodes yet"}
             </p>
             <p className="mt-1 max-w-xs text-sm text-[color:var(--theme-text-muted)]">
-              {friendList.length === 0
+              {friendCount === 0
                 ? "Switch to All content to explore captured accounts, or add your first friend now."
                 : "Link more channels or switch to All content to explore captured accounts."}
             </p>
@@ -1925,7 +1832,7 @@ export function FriendsView({
   const renderCollapsedSelectionCard = () => {
     if (selectedAccount) {
       const linkedPerson = selectedAccount.personId
-        ? (persons[selectedAccount.personId] ?? null)
+        ? selectedAccountLinkedPersonDetail.value
         : null;
       return (
         <CompactDetailCard>
@@ -2139,10 +2046,11 @@ export function FriendsView({
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
   const graphIsEmpty =
-    (effectiveMode === "friends" && friendList.length === 0) ||
-    (effectiveMode === "all_content" &&
-      socialAccountCount === 0 &&
-      friendList.length === 0);
+    graphSourceCounts?.mode === effectiveMode &&
+    (effectiveMode === "friends"
+      ? graphSourceCounts.personCount === 0
+      : graphSourceCounts.channelCount === 0 &&
+        graphSourceCounts.personCount === 0);
   const renderGraphLoadingState = (overlay = false) => (
     <div
       className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}
@@ -2166,49 +2074,105 @@ export function FriendsView({
               : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
           }`}
         >
-          {graphIsEmpty ? (
-            friendsRows.graphLoading ? (
-              renderGraphLoadingState()
-            ) : (
-              renderGraphEmptyState()
-            )
-          ) : (
-            <>
-              <FriendGraph
-                ref={graphRef}
-                persons={graphPersons}
-                accounts={graphEntities.accounts}
-                feeds={feeds}
-                activitySummaries={graphActivitySummaries}
-                mode={effectiveMode}
-                selectedPersonId={selectedPerson?.id ?? null}
-                selectedAccountId={selectedAccount?.id ?? null}
-                onSelectPerson={(person) => handleSelectPerson(person, false)}
-                onSelectAccount={(account) =>
-                  handleSelectAccount(account, false)
-                }
-                onClearSelection={
-                  showCollapsedSelectionCard ? handleClearSelection : undefined
-                }
-                onLinkAccountToPerson={handleLinkAccountToPerson}
-                onPinPersonPosition={handlePinPersonPosition}
-                onPinAccountPosition={handlePinAccountPosition}
-                onDropNodeToRelationshipTier={
-                  handleDropGraphNodeToRelationshipTier
-                }
-                friendSuggestionStrengthByPerson={
-                  friendSuggestionStrengthByPerson
-                }
-                friendSuggestionStrengthByAccount={
-                  friendSuggestionStrengthByAccount
-                }
-                themeId={themeId}
-                presentationVisible={showGraphSurface}
-                controlsAdjacentToSidebar={showDesktopSidebar}
-              />
-              {friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
-            </>
-          )}
+          <FriendGraph
+            ref={graphRef}
+            sqliteGraphQuery={graphSqliteQuery}
+            sourceVersion={friendsReadVersion}
+            mode={effectiveMode}
+            selectedPersonId={selectedPerson?.id ?? null}
+            selectedAccountId={selectedAccount?.id ?? null}
+            onSelectPersonId={(personId) => setSelectedPerson(personId)}
+            onSelectAccountId={(accountId) => setSelectedAccount(accountId)}
+            onSourceCounts={(counts) => {
+              setGraphSourceCounts({ ...counts, mode: effectiveMode });
+            }}
+            resolveContextNode={async (target) => {
+              if (target.nodeId.startsWith("account:")) {
+                const accountId = target.nodeId.slice("account:".length);
+                const account = await readLibraryAccountDetail?.(accountId);
+                if (!account) return null;
+                return {
+                  accountId,
+                  activityCount: 0,
+                  avatarUrl: account.avatarUrl ?? null,
+                  graphPinned: false,
+                  id: target.nodeId,
+                  initials: "",
+                  kind: "account",
+                  label: accountTitle(account),
+                  linkedPersonId: account.personId ?? null,
+                  priority: 1,
+                  provider: account.provider,
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              if (target.nodeId.startsWith("person:")) {
+                const personId = target.nodeId.slice("person:".length);
+                const person = await readLibraryPersonDetail?.(personId);
+                if (!person) return null;
+                return {
+                  activityCount: 0,
+                  avatarUrl: person.avatarUrl ?? null,
+                  careLevel: person.careLevel,
+                  graphPinned: false,
+                  id: target.nodeId,
+                  initials: "",
+                  kind:
+                    person.relationshipStatus === "friend"
+                      ? "friend_person"
+                      : "connection_person",
+                  label: personName(person),
+                  personId,
+                  priority: 1,
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              if (target.nodeId.startsWith("feed:")) {
+                const feedUrl = target.nodeId.slice("feed:".length);
+                const feed = await readLibraryCoreRssFeedV1(
+                  graphSqliteQuery,
+                  feedUrl,
+                );
+                if (!feed) return null;
+                return {
+                  activityCount: 0,
+                  avatarUrl: feed.imageUrl ?? null,
+                  feedUrl,
+                  id: target.nodeId,
+                  initials: "",
+                  kind: "feed",
+                  label: feed.title || feed.url,
+                  priority: 1,
+                  provider: "rss",
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              return null;
+            }}
+            onClearSelection={
+              showCollapsedSelectionCard ? handleClearSelection : undefined
+            }
+            onLinkAccountToPerson={handleLinkAccountToPerson}
+            onPinPersonPosition={handlePinPersonPosition}
+            onPinAccountPosition={handlePinAccountPosition}
+            onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
+            themeId={themeId}
+            presentationVisible={showGraphSurface}
+            controlsAdjacentToSidebar={showDesktopSidebar}
+          />
+          {graphIsEmpty && !friendsRows.graphLoading ? (
+            <div className="absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]">
+              {renderGraphEmptyState()}
+            </div>
+          ) : friendsRows.graphLoading ? (
+            renderGraphLoadingState(true)
+          ) : null}
         </div>
 
         {showDesktopSidebar && (
@@ -2256,7 +2220,9 @@ export function FriendsView({
         <FriendEditor
           existing={
             editorState.kind === "edit"
-              ? (friendsById[editorState.personId] ?? null)
+              ? selectedFriend?.id === editorState.personId
+                ? selectedFriend
+                : null
               : null
           }
           draft={

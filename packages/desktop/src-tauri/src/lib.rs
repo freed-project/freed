@@ -2,16 +2,10 @@
 //!
 //! Native desktop app that bundles capture and the reader UI.
 
-mod library_core_actor_enrollment;
-mod library_core_authority_genesis;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_canonical;
+mod library_core_actor_key_store;
+mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
-mod library_core_ed25519;
-mod library_core_hash;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_journal;
 mod library_core_platform_key;
 mod youtube;
 
@@ -2843,8 +2837,6 @@ struct RuntimeMemoryStats {
     sample_duration_ms: u64,
     memory_high_bytes: u64,
     memory_critical_bytes: u64,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -4137,8 +4129,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(main_renderer_memory_should_recover(
@@ -4213,8 +4203,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4272,8 +4260,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4320,8 +4306,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4361,8 +4345,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let mut after = before.clone();
         after.app_resident_bytes = 2 * BYTES_PER_GIB;
@@ -4405,8 +4387,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4447,8 +4427,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4496,8 +4474,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4543,8 +4519,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4589,8 +4563,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4644,8 +4616,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -6408,23 +6378,12 @@ fn freed_webkit_memory_stats(
     }
 }
 
-fn collect_runtime_memory_stats(
-    app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
-) -> RuntimeMemoryStats {
-    collect_runtime_memory_stats_with_options(
-        app,
-        relay_doc_bytes,
-        relay_client_count,
-        RuntimeMemoryStatsOptions::full(),
-    )
+fn collect_runtime_memory_stats(app: &tauri::AppHandle) -> RuntimeMemoryStats {
+    collect_runtime_memory_stats_with_options(app, RuntimeMemoryStatsOptions::full())
 }
 
 fn collect_runtime_memory_stats_with_options(
     app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     options: RuntimeMemoryStatsOptions,
 ) -> RuntimeMemoryStats {
     let sample_started_at = Instant::now();
@@ -6523,8 +6482,6 @@ fn collect_runtime_memory_stats_with_options(
             .min(u128::from(u64::MAX)) as u64,
         memory_high_bytes,
         memory_critical_bytes,
-        relay_doc_bytes,
-        relay_client_count,
     }
 }
 
@@ -6895,7 +6852,7 @@ fn social_scrape_may_continue(
     pass_index: usize,
     total_passes: usize,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = scrape_memory_may_proceed(&stats);
     if !may_continue {
         warn!(
@@ -6945,7 +6902,7 @@ fn optional_story_scrape_may_continue(
     provider: &str,
     operation: &str,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = optional_story_scrape_may_proceed(&stats);
     if !may_continue {
         info!(
@@ -7040,7 +6997,7 @@ async fn maybe_recover_after_social_feed_scrape(
 ) {
     tokio::time::sleep(Duration::from_millis(700)).await;
 
-    let after = collect_runtime_memory_stats(app, 0, 0);
+    let after = collect_runtime_memory_stats(app);
     let reason = post_social_scrape_memory_recovery_reason(before, &after);
     let before_webkit_footprint = before.webkit_total_footprint_bytes.unwrap_or(0);
     let after_webkit_footprint = after.webkit_total_footprint_bytes.unwrap_or(0);
@@ -7107,7 +7064,7 @@ async fn maybe_recover_after_social_feed_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7219,7 +7176,7 @@ async fn recover_main_renderer_after_blocked_social_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7258,11 +7215,9 @@ async fn prepare_social_scrape_memory_internal(
     background_runtime: Option<&BackgroundRuntimeCoordinator>,
     provider: &str,
     operation: &str,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     preserve_label: Option<&str>,
 ) -> ScrapeMemoryPreparation {
-    let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let before = collect_runtime_memory_stats(app);
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycle_started_at = Instant::now();
     let recycled_scraper_windows = recycle_social_scraper_windows_except(
@@ -7278,7 +7233,7 @@ async fn prepare_social_scrape_memory_internal(
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
 
-    let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let after = collect_runtime_memory_stats(app);
     let scraper_recycle_verification = build_scraper_recycle_verification(
         recycled_scraper_windows,
         &before,
@@ -7418,8 +7373,6 @@ async fn ensure_social_scrape_memory(
         Some(background_runtime),
         provider,
         operation,
-        0,
-        0,
         preserve_label,
     )
     .await;
@@ -7491,8 +7444,6 @@ async fn get_runtime_memory_stats(
 ) -> Result<RuntimeMemoryStats, String> {
     Ok(collect_runtime_memory_stats_with_options(
         &app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: include_storage_sizes.unwrap_or(true),
             precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
@@ -7594,8 +7545,6 @@ async fn prepare_social_scrape_memory(
         Some(&capture.background_runtime),
         &provider,
         &operation,
-        0,
-        0,
         None,
     )
     .await)
@@ -7627,31 +7576,6 @@ async fn get_ai_hardware_profile(
         arch: std::env::consts::ARCH.to_string(),
         web_gpu_available,
     })
-}
-
-#[tauri::command]
-fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
-    let Ok(data_dir) = app.path().app_data_dir() else {
-        return vec![];
-    };
-    let dir = data_dir.join("library-backups");
-
-    let mut entries: Vec<String> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            if name.starts_with("sqlite-") && name.ends_with(".sqlite") {
-                Some(name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    entries.sort_unstable_by(|a, b| b.cmp(a)); // newest first
-    entries
 }
 
 #[tauri::command]
@@ -8927,7 +8851,7 @@ async fn fb_scrape_feed(
         Some("authenticated feed rendered"),
     );
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
     emit_social_scrape_plan(
         &app,
@@ -9672,7 +9596,7 @@ async fn ig_scrape_feed(
     .await?;
     let scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
-    let scrape_start_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_start_stats = collect_runtime_memory_stats(&app);
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
@@ -9787,7 +9711,7 @@ async fn ig_scrape_feed(
         );
     }
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
     emit_social_scrape_plan(
         &app,
@@ -10480,7 +10404,7 @@ async fn li_scrape_feed(
 
     prepare_background_scraper_window(&wv, window_mode)?;
     println!("[LI] window prepared, proceeding with extraction");
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
 
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
@@ -12609,8 +12533,6 @@ fn schedule_main_window_recovery_verification(
         tokio::time::sleep(MAIN_RENDERER_RECOVERY_VERIFY_AFTER).await;
         let after = collect_runtime_memory_stats_with_options(
             &app_for_verify,
-            0,
-            0,
             RuntimeMemoryStatsOptions {
                 include_storage_sizes: false,
                 precise_webkit_attribution: true,
@@ -12749,8 +12671,6 @@ fn recover_main_window_with_presentation(
 ) -> Result<(), String> {
     let before_recovery_stats = collect_runtime_memory_stats_with_options(
         app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: false,
             precise_webkit_attribution: true,
@@ -13020,6 +12940,12 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+            #[cfg(unix)]
+            if library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready()
+                .map_err(std::io::Error::other)?
+            {
+                info!("[library-core] selected normalized SQLite authority");
+            }
             let dev_sync_result_data_dir = data_dir.clone();
             app.listen("dev-sync-trigger-native-result", move |event| {
                 handle_dev_sync_trigger_result_event(&dev_sync_result_data_dir, event.payload());
@@ -13322,7 +13248,7 @@ pub fn run() {
                 let refreshed_memory_sample = should_refresh_memory_sample.then(|| {
                     RendererMemorySample::from_stats(
                         now,
-                        collect_runtime_memory_stats(&app_for_renderer_listener, 0, 0),
+                        collect_runtime_memory_stats(&app_for_renderer_listener),
                     )
                 });
                 let memory_sample_refreshed = refreshed_memory_sample.is_some();
@@ -13419,7 +13345,7 @@ pub fn run() {
                     tokio::time::sleep(RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL).await;
 
                     let now = std::time::Instant::now();
-                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor, 0, 0);
+                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor);
                     let memory_health_fields = {
                         let mut sample = renderer_memory_sample_for_memory_monitor.lock().unwrap();
                         *sample = Some(RendererMemorySample::from_stats(now, stats.clone()));
@@ -13781,7 +13707,7 @@ pub fn run() {
                         let mut should_recycle_background_scrapers = false;
 
                         if should_log_throttle {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             info!(
                                 "[main-window] renderer heartbeat hidden-timer throttled age_ms={} threshold_ms={} visible={} focused={} effective_visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={}",
                                 age.as_millis(),
@@ -13838,7 +13764,7 @@ pub fn run() {
                         }
 
                         if should_log_stale {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let webkit = stats
                                 .webkit_largest_process_id
                                 .zip(stats.webkit_largest_resident_bytes)
@@ -13974,7 +13900,7 @@ pub fn run() {
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
                             background_runtime_for_watchdog
                                 .note_renderer_recovery_attempt(recovery_reason);
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
                             let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
@@ -14180,53 +14106,60 @@ pub fn run() {
             replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
-            library_core_desktop_runtime::sqlite_library_status,
-            library_core_desktop_runtime::begin_sqlite_library_import,
-            library_core_desktop_runtime::append_sqlite_library_import,
-            library_core_desktop_runtime::finalize_sqlite_library_import,
-            library_core_desktop_runtime::recover_sqlite_library_follower_overlay,
-            library_core_desktop_runtime::read_sqlite_library_shell,
-            library_core_desktop_runtime::read_sqlite_library_counts,
-            library_core_desktop_runtime::read_sqlite_library_facet_summary,
-            library_core_desktop_runtime::read_sqlite_library_sync_descriptor,
-            library_core_desktop_runtime::prepare_sqlite_library_follower_actor_request,
-            library_core_desktop_runtime::install_sqlite_library_follower_actor_enrollment,
-            library_core_desktop_runtime::sign_sqlite_library_follower_operation,
-            library_core_desktop_runtime::enqueue_sqlite_library_follower_intent,
-            library_core_desktop_runtime::sqlite_library_follower_intent_context,
-            library_core_desktop_runtime::sqlite_library_follower_runtime_status,
-            library_core_desktop_runtime::read_sqlite_library_follower_intent_outbox_candidate,
-            library_core_desktop_runtime::record_sqlite_library_follower_intent_publication,
-            library_core_desktop_runtime::read_sqlite_library_follower_result_import_cursor,
-            library_core_desktop_runtime::append_sqlite_library_follower_result_segment,
-            library_core_desktop_runtime::bootstrap_sqlite_library_authority,
-            library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
-            library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
-            library_core_desktop_runtime::accept_pwa_intent_transaction,
-            library_core_desktop_runtime::read_pwa_intent_result_outbox,
-            library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
-            library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
-            library_core_desktop_runtime::read_sqlite_library_sync_page,
-            library_core_desktop_runtime::replace_sqlite_library_shell,
-            library_core_desktop_runtime::upsert_sqlite_library_items,
-            library_core_desktop_runtime::mutate_sqlite_library_items,
+            library_core_desktop_runtime::query_normalized_library,
+            library_core_desktop_runtime::mutate_normalized_device_graph_layout,
+            library_core_desktop_runtime::mutate_normalized_content_policy,
+            library_core_desktop_runtime::mutate_normalized_device_contacts,
+            library_core_desktop_runtime::query_normalized_device_contact_status,
+            library_core_desktop_runtime::query_normalized_device_contact_match_page,
+            library_core_desktop_runtime::query_normalized_device_contact_suggestion_page,
+            library_core_desktop_runtime::query_normalized_device_contact_unmatched_page,
+            library_core_desktop_runtime::ensure_fresh_normalized_desktop_library,
+            library_core_desktop_runtime::describe_normalized_library_checkpoint,
+            library_core_desktop_runtime::describe_normalized_library_cloud_identity,
+            library_core_desktop_runtime::read_normalized_library_checkpoint_page,
+            library_core_desktop_runtime::begin_normalized_library_checkpoint_import,
+            library_core_desktop_runtime::append_normalized_library_checkpoint_import_page,
+            library_core_desktop_runtime::activate_normalized_library_checkpoint_import,
+            library_core_desktop_runtime::normalized_library_follower_runtime_status,
+            library_core_desktop_runtime::normalized_library_follower_transport_context,
+            library_core_desktop_runtime::page_normalized_library_follower_transport,
+            library_core_desktop_runtime::normalized_library_follower_mutation_context,
+            library_core_desktop_runtime::prepare_normalized_library_follower_actor_request,
+            library_core_desktop_runtime::install_normalized_library_follower_actor_enrollment,
+            library_core_desktop_runtime::countersign_normalized_library_follower_actor_request,
+            library_core_desktop_runtime::sign_normalized_library_follower_operation,
+            library_core_desktop_runtime::enqueue_normalized_library_follower_intent,
+            library_core_desktop_runtime::read_normalized_library_follower_intent_page,
+            library_core_desktop_runtime::record_normalized_library_follower_intent_publication,
+            library_core_desktop_runtime::record_normalized_library_follower_intent_transport_publication,
+            library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
+            library_core_desktop_runtime::normalized_library_primary_follower_actor_transport_state,
+            library_core_desktop_runtime::read_normalized_library_follower_result_page,
+            library_core_desktop_runtime::import_normalized_library_follower_result_page,
+            library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
+            library_core_desktop_runtime::reassign_normalized_library_writer_epoch,
+            library_core_desktop_runtime::normalized_library_primary_mutation_context,
+            library_core_desktop_runtime::sign_normalized_library_operation,
+            library_core_desktop_runtime::commit_normalized_library_transaction,
+            library_core_desktop_runtime::begin_normalized_scope_action,
+            library_core_desktop_runtime::freeze_normalized_rss_feed_scope,
+            library_core_desktop_runtime::append_normalized_scope_action,
+            library_core_desktop_runtime::finalize_normalized_scope_action,
+            library_core_desktop_runtime::page_normalized_scope_action,
+            library_core_desktop_runtime::close_normalized_scope_action,
             library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
             library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
-            library_core_desktop_runtime::read_sqlite_library_items,
-            library_core_desktop_runtime::query_sqlite_library_items,
-            library_core_desktop_runtime::search_sqlite_library_items,
-            library_core_desktop_runtime::create_sqlite_library_backup,
-            library_core_desktop_runtime::list_sqlite_library_backups,
-            library_core_desktop_runtime::read_sqlite_library_backup_chunk,
-            library_core_desktop_runtime::restore_sqlite_library_backup,
-            library_core_desktop_runtime::clear_sqlite_library_backups,
-            library_core_desktop_runtime::clear_sqlite_library,
+            library_core_desktop_runtime::create_normalized_local_snapshot,
+            library_core_desktop_runtime::list_normalized_local_snapshots,
+            library_core_desktop_runtime::restore_normalized_local_snapshot,
+            library_core_desktop_runtime::clear_normalized_local_snapshots,
+            library_core_desktop_runtime::reset_normalized_library,
             clear_factory_reset_runtime_artifacts,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
             close_x_login_window,
-            list_snapshots,
             get_recent_logs,
             start_oauth_server,
             pick_contact,
@@ -15017,8 +14950,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         }
     }
 
@@ -15652,8 +15583,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: 601,
             memory_critical_bytes: 602,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let sample = RendererMemorySample::from_stats(now - Duration::from_secs(2), stats);
         let fields = renderer_memory_health_fields(Some(&sample), now, true);
@@ -16463,8 +16392,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16508,8 +16435,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16595,8 +16520,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16635,8 +16558,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16681,8 +16602,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let budget = scrape_memory_start_budget_bytes(&stats);
 
@@ -16741,8 +16660,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let story_budget_bytes = optional_story_memory_budget_bytes(&make_stats(0, 0));
         let stats = make_stats(

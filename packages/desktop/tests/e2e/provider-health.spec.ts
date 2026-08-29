@@ -1,4 +1,9 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import {
+  test,
+  expect,
+  resolveViteFsModulePath,
+  setDeviceDisplayPreferences,
+} from "./fixtures/app";
 
 const FEED_URL = "https://example.com/feed.xml";
 const DEBUG_STORE_PATH = resolveViteFsModulePath(
@@ -357,18 +362,18 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.evaluate(async ({ feedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
-      docAddFeedItem: (item: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+      addLibraryFeedItem: (item: unknown) => Promise<void>;
     };
 
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: feedUrl,
       title: "Example Feed",
       enabled: true,
       trackUnread: false,
     });
-    await automerge.docAddFeedItem({
+    await libraryCore.addLibraryFeedItem({
       globalId: "rss:example-feed:1",
       platform: "rss",
       contentType: "article",
@@ -401,24 +406,17 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
     return (
-      !!state?.feeds[feedUrl] &&
+      !!sqlite?.feeds[feedUrl] &&
       Object.values(sqlite?.items ?? {}).some(
         (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
       )
@@ -448,23 +446,16 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
-    const feedGone = !state?.feeds[feedUrl];
+    const feedGone = !sqlite?.feeds[feedUrl];
     const matchingItems = Object.values(sqlite?.items ?? {}).filter(
       (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
     );
@@ -1885,16 +1876,13 @@ test("toolbar activity spinner opens job activity popover in compact sidebar mod
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, { sidebarMode: "compact" });
 
   await page.evaluate(async ({ activityStorePath }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({ display: { sidebarMode: "compact" } });
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "job:content-fetch:e2e",
@@ -1953,21 +1941,22 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
         bytesMoved: 0,
       }));
 
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+    };
+    await libraryCore.addLibraryRssFeed({
+      url: "https://healthy.example/feed.xml",
+      title: "Healthy Feed",
+      enabled: true,
+      trackUnread: true,
+    });
+    await libraryCore.addLibraryRssFeed({
+      url: "https://broken.example/feed.xml",
+      title: "Broken Feed",
+      enabled: true,
+      trackUnread: true,
+    });
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 1,
         x: 0,
@@ -2057,20 +2046,6 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 0,
         x: 0,
@@ -2118,18 +2093,16 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     store.setState({
       xAuth: {
         isAuthenticated: true,
@@ -2174,6 +2147,10 @@ test("source menu trigger toggles open and closed", async ({ app, page }) => {
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -2217,19 +2194,19 @@ test("source menu stays open and acknowledges sync now while syncing is already 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
         providerSyncCounts: Record<string, number>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     const current = store.getState();
     store.setState({
       xAuth: {
@@ -2618,17 +2595,17 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
 
   await page.evaluate(async ({ failingFeedUrl, healthyFeedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
     };
 
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: failingFeedUrl,
       title: "Broken Feed",
       enabled: true,
       trackUnread: false,
     });
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: healthyFeedUrl,
       title: "Healthy Feed",
       enabled: true,
@@ -2639,27 +2616,31 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await page.waitForFunction(
     ([failingFeedUrl, healthyFeedUrl]) => {
       const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
+      const sqliteLibrary = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
         | {
-            getState: () => {
-              feeds: Record<string, unknown>;
-            };
+            feeds: Record<string, unknown>;
           }
         | undefined;
-      const feeds = store?.getState().feeds ?? {};
+      const feeds = sqliteLibrary?.feeds ?? {};
       return !!feeds[failingFeedUrl] && !!feeds[healthyFeedUrl];
     },
     [failingFeedUrl, healthyFeedUrl],
   );
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { rssFeedCount: number } }
+      | undefined;
+    return store?.getState().rssFeedCount === 2;
+  });
 
-  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  const settingsBtn = page.getByTestId("sidebar-settings-button");
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
-  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const settingsDialog = page.getByTestId("settings-nav-panel").locator("..");
   await settingsDialog.getByRole("button", { name: "Feeds", exact: true }).click();
   await expect(settingsDialog.getByRole("heading", { name: "Feeds" })).toBeVisible();
 
-  await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-list-scroll")).toBeVisible();
   await settingsDialog.getByTestId("feeds-manage-filter").fill("healthy");
@@ -2676,7 +2657,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(needsReviewButton).toBeVisible();
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds", exact: true }),
   ).toBeVisible();
 
   await needsReviewButton.evaluate((element) => {
@@ -2684,7 +2665,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(settingsDialog.getByText("Healthy Feed")).toHaveCount(0);
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds", exact: true }),
   ).toBeVisible();
   await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
   await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();

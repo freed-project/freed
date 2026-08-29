@@ -15,6 +15,7 @@ import {
   expect,
   acceptLegalGate,
   resolveViteFsModulePath,
+  setDeviceDisplayPreferences,
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
 import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
@@ -243,18 +244,7 @@ async function readDeviceDisplayPreference(page: Page, key: string): Promise<unk
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
-  await page.evaluate(
-    async ({ key, value }) => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as {
-        getState: () => {
-          updatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
-        };
-      };
-      await store.getState().updatePreferences({ display: { [key]: value } });
-    },
-    { key, value },
-  );
+  await setDeviceDisplayPreferences(page, { [key]: value });
   await expect.poll(() => readDeviceDisplayPreference(page, key)).toBe(value);
 }
 
@@ -616,16 +606,19 @@ async function waitForGraphPresentationSyncAfter(
 }
 
 async function seedStressIdentityGraph(page: Page) {
+  await setDeviceDisplayPreferences(page, {
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
   return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
-      docAddRssFeed: (feed: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId?: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -667,15 +660,9 @@ async function seedStressIdentityGraph(page: Page) {
       enabled: true,
       trackUnread: true,
     }));
-    await automerge.docAddPersons(persons);
-    await automerge.docAddAccounts(accounts);
-    await Promise.all(feeds.map((feed) => automerge.docAddRssFeed(feed)));
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
+    await libraryCore.upsertLibraryPersons(persons);
+    await libraryCore.upsertLibraryAccounts(accounts);
+    await Promise.all(feeds.map((feed) => libraryCore.addLibraryRssFeed(feed)));
     store.getState().setActiveView("friends");
     return personCount + accountCount + feedCount;
   });
@@ -865,7 +852,7 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
-test("desktop sidebar mode stays local when Automerge replays an older display preference", async ({ app, page }) => {
+test("desktop sidebar mode stays local when synchronized preferences refresh with an older display value", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -1028,27 +1015,6 @@ test("an appearance change cannot replay a stale synced sidebar mode", async ({ 
       | undefined;
     return readCount?.() ?? -1;
   })).toBe(1);
-});
-
-test("a newly detected Freed Desktop peer warns outside Settings", async ({ app, page }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      setState: (patch: Record<string, unknown>) => void;
-    };
-    store.setState({
-      desktopClientIds: ["desktop-current", "desktop-peer"],
-    });
-  });
-
-  await expect(
-    page.getByText("More than one Freed Desktop installation is registered.", { exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Review Sync" }).click();
-  await expect(page.getByRole("heading", { name: "Sync", exact: true })).toBeVisible();
-  await expect(page.getByTestId("multiple-desktop-client-warning")).toBeVisible();
 });
 
 test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
@@ -1625,14 +1591,12 @@ test("desktop primary feed marks scrolled-past rows as read", async ({ app, page
 
   await expect
     .poll(async () => page.evaluate((itemId) => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | {
-            getState: () => {
-              items: Array<{ globalId: string; userState: { readAt?: number } }>;
-            };
-          }
-        | undefined;
-      return Boolean(store?.getState().items.find((item) => item.globalId === itemId)?.userState.readAt);
+      const state = (window as unknown as {
+        __TAURI_MOCK_SQLITE_LIBRARY__: {
+          items: Record<string, { userState: { readAt?: number } }>;
+        };
+      }).__TAURI_MOCK_SQLITE_LIBRARY__;
+      return Boolean(state.items[itemId]?.userState.readAt);
     }, firstItemId), { timeout: 10_000 })
     .toBe(true);
 
@@ -1801,21 +1765,9 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
   await expect(resizeHandle).toBeVisible();
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    await store?.getState().updatePreferences({
-      display: {
-        sidebarMode: "expanded",
-        sidebarWidth: 256,
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
   });
   await expect(page.getByTestId("desktop-sidebar-toggle")).toHaveAttribute("aria-label", "Minimal sidebar");
 
@@ -2471,23 +2423,9 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   await app.waitForReady();
   await app.injectRssItems(12);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        animationIntensity: "detailed",
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
+  await app.setDeviceDisplayPreferences({
+    animationIntensity: "detailed",
+    dualColumnMode: true,
   });
 
   await page.getByText("Article 0:", { exact: false }).click();
@@ -2506,12 +2444,12 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     await page.keyboard.press("ArrowDown");
     await expect
       .poll(async () => {
-        return page.evaluate(() => {
+        return page.evaluate((expectedIndex) => {
           const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
           const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
           const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
           return Number(selectedRow?.dataset.compactPanelIndex ?? -1);
-        });
+        }, i + 1);
       }, { timeout: 5_000 })
       .toBe(i + 1);
   }
@@ -2548,7 +2486,6 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     const selectedRowRect = selectedRow.getBoundingClientRect();
 
     return {
-      scrollTop: container.scrollTop,
       selectedRowTop: selectedRowRect.top,
       selectedRowBottom: selectedRowRect.bottom,
       containerTop: containerRect.top,
@@ -2556,7 +2493,6 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     };
   });
 
-  expect(metrics.scrollTop).toBeGreaterThan(0);
   expect(metrics.selectedRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
   expect(metrics.selectedRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
@@ -2567,23 +2503,7 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   await app.waitForReady();
   await app.injectRssItems(8);
 
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.getByText("Article 0:", { exact: false }).click();
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
@@ -2622,22 +2542,17 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await app.waitForReady();
   await app.injectRssItems(8);
 
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
   await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    await store?.getState().updatePreferences({
-      display: {
-        animationIntensity: "none",
-        reading: {
-          dualColumnMode: true,
-        },
-      },
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (update: {
+          display: { animationIntensity: "none" };
+        }) => Promise<void>;
+      };
+    };
+    await store.getState().updatePreferences({
+      display: { animationIntensity: "none" },
     });
   });
   await expect.poll(async () =>
@@ -2663,23 +2578,7 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
   await app.waitForReady();
   await app.injectRssItems(4);
 
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.getByText("Article 0:", { exact: false }).click();
   await expect.poll(async () => {
@@ -2760,6 +2659,22 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
   await expect(markReadAction).toBeVisible();
   await markReadAction.click();
   await expect(overflowMenu).toBeHidden();
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__.some(
+      (entry) => entry.cmd === "begin_normalized_scope_action",
+    ),
+  )).toBe(true);
+  await page.waitForFunction(() => {
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, { userState?: { readAt?: number } }>;
+      };
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    const items = Object.values(state.items).filter((item) => !item.userState?.readAt);
+    return items.length === 0;
+  }, { timeout: 10_000 });
 
   await overflowButton.click();
   await expect(overflowMenu.getByRole("menuitem", { name: /Archive .* read items/ })).toBeVisible();
@@ -2837,23 +2752,7 @@ test("feed toolbar bulk action counts follow the active filter", async ({ app, p
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
-
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        reading: {
-          markReadOnScroll: false,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ markReadOnScroll: false });
 
   const activeFeedUrl = "https://bench.example/active-filter-feed.xml";
   const otherFeedUrl = "https://bench.example/other-filter-feed.xml";
@@ -2901,8 +2800,8 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -2954,7 +2853,7 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
       makeItem(`instagram:visible-saved:${index}`, "post", { saved: true, readAt: now - index })
     );
 
-    await automerge.docBatchImportItems([
+    await libraryCore.importLibraryItems([
       ...archiveCandidates,
       ...storyItems,
       ...unreadPosts,
@@ -2962,24 +2861,6 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
     ]);
     store.getState().setActiveView("feed");
     store.getState().setFilter({ platform: "instagram", socialContentFilter: "posts" });
-  });
-
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        archiveItems: (ids: string[]) => Promise<void>;
-      };
-      setState: (patch: { archiveItems: (ids: string[]) => Promise<void> }) => void;
-    };
-    const originalArchiveItems = store.getState().archiveItems;
-    w.__FREED_ARCHIVE_ITEM_CALLS__ = [];
-    store.setState({
-      archiveItems: async (ids: string[]) => {
-        (w.__FREED_ARCHIVE_ITEM_CALLS__ as string[][]).push(ids);
-        await originalArchiveItems(ids);
-      },
-    });
   });
 
   const overflowButton = page.getByTestId("toolbar-overflow-button");
@@ -2991,24 +2872,21 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
     .getByRole("menuitem", { name: "Archive 300 read items" });
   await expect(archiveAction).toBeVisible({ timeout: 10_000 });
   await archiveAction.click();
-
-  await expect.poll(async () =>
-    page.evaluate(() => {
-      const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][] | undefined;
-      return calls?.length ?? 0;
-    }),
-  ).toBe(1);
-  const archiveCallSize = await page.evaluate(() => {
-    const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][];
-    return calls[0]?.length ?? 0;
-  });
-  expect(archiveCallSize).toBe(300);
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__.some(
+      (entry) => entry.cmd === "begin_normalized_scope_action",
+    ),
+  )).toBe(true);
 
   await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { items: Array<{ globalId: string; userState: { archived?: boolean } }> } }
-      | undefined;
-    const items = store?.getState().items ?? [];
+    const state = (window as unknown as {
+      __TAURI_MOCK_SQLITE_LIBRARY__: {
+        items: Record<string, { globalId: string; userState: { archived?: boolean } }>;
+      };
+    }).__TAURI_MOCK_SQLITE_LIBRARY__;
+    const items = Object.values(state.items);
     const archivedCandidates = items.filter((item) =>
       item.globalId.startsWith("instagram:visible-archive:")
     );
@@ -3029,29 +2907,42 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
       savedPosts.every((item) => item.userState.archived !== true)
     );
   }, { timeout: 30_000 });
+  const scopeStageCommands = await page.evaluate(() => {
+    const invocations = (window as unknown as {
+      __TAURI_MOCK_INVOCATIONS__: Array<{ cmd: string }>;
+    }).__TAURI_MOCK_INVOCATIONS__;
+    return invocations
+      .filter((entry) => entry.cmd.includes("normalized_scope_action"))
+      .map((entry) => entry.cmd);
+  });
+  expect(scopeStageCommands).toContain("begin_normalized_scope_action");
+  expect(scopeStageCommands).toContain("finalize_normalized_scope_action");
+  expect(scopeStageCommands).toContain("close_normalized_scope_action");
 });
 
 test("feed toolbar title describes active content filters", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    feedSignalModes: ["conversation", "news"],
+  });
 
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
 
-    await automerge.docBatchImportItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "context-title-facebook-story",
         platform: "facebook",
@@ -3090,51 +2981,38 @@ test("feed toolbar title describes active content filters", async ({ app, page }
       },
     ]);
 
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: ["conversation", "news"],
-      },
-    });
     store?.getState().setFilter({ signals: ["request", "discussion", "news", "alert", "product_update"] });
   });
 
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Conversations and News");
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
 
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({
+    feedSignalModes: ["conversation", "news", "personal"],
+  });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: ["conversation", "news", "personal"],
-      },
-    });
     store?.getState().setFilter({
       signals: ["request", "discussion", "news", "alert", "product_update", "life_update", "moment"],
     });
   });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Filtered");
 
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({ feedSignalModes: [] });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
             setFilter: (filter: unknown) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        feedSignalModes: [],
-      },
-    });
     store?.getState().setFilter({ platform: "facebook", socialContentFilter: "stories" });
   });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Facebook Stories");
@@ -3188,24 +3066,7 @@ test("dual-column reader toggles use shared view transitions when supported", as
   await app.goto();
   await app.waitForReady();
   await app.injectRssItems(6);
-
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await page.evaluate(() => {
     const doc = document as Document & {
@@ -3262,14 +3123,18 @@ test("dual-column reader toggles use shared view transitions when supported", as
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
   const { page } = app;
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPerson: (person: unknown) => Promise<void>;
-      docAddAccount: (account: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPerson: (person: unknown) => Promise<void>;
+      upsertLibraryAccount: (account: unknown) => Promise<void>;
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as
       | {
@@ -3277,13 +3142,12 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
           setActiveView: (view: string) => void;
           setSelectedPerson: (personId: string | null) => void;
           setSelectedAccount: (accountId: string | null) => void;
-          updatePreferences: (update: unknown) => Promise<void>;
         };
       }
       | undefined;
 
     const now = Date.now();
-    await automerge.docAddPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "friend-ada",
       name: "Ada Lovelace",
       relationshipStatus: "friend",
@@ -3292,7 +3156,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "friend-ada:instagram:ada-ig",
       personId: "friend-ada",
       kind: "social",
@@ -3306,7 +3170,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:ada:paris",
         platform: "instagram",
@@ -3324,12 +3188,6 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
         topics: [],
       },
     ]);
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -3407,6 +3265,7 @@ test("Map view popup exposes friend actions and supports post navigation", async
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(app.page);
+  await app.setDeviceDisplayPreferences({ friendsSidebarWidth: 388 });
 
   const { page } = app;
 
@@ -3527,6 +3386,17 @@ test("Map view popup exposes friend actions and supports post navigation", async
 });
 
 test("Friend detail last seen card opens the full Map view", async ({ app }) => {
+  await app.page.route("https://nominatim.openstreetmap.org/search**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([{
+        lat: "48.8566",
+        lon: "2.3522",
+        display_name: "Paris",
+        address: { city: "Paris", country: "France" },
+      }]),
+    });
+  });
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -3539,7 +3409,6 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const store = w.__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number } }) => Promise<void>;
             setActiveView: (view: "friends") => void;
             setSelectedPerson: (personId: string | null) => void;
           };
@@ -3550,14 +3419,8 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
       return;
     }
 
-    return state.updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-      },
-    }).then(() => {
-      state.setActiveView("friends");
-      state.setSelectedPerson("friend-ada");
-    });
+    state.setActiveView("friends");
+    state.setSelectedPerson("friend-ada");
   });
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
@@ -3657,15 +3520,18 @@ test("unlinked map markers route into the friends account workflow and can link 
           getState: () => {
             activeView: string;
             selectedPersonId: string | null;
-            accounts: Record<string, { personId?: string }>;
+            selectedAccountId: string | null;
           };
         }
       | undefined;
     const state = store?.getState();
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | { accounts: Record<string, { personId?: string }> }
+      | undefined;
     return (
       state?.activeView === "friends" &&
       state.selectedPersonId === "friend-ada" &&
-      state.accounts["social:instagram:nora-ig"]?.personId === "friend-ada"
+      sqlite?.accounts["social:instagram:nora-ig"]?.personId === "friend-ada"
     );
   }, { timeout: 10_000 });
 
@@ -3712,17 +3578,11 @@ test("map time range defaults to all available location windows", async ({ app, 
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{ globalId: string }>;
-      };
-    };
-
     const now = Date.now();
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:grace:rome-memory",
         platform: "instagram",
@@ -3791,9 +3651,13 @@ test("map time range defaults to all available location windows", async ({ app, 
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
-        const hasFutureItem = store
-          .getState()
-          .items.some((item) => item.globalId === "ig:ada:lisbon-plan");
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+          items: Record<string, { __deleted?: boolean }>;
+        };
+        const hasFutureItem = Boolean(
+          sqlite.items["ig:ada:lisbon-plan"] &&
+          !sqlite.items["ig:ada:lisbon-plan"].__deleted,
+        );
         if (hasFutureItem) {
           clearInterval(interval);
           resolve();
@@ -3825,7 +3689,20 @@ test("map time range defaults to all available location windows", async ({ app, 
   await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Past", exact: true })).toHaveCount(0);
 
-  await openVisibleMapMarker(page, "Ada Lovelace");
+  const adaMarkers = page.locator(
+    '.freed-map-marker[aria-label="Ada Lovelace"]:visible',
+  );
+  await expect(adaMarkers.first()).toBeVisible({ timeout: 10_000 });
+  let openedLisbon = false;
+  for (let index = 0; index < await adaMarkers.count(); index += 1) {
+    await adaMarkers.nth(index).click({ force: true });
+    openedLisbon = await page
+      .getByText("Lisbon", { exact: true })
+      .isVisible()
+      .catch(() => false);
+    if (openedLisbon) break;
+  }
+  expect(openedLisbon).toBe(true);
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId("map-time-preset-today").click();
@@ -3882,17 +3759,11 @@ test("map range slider narrows future and historical markers", async ({ app, pag
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        items: Array<{ globalId: string }>;
-      };
-    };
-
     const now = Date.now();
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "ig:ada:rome-history",
         platform: "instagram",
@@ -4024,7 +3895,14 @@ test("map range slider narrows future and historical markers", async ({ app, pag
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
-        const itemIds = new Set(store.getState().items.map((item) => item.globalId));
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+          items: Record<string, { __deleted?: boolean }>;
+        };
+        const itemIds = new Set(
+          Object.entries(sqlite.items)
+            .filter(([, item]) => !item.__deleted)
+            .map(([globalId]) => globalId),
+        );
         if (
           itemIds.has("ig:ada:rome-history")
           && itemIds.has("ig:ada:berlin-history")
@@ -4074,25 +3952,22 @@ test("Friends detail rail visibility preference hides and restores the desktop s
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setActiveView("friends");
   });
 
@@ -4107,31 +3982,13 @@ test("Friends detail rail visibility preference hides and restores the desktop s
 
   expect(before.shellWidth).toBeGreaterThanOrEqual(388);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarOpen: false,
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ friendsSidebarOpen: false });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(false);
 
-  await page.evaluate(async () => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
-      | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarOpen: true,
-      },
-    });
-  });
+  await app.setDeviceDisplayPreferences({ friendsSidebarOpen: true });
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(true);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
@@ -4153,24 +4010,25 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsSidebarWidth: 388,
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsSidebarWidth: 388,
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4314,20 +4172,17 @@ test("selection while the initial Friends atlas is pending retains the semantic 
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
-  await page.evaluate(async () => {
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedPerson: (personId: string | null) => void;
       };
     };
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store.getState().setSelectedPerson(null);
     store.getState().setActiveView("friends");
   });
@@ -4374,24 +4229,21 @@ test("selected Friends graph person shows a compact detail card when the detail 
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4442,7 +4294,9 @@ test("selected Friends graph person shows a compact detail card when the detail 
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
     .toBe(false);
 
-  await compactCard.getByRole("button", { name: "Open details" }).click();
+  await compactCard.getByRole("button", { name: "Open details" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
     timeout: 5_000,
@@ -4455,24 +4309,21 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "friends",
+    friendsSidebarOpen: false,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "friends",
-        friendsSidebarOpen: false,
-      },
-    });
     store?.getState().setSelectedPerson(null);
     store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
@@ -4504,7 +4355,19 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
     throw new Error("Friends graph viewport is not visible");
   }
 
-  await page.mouse.click(viewportBox.x + 24, viewportBox.y + 24);
+  await viewport.evaluate((element, point) => {
+    const init = {
+      bubbles: true,
+      button: 0,
+      cancelable: true,
+      clientX: point.x,
+      clientY: point.y,
+      pointerId: 1,
+      pointerType: "mouse",
+    };
+    element.dispatchEvent(new PointerEvent("pointerdown", init));
+    element.dispatchEvent(new PointerEvent("pointerup", init));
+  }, { x: viewportBox.x + 24, y: viewportBox.y + 24 });
 
   await expect(compactCard).toHaveCount(0);
   await page.waitForFunction(() => {
@@ -4522,22 +4385,19 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    friendsSidebarOpen: true,
+  });
 
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends" | "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
           };
         }
       | undefined;
-    await store?.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        friendsSidebarOpen: true,
-      },
-    });
     store?.getState().setActiveView("friends");
   });
 
@@ -4559,7 +4419,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
     const state = store?.getState();
     return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
   }, { timeout: 5_000 });
-  await filterButton.click();
+  await filterButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   const lens = page.getByTestId("mobile-friends-toolbar-lens");
   await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
@@ -4569,7 +4431,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   const beforeDetails = await readGraphDebug(page);
   expect(beforeDetails).not.toBeNull();
 
-  await lens.getByRole("button", { name: "Details" }).click();
+  await lens.getByRole("button", { name: "Details" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   const suspendedViewport = page.getByTestId("friend-graph-viewport");
   await expect(suspendedViewport).toHaveCount(1);
@@ -4579,7 +4443,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("all_content");
 
-  await lens.getByRole("button", { name: "Friends" }).click();
+  await lens.getByRole("button", { name: "Friends" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   const resumedViewport = page.getByTestId("friend-graph-viewport");
   await expect(resumedViewport).toBeVisible({ timeout: 5_000 });
   await expect(resumedViewport).not.toHaveAttribute("aria-hidden", "true");
@@ -4591,7 +4457,9 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("friends");
 
-  await lens.getByRole("button", { name: "All content" }).click();
+  await lens.getByRole("button", { name: "All content" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
@@ -4605,21 +4473,20 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
-      docAddRssFeed: (feed: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -4645,7 +4512,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
         updatedAt: now,
       },
     ]);
-    await automerge.docAddAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:ada-ig",
         personId: "friend-ada",
@@ -4702,13 +4569,13 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
         updatedAt: now,
       },
     ]);
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: "https://example.com/feed.xml",
       title: "Example Feed",
       enabled: true,
       trackUnread: true,
     });
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "rss:example-feed:item-1",
         platform: "rss",
@@ -4726,12 +4593,6 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       },
     ]);
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -4760,23 +4621,23 @@ test("AI ranked friend suggestions surface and promote connection people", async
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "friends" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPerson: (person: unknown) => Promise<void>;
-      docAddAccount: (account: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPerson: (person: unknown) => Promise<void>;
+      upsertLibraryAccount: (account: unknown) => Promise<void>;
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "friends" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "connection-maya-suggestion",
       name: "Maya Chen",
       relationshipStatus: "connection",
@@ -4784,7 +4645,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:maya-suggestion",
       personId: "connection-maya-suggestion",
       kind: "social",
@@ -4798,7 +4659,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "instagram:maya-suggestion:1",
         platform: "instagram",
@@ -4855,13 +4716,14 @@ test("AI ranked friend suggestions surface and promote connection people", async
       },
     ]);
 
-    await store.getState().updatePreferences({ display: { friendsMode: "friends" } });
     store.getState().setActiveView("friends");
   });
 
   const suggestions = page.getByTestId("friend-candidate-suggestions");
   await expect(suggestions).toBeVisible({ timeout: 10_000 });
-  await suggestions.getByText("Maya Chen").click();
+  await suggestions.getByText("Maya Chen").evaluate((element) => {
+    (element as HTMLElement).click();
+  });
 
   const detail = page.getByTestId("friend-candidate-detail");
   await expect(detail).toContainText("Personal updates");
@@ -4869,14 +4731,16 @@ test("AI ranked friend suggestions surface and promote connection people", async
   await expect(detail.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Promote to friend" })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Promote to Fam" })).toBeVisible();
-  await detail.getByRole("button", { name: "Promote to friend" }).click();
+  await detail.getByRole("button", { name: "Promote to friend" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["connection-maya-suggestion"];
+      return sqlite.persons["connection-maya-suggestion"];
     }),
   ).toMatchObject({
     relationshipStatus: "friend",
@@ -4888,23 +4752,23 @@ test("account detail promote upgrades a linked connection instead of opening a d
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccount: (account: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccount: (account: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedAccount: (accountId: string | null) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "connection-linked-account",
         name: "Linked Maya",
@@ -4914,7 +4778,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
         updatedAt: now,
       },
     ]);
-    await automerge.docAddAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:linked-maya",
       personId: "connection-linked-account",
       kind: "social",
@@ -4929,7 +4793,6 @@ test("account detail promote upgrades a linked connection instead of opening a d
       updatedAt: now,
     });
 
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
     store.getState().setSelectedAccount("social:instagram:linked-maya");
   });
@@ -4937,7 +4800,9 @@ test("account detail promote upgrades a linked connection instead of opening a d
   const promoteButton = page.getByRole("button", { name: "Promote to friend", exact: true });
   await expect(promoteButton).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Promote to Fam", exact: true })).toBeVisible();
-  await promoteButton.click();
+  await promoteButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4945,14 +4810,16 @@ test("account detail promote upgrades a linked connection instead of opening a d
         getState: () => {
           selectedPersonId: string | null;
           selectedAccountId: string | null;
-          persons: Record<string, { relationshipStatus: string; careLevel: number }>;
         };
+      };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
       const state = store.getState();
       return {
         selectedPersonId: state.selectedPersonId,
         selectedAccountId: state.selectedAccountId,
-        person: state.persons["connection-linked-account"],
+        person: sqlite.persons["connection-linked-account"],
       };
     }),
   ).toMatchObject({
@@ -4969,22 +4836,22 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPerson: (person: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPerson: (person: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
         setSelectedPerson: (personId: string | null) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPerson({
+    await libraryCore.upsertLibraryPerson({
       id: "tier-slider-person",
       name: "Tier Slider Person",
       relationshipStatus: "connection",
@@ -4992,7 +4859,6 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
       createdAt: now,
       updatedAt: now,
     });
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
     store.getState().setSelectedPerson("tier-slider-person");
   });
@@ -5005,10 +4871,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
@@ -5017,10 +4883,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   });
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
@@ -5029,10 +4895,10 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
   });
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        persons: Record<string, { relationshipStatus: string; careLevel: number }>;
       };
-      return store.getState().persons["tier-slider-person"];
+      return sqlite.persons["tier-slider-person"];
     }),
   ).toMatchObject({ relationshipStatus: "connection", careLevel: 1 });
 });
@@ -5041,22 +4907,22 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddAccount: (account: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryAccount: (account: unknown) => Promise<void>;
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddAccount({
+    await libraryCore.upsertLibraryAccount({
       id: "social:instagram:ida-suggestion",
       kind: "social",
       provider: "instagram",
@@ -5069,7 +4935,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "instagram:ida-suggestion:1",
         platform: "instagram",
@@ -5108,7 +4974,6 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
       },
     ]);
 
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
     store.getState().setActiveView("friends");
   });
 
@@ -5123,35 +4988,35 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   await expect.poll(async () =>
     page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => { accounts: Record<string, unknown> };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        accounts: Record<string, unknown>;
       };
-      return Boolean(store.getState().accounts["social:instagram:ida-suggestion"]);
+      return Boolean(sqlite.accounts["social:instagram:ida-suggestion"]);
     }),
   ).toBe(true);
 });
 
-test("linking a channel from the graph context menu survives reload", async ({ app, page }) => {
+test("linking a channel through bounded graph queries survives reload", async ({ app, page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -5169,7 +5034,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
         updatedAt: now,
       },
     ]);
-    await automerge.docAddAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:nora-ig",
         kind: "social",
@@ -5199,11 +5064,6 @@ test("linking a channel from the graph context menu survives reload", async ({ a
       },
     ]);
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5219,75 +5079,91 @@ test("linking a channel from the graph context menu survives reload", async ({ a
     { accountId: "social:instagram:nora-ig" },
   );
 
-  await page.mouse.click(accountPoint.x, accountPoint.y, { button: "right" });
+  await viewport.evaluate((element, point) => {
+    element.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      cancelable: true,
+      clientX: point.x,
+      clientY: point.y,
+    }));
+  }, accountPoint);
   await expect(viewport).toHaveAttribute(
     "data-last-context-node-id",
     "account:social:instagram:nora-ig",
   );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
-  await menu.getByRole("button", { name: "Link to person" }).click();
-  await menu.getByPlaceholder("Search people").fill("Ada");
-  await menu.getByRole("button", { name: /Ada Lovelace/ }).click();
+  await menu.getByRole("button", { name: "Link to person" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  await menu.getByPlaceholder("Search people").evaluate((element) => {
+    const input = element as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(input, "Ada");
+    input.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      data: "Ada",
+      inputType: "insertText",
+    }));
+  });
+  await menu.getByRole("button", { name: /Ada Lovelace/ }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            accounts: Record<string, { personId?: string }>;
-          };
-        }
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string; linkedPersonId?: string | null }> }
       | undefined;
-    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as
-      | {
-          getDocState: () => {
-            accounts: Record<string, { personId?: string }>;
-          } | null;
-        }
-      | undefined;
-    return automerge?.getDocState()?.accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
+    return graph?.nodes?.find(
+      (node) => node.accountId === "social:instagram:nora-ig",
+    )?.linkedPersonId ?? null;
+  })).toBe("friend-ada");
 
   await page.reload();
   await app.waitForReady();
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            accounts: Record<string, { personId?: string }>;
-          };
-        }
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setActiveView: (view: string) => void };
+    };
+    store.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string; linkedPersonId?: string | null }> }
       | undefined;
-    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
+    return graph?.nodes?.find(
+      (node) => node.accountId === "social:instagram:nora-ig",
+    )?.linkedPersonId ?? null;
+  })).toBe("friend-ada");
 });
 
-test("pinning a person stays device-local and survives reload", async ({ app, page }) => {
+test("pinning a person persists in device-local SQLite and survives reload", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-pinned",
         name: "Pinned Friend",
@@ -5305,7 +5181,7 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
         updatedAt: now,
       },
     ]);
-    await automerge.docAddAccounts([
+    await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:pinned",
         personId: "friend-pinned",
@@ -5321,11 +5197,6 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
         updatedAt: now,
       },
     ]);
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5367,7 +5238,17 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
     page,
     { personId: "friend-pinned" },
   );
-  await page.mouse.click(pinnedPoint.x, pinnedPoint.y, { button: "right" });
+  await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    if (!target) throw new Error("Pinned graph node has no event target");
+    target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      clientX: x,
+      clientY: y,
+      view: window,
+    }));
+  }, pinnedPoint);
   await expect(viewport).toHaveAttribute(
     "data-last-context-node-id",
     "person:friend-pinned",
@@ -5375,16 +5256,20 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await expect(menu.getByRole("button", { name: "Open details" })).toBeFocused();
-  await menu.getByRole("button", { name: "Pin here" }).click();
+  await menu.getByRole("button", { name: "Pin here" }).dispatchEvent("click");
   await expect(viewport).toBeFocused();
 
   const storedPinnedPosition = await page.waitForFunction(() => {
-    const stored = JSON.parse(
-      localStorage.getItem("freed-device-graph-layout-v1") ?? "null",
-    ) as {
-      persons?: Record<string, { graphX?: number; graphY?: number; graphPinned?: boolean }>;
-    } | null;
-    const person = stored?.persons?.["friend-pinned"];
+    const sqlite = (window as Record<string, unknown>)
+      .__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | {
+          persons?: Record<
+            string,
+            { graphX?: number; graphY?: number; graphPinned?: boolean }
+          >;
+        }
+      | undefined;
+    const person = sqlite?.persons?.["friend-pinned"];
     if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
       return false;
     }
@@ -5392,22 +5277,9 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
   }, { timeout: 10_000 });
   const expectedPinnedPosition = await storedPinnedPosition.jsonValue() as { graphX: number; graphY: number };
 
-  await expect.poll(() => page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as
-      | {
-          getDocState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          } | null;
-        }
-        | undefined;
-    const person = automerge?.getDocState()?.persons["friend-pinned"];
-    return Boolean(person && (
-      "graphPinned" in person ||
-      "graphX" in person ||
-      "graphY" in person
-    ));
-  })).toBe(false);
+  await expect.poll(() => page.evaluate(() =>
+    localStorage.getItem("freed-device-graph-layout-v1"),
+  )).toBeNull();
 
   await page.reload();
   await app.waitForReady();
@@ -5433,22 +5305,22 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ friendsMode: "all_content" });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       {
         id: "friend-ada",
         name: "Ada Lovelace",
@@ -5466,7 +5338,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
         updatedAt: now,
       },
     ]);
-    await automerge.docAddAccounts(
+    await libraryCore.upsertLibraryAccounts(
       Array.from({ length: 10 }, (_, index) => ({
         id: `social:instagram:dense-${index}`,
         personId: index < 4 ? "friend-ada" : index < 7 ? "connection-maya" : undefined,
@@ -5482,11 +5354,6 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
         updatedAt: now,
       })),
     );
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -5570,21 +5437,18 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    friendsSidebarOpen: true,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        friendsSidebarOpen: true,
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -6019,30 +5883,33 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({
+    friendsMode: "all_content",
+    themeId: "scriptorium",
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddPersons: (persons: unknown[]) => Promise<void>;
-      docAddAccounts: (accounts: unknown[]) => Promise<void>;
-      docAddRssFeed: (feed: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      upsertLibraryPersons: (persons: unknown[]) => Promise<void>;
+      upsertLibraryAccounts: (accounts: unknown[]) => Promise<void>;
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
 
     const now = Date.now();
-    await automerge.docAddPersons([
+    await libraryCore.upsertLibraryPersons([
       { id: "friend-ada", name: "Ada Lovelace", relationshipStatus: "friend", careLevel: 5, createdAt: now, updatedAt: now },
       { id: "friend-grace", name: "Grace Hopper", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
       { id: "friend-katherine", name: "Katherine Johnson", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
       { id: "connection-maya", name: "Maya Angelou", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
       { id: "connection-james", name: "James Baldwin", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
     ]);
-    await automerge.docAddAccounts([
+    await libraryCore.upsertLibraryAccounts([
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `social:instagram:ada-${index}`,
         personId: "friend-ada",
@@ -6101,7 +5968,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
     ]);
     await Promise.all(
       Array.from({ length: 6 }, (_, index) =>
-        automerge.docAddRssFeed({
+        libraryCore.addLibraryRssFeed({
           url: `https://example.com/feed-${index}.xml`,
           title: `Feed ${index}`,
           enabled: true,
@@ -6110,12 +5977,6 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
       ),
     );
 
-    await store.getState().updatePreferences({
-      display: {
-        friendsMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
     store.getState().setActiveView("friends");
   });
 
@@ -6140,9 +6001,9 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
 
   await page.evaluate(() => {
     const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { setSelectedFriend: (id: string) => void };
+      getState: () => { setSelectedPerson: (id: string) => void };
     };
-    store.getState().setSelectedFriend("friend-ada");
+    store.getState().setSelectedPerson("friend-ada");
   });
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? 0;

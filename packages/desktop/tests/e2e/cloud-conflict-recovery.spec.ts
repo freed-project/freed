@@ -52,11 +52,11 @@ test("cloud conflict recovery click shows progress without a blocking browser co
 
     const debugMod = await import(debugStorePath);
     debugMod.useDebugStore.setState({
-      docSnapshot: {
-        documentId: "document-1",
+      librarySnapshot: {
+        libraryId: "document-1",
         itemCount: 10880,
         feedCount: 106,
-        binarySize: 13_150_000,
+        storageBytes: 13_150_000,
         savedAt: Date.now(),
       },
       cloudProviders: {

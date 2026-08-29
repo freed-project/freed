@@ -8,7 +8,9 @@ import type {
 } from "@freed/shared";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
-import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
+import type { AccountLinkSuggestion } from "../../lib/account-link-suggestion.js";
+import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
+import { usePlatform } from "../../context/PlatformContext.js";
 import {
   accountSubtitle,
   accountTitle,
@@ -18,9 +20,9 @@ import {
 interface AccountDetailPanelProps {
   account: Account;
   linkedPerson?: Person | null;
-  suggestions: AccountLinkSuggestion[];
+  suggestions: readonly AccountLinkSuggestion[];
   friendSuggestion?: FriendCandidateSuggestion | null;
-  persons: Person[];
+  sourceVersion: number;
   feedItems: readonly FeedItem[];
   timelineLoading: boolean;
   timelineTotalCount: number;
@@ -70,7 +72,7 @@ export function AccountDetailPanel({
   linkedPerson = null,
   suggestions,
   friendSuggestion = null,
-  persons,
+  sourceVersion,
   feedItems,
   timelineLoading,
   timelineTotalCount,
@@ -82,6 +84,13 @@ export function AccountDetailPanel({
   onOpenPerson,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const { queryLibraryCore } = usePlatform();
+  const personPicker = useLibraryPersonPicker({
+    enabled: linkedPerson?.relationshipStatus !== "friend",
+    query: queryLibraryCore,
+    search: searchQuery,
+    sourceVersion,
+  });
   const confirmedLinkedPerson =
     linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
   const provisionalLinkedPerson =
@@ -93,20 +102,9 @@ export function AccountDetailPanel({
     () => new Set(suggestions.map((suggestion) => suggestion.personId)),
     [suggestions],
   );
-  const filteredPersons = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
-    const next = persons.filter(
-      (person) => person.relationshipStatus === "friend",
-    );
-    if (!normalized) return next;
-    return next.filter((person) => {
-      return (
-        personName(person).toLowerCase().includes(normalized) ||
-        person.bio?.toLowerCase().includes(normalized) ||
-        person.tags?.some((tag) => tag.toLowerCase().includes(normalized))
-      );
-    });
-  }, [persons, searchQuery]);
+  const filteredPersons = personPicker.rows.filter(
+    (person) => person.relationshipStatus === "friend",
+  );
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
@@ -308,21 +306,17 @@ export function AccountDetailPanel({
 
               <div className="mt-3 space-y-2">
                 {suggestions.map((suggestion) => {
-                  const person = persons.find(
-                    (candidate) => candidate.id === suggestion.personId,
-                  );
-                  if (!person) return null;
                   return (
                     <button
                       key={`${suggestion.accountId}:${suggestion.personId}`}
                       type="button"
-                      onClick={() => onLinkToPerson(person.id)}
+                      onClick={() => onLinkToPerson(suggestion.personId)}
                       className="theme-card-soft w-full rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                            {personName(person)}
+                            {suggestion.personName}
                           </p>
                           <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                             {suggestion.reason}
@@ -361,7 +355,13 @@ export function AccountDetailPanel({
             </div>
 
             <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-              {filteredPersons.length === 0 ? (
+              {personPicker.loading ? (
+                <div className="theme-panel-muted rounded-xl px-4 py-4 text-center">
+                  <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+                    Loading friends...
+                  </p>
+                </div>
+              ) : filteredPersons.length === 0 ? (
                 <div className="theme-panel-muted rounded-xl px-4 py-4 text-center">
                   <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
                     No friends match this search

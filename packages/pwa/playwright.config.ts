@@ -38,16 +38,14 @@ export default defineConfig({
         ...devices["iPhone 14"],
         browserName: "webkit",
       },
-      testMatch: [
-        "**/safari-viewport.spec.ts",
-        "**/library-core-indexeddb-readers.spec.ts",
-      ],
+      testMatch: ["**/safari-viewport.spec.ts"],
     },
   ],
 
   webServer: USE_LOCAL_SERVER
     ? {
-        command: "npm run dev -- --port 1421",
+        command:
+          "VITE_FREED_PWA_SQLITE_MEMORY_E2E=1 npm run dev -- --port 1421",
         url: "http://localhost:1421",
         reuseExistingServer: !process.env.CI,
         timeout: 120000,

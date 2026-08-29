@@ -17,6 +17,19 @@ import {
   type LibraryServiceSidecarProcess,
   type LibraryServiceStartEnvelope,
 } from "../contracts.js";
+import {
+  LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+  LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+  LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+  LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+} from "../library-core-command-contract.generated.js";
+import type {
+  LibraryServiceLocalActorIngressPortV1,
+  LibraryServiceLocalActorListenerV1,
+  LibraryServiceLocalActorProcessorV1,
+} from "../local-actor-transport.js";
 
 export class Deferred<T> {
   readonly promise: Promise<T>;
@@ -36,6 +49,42 @@ export class Deferred<T> {
 
   reject(error: unknown): void {
     this.#reject(error);
+  }
+}
+
+export class FakeLocalActorIngress implements LibraryServiceLocalActorIngressPortV1 {
+  readonly starts: Array<{
+    readonly stateRoot: LibraryServiceBoundPath;
+    readonly expectedUserId: number;
+    readonly processor: LibraryServiceLocalActorProcessorV1;
+  }> = [];
+  readonly listener: LibraryServiceLocalActorListenerV1;
+  stopCalls = 0;
+  failure: unknown = null;
+  readonly #failed = new Deferred<never>();
+
+  constructor(readonly endpoint = "/safe/state/library-actor-v1.sock") {
+    this.listener = {
+      endpoint,
+      failure: this.#failed.promise,
+      stop: async () => {
+        this.stopCalls += 1;
+      },
+    };
+  }
+
+  async start(input: {
+    readonly stateRoot: LibraryServiceBoundPath;
+    readonly expectedUserId: number;
+    readonly processor: LibraryServiceLocalActorProcessorV1;
+  }): Promise<LibraryServiceLocalActorListenerV1> {
+    this.starts.push(input);
+    if (this.failure !== null) throw this.failure;
+    return this.listener;
+  }
+
+  reject(error: unknown): void {
+    this.#failed.reject(error);
   }
 }
 
@@ -358,6 +407,7 @@ export class FakeSidecarProcess implements LibraryServiceSidecarProcess {
   readonly exitDeferred = new Deferred<LibraryServiceSidecarExit>();
   readonly exit = this.exitDeferred.promise;
   readonly controlWrites: string[] = [];
+  readonly commandRequests: unknown[] = [];
   readonly signals: Array<"SIGTERM" | "SIGKILL"> = [];
   controlClosed = false;
   lifetimeClosed = false;
@@ -410,6 +460,66 @@ export class FakeSidecarProcess implements LibraryServiceSidecarProcess {
       this.pid ?? 4_242,
       JSON.parse(this.controlWrites[0]) as LibraryServiceStartEnvelope,
       this.bindings,
+    );
+  }
+
+  async exchangeCommand(
+    request: Uint8Array,
+    _maximumResponseBytes: number,
+  ): Promise<Uint8Array> {
+    const parsed = JSON.parse(Buffer.from(request).toString("utf8")) as {
+      protocolVersion: number;
+      requestId: string;
+      commandId: string;
+      payload: unknown;
+    };
+    this.commandRequests.push(parsed);
+    if (
+      parsed.protocolVersion !== LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION
+    ) {
+      throw new LibraryServiceFailure("command_channel_failed");
+    }
+    if (parsed.commandId === "ingest_follower_intent_page_v1") {
+      return Buffer.from(
+        JSON.stringify({
+          protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+          requestId: parsed.requestId,
+          ok: true,
+          result: { acceptedTransactions: 1 },
+        }),
+      );
+    }
+    if (parsed.commandId === "agent_query_v1") {
+      return Buffer.from(
+        JSON.stringify({
+          protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+          requestId: parsed.requestId,
+          ok: true,
+          result: {
+            format: "freed_library_core_agent_query_result_v1",
+            requestId: "2".repeat(64),
+            result: { item: null },
+          },
+        }),
+      );
+    }
+    if (parsed.commandId !== "inspect_storage_v1") {
+      throw new LibraryServiceFailure("command_channel_failed");
+    }
+    return Buffer.from(
+      JSON.stringify({
+        protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+        requestId: parsed.requestId,
+        ok: true,
+        result: {
+          activeAuthority: null,
+          applicationId: LIBRARY_CORE_SQLITE_APPLICATION_ID,
+          contractVersion: LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+          protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+          schemaSha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+          schemaVersion: LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+        },
+      }),
     );
   }
 
@@ -487,7 +597,7 @@ export function readyBytes(
   return Buffer.from(
     `${JSON.stringify({
       type: "ready",
-      protocolVersion: 1,
+      protocolVersion: 2,
       role: "primary",
       pid,
       leaseHeld: true,
@@ -495,6 +605,7 @@ export function readyBytes(
       admissionAccepted: true,
       credentialsReady: true,
       watchdogActive: true,
+      commandChannelReady: true,
       parentNonce: "1".repeat(64),
       configDigest: "a".repeat(64),
       executableDigest: "b".repeat(64),

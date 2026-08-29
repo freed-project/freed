@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultPreferences,
-  type Account,
   type FeedItem,
-  type Person,
 } from "@freed/shared";
 import {
   getDeviceDisplayPreferences,
@@ -15,78 +13,55 @@ import {
 } from "./facebook-group-discovery";
 
 const {
-  mockDocBackfillContentSignals,
-  mockDocDeduplicateFeedItems,
-  mockDocHealUntitledFeedTitles,
-  mockDocPruneArchivedItems,
-  mockCaptureShellMemoryBaseline,
-  mockInitDoc,
-  mockRecordDocumentHydrated,
-  mockRecordDocumentHydrationStarted,
-  mockRunBackgroundJob,
+  mockHealUntitledLibraryFeedTitles,
+  mockPruneArchivedLibraryItems,
+  mockCapturePreLibraryMemoryBaseline,
+  mockInitializeLibrary,
+  mockRecordLibraryRuntimeReady,
+  mockRecordLibraryRuntimeLoadStarted,
   mockStartOutboxProcessor,
   mockSubscribe,
   mockUnsubscribe,
 } = vi.hoisted(() => ({
-  mockDocBackfillContentSignals: vi.fn(),
-  mockDocDeduplicateFeedItems: vi.fn(),
-  mockDocHealUntitledFeedTitles: vi.fn(),
-  mockDocPruneArchivedItems: vi.fn(),
-  mockCaptureShellMemoryBaseline: vi.fn(),
-  mockInitDoc: vi.fn(),
-  mockRecordDocumentHydrated: vi.fn(),
-  mockRecordDocumentHydrationStarted: vi.fn(),
-  mockRunBackgroundJob: vi.fn(),
+  mockHealUntitledLibraryFeedTitles: vi.fn(),
+  mockPruneArchivedLibraryItems: vi.fn(),
+  mockCapturePreLibraryMemoryBaseline: vi.fn(),
+  mockInitializeLibrary: vi.fn(),
+  mockRecordLibraryRuntimeReady: vi.fn(),
+  mockRecordLibraryRuntimeLoadStarted: vi.fn(),
   mockStartOutboxProcessor: vi.fn(),
   mockSubscribe: vi.fn(),
   mockUnsubscribe: vi.fn(),
 }));
 
 vi.mock("./library-client", () => ({
-  initDoc: mockInitDoc,
+  initializeDesktopLibraryRuntime: mockInitializeLibrary,
   quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
-  subscribe: mockSubscribe,
-  getDocState: vi.fn(() => null),
-  docAddFeedItems: vi.fn(),
-  docAddSampleLibraryData: vi.fn(),
-  docAddRssFeed: vi.fn(),
-  docRemoveRssFeed: vi.fn(),
-  docRemoveAllFeeds: vi.fn(),
-  docUpdateRssFeed: vi.fn(),
-  docUpdateFeedItem: vi.fn(),
-  docMarkItemsAsRead: vi.fn(),
-  docMarkAllAsRead: vi.fn(),
-  docToggleSaved: vi.fn(),
-  docRemoveFeedItem: vi.fn(),
-  docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
-  docToggleArchived: vi.fn(),
-  docArchiveItems: vi.fn(),
-  docArchiveAllReadUnsaved: vi.fn(),
-  docUnarchiveSavedItems: vi.fn(),
-  docDeleteAllArchived: vi.fn(),
-  docPruneArchivedItems: mockDocPruneArchivedItems,
-  docUpdatePreferences: vi.fn(),
-  docBackfillContentSignals: mockDocBackfillContentSignals,
-  docDeduplicateFeedItems: mockDocDeduplicateFeedItems,
-  docHealUntitledFeedTitles: mockDocHealUntitledFeedTitles,
-  docAddAccount: vi.fn(),
-  docAddAccounts: vi.fn(),
-  docAddPerson: vi.fn(),
-  docAddPersons: vi.fn(),
-  docUpdateAccount: vi.fn(),
-  docUpdatePerson: vi.fn(),
-  docUpsertConnectionPersons: vi.fn(),
-  docRemoveAccount: vi.fn(),
-  docRemovePerson: vi.fn(),
-  docLogReachOut: vi.fn(),
-  docToggleLiked: vi.fn(),
-  docConfirmLikedSynced: vi.fn(),
-  docConfirmSeenSynced: vi.fn(),
-}));
-
-vi.mock("./background-runtime-coordinator", () => ({
-  isBackgroundRuntimeDeferredError: () => false,
-  runBackgroundJob: mockRunBackgroundJob,
+  subscribeDesktopLibraryRuntime: mockSubscribe,
+  getDesktopLibraryRuntimeState: vi.fn(() => null),
+  addLibraryFeedItems: vi.fn(),
+  addSampleLibraryData: vi.fn(),
+  addLibraryRssFeed: vi.fn(),
+  removeLibraryRssFeed: vi.fn(),
+  removeAllLibraryFeeds: vi.fn(),
+  updateLibraryRssFeed: vi.fn(),
+  updateLibraryFeedItem: vi.fn(),
+  markLibraryItemsAsRead: vi.fn(),
+  markAllLibraryItemsAsRead: vi.fn(),
+  toggleLibraryItemSaved: vi.fn(),
+  removeLibraryFeedItem: vi.fn(),
+  clearSampleLibraryData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
+  toggleLibraryItemArchived: vi.fn(),
+  archiveLibraryItems: vi.fn(),
+  archiveAllReadUnsavedLibraryItems: vi.fn(),
+  unarchiveSavedLibraryItems: vi.fn(),
+  deleteAllArchivedLibraryItems: vi.fn(),
+  pruneArchivedLibraryItems: mockPruneArchivedLibraryItems,
+  updateLibraryPreferences: vi.fn(),
+  healUntitledLibraryFeedTitles: mockHealUntitledLibraryFeedTitles,
+  toggleLibraryItemLiked: vi.fn(),
+  confirmLibraryItemLikedSynced: vi.fn(),
+  confirmLibraryItemSeenSynced: vi.fn(),
 }));
 
 vi.mock("./platform-actions", () => ({
@@ -98,9 +73,9 @@ vi.mock("./outbox", () => ({
 }));
 
 vi.mock("./memory-monitor", () => ({
-  captureShellMemoryBaseline: mockCaptureShellMemoryBaseline,
-  recordDocumentHydrated: mockRecordDocumentHydrated,
-  recordDocumentHydrationStarted: mockRecordDocumentHydrationStarted,
+  capturePreLibraryMemoryBaseline: mockCapturePreLibraryMemoryBaseline,
+  recordLibraryRuntimeReady: mockRecordLibraryRuntimeReady,
+  recordLibraryRuntimeLoadStarted: mockRecordLibraryRuntimeLoadStarted,
 }));
 
 vi.mock("./desktop-client-registration", () => ({
@@ -134,28 +109,23 @@ vi.mock("./logger", () => ({
   },
 }));
 
-function createDocState() {
+function createLibraryState() {
   return {
-    items: [],
     searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
     preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
     totalUnreadCount: 0,
     unreadCountByPlatform: {},
     totalItemCount: 0,
     itemCountByPlatform: {},
+    rssFeedCount: 0,
+    enabledRssFeedCount: 0,
+    archivedItemCount: 0,
+    friendPersonCount: 0,
+    socialAccountCount: 0,
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
-    archivableFeedCounts: {},
     mapFriendLocationCount: 0,
     mapAllContentLocationCount: 0,
-    docItemCount: 0,
   };
 }
 
@@ -187,27 +157,21 @@ describe("store startup migrations", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
-    mockDocBackfillContentSignals.mockReset();
-    mockDocBackfillContentSignals.mockResolvedValue({ updated: 50, remaining: 0, total: 50 });
-    mockDocDeduplicateFeedItems.mockReset();
-    mockDocDeduplicateFeedItems.mockResolvedValue(undefined);
-    mockDocHealUntitledFeedTitles.mockReset();
-    mockDocHealUntitledFeedTitles.mockResolvedValue(undefined);
-    mockDocPruneArchivedItems.mockReset();
-    mockDocPruneArchivedItems.mockResolvedValue(undefined);
-    mockCaptureShellMemoryBaseline.mockReset();
-    mockCaptureShellMemoryBaseline.mockResolvedValue(true);
-    mockInitDoc.mockReset();
-    mockInitDoc.mockResolvedValue(createDocState());
-    mockRunBackgroundJob.mockReset();
-    mockRunBackgroundJob.mockImplementation(async (task) => task.run());
+    mockHealUntitledLibraryFeedTitles.mockReset();
+    mockHealUntitledLibraryFeedTitles.mockResolvedValue(undefined);
+    mockPruneArchivedLibraryItems.mockReset();
+    mockPruneArchivedLibraryItems.mockResolvedValue(undefined);
+    mockCapturePreLibraryMemoryBaseline.mockReset();
+    mockCapturePreLibraryMemoryBaseline.mockResolvedValue(true);
+    mockInitializeLibrary.mockReset();
+    mockInitializeLibrary.mockResolvedValue(createLibraryState());
     mockStartOutboxProcessor.mockReset();
     mockStartOutboxProcessor.mockReturnValue(() => {});
     mockSubscribe.mockReset();
     mockSubscribe.mockReturnValue(mockUnsubscribe);
     mockUnsubscribe.mockReset();
-    mockRecordDocumentHydrated.mockReset();
-    mockRecordDocumentHydrationStarted.mockReset();
+    mockRecordLibraryRuntimeReady.mockReset();
+    mockRecordLibraryRuntimeLoadStarted.mockReset();
     localStorage.clear();
     resetDeviceDisplayPreferencesForTests();
     resetFacebookGroupDiscoveryForTests();
@@ -218,21 +182,21 @@ describe("store startup migrations", () => {
     localStorage.clear();
   });
 
-  it("primes the shell baseline and closes its window before loading the document", async () => {
+  it("primes the renderer baseline and closes its window before loading SQLite", async () => {
     const order: string[] = [];
-    mockCaptureShellMemoryBaseline.mockImplementation(async () => {
+    mockCapturePreLibraryMemoryBaseline.mockImplementation(async () => {
       order.push("baseline");
       return true;
     });
-    mockRecordDocumentHydrationStarted.mockImplementation(() => {
-      order.push("hydration-started");
+    mockRecordLibraryRuntimeLoadStarted.mockImplementation(() => {
+      order.push("library-load-started");
     });
-    mockInitDoc.mockImplementation(async () => {
-      order.push("document");
-      return createDocState();
+    mockInitializeLibrary.mockImplementation(async () => {
+      order.push("sqlite-library");
+      return createLibraryState();
     });
-    mockRecordDocumentHydrated.mockImplementation(() => {
-      order.push("hydrated");
+    mockRecordLibraryRuntimeReady.mockImplementation(() => {
+      order.push("library-ready");
     });
     const { useAppStore } = await import("./store");
 
@@ -240,25 +204,40 @@ describe("store startup migrations", () => {
 
     expect(order.slice(0, 4)).toEqual([
       "baseline",
-      "hydration-started",
-      "document",
-      "hydrated",
+      "library-load-started",
+      "sqlite-library",
+      "library-ready",
     ]);
   });
 
-  it("does not await a stalled shell measurement", async () => {
-    mockCaptureShellMemoryBaseline.mockReturnValue(new Promise(() => {}));
+  it("does not await a stalled pre-Library measurement", async () => {
+    mockCapturePreLibraryMemoryBaseline.mockReturnValue(new Promise(() => {}));
     const { useAppStore } = await import("./store");
 
     await expect(useAppStore.getState().initialize()).resolves.toBeUndefined();
 
-    expect(mockInitDoc).toHaveBeenCalledTimes(1);
-    expect(mockRecordDocumentHydrationStarted.mock.invocationCallOrder[0]).toBeLessThan(
-      mockInitDoc.mock.invocationCallOrder[0],
+    expect(mockInitializeLibrary).toHaveBeenCalledTimes(1);
+    expect(mockRecordLibraryRuntimeLoadStarted.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInitializeLibrary.mock.invocationCallOrder[0],
     );
-    expect(mockRecordDocumentHydrated.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mockInitDoc.mock.invocationCallOrder[0],
+    expect(mockRecordLibraryRuntimeReady.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockInitializeLibrary.mock.invocationCallOrder[0],
     );
+  });
+
+  it("preserves native string errors when SQLite initialization fails", async () => {
+    mockInitializeLibrary.mockRejectedValue(
+      "normalized SQLite authority selection is unavailable",
+    );
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState()).toMatchObject({
+      error: "normalized SQLite authority selection is unavailable",
+      isInitialized: false,
+      isLoading: false,
+    });
   });
 
   it("defers startup maintenance instead of running it during launch", async () => {
@@ -267,37 +246,17 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
-    expect(mockRunBackgroundJob).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 1);
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(mockDocHealUntitledFeedTitles).toHaveBeenCalledTimes(1);
-    expect(mockDocDeduplicateFeedItems).toHaveBeenCalledTimes(1);
-    expect(mockDocPruneArchivedItems).toHaveBeenCalledTimes(1);
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
-    expect(mockRunBackgroundJob).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 - 1);
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1);
-
-    expect(mockRunBackgroundJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "content-signal-backfill",
-        source: "startup-migration",
-      }),
-    );
-    expect(mockDocBackfillContentSignals).toHaveBeenCalledWith(50);
+    expect(mockHealUntitledLibraryFeedTitles).toHaveBeenCalledTimes(1);
+    expect(mockPruneArchivedLibraryItems).toHaveBeenCalledTimes(1);
   });
 
   it("does not run cleanup migrations before cloud sync catches up", async () => {
@@ -310,16 +269,14 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
-    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
-    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
-    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    expect(mockHealUntitledLibraryFeedTitles).not.toHaveBeenCalled();
+    expect(mockPruneArchivedLibraryItems).not.toHaveBeenCalled();
   });
 
   it("imports the legacy sidebar mode before initialization completes", async () => {
-    const state = createDocState();
-    state.preferences.display.sidebarMode = "closed";
-    mockInitDoc.mockResolvedValue(state);
+    const state = createLibraryState();
+    (state.preferences.display as unknown as Record<string, unknown>).sidebarMode = "closed";
+    mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
@@ -329,26 +286,27 @@ describe("store startup migrations", () => {
   });
 
   it("imports legacy Facebook group discovery before initialization completes", async () => {
-    const state = createDocState();
-    state.preferences.fbCapture.knownGroups = {
+    const state = createLibraryState();
+    const historicalGroups = {
       "group-one": {
         id: "group-one",
         name: "Local group",
         url: "https://www.facebook.com/groups/group-one",
       },
     };
-    mockInitDoc.mockResolvedValue(state);
+    (state.preferences.fbCapture as unknown as Record<string, unknown>).knownGroups = historicalGroups;
+    mockInitializeLibrary.mockResolvedValue(state);
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
 
     expect(useAppStore.getState().isInitialized).toBe(true);
-    expect(getFacebookGroupDiscovery()).toEqual(state.preferences.fbCapture.knownGroups);
+    expect(getFacebookGroupDiscovery()).toEqual(historicalGroups);
   });
 
   it("coalesces concurrent initialization into one worker subscription", async () => {
-    let resolveInit!: (state: ReturnType<typeof createDocState>) => void;
-    mockInitDoc.mockImplementationOnce(
+    let resolveInit!: (state: ReturnType<typeof createLibraryState>) => void;
+    mockInitializeLibrary.mockImplementationOnce(
       () => new Promise((resolve) => {
         resolveInit = resolve;
       }),
@@ -360,22 +318,22 @@ describe("store startup migrations", () => {
     const second = initialize();
 
     expect(second).toBe(first);
-    await vi.waitFor(() => expect(mockInitDoc).toHaveBeenCalledTimes(1));
-    resolveInit(createDocState());
+    await vi.waitFor(() => expect(mockInitializeLibrary).toHaveBeenCalledTimes(1));
+    resolveInit(createLibraryState());
     await Promise.all([first, second]);
 
-    expect(mockInitDoc).toHaveBeenCalledTimes(1);
+    expect(mockInitializeLibrary).toHaveBeenCalledTimes(1);
     expect(mockSubscribe).toHaveBeenCalledTimes(1);
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
 
-  it("increments Library and Saved sources only for their relevant document changes", async () => {
+  it("increments Library and Saved sources only for their relevant SQLite changes", async () => {
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
     const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
       | ((
-        state: ReturnType<typeof createDocState>,
+        state: ReturnType<typeof createLibraryState>,
         event: {
           mutation?: string;
           source?: "state_update" | "preferences_patch" | "item_patch" | "feeds_patch";
@@ -388,32 +346,32 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(0);
     expect(useAppStore.getState().savedFeedVersion).toBe(0);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_SAVED",
       source: "item_patch",
     });
     expect(useAppStore.getState().libraryItemVersion).toBe(1);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_AS_READ",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_LIKED",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [],
       changedItems: [],
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_SEEN_SYNCED",
       source: "item_patch",
       changedItemIds: [],
@@ -422,7 +380,7 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    const irrelevantPreferenceState = createDocState();
+    const irrelevantPreferenceState = createLibraryState();
     irrelevantPreferenceState.preferences = {
       ...irrelevantPreferenceState.preferences,
       weights: useAppStore.getState().preferences.weights,
@@ -431,18 +389,14 @@ describe("store startup migrations", () => {
       mutation: "UPDATE_PREFERENCES",
       source: "preferences_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "UPDATE_RSS_FEED",
       source: "feeds_patch",
-    });
-    subscriber?.(createDocState(), {
-      mutation: "SET_RENDERER_ITEM_HYDRATION",
-      source: "state_update",
     });
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);
 
-    const rankingPreferenceState = createDocState();
+    const rankingPreferenceState = createLibraryState();
     rankingPreferenceState.preferences.weights = {
       ...useAppStore.getState().preferences.weights,
       recency: 75,
@@ -454,27 +408,27 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(2);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "UPDATE_PREFERENCES",
       source: "state_update",
     });
     expect(useAppStore.getState().savedFeedVersion).toBe(3);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "ADD_FEED_ITEMS",
       source: "item_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "FUTURE_ITEM_PATCH",
       source: "item_patch",
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "TOGGLE_ARCHIVED",
       source: "item_patch",
     });
     expect(useAppStore.getState().savedFeedVersion).toBe(6);
 
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MERGE_DOC",
       source: "state_update",
     });
@@ -488,7 +442,7 @@ describe("store startup migrations", () => {
     await useAppStore.getState().initialize();
     const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
       | ((
-          state: ReturnType<typeof createDocState>,
+          state: ReturnType<typeof createLibraryState>,
           event: {
             mutation: string;
             source: "item_patch";
@@ -501,7 +455,7 @@ describe("store startup migrations", () => {
 
     const first = createFeedItem("read-one", "rss", { readAt: 100 });
     const second = createFeedItem("read-two", "rss", { readAt: 100 });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ITEMS_AS_READ",
       source: "item_patch",
       changedItemIds: [first.globalId, second.globalId],
@@ -519,7 +473,7 @@ describe("store startup migrations", () => {
 
     const markAllX = createFeedItem("all-x", "x", { readAt: 200 });
     const markAllRss = createFeedItem("all-rss", "rss", { readAt: 200 });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ALL_AS_READ",
       source: "item_patch",
       changedItemIds: [markAllX.globalId, markAllRss.globalId],
@@ -537,7 +491,7 @@ describe("store startup migrations", () => {
       likedAt: 250,
       likedSyncedAt: 300,
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [liked.globalId],
@@ -569,7 +523,7 @@ describe("store startup migrations", () => {
       { length: 513 },
       (_, index) => `read-${index}`,
     );
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "MARK_ITEMS_AS_READ",
       source: "item_patch",
       changedItemIds: oversizedIds,
@@ -585,7 +539,7 @@ describe("store startup migrations", () => {
         likedSyncedAt: 800 + index,
       }),
     );
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: maximumUserStates.map((item) => item.globalId),
@@ -601,7 +555,7 @@ describe("store startup migrations", () => {
       likedAt: 912,
       likedSyncedAt: 1_312,
     });
-    subscriber?.(createDocState(), {
+    subscriber?.(createLibraryState(), {
       mutation: "CONFIRM_LIKED_SYNCED",
       source: "item_patch",
       changedItemIds: [overflowUserState.globalId],
@@ -611,7 +565,7 @@ describe("store startup migrations", () => {
     expect(useAppStore.getState().savedFeedPresentationPatch).toBeNull();
   });
 
-  it("replaces the document subscription when initialization runs again", async () => {
+  it("replaces the Library subscription when initialization runs again", async () => {
     const { useAppStore } = await import("./store");
 
     await useAppStore.getState().initialize();
@@ -622,62 +576,4 @@ describe("store startup migrations", () => {
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps pins through empty startup and prunes only authoritative Desktop states", async () => {
-    const person: Person = {
-      id: "person-removed",
-      name: "Removed",
-      relationshipStatus: "friend",
-      careLevel: 3,
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const account: Account = {
-      id: "account-linked",
-      personId: person.id,
-      kind: "social",
-      provider: "instagram",
-      externalId: "linked",
-      firstSeenAt: 1,
-      lastSeenAt: 1,
-      discoveredFrom: "captured_item",
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const { useAppStore } = await import("./store");
-    const {
-      getDeviceAccountGraphLayout,
-      getDevicePersonGraphLayout,
-      setDeviceAccountGraphPosition,
-      setDevicePersonGraphPosition,
-    } = await import("@freed/ui/lib/device-graph-layout");
-
-    setDevicePersonGraphPosition(person.id, 10, 20, 100);
-    setDeviceAccountGraphPosition(account.id, 30, 40, 200);
-    await useAppStore.getState().initialize();
-
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
-
-    const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
-      | ((
-        state: ReturnType<typeof createDocState>,
-        event: { mutation?: string },
-      ) => void)
-      | undefined;
-    expect(subscriber).toBeTypeOf("function");
-    subscriber?.(createDocState(), { mutation: "UPDATE_PERSON" });
-
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
-
-    const accountRemoved = createDocState();
-    accountRemoved.persons = { [person.id]: person };
-    subscriber?.(accountRemoved, { mutation: "REMOVE_ACCOUNT" });
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
-
-    subscriber?.(createDocState(), { mutation: "REMOVE_PERSON" });
-    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
-
-  });
 });

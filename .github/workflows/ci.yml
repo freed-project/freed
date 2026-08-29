@@ -284,6 +284,8 @@ jobs:
     if: github.event_name == 'pull_request' && github.base_ref == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      needs-webkit: ${{ steps.feature-plan.outputs.needs_webkit }}
     permissions:
       contents: read
       pull-requests: read
@@ -313,6 +315,11 @@ jobs:
             echo "needs_playwright=true" >> "$GITHUB_OUTPUT"
           else
             echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^pwa WebKit OPFS durability$'; then
+            echo "needs_webkit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_webkit=false" >> "$GITHUB_OUTPUT"
           fi
           if printf '%s\n' "$PLAN_LABELS" | grep -q '^native rust '; then
             echo "needs_native=true" >> "$GITHUB_OUTPUT"
@@ -351,13 +358,18 @@ jobs:
       - name: Install Playwright browsers
         if: steps.feature-plan.outputs.needs_playwright == 'true'
         run: |
-          npx playwright install --with-deps chromium
+          browsers=()
+          if [ "${{ steps.feature-plan.outputs.needs_playwright }}" = "true" ]; then
+            browsers+=(chromium)
+          fi
+          npx playwright install --with-deps "${browsers[@]}"
         working-directory: packages/desktop
 
       - name: Run feature validation
         run: npm run validate:feature
         env:
           CI: "true"
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
           GH_TOKEN: ${{ github.token }}
 
       # Write the comparison to a file instead of piping through `tee`: the
@@ -404,6 +416,44 @@ jobs:
         with:
           name: test-results
           path: packages/desktop/test-results/
+          retention-days: 7
+
+  pwa-opfs-acceptance:
+    name: PWA OPFS durability (macOS WebKit)
+    needs: feature
+    if: >-
+      ${{ always() &&
+          ((github.event_name == 'pull_request' &&
+            needs.feature.outputs.needs-webkit == 'true') ||
+           github.event_name == 'push') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install WebKit
+        run: npx playwright install webkit
+
+      - name: Prove persistent OPFS SQLite durability
+        run: npm run test:e2e:opfs
+        working-directory: packages/pwa
+
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pwa-opfs-test-results
+          path: packages/pwa/test-results/
           retention-days: 7
 
   dev:
@@ -464,6 +514,7 @@ jobs:
         run: npm run validate:dev
         env:
           CI: "true"
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
 
       - name: Upload test artifacts on failure
         if: failure()

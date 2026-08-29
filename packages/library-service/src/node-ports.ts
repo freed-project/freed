@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 
 import {
   LIBRARY_SERVICE_ADMISSION_FD,
+  LIBRARY_SERVICE_COMMAND_REQUEST_FD,
+  LIBRARY_SERVICE_COMMAND_RESPONSE_FD,
   LIBRARY_SERVICE_CREDENTIAL_DESCRIPTOR_FD,
   LIBRARY_SERVICE_DATA_ROOT_FD,
   LIBRARY_SERVICE_EXECUTABLE_FD,
@@ -26,10 +28,15 @@ import {
   type LibraryServiceSidecarExit,
   type LibraryServiceSidecarProcess,
 } from "./contracts.js";
+import { LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES } from "./library-core-command-contract.generated.js";
+import { assertLinuxAclOutputHasOnlyModeEntries } from "./linux-acl-proof.js";
+import { createNodeLibraryServiceLocalActorIngressPortV1 } from "./local-actor-node-server.js";
+import type { LibraryServiceLocalActorIngressPortV1 } from "./local-actor-transport.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_ACL_OUTPUT_BYTES = 32 * 1_024;
 const ACL_TIMEOUT_MS = 1_000;
+const LINUX_GETFACL = "/usr/bin/getfacl";
 
 type BigIntStats = Awaited<ReturnType<FileHandle["stat"]>> & {
   dev: bigint;
@@ -410,12 +417,14 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
   async assertNoExtendedAcl(
     targets: readonly LibraryServiceAclProbeTarget[],
   ): Promise<void> {
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && process.platform !== "linux") {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
+    const helperPath =
+      process.platform === "darwin" ? "/bin/ls" : LINUX_GETFACL;
     let helper: LibraryServiceFileMetadata;
     try {
-      helper = await this.#fileSystem.inspect("/bin/ls");
+      helper = await this.#fileSystem.inspect(helperPath);
     } catch {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
@@ -424,16 +433,31 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
       helper.uid !== 0 ||
       (helper.mode & 0o022) !== 0 ||
       helper.links !== 1 ||
-      (await this.#fileSystem.canonicalPath("/bin/ls")) !== "/bin/ls"
+      (await this.#fileSystem.canonicalPath(helperPath)) !== helperPath
     ) {
       throw new LibraryServiceFailure("acl_probe_unavailable");
     }
 
     for (const target of targets) {
+      const before = await this.#fileSystem.inspect(target.path);
+      if (before.device !== target.device || before.inode !== target.inode) {
+        throw new LibraryServiceFailure("bound_input_changed");
+      }
       let stdout: string;
       let stderr: string;
       try {
-        const result = await execFileAsync("/bin/ls", ["-lde", target.path], {
+        const arguments_ =
+          process.platform === "darwin"
+            ? ["-lde", target.path]
+            : [
+                "--absolute-names",
+                "--numeric",
+                "--omit-header",
+                "--physical",
+                "--",
+                target.path,
+              ];
+        const result = await execFileAsync(helperPath, arguments_, {
           encoding: "utf8",
           timeout: ACL_TIMEOUT_MS,
           maxBuffer: MAX_ACL_OUTPUT_BYTES,
@@ -447,16 +471,20 @@ class NodeLibraryServiceAclProof implements LibraryServiceAclProofPort {
       if (stderr !== "" || Buffer.byteLength(stdout) > MAX_ACL_OUTPUT_BYTES) {
         throw new LibraryServiceFailure("acl_probe_malformed");
       }
-      const firstLine = stdout.split("\n", 1)[0] ?? "";
-      const mode = /^([bcdlps-][rwxStTs-]{9})([+@])?\s/.exec(firstLine);
-      if (mode === null) {
-        throw new LibraryServiceFailure("acl_probe_malformed");
-      }
-      if (
-        mode[2] === "+" ||
-        stdout.split("\n").some((line) => /^\s+\d+:/.test(line))
-      ) {
-        throw new LibraryServiceFailure("acl_present");
+      if (process.platform === "linux") {
+        assertLinuxAclOutputHasOnlyModeEntries(stdout, stderr, before.mode);
+      } else {
+        const firstLine = stdout.split("\n", 1)[0] ?? "";
+        const mode = /^([bcdlps-][rwxStTs-]{9})([+@])?\s/.exec(firstLine);
+        if (mode === null) {
+          throw new LibraryServiceFailure("acl_probe_malformed");
+        }
+        if (
+          mode[2] === "+" ||
+          stdout.split("\n").some((line) => /^\s+\d+:/.test(line))
+        ) {
+          throw new LibraryServiceFailure("acl_present");
+        }
       }
       const after = await this.#fileSystem.inspect(target.path);
       if (after.device !== target.device || after.inode !== target.inode) {
@@ -472,6 +500,23 @@ interface NodeProcessGroup {
   isRunning(): boolean;
   isGroupRunning(): boolean;
   terminate(signal: "SIGTERM" | "SIGKILL"): void;
+}
+
+function isDuplex(value: unknown): value is Duplex {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "destroy" in value &&
+    typeof value.destroy === "function" &&
+    "end" in value &&
+    typeof value.end === "function" &&
+    "on" in value &&
+    typeof value.on === "function" &&
+    "read" in value &&
+    typeof value.read === "function" &&
+    "write" in value &&
+    typeof value.write === "function"
+  );
 }
 
 class NodeChildProcessGroup implements NodeProcessGroup {
@@ -542,14 +587,26 @@ class NodeSidecarProcess
   implements LibraryServiceSidecarProcess
 {
   readonly #lifetimeWrite: Duplex;
+  readonly #commandRequest: Duplex;
+  readonly #commandResponse: Duplex;
   #lifetimeClosed = false;
+  #commandTail: Promise<void> = Promise.resolve();
 
-  constructor(child: ChildProcess, lifetimeWrite: Duplex) {
+  constructor(
+    child: ChildProcess,
+    lifetimeWrite: Duplex,
+    commandRequest: Duplex,
+    commandResponse: Duplex,
+  ) {
     super(child);
     this.#lifetimeWrite = lifetimeWrite;
+    this.#commandRequest = commandRequest;
+    this.#commandResponse = commandResponse;
     this.child.stdin?.on("error", () => undefined);
     this.child.stdout?.on("error", () => undefined);
     this.#lifetimeWrite.on("error", () => undefined);
+    this.#commandRequest.on("error", () => undefined);
+    this.#commandResponse.on("error", () => undefined);
   }
 
   async writeControl(contents: string): Promise<void> {
@@ -586,11 +643,96 @@ class NodeSidecarProcess
     return Buffer.concat(chunks, total);
   }
 
+  async exchangeCommand(
+    request: Uint8Array,
+    maximumResponseBytes: number,
+  ): Promise<Uint8Array> {
+    if (
+      request.byteLength === 0 ||
+      request.byteLength > LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES ||
+      maximumResponseBytes <= 0 ||
+      maximumResponseBytes > LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES
+    ) {
+      throw new LibraryServiceFailure("command_channel_failed");
+    }
+    let resolveResult!: (value: Uint8Array) => void;
+    let rejectResult!: (error: unknown) => void;
+    const result = new Promise<Uint8Array>((resolve, reject) => {
+      resolveResult = resolve;
+      rejectResult = reject;
+    });
+    const operation = this.#commandTail.then(async () => {
+      try {
+        const header = Buffer.alloc(4);
+        header.writeUInt32BE(request.byteLength, 0);
+        await this.#writeCommandBytes(Buffer.concat([header, request]));
+        const responseHeader = await this.#readCommandBytes(4);
+        const responseLength = responseHeader.readUInt32BE(0);
+        if (responseLength === 0 || responseLength > maximumResponseBytes) {
+          throw new LibraryServiceFailure("command_response_invalid");
+        }
+        resolveResult(await this.#readCommandBytes(responseLength));
+      } catch (error) {
+        rejectResult(error);
+      }
+    });
+    this.#commandTail = operation.catch(() => undefined);
+    return result;
+  }
+
+  async #writeCommandBytes(bytes: Uint8Array): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      this.#commandRequest.write(bytes, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+
+  async #readCommandBytes(length: number): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total < length) {
+      const chunk = this.#commandResponse.read(length - total) as Buffer | null;
+      if (chunk !== null) {
+        chunks.push(chunk);
+        total += chunk.byteLength;
+        continue;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = (): void => {
+          this.#commandResponse.removeListener("readable", onReadable);
+          this.#commandResponse.removeListener("end", onEnd);
+          this.#commandResponse.removeListener("error", onError);
+        };
+        const onReadable = (): void => {
+          cleanup();
+          resolve();
+        };
+        const onEnd = (): void => {
+          cleanup();
+          reject(new LibraryServiceFailure("command_channel_failed"));
+        };
+        const onError = (): void => {
+          cleanup();
+          reject(new LibraryServiceFailure("command_channel_failed"));
+        };
+        this.#commandResponse.once("readable", onReadable);
+        this.#commandResponse.once("end", onEnd);
+        this.#commandResponse.once("error", onError);
+      });
+    }
+    return Buffer.concat(chunks, total);
+  }
+
   closeLifetime(): void {
     if (this.#lifetimeClosed) return;
     this.#lifetimeClosed = true;
     this.#lifetimeWrite.end();
     this.#lifetimeWrite.destroy();
+    this.#commandRequest.end();
+    this.#commandRequest.destroy();
+    this.#commandResponse.destroy();
   }
 }
 
@@ -705,6 +847,8 @@ class NodeLibraryServiceProcess implements LibraryServiceProcessPort {
           request.bindings.admission.descriptor,
           request.bindings.credentialDescriptor.descriptor,
           "pipe",
+          "pipe",
+          "pipe",
         ],
       });
     } catch {
@@ -712,6 +856,12 @@ class NodeLibraryServiceProcess implements LibraryServiceProcessPort {
     }
     const lifetime: unknown = (child.stdio as Array<unknown>)[
       LIBRARY_SERVICE_LIFETIME_FD
+    ];
+    const commandRequest: unknown = (child.stdio as Array<unknown>)[
+      LIBRARY_SERVICE_COMMAND_REQUEST_FD
+    ];
+    const commandResponse: unknown = (child.stdio as Array<unknown>)[
+      LIBRARY_SERVICE_COMMAND_RESPONSE_FD
     ];
     if (
       lifetime === null ||
@@ -721,7 +871,9 @@ class NodeLibraryServiceProcess implements LibraryServiceProcessPort {
       !("end" in lifetime) ||
       typeof lifetime.end !== "function" ||
       !("on" in lifetime) ||
-      typeof lifetime.on !== "function"
+      typeof lifetime.on !== "function" ||
+      !isDuplex(commandRequest) ||
+      !isDuplex(commandResponse)
     ) {
       let closeInvalidLifetime: (() => void) | undefined;
       if (
@@ -740,7 +892,12 @@ class NodeLibraryServiceProcess implements LibraryServiceProcessPort {
       );
       throw new LibraryServiceFailure("unsupported_bound_descriptor_execution");
     }
-    const sidecar = new NodeSidecarProcess(child, lifetime as Duplex);
+    const sidecar = new NodeSidecarProcess(
+      child,
+      lifetime as Duplex,
+      commandRequest as Duplex,
+      commandResponse as Duplex,
+    );
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -793,6 +950,7 @@ interface NodeLibraryServicePorts {
   clock: LibraryServiceClockPort;
   entropy: LibraryServiceEntropyPort;
   process: LibraryServiceProcessPort;
+  localActorIngress: LibraryServiceLocalActorIngressPortV1;
 }
 
 interface NodeLibraryServicePortsOptions {
@@ -811,5 +969,6 @@ export function createNodeLibraryServicePorts(
     clock,
     entropy: new NodeLibraryServiceEntropy(),
     process: new NodeLibraryServiceProcess(clock, options.spawnChild ?? spawn),
+    localActorIngress: createNodeLibraryServiceLocalActorIngressPortV1(),
   };
 }

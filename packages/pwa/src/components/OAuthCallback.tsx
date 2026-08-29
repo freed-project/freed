@@ -1,5 +1,5 @@
 /**
- * OAuthCallback — handles the OAuth 2.0 PKCE redirect from GDrive / Dropbox.
+ * Handle the OAuth 2.0 PKCE redirect from Google Drive.
  *
  * Rendered instead of the main app when window.location.pathname is
  * "/oauth-callback". Reads the authorization code from URL params,
@@ -7,14 +7,11 @@
  * and redirects back to the app root.
  *
  * Token exchange:
- *   - GDrive: proxied through /api/oauth/google (server holds client_secret;
- *     Google's "Web application" client type requires it even for PKCE flows).
- *   - Dropbox: direct client-side PKCE exchange (public-client support is
- *     enabled on the Dropbox app via "Allow public clients (PKCE)").
+ * Google Drive is proxied through /api/oauth/google. The server holds the
+ * client secret required by Google's Web application client type.
  *
  * Google refresh credentials are stored with the access-token expiry. The PWA
  * refreshes before expiry and once more after an unexpected authenticated 401.
- * Dropbox still requires reconnect when its access token expires.
  */
 
 import { useEffect, useState } from "react";
@@ -22,26 +19,16 @@ import {
   captureCloudLifecycle,
   startCloudSync,
   storeCloudToken,
-  type CloudProvider,
   type CloudTokenBundle,
 } from "../lib/sync";
 import {
   clearStoredGoogleOAuthRedirectUri,
   consumePwaOAuthRuntimeGeneration,
   createGoogleOAuthRelayTarget,
-  getOAuthCallbackUri,
   getStoredGoogleOAuthRedirectUri,
   isPwaOAuthRuntimeGenerationValid,
 } from "../lib/oauth-redirect";
 import { capturePwaRuntimeLifecycle } from "../lib/factory-reset-coordinator";
-
-const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
-
-// GDrive client ID is only needed on the client for initiating the auth flow
-// (in SyncConnectDialog). The token exchange uses the server proxy at
-// /api/oauth/google, which holds the client_secret.
-const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
-const OAUTH_REDIRECT_URI = getOAuthCallbackUri();
 
 type ExchangeResult =
   { ok: true; token: CloudTokenBundle } | { ok: false; error: string };
@@ -87,49 +74,6 @@ async function exchangeGDrive(
   };
 }
 
-async function exchangeDropbox(
-  code: string,
-  verifier: string,
-): Promise<ExchangeResult> {
-  const body = new URLSearchParams({
-    code,
-    grant_type: "authorization_code",
-    redirect_uri: OAUTH_REDIRECT_URI,
-    code_verifier: verifier,
-    client_id: DROPBOX_CLIENT_ID,
-  });
-
-  const res = await fetch(DROPBOX_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    return {
-      ok: false,
-      error: `Dropbox token exchange failed (${res.status}): ${text}`,
-    };
-  }
-
-  const { access_token, refresh_token, expires_in } = await res.json();
-  if (!access_token)
-    return { ok: false, error: "Dropbox returned no access_token" };
-
-  return {
-    ok: true,
-    token: {
-      accessToken: access_token as string,
-      refreshToken: refresh_token as string | undefined,
-      expiresAt:
-        typeof expires_in === "number"
-          ? Date.now() + expires_in * 1000
-          : undefined,
-    },
-  };
-}
-
 type Status = "exchanging" | "success" | "error";
 
 export function OAuthCallback() {
@@ -156,9 +100,7 @@ export function OAuthCallback() {
       const code = params.get("code");
       const oauthError = params.get("error");
 
-      const provider = sessionStorage.getItem(
-        "freed_pkce_provider",
-      ) as CloudProvider | null;
+      const provider = sessionStorage.getItem("freed_pkce_provider");
       const verifier = sessionStorage.getItem("freed_pkce_verifier");
       const oauthGeneration = consumePwaOAuthRuntimeGeneration();
 
@@ -177,7 +119,7 @@ export function OAuthCallback() {
 
       if (
         !code ||
-        !provider ||
+        provider !== "gdrive" ||
         !verifier ||
         !isPwaOAuthRuntimeGenerationValid(
           oauthGeneration,
@@ -194,10 +136,9 @@ export function OAuthCallback() {
         return;
       }
 
-      const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
       const lifecycle = captureCloudLifecycle();
       try {
-        const result = await exchange(code, verifier);
+        const result = await exchangeGDrive(code, verifier);
         if (!result.ok) {
           if (
             !cancelled &&

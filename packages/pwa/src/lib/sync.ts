@@ -220,14 +220,14 @@ async function syncGoogleDriveOnce(
     lastSyncAt: now,
     lastDownloadAt: now,
     lastMergeAt: now,
-    statusMessage: "SQLite Library checkpoint refreshed.",
-    pendingReason: "Waiting for the next immutable Library generation.",
+    statusMessage: "SQLite Library synchronized.",
+    pendingReason: "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });
   recordCloudProviderEvent("gdrive", {
     kind: "success",
     stage: "idle",
-    message: "Refreshed the immutable SQLite Library checkpoint.",
+    message: "Synchronized the SQLite Library and follower state.",
   });
 }
 
@@ -249,44 +249,10 @@ function scheduleRefresh(generation: number, signal: AbortSignal): void {
   }, LIBRARY_CORE_REFRESH_INTERVAL_MS);
 }
 
-/** Mutable-document broadcasting is retired. */
-export function broadcastDoc(): void {}
-
-/** The old LAN relay accepted mutable documents and is no longer available. */
-export function connect(url: string): void {
-  void url;
-  disconnect();
-}
-
-export function disconnect(): void {
-  notifyStatus();
-}
-
-export function isRelayConnected(): boolean {
-  return false;
-}
-
 export function onStatusChange(listener: StatusListener): () => void {
   statusListeners.add(listener);
   listener(cloudConnected);
   return () => statusListeners.delete(listener);
-}
-
-export function getStoredRelayUrl(): string | null {
-  return null;
-}
-
-export function storeRelayUrl(url: string): void {
-  void url;
-  localStorage.removeItem("freed_relay_url");
-}
-
-export function clearStoredRelayUrl(): void {
-  localStorage.removeItem("freed_relay_url");
-}
-
-export function clearStoredRelayUrlForFactoryReset(): void {
-  localStorage.removeItem("freed_relay_url");
 }
 
 export function captureCloudLifecycle(): CloudLifecycleGuard {
@@ -323,7 +289,7 @@ export async function getValidCloudToken(
 
 export function getCloudProvider(): CloudProvider | null {
   const provider = localStorage.getItem(CLOUD_PROVIDER_KEY);
-  return provider === "gdrive" || provider === "dropbox" ? provider : null;
+  return provider === "gdrive" ? provider : null;
 }
 
 export function clearCloudSync(provider: CloudProvider): void {
@@ -384,16 +350,6 @@ export async function syncCloudProviderNow(
     return;
   }
   await syncGoogleDriveOnce(cloudGeneration, cloudAbort.signal);
-}
-
-export function scheduleCloudUpload(
-  provider: CloudProvider,
-  token?: string,
-  generation = cloudGeneration,
-): void {
-  void provider;
-  void token;
-  void generation;
 }
 
 export async function deleteCloudFile(

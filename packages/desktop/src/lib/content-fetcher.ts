@@ -13,16 +13,20 @@
  *     so Library Core can publish it through the replacement sync outbox
  *  5. Optionally run AI summarization and update preservedContent.text again
  *
- * Subscribe behavior: call start() once at app init. The fetcher wires a
- * subscribe() callback so any stub item that arrives via relay sync is
- * automatically enqueued.
+ * Subscribe behavior: call start() once at app init. Exact changed rows are
+ * enqueued directly. A replacement event triggers the bounded SQLite candidate
+ * scan and never reads a renderer item corpus.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe, type DocChangeEvent } from "./library-client";
+import {
+  updateLibraryFeedItem,
+  subscribeDesktopLibraryRuntime,
+  type LibraryMutationEvent,
+} from "./library-client";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
@@ -35,6 +39,7 @@ import {
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
 import { renderFeedItemReaderHtml } from "./reader-item-html.js";
+import { pinLibraryCoreItemContent } from "./library-core-item-detail-runtime.js";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
@@ -43,7 +48,7 @@ import {
   isFactoryResetInProgress,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
-import { scanLibraryCoreItems } from "./library-core-item-detail-runtime.js";
+import { scanLibraryCoreContentFetchCandidates } from "./library-core-item-detail-runtime.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -113,8 +118,8 @@ let running = false;
 let workerTimer: ReturnType<typeof setTimeout> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
-let unsubscribeDoc: (() => void) | null = null;
-let lastScannedDocItemCount: number | null = null;
+let unsubscribeLibrary: (() => void) | null = null;
+let lastScannedItemCount: number | null = null;
 let activeStartedAt: number | null = null;
 let nextDelayMs: number | undefined;
 let backoffLevel = 0;
@@ -217,6 +222,21 @@ function hasRecentFailure(globalId: string, now = Date.now()): boolean {
 export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
   if (factoryResetDrainInProgress) return;
   const newEntries = newStubItems(items, { force: options.force });
+  enqueueEntries(newEntries, options);
+}
+
+function enqueueEntries(
+  candidates: readonly QueueEntry[],
+  options: EnqueueOptions = {},
+): void {
+  if (factoryResetDrainInProgress) return;
+  const queuedIds = new Set(queue.map((entry) => entry.globalId));
+  const newEntries = candidates.filter(
+    (entry) =>
+      !queuedIds.has(entry.globalId) &&
+      !inFlight.has(entry.globalId) &&
+      !hasRecentFailure(entry.globalId),
+  );
   if (options.reopenSaveDialogOnError) {
     for (const entry of newEntries) {
       reopenSaveDialogOnErrorIds.add(entry.globalId);
@@ -240,6 +260,7 @@ export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
 
 async function pinReaderItemInternal(item: FeedItem): Promise<void> {
   const url = item.content.linkPreview?.url;
+  await pinLibraryCoreItemContent(item.globalId);
   await contentCache.set(item.globalId, renderFeedItemReaderHtml(item));
   if (url) {
     enqueue([item], { priority: true, force: true });
@@ -254,21 +275,24 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
 }
 
 function maybeScanLibraryItems(
-  _items: FeedItem[],
-  docItemCount: number,
-  event: DocChangeEvent,
+  itemCount: number,
+  event: LibraryMutationEvent,
 ): void {
   if (event.source === "item_patch") {
     enqueue(event.changedItems);
-    lastScannedDocItemCount = docItemCount;
+    lastScannedItemCount = itemCount;
     return;
   }
   if (!event.requiresFullScan) return;
-  if (lastScannedDocItemCount === docItemCount) return;
-  lastScannedDocItemCount = docItemCount;
-  void scanLibraryCoreItems(
-    (page) => enqueue([...page]),
-    { hasLinkPreview: true, missingPreservedText: true },
+  if (lastScannedItemCount === itemCount) return;
+  lastScannedItemCount = itemCount;
+  void scanLibraryCoreContentFetchCandidates((page) =>
+    enqueueEntries(
+      page.map((candidate) => ({
+        globalId: candidate.globalId,
+        url: candidate.linkUrl,
+      })),
+    ),
   ).catch((error) => {
     log.error(
       `[content-fetcher] bounded SQLite scan unavailable; background fetch remains paused: ${
@@ -596,7 +620,7 @@ async function processNext(): Promise<ProcessOutcome> {
     // Omit author rather than assigning undefined so the durable JSON stays canonical.
     // throws on undefined assignments and updateFeedItem uses Object.assign.
     const resolvedAuthor = content.author ?? metadata.author;
-    await docUpdateFeedItem(entry.globalId, {
+    await updateLibraryFeedItem(entry.globalId, {
       preservedContent: {
         text: summaryText,
         ...(resolvedAuthor !== undefined ? { author: resolvedAuthor } : {}),
@@ -653,17 +677,15 @@ export function start(options: ContentFetcherOptions = {}): void {
   if (running) return;
   running = true;
   memoryGuardEnabled = options.memoryGuard ?? false;
-  lastScannedDocItemCount = null;
+  lastScannedItemCount = null;
 
   // Wire up the SQLite subscription so new stub items are enqueued directly.
   //
   // Important: never rescan the Library for an ordinary item patch. New rows
-  // arrive with their exact payload. A whole-corpus scan is reserved for an
+  // arrive with their exact payload. A complete bounded Library scan is reserved for an
   // explicit state replacement whose changed identities are unknowable.
-  unsubscribeDoc = subscribe((state, event) => {
-    // SQLite is the bounded primary scan. The renderer array is only a rollback
-    // fallback and is usually empty in the compact Desktop shell.
-    maybeScanLibraryItems(state.items, state.docItemCount, event);
+  unsubscribeLibrary = subscribeDesktopLibraryRuntime((state, event) => {
+    maybeScanLibraryItems(state.totalItemCount, event);
   });
 
   log.info("[content-fetcher] started");
@@ -703,9 +725,9 @@ export function stop(): void {
     heartbeatHandle = null;
   }
 
-  if (unsubscribeDoc) {
-    unsubscribeDoc();
-    unsubscribeDoc = null;
+  if (unsubscribeLibrary) {
+    unsubscribeLibrary();
+    unsubscribeLibrary = null;
   }
 
   removeUserInteractionListeners?.();

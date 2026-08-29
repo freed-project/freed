@@ -8,6 +8,7 @@ import {
   memo,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { toast } from "../Toast.js";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
@@ -15,11 +16,10 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { useBoundedFeedItems } from "./useBoundedFeedItems.js";
 import {
-  orderDesktopSavedFallbackItems,
   resolveBoundedReaderRankingClock,
   savedFeedRankingClockMs,
   type BoundedReaderRankingClock,
-} from "./saved-feed-fallback-order.js";
+} from "./saved-feed-ranking-clock.js";
 import {
   applySavedFeedPresentationPatch,
   prepareSavedFeedPresentationPatch,
@@ -30,14 +30,11 @@ import {
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
-import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
-  buildDiscoveredAccountsFromItems,
-  socialAccountForAuthor,
-  sortSavedFeedItems,
-  type Account,
+  discoveredSocialAccountFromItem,
   type FeedItem,
 } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
@@ -311,7 +308,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
         : Math.max(selectedIndex - 1, 0);
     virtualizer.scrollToIndex(lookaheadIndex, {
       align: selectionMoveDirection > 0 ? "end" : "start",
-      behavior,
+      behavior: "auto",
     });
 
     didInitialScroll.current = true;
@@ -319,6 +316,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     firstItemHeight,
     boundedWindowDidShift,
     itemHeight,
+    items,
     items.length,
     selectedIndex,
     selectionMoveDirection,
@@ -390,14 +388,10 @@ export function FeedView() {
     openBoundedFriendsFeedReader,
     openBoundedSavedFeedReader,
     openUrl,
-    scanLibraryItems,
+    queryLibraryCore,
+    upsertLibraryAccount,
   } = platform;
   const canAddFeeds = !!addRssFeed;
-  const items = useAppStore((s) => s.items);
-  const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -418,16 +412,18 @@ export function FeedView() {
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const addAccount = useAppStore((s) => s.addAccount);
+  const setVisibleFeedTotalCount = useAppStore(
+    (s) => s.setVisibleFeedTotalCount,
+  );
   const markAsRead = useAppStore((s) => s.markAsRead);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const [deviceDisplay] = useDeviceDisplayPreferences();
   const friendsMode = deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
-  const rankingWeights = useAppStore((s) => s.preferences.weights);
 
   const handleOpenCommentUrl = useCallback(
     (url: string) => {
@@ -441,27 +437,48 @@ export function FeedView() {
   );
   const openAuthorInFriends = useCallback(
     async (item: FeedItem) => {
-      let account: Account | null = socialAccountForAuthor(
-        accounts,
-        item.platform,
-        item.author.id,
-      );
-      if (!account) {
-        const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
-        if (!draft) return;
-        await addAccount(draft);
-        account = draft;
-      }
+      try {
+        if (!queryLibraryCore) {
+          throw new Error("SQLite author lookup is unavailable");
+        }
+        const scope = await queryLibraryCore({
+          authorId: item.author.id,
+          feedUrl: null,
+          platform: item.platform,
+          queryId: "filter_scope_summary_v1",
+          schemaVersion: 1,
+        });
+        let accountId = scope.accountId;
+        if (!accountId) {
+          const draft = discoveredSocialAccountFromItem(item);
+          if (!draft) return;
+          if (!upsertLibraryAccount) {
+            throw new Error("SQLite Account mutation is unavailable");
+          }
+          await upsertLibraryAccount(draft);
+          accountId = draft.id;
+        }
 
-      setSelectedItem(null);
-      setSelectedAccount(account.id);
-      setActiveView("friends");
+        setSelectedItem(null);
+        setSelectedAccount(accountId);
+        setActiveView("friends");
+      } catch {
+        toast.error("Freed could not open this author from the Library.");
+      }
     },
-    [accounts, addAccount, setActiveView, setSelectedAccount, setSelectedItem],
+    [
+      queryLibraryCore,
+      setActiveView,
+      setSelectedAccount,
+      setSelectedItem,
+      upsertLibraryAccount,
+    ],
   );
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
+  const [readerWindow, setReaderWindow] = useState<readonly FeedItem[] | null>(
+    null,
+  );
   const savedBoundedFeedEligible =
     Boolean(openBoundedSavedFeedReader) &&
     isInitialized &&
@@ -484,6 +501,9 @@ export function FeedView() {
     savedBoundedFeedEligible || friendsBoundedFeedEligible;
   const boundedFeedEligible =
     pagedBoundedFeedEligible || ordinaryBoundedFeedEligible;
+  const boundedFeedSourceVersion = savedBoundedFeedEligible
+    ? savedFeedVersion
+    : libraryItemVersion;
   const boundedReaderIdentity = JSON.stringify({
     filter: activeFilter,
     kind: savedBoundedFeedEligible
@@ -492,9 +512,16 @@ export function FeedView() {
         ? "friends"
         : "ordinary",
     sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
-    sourceVersion: pagedBoundedFeedEligible
-      ? savedFeedVersion
-      : searchCorpusVersion,
+    sourceVersion: boundedFeedSourceVersion,
+  });
+  const boundedSelectionIdentity = JSON.stringify({
+    filter: activeFilter,
+    kind: savedBoundedFeedEligible
+      ? "saved"
+      : friendsBoundedFeedEligible
+        ? "friends"
+        : "ordinary",
+    sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
   });
   const boundedReaderRankingClockRef = useRef<BoundedReaderRankingClock | null>(
     null,
@@ -543,18 +570,10 @@ export function FeedView() {
     maxResidentPages: PAGED_FEED_RESIDENT_PAGE_LIMIT,
     openReader: activeBoundedFeedReader,
     rankingClockMs: boundedReaderRankingClockMs,
-    sourceVersion: pagedBoundedFeedEligible
-      ? savedFeedVersion
-      : searchCorpusVersion,
+    sourceVersion: boundedFeedSourceVersion,
   });
   const boundedFeedReadyIsCurrent =
     boundedFeedStatusIsCurrent && boundedFeed.status === "ready";
-  useLegacyLibraryItems(
-    isInitialized &&
-      !(searchQuery.trim() !== "" && scanLibraryItems) &&
-      (!boundedFeedEligible ||
-        (boundedFeedStatusIsCurrent && boundedFeed.status === "failed")),
-  );
   const handleItemSave = useCallback(
     (item: FeedItem) => {
       patchBoundedItems((candidate) => {
@@ -610,46 +629,34 @@ export function FeedView() {
     [markItemsAsRead, patchBoundedItems],
   );
 
-  // useSearchResults handles both the search and the normal ranked+filtered path.
-  // When searchQuery is empty it behaves identically to the previous useMemo.
+  // Search is a separate bounded SQLite window. Ordinary browsing comes from
+  // the feed query above and never falls back to a renderer-held corpus.
   const { filteredItems, isSearching } = useSearchResults(
-    boundedFeedReadyIsCurrent ? EMPTY_FEED_ITEMS : items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
   const visibleItems = useMemo(() => {
     if (boundedFeedReadyIsCurrent) return boundedFeed.items;
-    if (savedBoundedFeedEligible && boundedFeed.status === "failed") {
-      return orderDesktopSavedFallbackItems({
-        items: filteredItems,
-        sortMode: savedContentSortMode,
-        weights: rankingWeights,
-        persons,
-        accounts,
-        rankingClockMs: boundedReaderRankingClockMs,
-      });
-    }
-    return activeFilter.savedOnly
-      ? sortSavedFeedItems(filteredItems, savedContentSortMode)
-      : filteredItems;
+    return isSearching ? filteredItems : EMPTY_FEED_ITEMS;
   }, [
-    activeFilter.savedOnly,
     boundedFeed.items,
     boundedFeedReadyIsCurrent,
-    boundedFeed.status,
     filteredItems,
-    accounts,
-    boundedReaderRankingClockMs,
-    persons,
-    rankingWeights,
-    savedBoundedFeedEligible,
-    savedContentSortMode,
+    isSearching,
+  ]);
+  useEffect(() => {
+    if (boundedFeedReadyIsCurrent) {
+      setVisibleFeedTotalCount(boundedFeed.totalCount);
+      return;
+    }
+    setVisibleFeedTotalCount(0);
+  }, [
+    boundedFeed.totalCount,
+    boundedFeedReadyIsCurrent,
+    setVisibleFeedTotalCount,
   ]);
 
   const dualColumnMode = deviceDisplay.dualColumnMode;
@@ -682,6 +689,10 @@ export function FeedView() {
   const [compactSelectionDirection, setCompactSelectionDirection] = useState<
     -1 | 0 | 1
   >(0);
+  const pendingReaderMoveRef = useRef<{
+    readonly direction: -1 | 1;
+    readonly selectedItemId: string;
+  } | null>(null);
   const previousWindowStartRef = useRef(boundedFeed.windowStartIndex);
   useLayoutEffect(() => {
     const previousWindowStart = previousWindowStartRef.current;
@@ -711,21 +722,20 @@ export function FeedView() {
     setSelectedItemPin((current) =>
       resolveSavedFeedSelectionPin({
         current,
-        eligible: Boolean(boundedFeedEligible && boundedFeedReadyIsCurrent),
-        readerIdentity: boundedReaderIdentity,
+        eligible: boundedFeedEligible,
+        readerIdentity: boundedSelectionIdentity,
         residentSelectedItem,
         selectedItemId,
       }),
     );
   }, [
-    boundedReaderIdentity,
+    boundedSelectionIdentity,
     boundedFeedEligible,
-    boundedFeedReadyIsCurrent,
     residentSelectedItem,
     selectedItemId,
   ]);
   const currentSelectedItemPin =
-    selectedItemPin?.readerIdentity === boundedReaderIdentity &&
+    selectedItemPin?.readerIdentity === boundedSelectionIdentity &&
     selectedItemPin.selectedItemId === selectedItemId
       ? selectedItemPin.item
       : null;
@@ -752,7 +762,7 @@ export function FeedView() {
       );
     }
     setSelectedItemPin((current) =>
-      current?.readerIdentity === boundedReaderIdentity &&
+      current?.readerIdentity === boundedSelectionIdentity &&
       current.selectedItemId === selectedItemId
         ? {
             ...current,
@@ -769,6 +779,7 @@ export function FeedView() {
     boundedFeed.status,
     boundedFeedStatusIsCurrent,
     boundedReaderIdentity,
+    boundedSelectionIdentity,
     patchBoundedItems,
     pagedBoundedFeedEligible,
     savedFeedPresentationPatch,
@@ -777,10 +788,8 @@ export function FeedView() {
   ]);
   const readerItems = useMemo(() => {
     const itemById = new Map(visibleItems.map((item) => [item.globalId, item]));
-    const stableItems = readerOrderIds
-      ? readerOrderIds
-          .map((id) => itemById.get(id))
-          .filter((item): item is FeedItem => Boolean(item))
+    const stableItems = readerWindow
+      ? readerWindow.map((item) => itemById.get(item.globalId) ?? item)
       : [];
     const stableIds = new Set(stableItems.map((item) => item.globalId));
     const residentItems =
@@ -800,7 +809,7 @@ export function FeedView() {
       ? [pinnedSelection, ...residentItems]
       : residentItems;
   }, [
-    readerOrderIds,
+    readerWindow,
     boundedFeedEligible,
     currentSelectedItemPin,
     selectedItemId,
@@ -824,7 +833,11 @@ export function FeedView() {
       };
 
       if (showDualColumn && !selectedItemId) {
-        setReaderOrderIds(visibleItems.map((candidate) => candidate.globalId));
+        // Opening the rail pins exactly the bounded window the user can see.
+        // SQLite mutations may refresh the underlying reader while the rail is
+        // open. Retaining this visible window prevents those refreshes from
+        // collapsing keyboard navigation to the selected row alone.
+        setReaderWindow([...visibleItems]);
         runFeedLayoutTransition(selectItem);
         return;
       }
@@ -850,9 +863,25 @@ export function FeedView() {
     [openItem],
   );
 
+  useLayoutEffect(() => {
+    const pending = pendingReaderMoveRef.current;
+    if (!pending) return;
+    const currentIndex = readerItems.findIndex(
+      (item) => item.globalId === pending.selectedItemId,
+    );
+    if (currentIndex < 0) return;
+    const nextItem = readerItems[currentIndex + pending.direction];
+    if (!nextItem) return;
+
+    pendingReaderMoveRef.current = null;
+    setCompactSelectionDirection(pending.direction);
+    setFocusedIndex(currentIndex + pending.direction);
+    openItem(nextItem);
+  }, [openItem, readerItems]);
+
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
-    setReaderOrderIds(null);
+    setReaderWindow(null);
     if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -895,7 +924,28 @@ export function FeedView() {
             0,
             Math.min(currentIndex + direction, readerItems.length - 1),
           );
-          if (nextIndex === currentIndex) return;
+          if (nextIndex === currentIndex) {
+            const canLoadNext =
+              direction > 0 &&
+              boundedFeed.windowStartIndex + readerItems.length <
+                boundedFeed.totalCount;
+            const canLoadPrevious =
+              direction < 0 && boundedFeed.windowStartIndex > 0;
+            if (canLoadNext) {
+              pendingReaderMoveRef.current = {
+                direction,
+                selectedItemId,
+              };
+              if (boundedFeed.hasMore) loadMoreBoundedItems();
+            } else if (canLoadPrevious) {
+              pendingReaderMoveRef.current = {
+                direction,
+                selectedItemId,
+              };
+              if (boundedFeed.hasPrevious) loadPreviousBoundedItems();
+            }
+            return;
+          }
 
           const nextItem = readerItems[nextIndex];
           if (!nextItem) return;
@@ -932,6 +982,12 @@ export function FeedView() {
     showDualColumn,
     visibleItems,
     readerItems,
+    boundedFeed.hasMore,
+    boundedFeed.hasPrevious,
+    boundedFeed.totalCount,
+    boundedFeed.windowStartIndex,
+    loadMoreBoundedItems,
+    loadPreviousBoundedItems,
     focusedIndex,
     openItem,
     openItemDirect,
@@ -943,7 +999,7 @@ export function FeedView() {
     setCompactSelectionDirection(0);
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
-    setReaderOrderIds(null);
+    setReaderWindow(null);
   }, [activeFilter, searchQuery, savedContentSortMode]);
 
   const handleFocusChange = useCallback((index: number) => {
@@ -1138,7 +1194,7 @@ export function FeedView() {
         focusMoveDirection={keyboardFocusDirection}
         onFocusChange={handleFocusChange}
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
-        hasFeedsSubscribed={Object.keys(feeds).length > 0}
+        hasFeedsSubscribed={libraryFacets.rssFeedCount > 0}
         onItemSave={handleItemSave}
         onItemArchive={
           activeFilter.archivedOnly ? undefined : handleItemArchive

@@ -21,6 +21,12 @@ export function tauriInitScript(): string {
     }
     window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     var SQLITE_LIBRARY_WINDOW_PREFIX = '__freed_e2e_sqlite_library_v1__';
+    var CONTENT_SIGNAL_LABELS = [
+      'event', 'deadline', 'opportunity', 'how_to', 'reference',
+      'transaction', 'product_update', 'alert', 'deal', 'place', 'media',
+      'essay', 'moment', 'life_update', 'announcement', 'recommendation',
+      'request', 'discussion', 'promotion', 'news',
+    ];
     var persistedSqliteLibrary = null;
     try {
       persistedSqliteLibrary = window.name.indexOf(SQLITE_LIBRARY_WINDOW_PREFIX) === 0
@@ -34,8 +40,10 @@ export function tauriInitScript(): string {
       sourceRevision: 0,
       sourceDigest: '',
       expectedItemCount: 0,
-      shell: null,
+      accounts: {},
+      feeds: {},
       items: {},
+      persons: {},
     };
     function persistSqliteState() {
       try {
@@ -52,295 +60,1812 @@ export function tauriInitScript(): string {
     function sqliteItemState(item) {
       return item && item.userState ? item.userState : {};
     }
-    function sqliteShellResult() {
-      var state = sqliteState();
-      var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
-      var countsByPlatform = {};
-      var unreadByPlatform = {};
-      items.forEach(function(item) {
-        countsByPlatform[item.platform] = (countsByPlatform[item.platform] || 0) + 1;
-        if (sqliteItemState(item).readAt == null) {
-          unreadByPlatform[item.platform] = (unreadByPlatform[item.platform] || 0) + 1;
-        }
-      });
-      return {
-        shellJson: JSON.stringify(state.shell || {}),
-        revision: state.revision,
-        itemCount: items.length,
-        unreadCount: items.filter(function(item) { return sqliteItemState(item).readAt == null; }).length,
-        archivableCount: items.filter(function(item) {
-          var user = sqliteItemState(item);
-          return user.readAt != null && !user.saved && !user.archived && !user.hidden;
-        }).length,
-        countsByPlatform: countsByPlatform,
-        unreadByPlatform: unreadByPlatform,
-      };
+    function sqliteFiniteNumber(value) {
+      if (typeof value === 'number') return value;
+      if (!value || value.codec !== 'ieee754_binary64_hex_v1' ||
+          typeof value.bits !== 'string' || !/^[0-9a-f]{16}$/.test(value.bits)) {
+        return null;
+      }
+      var bytes = new Uint8Array(8);
+      for (var index = 0; index < bytes.length; index += 1) {
+        bytes[index] = parseInt(value.bits.slice(index * 2, index * 2 + 2), 16);
+      }
+      var decoded = new DataView(bytes.buffer).getFloat64(0, false);
+      return Number.isFinite(decoded) ? decoded : null;
     }
-    function sqliteCountsResult() {
-      var shell = sqliteShellResult();
-      var archivableByPlatform = {};
-      var feedCounts = {};
-      var unreadFeedCounts = {};
-      var archivableFeedCounts = {};
-      Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; }).forEach(function(item) {
-        var user = sqliteItemState(item);
-        var platform = item.platform || 'unknown';
-        var archivable = user.readAt != null && !user.saved;
-        if (archivable) archivableByPlatform[platform] = (archivableByPlatform[platform] || 0) + 1;
-        var feedUrl = item.rssSource && item.rssSource.feedUrl;
-        if (!feedUrl) return;
-        feedCounts[feedUrl] = (feedCounts[feedUrl] || 0) + 1;
-        if (user.readAt == null) unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] || 0) + 1;
-        if (archivable) archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] || 0) + 1;
+    function identityCursorEntityId(cursor) {
+      if (cursor == null) return null;
+      var padded = String(cursor).replace(/-/g, '+').replace(/_/g, '/');
+      while (padded.length % 4 !== 0) padded += '=';
+      var binary = atob(padded);
+      var bytes = Uint8Array.from(binary, function(character) {
+        return character.charCodeAt(0);
       });
-      return {
-        revision: shell.revision,
-        itemCount: shell.itemCount,
-        unreadCount: shell.unreadCount,
-        archivableCount: shell.archivableCount,
-        countsByPlatform: shell.countsByPlatform,
-        unreadByPlatform: shell.unreadByPlatform,
-        archivableByPlatform: archivableByPlatform,
-        feedCounts: feedCounts,
-        unreadFeedCounts: unreadFeedCounts,
-        archivableFeedCounts: archivableFeedCounts,
-      };
+      if (bytes.length < 59 || bytes[0] !== 1) return null;
+      var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      var length = view.getUint16(57, false);
+      if (bytes.length !== 59 + length) return null;
+      return new TextDecoder().decode(bytes.subarray(59));
     }
-    function sqliteSyncDescriptor() {
+    function identityPageCursor(source, layoutRevision, entityId) {
+      var encodedId = new TextEncoder().encode(entityId);
+      var bytes = new Uint8Array(59 + encodedId.length);
+      var view = new DataView(bytes.buffer);
+      bytes[0] = 1;
+      for (var index = 0; index < 32; index += 1) {
+        bytes[index + 1] = parseInt(source.generationId.slice(index * 2, index * 2 + 2), 16);
+      }
+      view.setBigUint64(33, BigInt(source.transitionSequence), false);
+      view.setBigUint64(41, BigInt(source.projectionRevision), false);
+      view.setBigUint64(49, BigInt(layoutRevision), false);
+      view.setUint16(57, encodedId.length, false);
+      bytes.set(encodedId, 59);
+      var binary = '';
+      for (var byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
+        binary += String.fromCharCode(bytes[byteIndex]);
+      }
+      return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+    }
+    function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
       return {
-        revision: state.revision,
+        format: 'freed_normalized_checkpoint_export_v2',
+        protocolVersion: 2,
+        libraryId: '2'.repeat(64),
+        authorityEpoch: '3'.repeat(64),
+        writerId: '6'.repeat(64),
+        sourceRevision: state.sourceRevision,
+        causalFrontierDigest: 'a'.repeat(64),
+        recordCount: items.length + 1,
         itemCount: items.length,
-        sourceDigest: state.sourceDigest || '0'.repeat(64),
-        shellJson: JSON.stringify(state.shell || {}),
-        materializedDigest: '1'.repeat(64),
+        localActorId: '6'.repeat(64),
       };
     }
-    function sqliteAuthorityBootstrap() {
+    function normalizedPrimaryMutationContext() {
       return {
-        authority: {
-          library_id: '2'.repeat(64),
-          epoch: 1,
-          epoch_id: '3'.repeat(64),
-          authority_key_id: '4'.repeat(64),
-          authority_public_key: '5'.repeat(64),
-          observed_frontier: [],
-        },
-        actor: {
-          actor_id: '6'.repeat(64),
-          actor_public_key: '7'.repeat(64),
-          enrollment_operation_id: 'e2e-local-authority-enrollment',
-          enrollment_certificate_digest: '8'.repeat(64),
-          canonical_enrollment_certificate_json: '{}',
-          actor_chain_genesis: '9'.repeat(64),
-        },
-        protocol: {
-          format: 'freed_library_core_native_authority_protocol_v1',
-          active_engine: 'library_core_v1',
-          schema_version: 12,
-          replication_protocol: 'op_segments_v1',
-          checkpoint_format: 'freed_logical_checkpoint_v1',
-          transition_certificate_digest: 'a'.repeat(64),
-          native_protocol_certificate_digest: 'b'.repeat(64),
-          prior_transition_certificate_digest: null,
-          source_manifest_digest: 'c'.repeat(64),
-        },
+        libraryId: '2'.repeat(64),
+        epoch: 1,
+        epochId: '3'.repeat(64),
+        actorId: '6'.repeat(64),
+        actorPublicKey: '7'.repeat(64),
+        nextCounter: 1,
+        previousOperationId: null,
+        previousChainDigest: '8'.repeat(64),
+        observedFrontier: [],
       };
     }
-    function sqliteFacetSummary() {
-      var items = Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; });
-      var tags = new Set();
-      items.forEach(function(item) {
-        (sqliteItemState(item).tags || []).forEach(function(tag) { tags.add(tag); });
-      });
+    function normalizedFollowerMutationContext() {
       return {
-        archivedCount: items.filter(function(item) { return !!sqliteItemState(item).archived; }).length,
-        sampleItemCount: items.filter(function(item) { return !!item.sampleData; }).length,
-        savedArchivedCount: items.filter(function(item) {
-          var user = sqliteItemState(item);
-          return !!user.saved && !!user.archived;
-        }).length,
-        savedCount: items.filter(function(item) { return !!sqliteItemState(item).saved; }).length,
-        savedPlatformCount: new Set(items.filter(function(item) {
-          return !!sqliteItemState(item).saved;
-        }).map(function(item) { return item.platform; })).size,
-        tags: Array.from(tags).sort(),
-        totalCount: items.length,
+        libraryId: '2'.repeat(64),
+        epoch: 1,
+        epochId: '3'.repeat(64),
+        actorId: '9'.repeat(64),
+        actorPublicKey: 'b'.repeat(64),
+        nextCounter: 1,
+        previousOperationId: null,
+        previousChainDigest: 'c'.repeat(64),
+        observedFrontier: [],
       };
     }
-    function sqliteUpsertItems(args) {
-      var state = sqliteState();
-      var request = args && args.request ? args.request : {};
-      (request.itemsBase64 || []).forEach(function(encoded) {
-        var binary = atob(encoded);
-        var bytes = Uint8Array.from(binary, function(character) {
-          return character.charCodeAt(0);
-        });
-        var item = JSON.parse(new TextDecoder().decode(bytes));
-        state.items[item.globalId] = item;
+    function enqueueNormalizedFollowerIntent(args) {
+      var request = args.request || {};
+      var envelopes = (request.canonicalEnvelopeJson || []).map(function(value) {
+        return JSON.parse(value);
       });
-      state.revision += 1;
+      var first = envelopes[0];
+      envelopes.forEach(applyNormalizedEnvelope);
+      sqliteState().revision += 1;
       persistSqliteState();
-      return null;
+      return {
+        transactionId: first.transaction_id,
+        actorId: first.actor_id,
+        firstCounter: first.actor_sequence,
+        lastCounter: envelopes[envelopes.length - 1].actor_sequence,
+        memberCount: envelopes.length,
+        optimisticFieldCount: envelopes.length,
+        state: 'pending',
+      };
     }
-    function sqliteAppendImportItems(args) {
-      var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-      if (!stage) throw new Error('SQLite Library has no active staged import');
-      var request = args && args.request ? args.request : {};
-      (request.itemsBase64 || []).forEach(function(encoded) {
-        var binary = atob(encoded);
-        var bytes = Uint8Array.from(binary, function(character) {
-          return character.charCodeAt(0);
-        });
-        var item = JSON.parse(new TextDecoder().decode(bytes));
-        stage.items[item.globalId] = item;
-      });
-      return null;
-    }
-    function sqliteMutateItems(args) {
+    function applyNormalizedEnvelope(envelope) {
       var state = sqliteState();
-      var request = args && args.request ? args.request : {};
-      var ids = request.ids || [];
-      var candidates = ids.length > 0
-        ? ids.map(function(id) { return state.items[id]; }).filter(Boolean)
-        : Object.values(state.items);
-      var affected = 0;
-      candidates.forEach(function(item) {
-        if (!item || item.__deleted) return;
-        if (request.platform && item.platform !== request.platform) return;
-        if (request.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== request.feedUrl)) return;
-        var user = item.userState || (item.userState = {});
-        switch (request.mutation) {
-          case 'mark_read':
-          case 'mark_all_read':
-            if (user.readAt == null) user.readAt = request.timestampMs;
-            break;
-          case 'toggle_saved':
-            user.saved = !user.saved;
-            if (user.saved) { user.savedAt = request.timestampMs; user.archived = false; delete user.archivedAt; }
-            else delete user.savedAt;
-            break;
-          case 'toggle_archived':
-            if (user.saved) return;
-            user.archived = !user.archived;
-            if (user.archived) user.archivedAt = request.timestampMs;
+      var payload = envelope.payload || {};
+      var item = state.items[envelope.entity_id];
+      var user = item && (item.userState || (item.userState = {}));
+      switch (envelope.operation_type) {
+        case 'feed_item_capture_upsert':
+          state.items[envelope.entity_id] = JSON.parse(JSON.stringify(payload.item));
+          break;
+        case 'feed_item_annotations_replace':
+          if (user) {
+            user.tags = (payload.tags || []).slice();
+            user.highlights = (payload.highlights || []).map(function(highlight) {
+              var normalized = {
+                createdAt: highlight.createdAt,
+                text: highlight.text,
+              };
+              if (highlight.note != null) normalized.note = highlight.note;
+              return normalized;
+            });
+          }
+          break;
+        case 'feed_item_analysis_replace':
+          if (item) {
+            var contentSignals = payload.content_signals;
+            if (contentSignals == null) {
+              delete item.contentSignals;
+            } else {
+              var scores = {};
+              var tags = [];
+              (contentSignals.scores || []).forEach(function(score) {
+                scores[score.signal] = score.score_basis_points / 10000;
+                if (score.tagged) tags.push(score.signal);
+              });
+              item.contentSignals = {
+                inferredAt: contentSignals.inferred_at_ms,
+                method: contentSignals.method,
+                scores: scores,
+                tags: tags,
+                version: contentSignals.version,
+              };
+            }
+            var eventCandidate = payload.event_candidate;
+            if (eventCandidate == null) {
+              delete item.eventCandidate;
+            } else {
+              var event = {
+                confidence: eventCandidate.confidence_basis_points / 10000,
+                detectedAt: eventCandidate.detected_at_ms,
+                method: eventCandidate.method,
+                version: eventCandidate.version,
+              };
+              if (eventCandidate.ends_at_ms != null) event.endsAt = eventCandidate.ends_at_ms;
+              if (eventCandidate.evidence != null) event.evidence = eventCandidate.evidence;
+              if (eventCandidate.location_name != null) event.locationName = eventCandidate.location_name;
+              if (eventCandidate.location_url != null) event.locationUrl = eventCandidate.location_url;
+              if (eventCandidate.starts_at_ms != null) event.startsAt = eventCandidate.starts_at_ms;
+              if (eventCandidate.timezone != null) event.timezone = eventCandidate.timezone;
+              if (eventCandidate.title != null) event.title = eventCandidate.title;
+              item.eventCandidate = event;
+            }
+          }
+          break;
+        case 'feed_item_read_assignment':
+          if (user) user.readAt = payload.read_at_ms;
+          break;
+        case 'feed_item_saved_assignment':
+          if (user) {
+            user.saved = payload.assigned;
+            if (payload.assigned) {
+              user.savedAt = payload.assigned_at_ms;
+              user.archived = false;
+              delete user.archivedAt;
+            } else {
+              delete user.savedAt;
+            }
+          }
+          break;
+        case 'feed_item_archive_assignment':
+          if (user) {
+            user.archived = payload.assigned;
+            if (payload.assigned) user.archivedAt = payload.assigned_at_ms;
             else delete user.archivedAt;
-            break;
-          case 'archive':
-          case 'archive_all_read_unsaved':
-            if (user.saved || user.hidden || user.readAt == null) return;
-            user.archived = true; user.archivedAt = user.archivedAt || request.timestampMs;
-            break;
-          case 'toggle_liked':
-            user.liked = !user.liked;
-            if (user.liked) user.likedAt = request.timestampMs;
-            else { delete user.likedAt; delete user.likedSyncedAt; }
-            break;
-          case 'confirm_liked': user.likedSyncedAt = request.timestampMs; break;
-          case 'confirm_seen': user.seenSyncedAt = request.timestampMs; break;
-          case 'unarchive_saved':
-            if (!user.saved || !user.archived) return;
-            user.archived = false; delete user.archivedAt;
-            break;
-          case 'delete_all_archived':
-            if (!user.archived || user.saved) return;
-            item.__deleted = true;
-            break;
-          case 'prune_archived':
-            if (!user.archived || user.saved || user.archivedAt == null || user.archivedAt > request.timestampMs - (request.maxAgeMs || 0)) return;
-            item.__deleted = true;
-            break;
-          case 'delete_rss':
-            if (item.platform !== 'rss') return;
-            item.__deleted = true;
-            break;
-          case 'delete': item.__deleted = true; break;
-          case 'clear_sample':
-            if (!item.sampleData) return;
-            item.__deleted = true;
-            break;
-          default: return;
-        }
-        affected += 1;
+          }
+          break;
+        case 'feed_item_like_assignment':
+          if (user) {
+            user.liked = payload.assigned;
+            if (payload.assigned) user.likedAt = payload.assigned_at_ms;
+            else {
+              delete user.likedAt;
+              delete user.likedSyncedAt;
+            }
+          }
+          break;
+        case 'feed_item_like_sync_receipt':
+          if (user) user.likedSyncedAt = payload.synced_at_ms;
+          break;
+        case 'feed_item_seen_sync_receipt':
+          if (user) user.seenSyncedAt = payload.synced_at_ms;
+          break;
+        case 'feed_item_remove':
+          if (item) item.__deleted = true;
+          break;
+        case 'rss_feed_upsert':
+          state.feeds[envelope.entity_id] = JSON.parse(JSON.stringify(payload.feed));
+          break;
+        case 'rss_feed_title_assignment':
+          if (state.feeds[envelope.entity_id]) {
+            state.feeds[envelope.entity_id].title = payload.title;
+          }
+          break;
+        case 'rss_feed_remove_keep_items':
+        case 'rss_feed_remove_with_items':
+          delete state.feeds[envelope.entity_id];
+          if (envelope.operation_type === 'rss_feed_remove_with_items') {
+            Object.values(state.items).forEach(function(candidate) {
+              if (candidate.rssSource && candidate.rssSource.feedUrl === envelope.entity_id) {
+                candidate.__deleted = true;
+              }
+            });
+          }
+          break;
+        case 'person_upsert':
+          state.persons[envelope.entity_id] = JSON.parse(JSON.stringify(payload.person));
+          break;
+        case 'person_reach_out_append':
+          if (state.persons[envelope.entity_id]) {
+            var person = state.persons[envelope.entity_id];
+            person.reachOutLog = [{
+              channel: payload.channel || undefined,
+              loggedAt: payload.logged_at_ms,
+              notes: payload.notes || undefined,
+            }].concat(person.reachOutLog || []).slice(0, 20);
+          }
+          break;
+        case 'person_remove_and_accounts':
+          delete state.persons[envelope.entity_id];
+          Object.keys(state.accounts).forEach(function(accountId) {
+            if (state.accounts[accountId].personId === envelope.entity_id) {
+              delete state.accounts[accountId];
+            }
+          });
+          break;
+        case 'account_upsert':
+          state.accounts[envelope.entity_id] = JSON.parse(JSON.stringify(payload.account));
+          break;
+        case 'account_person_assignment':
+          if (state.accounts[envelope.entity_id]) {
+            if (payload.person_id == null) delete state.accounts[envelope.entity_id].personId;
+            else state.accounts[envelope.entity_id].personId = payload.person_id;
+          }
+          break;
+        case 'account_remove':
+          delete state.accounts[envelope.entity_id];
+          break;
+        case 'preferences_leaf_assignment':
+          state.preferences = Object.assign({}, state.preferences || {}, payload.updates || {});
+          break;
+      }
+    }
+    function commitNormalizedLibraryTransaction(args) {
+      var request = args.request || {};
+      var envelopes = (request.canonicalEnvelopeJson || []).map(function(value) {
+        return JSON.parse(value);
       });
-      state.revision += 1;
+      var first = envelopes[0];
+      var previousRevision = sqliteState().revision;
+      envelopes.forEach(applyNormalizedEnvelope);
+      sqliteState().revision = previousRevision + 1;
       persistSqliteState();
-      return affected;
+      return {
+        transactionId: first.transaction_id,
+        transactionDigest: first.transaction_digest,
+        actorId: first.actor_id,
+        memberCount: envelopes.length,
+        firstCounter: first.actor_sequence,
+        lastCounter: envelopes[envelopes.length - 1].actor_sequence,
+        committedOperationId: envelopes[envelopes.length - 1].operation_id,
+        committedChainDigest: envelopes[envelopes.length - 1].actor_chain_digest,
+        previousRevision: previousRevision,
+        committedRevision: sqliteState().revision,
+        committedAt: request.committedAtMs,
+        followerResultDigest: '9'.repeat(64),
+        followerResultSequence: sqliteState().revision,
+        canonicalFollowerResultJson: '{}',
+        invalidations: [],
+      };
+    }
+    function sqliteFeedCard(item) {
+      var user = sqliteItemState(item);
+      var content = item.content || {};
+      var engagement = item.engagement || {};
+      var event = item.eventCandidate || {};
+      return {
+        archived: !!user.archived,
+        authorAvatarUrl: item.author && item.author.avatarUrl || null,
+        authorDisplayName: item.author && item.author.displayName || null,
+        authorHandle: item.author && item.author.handle || null,
+        authorId: item.author && item.author.id || null,
+        capturedAt: item.capturedAt == null ? null : item.capturedAt,
+        contentSignalTags: item.contentSignals && item.contentSignals.tags || [],
+        contentText: content.text || null,
+        contentType: item.contentType || null,
+        engagementComments: engagement.comments == null ? null : engagement.comments,
+        engagementLikes: engagement.likes == null ? null : engagement.likes,
+        eventConfidenceBasisPoints: event.confidence == null ? null : Math.round(event.confidence * 10000),
+        eventStartsAt: event.startsAt == null ? null : event.startsAt,
+        globalId: item.globalId,
+        liked: user.liked == null ? null : !!user.liked,
+        likedAt: user.likedAt == null ? null : user.likedAt,
+        likedSyncedAt: user.likedSyncedAt == null ? null : user.likedSyncedAt,
+        linkPreviewTitle: content.linkPreview && content.linkPreview.title || null,
+        locationName: item.location && item.location.name || null,
+        mediaTypes: content.mediaTypes || [],
+        mediaUrls: content.mediaUrls || [],
+        platform: item.platform || null,
+        publishedAt: item.publishedAt == null ? null : item.publishedAt,
+        readAt: user.readAt == null ? null : user.readAt,
+        readingTimeMinutes: item.preservedContent && item.preservedContent.readingTime || null,
+        saved: !!user.saved,
+        sourceUrl: item.sourceUrl || content.linkPreview && content.linkPreview.url || null,
+        tags: user.tags || [],
+      };
+    }
+    function sqliteQueryItems(request) {
+      var filter = request.filter || {};
+      return Object.values(sqliteState().items).filter(function(item) {
+        if (!item || item.__deleted) return false;
+        var user = sqliteItemState(item);
+        if (!!user.archived !== !!filter.archivedOnly) return false;
+        if (!filter.showHidden && !!user.hidden) return false;
+        if (filter.savedOnly && !user.saved) return false;
+        if (filter.platform && item.platform !== filter.platform) return false;
+        if (filter.authorId && (!item.author || item.author.id !== filter.authorId)) return false;
+        if (filter.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== filter.feedUrl)) return false;
+        var tags = user.tags || [];
+        if ((filter.tags || []).length > 0 && !filter.tags.some(function(tag) { return tags.includes(tag); })) return false;
+        var signals = item.contentSignals && item.contentSignals.tags || [];
+        if ((filter.signals || []).length > 0 && !filter.signals.some(function(signal) { return signals.includes(signal); })) return false;
+        if (filter.socialContentFilter === 'stories' && item.contentType !== 'story') return false;
+        if (filter.socialContentFilter === 'posts' && item.contentType === 'story') return false;
+        return true;
+      }).sort(function(left, right) {
+        return (right.publishedAt || 0) - (left.publishedAt || 0) || left.globalId.localeCompare(right.globalId);
+      });
+    }
+    function sqlitePreferenceRows() {
+      var rows = [];
+      function pathChild(path, key) {
+        return path + '.' + JSON.stringify(key);
+      }
+      function append(path, value) {
+        var row = {
+          booleanValue: null,
+          integerValue: null,
+          path: '',
+          realValue: null,
+          textValue: null,
+          updatedAt: Math.max(0, sqliteState().revision || 0),
+          valueType: 'null',
+        };
+        if (Array.isArray(value)) {
+          row.integerValue = value.length;
+          row.path = 'a:' + path;
+          row.valueType = 'integer';
+          rows.push(row);
+          value.forEach(function(child, index) {
+            append(path + '[' + index + ']', child);
+          });
+          return;
+        }
+        if (value && typeof value === 'object') {
+          row.path = 'o:' + path;
+          rows.push(row);
+          Object.keys(value).forEach(function(key) {
+            append(pathChild(path, key), value[key]);
+          });
+          return;
+        }
+        row.path = 'v:' + path;
+        if (typeof value === 'boolean') {
+          row.booleanValue = value;
+          row.valueType = 'boolean';
+        } else if (typeof value === 'number' && Number.isSafeInteger(value)) {
+          row.integerValue = value;
+          row.valueType = 'integer';
+        } else if (typeof value === 'number') {
+          row.realValue = value;
+          row.valueType = 'real';
+        } else if (typeof value === 'string') {
+          row.textValue = value;
+          row.valueType = 'text';
+        }
+        rows.push(row);
+      }
+      Object.keys(sqliteState().preferences || {}).forEach(function(key) {
+        append(pathChild('$', key), sqliteState().preferences[key]);
+      });
+      return rows.sort(function(left, right) {
+        return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+      });
+    }
+    async function sha256HexText(value) {
+      var bytes = new TextEncoder().encode(value);
+      var digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+      return Array.from(digest).map(function(byte) {
+        return byte.toString(16).padStart(2, '0');
+      }).join('');
+    }
+    async function feedBrowseBindingDigest(request) {
+      var filter = request.filter || {};
+      var filterDigest = await sha256HexText(JSON.stringify([
+        filter.schemaVersion,
+        filter.archivedOnly,
+        filter.authorId,
+        filter.feedUrl,
+        filter.platform,
+        filter.savedOnly,
+        filter.showHidden,
+        filter.signals,
+        filter.socialContentFilter,
+        filter.tags,
+      ]));
+      return sha256HexText(JSON.stringify([
+        request.friendsPredicateSchemaVersion,
+        request.identityMode,
+        filterDigest,
+      ]));
+    }
+    function lowercaseHexBytes(value) {
+      var bytes = new Uint8Array(value.length / 2);
+      for (var index = 0; index < bytes.length; index += 1) {
+        bytes[index] = parseInt(value.slice(index * 2, index * 2 + 2), 16);
+      }
+      return bytes;
+    }
+    function encodeFeedBrowseCursor(source, filterDigest, item) {
+      var globalId = new TextEncoder().encode(item.globalId);
+      var bytes = new Uint8Array(92 + globalId.length);
+      var view = new DataView(bytes.buffer);
+      bytes[0] = 2;
+      bytes.set(lowercaseHexBytes(source.generationId), 1);
+      bytes.set(lowercaseHexBytes(filterDigest), 33);
+      view.setBigUint64(65, BigInt(source.transitionSequence), false);
+      view.setBigUint64(73, BigInt(source.projectionRevision), false);
+      bytes[81] = 0;
+      view.setBigUint64(82, BigInt(item.publishedAt || 0), false);
+      view.setUint16(90, globalId.length, false);
+      bytes.set(globalId, 92);
+      return btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+        .split('+').join('-').split('/').join('_').replace(/=+$/g, '');
+    }
+    function decodeFeedBrowseCursorGlobalId(value) {
+      var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var binary = atob(base64);
+      var bytes = Uint8Array.from(binary, function(character) {
+        return character.charCodeAt(0);
+      });
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(92));
+    }
+    function sqliteNormalizedQuery(args) {
+      var request = args && args.request || {};
+      var state = sqliteState();
+      var source = {
+        generationId: 'd'.repeat(64),
+        projectionRevision: Math.max(0, state.revision || 0),
+        transitionSequence: Math.max(0, state.sourceGeneration || 0),
+      };
+      if (request.queryId === 'optimistic_fields_v1') {
+        return {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'contact_match_v1') {
+        return {
+          accountIds: [],
+          confidence: 'medium',
+          personId: null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'friends_directory_page_v1') {
+        var directoryQuery = String(request.search || '').toLowerCase();
+        var directoryRows = Object.values(state.persons || {})
+          .filter(function(person) {
+            return person.relationshipStatus === 'friend' &&
+              (!directoryQuery || String(person.name || '').toLowerCase().includes(directoryQuery));
+          })
+          .sort(function(left, right) {
+            if (request.sort === 'care_level') {
+              return right.careLevel - left.careLevel || left.name.localeCompare(right.name);
+            }
+            return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: directoryRows.slice(0, request.limit || 64).map(function(person) {
+            var lastContactAt = (person.reachOutLog || []).reduce(function(latest, entry) {
+              return Math.max(latest, entry.loggedAt || 0);
+            }, 0) || null;
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              bio: person.bio == null ? null : person.bio,
+              careLevel: person.careLevel,
+              hasLocation: false,
+              id: person.id,
+              isRecentlyActive: false,
+              lastContactAt: lastContactAt,
+              latestActivityAt: null,
+              latestAvatarUrl: null,
+              name: person.name,
+              needsOutreach: false,
+              reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+              relationshipStatus: 'friend',
+            };
+          }),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: directoryRows.length,
+        };
+      }
+      if (request.queryId === 'person_picker_page_v1') {
+        var pickerQuery = String(request.search || '').toLowerCase();
+        var pickerRows = Object.values(state.persons || {})
+          .filter(function(person) {
+            return !pickerQuery || String(person.name || '').toLowerCase().startsWith(pickerQuery);
+          })
+          .sort(function(left, right) {
+            var relationshipOrder = Number(right.relationshipStatus === 'friend') -
+              Number(left.relationshipStatus === 'friend');
+            return relationshipOrder || left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+          })
+          .slice(0, request.limit || 12)
+          .map(function(person) {
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              careLevel: person.careLevel,
+              id: person.id,
+              name: person.name,
+              relationshipStatus: person.relationshipStatus,
+            };
+          });
+        return {
+          queryId: request.queryId,
+          rows: pickerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'account_picker_page_v1') {
+        var accountPickerQuery = String(request.search || '').toLowerCase();
+        var accountPickerItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var accountPickerRows = Object.values(state.accounts || {})
+          .filter(function(account) {
+            if (account.kind !== 'social' || account.personId != null) return false;
+            var hasActivity = accountPickerItems.some(function(item) {
+              return item.platform === account.provider && item.author &&
+                item.author.id === account.externalId;
+            });
+            var searchable = [account.displayName, account.handle, account.provider, account.externalId]
+              .filter(Boolean).join(' ').toLowerCase();
+            return hasActivity && (!accountPickerQuery || searchable.includes(accountPickerQuery));
+          })
+          .sort(function(left, right) {
+            var leftName = String(left.displayName || left.handle || left.externalId);
+            var rightName = String(right.displayName || right.handle || right.externalId);
+            return leftName.localeCompare(rightName) || left.id.localeCompare(right.id);
+          })
+          .slice(0, request.limit || 50)
+          .map(function(account) {
+            return {
+              accountId: account.id,
+              authorId: account.externalId,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              displayName: account.displayName || account.handle || account.externalId,
+              handle: account.handle || account.externalId,
+              platform: account.provider,
+            };
+          });
+        return {
+          queryId: request.queryId,
+          rows: accountPickerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'person_graph_page_v1') {
+        var personCandidates = Object.values(state.persons || {})
+          .sort(function(left, right) { return left.id.localeCompare(right.id); });
+        var personCursorId = identityCursorEntityId(request.cursor);
+        var personStart = personCursorId == null
+          ? 0
+          : personCandidates.findIndex(function(person) { return person.id === personCursorId; }) + 1;
+        var personLimit = request.limit || 256;
+        var personEnd = Math.min(personCandidates.length, personStart + personLimit);
+        var personRows = personCandidates
+          .slice(personStart, personEnd)
+          .map(function(person) {
+            var graphPinned = person.graphPinned === true &&
+              Number.isFinite(person.graphX) && Number.isFinite(person.graphY) &&
+              Number.isSafeInteger(person.graphUpdatedAt);
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              careLevel: person.careLevel,
+              graphPinned: graphPinned,
+              graphUpdatedAt: graphPinned ? person.graphUpdatedAt : null,
+              graphX: graphPinned ? person.graphX : null,
+              graphY: graphPinned ? person.graphY : null,
+              id: person.id,
+              lastReachOutAt: person.lastReachOutAt == null ? null : person.lastReachOutAt,
+              name: person.name,
+              reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+              relationshipStatus: person.relationshipStatus,
+              updatedAt: person.updatedAt,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: personEnd < personCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, personRows[personRows.length - 1].id)
+            : null,
+          queryId: request.queryId,
+          rows: personRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'account_graph_page_v1') {
+        var accountPersons = state.persons || {};
+        var accountItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var accountCandidates = Object.values(state.accounts || {})
+          .filter(function(account) { return account.kind === 'social'; })
+          .sort(function(left, right) { return left.id.localeCompare(right.id); });
+        var accountCursorId = identityCursorEntityId(request.cursor);
+        var accountStart = accountCursorId == null
+          ? 0
+          : accountCandidates.findIndex(function(account) { return account.id === accountCursorId; }) + 1;
+        var accountLimit = request.limit || 256;
+        var accountEnd = Math.min(accountCandidates.length, accountStart + accountLimit);
+        var accountRows = accountCandidates
+          .slice(accountStart, accountEnd)
+          .map(function(account) {
+            var activity = accountItems.filter(function(item) {
+              return item.platform === account.provider && item.author &&
+                item.author.id === account.externalId;
+            });
+            var graphPinned = account.graphPinned === true &&
+              Number.isFinite(account.graphX) && Number.isFinite(account.graphY) &&
+              Number.isSafeInteger(account.graphUpdatedAt);
+            var person = account.personId ? accountPersons[account.personId] : null;
+            return {
+              activityCount: activity.length,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              discoveredFrom: account.discoveredFrom,
+              displayName: account.displayName == null ? null : account.displayName,
+              externalId: account.externalId,
+              firstSeenAt: account.firstSeenAt,
+              followRosterActive: account.followRosterActive == null ? null : !!account.followRosterActive,
+              graphPinned: graphPinned,
+              graphUpdatedAt: graphPinned ? account.graphUpdatedAt : null,
+              graphX: graphPinned ? account.graphX : null,
+              graphY: graphPinned ? account.graphY : null,
+              handle: account.handle == null ? null : account.handle,
+              id: account.id,
+              kind: account.kind,
+              lastSeenAt: account.lastSeenAt,
+              latestActivityAt: activity.reduce(function(latest, item) {
+                return Math.max(latest, item.publishedAt || item.capturedAt || 0);
+              }, 0) || null,
+              personId: account.personId == null ? null : account.personId,
+              personName: person ? person.name : null,
+              provider: account.provider,
+              updatedAt: account.updatedAt,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: accountEnd < accountCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, accountRows[accountRows.length - 1].id)
+            : null,
+          queryId: request.queryId,
+          rows: accountRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'rss_feed_page_v1') {
+        var feedItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var feedCandidates = Object.values(state.feeds || {})
+          .sort(function(left, right) { return left.url.localeCompare(right.url); });
+        var feedCursorId = identityCursorEntityId(request.cursor);
+        var feedStart = feedCursorId == null
+          ? 0
+          : feedCandidates.findIndex(function(feed) { return feed.url === feedCursorId; }) + 1;
+        var feedLimit = request.limit || 256;
+        var feedEnd = Math.min(feedCandidates.length, feedStart + feedLimit);
+        var feedRows = feedCandidates
+          .slice(feedStart, feedEnd)
+          .map(function(feed) {
+            var activity = feedItems.filter(function(item) {
+              return item.rssSource && item.rssSource.feedUrl === feed.url;
+            });
+            var fingerprint = feed.sampleDataFingerprint || null;
+            return {
+              activityCount: activity.length,
+              enabled: feed.enabled !== false,
+              folder: feed.folder == null ? null : feed.folder,
+              imageUrl: feed.imageUrl == null ? null : feed.imageUrl,
+              lastFetched: feed.lastFetched == null ? null : feed.lastFetched,
+              latestActivityAt: activity.reduce(function(latest, item) {
+                return Math.max(latest, item.publishedAt || item.capturedAt || 0);
+              }, 0) || null,
+              pollInterval: feed.pollInterval == null ? null : feed.pollInterval,
+              sampleBatchId: fingerprint ? fingerprint.batchId : null,
+              sampleGeneratedAt: fingerprint ? fingerprint.generatedAt : null,
+              sampleGeneratorVersion: fingerprint ? fingerprint.generatorVersion : null,
+              siteUrl: feed.siteUrl == null ? null : feed.siteUrl,
+              title: feed.title || feed.url,
+              trackUnread: feed.trackUnread !== false,
+              unreadCount: activity.filter(function(item) {
+                return sqliteItemState(item).readAt == null;
+              }).length,
+              updatedAt: feed.updatedAt || feed.lastFetched || 0,
+              url: feed.url,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: feedEnd < feedCandidates.length
+            ? identityPageCursor(source, source.projectionRevision, feedRows[feedRows.length - 1].url)
+            : null,
+          queryId: request.queryId,
+          rows: feedRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'library_facet_summary_v1') {
+        var liveItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted;
+        });
+        var platformCounts = {};
+        var tags = new Set();
+        liveItems.forEach(function(item) {
+          var user = sqliteItemState(item);
+          var platform = item.platform || 'unknown';
+          var counts = platformCounts[platform] || {
+            archivableCount: 0,
+            latestCapturedAt: null,
+            latestPublishedAt: null,
+            platform: platform,
+            totalCount: 0,
+            unreadCount: 0,
+          };
+          counts.totalCount += 1;
+          counts.latestCapturedAt = Math.max(counts.latestCapturedAt || 0, item.capturedAt || 0) || null;
+          counts.latestPublishedAt = Math.max(counts.latestPublishedAt || 0, item.publishedAt || 0) || null;
+          if (user.readAt == null) counts.unreadCount += 1;
+          if (user.readAt != null && !user.saved && !user.archived && !user.hidden) {
+            counts.archivableCount += 1;
+          }
+          platformCounts[platform] = counts;
+          (user.tags || []).forEach(function(tag) { tags.add(tag); });
+        });
+        var feeds = Object.values(state.feeds || {});
+        var persons = Object.values(state.persons || {});
+        var accounts = Object.values(state.accounts || {});
+        var contactAccounts = accounts.filter(function(account) {
+          return account.kind === 'contact' && account.provider === 'google_contacts';
+        });
+        var personIds = new Set(persons.map(function(person) { return person.id; }));
+        return {
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          summary: {
+            archivedCount: liveItems.filter(function(item) { return !!sqliteItemState(item).archived; }).length,
+            archivableCount: liveItems.filter(function(item) {
+              var user = sqliteItemState(item);
+              return user.readAt != null && !user.saved && !user.archived && !user.hidden;
+            }).length,
+            contactAccountCount: contactAccounts.length,
+            contactLinkedPersonCount: new Set(contactAccounts.filter(function(account) {
+              return account.personId && personIds.has(account.personId);
+            }).map(function(account) { return account.personId; })).size,
+            enabledRssFeedCount: feeds.filter(function(feed) { return feed.enabled !== false; }).length,
+            friendPersonCount: persons.filter(function(person) { return person.relationshipStatus === 'friend'; }).length,
+            latestContactImportedAt: contactAccounts.reduce(function(latest, account) {
+              return Math.max(latest, account.importedAt || account.lastSeenAt || account.createdAt || 0);
+            }, 0) || null,
+            latestRssFeedFetchedAt: feeds.filter(function(feed) {
+              return feed.enabled !== false;
+            }).reduce(function(latest, feed) {
+              return Math.max(latest, feed.lastFetched || 0);
+            }, 0) || null,
+            platformCounts: Object.values(platformCounts).sort(function(left, right) {
+              return left.platform.localeCompare(right.platform);
+            }),
+            rssFeedCount: feeds.length,
+            sampleAccountCount: accounts.filter(function(account) { return !!account.sampleDataFingerprint; }).length,
+            sampleFeedCount: feeds.filter(function(feed) { return !!feed.sampleDataFingerprint; }).length,
+            sampleItemCount: liveItems.filter(function(item) { return !!item.sampleDataFingerprint; }).length,
+            samplePersonCount: persons.filter(function(person) { return !!person.sampleDataFingerprint; }).length,
+            savedArchivedCount: liveItems.filter(function(item) {
+              var user = sqliteItemState(item);
+              return !!user.saved && !!user.archived;
+            }).length,
+            savedCount: liveItems.filter(function(item) { return !!sqliteItemState(item).saved; }).length,
+            savedPlatformCount: new Set(liveItems.filter(function(item) {
+              return !!sqliteItemState(item).saved;
+            }).map(function(item) { return item.platform || 'unknown'; })).size,
+            socialAccountCount: accounts.filter(function(account) { return account.kind === 'social'; }).length,
+            tags: Array.from(tags).sort(),
+            totalCount: liveItems.length,
+            unreadCount: liveItems.filter(function(item) { return sqliteItemState(item).readAt == null; }).length,
+          },
+        };
+      }
+      if (request.queryId === 'saved_analytics_v2') {
+        var savedRows = Object.values(state.items || {}).filter(function(item) {
+          return !item.__deleted && !!sqliteItemState(item).saved;
+        }).map(function(item) {
+          var user = sqliteItemState(item);
+          return {
+            contentType: String(item.contentType || ''),
+            effectiveSavedAt: user.savedAt || user.readAt || item.capturedAt || 0,
+            platform: String(item.platform || ''),
+          };
+        });
+        function countLabels(key) {
+          var counts = {};
+          savedRows.forEach(function(row) {
+            var label = row[key];
+            counts[label] = (counts[label] || 0) + 1;
+          });
+          return Object.keys(counts).sort().map(function(label) {
+            return { count: counts[label], label: label };
+          });
+        }
+        function countWindows(windows) {
+          return (windows || []).map(function(window) {
+            return savedRows.filter(function(row) {
+              return row.effectiveSavedAt >= window.startMs && row.effectiveSavedAt < window.endMs;
+            }).length;
+          });
+        }
+        return {
+          contentMix: countLabels('contentType'),
+          dailyCounts: countWindows(request.dailyWindows),
+          hourlyCounts: countWindows(request.hourlyWindows),
+          latestSavedAt: savedRows.reduce(function(latest, row) {
+            return Math.max(latest, row.effectiveSavedAt);
+          }, 0) || null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          sourceCounts: countLabels('platform'),
+          totalCount: savedRows.length,
+        };
+      }
+      if (request.queryId === 'filter_scope_summary_v1') {
+        var account = Object.values(state.accounts || {}).find(function(candidate) {
+          return request.feedUrl == null &&
+            candidate.provider === request.platform &&
+            candidate.externalId === request.authorId;
+        }) || null;
+        var feed = Object.values(state.feeds || {}).find(function(candidate) {
+          return request.feedUrl != null && candidate.url === request.feedUrl;
+        }) || null;
+        var itemCount = Object.values(sqliteState().items).filter(function(item) {
+          if (!item || item.__deleted || sqliteItemState(item).hidden) return false;
+          return request.feedUrl != null
+            ? item.rssSource && item.rssSource.feedUrl === request.feedUrl
+            : item.platform === request.platform && item.author && item.author.id === request.authorId;
+        }).length;
+        return {
+          accountId: account ? account.id : null,
+          itemCount: itemCount,
+          label: feed
+            ? feed.title
+            : account
+              ? account.displayName || account.handle || account.externalId
+              : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'preferences_snapshot_v1') {
+        return {
+          queryId: request.queryId,
+          rows: sqlitePreferenceRows(),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'friend_candidate_review_v1') {
+        var supportedCandidateProviders = new Set([
+          'x', 'facebook', 'instagram', 'linkedin', 'substack', 'medium',
+        ]);
+        var candidateGroups = new Map();
+        Object.values(state.accounts || {}).forEach(function(account) {
+          if (account.kind !== 'social' || !supportedCandidateProviders.has(account.provider)) return;
+          var person = account.personId && state.persons && state.persons[account.personId] || null;
+          if (person && person.relationshipStatus !== 'connection') return;
+          var kind = person ? 'connection_person' : 'unlinked_account';
+          var targetId = person ? person.id : account.id;
+          var key = kind + ':' + targetId;
+          var group = candidateGroups.get(key);
+          if (!group) {
+            group = {
+              accounts: [],
+              displayName: person ? person.name : account.displayName || account.handle || account.externalId,
+              kind: kind,
+              personId: person ? person.id : null,
+              targetId: targetId,
+            };
+            candidateGroups.set(key, group);
+          }
+          group.accounts.push(account);
+        });
+        var candidateRows = [];
+        candidateGroups.forEach(function(group) {
+          var accountIds = group.accounts.map(function(account) { return account.id; }).sort();
+          var activity = Object.values(state.items || {}).filter(function(item) {
+            return item && !item.__deleted && !sqliteItemState(item).hidden &&
+              group.accounts.some(function(account) {
+                return item.platform === account.provider && item.author &&
+                  item.author.id === account.externalId;
+              });
+          }).sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+          var signalCounts = {};
+          activity.forEach(function(item) {
+            (item.contentSignals && item.contentSignals.tags || []).forEach(function(signal) {
+              signalCounts[signal] = (signalCounts[signal] || 0) + 1;
+            });
+          });
+          function sumSignals(labels) {
+            return labels.reduce(function(total, label) {
+              return total + (signalCounts[label] || 0);
+            }, 0);
+          }
+          var personalCount = sumSignals(['life_update', 'moment']);
+          var lifeEventCount = sumSignals(['event', 'opportunity']);
+          var directRequestCount = sumSignals(['request', 'recommendation', 'discussion']);
+          var placeMomentCount = sumSignals(['place', 'moment']);
+          var negativeScore =
+            (signalCounts.news || 0) * 16 +
+            (signalCounts.promotion || 0) * 14 +
+            (signalCounts.product_update || 0) * 12 +
+            (signalCounts.deal || 0) * 12 +
+            (signalCounts.transaction || 0) * 16;
+          var personalScore = Math.min(36, personalCount * 13);
+          var lifeEventsScore = Math.min(24, lifeEventCount * 12);
+          var directRequestsScore = Math.min(22, directRequestCount * 9);
+          var placesMomentsScore = Math.min(22, placeMomentCount * 8);
+          var multiChannelScore = accountIds.length > 1 ? 18 : 0;
+          var recentCount = activity.filter(function(item) {
+            return (item.publishedAt || 0) <= request.nowMs &&
+              (item.publishedAt || 0) >= request.nowMs - 3888000000;
+          }).length;
+          var recentActivityScore = Math.min(
+            18,
+            (recentCount > 0 ? 10 : 0) + Math.min(8, Math.floor(activity.length / 2) * 4),
+          );
+          var contactOverlap = group.personId
+            ? (request.contactPersonIds || []).includes(group.personId) ||
+              accountIds.some(function(id) { return (request.contactAccountIds || []).includes(id); })
+            : (request.contactAccountIds || []).includes(group.targetId);
+          var contactOverlapScore = contactOverlap ? 14 : 0;
+          var nameScore = String(group.displayName).trim().includes(' ') ? 10 : 5;
+          var score = Math.max(0, Math.min(100,
+            personalScore + lifeEventsScore + directRequestsScore + placesMomentsScore +
+            multiChannelScore + recentActivityScore + contactOverlapScore + nameScore - negativeScore
+          ));
+          var lastActivityAt = Math.max(
+            group.accounts.reduce(function(latest, account) {
+              return Math.max(latest, account.lastSeenAt || 0);
+            }, 0),
+            activity.reduce(function(latest, item) {
+              return Math.max(latest, item.publishedAt || 0);
+            }, 0),
+          );
+          var id = [
+            'friend-suggestion', group.kind, group.targetId, lastActivityAt,
+            activity.length, personalCount, lifeEventCount, directRequestCount,
+            placeMomentCount, negativeScore,
+          ].join(':');
+          if (
+            score < 60 ||
+            personalScore + lifeEventsScore + directRequestsScore + placesMomentsScore +
+              multiChannelScore + recentActivityScore + contactOverlapScore <= 0 ||
+            (request.dismissedSuggestionIds || []).includes(id)
+          ) return;
+          candidateRows.push({
+            accountIdsJson: JSON.stringify(accountIds.slice(0, 16)),
+            confidence: score >= 80 ? 'high' : 'medium',
+            contactOverlapScore: contactOverlapScore,
+            directRequestsScore: directRequestsScore,
+            displayName: String(group.displayName).slice(0, 4096),
+            id: id,
+            kind: group.kind,
+            lastActivityAt: lastActivityAt || null,
+            lifeEventsScore: lifeEventsScore,
+            multiChannelScore: multiChannelScore,
+            personId: group.personId,
+            personalUpdatesScore: personalScore,
+            placesMomentsScore: placesMomentsScore,
+            recentActivityScore: recentActivityScore,
+            sampleItemIdsJson: JSON.stringify(activity.slice(0, 5).map(function(item) { return item.globalId; })),
+            score: score,
+            signalCountsJson: JSON.stringify(signalCounts),
+          });
+        });
+        candidateRows.sort(function(left, right) {
+          return right.score - left.score ||
+            (right.lastActivityAt || 0) - (left.lastActivityAt || 0) ||
+            left.displayName.localeCompare(right.displayName) ||
+            left.id.localeCompare(right.id);
+        });
+        return {
+          queryId: request.queryId,
+          rows: candidateRows.slice(0, request.limit || 10),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'person_detail_v1') {
+        var person = state.persons && state.persons[request.personId] || null;
+        var personFingerprint = person && person.sampleDataFingerprint || null;
+        var linkedAccounts = person ? Object.values(state.accounts || {})
+          .filter(function(account) { return account.personId === person.id; })
+          .sort(function(left, right) { return left.id.localeCompare(right.id); }) : [];
+        return {
+          linkedAccountCount: linkedAccounts.length,
+          linkedAccounts: linkedAccounts.slice(0, 64).map(function(account) {
+            return {
+              address: account.address == null ? null : account.address,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              createdAt: account.createdAt,
+              discoveredFrom: account.discoveredFrom,
+              displayName: account.displayName == null ? null : account.displayName,
+              email: account.email == null ? null : account.email,
+              externalId: account.externalId,
+              firstSeenAt: account.firstSeenAt,
+              handle: account.handle == null ? null : account.handle,
+              id: account.id,
+              importedAt: account.importedAt == null ? null : account.importedAt,
+              kind: account.kind,
+              lastSeenAt: account.lastSeenAt,
+              phone: account.phone == null ? null : account.phone,
+              profileUrl: account.profileUrl == null ? null : account.profileUrl,
+              provider: account.provider,
+              updatedAt: account.updatedAt,
+            };
+          }),
+          person: person ? {
+            avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+            bio: person.bio == null ? null : person.bio,
+            careLevel: person.careLevel,
+            createdAt: person.createdAt,
+            id: person.id,
+            name: person.name,
+            notes: person.notes == null ? null : person.notes,
+            reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+            reachOuts: (person.reachOutLog || []).slice(0, 20).map(function(reachOut, index) {
+              return {
+                channel: reachOut.channel == null ? null : reachOut.channel,
+                loggedAt: reachOut.loggedAt,
+                notes: reachOut.notes == null ? null : reachOut.notes,
+                reachOutId: person.id + ':reach-out:' + index,
+              };
+            }),
+            relationshipStatus: person.relationshipStatus,
+            sampleBatchId: personFingerprint ? personFingerprint.batchId : null,
+            sampleGeneratedAt: personFingerprint ? personFingerprint.generatedAt : null,
+            sampleGeneratorVersion: personFingerprint ? personFingerprint.generatorVersion : null,
+            tags: (person.tags || []).slice(0, 64),
+            updatedAt: person.updatedAt,
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'account_detail_v1') {
+        var account = state.accounts && state.accounts[request.accountId] || null;
+        var fingerprint = account && account.sampleDataFingerprint || null;
+        return {
+          account: account ? {
+            address: account.address == null ? null : account.address,
+            avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+            createdAt: account.createdAt,
+            discoveredFrom: account.discoveredFrom,
+            displayName: account.displayName == null ? null : account.displayName,
+            email: account.email == null ? null : account.email,
+            externalId: account.externalId,
+            firstSeenAt: account.firstSeenAt,
+            followRosterActive: account.followRosterActive == null ? null : account.followRosterActive,
+            followRosterRoles: (account.followRosterRoles || []).slice().sort(),
+            followRosterSyncedAt: account.followRosterSyncedAt == null ? null : account.followRosterSyncedAt,
+            handle: account.handle == null ? null : account.handle,
+            id: account.id,
+            importedAt: account.importedAt == null ? null : account.importedAt,
+            kind: account.kind,
+            lastSeenAt: account.lastSeenAt,
+            personId: account.personId == null ? null : account.personId,
+            phone: account.phone == null ? null : account.phone,
+            profileUrl: account.profileUrl == null ? null : account.profileUrl,
+            provider: account.provider,
+            sampleBatchId: fingerprint ? fingerprint.batchId : null,
+            sampleGeneratedAt: fingerprint ? fingerprint.generatedAt : null,
+            sampleGeneratorVersion: fingerprint ? fingerprint.generatorVersion : null,
+            updatedAt: account.updatedAt,
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'account_timeline_v1') {
+        var timelineAccount = state.accounts && state.accounts[request.accountId] || null;
+        var accountTimelineRows = timelineAccount ? Object.values(state.items || {})
+          .filter(function(candidate) {
+            return candidate && !candidate.__deleted &&
+              candidate.platform === timelineAccount.provider &&
+              candidate.author && candidate.author.id === timelineAccount.externalId;
+          })
+          .sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          }) : [];
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: accountTimelineRows.slice(0, request.limit || 50).map(sqliteFeedCard),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: accountTimelineRows.length,
+        };
+      }
+      if (request.queryId === 'person_timeline_v1') {
+        var personAccountKeys = Object.values(state.accounts || {})
+          .filter(function(account) { return account.personId === request.personId; })
+          .map(function(account) { return account.provider + ':' + account.externalId; });
+        var personTimelineRows = Object.values(state.items || {})
+          .filter(function(candidate) {
+            return candidate && !candidate.__deleted && candidate.author &&
+              personAccountKeys.includes(candidate.platform + ':' + candidate.author.id);
+          })
+          .sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: personTimelineRows.slice(0, request.limit || 50).map(sqliteFeedCard),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: personTimelineRows.length,
+        };
+      }
+      if (request.queryId === 'rss_feed_detail_v1') {
+        var detailFeed = state.feeds && state.feeds[request.url] || null;
+        var detailFingerprint = detailFeed && detailFeed.sampleDataFingerprint || null;
+        return {
+          feed: detailFeed ? {
+            enabled: detailFeed.enabled !== false,
+            folder: detailFeed.folder == null ? null : detailFeed.folder,
+            imageUrl: detailFeed.imageUrl == null ? null : detailFeed.imageUrl,
+            lastFetched: detailFeed.lastFetched == null ? null : detailFeed.lastFetched,
+            pollInterval: detailFeed.pollInterval == null ? null : detailFeed.pollInterval,
+            sampleBatchId: detailFingerprint ? detailFingerprint.batchId : null,
+            sampleGeneratedAt: detailFingerprint ? detailFingerprint.generatedAt : null,
+            sampleGeneratorVersion: detailFingerprint ? detailFingerprint.generatorVersion : null,
+            siteUrl: detailFeed.siteUrl == null ? null : detailFeed.siteUrl,
+            title: detailFeed.title || detailFeed.url,
+            trackUnread: detailFeed.trackUnread !== false,
+            updatedAt: detailFeed.updatedAt || detailFeed.lastFetched || 0,
+            url: detailFeed.url,
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'persons_graph_v1') {
+        function graphItemsForSource(platform, authorId, feedUrl) {
+          return Object.values(state.items || {}).filter(function(candidate) {
+            if (!candidate || candidate.__deleted || sqliteItemState(candidate).hidden) return false;
+            if (feedUrl != null) {
+              return candidate.rssSource && candidate.rssSource.feedUrl === feedUrl;
+            }
+            return candidate.platform === platform && candidate.author && candidate.author.id === authorId;
+          }).sort(function(left, right) {
+            return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+              left.globalId.localeCompare(right.globalId);
+          });
+        }
+        function graphLocations(items) {
+          return items.filter(function(item) {
+            return item.location && (
+              item.location.name != null || item.location.url != null ||
+              item.location.coordinates && (
+                item.location.coordinates.lat != null || item.location.coordinates.lng != null
+              )
+            );
+          }).slice(0, 8).map(function(item) {
+            return {
+              effectiveAt: item.timeRange && item.timeRange.startsAt || item.publishedAt || 0,
+              globalId: item.globalId,
+              publishedAt: item.publishedAt || 0,
+            };
+          });
+        }
+        function graphBase(items) {
+          var locations = graphLocations(items);
+          var avatarItem = items.find(function(item) {
+            return item.author && item.author.avatarUrl;
+          }) || null;
+          return {
+            avatarGlobalId: avatarItem ? avatarItem.globalId : null,
+            avatarPublishedAt: avatarItem ? avatarItem.publishedAt || 0 : null,
+            avatarUrl: avatarItem ? avatarItem.author.avatarUrl : null,
+            hasLocation: locations.length > 0,
+            itemCount: items.length,
+            latestActivityAt: items.reduce(function(latest, item) {
+              return Math.max(latest, item.publishedAt || 0);
+            }, 0),
+            locationCandidateCount: locations.length,
+            locationCandidates: locations,
+            sampleItems: items.slice(0, 5).map(function(item) {
+              return { globalId: item.globalId, publishedAt: item.publishedAt || 0 };
+            }),
+          };
+        }
+        var socialGraphRows = (request.sources || []).map(function(requested) {
+          var items = graphItemsForSource(requested.platform, requested.authorId, null);
+          return Object.assign(graphBase(items), {
+            authorId: requested.authorId,
+            platform: requested.platform,
+            recentCount: items.filter(function(item) {
+              return item.publishedAt >= request.recentWindow.startMs &&
+                item.publishedAt < request.recentWindow.endMs;
+            }).length,
+            signalCounts: CONTENT_SIGNAL_LABELS.map(function(label) {
+              return {
+                count: items.filter(function(item) {
+                  return item.contentSignals &&
+                    (item.contentSignals.tags || []).includes(label);
+                }).length,
+                label: label,
+              };
+            }),
+          });
+        });
+        var rssGraphRows = (request.rssFeedUrls || []).map(function(feedUrl) {
+          return Object.assign(graphBase(graphItemsForSource(null, null, feedUrl)), {
+            feedUrl: feedUrl,
+          });
+        });
+        return {
+          queryId: request.queryId,
+          rss: rssGraphRows,
+          schemaVersion: request.schemaVersion,
+          social: socialGraphRows,
+          source: source,
+          totalItemCount: socialGraphRows.reduce(function(total, row) {
+            return total + row.itemCount;
+          }, 0) + rssGraphRows.reduce(function(total, row) {
+            return total + row.itemCount;
+          }, 0),
+        };
+      }
+      if (request.queryId === 'map_markers_v1') {
+        var mapItems = Object.values(state.items || {}).filter(function(candidate) {
+          return candidate && !candidate.__deleted &&
+            !sqliteItemState(candidate).hidden && !sqliteItemState(candidate).archived &&
+            candidate.location && (
+              candidate.location.name != null ||
+              candidate.location.coordinates && candidate.location.coordinates.lat != null &&
+                candidate.location.coordinates.lng != null
+            );
+        }).sort(function(left, right) {
+          return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+            left.globalId.localeCompare(right.globalId);
+        });
+        var mapLimit = request.limit || 500;
+        return {
+          hasMore: mapItems.length > mapLimit,
+          queryId: request.queryId,
+          rows: mapItems.slice(0, mapLimit).map(function(mapItem) {
+            var mapAccount = Object.values(state.accounts || {}).find(function(account) {
+              return account.provider === mapItem.platform &&
+                mapItem.author && account.externalId === mapItem.author.id;
+            }) || null;
+            var mapPerson = mapAccount && state.persons && state.persons[mapAccount.personId] || null;
+            var coordinates = mapItem.location && mapItem.location.coordinates || {};
+            return {
+              authorAvatarUrl: mapItem.author && mapItem.author.avatarUrl || null,
+              authorDisplayName: mapItem.author && mapItem.author.displayName || '',
+              authorHandle: mapItem.author && mapItem.author.handle || '',
+              authorId: mapItem.author && mapItem.author.id || '',
+              capturedAt: mapItem.capturedAt || 0,
+              contentText: mapItem.content && mapItem.content.text || null,
+              contentType: mapItem.contentType,
+              friendAvatarUrl: mapPerson && mapPerson.avatarUrl || null,
+              friendName: mapPerson && mapPerson.name || null,
+              friendPersonId: mapPerson && mapPerson.id || null,
+              friendRelationshipStatus: mapPerson && mapPerson.relationshipStatus || null,
+              globalId: mapItem.globalId,
+              linkedAccountId: mapAccount && mapAccount.id || null,
+              locationLat: coordinates.lat == null ? null : sqliteFiniteNumber(coordinates.lat),
+              locationLng: coordinates.lng == null ? null : sqliteFiniteNumber(coordinates.lng),
+              locationName: mapItem.location && mapItem.location.name || null,
+              locationUrl: mapItem.location && mapItem.location.url || null,
+              platform: mapItem.platform,
+              publishedAt: mapItem.publishedAt || 0,
+              sourceUrl: mapItem.sourceUrl || null,
+              timeRangeEndsAt: mapItem.timeRange && mapItem.timeRange.endsAt || null,
+              timeRangeStartsAt: mapItem.timeRange && mapItem.timeRange.startsAt || null,
+            };
+          }),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'item_detail_v1') {
+        var item = state.items[request.globalId];
+        return {
+          item: item && !item.__deleted ? {
+            card: sqliteFeedCard(item),
+            contentBody: {
+              blobDigest: null,
+              storage: item.content && item.content.text ? 'inline' : 'none',
+            },
+            mediaBlobDigests: (item.content && item.content.mediaUrls || []).map(function() { return null; }),
+            preservedBody: {
+              blobDigest: null,
+              storage: 'none',
+            },
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'background_item_page_v1') {
+        var backgroundRows = Object.values(sqliteState().items)
+          .filter(function(item) { return item && !item.__deleted; })
+          .sort(function(left, right) {
+            return left.globalId.localeCompare(right.globalId);
+          })
+          .slice(0, request.limit || 64)
+          .map(function(item) {
+            var rss = item.rssSource || null;
+            return Object.assign({}, sqliteFeedCard(item), {
+              hidden: !!sqliteItemState(item).hidden,
+              rankingCareLevel: item.rankingCareLevel == null ? null : item.rankingCareLevel,
+              rankingEngagementReposts: !item.engagement || item.engagement.reposts == null
+                ? null
+                : item.engagement.reposts,
+              rankingEngagementViews: !item.engagement || item.engagement.views == null
+                ? null
+                : item.engagement.views,
+              rssSource: rss ? {
+                feedTitle: rss.feedTitle || '',
+                feedUrl: rss.feedUrl,
+                siteUrl: rss.siteUrl || '',
+              } : null,
+              sampleDataFingerprint: item.sampleDataFingerprint || null,
+              topics: (item.topics || []).slice(),
+            });
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: backgroundRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'provider_media_page_v1') {
+        var providerRows = Object.values(sqliteState().items).filter(function(item) {
+          if (!item || item.__deleted) return false;
+          var user = sqliteItemState(item);
+          if (user.hidden || request.savedOnly && !user.saved) return false;
+          return request.provider === 'youtube' && request.savedOnly
+            ? [item.sourceUrl, item.content && item.content.linkPreview && item.content.linkPreview.url]
+                .some(function(value) { return typeof value === 'string' && /(?:youtube(?:-nocookie)?\.com|youtu\.be)\//i.test(value); })
+            : item.platform === request.provider;
+        }).sort(function(left, right) {
+          return left.globalId.localeCompare(right.globalId);
+        }).slice(0, request.limit || 64).map(function(item) {
+          return Object.assign({}, sqliteFeedCard(item), {
+            fbGroup: item.fbGroup || null,
+            linkUrl: item.content && item.content.linkPreview && item.content.linkPreview.url || null,
+          });
+        });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: providerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'search_page_v1') {
+        var searchTerms = String(request.query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+        var searchCandidates = sqliteQueryItems(request).slice(0, 256);
+        var searchRows = searchCandidates.filter(function(item) {
+          var content = item.content || {};
+          var preview = content.linkPreview || {};
+          var author = item.author || {};
+          var rssSource = item.rssSource || {};
+          var searchable = [
+            content.text,
+            preview.title,
+            preview.description,
+            author.displayName,
+            author.handle,
+            rssSource.feedTitle,
+          ].filter(Boolean).join(' ').toLowerCase();
+          return searchTerms.every(function(term) { return searchable.includes(term); });
+        }).slice(0, request.limit || 32).map(function(item) {
+          return {
+            card: sqliteFeedCard(item),
+            priority: Number.isFinite(item.priority) ? Math.max(0, Math.min(100, item.priority)) : 0,
+            score: 1,
+          };
+        });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: searchRows,
+          scannedRows: searchCandidates.length,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId !== 'feed_browse_page_v3' && request.queryId !== 'saved_feed_page_v2') {
+        return null;
+      }
+      var candidates = sqliteQueryItems(request);
+      var limit = request.limit || 128;
+      var startIndex = 0;
+      var endIndex = Math.min(candidates.length, limit);
+      if (request.queryId === 'feed_browse_page_v3' && request.cursor) {
+        var cursorGlobalId = decodeFeedBrowseCursorGlobalId(request.cursor);
+        var cursorIndex = candidates.findIndex(function(item) {
+          return item.globalId === cursorGlobalId;
+        });
+        if (cursorIndex < 0) return null;
+        if (request.direction === 'previous') {
+          endIndex = cursorIndex;
+          startIndex = Math.max(0, endIndex - limit);
+        } else {
+          startIndex = cursorIndex + 1;
+          endIndex = Math.min(candidates.length, startIndex + limit);
+        }
+      }
+      var pageCandidates = candidates.slice(startIndex, endIndex);
+      var rows = pageCandidates.map(sqliteFeedCard);
+      if (request.queryId === 'saved_feed_page_v2') {
+        return {
+          filter: request.filter,
+          nextCursor: null,
+          nextOrder: null,
+          previousCursor: null,
+          previousOrder: null,
+          queryId: request.queryId,
+          rows: rows.map(function(row, index) {
+            return Object.assign({}, row, {
+              savedAt: sqliteItemState(pageCandidates[index]).savedAt || null,
+            });
+          }),
+          schemaVersion: request.schemaVersion,
+          sortMode: request.sortMode,
+          source: source,
+          totalCount: candidates.length,
+        };
+      }
+      return feedBrowseBindingDigest(request).then(function(filterDigest) {
+        var firstItem = pageCandidates[0] || null;
+        var lastItem = pageCandidates[pageCandidates.length - 1] || null;
+        var nextCursor = lastItem && endIndex < candidates.length
+          ? encodeFeedBrowseCursor(source, filterDigest, lastItem)
+          : null;
+        var previousCursor = firstItem && startIndex > 0
+          ? encodeFeedBrowseCursor(source, filterDigest, firstItem)
+          : null;
+        return {
+          filter: request.filter,
+          friendsPredicateSchemaVersion: request.friendsPredicateSchemaVersion,
+          identityMode: request.identityMode,
+          nextCursor: nextCursor,
+          nextOrder: nextCursor ? {
+            globalId: lastItem.globalId,
+            priority: 0,
+            publishedAt: lastItem.publishedAt || 0,
+          } : null,
+          previousCursor: previousCursor,
+          previousOrder: previousCursor ? {
+            globalId: firstItem.globalId,
+            priority: 0,
+            publishedAt: firstItem.publishedAt || 0,
+          } : null,
+          queryId: request.queryId,
+          rankingClockMs: request.rankingClockMs,
+          recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
+          rows: rows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: candidates.length,
+        };
+      });
+    }
+    function deviceContactState() {
+      if (!window.__TAURI_MOCK_DEVICE_CONTACT_STATE__) {
+        window.__TAURI_MOCK_DEVICE_CONTACT_STATE__ = {
+          activeContactCount: 0,
+          activeGenerationId: null,
+          authStatus: 'reconnect_required',
+          buildingContacts: [],
+          buildingGenerationId: null,
+          createdFriendCount: 0,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          lastSyncedAt: null,
+          matchedResourceNames: [],
+          pendingSuggestionCount: 0,
+          revision: 0,
+          suggestions: [],
+          syncStartedAt: null,
+          syncStatus: 'idle',
+          syncToken: null,
+          updatedAt: 0,
+        };
+      }
+      return window.__TAURI_MOCK_DEVICE_CONTACT_STATE__;
+    }
+    function deviceContactStatus() {
+      var state = deviceContactState();
+      return {
+        activeContactCount: state.activeContactCount,
+        activeGenerationId: state.activeGenerationId,
+        authStatus: state.authStatus,
+        createdFriendCount: state.createdFriendCount,
+        lastErrorCode: state.lastErrorCode,
+        lastErrorMessage: state.lastErrorMessage,
+        lastSyncedAt: state.lastSyncedAt,
+        pendingSuggestionCount: state.pendingSuggestionCount,
+        queryId: 'device_contact_status_v1',
+        revision: state.revision,
+        schemaVersion: 1,
+        syncStartedAt: state.syncStartedAt,
+        syncStatus: state.syncStatus,
+        syncToken: state.syncToken,
+        updatedAt: state.updatedAt,
+      };
+    }
+    function mutateDeviceContacts(args) {
+      var mutation = args.mutation;
+      var state = deviceContactState();
+      state.revision += 1;
+      if (mutation.mutationKind === 'device_contact_status_set_v1') {
+        state.authStatus = mutation.authStatus;
+        state.lastErrorCode = mutation.errorCode;
+        state.lastErrorMessage = mutation.errorMessage;
+        state.syncStartedAt = mutation.syncStartedAt;
+        state.syncStatus = mutation.syncStatus;
+        state.updatedAt = mutation.updatedAt;
+      } else if (mutation.mutationKind === 'device_contact_generation_begin_v1') {
+        state.authStatus = 'connected';
+        state.buildingContacts = [];
+        state.buildingGenerationId = mutation.generationId;
+        state.matchedResourceNames = [];
+        state.suggestions = [];
+        state.syncStartedAt = mutation.startedAt;
+        state.syncStatus = 'syncing';
+      } else if (mutation.mutationKind === 'device_contact_delta_append_v1') {
+        state.buildingContacts = state.buildingContacts.concat(mutation.contacts);
+      } else if (mutation.mutationKind === 'device_contact_match_append_v1') {
+        mutation.matches.forEach(function(match) {
+          if (!state.matchedResourceNames.includes(match.resourceName)) {
+            state.matchedResourceNames.push(match.resourceName);
+          }
+          if (match.suggestion) state.suggestions.push(match.suggestion);
+        });
+      } else if (mutation.mutationKind === 'device_contact_generation_activate_v1') {
+        state.activeContactCount = state.buildingContacts.length;
+        state.activeGenerationId = mutation.generationId;
+        state.lastSyncedAt = mutation.activatedAt;
+        state.pendingSuggestionCount = state.suggestions.length;
+        state.syncStartedAt = null;
+        state.syncStatus = 'idle';
+        state.syncToken = mutation.nextSyncToken;
+        state.updatedAt = mutation.activatedAt;
+      } else if (mutation.mutationKind === 'device_contact_suggestion_dismiss_v1') {
+        state.suggestions = state.suggestions.filter(function(suggestion) {
+          return suggestion.id !== mutation.suggestionId;
+        });
+        state.pendingSuggestionCount = state.suggestions.length;
+      }
+      return {
+        activeGenerationId: state.activeGenerationId,
+        changed: true,
+        generationId: state.buildingGenerationId || state.activeGenerationId,
+        matchedContactCount: state.matchedResourceNames.length,
+        revision: state.revision,
+        schemaVersion: 1,
+        stagedContactCount: state.buildingContacts.length,
+      };
+    }
+    function mutateDeviceGraphLayout(args) {
+      var mutation = args.mutation;
+      var state = sqliteState();
+      var personMutation = mutation.mutationId.indexOf('person_') === 0;
+      var entities = personMutation ? state.persons : state.accounts;
+      var entity = entities && entities[mutation.entityId];
+      if (!entity) throw new Error('device graph layout target is unavailable');
+      var clear = mutation.mutationId.endsWith('_clear_v1');
+      var changed = clear
+        ? entity.graphPinned === true
+        : entity.graphPinned !== true ||
+          entity.graphX !== mutation.graphX ||
+          entity.graphY !== mutation.graphY ||
+          entity.graphUpdatedAt !== mutation.updatedAt;
+      if (changed && clear) {
+        delete entity.graphPinned;
+        delete entity.graphX;
+        delete entity.graphY;
+        delete entity.graphUpdatedAt;
+      } else if (changed) {
+        entity.graphPinned = true;
+        entity.graphX = mutation.graphX;
+        entity.graphY = mutation.graphY;
+        entity.graphUpdatedAt = mutation.updatedAt;
+      }
+      if (changed) state.revision += 1;
+      persistSqliteState();
+      return {
+        changed: changed,
+        layoutRevision: state.revision,
+        mutationId: mutation.mutationId,
+        schemaVersion: 1,
+      };
+    }
+    var normalizedScopeActions = {};
+    function beginNormalizedScopeAction(args) {
+      normalizedScopeActions[args.stageId] = {
+        actionKind: args.actionKind,
+        entityIds: [],
+        state: 'staging',
+      };
+      return {
+        memberCount: 0,
+        stageId: args.stageId,
+        state: 'staging',
+      };
+    }
+    function appendNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.state !== 'staging' || stage.entityIds.length !== args.expectedOrdinal) {
+        throw new Error('normalized scope action append fence is stale');
+      }
+      stage.entityIds = stage.entityIds.concat(args.entityIds || []);
+      return {
+        memberCount: stage.entityIds.length,
+        stageId: args.stageId,
+        state: 'staging',
+      };
+    }
+    function finalizeNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.entityIds.length !== args.expectedMemberCount) {
+        throw new Error('normalized scope action final count changed');
+      }
+      stage.state = 'ready';
+      return {
+        memberCount: stage.entityIds.length,
+        stageId: args.stageId,
+        state: 'ready',
+      };
+    }
+    function pageNormalizedScopeAction(args) {
+      var stage = normalizedScopeActions[args.stageId];
+      if (!stage || stage.state !== 'ready') {
+        throw new Error('normalized scope action is not ready');
+      }
+      var start = args.afterOrdinal + 1;
+      var entityIds = stage.entityIds.slice(start, start + 1000);
+      return {
+        entityIds: entityIds,
+        nextOrdinal: entityIds.length === 0 ? args.afterOrdinal : start + entityIds.length - 1,
+        stageId: args.stageId,
+      };
+    }
+    function closeNormalizedScopeAction(args) {
+      delete normalizedScopeActions[args.stageId];
+      return null;
     }
     window.__TAURI_MOCK_HANDLERS__ = {
-      sqlite_library_status: () => {
-        var state = sqliteState();
-        return state.active ? {
-          active: true,
-          revision: state.revision,
-          expectedItemCount: state.expectedItemCount,
-          importedItemCount: Object.keys(state.items).length,
-          sourceGeneration: state.sourceGeneration,
-          sourceRevision: state.sourceRevision,
-          sourceDigest: state.sourceDigest,
-        } : null;
-      },
-      begin_sqlite_library_import: (args) => {
-        var request = args.request;
-        window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
-          sourceGeneration: request.sourceGeneration,
-          sourceRevision: request.sourceRevision,
-          sourceDigest: request.sourceDigest,
-          expectedItemCount: request.expectedItemCount,
-          shell: JSON.parse(request.shellJson),
-          items: {},
-        };
-        return null;
-      },
-      append_sqlite_library_import: sqliteAppendImportItems,
-      finalize_sqlite_library_import: () => {
-        var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-        if (!stage) throw new Error('SQLite Library has no complete staged import');
-        if (Object.keys(stage.items).length !== stage.expectedItemCount) {
-          throw new Error('SQLite Library import count mismatch');
-        }
-        var state = sqliteState();
-        Object.assign(state, stage, { active: true, revision: 1 });
-        delete window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+      ensure_fresh_normalized_desktop_library: () => {
+        sqliteState().active = true;
         persistSqliteState();
-        return {
-          active: true,
-          revision: state.revision,
-          expectedItemCount: state.expectedItemCount,
-          importedItemCount: Object.keys(state.items).length,
-          sourceGeneration: state.sourceGeneration,
-          sourceRevision: state.sourceRevision,
-          sourceDigest: state.sourceDigest,
-        };
+        return true;
       },
-      recover_sqlite_library_follower_overlay: () => ({
-        transactionCount: 0,
-        operationCount: 0,
-        materializedRowCount: 0,
-        revisionAdvanced: false,
+      describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+      query_normalized_library: sqliteNormalizedQuery,
+      normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
+      normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
+      sign_normalized_library_operation: (args) => ({
+        actorId: args.request.actorId,
+        operationSigningBodyDigest: args.request.operationSigningBodyDigest,
+        signature: 'a'.repeat(128),
       }),
-      read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
-      bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
-      read_sqlite_library_shell: () => {
-        // Scale benchmarks keep the corpus in mock SQLite while forcing the
-        // shell projection to match production's empty renderer item array.
-        // Direct bounded scans still read the complete mock corpus below.
-        if (window.__FREED_E2E_SQLITE_SHELL_ONLY__ === true) {
-          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = true;
-        }
-        return sqliteShellResult();
+      sign_normalized_library_follower_operation: (args) => ({
+        actorId: args.request.actorId,
+        operationSigningBodyDigest: args.request.operationSigningBodyDigest,
+        signature: 'd'.repeat(128),
+      }),
+      enqueue_normalized_library_follower_intent: enqueueNormalizedFollowerIntent,
+      commit_normalized_library_transaction: commitNormalizedLibraryTransaction,
+      begin_normalized_scope_action: beginNormalizedScopeAction,
+      append_normalized_scope_action: appendNormalizedScopeAction,
+      finalize_normalized_scope_action: finalizeNormalizedScopeAction,
+      page_normalized_scope_action: pageNormalizedScopeAction,
+      close_normalized_scope_action: closeNormalizedScopeAction,
+      mutate_normalized_device_graph_layout: mutateDeviceGraphLayout,
+      mutate_normalized_device_contacts: mutateDeviceContacts,
+      query_normalized_device_contact_status: deviceContactStatus,
+      query_normalized_device_contact_match_page: (args) => {
+        var state = deviceContactState();
+        var request = args.request;
+        var rows = request.generationId === state.buildingGenerationId
+          ? state.buildingContacts.filter(function(contact) {
+              return !state.matchedResourceNames.includes(contact.resourceName);
+            }).slice(0, request.limit)
+          : [];
+        return {
+          generationId: request.generationId,
+          nextCursor: null,
+          queryId: request.queryId,
+          revision: state.revision,
+          rows: rows,
+          schemaVersion: 1,
+        };
       },
-      read_sqlite_library_counts: sqliteCountsResult,
-      read_sqlite_library_facet_summary: sqliteFacetSummary,
-      replace_sqlite_library_shell: (args) => {
-        sqliteState().shell = JSON.parse(args.request.shellJson);
-        sqliteState().revision += 1;
-        persistSqliteState();
-        return null;
+      query_normalized_device_contact_suggestion_page: (args) => {
+        var state = deviceContactState();
+        return {
+          nextCursor: null,
+          queryId: args.request.queryId,
+          revision: state.revision,
+          rows: state.suggestions.slice(0, args.request.limit).map(function(suggestion) {
+            return {
+              contact: state.buildingContacts.find(function(contact) {
+                return suggestion.id.includes(contact.resourceName);
+              }),
+              suggestion: suggestion,
+            };
+          }),
+          schemaVersion: 1,
+        };
       },
-      upsert_sqlite_library_items: sqliteUpsertItems,
-      mutate_sqlite_library_items: sqliteMutateItems,
+      query_normalized_device_contact_unmatched_page: (args) => {
+        var state = deviceContactState();
+        return {
+          nextCursor: null,
+          queryId: args.request.queryId,
+          revision: state.revision,
+          rows: state.buildingContacts.filter(function(contact) {
+            return state.matchedResourceNames.includes(contact.resourceName) &&
+              !state.suggestions.some(function(suggestion) {
+                return suggestion.id.includes(contact.resourceName);
+              });
+          }).slice(0, args.request.limit),
+          schemaVersion: 1,
+        };
+      },
       set_sqlite_library_cloud_writer_admission: (args) => {
         var request = args.request;
         var admission = {
@@ -365,123 +1890,65 @@ export function tauriInitScript(): string {
           controlRevision: null,
           verifiedAtMs: null,
         },
-      sqlite_library_follower_intent_context: () => null,
-      sqlite_library_follower_runtime_status: () => ({
+      normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,
-        epochId: null,
+        authorityEpochId: null,
         actorId: null,
         checkpointGeneration: null,
-        remoteIngestSequence: null,
+        sourceRevision: null,
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
       }),
-      read_sqlite_library_follower_intent_outbox_candidate: () => null,
-      record_sqlite_library_follower_intent_publication: (args) => {
-        var request = args.request || {};
+      normalized_library_follower_transport_context: () => ({
+        actorId: '11'.repeat(32),
+        libraryId: '22'.repeat(32),
+        nextIntentActorCounter: 1,
+        nextResultSequence: 1,
+        previousIntentSegmentDigest: null,
+        previousResultSegmentDigest: null,
+        schemaVersion: 2,
+        storageEpochId: '33'.repeat(32),
+      }),
+      page_normalized_library_follower_transport: (args) => {
+        var page = args.page || {};
         return {
-          firstIntentSequence: request.firstIntentSequence,
-          lastIntentSequence: request.lastIntentSequence,
-          operationCount: request.lastIntentSequence - request.firstIntentSequence + 1,
-          publishedSegmentDigest: request.publishedSegmentDigest,
-          status: 'recorded',
+          actorId: page.actorId,
+          canonicalEnvelopes: [],
+          done: true,
+          firstActorCounter: page.firstActorCounter,
+          lastActorCounter: null,
+          schemaVersion: 2,
         };
       },
-      read_sqlite_library_follower_result_import_cursor: () => null,
-      append_sqlite_library_follower_result_segment: (args) => {
-        var request = args.request || {};
+      record_normalized_library_follower_intent_transport_publication: (args) => {
+        var publication = args.publication || {};
         return {
-          firstResultSequence: request.firstResultSequence,
-          lastResultSequence: request.lastResultSequence,
-          resultCount: (request.entries || []).length,
-          segmentDigest: request.segmentDigest,
-          status: 'imported',
+          actorId: publication.actorId,
+          firstActorCounter: publication.firstActorCounter,
+          lastActorCounter: publication.lastActorCounter,
+          newlyPublishedTransactionCount: 1,
+          nextActorCounter: publication.lastActorCounter + 1,
+          publishedAt: publication.publishedAt,
+          semanticSegmentDigest: publication.semanticSegmentDigest,
+          storedSegmentDigest: publication.storedSegmentDigest,
         };
       },
-      read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
-        var item = sqliteState().items[id];
-        return item && !item.__deleted ? JSON.stringify(item) : null;
-      }).filter(Boolean),
-      query_sqlite_library_items: (args) => {
-        if (window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ === true) {
-          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = false;
-          return {
-            itemsJson: [],
-            nextOffset: null,
-            totalCount: 0,
-          };
-        }
-        var request = args.request || {};
-        var query = (request.query || '').toLowerCase();
-        var items = Object.values(sqliteState().items).filter(function(item) {
-          var user = sqliteItemState(item);
-          var authorKeys = request.authorKeys || [];
-          var itemSignals = item.contentSignals && item.contentSignals.tags || [];
-          return !item.__deleted
-            && (!request.platform || item.platform === request.platform)
-            && (!request.contentType || item.contentType === request.contentType)
-            && (!request.excludeContentType || item.contentType !== request.excludeContentType)
-            && (request.saved == null || !!user.saved === request.saved)
-            && (request.archived == null || !!user.archived === request.archived)
-            && (request.showHidden || !user.hidden)
-            && (!request.authorId || (item.author && item.author.id === request.authorId))
-            && (!request.feedUrl || (item.rssSource && item.rssSource.feedUrl === request.feedUrl))
-            && (!authorKeys.length || authorKeys.some(function(key) {
-              return key.platform === item.platform && key.authorId === (item.author && item.author.id);
-            }))
-            && (!request.tags || !request.tags.length || request.tags.some(function(tag) {
-              return (user.tags || []).includes(tag);
-            }))
-            && (!request.signals || !request.signals.length || request.signals.some(function(signal) {
-              return itemSignals.includes(signal);
-            }))
-            && (!query || JSON.stringify(item).toLowerCase().includes(query));
-        }).sort(function(left, right) {
-          return (right.publishedAt || 0) - (left.publishedAt || 0)
-            || (right.capturedAt || 0) - (left.capturedAt || 0)
-            || String(left.globalId).localeCompare(String(right.globalId));
-        });
-        var offset = request.offset || 0;
-        var limit = Math.max(1, Math.min(request.limit || 64, 128));
-        var page = items.slice(offset, offset + limit);
+      import_normalized_library_follower_result_transport_segment: (args) => {
+        var publication = args.publication || {};
+        var records = publication.records || [];
         return {
-          itemsJson: page.map(JSON.stringify),
-          nextOffset: offset + page.length < items.length ? offset + page.length : null,
-          totalCount: items.length,
-        };
-      },
-      search_sqlite_library_items: (args) => {
-        var request = args.request || {};
-        var state = sqliteState();
-        if (request.expectedRevision !== state.revision) {
-          throw new Error('SQLite Library changed during its bounded search');
-        }
-        var candidates = Object.values(state.items)
-          .filter(function(item) {
-            return !item.__deleted
-              && (!request.afterGlobalId || String(item.globalId) > request.afterGlobalId);
-          })
-          .sort(function(left, right) {
-            return String(left.globalId).localeCompare(String(right.globalId));
-          });
-        var query = String(request.query || '').toLowerCase();
-        var limit = Math.max(1, Math.min(request.limit || 32, 32));
-        var scanned = 0;
-        var matches = [];
-        var lastScanned = null;
-        while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
-          var item = candidates[scanned];
-          lastScanned = String(item.globalId);
-          if (JSON.stringify(item).toLowerCase().includes(query)) {
-            matches.push({ itemJson: JSON.stringify(item), score: 1 });
-          }
-          scanned += 1;
-        }
-        return {
-          matches: matches,
-          nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
-          sourceRevision: state.revision,
+          acceptedTransactionCount: records.length,
+          actorId: publication.actorId,
+          firstResultSequence: 1,
+          lastResultSequence: records.length,
+          nextResultSequence: records.length + 1,
+          receivedAt: publication.receivedAt,
+          rejectedTransactionCount: 0,
+          resultCount: records.length,
+          semanticSegmentDigest: publication.semanticSegmentDigest,
+          storedSegmentDigest: publication.storedSegmentDigest,
         };
       },
       fetch_url: () => '',
@@ -539,8 +2006,6 @@ export function tauriInitScript(): string {
         sampleDurationMs: 1,
         memoryHighBytes: 2508 * 1024 * 1024,
         memoryCriticalBytes: 3584 * 1024 * 1024,
-        relayDocBytes: 0,
-        relayClientCount: 0,
       }),
       trim_webkit_network_cache_now: () => ({
         beforeBytes: 16 * 1024 * 1024,
@@ -584,8 +2049,6 @@ export function tauriInitScript(): string {
           webkitCacheBytes: 16 * 1024 * 1024,
           memoryHighBytes: 2508 * 1024 * 1024,
           memoryCriticalBytes: 3584 * 1024 * 1024,
-          relayDocBytes: 0,
-          relayClientCount: 0,
         };
         return {
           before: after,

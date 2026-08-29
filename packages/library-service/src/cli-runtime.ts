@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+
 import {
   LibraryServiceFailure,
   type LibraryServiceFailureCode,
@@ -12,10 +14,11 @@ import {
   bindLibraryServiceStatusFile,
   readLibraryServiceStatus,
 } from "./status.js";
+import { createLibraryServiceDefinitionV1 } from "./service-definition.js";
 import { LibraryServiceSupervisor } from "./supervisor.js";
 
 interface ParsedArguments {
-  command: "serve" | "status" | "doctor";
+  command: "serve" | "status" | "doctor" | "service-definition";
   configPath: string;
 }
 
@@ -24,7 +27,12 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
     throw new LibraryServiceFailure("config_invalid");
   }
   const command = argv[0];
-  if (command !== "serve" && command !== "status" && command !== "doctor") {
+  if (
+    command !== "serve" &&
+    command !== "status" &&
+    command !== "doctor" &&
+    command !== "service-definition"
+  ) {
     throw new LibraryServiceFailure("config_invalid");
   }
   return { command, configPath: argv[2] };
@@ -56,6 +64,7 @@ async function serve(configPath: string): Promise<number> {
     process: ports.process,
     clock: ports.clock,
     entropy: ports.entropy,
+    localActorIngress: ports.localActorIngress,
   });
   const startup = new AbortController();
   let signalCount = 0;
@@ -123,6 +132,43 @@ async function serve(configPath: string): Promise<number> {
   }
 }
 
+async function writeServiceDefinition(configPath: string): Promise<number> {
+  if (process.platform !== "darwin" && process.platform !== "linux") {
+    throw new LibraryServiceFailure("unsupported_service_platform");
+  }
+  const cliArgument = process.argv[1];
+  if (typeof cliArgument !== "string" || cliArgument.length === 0) {
+    throw new LibraryServiceFailure("unsupported_service_platform");
+  }
+  const ports = createNodeLibraryServicePorts();
+  const bound = await bindLibraryServiceConfig(
+    configPath,
+    ports.fileSystem,
+    ports.identity,
+    ports.aclProof,
+  );
+  try {
+    const [nodeExecutable, cliExecutable] = await Promise.all([
+      realpath(process.execPath),
+      realpath(cliArgument),
+    ]);
+    await assertLibraryServiceBindingsStable(bound, ports.fileSystem);
+    writeStandardReport(
+      createLibraryServiceDefinitionV1({
+        platform: process.platform,
+        nodeExecutable,
+        cliExecutable,
+        configPath: bound.configFile.path,
+        dataRoot: bound.config.dataRoot,
+        stateRoot: bound.config.stateRoot,
+      }),
+    );
+    return 0;
+  } finally {
+    await bound.close();
+  }
+}
+
 export async function runLibraryServiceCli(
   argv: readonly string[],
 ): Promise<number> {
@@ -167,6 +213,9 @@ export async function runLibraryServiceCli(
         await statusFile?.close().catch(() => undefined);
         await bound.close();
       }
+    }
+    if (parsed.command === "service-definition") {
+      return await writeServiceDefinition(parsed.configPath);
     }
     return await serve(parsed.configPath);
   } catch (error) {

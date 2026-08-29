@@ -1,173 +1,27 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "supersedes": {
+    "schemaVersion": 1,
+    "digest": "sha256:6bf7d9b047d6cbbbe70687134136b148f125e934ba92f584f47180238d586955"
+  },
   "transitions": [
     {
-      "activationId": "desktop-feed-browse-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.feedBrowseReaderV1.disabled to 1 on the affected device if the bounded Desktop feed diverges, stalls, or increases memory relative to the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-item-detail-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.itemDetailReaderV1.disabled to 1 on the affected device if a selected Desktop reader body diverges, fails to load, or increases memory relative to the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-saved-analytics-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.savedAnalyticsReaderV1.disabled to 1 on the affected device if the bounded Saved overview diverges, stalls, or increases memory relative to the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-friends-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.friendsReaderV1.disabled to 1 on the affected device if Friends activity, suggestions, timelines, counts, ordering, or memory diverge from the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-provider-settings-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.providerSettingsReaderV1.disabled to 1 on the affected device if provider settings counts, eligibility, ordering, media backup, saved-video synchronization, or memory diverge from the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-friend-editor-author-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.friendEditorReaderV1.disabled to 1 on the affected device if Friend editor author candidates, ordering, search, provenance, or memory diverge from the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-search-jump-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.searchJumpReaderV1.disabled to 1 on the affected device if SearchJump tags, counts, selected-item actions, cancellation, or memory diverge from the Automerge fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-saved-feed-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.savedFeedReaderV1.disabled to 1 on the affected device if the versioned Saved order, forward traversal, selection handoff, or memory diverges from the Freed Desktop compatibility fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-friends-feed-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.friendsFeedReaderV1.disabled to 1 on the affected device if Friends-only membership, ordering, paging, selection handoff, or memory diverges from the Freed Desktop Automerge compatibility fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-ordinary-feed-bidirectional-sql-read-v1",
-      "gate": "D",
-      "kind": "sql_read_cutover",
-      "rollbackTrigger": "Set freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled to 1 on the affected device if ordinary all-content ordering, forward or backward paging, scroll anchoring, selection handoff, or memory diverges from the Freed Desktop Automerge compatibility fallback.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-local-sqlite-import-v2",
-      "gate": "C",
-      "kind": "migration_candidate_execution",
-      "rollbackTrigger": "Restore the retained pre-import Automerge source before accepting any post-import Desktop mutation if the SQLite item count, source digest, integrity check, or required shell state does not match the imported legacy library.",
-      "receiptExpectations": [
-        "migration_receipt",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-legacy-worker-eviction-v1",
-      "gate": "D",
-      "kind": "legacy_worker_eviction",
-      "rollbackTrigger": "Reject the SQLite candidate and reopen the retained Automerge source before accepting post-import mutations if Freed Desktop cannot initialize, query, or mutate the imported SQLite library without starting the Automerge worker.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-renderer-corpus-final-eviction-v2",
-      "gate": "D",
-      "kind": "renderer_corpus_eviction",
-      "rollbackTrigger": "Reject the SQLite candidate before accepting post-import mutations if any ordinary Freed Desktop surface requires the complete item corpus in React or renderer state to preserve its user-visible behavior.",
-      "receiptExpectations": [
-        "read_cutover_parity",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "sqlite-library-google-drive-replication-v1",
-      "gate": "E",
-      "kind": "replication_protocol_activation",
-      "rollbackTrigger": "Set freed.libraryCore.immutableGoogleDriveV1.enabled and freed.libraryCore.pwaIndexedDbV1.enabled to 0 on the affected devices if immutable checkpoint convergence, epoch-scoped intent publication, result reconciliation, or bounded memory diverges from the retained local SQLite state.",
-      "receiptExpectations": [
-        "replication_convergence",
-        "same_frontier_rollback_receipt"
-      ]
-    },
-    {
-      "activationId": "sqlite-pwa-legacy-engine-retirement-v1",
-      "gate": "H",
-      "kind": "legacy_engine_retirement",
-      "rollbackTrigger": "Restore the previous PWA deployment if the IndexedDB Library Core cannot import the active immutable checkpoint, preserve bounded reads, publish signed intents, reconcile results, or complete factory reset without the retired Automerge runtime.",
-      "receiptExpectations": [
-        "retirement_receipt",
-        "roll_forward_recovery_receipt"
-      ]
-    },
-    {
-      "activationId": "sqlite-desktop-legacy-engine-retirement-v1",
-      "gate": "H",
-      "kind": "legacy_engine_retirement",
-      "rollbackTrigger": "Restore the retained pre-cutover Automerge library with the last released Freed Desktop build if native SQLite integrity, item counts, bounded reads, mutations, backup, or immutable replication cannot preserve the verified cutover frontier without the retired Automerge runtime.",
-      "receiptExpectations": [
-        "retirement_receipt",
-        "roll_forward_recovery_receipt"
-      ]
-    },
-    {
-      "activationId": "desktop-local-only-primary-authority-v1",
+      "activationId": "sqlite-normalized-storage-epoch-v1",
       "gate": "F",
-      "kind": "library_core_writer_activation",
-      "rollbackTrigger": "Restore the previous Freed Desktop build before accepting any local-only mutation if provider-free startup cannot establish and read back the signed authority transition, enrolled actor, and local writer admission. After the first admitted mutation, retain the SQLite library and use roll-forward recovery because the previous build cannot safely write the new authority state.",
+      "kind": "storage_epoch_cutover",
+      "failureResponse": "Before the first accepted new-epoch mutation, abort activation and leave the historical source immutable. After the first accepted new-epoch mutation, keep SQLite authoritative and recover only by verified roll-forward repair or normalized restore.",
       "receiptExpectations": [
         "authority_transition_certificate",
+        "roll_forward_recovery_receipt"
+      ]
+    },
+    {
+      "activationId": "sqlite-retired-library-engines-v1",
+      "gate": "H",
+      "kind": "legacy_engine_retirement",
+      "failureResponse": "Fail the release if a production bundle, runtime caller, checkpoint, follower protocol, or rollback control can load a retired Library engine. Repair the SQLite-only path and ship a successor build without restoring a compatibility runtime.",
+      "receiptExpectations": [
+        "retirement_receipt",
         "roll_forward_recovery_receipt"
       ]
     }

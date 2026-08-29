@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound native sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, and provider-neutral headless runtime have landed; installed Drive coordination, Windows service transport, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -43,7 +43,8 @@ The complete product has four roles:
   segments, signed result segments, enrollment records, and control receipts.
 - SQLite files, WAL files, SHM files, and rollback journals never enter cloud
   transport.
-- Automerge is not an authority, transport, fallback, or bridge.
+- No retired document engine exists as authority, transport, fallback, or
+  bridge.
 - One operating system lock is held before any process opens the authority data
   root. A second process exits with an attributable refusal.
 - The cloud writer decision remains the exact Google Drive control compare and
@@ -66,64 +67,78 @@ The complete product has four roles:
 The current product already provides the protocol foundation:
 
 - Freed Desktop stores the active Library in bounded SQLite.
-- The current PWA transition candidate imports authenticated immutable
-  checkpoints into IndexedDB. The final architecture replaces that store with
-  SQLite WebAssembly over OPFS and deletes the IndexedDB Library paths.
+- The PWA stores its Library in official SQLite WebAssembly over OPFS. It
+  imports authenticated immutable normalized checkpoints without an IndexedDB
+  Library store.
 - Editable Freed Desktop followers exchange signed intents and canonical
   results without becoming the writer.
 - The Primary publishes immutable checkpoints and a durable exact revision
   receipt.
 - One operating system backed Library data-root lease prevents two local Freed
   processes from opening the same authority root.
-- `@freed/sync` owns a provider-neutral Primary coordinator with injected
-  authority, durable state, credential, clock, scheduler, fetch, publication,
-  and diagnostic ports.
+- `@freed/sync` owns a transport-neutral Primary coordinator with injected
+  authority, durable revision state, clock, scheduler, publication, and
+  diagnostic ports. It receives no credential, fetch function, or provider
+  adapter.
 - Freed Desktop is the production consumer of that shared coordinator.
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
   seconds.
-- `freed-library-core` now owns the native signed journal, SQLite authority
-  schema and migrations, actor enrollment, authority epochs, exact product
-  projection, staged logical checkpoint activation, exact local status,
-  closed backup receipts, process lease, and fixed-fd authority sidecar without
-  importing Tauri or contacting a provider.
-- Native schema v12 binds every actor to an explicit operation capability.
-  Existing v1 actors receive one fixed 14-operation legacy editor policy. New
-  v2 editor, scraper, and agent certificates bind an exact operation subset,
-  explicit scope, issuance identity, and retirement identity to the authority
-  signature.
-- Freed Desktop preserves its existing command DTOs and behavior through thin
-  data-root and platform-vault adapters around that reusable native package.
+- `freed-library-core` now owns the normalized SQLite schema, signed journal,
+  actor enrollment, authority epochs, exact product projection, bounded typed
+  queries and mutations, normalized checkpoint activation, process lease, and
+  fixed-fd authority sidecar without importing Tauri or contacting a provider.
+- Normalized SQLite binds every actor to an authority-signed version 2
+  capability. Editor, scraper, and agent certificates bind an exact operation
+  subset, explicit scope, issuance identity, and retirement identity. The
+  final schema rejects version 1 actors. Historical actor policy is readable
+  only inside the fenced one-time source verifier.
+- Freed Desktop invokes the reusable native package through thin data-root,
+  snapshot-directory, and platform-vault adapters. Its active commands expose
+  only normalized SQLite queries, mutations, checkpoints, and snapshots.
 - `@freed/library-service` validates one explicit Primary role, private roots,
   admission and credential descriptors, an exact sidecar digest, descriptor
   bound authority inputs, a private lifetime watchdog, and whole process group
   settlement before it starts one sidecar. Its local status and doctor
   commands never open SQLite or start social provider work.
+- `@freed/library-service` binds the shared recurring scheduler to the native
+  actor identity and checkpoint descriptor commands. It verifies the exact
+  Library and writer before the first publication, rereads source revision on
+  each scheduled pass, and stops when normalized SQLite reports another
+  writer. Its compiled artifacts bundle the shared coordinator and need no
+  unpublished workspace package at installation time.
 
-These pieces do not yet create a complete headless authority. Drive credentials
-remain owned by the Freed Desktop renderer. The native sidecar now consumes
-the reusable core through descriptor-bound authority and lease entry points,
-but it exposes no checkpoint command ingress or cloud coordinator yet. Its
-mounted credential proof establishes only that bounded private local material
-is exactly readable through a fixed zeroizing buffer. Growth beyond the bound,
-partial read failure, or post-read identity or metadata drift fails closed. The
-secret bytes remain opaque. The receipt does not claim a generic secret format, Drive
-credential validity, Drive authentication, or cloud readiness. Generic and
-Drive-specific secret parsing remain unavailable until task 11.5 defines and
-approves that contract.
+These pieces do not yet create a complete installed headless authority. The
+service CLI has no Drive OAuth store or Drive publication binding. Freed
+Desktop retains its existing host-owned Drive credential and adapter. The
+native sidecar acquires the
+data-root lease before opening only the final normalized SQLite catalog in the
+private `library-sqlite` directory. It verifies the exact schema, application,
+contract, and protocol identity before it reports ready. It creates no
+historical checkpoint store or snapshot tree. Its closed command channel
+exposes bounded normalized checkpoint, query, Primary mutation context,
+operation signing, canonical commit, follower-intent admission, actor
+transport state, result-export, stable Primary actor identity, and exact
+writer-reassignment commands. The mounted credential is one
+closed version 1 record bound to one Library ID, one authority Ed25519 key, and
+one Primary actor Ed25519 key. It is read from an owner-only regular file under
+the held state-root descriptor. Decoded keys remain only in zeroizing native
+memory. Node, command frames, logs, SQLite, and cloud adapters never receive
+them. Growth beyond the bound, partial read failure, invalid keys, a foreign
+Library identity, or post-read identity or metadata drift fails closed. This
+record proves local Primary key custody only. It does not contain a Drive
+token, claim Drive authentication, or make the service cloud-ready.
 
-The checkpoint store extraction is consumed by Freed Desktop through its
-existing Tauri command DTOs. It stages bounded pages beside the active Library,
-refuses count or preverified-anchor mismatches before activation, and replays
-the follower overlay only after the atomic generation swap. If replay cannot
-finish, the reusable native receipt reports pending recovery instead of
-falsely reporting that the committed activation failed. Closed
-integrity-checked backups bind exact bytes, revision, item count, and retention
-state in the native receipt. Freed Desktop preserves its existing command DTOs
-and logs either pending condition for its existing recovery commands. This is
-reusable native substrate for task 11.6. The descriptor-bound sidecar now
-constructs that substrate after acquiring the process lease, but installed
-headless checkpoint import remains unshipped.
+Freed Desktop retains the historical checkpoint store only as fenced migration
+input while the one-epoch normalized cutover is completed. The headless
+sidecar never opens that store. The sidecar command channel calls normalized
+checkpoint staging, pinned export, and registered query functions directly. It
+does not translate the old import, status, database-copy, or whole-item DTOs.
+Canonical mutation admission now loads the established authority and Primary
+actor keys only inside the native sidecar. The provider-neutral recurring
+headless runtime is present, but `serve` does not start it until installed
+Drive OAuth custody and immutable transport are bound. No service-side
+provider request occurs today.
 
 The macOS and Linux native authorities never reopen a verified root through a
 discovered pathname and never change the process working directory. A shared
@@ -132,16 +147,16 @@ open physical directory. Every database, WAL, SHM, rollback-journal, status,
 import, and later connection open then uses `openat` with `O_NOFOLLOW` beneath
 that descriptor. The sidecar holds fd4 through this route. Freed Desktop binds
 its app-data and `library-core` directories before it acquires the process
-lease, then uses the same route for every existing command without changing
-any command DTO. Backup creation, listing, reads, restore staging, retention,
-and clearing use held directory or file descriptors too. Deterministic root
-replacement and final-leaf swap tests prove the original lease, SQLite files,
-and backups remain together while replacement roots and symlink targets stay
-untouched.
+lease. Normalized snapshot creation, listing, restore staging, retention, and
+clearing stay relative to a held private directory descriptor. Deterministic
+root replacement and final-leaf swap tests prove that the original lease,
+SQLite files, and snapshots remain bound while replacement roots and symbolic
+link targets stay untouched.
 Startup also proves EOF and exact post-read metadata for fd3, fd6, and fd7.
-Backup retention accepts only an exact internal backup ID, time, and leaf-name
-binding before deletion, so corrupt path-shaped metadata cannot escape the
-already-open backup directory or delete the live database.
+Snapshot retention derives every file name from a canonical digest identity
+and deletes only validated archives relative to the already-open snapshot
+directory. Corrupt path-shaped metadata cannot escape that directory or delete
+the live database.
 
 ---
 
@@ -178,18 +193,18 @@ the existing Tauri modules. It owns:
 - signed operation journal and materializer
 - actor enrollment and capability verification
 - authority epochs and writer admission
-- backup and forward-only restore
+- normalized local snapshots and forward-only restore
 - local data-root process lease
 - injected key store, clock, and durable-state traits
 
 It accepts an explicit data root. It does not accept a Tauri application
-handle. Freed Desktop keeps its current command names through a thin adapter.
+handle. Freed Desktop exposes the native contract through a thin adapter.
 
 ### Shared Primary runtime
 
-`@freed/sync` remains the only Primary cloud coordinator. Freed Desktop and the
+`@freed/sync` owns the one recurring Primary scheduler. Freed Desktop and the
 headless service inject different host ports into the same state machine. The
-coordinator is responsible for:
+scheduler is responsible for:
 
 - immediate checkpoint publication
 - local revision polling
@@ -199,22 +214,43 @@ coordinator is responsible for:
 - writer ownership loss and role loss fencing
 - bounded, secret-free diagnostics
 
+The scheduler receives no access token, fetch implementation, endpoint, or
+provider adapter. Each host owns those capabilities inside its publication
+callback.
+
 ### Headless service
 
 `packages/library-service` will provide a Node supervisor and a single native
 authority sidecar. Only the sidecar opens SQLite and holds the local process
 lease. The first production service exposes no public network listener.
 
-The current sidecar protocol uses only stdin, stdout, and fixed inherited file
-descriptors 3 through 8. One strict v1 admission record binds the exact start
-envelope, executable digest, data and state root identities, and credential
-descriptor digest. Only private bounded mounted credential material is
-accepted today. `os-vault`, Drive OAuth, cloud writer readiness, and every
-provider request fail closed or remain absent until task 11.5. A true ready
-receipt means only that the private physical record was securely and exactly
-readable through a fixed buffer that is zeroized on success and failure. Its opaque bytes are not
-parsed in this slice. It is not a secret-validation or cloud-authentication
-receipt.
+The sidecar uses stdin and stdout once for the closed startup control protocol.
+Control protocol 2 binds fixed inherited descriptors 3 through 10. Descriptor
+8 is the lifetime watchdog. Descriptor 9 carries command requests and
+descriptor 10 carries command responses. Every command frame has a four-byte
+unsigned big-endian length and a generated 4 MiB maximum. The independent data
+command protocol is version 1. It accepts only the generated command registry,
+one 64-character request ID, and exact payload fields. The registry contains
+normalized checkpoint begin, append, finalize, pinned export, registered
+query, storage-inspection, Primary context, signing, canonical transaction,
+follower-intent admission, actor-state, bounded result-export, Primary actor
+identity, and exact writer-reassignment commands. Startup performs one storage inspection
+and verifies the exact generated application, contract, schema, wire protocol,
+and schema digest before the supervisor reports running. One reusable Node
+client owns every bounded exchange and validates the generated command and
+native refusal registries plus exact request identity before returning a
+result. A malformed,
+truncated, oversized, unknown-version, or broken transport frame fails closed.
+
+One strict v1 admission record binds the exact start envelope, executable
+digest, data and state root identities, and credential descriptor digest. Only
+one private bounded `freed_library_primary_credentials_v1` mounted record is
+accepted today. It binds exact Library identity plus authority and Primary
+actor Ed25519 keys. Parsing, identity checks, and signing happen only in the
+native sidecar, with decoded keys held in zeroizing memory. `os-vault`, Drive
+OAuth, cloud writer readiness, and every provider request fail closed or
+remain absent until task 11.5. A true ready receipt proves local native signing
+custody, not cloud authentication or writer promotion.
 
 Planned commands:
 
@@ -222,6 +258,7 @@ Planned commands:
 freed-library init
 freed-library drive-auth
 freed-library promote
+freed-library service-definition
 freed-library serve
 freed-library sync-now
 freed-library checkpoint-now
@@ -230,14 +267,23 @@ freed-library status
 freed-library doctor
 ```
 
+`service-definition` is implemented. It emits a digest-bound macOS LaunchAgent
+plist or Linux systemd user unit from one fully verified service configuration.
+It uses exact argument elements without a shell, applies mode `0077`, contains
+the service process group, and grants Linux writes only to the configured data
+and state roots. It does not install, load, enable, or start a service. Windows
+continues to fail closed until its service-account named pipe and inherited
+handle contract is complete.
+
 `promote` requires the exact expected cloud control revision, manifest digest,
 source receipt, and owner confirmation. It creates a new writer epoch. It
 never adopts an old local database as the cloud head.
 
 ### Secrets
 
-Authority keys, actor keys, Google refresh tokens, and future provider
-credentials are separate secret records. They never appear in SQLite,
+The headless Primary authority and writer actor keys share one atomic native
+signing bundle bound to one Library. Google refresh tokens and future provider
+credentials remain separate secret records. They never appear in SQLite,
 backups, cloud objects, command arguments, environment values, logs, or bug
 reports.
 
@@ -262,13 +308,10 @@ The capability certificate binds:
 - Library ID and writer epoch
 - actor ID and actor class
 - exact allowed operation types
+- exact allowed bounded query IDs
 - optional source or provider scope
 - issuance identity and retirement identity
 - size bounds and canonical signature domain
-
-Existing version 1 editable actors map to a fixed legacy editor policy. That
-policy contains the existing editable operation set and never grows when a new
-canonical operation type is added.
 
 New actors use explicit classes:
 
@@ -283,14 +326,35 @@ Source-scoped ingestion remains disabled until the signed operation envelope
 contains one canonical source field. The verifier must not infer scope from
 inconsistent entity payloads.
 
+The executable contract currently registers five agent read grants:
+`friends_directory_page_v1`, `item_detail_v1`, `item_reader_body_v1`,
+`saved_feed_page_v2`, and `search_page_v1`. Version 2 certificates bind query
+grants separately from mutation grants, so a read-only agent has no synthetic
+mutation authority. Native SQLite and PWA OPFS SQLite store and checkpoint the
+grant set as normalized child rows. Unknown queries, unsorted or duplicate
+grants, query grants on non-agent actors, and an empty agent capability all
+fail closed. The local transport accepts canonical signed query bytes only
+through protocol 2, and native SQLite rechecks the exact actor, capability
+certificate, registered query grant, body digest, and Ed25519 signature before
+dispatch.
+
 Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
 retirement mechanism.
 
-The reusable native journal now enforces v2 certificates before ingestion and
+The active Primary applies retirement through the generated native command.
+One immediate SQLite transaction writes the closed authority-signed
+certificate, retires the exact actor and version 2 capability, advances the
+canonical revision, and emits an actor-retirement reset invalidation. Exact
+replay returns the original committed revision and certificate. Changed replay
+identity fails without a write. Normalized checkpoints carry the closed
+`93_actor_retirement` row, and native plus PWA activation verify its canonical
+bytes and Ed25519 signature against the checkpoint authority key before the
+retired state becomes visible.
+
+The reusable native core enforces v2 certificates before ingestion and
 rechecks the exact signed capability under the immediate commit transaction.
-The frozen v1 legacy editor list does not grow when the canonical operation
-registry grows. Scraper certificates can name only FeedItem capture. A bounded
+Scraper certificates can name only FeedItem capture. A bounded
 provider or source scope fails closed because the current operation envelope
 has no canonical scope field, and the verifier never infers scope from entity
 payloads. Same-actor causal tips, stale epochs, retired actors, missing
@@ -302,23 +366,19 @@ capability remains unchanged and authorizes every operation. Those conditions
 are rechecked under the immediate commit transaction before the receipt is
 returned, and retrieval creates no new outbox result.
 
-The PWA now consumes the shared production v2 verifier, stores the exact
-certificate bytes and signed capability fields in IndexedDB schema v9, and
-reverifies them before local intent admission and imported operation admission.
-Existing IndexedDB v8 enrollment rows keep their exact v1 shape and frozen
-legacy editor policy. Changed persistence, a stale epoch, a retired actor,
-bounded scope without an envelope binding, and operations outside the signed
-set all fail before an IndexedDB write. A mixed v1 and v2 checkpoint remains
-readable across restart. Opening the migrated database with schema v8 fails at
-the explicit browser rollback boundary instead of silently discarding v2
-state.
+The PWA consumes the shared production v2 verifier and stores exact
+certificate bytes and signed capability fields in OPFS SQLite. It reverifies
+them before local intent admission and imported operation admission. Changed
+persistence, a stale epoch, a retired actor, bounded scope without an envelope
+binding, version 1 capability rows, and operations outside the signed set all
+fail before a SQLite write. Checkpoint activation cannot import a historical
+actor capability into the selected generation.
 
 Production v2 issuance remains dormant. No production entry point exports the
 certificate constructor, and neither Freed Desktop nor the headless service
-publishes v2 certificates. Authority-signed retirement application and
-checkpoint propagation remain task 11.9. The PWA importer must ship before a
-later reviewed slice enables issuance, because an older PWA cannot import a v2
-certificate that has entered production sync.
+publishes v2 certificates. The retirement consumer and checkpoint verifier ship
+with the schema before issuance is enabled, so every participating client can
+reject a changed certificate and materialize an authority-signed retirement.
 
 Schema v12 also has an installed release prerequisite. Once the authoritative
 Primary migrates a Library, the v26.8.1900 schema v11 binary cannot reopen it.
@@ -332,10 +392,39 @@ activation has happened.
 
 ## Agent and capture boundary
 
-The first ingress API uses a private Unix socket or Windows named pipe that is
-restricted to the service account. Requests are bounded, signed, replay
-protected, and mapped to Library Core operations. Signature verification does
-not replace transport limits or rate limits.
+Local actor protocol 2 is generated from the SQLite contract. It contains
+exactly `execute_signed_query_v1` and `submit_signed_intent_page_v1`, which map
+to the native `agent_query_v1` and `ingest_follower_intent_page_v1` commands.
+Protocol 1 is retired without an alias or compatibility listener. The protocol
+exposes neither SQL nor a generic native-command selector. Native SQLite
+remains responsible for signature, capability, actor, epoch, query grant,
+causal, and transaction verification. The actor sends only canonical signed
+query bytes or a signed intent page. The Primary supplies intent receipt time
+from the service clock.
+
+The signed query envelope is capped at 256 KiB and binds the active Library,
+epoch, actor, capability certificate digest, random request identity, and one
+generated query request. Native SQLite checks the exact actor and capability,
+retirement state, Library-wide scope, registered query grant, canonical body
+digest, and Ed25519 signature before running the existing bounded query.
+Provider and source bounded scopes fail closed until the generated query
+contract defines their predicates. The result binds the request and source
+revision. A socket owner does not acquire read authority merely by connecting.
+
+The macOS and Linux service binds an owner-only mode `0600` Unix socket. Each
+connection carries one newline-terminated request and one closed response.
+Requests and responses are capped at 1 MiB. The service admits at most 32
+active connections and 120 new requests per rolling minute, retains at most
+256 exact replay identities, and closes a request after 5 seconds. Exact byte
+replay coalesces. Changed request-ID reuse, multiple frames, malformed UTF-8,
+unknown methods, oversized results, and native detail fail closed. The
+supervisor proves the state root around socket creation, refuses foreign path
+replacement, removes only its exact owned socket, and fences the Primary if
+the listener fails.
+
+Windows remains fail closed. Task 11.14 supplies the service-account named
+pipe and proves its ACL before the shared protocol processor can accept a
+request. Signature verification does not replace those transport controls.
 
 The first useful agent surface provides:
 
@@ -398,14 +487,14 @@ After promotion, rollback means another forward writer transfer:
    itself.
 
 Code can roll back to a previous signed binary. Library data does not roll back
-to an older live database. A verified closed backup is restored only into a new
-authority epoch with an attributable restore receipt.
+to an older live database. A verified normalized snapshot is restored only
+into a new authority epoch with an attributable replay-safe restore receipt.
 
 ---
 
 ## Omi integration
 
-Omi remains a future actor integration. It does not write Automerge state and
+Omi remains a future actor integration. It submits closed signed intents and
 does not receive direct database access.
 
 The intended flows are deliberate:
@@ -423,59 +512,63 @@ review before implementation.
 
 ## Task ledger
 
-| Task | State | Description |
-| --- | --- | --- |
-| 11.1 | Complete | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop |
-| 11.2 | Complete | Enforce one operating system backed Library data-root lease before SQLite opens |
-| 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
-| 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
-| 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; construct them behind the descriptor-bound native sidecar, then add installed headless checkpoint ingress |
-| 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
-| 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
-| 11.9 | Open | Add signed retirement application and checkpoint propagation |
-| 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
-| 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
-| 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
-| 11.13 | Blocked | Add social capture workers after provider-specific owner approval |
-| 11.14 | Open | Package Linux services, macOS launch agents, and Windows services |
-| 11.15 | Open | Complete installed Primary migration and editable follower acceptance |
-| 11.16 | Open | Complete forward recovery, competing-Primary, and fault-injection acceptance |
-| 11.20 | Open | Define the signed Omi actor and user-triggered voice capture contract |
-| 11.21 | Open | Implement authenticated Omi ingress with bounded retention |
-| 11.22 | Open | Implement the separately approved bounded reading-context export |
+| Task  | State       | Description                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 11.1  | Complete    | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop                                                                                                                                                                                                                                                                                                                                |
+| 11.2  | Complete    | Enforce one operating system backed Library data-root lease before SQLite opens                                                                                                                                                                                                                                                                                                                                                    |
+| 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
+| 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
+| 11.5  | Open        | Add Drive PKCE setup and platform-safe secret stores                                                                                                                                                                                                                                                                                                                                                                               |
+| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next                                                                                                                                          |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next                                                                                                                                                                                           |
+| 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
+| 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
+| 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |
+| 11.11 | Complete    | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Canonical signed query bytes now cross local actor protocol 2, and native SQLite proves the active actor, exact capability certificate, Library-wide scope, registered query grant, body digest, and Ed25519 signature before dispatch. Signed edits use the local intent method. |
+| 11.12 | Open        | Add provider-neutral RSS and explicit-save workers                                                                                                                                                                                                                                                                                                                                                                                 |
+| 11.13 | Blocked     | Add social capture workers after provider-specific owner approval                                                                                                                                                                                                                                                                                                                                                                  |
+| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd user-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Complete installed lifecycle receipts and the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                   |
+| 11.15 | Open        | Complete installed Primary migration and editable follower acceptance                                                                                                                                                                                                                                                                                                                                                              |
+| 11.16 | Open        | Complete forward recovery, competing-Primary, and fault-injection acceptance                                                                                                                                                                                                                                                                                                                                                       |
+| 11.20 | Open        | Define the signed Omi actor and user-triggered voice capture contract                                                                                                                                                                                                                                                                                                                                                              |
+| 11.21 | Open        | Implement authenticated Omi ingress with bounded retention                                                                                                                                                                                                                                                                                                                                                                         |
+| 11.22 | Open        | Implement the separately approved bounded reading-context export                                                                                                                                                                                                                                                                                                                                                                   |
 
 ---
 
 ## Acceptance criteria
 
 - [ ] A headless service imports a verified checkpoint into a fresh SQLite
-  generation without copying a SQLite file from another host.
+      generation without copying a SQLite file from another host.
 - [ ] One exact writer promotion succeeds and a competing Primary loses the
-  same control compare and swap.
+      same control compare and swap.
 - [ ] The losing process durably fences itself before any further cloud or
-  provider work.
+      provider work.
 - [ ] A Primary checkpoint receipt and an authenticated production PWA receipt
-  name the same Library, epoch, generation, manifest digest, Drive object ID,
-  item count, and exact revision.
+      name the same Library, epoch, generation, manifest digest, Drive object ID,
+      item count, and exact revision.
 - [ ] A Freed Desktop follower makes a local edit, publishes one signed intent,
-  receives the canonical result, and retains the edit after checkpoint refresh.
+      receives the canonical result, and retains the edit after checkpoint refresh.
 - [ ] A real-size Library with at least 19,000 items preserves exact item count,
-  materialized digest, actor frontier, and bounded memory through migration.
+      materialized digest, actor frontier, and bounded memory through migration.
 - [ ] Two processes against one data root produce exactly one lease holder.
 - [ ] Missing admission, stale epochs, retired actors, changed or conflicting
-  replays, oversized batches, and operations outside a capability all fail
-  with zero writes. An exact response-loss retry returns the old receipt only
-  for a currently admitted writer, active epoch, active actor, and unchanged
-  capability, with zero new writes or results.
+      replays, oversized batches, and operations outside a capability all fail
+      with zero writes. An exact response-loss retry returns the old receipt only
+      for a currently admitted writer, active epoch, active actor, and unchanged
+      capability, with zero new writes or results.
+- [x] Authority-signed actor retirement atomically retires the exact actor and
+      capability, returns the original receipt on exact replay, survives normalized
+      checkpoint export and import, and rejects changed certificate bytes in native
+      and PWA SQLite.
 - [ ] Crash and response-loss injection covers SQLite commit, object upload,
-  manifest upload, control compare and swap, result publication, and backup.
+      manifest upload, control compare and swap, result publication, and backup.
 - [ ] Secret scans find no key or token in arguments, environment values, logs,
-  state JSON, SQLite, backups, manifests, or bug reports.
+      state JSON, SQLite, backups, manifests, or bug reports.
 - [ ] A Drive call ledger proves that SQLite, WAL, SHM, and rollback journal
-  files were never uploaded.
+      files were never uploaded.
 - [ ] Social workers remain unable to start until their exact provider gates
-  and installed acceptance are complete.
+      and installed acceptance are complete.
 - [ ] Linux x86_64 and arm64, macOS, and Windows service lifecycle tests pass.
 
 ---

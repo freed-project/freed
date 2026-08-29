@@ -1,11 +1,8 @@
-import type { SqliteStatus } from "./sqlite-library";
-
 const LEGACY_DATABASE_NAME = "freed";
 const LEGACY_STORE_NAME = "automerge";
 const LEGACY_DOCUMENT_KEY = "feed";
 const LEGACY_DOCUMENT_BYTE_LENGTH_KEY = "feed:byte-length";
 const LEGACY_DOCUMENT_CHUNK_COUNT_KEY = "feed:chunk-count";
-const EMPTY_SOURCE_DIGEST = "0".repeat(64);
 
 function requestResult<T>(request: IDBRequest<T>, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -95,19 +92,4 @@ export function hasLegacyLibraryData(
       }
     };
   });
-}
-
-export function shouldBlockForLegacyLibrary(
-  status: SqliteStatus | null,
-  legacyDataPresent: boolean,
-): boolean {
-  if (!legacyDataPresent) return false;
-  if (!status?.active) return true;
-  return (
-    status.expectedItemCount === 0 &&
-    status.importedItemCount === 0 &&
-    status.sourceGeneration === 0 &&
-    status.sourceRevision === 0 &&
-    status.sourceDigest === EMPTY_SOURCE_DIGEST
-  );
 }

@@ -1,5 +1,8 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docBackfillContentSignals, subscribe } from "./library-client";
+import {
+  backfillLibraryContentSignals,
+  subscribeDesktopLibraryRuntime,
+} from "./library-client";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
 import {
@@ -27,10 +30,10 @@ let completed = 0;
 let failedCount = 0;
 let lastFailureAt = 0;
 let lastRunAt: number | undefined;
-let lastScannedDocItemCount: number | null = null;
+let lastScannedItemCount: number | null = null;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
-let unsubscribeDoc: (() => void) | null = null;
+let unsubscribeLibrary: (() => void) | null = null;
 let unsubscribeLocalAIModelState: (() => void) | null = null;
 let unsubscribePreferenceChanges: (() => void) | null = null;
 let pending = 0;
@@ -56,7 +59,7 @@ function scheduleBackfill(): void {
   pending = Math.max(pending, 1);
 }
 
-async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
+async function recordSemanticHealth(summary: Awaited<ReturnType<typeof backfillLibraryContentSignals>>): Promise<void> {
   if (!isEnabled()) return;
   try {
     const models = await localAIModels.listModels();
@@ -101,7 +104,7 @@ async function processNextBatch(): Promise<void> {
       blocking: false,
       timeoutMs: 120_000,
       run: () => trackResetSensitiveOperation(
-        Promise.resolve().then(() => docBackfillContentSignals(BATCH_SIZE)),
+        Promise.resolve().then(() => backfillLibraryContentSignals(BATCH_SIZE)),
       ),
     });
     lastRunAt = Date.now();
@@ -136,12 +139,12 @@ export function start(options: SemanticClassifierOptions = {}): void {
   running = true;
   scheduled = isEnabled();
   pending = scheduled ? 1 : 0;
-  lastScannedDocItemCount = null;
+  lastScannedItemCount = null;
   startedAt = Date.now();
 
-  unsubscribeDoc = subscribe((state) => {
-    if (lastScannedDocItemCount === state.docItemCount) return;
-    lastScannedDocItemCount = state.docItemCount;
+  unsubscribeLibrary = subscribeDesktopLibraryRuntime((state) => {
+    if (lastScannedItemCount === state.totalItemCount) return;
+    lastScannedItemCount = state.totalItemCount;
     scheduleBackfill();
   });
   unsubscribeLocalAIModelState = subscribeToLocalAIModelState(() => {
@@ -182,9 +185,9 @@ export function stop(): void {
     heartbeatHandle = null;
   }
 
-  if (unsubscribeDoc) {
-    unsubscribeDoc();
-    unsubscribeDoc = null;
+  if (unsubscribeLibrary) {
+    unsubscribeLibrary();
+    unsubscribeLibrary = null;
   }
 
   if (unsubscribeLocalAIModelState) {

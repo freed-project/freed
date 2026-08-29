@@ -52,7 +52,10 @@ export default defineConfig({
     plugins: () => [topLevelAwait()],
   },
   optimizeDeps: {
-    exclude: ["maplibre-gl/dist/maplibre-gl-worker.mjs"],
+    exclude: [
+      "@sqlite.org/sqlite-wasm",
+      "maplibre-gl/dist/maplibre-gl-worker.mjs",
+    ],
   },
   server: {
     fs: {

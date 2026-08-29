@@ -23,8 +23,8 @@ async function openStoryWallSettings(page: Page) {
 async function injectStoryWallMediaItem(page: Page) {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => { items: Array<{ globalId: string }> };
@@ -33,7 +33,7 @@ async function injectStoryWallMediaItem(page: Page) {
     const mediaUrl =
       "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20260%22%3E%3Crect%20width%3D%22400%22%20height%3D%22260%22%20fill%3D%22%23c46b45%22%2F%3E%3Ccircle%20cx%3D%22295%22%20cy%3D%2285%22%20r%3D%2252%22%20fill%3D%22%23f0d6b6%22%2F%3E%3Cpath%20d%3D%22M0%20235%20L120%20145%20L210%20215%20L295%20160%20L400%20230%20V260%20H0Z%22%20fill%3D%22%235b3b2f%22%2F%3E%3C%2Fsvg%3E";
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "instagram:story-wall:media-1",
         platform: "instagram",

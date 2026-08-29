@@ -1,7 +1,11 @@
 {
   "schemaVersion": 1,
   "phases": [
-    { "id": 1, "status": "complete", "source": "docs/PHASE-1-FOUNDATION.md" },
+    {
+      "id": 1,
+      "status": "complete",
+      "source": "docs/PHASE-1-FOUNDATION.md"
+    },
     {
       "id": 2,
       "status": "complete",
@@ -14,15 +18,19 @@
     },
     {
       "id": 4,
-      "source": "docs/PHASE-4-SYNC.md",
-      "status": "current"
+      "status": "current",
+      "source": "docs/PHASE-4-SYNC.md"
     },
     {
       "id": 5,
       "status": "current",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
-    { "id": 6, "status": "current", "source": "docs/PHASE-6-PWA.md" },
+    {
+      "id": 6,
+      "status": "current",
+      "source": "docs/PHASE-6-PWA.md"
+    },
     {
       "id": 7,
       "status": "current",
@@ -45,14 +53,18 @@
     },
     {
       "id": 11,
-      "source": "docs/PHASE-11-OPENCLAW.md",
-      "status": "current"
+      "status": "current",
+      "source": "docs/PHASE-11-OPENCLAW.md"
     },
     {
       "id": 12,
       "status": "current",
       "source": "docs/PHASE-12-ADDITIONAL-PLATFORMS.md"
     },
-    { "id": 13, "status": "upcoming", "source": "docs/PHASE-13-POSSE.md" }
+    {
+      "id": 13,
+      "status": "upcoming",
+      "source": "docs/PHASE-13-POSSE.md"
+    }
   ]
 }

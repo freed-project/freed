@@ -12,7 +12,8 @@ import {
   type FriendsGalaxyProductWorkerFailure,
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
-  type FriendsGalaxyProductWorkerSourceInput,
+  type FriendsGalaxyProductWorkerNormalizedSourceInput,
+  type FriendsGalaxySqliteGraphQuery,
 } from "./friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
@@ -66,6 +67,10 @@ interface FriendsGalaxyPresentationRequestState {
 
 export class FriendsGalaxyProductEngine {
   private readonly presentation = new FriendsGalaxyProductPresentationIndex();
+  private readonly sourceMetadataByNodeId = new Map<
+    string,
+    IdentityGraphAtlasNode
+  >();
   private readonly worker: FriendsGalaxyProductWorkerClient;
   private readonly rendererOptions: Omit<
     FriendsGalaxyRendererHostOptions,
@@ -214,12 +219,15 @@ export class FriendsGalaxyProductEngine {
     return this.renderer?.recoveryReason ?? null;
   }
 
-  requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
+  requestNormalizedSource(
+    input: FriendsGalaxyProductWorkerNormalizedSourceInput,
+    query: FriendsGalaxySqliteGraphQuery,
+  ): number | null {
     this.assertActive();
     this.latestPresentation = null;
     this.pendingSourceResponse = null;
     this.activityPatches = null;
-    return this.worker.requestSource(input);
+    return this.worker.requestNormalizedSource(input, query);
   }
 
   requestSettledPresentation(
@@ -422,7 +430,7 @@ export class FriendsGalaxyProductEngine {
   }
 
   metadata(nodeId: string): IdentityGraphAtlasNode | null {
-    return this.presentation.node(nodeId);
+    return this.sourceMetadataByNodeId.get(nodeId) ?? null;
   }
 
   avatarUrl(nodeId: string): string | null {
@@ -493,6 +501,7 @@ export class FriendsGalaxyProductEngine {
     this.latestPresentation = null;
     this.pendingSourceResponse = null;
     this.admittedSourceRevision = null;
+    this.sourceMetadataByNodeId.clear();
   }
 
   private assertActive(): void {
@@ -510,6 +519,10 @@ export class FriendsGalaxyProductEngine {
   }
 
   private admitSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
+    this.sourceMetadataByNodeId.clear();
+    for (const node of response.rendererScene.atlas.nodes) {
+      this.sourceMetadataByNodeId.set(node.id, node);
+    }
     this.presentation.replace(response.rendererScene.atlas);
     this.admittedSourceRevision = response.sourceRevision;
     this.sceneIndex = new FriendsGalaxySceneIndex(

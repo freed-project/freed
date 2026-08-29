@@ -7,6 +7,14 @@ export type {
   LibraryCorePreparedMediaBlobV1,
 } from "./library-core-media-blob.js";
 export {
+  syncLibraryCoreNormalizedFollowerV2,
+  type LibraryCoreNormalizedFollowerEnrollmentCandidateV2,
+  type LibraryCoreNormalizedFollowerResultReferencePageV2,
+  type LibraryCoreNormalizedFollowerSyncReceiptV2,
+  type LibraryCoreNormalizedFollowerSyncRuntimeV2,
+  type LibraryCoreNormalizedFollowerTransportV2,
+} from "./library-core-normalized-follower-sync.js";
+export {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,
@@ -42,18 +50,17 @@ export {
   type ReassignLibraryCoreCheckpointGenerationRequestV1,
 } from "./library-core-checkpoint-publication.js";
 export {
-  importLibraryCorePortableCheckpointV1,
-  prepareLibraryCorePortableCheckpointPagesV1,
-  publishLibraryCorePortableCheckpointV1,
-  reassignLibraryCorePortableCheckpointV1,
-  type ImportLibraryCorePortableCheckpointRequestV1,
-  type ImportLibraryCorePortableCheckpointResultV1,
-  type LibraryCorePortableCheckpointImportWriterV1,
-  type LibraryCorePortableCheckpointStagingReceiptV1,
-  type PrepareLibraryCorePortableCheckpointPagesRequestV1,
-  type PublishLibraryCorePortableCheckpointRequestV1,
-  type ReassignLibraryCorePortableCheckpointRequestV1,
-} from "./library-core-portable-checkpoint.js";
+  importLibraryCoreNormalizedCheckpointV2,
+  prepareLibraryCoreNormalizedCheckpointPagesV2,
+  publishLibraryCoreNormalizedCheckpointV2,
+  reassignLibraryCoreNormalizedCheckpointV2,
+  type PrepareLibraryCoreNormalizedCheckpointPagesRequestV2,
+  type ImportLibraryCoreNormalizedCheckpointRequestV2,
+  type ImportLibraryCoreNormalizedCheckpointResultV2,
+  type LibraryCoreNormalizedCheckpointImportWriterV2,
+  type PublishLibraryCoreNormalizedCheckpointRequestV2,
+  type ReassignLibraryCoreNormalizedCheckpointRequestV2,
+} from "./library-core-normalized-checkpoint.js";
 export {
   importLibraryCoreIntentSegmentV1,
   prepareLibraryCoreIntentSegmentV1,
@@ -64,6 +71,18 @@ export {
   type PreparedLibraryCoreIntentSegmentV1,
   type PrepareLibraryCoreIntentSegmentRequestV1,
 } from "./library-core-intent-segments.js";
+export {
+  importLibraryCoreNormalizedIntentSegmentV2,
+  prepareLibraryCoreNormalizedIntentSegmentV2,
+  type LibraryCoreNormalizedIntentSegmentImportWriterV2,
+  type PreparedLibraryCoreNormalizedIntentSegmentV2,
+} from "./library-core-normalized-intent-segments.js";
+export {
+  publishLibraryCoreNormalizedIntentSegmentV2,
+  publishLibraryCoreNormalizedResultSegmentV2,
+  type LibraryCoreNormalizedHeadPublicationAdapterV2,
+  type LibraryCoreNormalizedHeadReadV2,
+} from "./library-core-normalized-segment-publication.js";
 export {
   publishLibraryCoreIntentCandidateV1,
   type LibraryCoreIntentHeadCompareAndSwapResultV1,
@@ -78,26 +97,23 @@ export {
   type LibraryCoreResultOutboxEntryV1,
 } from "./library-core-result-segments.js";
 export {
+  importLibraryCoreNormalizedResultSegmentV2,
+  prepareLibraryCoreNormalizedResultSegmentV2,
+  type LibraryCoreNormalizedResultSegmentImportWriterV2,
+  type PreparedLibraryCoreNormalizedResultSegmentV2,
+} from "./library-core-normalized-result-segments.js";
+export {
   publishLibraryCoreResultEntriesV1,
   type LibraryCoreResultHeadReadV1,
   type LibraryCoreResultPublicationAdapterV1,
 } from "./library-core-result-publication.js";
-export {
-  importLibraryCoreOperationSegmentV1,
-  prepareLibraryCoreOperationSegmentV1,
-  type ImportLibraryCoreOperationSegmentRequestV1,
-  type LibraryCoreOperationOutboxEntryV1,
-  type LibraryCoreOperationSegmentImportReceiptV1,
-  type LibraryCoreOperationSegmentImportWriterV1,
-  type PreparedLibraryCoreOperationSegmentV1,
-  type PrepareLibraryCoreOperationSegmentRequestV1,
-} from "./library-core-operation-segments.js";
 export {
   LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreMediaBlobAdapterV1,
+  createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
@@ -109,6 +125,7 @@ export {
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
+  provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   provisionGoogleDriveLibraryCoreResultHeadV1,
   type GoogleDriveLibraryCoreAdapterOptionsV1,
   type GoogleDriveLibraryCoreControlLocatorV1,

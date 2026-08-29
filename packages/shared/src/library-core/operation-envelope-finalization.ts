@@ -12,14 +12,19 @@ import {
 import {
   isLibraryCoreAssembledTransactionV1,
   type FeedItemCaptureUpsertSigningBodyV1,
+  type FeedItemAnalysisReplaceSigningBodyV1,
+  type FeedItemAnnotationsReplaceSigningBodyV1,
   type FeedItemReadAssignmentSigningBodyV1,
   type FeedItemRemoveSigningBodyV1,
   type FeedItemUserStateAssignmentSigningBodyV1,
   type RssFeedRemoveSigningBodyV1,
+  type RssFeedTitleAssignmentSigningBodyV1,
   type RssFeedUpsertSigningBodyV1,
   type PreferencesLeafAssignmentSigningBodyV1,
+  type PersonReachOutAppendSigningBodyV1,
   type PersonUpsertSigningBodyV1,
   type PersonRemoveSigningBodyV1,
+  type AccountPersonAssignmentSigningBodyV1,
   type AccountUpsertSigningBodyV1,
   type AccountRemoveSigningBodyV1,
   type LibraryCoreOperationSigningBodyV1,
@@ -28,6 +33,7 @@ import {
 } from "./operation-transaction-contracts.js";
 
 export const LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES = 4_194_304;
+export const LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES = 131_072;
 
 const FINALIZED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 const PLACEHOLDER_SIGNATURE = "0".repeat(128);
@@ -37,6 +43,14 @@ export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignment
 }
 
 export interface FeedItemCaptureUpsertEnvelopeV1 extends FeedItemCaptureUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface FeedItemAnalysisReplaceEnvelopeV1 extends FeedItemAnalysisReplaceSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface FeedItemAnnotationsReplaceEnvelopeV1 extends FeedItemAnnotationsReplaceSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
@@ -56,11 +70,19 @@ export interface RssFeedRemoveEnvelopeV1 extends RssFeedRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface RssFeedTitleAssignmentEnvelopeV1 extends RssFeedTitleAssignmentSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export interface PreferencesLeafAssignmentEnvelopeV1 extends PreferencesLeafAssignmentSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
 export interface PersonUpsertEnvelopeV1 extends PersonUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface PersonReachOutAppendEnvelopeV1 extends PersonReachOutAppendSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
@@ -76,18 +98,27 @@ export interface AccountRemoveEnvelopeV1 extends AccountRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface AccountPersonAssignmentEnvelopeV1 extends AccountPersonAssignmentSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemCaptureUpsertEnvelopeV1
+  | FeedItemAnalysisReplaceEnvelopeV1
+  | FeedItemAnnotationsReplaceEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
   | FeedItemUserStateAssignmentEnvelopeV1
   | FeedItemRemoveEnvelopeV1
   | RssFeedUpsertEnvelopeV1
   | RssFeedRemoveEnvelopeV1
+  | RssFeedTitleAssignmentEnvelopeV1
   | PreferencesLeafAssignmentEnvelopeV1
   | PersonUpsertEnvelopeV1
+  | PersonReachOutAppendEnvelopeV1
   | PersonRemoveEnvelopeV1
   | AccountUpsertEnvelopeV1
-  | AccountRemoveEnvelopeV1;
+  | AccountRemoveEnvelopeV1
+  | AccountPersonAssignmentEnvelopeV1;
 
 export interface LibraryCoreFinalizedEnvelopeV1 {
   readonly envelope: LibraryCoreOperationEnvelopeV1;
@@ -154,6 +185,15 @@ export async function finalizeLibraryCoreTransactionV1(
   const memberByteLengths = assembled.members.map((member) =>
     canonicalEnvelopeBytes(member.signing_body, PLACEHOLDER_SIGNATURE),
   );
+  if (
+    memberByteLengths.some(
+      (byteLength) => byteLength > LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES,
+    )
+  ) {
+    throw new RangeError(
+      "one canonical operation envelope exceeds 131,072 bytes",
+    );
+  }
   const canonicalEnvelopeByteTotal = memberByteLengths.reduce(
     (total, byteLength) => {
       const next = total + byteLength;

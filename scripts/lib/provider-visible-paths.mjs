@@ -261,22 +261,9 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     ALL_PROVIDER_SCOPES,
   ],
   [
-    "packages/desktop/src/lib/automerge-types.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
-    "packages/desktop/src/lib/automerge.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
-    "packages/desktop/src/lib/automerge.worker.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
     "packages/desktop/src/lib/capture.ts",
     ALL_PROVIDER_SCOPES,
   ],
-  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
   ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
   [
     "packages/desktop/src/lib/dev-sync-triggers.ts",
@@ -391,9 +378,6 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ],
   ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
   ["packages/pwa/src/App.tsx", ["other"]],
-  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
   ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
   ["packages/pwa/src/lib/reader-cache.ts", ["other"]],
   ["packages/pwa/src/lib/store.ts", ["other"]],

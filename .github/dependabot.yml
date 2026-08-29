@@ -8,7 +8,7 @@
 #
 # Majors are deliberately NOT grouped. Batching them looks like it saves runner
 # time and does the opposite, because a group can only merge when every member
-# can. One batch here carried automerge 3, typescript 7, tailwind 4 and vite 8 at
+# can. One batch here carried several major runtime and build upgrades at
 # once: four unrelated migrations, no reviewer, and a weekly rebase that burned
 # the full matrix every time without ever merging. Ungrouped, each major is one
 # reviewable PR that either lands or gets closed on its own merits, and

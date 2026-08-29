@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { RssFeed } from "@freed/shared";
+import type { RuntimeRssFeed } from "./rss-runtime-state";
 import {
   SCHEDULED_RSS_MAX_FEEDS,
   SCHEDULED_RSS_STALE_AFTER_MS,
   selectRssFeedsForRefresh,
 } from "./rss-refresh-plan";
 
-function feed(url: string, lastFetched?: number, enabled = true): RssFeed {
+function feed(url: string, lastFetched?: number, enabled = true): RuntimeRssFeed {
   return {
     url,
     title: url,

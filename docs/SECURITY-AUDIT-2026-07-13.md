@@ -75,10 +75,10 @@ six moderate findings, with no critical or high findings.
 
 The remaining moderate findings are constrained as follows:
 
-- Automerge and `vite-plugin-top-level-await` retain a transitive `uuid` issue
-  with no compatible upstream fix. The vulnerable operation requires callers
-  to supply a destination buffer. Freed does not intentionally expose that
-  operation to untrusted input.
+- The July dependency graph included an Automerge and
+  `vite-plugin-top-level-await` transitive `uuid` issue. The SQLite-only Library
+  transition removed Automerge and its runtime dependency chain. Current audit
+  results, rather than this dated snapshot, govern release admission.
 - The website lane retains a Next-bundled PostCSS advisory. npm proposes an
   invalid downgrade as its automatic fix. The website dependency must be
   updated and validated separately from the product lane.
@@ -93,11 +93,10 @@ expansion.
 ### Medium: Dynamic property writes need prototype-key guards
 
 CodeQL identified 36 related property injection and prototype pollution paths,
-primarily in Automerge schema mutation helpers. Many keys are IDs in intentional
-record maps, but some can originate in imported or synced data. Every dynamic
-write should reject `__proto__`, `prototype`, and `constructor` before touching
-a normal JavaScript object. That remediation belongs in a focused shared-schema
-change with sync compatibility tests.
+primarily in the retired document mutation helpers. Those helpers no longer
+exist in the SQLite-only runtime. Current typed mutation decoders accept closed
+fields and reject unknown keys before SQLite execution. Current CodeQL and
+dependency results govern release admission.
 
 ### Medium: Untrusted text reaches costly regular expressions
 

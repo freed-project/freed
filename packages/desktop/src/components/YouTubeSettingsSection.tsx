@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collectSavedYouTubeVideoUrls, type FeedItem } from "@freed/shared";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
 import { usePlatform } from "@freed/ui/context";
-import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import {
   getProviderStatusLabel,
@@ -40,13 +38,8 @@ import {
   isDesktopProviderAuthAllowed,
   registerDesktopProviderAuthQuiesceHandler,
 } from "../lib/provider-auth-lifecycle";
-import {
-  isLibraryCoreProviderSettingsReaderDisabled,
-  readSavedLibraryCoreYouTubeVideoUrls,
-} from "../lib/library-core-provider-settings-runtime";
+import { readSavedLibraryCoreYouTubeVideoUrls } from "../lib/library-core-provider-settings-runtime";
 import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
-
-const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 export function YouTubeSettingsSection({
   surface = "settings",
@@ -61,11 +54,6 @@ export function YouTubeSettingsSection({
     (state) => state.health?.providers.youtube ?? null,
   );
   const sourceVersion = useAppStore((state) => state.searchCorpusVersion);
-  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
-  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
-  const legacyItems = useAppStore((state) =>
-    useLegacyItems ? state.items : EMPTY_FEED_ITEMS,
-  );
   const { confirm, dialog } = useProviderRiskGate("youtube");
   const [checking, setChecking] = useState(false);
   const [playlistSyncing, setPlaylistSyncing] = useState(false);
@@ -104,18 +92,13 @@ export function YouTubeSettingsSection({
       setSavedVideoReadError(null);
       return;
     }
-    if (useLegacyItems && !legacyItemsReady) {
-      setSavedVideoRead(null);
-      setSavedVideoReadError(null);
-      return;
-    }
     const controller = new AbortController();
     const requestedSourceVersion = sourceVersion;
     setSavedVideoRead(null);
     setSavedVideoReadError(null);
-    const read = useLegacyItems
-      ? Promise.resolve().then(() => collectSavedYouTubeVideoUrls(legacyItems))
-      : readSavedLibraryCoreYouTubeVideoUrls({ signal: controller.signal });
+    const read = readSavedLibraryCoreYouTubeVideoUrls({
+      signal: controller.signal,
+    });
     void read
       .then((urls) => {
         if (!controller.signal.aborted) {
@@ -138,13 +121,7 @@ export function YouTubeSettingsSection({
     return () => {
       controller.abort();
     };
-  }, [
-    auth.isAuthenticated,
-    legacyItems,
-    legacyItemsReady,
-    sourceVersion,
-    useLegacyItems,
-  ]);
+  }, [auth.isAuthenticated, sourceVersion]);
 
   const applyAuthResult = useCallback(
     (loggedIn: boolean) => {

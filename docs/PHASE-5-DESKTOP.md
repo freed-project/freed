@@ -1,6 +1,6 @@
-# Phase 5: Desktop & Mobile App (Tauri)
+# Phase 5: Freed Desktop (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, blocked-preflight crash-loop protection shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, classifier health notification isolation shipped, idle Automerge worker recycling shipped, bounded SQLite maintenance scans shipped, explicit local-only primary Library authority shipped, SQLite-backed sample-data accounting, Story Wall candidates, Saved analytics, and full-library native search shipped, the four-mode Saved feed and non-Saved Friends-only feed moved onto bounded Gate D SQLite reads, the ordinary all-content feed moved onto bidirectional bounded SQLite paging, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, local interface zoom controls shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, multi-Desktop provider request warnings shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
 > **Architecture:** Freed Desktop is a bounded SQLite client and a host
 > for the shared native Library Core. Every view calls a named typed query.
@@ -14,23 +14,355 @@
 
 ## Current SQLite Desktop work
 
-- [ ] Complete extraction of Library semantics into
+- [x] Complete extraction of Library semantics into
       `packages/library-core-native` so Freed Desktop and the headless Primary
-      call the same Rust core.
-- [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
-      contract source, with generated-drift validation.
-- [ ] Extend the executable contract across field schemas, payload codecs,
-      invalidations, deletion obligations, and one checked-in SQL catalog.
-- [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
+      call the same Rust core. The Tauri crate retains only host key custody,
+      process leasing, platform-key access, and command wiring. The extracted
+      core no longer exports the uncalled historical whole-FeedItem JSON
+      projector.
+- [x] Open the final normalized Desktop database in its own private
+      descriptor-bound `library-sqlite` directory under a separate process
+      lease. Startup installs and verifies the generated schema identity, and
+      one registered Tauri command accepts only the flat closed typed query
+      requests implemented by the native core. The historical database remains
+      outside this database and receives no mirrored normalized writes. A fresh
+      installation creates only the normalized database and never creates the
+      historical directory, process lease, backup directory, store, or shell.
+- [x] Generate the shared checkpoint registry, protocol limits, 23 canonical
+      mutation programs, 5 device-local mutation programs, and 33 bounded query
+      programs for Rust and TypeScript from one executable contract source,
+      with generated-drift validation. Generation fails unless every canonical
+      mutation and query name maps one-to-one to an executable program. The
+      same source defines the 23-mutation Primary writer capability and the
+      capture-only scraper capability. Rust and TypeScript consume generated
+      constants, and no parallel actor-operation registry remains. Query row
+      models now generate native Rust field descriptors and TypeScript row
+      transforms from the same closed field definitions. The Friends directory
+      native executor uses that descriptor directly, with no hand-written row
+      mapper or duplicate response validator.
+- [x] Expose source-fenced native hydration and cache-pressure candidate pages
+      from the shared Rust core. Both pages use generated SQL, cap results at
+      128 rows, and bind canonical generation plus device content revision.
+      Cached reads coalesce local recency writes, and stale least-recently-used
+      candidates cannot delete newly accessed bytes.
+- [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
+      define closed root and child checkpoint payload fields, and expose a
+      bounded native SQLite checkpoint exporter with stable keyset cursors.
+      New and reopened databases verify Freed's fixed SQLite application ID
+      before any schema write, so a foreign file cannot be adopted by accident.
+      Native staging now activates every normalized record kind atomically
+      after exact digest, binary64, content, and foreign-key verification.
+      The contract also generates the exact row import SQL used by native Rust
+      and browser TypeScript, so checkpoint transforms cannot drift by runtime.
+- [x] Add strict normalized transaction, operation, causal-tip, replication,
+      invalidation, signed-intent, result, and sparse optimistic-field tables
+      to the shared schema. Canonical protocol members remain individually
+      bounded to 131,072 bytes and large content stays in chunk rows.
+- [x] Make accepted follower admission produce its authority-signed result in
+      the same native SQLite transaction as the canonical operation. The
+      active epoch key is rechecked under the write lock. Exact canonical
+      result bytes, the per-actor result cursor, materialized rows, actor tip,
+      revision, receipts, replication entries, and invalidations commit or
+      roll back together. Exact retry returns the stored result without a new
+      signature or sequence.
+- [x] Model accepted, rejected, and already-applied follower outcomes as closed
+      typed outbox rows. Rejected results carry one registered reason without
+      requiring an accepted transaction row. Already-applied results reference
+      the original immutable result digest. Product rows and revisions remain
+      exclusive to accepted mutations.
+- [x] Produce bounded authority-signed rejected and already-applied envelopes
+      natively. Exact retries return the stored bytes without consuming another
+      result sequence. Rejections name no canonical operation or receipt.
+      Already-applied results prove the original accepted result and carry its
+      canonical operation, receipt, and current replacement projection. Neither
+      outcome advances the product revision or actor operation tip.
+- [x] Resolve a verified mutation against its target under the same immediate
+      SQLite transaction used for admission. A missing root returns
+      `target_missing`. A matching typed tombstone returns `target_tombstoned`.
+      Both results bind the current source revision and commit only the result
+      outbox row and actor-scoped result cursor.
+- [x] Resolve a cryptographically valid transaction that no longer extends the
+      accepted actor tip as `precondition_failed`. The Primary signs the current
+      source revision and advances only the follower result chain. The stale
+      transaction cannot create an accepted operation or change product state.
+- [x] Export exact signed follower results through an actor-bound native keyset
+      page. Each page is capped at 128 records and 1,048,576 serialized bytes,
+      carries a sequence and digest cursor, preserves every canonical byte, and
+      rejects gaps, chain splices, cross-actor cursors, and undersized pages.
+      The SQLite plan uses the actor and result sequence index without an
+      offset, scan, or temporary sort.
+- [x] Export canonical accepted operation transactions directly from the
+      normalized SQLite journal through generated native commands. The
+      source-fenced stream emits the authority acceptance before its exact
+      signed members, rejects any transaction without a matching acceptance,
+      and never emits an operation envelope above the shared 131,072-byte
+      logical-record ceiling.
+- [x] Verify a complete signed transaction before evaluating mutable actor and
+      capability policy. Under the immediate admission transaction, a retired
+      actor receives `actor_retired`, while a retired, bounded, or
+      mutation-excluding capability receives `capability_denied`. Both are
+      authority-signed exact-retry results that leave accepted operations,
+      product rows, actor operation tips, invalidations, and revisions alone.
+- [x] Represent result authority and intent epochs as separate closed fields.
+      A valid old-epoch intent receives `epoch_stale` from the strictly newer
+      active authority. Policy and epoch rejections include exact current
+      replacements for optimistic fields. Native and PWA SQLite store both
+      epoch IDs, and the PWA verifies and settles the rejection atomically.
+- [x] Store accepted authority epochs, the active authority pointer, signed
+      transition state, frontier tips, complete actor chain tips, enrollment
+      certificates, and normalized actor capabilities in the final schema and
+      checkpoint registry. Activation fails atomically when the header has no
+      matching accepted authority, an active actor has no capability, or a
+      capability names an unregistered mutation.
+- [x] Extend the executable contract across field schemas, payload codecs,
+      mutation SQL, query SQL, invalidations, and deletion obligations.
+  - [x] Make the public query registry equal the generated SQLite program
+        registry. Eleven unexecutable query names from retired export,
+        subscription, feed, Saved, provider-action, repair, and classifier
+        experiments are absent from Rust and TypeScript generation.
+  - [x] `feed_item_capture_upsert` executes through generated normalized SQL
+        instead of the retired JSON product projection. One signed transaction
+        carries at most 32 capture members. Each item is capped at 131,072
+        canonical bytes, root, media, and topic rows commit atomically, refresh
+        preserves user-owned state, and tombstones prevent resurrection.
+- [x] Route feed, Saved, search, item detail, Friends, map, analytics, Story
       Wall, settings, exports, and diagnostics through bounded named queries.
-- [ ] Route the exhaustive mutation registry through atomic native
+  - [x] The native core now dispatches `feed_page_v1` as a typed request and
+        response over the generated SQL program. One deferred SQLite snapshot
+        pins source identity, keyset paging, visible count, row limit, and the
+        2 MiB response budget. Its opaque cursor matches the TypeScript codec
+        byte for byte and fails closed after the source revision changes.
+        Freed Desktop consumes this contract through its bounded feed window.
+  - [x] `library_facet_summary_v1` now computes counts and the bounded tag set
+        from SQLite trigger-maintained counters and refcounts through the same
+        browser and native dispatch. It returns one source-fenced typed
+        aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
+        the FeedItem table, and never sends item rows to React. The same closed
+        row now carries indexed latest activity times, Google Contact totals,
+        linked Contact Person totals, and the latest enabled RSS fetch time.
+  - [x] `saved_analytics_v2` now computes the Saved overview through one
+        generated native SQLite aggregate. It returns exact totals, latest
+        time, fixed day and hour buckets, and bounded binary-ordered source and
+        content counts in one source-fenced response under 2 MiB. Saved
+        settings consumes this aggregate directly.
+  - [x] `saved_feed_page_v2` now executes all four Saved orders through closed
+        generated native SQLite variants. Date saved, date published,
+        recommendation priority, and shortest read each use a matching
+        expression index in both directions without a temporary sort. Filters
+        and exact counts stay in SQLite, each request reads at most 129 rows,
+        and edge cursors bind the filter, sort, generation, revision, and full
+        order key. The Saved view consumes this query directly.
+  - [x] `preferences_snapshot_v1` now returns normalized preference nodes
+        through the native core in exact SQLite binary path order. The closed
+        response preserves boolean, integer, real, text, and null values,
+        rejects mismatched value columns, and enforces 512-row and 2 MiB
+        ceilings without constructing a settings shell.
+  - [x] `item_detail_v1` now performs one primary-key SQLite lookup and returns
+        the shared compact card plus typed reader-body locators. It never
+        returns a full body or catch-all object, and the response uses the
+        ordinary 2 MiB ceiling. Background item scans are metadata-only and no
+        longer alias the historical full-content detail projection.
+  - [x] `person_detail_v1` now performs one primary-key SQLite lookup through
+        the extracted native core. It returns one closed Person header, at most
+        64 binary-ordered tags, the latest 20 stable reach-out events, the total
+        linked Account count, and at most 64 linked Account rows under a 2 MiB
+        ceiling. A truncated linked-Account window fails Friend construction
+        closed. Timeline cards remain separate bounded queries.
+  - [x] `account_detail_v1` now performs one primary-key SQLite lookup through
+        the shared native and PWA dispatch, returns at most eight ordered
+        follow-roster roles, and never hydrates a Person or FeedItem corpus.
+  - [x] `friend_candidate_review_v1` ranks connection Persons and unlinked
+        social Accounts inside native SQLite from normalized identity,
+        activity, content-signal, and bounded contact-overlap evidence. The
+        generated query reads at most eleven result rows, returns ten rows
+        under 512 KiB, and filters exact evidence-bound dismissals before the
+        renderer receives them. Friends retains only that visible window.
+        The Friends review surface retains only this result window.
+  - [x] `rss_feed_detail_v1` now performs one primary-key SQLite lookup through
+        the shared native and PWA dispatch and returns every synchronized RSS
+        Feed field under a 64 KiB ceiling. Freed Desktop uses it when a partial
+        feed edit or refresh targets a feed outside the visible renderer
+        window, preserving polling, unread, folder, URL, and sample fields.
+  - [x] `person_graph_page_v1`, `account_graph_page_v1`, and
+        `rss_feed_page_v1` now stream compact
+        identity roots through source-fenced binary primary-key pages shared
+        by native Rust and PWA SQLite. Each request returns at most 128 rows
+        and 2 MiB without notes, contact fields, histories, polling policy, or
+        a complete identity corpus. Account and RSS rows include indexed
+        visible activity counts and latest activity times. RSS rows also use
+        the latest visible item image only when the feed has no image. This
+        removes the separate JavaScript graph activity aggregate from the
+        final reader path. Person and Account rows also join foreign-keyed
+        installation-local SQLite positions that never enter checkpoints or
+        replication. The extracted native core executes generated one-row set
+        and clear programs with exact-retry no-op behavior and no canonical
+        revision or outbox effect. Freed Desktop graph-worker and product
+        store consume these pages directly.
+  - [x] The shared Friends graph engine accepts a bounded SQLite query
+        function and pumps Person, Account, and RSS pages into worker-owned
+        compact source state one page at a time. Freed Desktop supplies the
+        native query binding directly. The React graph no longer accepts an
+        Account catalog, compiles a fallback identity source, or resolves node
+        selections through renderer dictionaries. Worker-owned scene metadata
+        returns stable Person and Account IDs, labels, and admitted counts. The
+        graph link control searches the indexed Person model through
+        `person_picker_page_v1` and retains at most 12 compact results.
+  - [x] The Friend editor resolves linkable social identities through
+        `account_picker_page_v1`. Empty search uses the dedicated unlinked
+        Account index. Searches of three or more Unicode scalars use the FTS5
+        trigram index across display name, handle, provider, and external ID.
+        Native SQLite returns at most 50 compact candidates with visible
+        activity. One or two scalar searches filter only that resident window.
+        React never pages or scans the Account catalog. Selected Accounts are
+        revalidated through `account_detail_v1` before the Person mutation.
+  - [x] Selected Friend and Account detail panels resolve identity-link
+        recommendations through `account_link_candidates_v1`. The native core
+        reads trigger-maintained exact name and handle keys, returns at most
+        five closed rows under 64 KiB, and never exposes Person or Account
+        dictionaries to React. The former corpus-wide JavaScript candidate
+        index and its compatibility tests are deleted.
+  - [x] Account linking searches use the shared `person_picker_page_v1`
+        reader. The graph menu and Account detail panel retain the same
+        maximum twelve-row SQLite window, while link recommendations carry
+        their own bounded Person and Account labels. Neither surface receives
+        a complete Person catalog for lookup or display.
+  - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
+        text or no more than five content-addressed chunks through native Rust.
+        Requests are capped at 256 KiB, responses at 512 KiB, and offsets past
+        the body fail closed. ReaderView pages the body through this query.
+  - [x] `background_item_page_v1` now traverses compact metadata in binary
+        global ID order through a source-fenced primary-key cursor. Each native
+        request returns at most 64 rows, reads at most 65, includes hidden and
+        archived records needed by background jobs, and never carries reader
+        bodies or uses offset paging. Freed Desktop contact discovery and
+        explicit Library enumeration use the shared typed adapter. Filtered
+        content enrichment uses its dedicated query contract instead of the
+        historical item query.
+  - [x] `content_fetch_claim_v1` now selects only linked rows with no inline or
+        content-addressed preserved body. Native SQLite returns 64 compact
+        candidates from at most 65 rows, and the existing paced fetch queue
+        consumes those candidates without reconstructing FeedItems or changing
+        network cadence, retries, headers, or provider behavior.
+  - [x] Provider settings, Facebook group-name repair, media backup, and saved
+        YouTube discovery now call `provider_media_page_v1` through the native
+        typed query command. SQLite filters provider, visibility, and saved
+        state before returning compact 64-row pages. The path has no generic
+        item scan, compatibility lease, or rollback switch.
+  - [x] `change_feed_v1` now pages compact invalidations through the native
+        core in revision and ordinal primary-key order. One cursor pins the
+        upper revision while later commits continue, responses contain no
+        entity rows, and missing revisions fail closed. Normalized checkpoint
+        activation emits one explicit Library reset notice. Freed Desktop now
+        drains accepted local and imported revisions through this feed in
+        512-row pages. FeedItem identities rerun bounded point queries, while
+        preferences, RSS, broad identity, authority, and reset topics reopen
+        their bounded readers. Pending follower intent hints remain
+        device-local and do not advance canonical change revisions.
+  - [x] `feed_browse_page_v3` now executes the complete ranked-feed filter and
+        bidirectional keyset order in the extracted native core. Forward and
+        reverse reads share one registered expression index, inspect at most
+        129 rows for a 128-row result, and bind both edge cursors to the exact
+        generation and revision. The final tie-break is the normalized global
+        ID, so no renderer source-enumeration sequence enters SQLite or the
+        cursor. Freed Desktop uses this query for ranked feed windows.
+- [x] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
-- [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
+  - [x] The `feed_item_read_assignment` core path uses its
+        generated SQLite program and the extracted native verifier to
+        atomically commit the signed
+        transaction, actor tip, normalized FeedItem value, field clock,
+        receipt, replication outbox, bounded invalidation, and revision. Exact
+        retry returns the stored receipt only while writer admission and the
+        signed capability remain valid. The old source-text locator test was
+        deleted because executable native tests now prove this contract.
+  - [x] The saved, archived, and liked assignment paths consume
+        generated programs through the same native transaction executor.
+        Saved and archived share one deterministic clock and always clear the
+        opposing state. Like state uses an independent clock and clears its
+        obsolete provider receipt. No path performs provider traffic.
+  - [x] The FeedItem removal path atomically writes a typed
+        convergent tombstone and deletes the normalized root through generated
+        SQL. Owned child rows cascade, while stale removals remain journaled
+        without replacing the winning tombstone.
+  - [x] Account removal, both Person removal policies, and both RSS feed
+        removal policies use generated mutation programs. A Person removal can
+        delete linked Accounts or preserve them while SQLite atomically clears
+        their Person references. Relationship effects, root deletes,
+        convergent tombstones, exact receipts, invalidations, and revisions
+        commit in the same verified native transaction.
+  - [x] RSS feed upsert now verifies one closed signed payload and writes its
+        synchronized fields directly into typed normalized columns through a
+        generated mutation program. Exact sample-data fingerprints are
+        admitted, unknown shapes fail closed, and a removed feed cannot be
+        resurrected within the storage epoch.
+  - [x] Account upsert now writes its typed root columns and replaces its
+        normalized follow-role rows through generated contract statements in
+        one verified transaction. Person references and provider identity
+        constraints remain enforced by SQLite, and a removed Account cannot be
+        resurrected within the storage epoch.
+  - [x] Person upsert writes its typed root columns and normalized tag set in
+        one verified transaction. Reach-out events use their own closed append
+        mutation, accepted-operation row identity, and deterministic
+        latest-twenty retention. Person profile writes cannot erase event
+        history, and a removed Person cannot be resurrected within the storage
+        epoch.
+  - [x] Preference assignment now deep-merges object patches and atomically
+        replaces scalar or array subtrees through generated SQL. Typed object
+        and array markers preserve explicit empty containers. Shared signing
+        and native admission enforce 512-node, 4,096-byte path, and 8,192-byte
+        text ceilings without storing a settings document.
+  - [x] RSS feed title assignment now accepts one closed bounded title and
+        source timestamp, resolves concurrent renames with a deterministic
+        field clock, and commits the typed feed update, receipt, outbox,
+        invalidation, and revision in one native transaction.
+  - [x] Account person assignment now links or detaches one Account through a
+        closed nullable person ID, resolves concurrent edits with a
+        deterministic field clock, and relies on SQLite foreign keys to refuse
+        links to missing People without partial writes.
+- [x] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
-- [ ] Keep large content in a content-addressed vault with per-device hydration
+  - [x] Replace synthetic accepted-revision events with native
+        `change_feed_v1` pages. One page carries only compact identities and
+        resolves at most 512 FeedItems through exact point queries. A query
+        race publishes one row-free reset instead of reporting a durable
+        mutation as failed.
+  - [x] Persist and page a separate device-local invalidation stream for
+        pending follower optimistic fields. It must never advance canonical
+        source revision or enter checkpoints and replication.
+  - [x] Resolve each invalidated visible identity through the bounded
+        optimistic-field reader and merge only those sparse fields into the
+        renderer's current visible window.
+- [x] Keep large content in a content-addressed vault with per-device hydration
       policy and verified range reads.
-- [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
+  - [x] Store metadata-only, stream-on-demand, partial-cache, complete-cache,
+        pinned-offline, and excluded policy in bounded device-local SQLite
+        rows. Keep policy separate from verified byte availability and exclude
+        both from normalized checkpoints and Library authority.
+  - [x] Authenticate ordered content ranges from canonical typed checkpoint
+        records. Reject gaps, overlaps, changed roots, and mixed layouts while
+        streaming metadata without allocating the logical media length.
+  - [x] Stream native range bytes through one 256 KiB bounded verifier, require
+        a host durability barrier, and register only proofs matching the
+        canonical SQLite range identity.
+  - [x] Publish digest-verified ranges into the private descriptor-bound,
+        content-addressed vault without routing complete media through the
+        renderer or native IPC. Startup removes partial and orphan objects,
+        prunes missing or mismatched SQLite proofs, and preserves exact files.
+  - [x] Read verified cached media through a descriptor-bound native range API.
+        Every call rechecks canonical SQLite proof, file ownership, private
+        mode, link count, and exact length, and returns at most 256 KiB without
+        trusting a renderer path.
+  - [x] Close complete-cache and pinned-offline availability by streaming every
+        descriptor-bound range through the canonical content digest. Keep one
+        256 KiB window and no synthetic whole-file storage key.
+  - [x] Evict native range objects through the held vault descriptor in bounded
+        128-proof pages. Refuse pinned-offline eviction, and make an explicit
+        excluded policy purge bytes and SQLite proofs before returning.
+  - [x] Resolve one selected item's body and media blob descriptors through the
+        bounded native `item_detail_v1` query. Reader pinning deduplicates those
+        descriptors and commits `pinned_offline` through the selected native
+        SQLite authority before retaining local reader cache bytes.
+- [x] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.
 
@@ -47,10 +379,15 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
 - **Shared React codebase:** `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, while `dev-app.freed.wtf` follows the latest merge to `dev`
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
-- **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
+- **Ranking runs here:** Freed Desktop computes priority through registered
+  native mutations and synchronizes the resulting typed normalized records.
+  One bounded indexed scheduler snapshots weights and time per pass, coalesces
+  invalidations, and never rescans already refreshed rows.
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
-- **Permanent social media vault:** Facebook and Instagram can copy the user's own uploaded media into local app data outside Automerge and outside normal cache pruning
+- **Permanent social media vault:** Facebook and Instagram can copy the user's
+  own uploaded media into the content-addressed local vault outside normal
+  cache pruning.
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
@@ -69,10 +406,10 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
 - **Local display scale controls:** The far-right view menu and Appearance settings group global Theme and Zoom controls together, including a 75% to 200% slider that persists on the current device and tappable A controls that move to the next 10% boundary, while feed-only Card density stays in its own section
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
-- **Safe optimistic user mutations:** Feed cards, reader controls, read marks, item edits, feed renames, person edits, account edits, and synced preference changes project their visible UI state immediately, then reconcile counts and derived state from the Automerge worker. Device display controls bypass Automerge and persist locally.
-- **Incremental RSS feed metadata updates:** Desktop adds, updates, and removes RSS feed metadata through Automerge feed patches, so subscribing to a feed does not rehydrate the full 10,000 item library before the UI can recover
-- **Cloud transfer diagnostics:** Desktop Settings shows local item count, Automerge document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, why the next upload is pending, and recent Drive activity. When destructive merge protection blocks sync, Settings lets the user keep this device by replacing the cloud backup, or keep the cloud copy by replacing this device, and keeps that recovery card pinned while upload retries are paused. Uploads wait behind active outbox and social-scrape work before retrying, so normal local changes do not sit behind long backoff while another worker finishes.
-- **Recoverable Google Contacts state:** Token lookup and forced refresh errors are recorded in contact sync state and Settings instead of opening the fatal recovery screen. Corrupt or unsupported local sync ledgers block automatic provider requests, preserve their raw recovery evidence, and wait for explicit Sync Now or reconnect repair.
+- **Safe optimistic user mutations:** Feed cards, reader controls, read marks, item edits, feed renames, person edits, account edits, and synchronized preference changes project their visible UI state immediately, then reconcile through typed SQLite mutation results and bounded query invalidation. Device display controls use device-local SQLite tables.
+- **Incremental RSS feed metadata updates:** Desktop adds, updates, and removes RSS feed metadata through registered SQLite mutations, so subscribing to a feed does not rehydrate the full Library before the UI can recover.
+- **Cloud transfer diagnostics:** Desktop Settings shows local item count, normalized checkpoint bytes, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, why the next upload is pending, and recent Drive activity. When authority protection blocks sync, Settings keeps the exact failure and recovery evidence visible. Uploads wait behind active outbox and social-scrape work before retrying.
+- **Recoverable Google Contacts state:** Token lookup and forced refresh errors are recorded in the device-local SQLite status row and Settings instead of opening the fatal recovery screen. Startup imports a valid historical localStorage ledger once, deletes the historical key, and discards malformed or unsupported historical bytes after recording a bounded SQLite error. Normal product use never reads or writes the historical ledger.
 - **Google token proxy fallback:** Freed Desktop defaults missing or empty Google proxy build env to the production token proxy so dev and local builds cannot silently drift into direct Google token exchange
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
 - **Global background activity monitor:** The top toolbar shows a live activity spinner while provider syncs, Google Contacts sync, cloud sync, runtime jobs, updater downloads, or local AI model downloads are active. Opening the spinner docks the monitor to the right edge, shows active work with elapsed timers, and keeps the bounded live log open until the user closes it without starting new provider traffic.
@@ -81,9 +418,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Quiet installed startup:** Freed Desktop now keeps cold startup quiet when launched with `open -g`, holds the main window non-focusable through startup visibility probes, skips foreground-only startup occlusion recovery on that path, and lets installed-build soaks start the app without interrupting the primary workstation. Explicit Show, dock reopen, recovery retry, and other foreground actions still raise the app.
 - **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification. Main renderer recovery now treats high WebKit RSS plus high CPU as active pressure instead of reclaimable tail memory, and recycles the main renderer when multi-GB WebKit resident and footprint growth stay CPU-hot before the global high-memory ceiling is reached.
 - **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
-- **Classifier health notification isolation:** Device-local semantic classifier health persists without broadcasting a model lifecycle change, so a terminal batch cannot rearm itself every five seconds or recreate the Automerge worker
-- **Bounded scheduled RSS refresh:** Background RSS polling now refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep and bypasses local retry windows. Retry windows, failure counters, and fetch errors are device-local. Deprecated synchronized HTTP validators are ignored because the current transport does not persist validators. One machine cannot throttle another through the shared document.
-- **Single-flight document startup:** Concurrent React startup effects share one application initialization and one worker INIT request. The renderer installs one permanent Automerge subscription instead of allowing duplicate acknowledgements to replay stale UI state.
+- **Classifier health notification isolation:** Device-local semantic classifier health persists without broadcasting a model lifecycle change, so a terminal batch cannot rearm itself every five seconds or rebuild Library projections.
+- **Bounded scheduled RSS refresh:** Background RSS polling refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep and bypasses local retry windows. Retry windows, failure counters, and fetch errors are device-local. One machine cannot throttle another through synchronized records.
+- **Single-flight Library startup:** Concurrent React startup effects share one SQLite runtime initialization. Startup reads bounded facets and preferences, then each view opens its own typed window.
 
 ---
 
@@ -232,40 +569,189 @@ export async function captureDomFeed(
 
 ### Desktop
 
-| Task | Description                                                             | Complexity |
-| ---- | ----------------------------------------------------------------------- | ---------- |
-| 5.1  | Tauri 2.0 project scaffold                                              | Medium     |
-| 5.2  | Embed PWA React app in WebView                                          | Medium     |
-| 5.3  | Native window vibrancy (macOS)                                          | Low        |
-| 5.4  | Menu bar icon + background mode                                         | Medium     |
-| 5.5  | Local WebSocket relay                                                   | Medium     |
-| 5.6  | Playwright subprocess setup                                             | High       |
-| 5.7  | System tray with sync status                                            | Low        |
-| 5.8  | QR code display for phone pairing                                       | Low        |
-| 5.9  | Auto-launch on login (optional)                                         | Low        |
-| 5.10 | macOS notarization + DMG packaging                                      | High       |
-| 5.11 | Windows installer                                                       | Medium     |
-| 5.12 | Linux AppImage/Flatpak                                                  | Medium     |
-| 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
-| 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
-| 5.24 | macOS code signing + notarization                                       | High       |
-| 5.25 | Windows code signing with Microsoft Artifact Signing                    | Medium     |
-| 5.26 | Independent update server domain                                        | Medium     |
-| 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
-| 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
-| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]`           | Low        |
-| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium     |
-| 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
-| 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
-| 5.33 | Public-safe bundles and private GitHub vulnerability reports             | Medium     |
-| 5.34 | Native startup recovery window outside the React tree                  | Medium     |
-| 5.35 | Hot-path side-effect scheduling for persistence, sync, and outbox work  | Medium     |
-| 5.36 | Event-aware Automerge subscription metadata for item-patch outbox drains | Medium     |
-| 5.37 | Incremental main-thread item-patch state updates                         | Medium     |
-| 5.38 | Renderer recovery safe mode and deep local WebKit diagnostics            | Medium     |
-| 5.39 | Visible cloud transfer diagnostics, manual sync, and activity timeline    | Medium     |
-| 5.40 | Global toolbar background activity monitor                               | Medium     |
-| 5.41 | Multi-Desktop registration and duplicate provider request warning        | Low        |
+| Task  | Description                                                                                                                                                                                                                                                                                                                                                                                     | Complexity |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 5.1   | Tauri 2.0 project scaffold                                                                                                                                                                                                                                                                                                                                                                      | Medium     |
+| 5.2   | Embed PWA React app in WebView                                                                                                                                                                                                                                                                                                                                                                  | Medium     |
+| 5.3   | Native window vibrancy (macOS)                                                                                                                                                                                                                                                                                                                                                                  | Low        |
+| 5.4   | Menu bar icon + background mode                                                                                                                                                                                                                                                                                                                                                                 | Medium     |
+| 5.5   | Local WebSocket relay                                                                                                                                                                                                                                                                                                                                                                           | Medium     |
+| 5.6   | Playwright subprocess setup                                                                                                                                                                                                                                                                                                                                                                     | High       |
+| 5.7   | System tray with sync status                                                                                                                                                                                                                                                                                                                                                                    | Low        |
+| 5.8   | QR code display for phone pairing                                                                                                                                                                                                                                                                                                                                                               | Low        |
+| 5.9   | Auto-launch on login (optional)                                                                                                                                                                                                                                                                                                                                                                 | Low        |
+| 5.10  | macOS notarization + DMG packaging                                                                                                                                                                                                                                                                                                                                                              | High       |
+| 5.11  | Windows installer                                                                                                                                                                                                                                                                                                                                                                               | Medium     |
+| 5.12  | Linux AppImage/Flatpak                                                                                                                                                                                                                                                                                                                                                                          | Medium     |
+| 5.22  | Auto-updater (tauri-plugin-updater)                                                                                                                                                                                                                                                                                                                                                             | Medium     |
+| 5.23  | CI/CD release pipeline (GH Actions)                                                                                                                                                                                                                                                                                                                                                             | Medium     |
+| 5.24  | macOS code signing + notarization                                                                                                                                                                                                                                                                                                                                                               | High       |
+| 5.25  | Windows code signing with Microsoft Artifact Signing                                                                                                                                                                                                                                                                                                                                            | Medium     |
+| 5.26  | Independent update server domain                                                                                                                                                                                                                                                                                                                                                                | Medium     |
+| 5.27  | First-run legal gate and local-only acceptance storage                                                                                                                                                                                                                                                                                                                                          | Medium     |
+| 5.28  | Provider-specific risk interstitials for social capture                                                                                                                                                                                                                                                                                                                                         | Medium     |
+| 5.29  | Internal serialized navigation history with `Cmd+[` / `Cmd+]`                                                                                                                                                                                                                                                                                                                                   | Low        |
+| 5.30  | Reviewed AI-assisted release notes and cumulative daily changelog cards                                                                                                                                                                                                                                                                                                                         | Medium     |
+| 5.31  | Provider health dashboard, charts, and unsubscribe flow                                                                                                                                                                                                                                                                                                                                         | Medium     |
+| 5.32  | Rotating normalized local snapshots and forward restore UI                                                                                                                                                                                                                                                                                                                                     | Medium     |
+| 5.33  | Public-safe bundles and private GitHub vulnerability reports                                                                                                                                                                                                                                                                                                                                    | Medium     |
+| 5.34  | Native startup recovery window outside the React tree                                                                                                                                                                                                                                                                                                                                           | Medium     |
+| 5.35  | Hot-path side-effect scheduling for persistence, sync, and outbox work                                                                                                                                                                                                                                                                                                                          | Medium     |
+| 5.36  | Event-aware bounded invalidation metadata for provider outbox drains                                                                                                                                                                                                                                                                                                                            | Medium     |
+| 5.37  | Incremental main-thread item-patch state updates                                                                                                                                                                                                                                                                                                                                                | Medium     |
+| 5.38  | Renderer recovery safe mode and deep local WebKit diagnostics                                                                                                                                                                                                                                                                                                                                   | Medium     |
+| 5.39  | Visible cloud transfer diagnostics, manual sync, and activity timeline                                                                                                                                                                                                                                                                                                                          | Medium     |
+| 5.40  | Global toolbar background activity monitor                                                                                                                                                                                                                                                                                                                                                      | Medium     |
+| 5.41  | Multi-Desktop registration and duplicate provider request warning                                                                                                                                                                                                                                                                                                                               | Low        |
+| 5.42  | Execute indexed bidirectional `saved_feed_page_v2` through the native core with all four Saved orders and exact browser parity                                                                                                                                                                                                                                                                  | High       | ✓ Complete |
+| 5.43  | Materialize signed FeedItem capture through the generated normalized SQLite mutation program with bounded members and bytes, atomic children, preserved user state, exact retry effects, and tombstone refusal                                                                                                                                                                                  | High       | ✓ Complete |
+| 5.44  | Open the final normalized Desktop database through its own descriptor-bound directory and process lease, verify its generated schema identity at startup, and register one flat closed typed native query command                                                                                                                                                                               | High       | ✓ Complete |
+| 5.45  | Decompose each historical FeedItem into generated normalized root, media, topic, tag, highlight, signal, event, descriptor, and chunk rows with exact large-content reassembly and no shell or whole-item row                                                                                                                                                                                   | High       | ✓ Complete |
+| 5.46  | Decompose the historical RSS, Person, Account, reach-out, follow-role, and preference source fields into final typed tables, using one generated preference ownership policy across Rust and TypeScript while excluding device-local and unknown obsolete state                                                                                                                                 | High       | ✓ Complete |
+| 5.47  | Build an inert final-schema migration candidate from one old SQLite snapshot, bind its authority tuple and causal frontier, close live and excluded row counts plus foreign keys, and stream its normalized product digest across bounded export pages without shell evidence or activation                                                                                                     | High       | ✓ Complete |
+| 5.48  | Sign the next normalized storage epoch with the accepted authority key, bind the complete candidate and final contract identities, recheck every old source fence, and install authority, causal baseline, writer admission, metadata, and generation atomically inside the candidate without selecting it                                                                                      | High       | ✓ Complete |
+| 5.49  | Enroll a fresh normalized Primary actor with actor and authority signatures, bind the carried source frontier, and install exactly the generated Primary-writer mutation capability in one transaction                                                                                                                                                                                          | High       | ✓ Complete |
+| 5.50  | Verify one private descriptor-bound Desktop authority selector against signed normalized SQLite and fence every historical database, journal, store, backup, restore, clear, and mutation opening path once selected                                                                                                                                                                            | High       | ✓ Complete |
+| 5.51  | Publish the Desktop selector through a private flushed pending file, atomic fixed-name rename, directory flush, exact readback verification, and idempotent response-loss replay without overwriting another epoch                                                                                                                                                                              | High       | ✓ Complete |
+| 5.52  | Route the ordinary feed, Saved feed, and signal counts through the closed normalized query command, preserve opaque bidirectional keyset cursors and bounded compact rows, and remove their dependency on the historical item query                                                                                                                                                             | High       | ✓ Complete |
+| 5.53  | Route item detail, Library facets, Saved analytics, Map, and Story Wall through their closed normalized query projections and one shared compact-row view transform                                                                                                                                                                                                                             | High       | ✓ Complete |
+| 5.54  | Extract ordinary feed, Saved feed, and signal-count orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor                                                                                                                                                                                                                                  | High       | ✓ Complete |
+| 5.55  | Extract item detail, Library facets, Saved analytics, Map, and Story Wall orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor                                                                                                                                                                                                            | High       | ✓ Complete |
+| 5.56  | Bind Friends mode into the normalized feed query, resolve friend membership through Account and Person joins in SQLite, and remove Desktop shell and historical-item dependencies from Friends paging                                                                                                                                                                                           | High       | ✓ Complete |
+| 5.57  | Route selected Person timelines through the shared `person_timeline_v1` adapter, keyed by stable Person ID, with bounded compact rows and opaque source-fenced cursors                                                                                                                                                                                                                          | High       | ✓ Complete |
+| 5.58  | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_page_v1` executors so React never compiles the identity corpus                                                                                                                                                                                                               | High       | ✓ Complete |
+| 5.59  | Route selected unlinked Account timelines through the shared native `account_timeline_v1` adapter, keyed by stable Account ID, while linked Accounts continue through the combined Person timeline                                                                                                                                                                                              | High       | ✓ Complete |
+| 5.60  | Expose one generic typed normalized query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning the Desktop item corpus                                                                                                                                                                                           | High       | ✓ Complete |
+| 5.61  | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed SQLite readers, with no renderer corpus lease or scan fallback                                                                                                                                                                                                                         | High       | ✓ Complete |
+| 5.62  | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search SQLite readers, with no corpus lease, renderer sort, or reader-failure authority switch                                                                                                                                                                                                                     | High       | ✓ Complete |
+| 5.63  | Make shared search use only normalized SQLite search pages, retain at most 100 ranked cards, and delete the renderer MiniSearch index, corpus filter, scan fallback, and package dependency                                                                                                                                                                                                     | High       | ✓ Complete |
+| 5.64  | Delete SearchJump's rollback key, compatibility corpus lease, renderer-derived facets, and selected-item fallback so missing or failed SQLite readers fail closed                                                                                                                                                                                                                               | High       | ✓ Complete |
+| 5.65  | Route SearchJump complex counts and bulk selection through the typed source-fenced feed reader and delete its generic whole-item scanner dependency                                                                                                                                                                                                                                             | High       | ✓ Complete |
+| 5.66  | Move SearchJump bulk resolution outside React, cover the complete SQLite feed or search scope, commit one explicit transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required                                                                                                                                                            | High       | ✓ Complete |
+| 5.67  | Freeze complete SearchJump scope actions in installation-local native SQLite before the first mutation, then execute the stable set through bounded 1,000-member transactions without returning selected IDs to React                                                                                                                                                                           | High       | ✓ Complete |
+| 5.68  | Delete the provider-settings rollback key and legacy renderer-item acquisition path, leaving Facebook group repair, media backup, and saved YouTube discovery on bounded source-fenced SQLite reads                                                                                                                                                                                             | High       | ✓ Complete |
+| 5.69  | Register Freed Desktop's final normalized Primary mutation commands for admitted actor context, native operation signing, and atomic transaction commit, with exact closed bounds and no shell mutation                                                                                                                                                                                         | High       | ✓ Complete |
+| 5.70  | Route Freed Desktop's non-provider FeedItem, RSS, preference, Person, and Account product mutations through the selected normalized Primary, while reusing the same canonical transaction transform for editable followers and refusing Primary activation against an unselected migration candidate                                                                                            | High       | ✓ Complete |
+| 5.71  | Refresh Desktop's post-mutation source version, total count, and compact changed items through bounded normalized queries whenever the selected Primary is active, with no call to retired historical count, shell, or item readers                                                                                                                                                             | High       | ✓ Complete |
+| 5.72  | Bind the one-time Desktop migration candidate and its recovery identity atomically inside normalized SQLite, outside checkpoint export, before authority installation or selector publication                                                                                                                                                                                                   | High       | ✓ Complete |
+| 5.73  | Recover interrupted normalized authority and local Primary actor installation only from an exact stored match, rejecting changed certificates, authority rows, frontier rows, actor state, capability state, or mutation grants                                                                                                                                                                 | High       | ✓ Complete |
+| 5.74  | Complete the one-time normalized cutover during Freed Desktop startup while the process owns both Library leases, skip only an absent or inactive historical source, publish one verified immutable selector, and fence every historical authority opening immediately after publication                                                                                                        | High       | ✓ Complete |
+| 5.75  | Bootstrap Freed Desktop renderer state after cutover from the bounded normalized facet and preferences queries, keeping item, Feed, Person, and Account collections empty until their owning views request a typed window, with no production shell read                                                                                                                                        | High       | ✓ Complete |
+| 5.76  | Route Freed Desktop exact-item reads, mutation target discovery, background capture scans, import identity scans, and saved-video discovery through normalized detail or source-fenced background pages, leaving the historical offset reader reachable only by browser fixtures while later tasks replace workflows that still accumulate complete identity sets                               | High       | ✓ Complete |
+| 5.77  | Resolve partial Person and Account mutations through exact bounded normalized detail queries when the entity is not in the current visible renderer window, preserving complete synchronized fields without repopulating global renderer maps or reading the shell                                                                                                                              | High       | ✓ Complete |
+| 5.78  | Resolve partial RSS Feed edits and batch refreshes through the exact bounded normalized feed detail query when the feed is not in the current visible renderer window, preserving every synchronized feed field without repopulating the renderer feed map or reading the shell                                                                                                                 | High       | ✓ Complete |
+| 5.79  | Freeze complete RSS Feed removal and untitled-title repair scopes atomically in native SQLite, then submit bounded typed transactions from paged stable identities without depending on the renderer feed map                                                                                                                                                                                   | High       | ✓ Complete |
+| 5.80  | Select normalized SQLite on the first launch of a fresh Freed Desktop installation after proving that retired IndexedDB and every historical Library table contain no data, without creating an empty shell, historical authority, or second-launch migration                                                                                                                                   | High       | ✓ Complete |
+| 5.81  | Expose a typed native normalized checkpoint descriptor and pinned page command that rechecks Library, epoch, writer, revision, frontier, and record count inside each SQLite read transaction                                                                                                                                                                                                   | High       | ✓ Complete |
+| 5.82  | Move writer reassignment into the selected normalized SQLite authority, carry the prior causal frontier into the new epoch, enroll the target Desktop actor atomically, publish its generation-zero typed checkpoint, and delete the historical journal and portable-checkpoint transfer command                                                                                                | High       | ✓ Complete |
+| 5.83  | Make the private Desktop selector a stable one-way choice of normalized SQLite for one Library, verify the current authority and generation inside SQLite on every open, and leave live epoch transitions out of the selector record                                                                                                                                                            | High       | ✓ Complete |
+| 5.84  | Expose closed native begin, bounded page append, and atomic replacement commands for normalized checkpoint import, deriving the activation digest from staged SQLite bytes and refusing replacement while local operations remain unresolved                                                                                                                                                    | High       | ✓ Complete |
+| 5.85  | Expose selected-database follower checkpoint status, v2 actor request, authority countersignature, enrollment installation, and exact response-loss replay commands as the replacement for the historical follower journal enrollment path                                                                                                                                                      | High       | ✓ Complete |
+| 5.86  | Expose closed native commands for normalized follower mutation context, operation signing, intent commit and paging, Primary intent ingestion, signed result paging, publication receipt, and exact result import, then route new Desktop follower mutations through those commands instead of the historical journal                                                                           | High       | ✓ Complete |
+| 5.87  | Expose one closed native command that atomically records a normalized v2 intent transport page, its exact semantic and stored digests, immutable object identity, actor head advance, completed transaction publication state, and response-loss replay receipt                                                                                                                                 | High       | ✓ Complete |
+| 5.88  | Expose one closed native command that atomically verifies and imports a normalized v2 result segment, reconciles accepted or rejected intents and optimistic fields, persists the exact transport receipt, advances both result heads, and returns the same receipt after response loss                                                                                                         | High       | ✓ Complete |
+| 5.89  | Extend the shared constant-time Library facet query with trigger-maintained unread, archivable, sample-root, and bounded per-platform counts so Desktop and PWA navigation never scan FeedItem rows or derive whole-Library totals in React                                                                                                                                                     | High       | ✓ Complete |
+| 5.90  | Replace the primary sidebar's complete RSS Feed dictionary, derived per-feed count dictionaries, whole-catalog search, and renderer slicing with the shared `rss_feed_page_v1` native SQLite reader. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High       | ✓ Complete |
+| 5.91  | Replace Settings feed management and export previews with 50-row native SQLite windows, route complete unsubscribe through the atomically frozen SQLite scope, resolve OPML import duplicates through exact feed queries, and generate OPML through bounded background feed pages outside React                                                                                                 | High       | ✓ Complete |
+| 5.92  | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open native SQLite pages that retain at most 25 matching feeds and 25 matching social channels                                                                                                                                                                                       | High       | ✓ Complete |
+| 5.93  | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained native SQLite facets                                                                                                                                                                                                                                                         | High       | ✓ Complete |
+| 5.94  | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed native SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary                                                                                                                 | High       | ✓ Complete |
+| 5.95  | Require renderer startup to obtain verified normalized SQLite authority, fail closed before loading Library state when migration or fresh genesis is unavailable, and bootstrap every environment from bounded normalized facet and preference queries                                                                                                                                          | High       | ✓ Complete |
+| 5.96  | Delete portable shell creation and historical authority bootstrap from the Desktop client. The browser harness now reports normalized authority before exposing its isolated in-memory view fixture and cannot create or select product storage                                                                                                                                                 | High       | ✓ Complete |
+| 5.97  | Fence historical generic item queries, whole-item upserts, and ordinary generic mutations from production. Refresh follower aggregates through the normalized SQLite facet query. The existing provider delivery-state mutations remain on their unchanged path until their separately reviewed normalized cutover                                                                              | High       | ✓ Complete |
+| 5.98  | Page hydration and least-recently-used eviction candidates through one generated source-fenced SQLite contract shared with the PWA, coalesce device-local access recency, and reject stale cache-pressure deletion before physical bytes are removed                                                                                                                                            | High       | ✓ Complete |
+| 5.99  | Delete the native Library shell read, shell replacement, and historical count commands. Make the browser harness bootstrap and refresh counts through the same bounded normalized facet and preference contracts as Freed Desktop                                                                                                                                                               | High       | ✓ Complete |
+| 5.100 | Delete the native and browser-harness whole-item upsert, point-read, and generic offset-query commands plus their payload-JSON query plans and tests. Browser item reads and background scans now use the normalized item-detail and background-page contracts                                                                                                                                  | High       | ✓ Complete |
+| 5.101 | Run editable-follower cloud coordination through the shared normalized v2 coordinator, exposing only one native transport frontier, one direct bounded actor-counter page, one exact publication receipt, and one atomic normalized result import. Remove the four superseded v1 Desktop follower transport commands, TypeScript wrappers, mocks, and fixtures                                  | High       | ✓ Complete |
+| 5.101 | Delete the native and browser-harness generic item mutation command. Route like and seen delivery acknowledgements through Primary-only signed normalized operations, and leave ordinary browser mutation simulation behind an explicit test-only bridge with no native command identity                                                                                                        | High       | ✓ Complete |
+| 5.102 | Delete the native portable import begin, whole-item append, finalize, and offset-page commands. Desktop cloud restore now appends bounded normalized records into native SQLite staging and activates them atomically                                                                                                                                                                           | High       | ✓ Complete |
+| 5.103 | Delete the native whole-item sync descriptor, renderer authority bootstrap, legacy protocol parser, commands, and browser mocks. Desktop now reads the normalized checkpoint identity and its installation-local actor identity through one closed native call                                                                                                                                  | High       | ✓ Complete |
+| 5.104 | Store the provider-safety cloud writer lease in device-local normalized SQLite instead of the historical Library database. Keep it outside checkpoint export and delete the dead local-only admission helper and compatibility tests                                                                                                                                                            | High       | ✓ Complete |
+| 5.105 | Read follower diagnostics, create stable actor enrollment requests, and install authority certificates through normalized native SQLite. Delete the equivalent historical journal commands and update the Mobile Sync view to display normalized source revision state                                                                                                                          | High       | ✓ Complete |
+| 5.106 | Remove the uncalled historical follower context, signer, enqueue, and overlay replay native surface. Load durable normalized optimistic fields directly on startup and delete the obsolete recovery fixture and test                                                                                                                                                                            | High       | ✓ Complete |
+| 5.107 | Replace the Desktop-local Google Drive follower transport implementation with the shared browser-safe factory. Preserve the native Follower role fence before every provider operation and keep scheduling, credentials, SQLite authority, endpoints, requests, retries, and cadence unchanged                                                                                                  | High       | ✓ Complete |
+| 5.108 | Remove Desktop navigation history's full item-array subscription and complete-membership check. Validate only the selected item through the shared bounded SQLite point-query hook, and keep navigation unchanged when that exact read fails                                                                                                                                                    | High       | ✓ Complete |
+| 5.109 | Read snapshot Friend totals from the maintained SQLite facet and remove the renderer item array from content-fetch replacement scans. Preserve exact changed-row enqueue while routing complete candidate enumeration only through bounded typed SQLite pages                                                                                                                                   | High       | ✓ Complete |
+| 5.110 | Delete the social outbox's renderer-wide item getter and optional scan fallback. Require startup and replacement discovery through bounded authoritative SQLite pages while retaining exact changed-row drains for ordinary mutations                                                                                                                                                           | High       | ✓ Complete |
+| 5.111 | Remove MapView subscriptions to the complete Person and Account maps. Read at most 1,000 compact location candidates with their linked Person identity joined by native SQLite, and retain only that bounded window plus ephemeral geocoding state in React                                                                                                                                     | High       | ✓ Complete |
+| 5.112 | Remove the always-mounted Header item-array subscription. Share one revision-fenced `item_detail_v1` row with the command palette, deduplicate concurrent native reads, retain only the active row, and render explicit loading or failure state instead of falling back to list controls                                                                                                       | High       | ✓ Complete |
+| 5.113 | Bind ordinary and Friends visible feed windows to the Desktop Library item invalidation revision, while Saved retains its dedicated presentation revision and search remains separate. A committed SQLite item mutation now reopens the active bounded query instead of leaving stale empty rows beside updated navigation counts                                                               | High       | ✓ Complete |
+| 5.114 | Remove the always-mounted AppShell and Google Contacts sync subscriptions to the renderer item corpus. Contact matching and suggestion linking read authoritative SQLite source pages only, and fail closed when that reader is unavailable instead of consulting historical renderer state                                                                                                     | High       | ✓ Complete |
+| 5.115 | Remove AppShell's historical invalid-Account and provisional-Person repair scans, including their complete renderer map subscriptions. Make the selected Friend mini-map consume its already bounded Person timeline directly, and delete the compatibility identity adapter that rebuilt candidates from Account and Person dictionaries                                                       | High       | ✓ Complete |
+| 5.116 | Match Google Contacts through the registered `contact_match_v1` native SQLite query and trigger-maintained normalized identity keys. Return at most one Person ID and 32 Account IDs, remove renderer Person, Account, and FeedItem matching scans, and link existing Accounts through typed SQLite mutations                                                                                   | High       | ✓ Complete |
+| 5.117 | Replace shared Settings sample and existing-library counts with `library_facet_summary_v1`. Extend the same generated query with indexed per-platform latest activity, enabled RSS fetch time, and Google Contact import and linked-Person totals, so Settings retains one summary and subscribes to no complete item, Feed, Person, Friend, or Account collection                              | High       | ✓ Complete |
+| 5.118 | Remove the primary Feed surface's complete RSS Feed and Account subscriptions. Read subscription presence from `library_facet_summary_v1`, return the exact nullable Account ID from the indexed `filter_scope_summary_v1` author lookup, and create a typed Account mutation only when SQLite reports no existing author identity                                                              | High       | ✓ Complete |
+| 5.119 | Remove Story Wall's complete Account subscription. Join each bounded media candidate to its nullable Account and Person IDs through `library_accounts_provider_external`, apply identity filters to those rows, and prove the native plan performs no Account scan                                                                                                                              | High       | ✓ Complete |
+| 5.120 | Read the selected Friends Person and Account through exact `person_detail_v1` and `account_detail_v1` native SQLite queries, retain only those active rows, and remove the Friends React shell's complete RSS Feed subscription because the graph worker pages RSS identity directly from SQLite                                                                                                | High       | ✓ Complete |
+| 5.121 | Replace the Friend editor's 100,000-row Account graph paging scan with `account_picker_page_v1`. Use trigger-maintained visible author activity plus indexed unlinked Account ordering and FTS5 trigram search, retain at most 50 compact rows in React, and revalidate selected Accounts through `account_detail_v1` before save                                                               | High       | ✓ Complete |
+| 5.122 | Rank Friend candidate review rows through the shared generated `friend_candidate_review_v1` native SQLite query, retain at most ten typed rows in React, and delete the complete Person, Account, FeedItem, and compact-activity JavaScript scoring path plus its self-referential tests                                                                                                        | High       | ✓ Complete |
+| 5.123 | Remove the Friends view's complete Person subscription. Use exact native SQLite Person detail for selection, editing, linked-Account labels, and existing-Person write preparation, and derive only the selected overview entry in React                                                                                                                                                        | High       | ✓ Complete |
+| 5.124 | Stop rebuilding a complete renderer-side Account source list for Friends activity. Query activity only for the selected visible channels, and let the Galaxy consume activity counts from its existing bounded native SQLite Account and RSS source pages                                                                                                                                       | High       | ✓ Complete |
+| 5.125 | Remove the Friends view's complete Account subscription. Extend exact native SQLite Person detail with a 64-row linked-Account window and total count, transform the selected Friend from that closed response, and resolve edited Accounts through exact SQLite detail reads                                                                                                                     | High       | ✓ Complete |
+| 5.126 | Replace renderer-managed Friend Person and Account write orchestration with one native `friend_replace` mutation. Preserve synchronized fields through exact bounded SQLite reads, then commit the complete desired Friend state, removal semantics, journal operation, receipt, result, and invalidations in one Primary transaction                                                                                                                               | High       | ✓ Complete |
+| 5.127 | Remove the Friends view's remaining durable Zustand mutations. Submit relationship changes, deletion, Account linking, and reach-out events through exact native SQLite operation assemblers, and strip reach-out child rows from Person root upserts through the shared transform                                                                                                                                                                              | High       | ✓ Complete |
+| 5.128 | Make command-palette Person creation and promotion query exact native SQLite identity rows and submit `friend_replace` or root-only `person_upsert`. Remove its renderer Account-map connection-person builder and partial Person store update                                                                                                                                                                                                                      | High       | ✓ Complete |
+| 5.129 | Replace Google Contacts Person and Account write sequences with one exact-read atomic `friend_replace`, route missing feed-author creation through native `account_upsert`, and remove the final shared UI identity store mutations                                                                                                                                                                                                                               | High       | ✓ Complete |
+| 5.130 | Remove every Person and Account write method from the Freed Desktop Zustand store, including partial updates, removals, relinking, reach-out writes, connection builders, batch methods, and deprecated Friend aliases. Identity authority is reachable only through the native typed SQLite boundary                                                                                                                                                              | High       | ✓ Complete |
+| 5.131 | Store the device-local Google Contacts ledger in normalized SQLite generations, including scalar contact roots, bounded email, phone, photo, and organization children, suggestions, Account links, sync metadata, and one atomic active-generation selector. The native core executes the closed replay-safe mutations and byte-capped singleton status, building-generation matching, active suggestions, and unmatched-contact keyset queries. Freed Desktop Settings, Friends, review paging, snapshots, auth errors, and background sync use this typed native boundary. React retains one status row and visible review pages. The localStorage authority and Desktop storage adapter are deleted, with only one startup import parser retained for the historical key | High       | ✓ Complete |
+| 5.132 | Remove complete FeedItem, RSS Feed, Person, Account, Friend, and per-feed count collections from the Freed Desktop Zustand contract. Invalidate bounded query windows after typed SQLite mutations, run sample cleanup through source-fenced Person, Account, RSS, and background-item scans, and delete the shell-era optimistic corpus projector plus the obsolete multiple-Desktop shell warning | High       | ✓ Complete |
+| 5.133 | Route Friends graph pin set and clear actions through the native typed SQLite mutation boundary. Startup imports valid historical graph positions into foreign-keyed device-local SQLite rows once, drops missing entities, deletes the retired localStorage key only after a successful import, and preserves the source when a query or mutation fails. React retains only the visible graph and a query invalidation counter | High       | ✓ Complete |
+| 5.134 | Replace the Desktop runtime shell with one shared row-free Library Core summary built from normalized preferences and `library_facet_summary_v1`. Mutation dispatch no longer receives a Library state projection, Person, Account, and RSS partial writes prepare from exact SQLite rows, reach-out logging uses its closed append operation, and the browser-only whole-item and generic mutation fallbacks are deleted | High       | ✓ Complete |
+| 5.135 | Delete the document-era Desktop mutation facade. The public client exposes only Library-named typed operations, its closed request union contains only executable SQLite mutations, identity E2E fixtures write through typed SQLite upserts, factory reset clears the Library, and diagnostics expose a row-free Library summary with no document binary accessor | High       | ✓ Complete |
+| 5.136 | Make the descriptor-bound Desktop process binding open the historical migration source only when it already exists. Fresh installations create and lease only normalized SQLite and the content vault, while existing installations retain the fenced one-time migration reader without creating a second authority on clean profiles | High       | ✓ Complete |
+| 5.137 | Delete the unused TypeScript shadow store, whole-FeedItem projection and reconstruction layer, historical merge-growth measurement, and their self-tests. Runtime queries, materialization, paging order, and idempotency are covered by the executable SQLite contract and native core rather than a second derived store model | High       | ✓ Complete |
+| 5.138 | Delete the unused device-local graph strip helper that existed only to keep viewport fields out of whole-document mutations. Graph layout now crosses the typed device-local SQLite mutation boundary directly | Medium     | ✓ Complete |
+| 5.139 | Remove synchronized reader HTML from the FeedItem model and delete the dead text-compaction and historical HTML fallback paths. Full article HTML lives only in the device content cache or selective content vault, while synchronized metadata retains bounded text and content descriptors | High       | ✓ Complete |
+| 5.140 | Reject historical version 1 actor capabilities at the normalized SQLite schema and native mutation boundaries. Fresh Primary and Desktop actors use exact authority-signed version 2 capabilities only, while the frozen historical editor policy remains confined to the one-time source verifier and cannot enter a normalized checkpoint | High       | ✓ Complete |
+| 5.141 | Delete document metadata, the portable document type, obsolete display and sync preferences, RSS validator fields, and the `compatibility-only` policy disposition from the shared product model. The Desktop mutation boundary accepts current typed SQLite fields only, while the historical migration reader ignores unknown retired inputs | High       | ✓ Complete |
+| 5.142 | Replace copied SQLite database backups with immutable normalized snapshot archives. Stream only canonical bounded checkpoint records behind one closed manifest, bind every archive to its digest-derived snapshot ID, restore into one signed successor authority epoch, preserve exact response-loss replay through a stable operation ID, and delete the raw backup chunk command and historical Tauri backup DTOs | High       | ✓ Complete |
+| 5.143 | Delete the copied SQLite backup implementation from the native Library Core, including its public receipt, record, chunk, operation guard, retention database access, file-copy helpers, descriptor-bound backup directory, and backup-only tests. The historical migration store retains only import, status, journal access, and reset cleanup while normalized snapshot archives remain the sole local recovery format | High       | ✓ Complete |
+| 5.144 | Replace the historical-store factory reset with one crash-resumable normalized reset. Persist a private pending marker before deletion, fence the selected authority first, clear normalized and historical SQLite files through held directory descriptors, drain the content vault and normalized snapshots, retire historical import, and resume an interrupted reset before startup can reopen authority. The renderer calls only the normalized reset command | High       | ✓ Complete |
+| 5.145 | Delete the historical SQLite status and JSON-scanning facet commands from the renderer, Tauri registration, native runtime, browser harnesses, and startup coordinator. Primary scheduling now reads its exact local revision from the selected normalized checkpoint identity, while every product facet comes from the generated bounded `library_facet_summary_v1` query | High       | ✓ Complete |
+| 5.146 | Delete the superseded Desktop follower journal boundary. Remove its TypeScript DTOs and exports, five Tauri commands, native forwarding module, journal openers, renderer mocks, and obsolete path tests. Primary cloud coordination now crosses only the typed normalized enrollment, actor-frontier, intent-stage, and signed-result page commands against the selected SQLite catalog | High       | ✓ Complete |
+| 5.147 | Extract the generated actor-capability policy from the historical journal namespace. Normalized enrollment, import, migration, mutation, writer reassignment, and signature verification now consume one crate-level policy module directly, while the frozen version 1 editor capability remains confined to historical source verification and is rejected by the normalized parser | High       | ✓ Complete |
+| 5.148 | Extract and version normalized authority, causal-tip, actor, enrollment, operation, and transaction identities outside the historical journal implementation. The journal now consumes sealed protocol types owned by `normalized_authority` and `normalized_operation`, while normalized migration, import, mutation, snapshots, followers, actor enrollment, and writer reassignment import their final types directly | High       | ✓ Complete |
+| 5.149 | Extract the shared native authority and migration error model from the historical journal. Replace `JournalError`, `JournalResult`, and the normalized SQLite journal-error wrapper with `LibraryCoreError`, `LibraryCoreResult`, and an explicit normalized protocol failure, leaving no normalized caller coupled to journal-named error vocabulary | High       | ✓ Complete |
+| 5.150 | Delete the native crate's public historical journal compatibility surface. `LibraryCoreJournal`, historical follower requests, enrollments, outboxes, overlays, anchors, intent results, and journal status are no longer exported to Desktop, headless, or any other host. The fenced migration store reaches only private source-reader modules, while the public crate surface contains current normalized SQLite contracts | High       | ✓ Complete |
+| 5.151 | Extract canonical operation verification and its transaction, envelope, causal-frontier, entity-ID, operation-ID, and safe-integer limits into normalized crate-level modules. Primary mutation and follower admission now call one verifier directly, while historical atomic materialization fixtures remain confined to the private journal test subtree until that materializer is deleted | High       | ✓ Complete |
+| 5.152 | Extract canonical actor-enrollment verification into the normalized protocol layer. Actor enrollment, follower enrollment, and the private historical commit path now call one verifier directly, shared hexadecimal and operation-ID predicates no longer live under the journal namespace, and historical enrollment materializer assertions remain private test fixtures only | High       | ✓ Complete |
+| 5.153 | Delete the native crate's public historical store API and its uncalled shell-based importer. Remove import status, checkpoint-reference, whole-item staging, activation, overlay-replay DTOs and six compatibility self-tests, leaving one 224-line private descriptor wrapper that can only open the fenced migration database, provide its connection, or erase held files during normalized reset | High       | ✓ Complete |
+| 5.154 | Rename the remaining private descriptor wrapper to `HistoricalMigrationSource` and the shared native error to `LibraryCoreStorageError`. Remove the obsolete `LibraryCoreStore` type, module, result, error, field, and filename vocabulary so no runtime API implies that a second Library authority store exists | High       | ✓ Complete |
+| 5.155 | Delete the native historical follower journal module in full. Remove its follower anchor, actor request and enrollment, intent outbox, optimistic overlay, signed result importer, publication status, schema-upgrade fixture, and duplicate actor-isolation test after proving the normalized follower protocol owns enrollment, intents, results, replay, checkpoint anchoring, and durable optimistic state | High       | ✓ Complete |
+| 5.156 | Remove the dead journal-backed actor admission surface from the native core. Delete direct Desktop actor enrollment, the historical proof-request builder, the journal-mutating PWA countersign wrapper, their public types and exports, and six compatibility tests. Every current host now uses normalized v2 actor requests, canonical authority signature bytes, direct verification, and transactional SQLite installation | High       | ✓ Complete |
+| 5.157 | Extract authority credential custody from the historical genesis implementation. Normalized migration, followers, snapshots, writer reassignment, actor enrollment, and hosts now share one current module for stable SQLite Library identity derivation, authority key creation, exact readback, established-key loading, and the host-supplied key-store contract. Credential integrity tests move with that owner | High       | ✓ Complete |
+| 5.158 | Extract normalized writer reassignment certificates from the historical genesis implementation. Writer transfer and snapshot restore now call a dedicated current module that validates the exact source-control tuple, signs and verifies the successor authority epoch, proves target-key possession, preserves the causal frontier, and replays an identical certificate without any historical authority dependency | High       | ✓ Complete |
+| 5.159 | Delete the 2,154-line historical authority genesis module after proving it has no production consumer. Remove Automerge-era genesis and replication protocol formats, the unused native-snapshot bootstrap API, protocol correction storage methods, historical authority readers, stale public exports, and 17 compatibility tests. Normalized SQLite genesis and cutover are the only Library creation paths | High       | ✓ Complete |
+| 5.160 | Extract the complete sealed-transaction structural validator and the reusable canonical signed-envelope fixtures from the historical journal tree. Normalized Primary mutation and follower admission no longer import journal code, while transaction identity, actor sequence, payload slot, operation shape, causal tip, and exact canonical byte bounds retain direct native coverage | High       | ✓ Complete |
+| 5.161 | Delete the remaining 7,853-line historical journal implementation, authority helpers, shell materializers, schema upgrades, and private journal suites. Freed Desktop never creates or upgrades that database again. A retained schema version 12 source is available only through exact descriptor-bound read-only validation for one-time normalized migration, while an empty directory is ignored and fresh installation creates normalized SQLite only | High       | ✓ Complete |
+| 5.162 | Bind reader pinning to the selected native SQLite content policy. Extend one bounded item detail with ordinal-aligned nullable media blob digests, deduplicate body and media descriptors outside React, and commit `pinned_offline` through the native content-vault boundary before retaining local reader cache bytes | High       | ✓ Complete |
+| 5.163 | Generate sample identity data as normalized Person and Account records at the shared source, then submit those records through the same typed SQLite mutations used by product workflows. Freed Desktop no longer converts a Friend compatibility fixture before writing sample data | Medium     | ✓ Complete |
+| 5.165 | Delete the empty Freed Desktop canonical-codec and Ed25519 compatibility modules. The extracted native Library Core is the sole implementation and test owner, and the Tauri host no longer preserves an obsolete module map | Low        | ✓ Complete |
+| 5.166 | Rename the remaining Tauri actor-enrollment and authority-genesis modules for their actual responsibility as operating-system actor and authority key stores. Enrollment, signing, epoch, and genesis semantics remain exclusively in the extracted native Library Core | Low        | ✓ Complete |
+| 5.167 | Stream Markdown export through bounded source-fenced SQLite pages. The renderer releases each FeedItem page before requesting the next and never reconstructs the complete Library corpus for archive assembly | Medium     | ✓ Complete |
+| 5.168 | Delete the unused full-corpus Saved analytics compatibility reducer. Saved overview aggregates come only from the typed bounded SQLite analytics query, and the UI retains only the returned fixed-size aggregate | Low        | ✓ Complete |
+| 5.169 | Delete the unused relay-client setter and Automerge worker-init event emitter from the shipping Desktop Library client. Historical soak readers may still classify archived build events, but current runtime code exposes no document-worker lifecycle API | Low        | ✓ Complete |
+| 5.170 | Process Markdown import in bounded batches of at most 128 source files. SQLite reports the exact inserted identities for each typed mutation, so import releases every parsed batch and never loads the existing Library ID corpus into the renderer | Medium     | ✓ Complete |
+| 5.171 | Let a genuinely fresh Freed Desktop launch reach normalized SQLite genesis without opening a nonexistent historical migration database. Native startup now skips the one-time migration cutover probe when no historical source exists, while the renderer-owned absence census still gates fresh authority creation | High       | ✓ Complete |
+| 5.172 | Require the verified normalized authority selector at the sole native product database opener. Queries, device-local models, maintenance stages, mutations, checkpoints, follower work, snapshots, and content operations can no longer open or create an unselected normalized database through a compatibility fallback | High       | ✓ Complete |
+| 5.173 | Delete the uncalled native `product_projection` module and its public `upsert_item` export. The helper wrote a complete FeedItem JSON payload into the historical `library_core_feed_items.payloadJson` table and had no production consumer. Native product writes now exist only as registered normalized SQLite mutations | High       | ✓ Complete |
+| 5.174 | Add the generated native version 2 operation export commands to the shared Library Core sidecar. Pin one export descriptor to the active Library, authority epoch, writer, and source frontier, emit authority acceptance before exact signed transaction members, validate semantic record digests and canonical bytes during every read, and keep both canonical pages and serialized native responses within their executable bounds | High       | ✓ Complete |
+| 5.175 | Persist native follower optimistic fields from the generated mutation registry. Read, saved, archived, and liked assignments now store the same sparse field projection as PWA OPFS SQLite in the intent transaction, report its exact count on first commit and replay, and clear it only when a verified Primary result resolves the transaction | High       | ✓ Complete |
+| 5.176 | Add a distinct native `local_change_feed_v1` for device-local follower projections. Schema-owned triggers emit bounded identities when optimistic fields enter or leave SQLite, retain only the newest 4,096 rows with an explicit reset marker for stale readers, and never advance canonical revisions or export the stream | High       | ✓ Complete |
+| 5.177 | Query follower overlays through `optimistic_fields_v1` for at most 64 visible FeedItem IDs and 448 sparse fields. Freed Desktop drains local changes after writes and reloads, resolves invalidated IDs through bounded detail, and leaves canonical revision identity unchanged | High       | ✓ Complete |
+| 5.178 | Delete the whole-document relay benchmark and its Criterion dependency, remove seven uncalled historical bootstrap digest domains, and replace Desktop browser fixtures that still modeled document debounce, corpus hydration, fake zero-valued runtime telemetry, or renderer arrays as Library authority | Medium     | ✓ Complete |
+| 5.179 | Replace the incremental reader-cutover activation catalog with one version 2 SQLite storage-epoch declaration and one retired-engine boundary. Bind the immutable version 1 audit digest, remove current rollback instructions and same-frontier fallback receipts, require roll-forward recovery, and preserve exact release identity plus owner approval gates | High       | ✓ Complete |
+| 5.180 | Delete the retired full-corpus identity graph model, layout worker, canvas renderer, provisional corpus repair utilities, and their compatibility tests. The shipping Friends Galaxy consumes acknowledged bounded SQLite pages, retains compact worker-owned scene state, and shares only its current transform contract with renderers | High       | ✓ Complete |
+| 5.181 | Delete the uncalled renderer Saved re-ranking fallback, its parity tests, and the uncalled FeedItem tag collector. Saved order comes only from the registered SQLite query under one retained ranking-clock fence, while navigation tags come from the bounded facet result | Medium     | ✓ Complete |
+| 5.182 | Delete unused shared identity and map helpers that scanned Person, Account, or FeedItem dictionaries, plus the final FriendGraph FeedItem activity-summary adapter. Discovery still transforms bounded capture batches, while Friends activity, map counts, and graph source state come from registered SQLite queries | High       | ✓ Complete |
+| 5.183 | Delete the Friends Galaxy worker's direct whole-source request and its caller-side queue. The shipping worker accepts only source-fenced person, Account, and RSS pages from the registered SQLite queries, stages one normalized job at a time, and commits the GPU scene only after all query families close | High       | ✓ Complete |
+| 5.184 | Give synchronized FeedItem annotations and analysis distinct normalized ownership. Tags and highlights replace atomically under one deterministic clock, content signals and event candidates replace under another, provider capture strips both child sets, and native Rust materializes only verified bounded payloads with blob foreign-key enforcement | High       | ✓ Complete |
+| 5.185 | Replace the fake semantic backfill result and retired deduplication command with a version-filtered, source-fenced SQLite candidate batch. Freed Desktop retains at most 1,000 compact candidates, infers signals and event candidates locally, rechecks the source revision, and commits bounded signed `feed_item_analysis_replace` transactions. RSS title repair now runs through its real frozen SQLite scope instead of an unreachable compatibility branch | High       | ✓ Complete |
+| 5.186 | Make recommendation priority canonical Primary-owned SQLite state. A bounded 64-row indexed scheduler snapshots one weight policy and monotone pass time, commits signed `feed_item_priority_assignment` operations, coalesces invalidations, refreshes recent decay hourly, and removes dead renderer ranking, identity, and compatibility helpers | High       | ✓ Complete |
+| 5.187 | Close the remaining internal Desktop Library helper surface. Follower mutation context, signing, and enqueue helpers stay private to the typed SQLite dispatcher, while the uncalled preserved-text whole-item getter is deleted instead of remaining as a public bypass candidate | Medium     | ✓ Complete |
+| 5.188 | Construct normalized FeedItem capture payloads through the shared pure capture projector used by the PWA. Desktop cannot submit Primary-owned analysis, device-authored highlights, or capture tags through a root upsert, and no host-specific projection can drift from the contract | Medium     | ✓ Complete |
+| 5.189 | Close the Desktop acceptance boundary around authoritative SQLite rows. Likes, read receipts, archive scopes, RSS health search, Person and Account promotion, candidate ranking, graph linkage, map timelines, and social filtering now validate native query and mutation projections instead of inspecting a renderer corpus. The dual-column reader pins only its visible bounded window while SQLite refreshes beneath it, and device-local RSS health can join that bounded Feed window without loading the subscription catalog | High       | ✓ Complete |
+| 5.190 | Remove compatibility-shaped fields from current Person, Account, Friend, RSS, AI, display, Facebook, Story Wall, and app-state contracts. Installation-local settings use their dedicated stores, synchronized preference mutations reject unsupported fields, graph and RSS runtime state use explicit local models, and opaque historical values remain readable only by fenced one-time import functions | High       | ✓ Complete |
 
 ---
 
@@ -292,15 +778,15 @@ export async function captureDomFeed(
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] A provider-free primary Library establishes explicit durable local writer admission before exposing state, while cloud-identified and follower Libraries cannot be silently reclassified as local-only
 - [x] Provider-specific capture flows require additional local risk consent
-- [x] Legal acceptance stays outside synced Automerge state
-- [x] Permanent Facebook and Instagram media archive stores files, manifest rows, byte counts, retry state, and provider archive preferences locally outside synced Automerge state
-- [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
+- [x] Legal acceptance stays outside synchronized Library records
+- [x] Permanent Facebook and Instagram media archive stores files, manifest rows, byte counts, retry state, and provider archive preferences outside synchronized Library records
+- [x] Freed Desktop keeps up to 24 immutable normalized local snapshots, verifies every canonical record before restore, and restores through one replay-safe signed successor authority epoch
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Desktop E2E gates are split into smoke, functional regression, performance, and visual lanes, with dev build validation running the performance and visual lanes instead of hiding them until production release prep
 - [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, native preview windows carry a visible worktree and thread label, and feature previews auto-accept local legal gates plus seed sample data
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog, pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link, opens the saved item in reader mode after stub persistence, and pulls readable details in the background
-- [x] Freed Desktop factory reset closes Automerge admission, settles document work already accepted by the worker, and rejects later mutations before deletion. It clears device display and AI choices, snapshots, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. The relay rotates its pairing token, clears held document bytes, disconnects old mobile sessions, and stays paused whenever document deletion is uncertain. Existing PWA clients must scan the current pairing QR code again after a successful reset. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
+- [x] Freed Desktop factory reset closes SQLite mutation admission, settles accepted native work, and rejects later mutations before deletion. It clears device display and AI choices, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local Library. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
@@ -308,9 +794,9 @@ export async function captureDomFeed(
 - [x] Browser desktop preview now guards native-only LinkedIn auth listeners, background social refresh paths, and local snapshot controls, so opening Settings and switching themes no longer crashes the preview
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
 - [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
-- [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
+- [x] Search does not build or retain a renderer index, and item-state mutations cannot trigger search-index work in React
 - [x] Safe user-triggered document mutations project visible UI changes immediately, roll back on worker failure, and leave destructive or repair operations source-of-truth first
-- [x] Visible-scope archive read actions batch filtered read items through one Automerge worker mutation, so large Instagram cleanup does not loop through one archive toggle per post
+- [x] Visible-scope archive read actions batch filtered read items through one bounded SQLite mutation, so large Instagram cleanup does not loop through one archive toggle per post
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
 - [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
@@ -363,16 +849,16 @@ export async function captureDomFeed(
 - [x] Once the primary sidebar crosses into its simplified narrow labeled state or the compact icon rail, the RSS section always behaves as closed and never renders inline sub-feed rows
 - [x] The primary sidebar now resizes without a minimum width, previews its expanded, compact, and fully closed snap states live during drag, keeps the resize handle under the cursor while the card itself snaps, uses a tighter square-button compact rail with quieter 18px glyphs, lightly boosts the visually smaller brand marks like `X` and Facebook so they sit with the rest of the source icons, shell-matched corner radii, keeps narrow desktop windows on that compact desktop rail, and only falls back to the floating drawer on actual mobile devices
 - [x] Expanded sidebar padding now flips between tighter roomy and condensed presets at a crossover instead of interpolating linearly, labeled widths below 200px drop counts, chevrons, and similar trailing chrome before labels, narrow-width labels now clip cleanly without ellipses and keep a small inner right gutter before the shell edge, provider status dots and spinners now ride on the source icons at every sidebar width, widths below 100px snap into the compact rail, compact search moves into a floating palette, and the shared mobile drawer now closes when the same hamburger button is tapped again
-- [x] Device display state now stays outside Automerge, including card density, interface zoom, sidebar modes and widths, Friends detail rail state, map and feed view modes, saved sorting, signal filters, reader preview layout, and debug panel width. Existing synced values seed local storage once for backward compatibility.
+- [x] Device display state stays outside normalized checkpoints, including card density, interface zoom, sidebar modes and widths, Friends detail rail state, map and feed view modes, saved sorting, signal filters, reader preview layout, and debug panel width. Historical synchronized values seed device storage once during cutover.
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
 - [x] The top toolbar shows a right-edge background activity spinner while any observed sync, runtime job, updater download, or local AI model download is active, and the spinner opens a right-docked live activity popover with elapsed active-work timers without opening Settings
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
 - [x] Settings expandable lists now use the shared filtered inner-list panel, so Facebook groups, RSS management, OPML previews, saved import errors, and scrape logs cannot stretch the outer Settings scroll when content loads late
 - [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while the feed rows sit in their own searchable inner scroller and still show whether the feed looks likely dead or just failing
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
-- [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
+- [x] Desktop debug tooling samples native and WebKit memory, SQLite and content-vault storage, authoritative Library readiness, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first. Startup attribution uses one pre-Library renderer baseline and no document-hydration or compatibility-shell terminology.
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
-- [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
+- [x] Desktop diagnostics include native and Freed-owned WebKit renderer RSS, WebKit cache size, SQLite and content-vault storage, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
 - [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
 - [x] Concurrent native runtime-health writers now share process and operating-system locks across Unix rollover, whole-record appends, non-Unix bounded rewrites, and factory-reset cleanup, so every physical JSONL line remains independently parseable and repeated events keep their exact multiplicity
@@ -390,8 +876,7 @@ export async function captureDomFeed(
 - [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, but still recovers the main renderer when the high-RSS WebKit process is hot on CPU, including active multi-GB WebKit growth below the global high-memory ceiling
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
-- [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
-- [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
+- [x] Desktop Library state never ships a complete item ID list or whole Library payload to the renderer, and the content fetcher bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items, runs one active worker job at a time, and uses randomized pacing plus capped backoff so slow AI or network work cannot overlap the queue into renderer pressure
 - [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
@@ -399,219 +884,49 @@ export async function captureDomFeed(
 - [x] Provider-health persistence now compacts RSS feed attempt history, derives per-feed charts from retained attempts, trims oversized error reasons, updates failing-feed diagnostics incrementally, and batches hot RSS writes so renderer memory is not burned repeatedly on `sync-health.json` parse and stringify cycles
 - [x] Native runtime-health sampling continues while the renderer is hidden, including background pause state, active job age, safe-mode state, WebKit RSS, and adaptive memory limits
 - [x] Desktop social scrape guardrails now scale beyond the old 4 GB ceiling on high-memory machines, while low-priority semantic enrichment and startup content-signal backfill wait through the launch quiet period
-- [x] Local AI classifier health writes stay device-local without notifying model lifecycle subscribers, so a terminal backfill stays terminal instead of rebuilding the Automerge document every five seconds
-- [x] Desktop releases idle Automerge worker documents after the request queue drains and terminates the worker until the next document operation, reducing retained renderer work during long background sessions
+- [x] Local AI classifier health writes stay device-local without notifying model lifecycle subscribers, so a terminal backfill stays terminal instead of rebuilding Library projections every five seconds
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
-- [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
+- [x] Desktop typed mutation results carry invalidation metadata, so item updates refresh bounded affected windows while reset invalidations reopen only the required SQLite readers
 - [x] Desktop outbox and article-fetch discovery now stream lossless, generation-pinned SQLite pages with stable keyset cursors instead of traversing the full renderer item corpus
 - [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
-- [x] Settings > Saved now reads exact time, source, and content aggregates from the authenticated SQLite generation without leasing the full renderer item corpus, while unavailable or stale derived state fails closed to the compatibility reducer
-- [x] Friends now reads source activity summaries and 50-row person timeline pages from the authenticated SQLite generation, preserving suggestion and ordering parity without retaining the full renderer item corpus
+- [x] Settings > Saved reads exact time, source, and content aggregates directly through `saved_analytics_v2`. Map, Story Wall, Library facets, and feed signal counts also fail closed on their typed SQLite readers without leasing or scanning a renderer item corpus.
+- [x] Friends now reads selected Person timelines through `person_timeline_v1`. The shared adapter sends one stable Person ID to the native core, retains one bounded 50-row window, and never builds a renderer-side account-key filter or calls the historical item query. Source activity summaries remain on their existing bounded reader until the normalized graph-page cutover.
+- [x] Friends now reads an unlinked Account timeline through `account_timeline_v1`. The selected detail sends one stable Account ID to native SQLite. Linked Accounts still use their Person timeline, and React never builds provider keys or filters FeedItems.
 - [x] Provider settings now read source-fenced 64-row SQLite pages. Media backup stages compact local candidates and starts provider work only after source verification, while YouTube retains compact saved-video identities instead of the renderer item corpus
-- [x] FriendEditor now reads at most 50 alphabetically ranked visible unlinked author candidates through source-fenced 64-row SQLite pages, debounces rapid searches for 150 ms, resolves exact selected-profile provenance in a final bounded save-time pass, cancels stale source results, and does not lease the full renderer item corpus unless its explicit rollback switch is set
-- [x] On the healthy default native path, SearchJump opens and searches without hydrating the renderer corpus. It uses one bounded source-fenced scan for exact Library tags, archive totals, and complex scope counts, compact aggregates for simple scopes, and one source-fenced selected item. Native reader failure or rollback acquires the compatibility fallback, while the existing Automerge bulk mutation leases it only while the user executes the action
-- [x] The Freed Desktop Saved feed preserves all four user-facing sort modes through a versioned SQLite order with one pinned recommendation clock and binary global-ID ties. Its materializer avoids a corpus-sized source-position index. The Freed Desktop compatibility fallback uses the same clock and order, while the PWA remains unchanged. Source-fenced 128-row pages retain at most two feed pages plus one selected card in React, traverse the complete result forward without falling back at the old 512-row threshold, and keep the existing ReaderView selection and hydration path. Native failure or `freed.libraryCore.savedFeedReaderV1.disabled=1` restores the Automerge compatibility path
-- [x] The Freed Desktop non-Saved Friends-only feed uses `feed_browse_page_v2` when no search is active, with Person-first predicate schema v1, the existing recommendation order, ranking-weight invalidation, and a source-order working map capped to one 64-row native scan page. React retains two feed pages plus one selected card so eviction preserves ReaderView. Version 1 and its all-content callers remain unchanged. Source drift, predicate mismatch, native failure, or `freed.libraryCore.friendsFeedReaderV1.disabled=1` restores the Automerge compatibility path. Friends search, Friends plus Saved, and the PWA remain unchanged
-- [x] The Freed Desktop ordinary all-content feed pages through the bidirectional `feed_browse_page_v3` request when no search is active and neither Saved-only nor Friends mode is selected. It carries an explicit `next` or `previous` direction and returns both exclusive edge cursors bound to the exact generation and to the first and last rows of the page. Backward reads mirror the forward keyset predicate through the same unique index without a temporary sort. React retains two 128-row pages plus at most one pinned selected card, restores an evicted leading page on scroll-back, and stays anchored to the same card across the shift. The 512-row compatibility escape hatch is removed, so deep scrolling no longer reacquires the full renderer projection. Versions 1 and 2 and their PWA, Friends, and Saved callers are unchanged. Source drift, contract or integrity failure, native failure, or `freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled=1` restores the Automerge compatibility path
-- [x] Freed Desktop returns the first filtered SQLite feed page before scanning later pages, keeps the old page hidden behind an explicit loading state during filter transitions, and computes command-palette facets, signal counts, sidebar counts, Friends activity, map candidates, Story Wall candidates, and tiny-mutation refreshes through native bounded queries or aggregates instead of streaming the complete Library into the renderer. Later pages and maintenance scans skip redundant whole-table counts. The production shell omits derived Friends rows and retired feed-order IDs.
+- [x] FriendEditor now reads at most 50 alphabetically ranked visible unlinked author candidates through source-fenced 64-row SQLite pages, debounces rapid searches for 150 ms, resolves exact selected-profile provenance through Account detail queries before saving, cancels stale source results, and has no renderer corpus or rollback path
+- [x] SearchJump opens and searches without hydrating the renderer corpus. It uses one bounded source-fenced scan for exact Library tags, archive totals, and complex scope counts, compact aggregates for simple scopes, and one source-fenced selected item. Native reader failure fails closed. No rollback key, compatibility lease, renderer-derived facet fallback, or selected-item fallback remains.
+- [x] The Freed Desktop Saved feed preserves all four user-facing sort modes through the normalized `saved_feed_page_v2` query with binary global-ID ties. SQLite owns filtering, ordering, and opaque bidirectional keyset cursors. React retains at most two bounded compact pages plus one selected card and never reacquires a whole Library projection.
+- [x] The Freed Desktop non-Saved Friends-only feed uses `feed_browse_page_v3` with a Person-first predicate and ranking-weight invalidation. React retains two feed pages plus one selected card so eviction preserves ReaderView. Source drift, predicate mismatch, or native failure fails closed without a document-reader fallback.
+- [x] The Freed Desktop ordinary all-content feed pages through the normalized `feed_browse_page_v3` query when no search is active and neither Saved-only nor Friends mode is selected. It carries an explicit `next` or `previous` direction and returns exclusive edge cursors bound to the exact generation and first and last rows. Backward reads mirror the forward keyset predicate through the same unique index without a temporary sort. React retains two bounded compact pages plus at most one pinned selected card and restores an evicted leading page without reacquiring the full Library.
+- [x] Freed Desktop's ordinary feed, four-mode Saved feed, and signal counts call the flat normalized SQLite query command with exact shared request and response validation. The adapters retain only compact bounded rows, preserve opaque forward and backward keyset cursors, reconstruct the existing feed-card view model from the shared projection, and never call the historical item query. Friends remains on its existing reader until the normalized contract closes the Friends predicate inside SQLite.
+- [x] Freed Desktop returns the first filtered SQLite feed page before scanning later pages, keeps the old page hidden behind an explicit loading state during filter transitions, and computes command-palette facets, signal counts, sidebar counts, Friends activity, map candidates, Story Wall candidates, and tiny-mutation refreshes through native bounded queries or aggregates instead of streaming the complete Library into the renderer. Later pages and maintenance scans skip redundant whole-table counts. The production renderer omits derived Friends rows and retired feed-order IDs.
 - [x] Desktop item-patch updates now maintain a main-thread item index and adjust unread, total, and archivable aggregates incrementally instead of walking the visible item list after each patch
-- [x] Desktop RSS feed metadata writes now persist through Automerge and send feed patches to the UI without hydrating the full feed item projection
+- [x] Desktop RSS feed metadata writes persist through registered SQLite mutations and invalidate bounded feed queries without hydrating a full item projection
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
 - [x] Freed Desktop unified feed rows now use the local card density setting as a fixed-height virtualization contract, with matching loading skeletons, post cards and story rows sharing each selected height, side media wells, density-aware clamped previews, toolbar overflow access for narrower desktop widths, a local interface zoom slider for root display scale, and no row remeasurement when media loads
-- [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
-- [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. The prior renderer MiniSearch path remains only as the browser-test fallback.
+- [x] Desktop persistence commits normalized SQLite transactions and exports typed checkpoint records without serializing a whole Library document
+- [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. No renderer MiniSearch index, corpus filter, scan fallback, or browser-test compatibility path remains.
 - [x] Map candidates are classified when SQLite rows are written and ordered through a partial location timeline index, so opening Map does not scan and sort the full Library before returning its bounded page.
+- [x] Map and Story Wall call `map_markers_v1` and `story_wall_candidates_v1` directly. Their compact source-fenced rows exclude reader bodies, tags, signals, highlights, and unrelated state. Their row-to-visible-card transform lives in the shared contract package instead of a Desktop-only adapter.
 - [x] Freed Desktop and PWA keep a bundled geographic map style that uses the same OpenFreeMap vector tiles and glyphs when the remote style document is unavailable. A transient style-endpoint failure no longer leaves the map background blank, and the live OpenFreeMap style remains preferred when it loads.
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
+- [x] Native local release verification uses a closed preview-only bundle identifier and matching native Library root, so an unsigned candidate cannot inspect, migrate, or mutate the installed Freed Library and does not require updater signing credentials
 
 > **Current state:**
-> macOS release builds are signed and notarized in GitHub Actions when the
-> required Apple secrets are present. The release workflow now fails fast
-> instead of silently shipping an unsigned macOS artifact. Windows signing is
-> planned through Microsoft Artifact Signing, and the repo now includes
-> `docs/WINDOWS-SIGNING.md` plus an inert Tauri `signCommand` scaffold for the
-> future implementation. Windows SmartScreen warnings will still appear until
-> that path is provisioned, enabled, and verified in a signed release. The shared desktop toolbar
-> now behaves like a real title bar again, including threshold-based window
-> dragging from toolbar controls plus normal cursor and selection treatment
-> for static toolbar labels. Desktop now also keeps dev installs on the
-> newest eligible build even when that build comes from the production
-> channel. When production gets ahead of the last dev build, the app now
-> offers that production update without flipping the saved channel away
-> from dev. Desktop now also writes
-> rotating local Automerge snapshots, including Google contact match state,
-> so catastrophic local corruption can be rolled back from Settings.
-> The desktop runtime now also emits periodic memory telemetry into the
-> debug panel and local logs, including process RSS, virtual size, relay
-> document size, relay client count, renderer heap usage, and DOM node
-> counts. We also removed the native relay's old habit of cloning whole
-> document buffers into multiple owners and writing a fresh snapshot on
-> every broadcast, which was an especially bad trade once sync churn stayed
-> hot for an hour or more. The worker now fetches full item-id lists and
-> full Automerge binaries only on demand for import dedupe, relay, cloud
-> backup, and snapshots, rather than shipping those payloads back to the
-> main thread on every state update. Desktop memory telemetry now also samples
-> Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB storage,
-> WebKit cache size, and adaptive high and critical memory limits. Native
-> runtime-health sampling now continues even while the renderer is hidden, so
-> overnight reports still show memory, pause, safe-mode, and active background
-> job state. Social capture now runs a native preflight that recycles stale scraper windows,
-> records which WebKit process IDs exited or survived the recycle, and trims
-> only Freed WebKit network-cache blobs before it decides a scrape must pause.
-> On high-memory machines, scrape guardrails now scale beyond the old 4 GB
-> critical cap, and low-priority semantic enrichment waits through launch so it
-> does not spend the first Automerge-heavy background slot before provider sync.
-> The background runtime now also gates content fetches, RSS polls,
-> automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
-> healthy renderer startup and shared pressure cooldowns, while native recovery
-> writes runtime-health records and relaunches if the old renderer label stays
-> stuck after destroy. Critical memory pressure pauses background content fetching, then
-> offers a restart action instead of letting WebKit conduct the RAM orchestra
-> with a shovel. The background content fetcher now runs one active worker job
-> at a time, randomizes its next fetch delay, backs off after timeouts or AI
-> provider failures, bounds and ages out its failed-item cooldown cache, and it
-> keeps an in-flight set so unrelated state updates cannot queue the same fetch
-> work over and over while a URL is already being processed. It also stopped
-> rescanning the full visible feed on every tiny document mutation and now
-> only rescans when the document item count actually changes. The outbox also
-> prunes completed retry bookkeeping instead of letting that map grow across
-> a long session, and removing RSS feeds now also forgets their saved health
-> history instead of leaving dead diagnostics behind. Local browser preview
-> now also short-circuits native-only snapshot, consent-store, provider-health,
-> memory-monitor, and background refresh paths so legal acceptance no longer
-> dumps the preview into the recovery screen after a reload. Desktop feed-state
-> updates also now cap preserved article text previews and fetch the full
-> preserved text only for the reader item that is actually open, instead of
-> cloning full article bodies through the live UI state on every mutation.
-> RSS feed metadata writes now use the same incremental worker pattern, so
-> adding or editing one feed persists the Automerge change and patches the UI
-> without rebuilding the full desktop feed projection.
-> Desktop search now scans and scores the active SQLite Library one row at a
-> time in the native process. It streams at most 32 result cards per page and
-> React retains the best 100 filtered cards, so typing no longer builds a corpus-wide MiniSearch
-> heap or clones the full `FeedItem[]`. The desktop perf harness also switched from Chromium's broken
-> zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
-> preserved-text search scenario, so memory regressions stop passing CI by
-> emitting a very confident `0.0 MB`.
-> Desktop persistence also now appends Automerge incremental saves to the
-> last stored snapshot and compacts back to a fresh snapshot only when the
-> incremental tail has grown large enough to justify it.
-> Local developer workflow now also defaults desktop preview to the
-> `VITE_TEST_TAURI=1` browser harness, with tracked preview slots so
-> multiple concurrent worktrees do not each spin up their own native Tauri
-> stack by default. When a real native preview is needed, the launched
-> window now shows a worktree plus thread label so parallel preview apps
-> can be told apart at a glance.
-> Release notes now use a
-> checked-in review gate: `./scripts/release.sh` prepares draft notes and
-> daily editorial memory, then `./scripts/release-publish.sh` tags only after
-> the reviewed release artifact passes validation and is approved. The latest
-> dev release prep now returns through a PR to `dev`. Production prep starts
-> from current `main` after any required promotion and returns through a
-> release-only PR to `main`. Tagging requires the exact merged remote commit.
-> Protected release branches no longer depend on direct
-> release commits or branch pushes. The latest
-> release of each day is cumulative, so website changelog cards describe
-> everything newly shipped since the previous day instead of unioning same-day
-> bullets after the fact. Production releases now also carry forward
-> intermediary dev prereleases since the prior production release, so the
-> public card does not drop features that first shipped on `dev`. Release
-> artifacts now render a distinct opener plus
-> separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
-> can reinforce the theme without collapsing the details into one bucket. The
-> desktop updater now shows only that reviewed opener line when an update is
-> available. The public changelog now paginates in URL-addressable sets of 5
-> releases so older builds can be linked directly without turning the page
-> into a mile-long papyrus scroll, and card hover states now key off the
-> existing timeline lane instead of inventing a second internal accent rail.
-> Freed Desktop Settings now embeds those latest five cumulative changelog
-> cards in the Updates pane, with a channel-aware link to the full changelog.
-> The updater endpoint now lives behind `freed.wtf/api/desktop-updates/{{target}}`,
-> and Freed Desktop can switch locally between production releases from `main`
-> and dev prereleases from `dev` without syncing that preference through the
-> shared document.
-> Dev release tags now run the dev validation tier and package only the
-> internal macOS Apple Silicon build. Production tags run the production
-> validation tier, build every supported platform in parallel, upload platform
-> assets to a pre-created draft release, then generate `latest.json` once after
-> all signed artifacts are present so updater metadata does not race between
-> matrix jobs.
-> The public marketing site is controlled by the `www` branch. After any
-> GitHub release is published, the workflow now redeploys `freed.wtf` from the
-> current `www` branch so the changelog snapshot rebuilds against the newly
-> published release instead of waiting for a later production ship. Production
-> desktop tags still come from `main`, and production website deploys still
-> require the reviewed website and changelog state to be merged into `www`
-> first. Production prep and publish now also validate that `main` still
-> matches current `dev` on product-owned paths, PRs to `main` reject direct
-> product edits unless they come from a `chore/promote-dev-to-main-*`
-> promotion branch, and the release workflow rechecks that same guard before a
-> production tag can build. Dev releases refresh the public changelog from
-> current `www` without ever moving `www` to `dev`. See
-> `RELEASE-SECRETS.md` for the full setup checklist.
+> Freed Desktop reads and mutates the Library through bounded typed SQLite contracts. The native core owns durable Library semantics, signed authority, normalized checkpoints, and content proofs. React retains visible query windows and ephemeral interface state. Tauri owns host services, provider windows, local credentials, diagnostics, updater integration, and command wiring. Historical storage is available only to the fenced one-time source reader. It is never runtime authority or fallback and is erased after successful cutover.
 >
-> The reader header toolbar now uses one consistent icon-button geometry for
-> sidebar, rail, bookmark, and archive controls. Back navigation reaches
-> farther left, action buttons no longer reserve bogus slot space between one
-> another, the archive action no longer changes apparent size when active, and
-> the trailing reader actions sit closer to the content instead of drifting
-> inside an oversized right gutter.
->
-> The map surface now overrides the generic sidebar-gap viewport compensation
-> and uses its own balanced vignette overlay. That removes the hard left edge
-> the inherited mask was creating, softens the visible boundary around the map,
-> and evens out the top-right corner so the feathering reads consistently on
-> all four sides.
->
-> The unified feed crystal-core icon now renders slightly larger than the rest
-> of the sidebar icon set in both labeled and compact rail modes, so it carries
-> the same visual weight as the platform marks without forcing another global
-> icon-size rebalance.
->
-> Compact-sidebar search now stays visibly active whenever the floating search
-> palette is open or a query is currently filtering content. The floating
-> palette uses the same corner radius as the sidebar shell, and active search
-> on non-reader views now promotes a clearable search field into the center of
-> the top toolbar instead of leaving stale scope copy there.
->
-> The desktop sidebar and header now share one live boundary contract instead
-> of guessing at one another's geometry. The toolbar controls track the real
-> sidebar handle during drag preview, the collapse and rail toggles now use the
-> same fixed icon-button box without off-center glyph hacks, expanded padding
-> stays on the two requested presets, and narrow labeled mode keeps the older
-> cleanup rules intact at the same time: `Feed`, `Search`, no counts, no
-> subfeeds, and clipped labels with a small right gutter instead of ellipses.
-> Sidebar status badges also use one shared overlay position in labeled and
-> compact modes, with the dark backplate removed. The narrow labeled sidebar
-> also trims its label-side right padding further now, so clipped text can run
-> closer to the shell edge without turning into edge-to-edge soup.
->
-> Local browser preview now keeps desktop snapshots, legal consent, provider
-> health persistence, and runtime memory telemetry on browser-safe fallbacks
-> instead of calling native Tauri APIs, so accepting the desktop legal gate no
-> longer crashes the `4173` preview into the recovery screen.
-
-### Mobile
-
-- [ ] iOS app builds and runs
-- [ ] Android app builds and runs
-- [ ] Syncs with Desktop when on same network
-- [ ] Falls back to cloud sync when away
-- [ ] Background refresh works (iOS)
-- [ ] Background service works (Android)
-- [ ] App Store approved
-- [ ] Play Store approved
-
----
+> Release builds use the governed signing, notarization, updater, and channel promotion paths described in the release documentation. Runtime memory telemetry measures native and WebKit processes, authoritative SQLite Library readiness, visible content work, and pressure controls without document-relay counters or whole-corpus payloads.
 
 ## Deliverable
 
-Native apps for **macOS, Windows, Linux, iOS, and Android** with capture, sync, and reader UI. No CLI or technical setup required.
+Freed Desktop for macOS, Windows, and Linux with capture, SQLite Library
+authority, synchronized followers, and reader UI. Mobile reading and editing
+run through the SQLite WebAssembly PWA described in Phase 6.
 
 ---
 

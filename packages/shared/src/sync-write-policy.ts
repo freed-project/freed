@@ -7,7 +7,6 @@ import type {
   ContentSignals,
   DesktopClientRegistration,
   DisplayPreferences,
-  DocumentMeta,
   Engagement,
   EventCandidate,
   FacebookCapturePreferences,
@@ -27,7 +26,6 @@ import type {
   StoryWallPreferences,
   StoryWallPublishTarget,
   StoryWallStylePreferences,
-  SyncPreferences,
   TimeRange,
   UlyssesPreferences,
   UserPreferences,
@@ -36,6 +34,7 @@ import type {
   XAccount,
   XCapturePreferences,
 } from "./types.js";
+import { LIBRARY_CORE_PREFERENCE_WRITE_POLICIES } from "./library-core/sqlite-contract.generated.js";
 
 /**
  * Every field on a synchronized schema type must have an explicit write
@@ -43,150 +42,31 @@ import type {
  * their ownership is classified.
  */
 export type SyncWriteDisposition =
-  | "sync"
-  | "positive-sync"
-  | "device-local"
-  | "compatibility-only"
-  | "nested";
+  "sync" | "positive-sync" | "derived-primary" | "device-local" | "nested";
 
-/**
- * Where a field's bytes should physically live once storage is tiered.
- *
- * Measured motivation, from the owner's real 15,846-item document: `content`
- * is 52.1% of the serialized corpus and `preservedContent` a further 22.9%, so
- * three quarters of the CRDT is article prose. That prose is immutable once
- * captured and is never concurrently edited, so it gains nothing from being in
- * a merge structure and pays full freight for it.
- *
- * - `hot`    queried constantly; must be indexed and resident
- * - `warm`   queried on demand; indexed but not necessarily resident
- * - `cold`   rarely read; fetched explicitly
- * - `blob`   opaque bytes addressed by hash, never queried by content
- * - `device` never leaves this machine
- */
-export type StorageTier = "hot" | "warm" | "cold" | "blob" | "device";
-
-/**
- * What must happen to this field's storage when its owning record is deleted.
- *
- * This vocabulary exists because Freed currently has no deletion contract at
- * all. There are eight sites in `schema.ts` that do `delete doc.feedItems[id]`
- * (lines 1296, 1320, 1570, 1694, 1713, 1890, 1923, 2272) and no tombstone
- * concept anywhere in `packages/shared` or `packages/sync`.
- *
- * Automerge hides that today by propagating a delete as an operation. Under
- * row-level replication it stops being hidden: a device that misses the delete
- * keeps the row, and if it later syncs its copy upward the item RESURRECTS.
- * The gap is already visible in one direction, since PWA deletes
- * (`pruneArchivedItems`, `deleteAllArchivedItems`) never reach desktop because
- * PWA to desktop convergence does not exist.
- *
- * - `tombstone` record a durable marker so peers converge on the deletion
- * - `cascade`   delete the dependent storage along with the record
- * - `orphan`    intentionally leave the bytes; something else reclaims them
- * - `never`     this field is not deletable
- */
-export type DeleteBehavior = "tombstone" | "cascade" | "orphan" | "never";
-
-export interface FieldStoragePolicy {
-  readonly disposition: SyncWriteDisposition;
-  readonly tier: StorageTier;
-  readonly delete: DeleteBehavior;
-}
-
-/**
- * A bare disposition string remains valid so the 36 existing policy objects
- * keep compiling unchanged. Fields opt into the richer form as their tier and
- * deletion behavior are actually decided, rather than all at once with
- * placeholder answers nobody reviewed.
- */
-export type FieldPolicy = SyncWriteDisposition | FieldStoragePolicy;
+export type FieldPolicy = SyncWriteDisposition;
 
 export type ExhaustiveSyncWritePolicy<T extends object> = {
   readonly [K in keyof T]-?: FieldPolicy;
 };
 
-export function dispositionOf(policy: FieldPolicy): SyncWriteDisposition {
-  return typeof policy === "string" ? policy : policy.disposition;
-}
+export const WEIGHT_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
 
-/** Undecided until a field opts into the richer form. Not a default answer. */
-export function tierOf(policy: FieldPolicy): StorageTier | undefined {
-  return typeof policy === "string" ? undefined : policy.tier;
-}
+export const ULYSSES_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ulysses satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
 
-/** Undecided until a field opts into the richer form. Not a default answer. */
-export function deleteBehaviorOf(
-  policy: FieldPolicy,
-): DeleteBehavior | undefined {
-  return typeof policy === "string" ? undefined : policy.delete;
-}
+export const READING_ENHANCEMENTS_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.reading satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
 
-export const WEIGHT_PREFERENCES_WRITE_POLICY = {
-  recency: "sync",
-  platforms: "nested",
-  topics: "nested",
-  authors: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
+export const DISPLAY_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.display satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
 
-export const ULYSSES_PREFERENCES_WRITE_POLICY = {
-  enabled: "sync",
-  blockedPlatforms: "nested",
-  allowedPaths: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
+export const X_ACCOUNT_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xAccount satisfies ExhaustiveSyncWritePolicy<XAccount>;
 
-export const SYNC_PREFERENCES_WRITE_POLICY = {
-  cloudProvider: "compatibility-only",
-  autoBackup: "compatibility-only",
-  backupFrequency: "compatibility-only",
-} as const satisfies ExhaustiveSyncWritePolicy<SyncPreferences>;
-
-export const READING_ENHANCEMENTS_WRITE_POLICY = {
-  focusMode: "sync",
-  focusIntensity: "sync",
-  markReadOnScroll: "sync",
-  showReadInGrayscale: "sync",
-  dualColumnMode: "device-local",
-} as const satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
-
-export const DISPLAY_PREFERENCES_WRITE_POLICY = {
-  itemsPerPage: "compatibility-only",
-  compactMode: "compatibility-only",
-  themeId: "device-local",
-  showEngagementCounts: "sync",
-  animationIntensity: "sync",
-  reading: "nested",
-  sidebarWidth: "device-local",
-  sidebarMode: "device-local",
-  friendsSidebarWidth: "device-local",
-  friendsSidebarOpen: "device-local",
-  friendsMode: "device-local",
-  friendAvatarTint: "compatibility-only",
-  debugPanelWidth: "device-local",
-  mapMode: "device-local",
-  mapTimeMode: "device-local",
-  feedSignalMode: "device-local",
-  feedSignalModes: "device-local",
-  savedContentSortMode: "device-local",
-  archivePruneDays: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
-
-export const X_ACCOUNT_WRITE_POLICY = {
-  id: "sync",
-  handle: "sync",
-  displayName: "sync",
-  avatarUrl: "sync",
-  addedAt: "sync",
-  note: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<XAccount>;
-
-export const X_CAPTURE_PREFERENCES_WRITE_POLICY = {
-  mode: "sync",
-  whitelist: "nested",
-  blacklist: "nested",
-  includeRetweets: "sync",
-  includeReplies: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
+export const X_CAPTURE_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xCapture satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
 
 export const FB_GROUP_INFO_WRITE_POLICY = {
   id: "sync",
@@ -194,70 +74,26 @@ export const FB_GROUP_INFO_WRITE_POLICY = {
   url: "sync",
 } as const satisfies ExhaustiveSyncWritePolicy<FbGroupInfo>;
 
-export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY = {
-  knownGroups: "device-local",
-  excludedGroupIds: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
+export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.facebookCapture satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
 
-export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY = {
-  dismissedSuggestionIds: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
+export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.friendSuggestions satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
 
-export const AI_PREFERENCES_WRITE_POLICY = {
-  provider: "device-local",
-  model: "device-local",
-  ollamaUrl: "device-local",
-  autoSummarize: "sync",
-  extractTopics: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
+export const AI_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ai satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
 
-export const STORY_WALL_STYLE_WRITE_POLICY = {
-  palette: "sync",
-  typographyScale: "sync",
-  mediaDensity: "sync",
-  captionsEnabled: "sync",
-  locationGroupingEnabled: "sync",
-  dateGroupingEnabled: "sync",
-  motionLevel: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
+export const STORY_WALL_STYLE_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallStyle satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
 
-export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY = {
-  provider: "sync",
-  repoName: "sync",
-  branch: "sync",
-  directory: "sync",
-  pagesUrl: "sync",
-  lastPublishedAt: "sync",
-  lastError: "device-local",
-  status: "device-local",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
+export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallPublishTarget satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
 
-export const STORY_WALL_PREFERENCES_WRITE_POLICY = {
-  enabled: "sync",
-  selectedYears: "nested",
-  includedPlatforms: "nested",
-  includedAccountIds: "nested",
-  visibilityDefault: "sync",
-  layoutPreset: "sync",
-  style: "nested",
-  embedModeEnabled: "sync",
-  publishTarget: "nested",
-  featuredItemIds: "nested",
-  hiddenItemIds: "nested",
-  lastReviewedAt: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
+export const STORY_WALL_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWall satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
 
-export const USER_PREFERENCES_WRITE_POLICY = {
-  weights: "nested",
-  ulysses: "nested",
-  sync: "compatibility-only",
-  display: "nested",
-  xCapture: "nested",
-  fbCapture: "nested",
-  friendSuggestions: "nested",
-  ai: "nested",
-  storyWall: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
+export const USER_PREFERENCES_WRITE_POLICY =
+  LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.user satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
 
 export const REACH_OUT_LOG_WRITE_POLICY = {
   loggedAt: "sync",
@@ -283,10 +119,6 @@ export const PERSON_WRITE_POLICY = {
   reachOutLog: "nested",
   tags: "nested",
   notes: "sync",
-  graphX: "device-local",
-  graphY: "device-local",
-  graphPinned: "device-local",
-  graphUpdatedAt: "device-local",
   sampleDataFingerprint: "nested",
   createdAt: "sync",
   updatedAt: "sync",
@@ -312,10 +144,6 @@ export const ACCOUNT_WRITE_POLICY = {
   followRosterActive: "sync",
   followRosterSyncedAt: "sync",
   followRosterRoles: "nested",
-  graphX: "device-local",
-  graphY: "device-local",
-  graphPinned: "device-local",
-  graphUpdatedAt: "device-local",
   sampleDataFingerprint: "nested",
   createdAt: "sync",
   updatedAt: "sync",
@@ -326,12 +154,6 @@ export const RSS_FEED_WRITE_POLICY = {
   title: "sync",
   siteUrl: "sync",
   lastFetched: "sync",
-  lastFetchAttemptedAt: "device-local",
-  nextFetchAfter: "device-local",
-  consecutiveFailures: "device-local",
-  lastFetchError: "device-local",
-  etag: "compatibility-only",
-  lastModified: "compatibility-only",
   imageUrl: "sync",
   enabled: "sync",
   pollInterval: "sync",
@@ -394,7 +216,6 @@ export const RSS_SOURCE_INFO_WRITE_POLICY = {
 } as const satisfies ExhaustiveSyncWritePolicy<RssSourceInfo>;
 
 export const PRESERVED_CONTENT_WRITE_POLICY = {
-  html: "compatibility-only",
   text: "sync",
   author: "sync",
   publishedAt: "sync",
@@ -470,62 +291,30 @@ export const EVENT_CANDIDATE_WRITE_POLICY = {
 } as const satisfies ExhaustiveSyncWritePolicy<EventCandidate>;
 
 export const FEED_ITEM_WRITE_POLICY = {
-  // The identity every other tier keys off, and the thing a tombstone must
-  // name. Deleting an item means recording that THIS id is gone; without that
-  // marker a peer that missed the delete keeps the row and can resurrect it on
-  // its next upward sync.
-  globalId: { disposition: "sync", tier: "hot", delete: "tombstone" },
+  globalId: "sync",
   platform: "sync",
   contentType: "sync",
   capturedAt: "sync",
   publishedAt: "sync",
   author: "nested",
-  // Measured: 52.1% of the serialized corpus. Immutable once captured and never
-  // concurrently edited, so it gains nothing from merge semantics. The future
-  // blob store is content-addressed, so equal bytes may be shared by more than
-  // one item. Deleting one row therefore leaves the blob orphaned until a
-  // verified reachability pass proves that physical collection is safe.
-  content: { disposition: "nested", tier: "blob", delete: "orphan" },
+  content: "nested",
   engagement: "nested",
   location: "nested",
   timeRange: "nested",
   rssSource: "nested",
   fbGroup: "nested",
-  // Measured: a further 22.9%, present on 6,778 of 15,846 items, and its text
-  // does not overlap content.text. These are two independent bodies of prose,
-  // not a duplicate. Same reachability-verified collection rule as content.
-  preservedContent: { disposition: "nested", tier: "blob", delete: "orphan" },
-  // Read, saved, archived, tags. Small, edited from any device, and read on
-  // every feed query for filtering and counts, so it stays hot and resident
-  // even after the prose moves out.
-  userState: { disposition: "nested", tier: "hot", delete: "cascade" },
+  preservedContent: "nested",
+  userState: "nested",
   topics: "nested",
   contentSignals: "nested",
   eventCandidate: "nested",
-  // Device-local, not synced.
-  //
-  // priority is DERIVED and TIME-DECAYING. It is a weighted average whose
-  // recency term falls to zero over 168 hours, so the correct value changes
-  // continuously for recent items and differs between two devices purely
-  // because their clocks read differently. Syncing it means every device
-  // rewrites the same field for the same item forever, producing sync traffic
-  // that carries no user intent.
-  //
-  // It is also derived from preferences and the relationship graph, so a device
-  // can always recompute it locally from inputs that ARE synced. Nothing is
-  // lost by keeping it local, and the churn goes away.
-  priority: "device-local",
-  priorityComputedAt: "device-local",
+  // The Primary derives ranking through the dedicated signed priority
+  // assignment operation. Capture and import payloads cannot supply it.
+  priority: "derived-primary",
+  priorityComputedAt: "derived-primary",
   sourceUrl: "sync",
   sampleDataFingerprint: "nested",
 } as const satisfies ExhaustiveSyncWritePolicy<FeedItem>;
-
-export const DOCUMENT_META_WRITE_POLICY = {
-  documentId: "sync",
-  deviceId: "compatibility-only",
-  lastSync: "compatibility-only",
-  version: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<DocumentMeta>;
 
 export const DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY = {
   id: "sync",
@@ -533,19 +322,10 @@ export const DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY = {
 } as const satisfies ExhaustiveSyncWritePolicy<DesktopClientRegistration>;
 
 /**
- * Keys whose disposition is "nested", in either policy form.
- *
- * This has to see through the richer `{disposition, tier, delete}` shape as
- * well as the bare string, or a field gains a tier and silently stops being
- * treated as nested — which drops its sanitizer and lets unsanitized nested
- * values through. That is a correctness hole, not a typing inconvenience.
+ * Keys whose disposition is "nested".
  */
 type NestedPolicyKeys<P> = {
-  [K in keyof P]-?: P[K] extends "nested"
-    ? K
-    : P[K] extends { readonly disposition: "nested" }
-      ? K
-      : never;
+  [K in keyof P]-?: P[K] extends "nested" ? K : never;
 }[keyof P];
 
 type NestedSanitizers<P> = {
@@ -567,17 +347,15 @@ function sanitizeByPolicy<
 ): Partial<T> {
   const source = input as Record<string, unknown>;
   const result: Record<string, unknown> = {};
-  const nested = nestedSanitizers as Record<string, (value: unknown) => unknown>;
+  const nested = nestedSanitizers as Record<
+    string,
+    (value: unknown) => unknown
+  >;
 
   for (const key of Object.keys(policy)) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
     const value = source[key];
-    // Normalize, do not compare the raw policy entry. A field written in the
-    // richer {disposition, tier, delete} form is an object, so a direct string
-    // comparison falls through every branch and silently DROPS the field from
-    // the sanitized result. That is data loss, not a typing detail, and it is
-    // why this file's policy objects are runtime data rather than pure types.
-    const disposition = dispositionOf(policy[key as keyof P] as FieldPolicy);
+    const disposition = policy[key as keyof P] as SyncWriteDisposition;
 
     if (disposition === "sync") {
       if (value !== undefined || preserveUndefined) result[key] = value;
@@ -625,14 +403,20 @@ function sanitizeNumberArray(value: unknown): number[] | undefined {
   return value.filter((entry): entry is number => typeof entry === "number");
 }
 
-function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+function sanitizeNumberRecord(
+  value: unknown,
+): Record<string, number> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"),
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
   );
 }
 
-function sanitizeStringArrayRecord(value: unknown): Record<string, string[]> | undefined {
+function sanitizeStringArrayRecord(
+  value: unknown,
+): Record<string, string[]> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, entry]) => {
@@ -645,7 +429,9 @@ function sanitizeStringArrayRecord(value: unknown): Record<string, string[]> | u
 function sanitizeTrueRecord(value: unknown): Record<string, true> | undefined {
   if (!isRecord(value)) return undefined;
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, true] => entry[1] === true),
+    Object.entries(value).filter(
+      (entry): entry is [string, true] => entry[1] === true,
+    ),
   );
 }
 
@@ -704,7 +490,8 @@ function sanitizeDisplayPreferencesWrite(
   updates: Partial<DisplayPreferences>,
 ): Partial<DisplayPreferences> {
   return sanitizeByPolicy(updates, DISPLAY_PREFERENCES_WRITE_POLICY, {
-    reading: (value) => sanitizeNestedObject(value, sanitizeReadingEnhancementsWrite),
+    reading: (value) =>
+      sanitizeNestedObject(value, sanitizeReadingEnhancementsWrite),
   });
 }
 
@@ -721,7 +508,9 @@ function sanitizeXCapturePreferencesWrite(
   });
 }
 
-function sanitizeFbGroupInfoWrite(updates: Partial<FbGroupInfo>): Partial<FbGroupInfo> {
+function sanitizeFbGroupInfoWrite(
+  updates: Partial<FbGroupInfo>,
+): Partial<FbGroupInfo> {
   return sanitizeByPolicy(updates, FB_GROUP_INFO_WRITE_POLICY, {});
 }
 
@@ -767,7 +556,8 @@ function sanitizeStoryWallPreferencesWrite(
     includedPlatforms: sanitizeStringArray,
     includedAccountIds: sanitizeStringArray,
     style: (value) => sanitizeNestedObject(value, sanitizeStoryWallStyleWrite),
-    publishTarget: (value) => sanitizeNestedObject(value, sanitizeStoryWallPublishTargetWrite),
+    publishTarget: (value) =>
+      sanitizeNestedObject(value, sanitizeStoryWallPublishTargetWrite),
     featuredItemIds: sanitizeStringArray,
     hiddenItemIds: sanitizeStringArray,
   });
@@ -777,18 +567,27 @@ export function sanitizeUserPreferenceWrite(
   updates: Partial<UserPreferences>,
 ): Partial<UserPreferences> {
   return sanitizeByPolicy(updates, USER_PREFERENCES_WRITE_POLICY, {
-    weights: (value) => sanitizeNestedObject(value, sanitizeWeightPreferencesWrite),
-    ulysses: (value) => sanitizeNestedObject(value, sanitizeUlyssesPreferencesWrite),
-    display: (value) => sanitizeNestedObject(value, sanitizeDisplayPreferencesWrite),
-    xCapture: (value) => sanitizeNestedObject(value, sanitizeXCapturePreferencesWrite),
-    fbCapture: (value) => sanitizeNestedObject(value, sanitizeFacebookCapturePreferencesWrite),
-    friendSuggestions: (value) => sanitizeNestedObject(value, sanitizeFriendSuggestionPreferencesWrite),
+    weights: (value) =>
+      sanitizeNestedObject(value, sanitizeWeightPreferencesWrite),
+    ulysses: (value) =>
+      sanitizeNestedObject(value, sanitizeUlyssesPreferencesWrite),
+    display: (value) =>
+      sanitizeNestedObject(value, sanitizeDisplayPreferencesWrite),
+    xCapture: (value) =>
+      sanitizeNestedObject(value, sanitizeXCapturePreferencesWrite),
+    fbCapture: (value) =>
+      sanitizeNestedObject(value, sanitizeFacebookCapturePreferencesWrite),
+    friendSuggestions: (value) =>
+      sanitizeNestedObject(value, sanitizeFriendSuggestionPreferencesWrite),
     ai: (value) => sanitizeNestedObject(value, sanitizeAIPreferencesWrite),
-    storyWall: (value) => sanitizeNestedObject(value, sanitizeStoryWallPreferencesWrite),
+    storyWall: (value) =>
+      sanitizeNestedObject(value, sanitizeStoryWallPreferencesWrite),
   });
 }
 
-export function sanitizeReachOutLogWrite(updates: Partial<ReachOutLog>): Partial<ReachOutLog> {
+export function sanitizeReachOutLogWrite(
+  updates: Partial<ReachOutLog>,
+): Partial<ReachOutLog> {
   return sanitizeByPolicy(updates, REACH_OUT_LOG_WRITE_POLICY, {});
 }
 
@@ -806,12 +605,31 @@ export function sanitizePersonWrite(
     updates,
     PERSON_WRITE_POLICY,
     {
-      reachOutLog: (value) => sanitizeObjectArray(value, sanitizeReachOutLogWrite),
+      reachOutLog: (value) =>
+        sanitizeObjectArray(value, sanitizeReachOutLogWrite),
       tags: sanitizeStringArray,
-      sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+      sampleDataFingerprint: (value) =>
+        sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
     },
     options.preserveUndefined,
   );
+}
+
+/**
+ * Sanitize only the synchronized Person root.
+ *
+ * Reach-out history has its own normalized relation and may enter authority
+ * only through `person_reach_out_append`.
+ */
+export function sanitizePersonRootWrite(
+  updates: Partial<Person>,
+  options: { preserveUndefined?: boolean } = {},
+): Omit<Partial<Person>, "reachOutLog"> {
+  const { reachOutLog: _reachOutLog, ...root } = sanitizePersonWrite(
+    updates,
+    options,
+  );
+  return root;
 }
 
 export function sanitizeAccountWrite(
@@ -823,7 +641,8 @@ export function sanitizeAccountWrite(
     ACCOUNT_WRITE_POLICY,
     {
       followRosterRoles: sanitizeStringArray,
-      sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+      sampleDataFingerprint: (value) =>
+        sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
     },
     options.preserveUndefined,
   );
@@ -833,7 +652,8 @@ export function sanitizeRssFeedWrite(
   updates: Partial<RssFeed>,
 ): Partial<RssFeed> {
   return sanitizeByPolicy(updates, RSS_FEED_WRITE_POLICY, {
-    sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+    sampleDataFingerprint: (value) =>
+      sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
   });
 }
 
@@ -841,7 +661,9 @@ function sanitizeAuthorWrite(updates: Partial<Author>): Partial<Author> {
   return sanitizeByPolicy(updates, AUTHOR_WRITE_POLICY, {});
 }
 
-function sanitizeLinkPreviewWrite(updates: Partial<LinkPreview>): Partial<LinkPreview> {
+function sanitizeLinkPreviewWrite(
+  updates: Partial<LinkPreview>,
+): Partial<LinkPreview> {
   return sanitizeByPolicy(updates, LINK_PREVIEW_WRITE_POLICY, {});
 }
 
@@ -849,29 +671,39 @@ function sanitizeContentWrite(updates: Partial<Content>): Partial<Content> {
   return sanitizeByPolicy(updates, CONTENT_WRITE_POLICY, {
     mediaUrls: sanitizeStringArray,
     mediaTypes: sanitizeStringArray,
-    linkPreview: (value) => sanitizeNestedObject(value, sanitizeLinkPreviewWrite),
+    linkPreview: (value) =>
+      sanitizeNestedObject(value, sanitizeLinkPreviewWrite),
   });
 }
 
-function sanitizeEngagementWrite(updates: Partial<Engagement>): Partial<Engagement> {
+function sanitizeEngagementWrite(
+  updates: Partial<Engagement>,
+): Partial<Engagement> {
   return sanitizeByPolicy(updates, ENGAGEMENT_WRITE_POLICY, {});
 }
 
-function sanitizeCoordinatesWrite(updates: Partial<Coordinates>): Partial<Coordinates> {
+function sanitizeCoordinatesWrite(
+  updates: Partial<Coordinates>,
+): Partial<Coordinates> {
   return sanitizeByPolicy(updates, LOCATION_COORDINATES_WRITE_POLICY, {});
 }
 
 function sanitizeLocationWrite(updates: Partial<Location>): Partial<Location> {
   return sanitizeByPolicy(updates, LOCATION_WRITE_POLICY, {
-    coordinates: (value) => sanitizeNestedObject(value, sanitizeCoordinatesWrite),
+    coordinates: (value) =>
+      sanitizeNestedObject(value, sanitizeCoordinatesWrite),
   });
 }
 
-function sanitizeTimeRangeWrite(updates: Partial<TimeRange>): Partial<TimeRange> {
+function sanitizeTimeRangeWrite(
+  updates: Partial<TimeRange>,
+): Partial<TimeRange> {
   return sanitizeByPolicy(updates, TIME_RANGE_WRITE_POLICY, {});
 }
 
-function sanitizeRssSourceInfoWrite(updates: Partial<RssSourceInfo>): Partial<RssSourceInfo> {
+function sanitizeRssSourceInfoWrite(
+  updates: Partial<RssSourceInfo>,
+): Partial<RssSourceInfo> {
   return sanitizeByPolicy(updates, RSS_SOURCE_INFO_WRITE_POLICY, {});
 }
 
@@ -881,7 +713,9 @@ function sanitizePreservedContentWrite(
   return sanitizeByPolicy(updates, PRESERVED_CONTENT_WRITE_POLICY, {});
 }
 
-function sanitizeHighlightWrite(updates: Partial<Highlight>): Partial<Highlight> {
+function sanitizeHighlightWrite(
+  updates: Partial<Highlight>,
+): Partial<Highlight> {
   return sanitizeByPolicy(updates, HIGHLIGHT_WRITE_POLICY, {});
 }
 
@@ -899,16 +733,22 @@ function sanitizeContentSignalScores(
 ): Partial<Record<ContentSignal, number>> | undefined {
   if (!isRecord(value)) return undefined;
   const result: Partial<Record<ContentSignal, number>> = {};
-  for (const signal of Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY) as ContentSignal[]) {
+  for (const signal of Object.keys(
+    CONTENT_SIGNAL_SCORE_WRITE_POLICY,
+  ) as ContentSignal[]) {
     const score = value[signal];
     if (typeof score === "number") result[signal] = score;
   }
   return result;
 }
 
-function sanitizeContentSignalArray(value: unknown): ContentSignal[] | undefined {
+function sanitizeContentSignalArray(
+  value: unknown,
+): ContentSignal[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const allowed = new Set<unknown>(Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY));
+  const allowed = new Set<unknown>(
+    Object.keys(CONTENT_SIGNAL_SCORE_WRITE_POLICY),
+  );
   return value.filter((entry): entry is ContentSignal => allowed.has(entry));
 }
 
@@ -936,19 +776,47 @@ export function sanitizeFeedItemWrite(
     engagement: (value) => sanitizeNestedObject(value, sanitizeEngagementWrite),
     location: (value) => sanitizeNestedObject(value, sanitizeLocationWrite),
     timeRange: (value) => sanitizeNestedObject(value, sanitizeTimeRangeWrite),
-    rssSource: (value) => sanitizeNestedObject(value, sanitizeRssSourceInfoWrite),
+    rssSource: (value) =>
+      sanitizeNestedObject(value, sanitizeRssSourceInfoWrite),
     fbGroup: (value) => sanitizeNestedObject(value, sanitizeFbGroupInfoWrite),
-    preservedContent: (value) => sanitizeNestedObject(value, sanitizePreservedContentWrite),
+    preservedContent: (value) =>
+      sanitizeNestedObject(value, sanitizePreservedContentWrite),
     userState: (value) => sanitizeNestedObject(value, sanitizeUserStateWrite),
     topics: sanitizeStringArray,
-    contentSignals: (value) => sanitizeNestedObject(value, sanitizeContentSignalsWrite),
-    eventCandidate: (value) => sanitizeNestedObject(value, sanitizeEventCandidateWrite),
-    sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
+    contentSignals: (value) =>
+      sanitizeNestedObject(value, sanitizeContentSignalsWrite),
+    eventCandidate: (value) =>
+      sanitizeNestedObject(value, sanitizeEventCandidateWrite),
+    sampleDataFingerprint: (value) =>
+      sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
   });
+}
+
+/**
+ * Produce the one synchronized FeedItem capture shape accepted by Library
+ * Core. Primary-owned analysis and device-authored annotations travel through
+ * their own normalized operations and cannot leak through a capture upsert.
+ */
+export function sanitizeFeedItemCaptureWrite(item: FeedItem): FeedItem {
+  const sanitized = sanitizeFeedItemWrite(item) as FeedItem;
+  const { contentSignals, eventCandidate, ...root } = sanitized;
+  const { highlights, tags, ...userState } = root.userState;
+  void contentSignals;
+  void eventCandidate;
+  void highlights;
+  void tags;
+  return {
+    ...root,
+    userState: { ...userState, tags: [] },
+  };
 }
 
 export function sanitizeDesktopClientRegistrationWrite(
   updates: Partial<DesktopClientRegistration>,
 ): Partial<DesktopClientRegistration> {
-  return sanitizeByPolicy(updates, DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY, {});
+  return sanitizeByPolicy(
+    updates,
+    DESKTOP_CLIENT_REGISTRATION_WRITE_POLICY,
+    {},
+  );
 }

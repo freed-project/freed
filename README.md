@@ -133,7 +133,7 @@ Compose and publish through your own site.
 3. **SQLite everywhere:** Every client queries a local SQLite Library through one generated contract
 4. **Shared React views:** `packages/ui` consumes platform-neutral typed query and mutation adapters
 5. **Typed capture boundary:** Provider packages normalize bounded values and submit registered mutations
-6. **Ranking in the Primary:** Canonical ranking policy is materialized once and queried locally on every client
+6. **Ranking in the Primary:** Canonical scores are materialized through signed Primary operations and queried locally on every client
 7. **Logical-object sync:** Devices exchange signed normalized records and selective content, never database files
 8. **Next.js for the marketing site:** The public site remains isolated in the `www` lane
 

@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Account, FeedItem } from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docReconcileFollowRosterCapture } from "./library-client";
+import { reconcileFollowRosterLibraryCapture } from "./library-client";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   formatScrapeMemoryPressureDetails,
@@ -446,25 +446,22 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
           return result;
         }
 
-        const beforeItemCount = typeof store.docItemCount === "number"
-          ? store.docItemCount
-          : null;
-        const existingItemIds = new Set(store.items.map((item) => item.globalId));
-        const beforeAccountCount = Object.keys(store.accounts).length;
+        const beforeItemCount = store.totalItemCount;
+        const beforeAccountCount = store.socialAccountCount ?? 0;
         assertFactoryResetEpoch(resetEpoch);
-        await docReconcileFollowRosterCapture(result.accounts, result.items, {
+        await reconcileFollowRosterLibraryCapture(result.accounts, result.items, {
           provider: config.provider,
           capturedAt: result.diag.capturedAt,
         });
         assertFactoryResetEpoch(resetEpoch);
         const reconciledState = useAppStore.getState();
-        result.diag.itemsAdded = beforeItemCount !== null
-          && typeof reconciledState.docItemCount === "number"
-          ? Math.max(0, reconciledState.docItemCount - beforeItemCount)
-          : result.items.filter((item) => !existingItemIds.has(item.globalId)).length;
+        result.diag.itemsAdded = Math.max(
+          0,
+          reconciledState.totalItemCount - beforeItemCount,
+        );
         result.diag.accountsAdded = Math.max(
           0,
-          Object.keys(reconciledState.accounts).length - beforeAccountCount,
+          (reconciledState.socialAccountCount ?? beforeAccountCount) - beforeAccountCount,
         );
         persistedRecords = result.diag.itemsAdded + result.diag.accountsAdded;
         assertFactoryResetEpoch(resetEpoch);

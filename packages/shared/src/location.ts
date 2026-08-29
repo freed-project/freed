@@ -4,8 +4,7 @@
  * Pure functions only, no side effects, no network calls.
  */
 
-import { friendForAuthor, personForAuthor } from "./friends";
-import type { Account, FeedItem, Friend, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
+import type { FeedItem, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
 
 // =============================================================================
 // Types
@@ -24,18 +23,35 @@ export interface GeoLocation {
   country?: string;
 }
 
-export interface ResolvedLocationItem {
+/** Minimal normalized Person projection needed by location surfaces. */
+export interface LocationPersonIdentity {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  relationshipStatus: Person["relationshipStatus"];
+}
+
+/** One bounded map row after its author identity is resolved inside SQLite. */
+export interface LibraryMapLocationCandidate {
+  accountId: string | null;
   item: FeedItem;
-  friend: Person | null;
+  friend: LocationPersonIdentity | null;
+}
+
+export interface ResolvedLocationItem {
+  accountId: string | null;
+  item: FeedItem;
+  friend: LocationPersonIdentity | null;
   lat: number;
   lng: number;
   label?: string;
 }
 
 export interface LocationMarkerSummary {
+  accountId: string | null;
   key: string;
   authorKey: string;
-  friend: Person | null;
+  friend: LocationPersonIdentity | null;
   item: FeedItem;
   lat: number;
   lng: number;
@@ -209,7 +225,7 @@ function authorIdentityKey(item: FeedItem): string {
   return `author:${item.platform}:${item.author.id}`;
 }
 
-function friendIdentityKey(friend: Person): string {
+function friendIdentityKey(friend: LocationPersonIdentity): string {
   return `friend:${friend.id}`;
 }
 
@@ -414,6 +430,7 @@ export function groupResolvedLocations(
 
     if (!existing) {
       groups.set(key, {
+        accountId: resolved.accountId,
         key,
         authorKey,
         friend: resolved.friend,
@@ -432,6 +449,7 @@ export function groupResolvedLocations(
 
     if (isNewer) {
       existing.item = resolved.item;
+      existing.accountId = resolved.accountId;
       existing.friend = resolved.friend;
       existing.label = resolved.label ?? existing.label;
       existing.seenAt = resolved.item.publishedAt;
@@ -473,6 +491,7 @@ export function getLatestFriendLocationMarkers(
       const groupKey = locationGroupKey(resolved.friend!.id, resolved.lat, resolved.lng);
 
       return {
+        accountId: resolved.accountId,
         key: `friend:${resolved.friend!.id}`,
         authorKey: markerIdentityKey(resolved),
         friend: resolved.friend,
@@ -515,6 +534,7 @@ export function getLatestAuthorLocationMarkers(
       const groupKey = locationGroupKey(authorKey, resolved.lat, resolved.lng);
 
       return {
+        accountId: resolved.accountId,
         key: authorKey,
         authorKey,
         friend: resolved.friend,
@@ -540,57 +560,6 @@ export function getLastSeenLocationForFriend(
       options,
     )[0] ?? null
   );
-}
-
-export function countFriendsWithRecentLocationUpdates(
-  items: FeedItem[],
-  personsOrFriends: Record<string, Person> | Record<string, Friend>,
-  accounts?: Record<string, Account>,
-  windowMs: number = 7 * 24 * 60 * 60 * 1000,
-  now: number = Date.now()
-): number {
-  const cutoff = now - windowMs;
-  const friendIds = new Set<string>();
-
-  for (const item of items) {
-    if (item.publishedAt < cutoff) continue;
-    if (!extractLocationFromItem(item)) continue;
-
-    const friend = accounts
-      ? personForAuthor(
-          personsOrFriends as Record<string, Person>,
-          accounts,
-          item.platform,
-          item.author.id,
-        )
-      : friendForAuthor(
-          personsOrFriends as Record<string, Friend>,
-          item.platform,
-          item.author.id,
-        );
-    if (friend?.relationshipStatus === "friend") {
-      friendIds.add(friend.id);
-    }
-  }
-
-  return friendIds.size;
-}
-
-export function countAuthorsWithRecentLocationUpdates(
-  items: FeedItem[],
-  windowMs: number = 7 * 24 * 60 * 60 * 1000,
-  now: number = Date.now()
-): number {
-  const cutoff = now - windowMs;
-  const authorIds = new Set<string>();
-
-  for (const item of items) {
-    if (item.publishedAt < cutoff) continue;
-    if (!extractLocationFromItem(item)) continue;
-    authorIds.add(authorIdentityKey(item));
-  }
-
-  return authorIds.size;
 }
 
 export function getDefaultMapMode(

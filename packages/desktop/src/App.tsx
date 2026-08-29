@@ -5,6 +5,13 @@ import {
   type ProviderRiskId,
   type ReleaseChannel,
 } from "@freed/shared";
+import {
+  executeLibraryCoreScopeActionV1,
+  digestLibraryCoreScopeActionRequestV1,
+  libraryCoreFeedBrowseFilterInputFromV1,
+  searchLibraryCoreNormalizedItemsV1,
+  type LibraryCoreScopeActionStagePageV1,
+} from "@freed/shared/library-core";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
@@ -13,7 +20,6 @@ import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
-import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -72,8 +78,9 @@ import {
   type CloudProvider,
 } from "./lib/sync";
 import {
-  clearLocalDoc,
-  acquireLegacyRendererItems,
+  resetLocalLibrary,
+  archiveLibraryItems,
+  markLibraryItemsAsRead,
 } from "./lib/library-client";
 import {
   openBoundedDesktopFeedReader,
@@ -82,14 +89,24 @@ import {
 } from "./lib/library-core-feed-browse-reader-runtime";
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
 import {
-  openLibraryCoreItemScanSession,
+  mutateNormalizedDeviceGraphLayout,
+  mutateNormalizedDeviceContacts,
+  queryNormalizedDeviceContacts,
+  queryNormalizedLibrary,
+} from "./lib/library-core-normalized-query-client";
+import {
   readLibraryCoreFacetSummary,
   readLibraryCoreFriendsGraph,
   readLibraryCoreFriendsLocationItem,
   readLibraryCoreItemDetail,
+  readLibraryCoreMapCandidates,
+  readLibraryCoreAccountDetail,
   readLibraryCorePersonTimeline,
+  readLibraryCorePersonDetail,
+  readLibraryCoreFriendDetail,
   readLibraryCoreSavedAnalytics,
-  readLibraryCoreSurfaceItems,
+  readLibraryCoreStoryWallCandidates,
+  scanLibraryCoreBackgroundItems,
 } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -124,14 +141,9 @@ import { captureMediumFeed } from "./lib/medium-capture";
 import { captureYouTube } from "./lib/youtube-capture";
 import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
-import {
-  clearDesktopClientWarningAcknowledgement,
-  desktopClientWarningSignature,
-  isDesktopClientWarningAcknowledged,
-} from "./lib/desktop-client-warning";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
-import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
 import {
@@ -161,6 +173,11 @@ import {
   stopAndDrain as stopAndDrainSemanticClassifier,
 } from "./lib/semantic-classifier";
 import {
+  start as startPriorityIndexer,
+  stop as stopPriorityIndexer,
+  stopAndDrain as stopAndDrainPriorityIndexer,
+} from "./lib/priority-indexer";
+import {
   quiesceDesktopStoreForFactoryReset,
   useAppStore as useDesktopStore,
   withProviderSyncing,
@@ -181,7 +198,7 @@ import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
 import { DesktopFeedsSettingsSection } from "./components/DesktopFeedsSettingsSection";
-import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import {
   clearProviderPause,
@@ -189,10 +206,17 @@ import {
   initProviderHealth,
 } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
-import { setContactSyncError } from "./lib/contact-sync-storage";
 
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
-import { isSqliteLibraryActive, searchSqliteItemsPage } from "./lib/sqlite-library";
+import {
+  appendSqliteLibraryPersonReachOut,
+  assignSqliteLibraryAccountToPerson,
+  isSqliteLibraryActive,
+  removeSqliteLibraryPerson,
+  replaceSqliteLibraryFriend,
+  upsertSqliteLibraryPerson,
+  upsertSqliteLibraryAccount,
+} from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
@@ -200,7 +224,7 @@ import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import {
-  captureShellMemoryBaseline,
+  capturePreLibraryMemoryBaseline,
   startMemoryMonitor,
   stopMemoryMonitor,
 } from "./lib/memory-monitor";
@@ -245,49 +269,102 @@ async function runManualProviderSync<T>(
   }
 }
 
-const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
-  const session = await openLibraryCoreItemScanSession();
-  try {
-    for (;;) {
-      const page = await session.nextPage();
-      if (page.items.length > 0) {
-        const decision = await visit(page.items);
-        if (decision === "stop") return;
-      }
-      if (page.done) return;
-    }
-  } finally {
-    await session.close();
-  }
-};
+const scanLibraryCoreItemsForDesktop: ScanLibraryItems =
+  scanLibraryCoreBackgroundItems;
 
 const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
   query,
-  searchCorpusVersion,
+  _searchCorpusVersion,
   visit,
   options,
-) => {
-  let afterGlobalId: string | null = null;
-  for (;;) {
-    if (options?.signal?.aborted) {
-      throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
-    }
-    const page = await searchSqliteItemsPage(
+) =>
+  searchLibraryCoreNormalizedItemsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    {
+      filter: options?.filter ?? {},
+      identityMode: options?.identityMode ?? "all_content",
       query,
-      afterGlobalId,
-      searchCorpusVersion,
-      options?.accountAliases ?? [],
-    );
-    if (page.sourceRevision !== searchCorpusVersion) {
-      throw new Error("SQLite Library changed during its bounded search");
-    }
-    if (page.matches.length > 0 && visit(page.matches) === "stop") return;
-    if (!page.nextAfterGlobalId) return;
-    if (page.nextAfterGlobalId === afterGlobalId) {
-      throw new Error("SQLite Library search cursor did not advance");
-    }
-    afterGlobalId = page.nextAfterGlobalId;
-  }
+      signal: options?.signal,
+    },
+    visit,
+  );
+
+const executeDesktopLibraryScopeAction: NonNullable<
+  PlatformConfig["executeLibraryScopeAction"]
+> = async (request) => {
+  const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  let stagedCount = 0;
+  return executeLibraryCoreScopeActionV1(request, {
+    scan: async (visit) => {
+      if (request.query !== null) {
+        await searchLibraryCoreItemsForDesktop(
+          request.query,
+          0,
+          async (matches) => {
+            await visit(matches.map((match) => match.item));
+            return "continue" as const;
+          },
+          { filter, identityMode: request.identityMode },
+        );
+        return;
+      }
+      const reader =
+        request.identityMode === "friends"
+          ? await openBoundedDesktopFriendsFeedReader(filter, Date.now())
+          : await openBoundedDesktopFeedReader(filter, Date.now());
+      try {
+        for (;;) {
+          const items = await reader.readNext();
+          if (items.length === 0) return;
+          await visit(items);
+        }
+      } finally {
+        await reader.close();
+      }
+    },
+    beginStage: async (stageRequest) => {
+      const stageId = `scope-action:${crypto.randomUUID()}`;
+      stagedCount = 0;
+      await invoke("begin_normalized_scope_action", {
+        actionKind: stageRequest.action,
+        createdAt: Date.now(),
+        requestDigest: digestLibraryCoreScopeActionRequestV1(stageRequest),
+        stageId,
+      });
+      return stageId;
+    },
+    appendStage: async (stageId, entityIds) => {
+      await invoke("append_normalized_scope_action", {
+        entityIds,
+        expectedOrdinal: stagedCount,
+        stageId,
+      });
+      stagedCount += entityIds.length;
+    },
+    finalizeStage: async (stageId) => {
+      await invoke("finalize_normalized_scope_action", {
+        expectedMemberCount: stagedCount,
+        stageId,
+      });
+      return stagedCount;
+    },
+    readStage: async (stageId, afterOrdinal) => {
+      const page = await invoke<LibraryCoreScopeActionStagePageV1>(
+        "page_normalized_scope_action",
+        { afterOrdinal, stageId },
+      );
+      return { entityIds: page.entityIds, nextOrdinal: page.nextOrdinal };
+    },
+    closeStage: (stageId) =>
+      invoke("close_normalized_scope_action", { stageId }).then(() => {}),
+    commitBatch: (action, entityIds) =>
+      action === "read"
+        ? markLibraryItemsAsRead([...entityIds])
+        : archiveLibraryItems([...entityIds]),
+  });
 };
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -441,9 +518,6 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
-  const desktopClientIds = useAppStore((state) => state.desktopClientIds);
-  const desktopWarningSignatureValue = desktopClientWarningSignature(desktopClientIds);
-  const lastDesktopWarningToast = useRef("");
   const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
   const [lockedStartupState, setLockedStartupState] = useState<LockedStartupState>(
     tauriRuntimeAvailable ? "checking" : "ready",
@@ -466,34 +540,10 @@ function App() {
 
   useEffect(() => {
     if (!tauriRuntimeAvailable) return;
-    // Give the nonblocking shell probe the legal and lock checks as headroom.
-    // Document initialization closes the window and discards a late result.
-    void captureShellMemoryBaseline();
+    // Give the nonblocking pre-Library probe the legal and lock checks as headroom.
+    // SQLite Library initialization closes the window and discards a late result.
+    void capturePreLibraryMemoryBaseline();
   }, [tauriRuntimeAvailable]);
-
-  useEffect(() => {
-    if (
-      !isInitialized ||
-      desktopClientIds.length < 2 ||
-      !desktopWarningSignatureValue ||
-      lastDesktopWarningToast.current === desktopWarningSignatureValue ||
-      isDesktopClientWarningAcknowledged(desktopWarningSignatureValue)
-    ) {
-      return;
-    }
-    lastDesktopWarningToast.current = desktopWarningSignatureValue;
-    toast.info(
-      "More than one Freed Desktop installation is registered. Each installation can contact your connected provider accounts, which can duplicate request traffic.",
-      {
-        actionLabel: "Review Sync",
-        onAction: () => useSettingsStore.getState().openTo("sync"),
-      },
-    );
-  }, [
-    desktopClientIds.length,
-    desktopWarningSignatureValue,
-    isInitialized,
-  ]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -637,6 +687,7 @@ function App() {
     startMemoryMonitor({
       onCriticalPressure: () => {
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         toast.error("Freed paused background fetch because memory is critically high", {
           actionLabel: "Restart",
@@ -654,8 +705,7 @@ function App() {
     startProviderSyncScheduler({
       existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
     });
-    // Replacement sync follows the SQLite Desktop revamp. The legacy
-    // Automerge relay and cloud loops stay off in this build.
+    // SQLite synchronization starts only through the typed Library Core path.
     if (isTauri()) {
       void startSnapshotManager().catch((error) => {
         log.error(
@@ -686,6 +736,15 @@ function App() {
         };
       },
     });
+    startPriorityIndexer({
+      getWeights: () => useDesktopStore.getState().preferences.weights,
+      subscribeToWeightChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.weights !== previous.preferences.weights) {
+            callback();
+          }
+        }),
+    });
     return () => {
       stopRssPoller();
       stopProviderSyncScheduler();
@@ -693,6 +752,7 @@ function App() {
       stopAllCloudSyncs();
       stopSnapshotManager();
       stopContentFetcher();
+      stopPriorityIndexer();
       stopSemanticClassifier();
       stopMemoryMonitor();
     };
@@ -729,6 +789,7 @@ function App() {
       }
       if (event.payload.phase === "safe_mode") {
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         toast.error("Freed paused background work while the renderer recovers", {
           actionLabel: "Restart",
@@ -1105,6 +1166,7 @@ function App() {
         stopAllCloudSyncs();
         stopSnapshotManager();
         stopContentFetcher();
+        stopPriorityIndexer();
         stopSemanticClassifier();
         await runFactoryResetOperations({
           phaseTimeoutMs: 255_000,
@@ -1116,19 +1178,19 @@ function App() {
             stopRssPollerAndDrain,
             stopProviderSyncSchedulerAndDrain,
             stopAndDrainContentFetcher,
+            stopAndDrainPriorityIndexer,
             stopAndDrainSemanticClassifier,
           ],
           clearDeviceStores: () => [
             clearDeviceDisplayPreferences(),
             clearDeviceAIPreferences(),
-            clearDeviceGraphLayout(),
+            clearLegacyDeviceGraphLayoutImport(),
           ],
           clearLocalSettings: [
             resetFeedCardDensity,
             resetInterfaceZoom,
             resetThemePreference,
             clearStoredCookies,
-            clearDesktopClientWarningAcknowledgement,
             clearProviderScheduleStateForFactoryReset,
             clearRssSyncScheduleForFactoryReset,
           ],
@@ -1159,8 +1221,8 @@ function App() {
             }
             if (disconnectFailures.length > 0) throw disconnectFailures[0];
           },
-          clearDocument: async () => {
-            await clearLocalDoc();
+          clearLibrary: async () => {
+            await resetLocalLibrary();
           },
         });
         clearFactoryResetCloudCleanupBarrier();
@@ -1178,12 +1240,30 @@ function App() {
     await restartCloudSync(provider);
   }, []);
 
+  const recordGoogleContactSyncError = useCallback((message: string) => {
+    if (!tauriRuntimeAvailable || !isInitialized) return;
+    void mutateNormalizedDeviceContacts({
+      authStatus: "reconnect_required",
+      errorCode: "auth",
+      errorMessage: message,
+      mutationKind: "device_contact_status_set_v1",
+      schemaVersion: 1,
+      syncStartedAt: null,
+      syncStatus: "error",
+      updatedAt: Date.now(),
+    }).catch((error) => {
+      log.warn(
+        `[contacts] SQLite contact status update failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }, [isInitialized, tauriRuntimeAvailable]);
+
   const recordGoogleContactsConnectError = useCallback((error: unknown) => {
     if (isOAuthCanceledError(error)) return;
     const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
-    setContactSyncError(message, "auth");
+    recordGoogleContactSyncError(message);
     log.warn(`[contacts] Google reconnect failed: ${message}`);
-  }, []);
+  }, [recordGoogleContactSyncError]);
 
   const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
     clearCloudProvider(provider);
@@ -1251,7 +1331,7 @@ function App() {
             const message = refreshError instanceof Error
               ? refreshError.message
               : "Google token refresh failed.";
-            setContactSyncError(message, "auth");
+            recordGoogleContactSyncError(message);
             log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
             throw refreshError;
           }
@@ -1270,7 +1350,7 @@ function App() {
         log.warn(`[contacts] Google sync failed: ${message}`);
         throw error;
       }
-    }), []);
+    }), [recordGoogleContactSyncError]);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -1322,15 +1402,13 @@ function App() {
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
     void (async () => {
-      const state = useAppStore.getState();
-      const facets = isSqliteLibraryActive()
-        ? await readLibraryCoreFacetSummary()
-        : null;
-      const sampleSummary = summarizeSampleData(
-        state,
-        facets?.sampleItemCount,
-      );
-      if (sampleSummary.total > 0) return;
+      const facets = await readLibraryCoreFacetSummary();
+      const sampleTotal =
+        facets.sampleAccountCount +
+        facets.sampleFeedCount +
+        facets.sampleItemCount +
+        facets.samplePersonCount;
+      if (sampleTotal > 0) return;
 
       await refreshSampleLibraryData({
         ...useAppStore.getState(),
@@ -1401,14 +1479,7 @@ function App() {
         return saveUrlInDesktop(url, options);
       },
       importMarkdown: importMarkdownFiles,
-      exportMarkdown: async () => {
-        const items: Parameters<typeof exportLibrary>[0] = [];
-        await scanLibraryCoreItemsForDesktop((page) => {
-          items.push(...page);
-          return "continue";
-        });
-        return exportLibrary(items);
-      },
+      exportMarkdown: () => exportLibrary(scanLibraryCoreItemsForDesktop),
       retryCloudProvider,
       reconnectCloudProvider,
       forgetRssFeedHealth,
@@ -1495,12 +1566,6 @@ function App() {
       getLocalContent: async (globalId) => {
         const cached = await contentCache.get(globalId);
         if (cached) return cached;
-        const item = await readLibraryCoreItemDetail(globalId);
-        const sqliteHtml = item?.preservedContent?.html;
-        if (sqliteHtml) {
-          await contentCache.set(globalId, sqliteHtml).catch(() => {});
-          return sqliteHtml;
-        }
         return null;
       },
       getLocalPreservedText: async (globalId) => {
@@ -1549,13 +1614,13 @@ function App() {
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? searchLibraryCoreItemsForDesktop
           : undefined,
+      executeLibraryScopeAction:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? executeDesktopLibraryScopeAction
+          : undefined,
       readFeedSignalCounts:
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? readDesktopFeedSignalCounts
-          : undefined,
-      acquireLegacyLibraryItems:
-        tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()
-          ? acquireLegacyRendererItems
           : undefined,
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized
@@ -1573,6 +1638,58 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsGraph
           : undefined,
+      readLibraryPersonDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCorePersonDetail
+          : undefined,
+      readLibraryFriendDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendDetail
+          : undefined,
+      replaceLibraryFriend:
+        tauriRuntimeAvailable && isInitialized
+          ? replaceSqliteLibraryFriend
+          : undefined,
+      upsertLibraryPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? upsertSqliteLibraryPerson
+          : undefined,
+      removeLibraryPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? removeSqliteLibraryPerson
+          : undefined,
+      assignLibraryAccountToPerson:
+        tauriRuntimeAvailable && isInitialized
+          ? assignSqliteLibraryAccountToPerson
+          : undefined,
+      appendLibraryPersonReachOut:
+        tauriRuntimeAvailable && isInitialized
+          ? appendSqliteLibraryPersonReachOut
+          : undefined,
+      upsertLibraryAccount:
+        tauriRuntimeAvailable && isInitialized
+          ? upsertSqliteLibraryAccount
+          : undefined,
+      readLibraryAccountDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreAccountDetail
+          : undefined,
+      queryLibraryCore:
+        tauriRuntimeAvailable && isInitialized
+          ? queryNormalizedLibrary
+          : undefined,
+      mutateDeviceGraphLayout:
+        tauriRuntimeAvailable && isInitialized
+          ? mutateNormalizedDeviceGraphLayout
+          : undefined,
+      mutateDeviceContacts:
+        tauriRuntimeAvailable && isInitialized
+          ? mutateNormalizedDeviceContacts
+          : undefined,
+      queryDeviceContacts:
+        tauriRuntimeAvailable && isInitialized
+          ? queryNormalizedDeviceContacts
+          : undefined,
       readLibraryPersonTimeline:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCorePersonTimeline
@@ -1581,9 +1698,13 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsLocationItem
           : undefined,
-      readLibrarySurfaceItems:
+      readLibraryStoryWallCandidates:
         tauriRuntimeAvailable && isInitialized
-          ? readLibraryCoreSurfaceItems
+          ? readLibraryCoreStoryWallCandidates
+          : undefined,
+      readLibraryMapCandidates:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreMapCandidates
           : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable

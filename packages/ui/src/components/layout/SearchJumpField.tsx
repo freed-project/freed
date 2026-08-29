@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -10,12 +11,15 @@ import {
   type ReactNode,
 } from "react";
 import {
+  buildConnectionPersonDraftFromAccounts,
   type FilterOptions,
   type Platform,
 } from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
+import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
+import { useLibrarySocialChannelPage } from "../../hooks/useLibrarySocialChannelPage.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
@@ -323,6 +327,10 @@ export function SearchJumpField({
     googleContacts,
     secureStorage,
     localAIModels,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+    replaceLibraryFriend,
+    upsertLibraryPerson,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -331,11 +339,6 @@ export function SearchJumpField({
   const openSettingsTo = useSettingsStore((s) => s.openTo);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
-  const items = useAppStore((s) => s.items);
-  const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -344,8 +347,6 @@ export function SearchJumpField({
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
-  const updatePerson = useAppStore((s) => s.updatePerson);
-  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
@@ -383,17 +384,14 @@ export function SearchJumpField({
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface =
     showFloatingField || showInlineSurface || !!confirmAction;
+  const deferredIdentityQuery = useDeferredValue(inputValue);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
   const { filteredItems: commandScopeItems } = useSearchResults(
-    items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
   const {
@@ -410,60 +408,46 @@ export function SearchJumpField({
     activeView,
     commandScopeItems,
     enabled: showCommandSurface,
-    fallbackItems: items,
     identityMode: deviceDisplay.friendsMode,
     inputValue,
     searchQuery,
     selectedItemId,
     sourceVersion: libraryItemVersion,
   });
-  const enabledFeeds = useMemo(
-    () =>
-      Object.values(feeds)
-        .filter(
-          (feed) =>
-            feed.enabled && typeof feed.url === "string" && feed.url.trim(),
-        )
-        .sort((left, right) => {
-          const leftTitle = sortLabel(left.title, left.url);
-          const rightTitle = sortLabel(right.title, right.url);
-          return leftTitle.localeCompare(rightTitle);
-        }),
-    [feeds],
-  );
+  const identityQueryEnabled =
+    showCommandSurface && deferredIdentityQuery.trim().length > 0;
+  const feedPage = useLibraryRssFeedPage({
+    enabled: identityQueryEnabled,
+    enabledOnly: true,
+    pageSize: 25,
+    search: deferredIdentityQuery,
+    sourceVersion: searchCorpusVersion,
+  });
   const commandFeeds = useMemo(
     () =>
-      enabledFeeds.map((feed) => {
-        const title = sortLabel(feed.title, feed.url);
-        return {
-          url: feed.url,
-          title,
-          searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
-        };
-      }),
-    [enabledFeeds],
+      feedPage.feeds
+        .map((feed) => {
+          const title = sortLabel(feed.title, feed.url);
+          return {
+            url: feed.url,
+            title,
+            searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
+          };
+        })
+        .sort((left, right) => left.title.localeCompare(right.title)),
+    [feedPage.feeds],
   );
+  const socialChannelPage = useLibrarySocialChannelPage({
+    enabled: identityQueryEnabled,
+    query: deferredIdentityQuery,
+    sourceVersion: searchCorpusVersion,
+  });
   const socialChannels = useMemo(
-    () =>
-      Object.values(accounts)
-        .filter((account) =>
-          account.kind === "social" &&
-          account.provider !== "rss" &&
-          account.provider !== "saved" &&
-          typeof account.externalId === "string" &&
-          account.externalId.trim()
-        )
-        .map((account) => ({
-          account,
-          person: account.personId ? persons[account.personId] : undefined,
-          personName: account.personId ? persons[account.personId]?.name : undefined,
-        }))
-        .sort((left, right) => {
-          const leftTitle = accountSortLabel(left.account);
-          const rightTitle = accountSortLabel(right.account);
-          return leftTitle.localeCompare(rightTitle);
-        }),
-    [accounts, persons],
+    () => [...socialChannelPage.channels].sort((left, right) =>
+      accountSortLabel(left.account).localeCompare(
+        accountSortLabel(right.account),
+      )),
+    [socialChannelPage.channels],
   );
   const tagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
   const settingsSections = useMemo(
@@ -519,10 +503,30 @@ export function SearchJumpField({
     setSearchQuery("");
     setInputValue("");
   }, [setSearchQuery]);
-  const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
-    if (personId && persons[personId]) return personId;
-    return await createConnectionPersonFromAccounts([accountId]);
-  }, [createConnectionPersonFromAccounts, persons]);
+  const ensurePersonForAccount = useCallback(
+    async (accountId: string, personId: string | null) => {
+      if (personId) return personId;
+      if (!readLibraryAccountDetail || !replaceLibraryFriend) {
+        throw new Error("The Friend SQLite mutation is unavailable.");
+      }
+      const account = await readLibraryAccountDetail(accountId);
+      if (!account) throw new Error("The selected Account is unavailable.");
+      const now = Date.now();
+      const person = buildConnectionPersonDraftFromAccounts(
+        { [account.id]: account },
+        [account.id],
+        now,
+      );
+      if (!person) {
+        throw new Error("The selected Account has no usable Person identity.");
+      }
+      await replaceLibraryFriend(person, [
+        { ...account, personId: person.id, updatedAt: now },
+      ]);
+      return person.id;
+    },
+    [readLibraryAccountDetail, replaceLibraryFriend],
+  );
 
   const actions = useMemo(
     () =>
@@ -571,7 +575,7 @@ export function SearchJumpField({
         navigateToSocialProfileFriends: (account, personId) => {
           clearQueryForNavigation();
           setSelectedItem(null);
-          if (personId && persons[personId]) {
+          if (personId) {
             setSelectedPerson(personId);
           } else {
             setSelectedAccount(account.id);
@@ -587,7 +591,13 @@ export function SearchJumpField({
         },
         promoteSocialProfile: async (account, level) => {
           const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
-          await updatePerson(resolvedPersonId, {
+          if (!readLibraryPersonDetail || !upsertLibraryPerson) {
+            throw new Error("The Person SQLite mutation is unavailable.");
+          }
+          const person = await readLibraryPersonDetail(resolvedPersonId);
+          if (!person) throw new Error("The selected Person is unavailable.");
+          await upsertLibraryPerson({
+            ...person,
             relationshipStatus: "friend",
             careLevel: level,
             updatedAt: Date.now(),
@@ -670,7 +680,6 @@ export function SearchJumpField({
       factoryReset,
       archiveScopeRead,
       clearQueryForNavigation,
-      createConnectionPersonFromAccounts,
       inputValue,
       ensurePersonForAccount,
       markScopeRead,
@@ -699,7 +708,8 @@ export function SearchJumpField({
       toggleSaved,
       unreadScopeCount,
       unarchiveSavedItems,
-      updatePerson,
+      readLibraryPersonDetail,
+      upsertLibraryPerson,
       openLibraryDialog,
     ],
   );

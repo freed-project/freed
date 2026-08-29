@@ -1,5 +1,5 @@
 import type { FilterOptions } from "./store-types.js";
-import type { ContentSignal, DisplayPreferences, FeedSignalMode } from "./types.js";
+import type { ContentSignal, FeedSignalMode } from "./types.js";
 
 export interface FeedSignalFilterPreset {
   mode: FeedSignalMode;
@@ -94,15 +94,6 @@ export function getFeedSignalModeForFilter(filter: FilterOptions): FeedSignalMod
     (candidate) => signalKey(candidate.signals) === activeKey,
   );
   return preset?.mode ?? "custom";
-}
-
-export function resolveFeedSignalModesFromDisplay(
-  display: Pick<DisplayPreferences, "feedSignalMode" | "feedSignalModes">,
-): FeedSignalMode[] {
-  const modes = normalizeFeedSignalModes(display.feedSignalModes);
-  if (modes.length > 0) return modes;
-  const legacyMode = normalizeFeedSignalMode(display.feedSignalMode);
-  return legacyMode === "all" ? [] : [legacyMode];
 }
 
 export function getSignalsForFeedSignalModes(

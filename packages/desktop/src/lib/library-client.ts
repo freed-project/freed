@@ -9,153 +9,313 @@ import { hashSavedUrl } from "@freed/capture-save/normalize";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
+  calculatePriority,
   collectSavedYouTubeVideoUrls,
-  createDefaultPreferences,
+  inferContentSignals,
+  inferEventCandidate,
   type Account,
   type ContentSignal,
   type ContentSignalBackfillSummary,
   type DesktopClientRegistration,
   type FeedItem,
   type Person,
-  type ReachOutLog,
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
+  type WeightPreferences,
 } from "@freed/shared";
 import type {
-  DocChangeEvent,
-  DocState,
+  LibraryMutationEvent,
   RssFeedRefreshUpdate,
-  WorkerRequest,
+  LibraryMutationRequest,
 } from "./library-types";
-import { registerDocAccessors, setDocSnapshot } from "@freed/ui/lib/debug-store";
 import {
-  appendPortableSqliteLibraryItems,
-  beginPortableSqliteLibraryImport,
-  bootstrapSqliteLibraryAuthority,
-  clearSqliteLibrary,
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+  LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  type LibraryCoreChangeFeedResponseV1,
+  type LibraryCoreLocalChangeFeedResponseV1,
+  type LibraryCoreOptimisticFieldsResponseV1,
+  type LibraryCoreRuntimeStateV1,
+} from "@freed/shared/library-core";
+import {
+  registerLibraryAccessors,
+  setLibrarySnapshot,
+} from "@freed/ui/lib/debug-store";
+import {
   dispatchSqliteMutation,
-  finalizePortableSqliteLibraryImport,
+  commitDesktopLibraryFeedItemAnalysisSets,
+  commitDesktopLibraryFeedItemPriorities,
+  ensureFreshNormalizedDesktopLibrary,
   loadSqliteLibraryState,
-  querySqliteItems,
-  readSqliteLibrarySyncDescriptor,
   readSqliteItems,
-  recoverSqliteLibraryFollowerOverlay,
-  sqliteLibraryStatus,
+  resetNormalizedLibrary,
 } from "./sqlite-library";
-import { readPersistedSqliteLibraryCloudIdentity } from "./library-core-cloud-sync";
 import {
-  hasLegacyLibraryData,
-  shouldBlockForLegacyLibrary,
-} from "./legacy-library-presence";
-import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
+  readLibraryCoreAnalysisCandidateBatch,
+  readLibraryCorePriorityCandidateBatch,
+  scanLibraryCoreBackgroundItems,
+} from "./library-core-item-detail-runtime";
+import { hasLegacyLibraryData } from "./legacy-library-presence";
+import {
+  createDesktopLibraryCoreOperationId,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
+import { libraryMutationEventsFromChangeFeed } from "./library-core-change-feed-runtime";
 
-export type { DocChangeEvent, DocState } from "./library-types";
+export type { LibraryMutationEvent } from "./library-types";
 
-export class StaleDocumentRevisionError extends Error {}
-
-export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
-  "freed.libraryCore.rendererItemEvictionV1.disabled";
-
-type Subscriber = (state: DocState, event: DocChangeEvent) => void;
+type Subscriber = (
+  state: LibraryCoreRuntimeStateV1,
+  event: LibraryMutationEvent,
+) => void;
 
 const subscribers = new Set<Subscriber>();
-let lastState: DocState | null = null;
+let lastState: LibraryCoreRuntimeStateV1 | null = null;
 let nextRequestId = 1;
 let mutationQueue: Promise<void> = Promise.resolve();
+let lastLocalChangeSequence = 0;
 
 function registerSqliteDebugAccessors(): void {
-  registerDocAccessors(
+  registerLibraryAccessors(
     () => lastState,
     () => JSON.stringify(lastState),
   );
 }
 
-function updateSqliteDebugSnapshot(state: DocState): void {
-  setDocSnapshot({
-    documentId: "sqlite-library",
+function updateSqliteDebugSnapshot(state: LibraryCoreRuntimeStateV1): void {
+  setLibrarySnapshot({
+    libraryId: "sqlite-library",
     itemCount: state.totalItemCount,
-    feedCount: Object.keys(state.feeds).length,
-    binarySize: 0,
+    feedCount: state.rssFeedCount,
     savedAt: Date.now(),
   });
 }
 
-function emptyShell(): Omit<DocState, "items"> {
-  return {
-    searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-    docItemCount: 0,
-  };
-}
-
-function publish(state: DocState, event: DocChangeEvent): void {
+function publish(
+  state: LibraryCoreRuntimeStateV1,
+  event: LibraryMutationEvent,
+): void {
   lastState = state;
   updateSqliteDebugSnapshot(state);
   for (const subscriber of subscribers) subscriber(state, event);
 }
 
-async function initializeEmptySqliteLibrary(): Promise<void> {
-  await beginPortableSqliteLibraryImport({
-    expectedItemCount: 0,
-    shell: emptyShell(),
-    sourceDigest: "0".repeat(64),
-    sourceGeneration: 0,
-    sourceRevision: 0,
-  });
-  await appendPortableSqliteLibraryItems([]);
-  await finalizePortableSqliteLibraryImport();
+async function publishCanonicalChangeFeed(
+  state: LibraryCoreRuntimeStateV1,
+  afterRevision: number,
+  mutation?: LibraryMutationRequest["type"],
+): Promise<boolean> {
+  if (state.searchCorpusVersion <= afterRevision) return false;
+  const readerSessionId = createDesktopLibraryCoreOperationId(
+    "desktop-change-feed-reader",
+  );
+  const cancellationId = createDesktopLibraryCoreOperationId(
+    "desktop-change-feed-cancel",
+  );
+  let cursor: string | null = null;
+  let published = false;
+  do {
+    const response: LibraryCoreChangeFeedResponseV1 =
+      await queryNormalizedLibrary({
+        afterRevision,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    if (response.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while invalidations were loading",
+      );
+    }
+    const changedItemIds = [
+      ...new Set(
+        response.rows.flatMap((row) =>
+          row.topic === "feed_item" && row.entityId !== null
+            ? [row.entityId]
+            : [],
+        ),
+      ),
+    ];
+    const changedItems = await readSqliteItems(changedItemIds);
+    const sourceCheck = await queryNormalizedLibrary({
+      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    });
+    if (sourceCheck.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while invalidation identities were resolving",
+      );
+    }
+    for (const event of libraryMutationEventsFromChangeFeed(
+      response.rows,
+      changedItems,
+      mutation,
+    )) {
+      publish(state, event);
+      published = true;
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
+  return published;
 }
 
-async function ensureInitialized(): Promise<DocState> {
-  if (lastState) return lastState;
-  const status = await sqliteLibraryStatus();
-  if (
-    shouldBlockForLegacyLibrary(status, true) &&
-    (await hasLegacyLibraryData())
-  ) {
+async function readLocalChangeSequence(
+  expectedCanonicalRevision: number,
+): Promise<number> {
+  const response: LibraryCoreOptimisticFieldsResponseV1 =
+    await queryNormalizedLibrary({
+      entityIds: [],
+      queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+    });
+  if (response.source.projectionRevision !== expectedCanonicalRevision) {
+    throw new Error("SQLite Library changed while local sequence was loading");
+  }
+  return response.source.transitionSequence;
+}
+
+async function publishLocalChangeFeed(
+  state: LibraryCoreRuntimeStateV1,
+  afterSequence: number,
+  mutation?: LibraryMutationRequest["type"],
+): Promise<{ readonly published: boolean; readonly sequence: number }> {
+  const readerSessionId = createDesktopLibraryCoreOperationId(
+    "desktop-local-change-reader",
+  );
+  const cancellationId = createDesktopLibraryCoreOperationId(
+    "desktop-local-change-cancel",
+  );
+  let cursor: string | null = null;
+  let published = false;
+  let upperSequence = afterSequence;
+  do {
+    const response: LibraryCoreLocalChangeFeedResponseV1 =
+      await queryNormalizedLibrary({
+        afterRevision: afterSequence,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    if (response.source.projectionRevision !== state.searchCorpusVersion) {
+      throw new Error(
+        "SQLite Library changed while local invalidations were loading",
+      );
+    }
+    upperSequence = response.source.transitionSequence;
+    const changedItemIds = [
+      ...new Set(
+        response.rows.flatMap((row) =>
+          row.topic === "feed_item" && row.entityId !== null
+            ? [row.entityId]
+            : [],
+        ),
+      ),
+    ];
+    const changedItems = await readSqliteItems(changedItemIds);
+    for (const event of libraryMutationEventsFromChangeFeed(
+      response.rows,
+      changedItems,
+      mutation,
+    )) {
+      publish(state, event);
+      published = true;
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
+  const currentSequence = await readLocalChangeSequence(
+    state.searchCorpusVersion,
+  );
+  if (currentSequence !== upperSequence) {
     throw new Error(
-      "Freed Desktop found legacy Library data and refused to replace it with an empty SQLite Library. Recover the existing Library before continuing.",
+      "SQLite Library changed while local invalidation identities were resolving",
     );
   }
-  if (!status?.active) await initializeEmptySqliteLibrary();
-  if (readLibraryCoreDesktopRole() === "follower") {
-    await recoverSqliteLibraryFollowerOverlay();
-  } else {
-    await bootstrapSqliteLibraryAuthority({
-      descriptor: await readSqliteLibrarySyncDescriptor(),
-      persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),
-    });
+  return Object.freeze({ published, sequence: currentSequence });
+}
+
+async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
+  if (lastState) return lastState;
+  let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
+  let legacyDataPresent = false;
+  if (!normalizedSelected) {
+    legacyDataPresent = await hasLegacyLibraryData();
+    normalizedSelected =
+      await ensureFreshNormalizedDesktopLibrary(!legacyDataPresent);
+  }
+  if (!normalizedSelected) {
+    throw new Error(
+      legacyDataPresent
+        ? "Freed Desktop could not complete the one-time SQLite Library transition. The historical source remains untouched."
+        : "Freed Desktop could not establish SQLite Library authority.",
+    );
   }
   const state = await loadSqliteLibraryState();
+  lastLocalChangeSequence = await readLocalChangeSequence(
+    state.searchCorpusVersion,
+  );
   lastState = state;
   registerSqliteDebugAccessors();
   updateSqliteDebugSnapshot(state);
   return state;
 }
 
-async function dispatch(message: WorkerRequest): Promise<unknown> {
+async function dispatch(message: LibraryMutationRequest): Promise<unknown> {
   let result: unknown;
   const operation = mutationQueue.then(async () => {
-    const current = await ensureInitialized();
-    const dispatched = await dispatchSqliteMutation(message, current);
+    await ensureInitialized();
+    const previousRevision = lastState?.searchCorpusVersion ?? 0;
+    const previousLocalSequence = lastLocalChangeSequence;
+    const dispatched = await dispatchSqliteMutation(message);
     result = dispatched.result;
+    let published = false;
+    if (dispatched.state.searchCorpusVersion > previousRevision) {
+      try {
+        published = await publishCanonicalChangeFeed(
+          dispatched.state,
+          previousRevision,
+          message.type,
+        );
+      } catch {
+        // The mutation is already durable. Publish one bounded reset instead
+        // of reporting a false mutation failure after an invalidation race.
+      }
+    }
+    try {
+      const local = await publishLocalChangeFeed(
+        dispatched.state,
+        previousLocalSequence,
+        message.type,
+      );
+      lastLocalChangeSequence = local.sequence;
+      published = local.published || published;
+    } catch {
+      lastLocalChangeSequence = await readLocalChangeSequence(
+        dispatched.state.searchCorpusVersion,
+      );
+      publish(dispatched.state, {
+        source: "state_update",
+        mutation: message.type,
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
+      return;
+    }
+    if (published) return;
+    // A pending follower intent does not advance canonical authority. Its
+    // local optimistic hint remains device-local until an accepted result
+    // enters the canonical change feed.
     publish(dispatched.state, dispatched.event);
   });
   mutationQueue = operation.catch(() => undefined);
@@ -163,29 +323,58 @@ async function dispatch(message: WorkerRequest): Promise<unknown> {
   return result;
 }
 
-function request<T extends { readonly type: WorkerRequest["type"] }>(message: T): Promise<unknown> {
-  return dispatch({ ...message, reqId: nextRequestId++ } as unknown as WorkerRequest);
+function request<T extends { readonly type: LibraryMutationRequest["type"] }>(
+  message: T,
+): Promise<unknown> {
+  return dispatch({
+    ...message,
+    reqId: nextRequestId++,
+  } as unknown as LibraryMutationRequest);
 }
 
-export function subscribe(callback: Subscriber): () => void {
+export function subscribeDesktopLibraryRuntime(
+  callback: Subscriber,
+): () => void {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
 }
 
-export function setRelayClientCount(_count: number): void {}
-
-export async function initDoc(
+export async function initializeDesktopLibraryRuntime(
   _registration?: DesktopClientRegistration,
-): Promise<DocState> {
+): Promise<LibraryCoreRuntimeStateV1> {
   return ensureInitialized();
 }
 
-export function getDocState(): DocState | null {
+export function getDesktopLibraryRuntimeState(): LibraryCoreRuntimeStateV1 | null {
   return lastState;
 }
 
-export async function reloadSqliteLibraryState(): Promise<DocState> {
+export async function reloadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
+  const previousRevision = lastState?.searchCorpusVersion ?? null;
+  const previousLocalSequence = lastLocalChangeSequence;
   const state = await loadSqliteLibraryState();
+  let published = false;
+  if (
+    previousRevision !== null &&
+    state.searchCorpusVersion > previousRevision
+  ) {
+    try {
+      published = await publishCanonicalChangeFeed(state, previousRevision);
+    } catch {
+      // This call still publishes a row-free reset from the authoritative
+      // state, so every bounded reader reopens without a false sync failure.
+    }
+  }
+  try {
+    const local = await publishLocalChangeFeed(state, previousLocalSequence);
+    lastLocalChangeSequence = local.sequence;
+    published = local.published || published;
+  } catch {
+    lastLocalChangeSequence = await readLocalChangeSequence(
+      state.searchCorpusVersion,
+    );
+  }
+  if (published) return state;
   publish(state, {
     source: "state_update",
     mutation: undefined,
@@ -195,154 +384,277 @@ export async function reloadSqliteLibraryState(): Promise<DocState> {
   return state;
 }
 
-export async function acquireLegacyRendererItems(): Promise<() => void> {
-  return () => {};
-}
-
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
-  const items: FeedItem[] = [];
-  await scanAllItems((page) => items.push(...page));
-  return collectSavedYouTubeVideoUrls(items);
+  const urls: string[] = [];
+  await scanLibraryCoreBackgroundItems((page) => {
+    urls.push(...collectSavedYouTubeVideoUrls(page));
+    return "continue";
+  });
+  return urls;
 }
 
-async function scanAllItems(visit: (page: FeedItem[]) => void): Promise<void> {
-  let offset: number | null = 0;
-  while (offset !== null) {
-    const page = await querySqliteItems({
-      offset,
-      limit: 256,
-      showHidden: true,
-      includeTotalCount: false,
-    });
-    visit(page.items);
-    offset = page.nextOffset;
-  }
-}
-
-export async function getAllItemIds(): Promise<string[]> {
-  const ids: string[] = [];
-  await scanAllItems((page) => ids.push(...page.map((item) => item.globalId)));
-  return ids;
-}
-
-export async function getItemPreservedText(globalId: string): Promise<string | null> {
-  const [item] = await readSqliteItems([globalId]);
-  return item?.preservedContent?.text ?? null;
-}
-
-export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
-  const [item] = await readSqliteItems([globalId]);
-  return item?.preservedContent?.html ?? null;
-}
-
-export async function clearLocalDoc(): Promise<void> {
-  await clearSqliteLibrary();
+export async function resetLocalLibrary(): Promise<void> {
+  await resetNormalizedLibrary();
   lastState = null;
+  lastLocalChangeSequence = 0;
 }
 
 export function quiesceDesktopLibraryForFactoryReset(): Promise<void> {
   return mutationQueue;
 }
 
-export const docAddFeedItem = (item: FeedItem) => request({ type: "ADD_FEED_ITEM", item }).then(() => {});
-export const docAddFeedItems = (items: FeedItem[]) => request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
-export const docRemoveFeedItem = (globalId: string) => request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
-export const docUpdateFeedItem = (globalId: string, updates: Partial<FeedItem>) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
-export const docMarkAsRead = (globalId: string) => request({ type: "MARK_AS_READ", globalId }).then(() => {});
-export const docMarkItemsAsRead = (globalIds: string[]) => globalIds.length === 0 ? Promise.resolve() : request({ type: "MARK_ITEMS_AS_READ", globalIds }).then(() => {});
-export const docMarkAllAsRead = (platform?: string) => request({ type: "MARK_ALL_AS_READ", platform }).then(() => {});
-export const docToggleSaved = (globalId: string) => request({ type: "TOGGLE_SAVED", globalId }).then(() => {});
-export const docToggleArchived = (globalId: string) => request({ type: "TOGGLE_ARCHIVED", globalId }).then(() => {});
-export const docArchiveItems = (globalIds: string[]) => globalIds.length === 0 ? Promise.resolve() : request({ type: "ARCHIVE_ITEMS", globalIds }).then(() => {});
-export const docToggleLiked = (globalId: string) => request({ type: "TOGGLE_LIKED", globalId }).then(() => {});
-export const docConfirmLikedSynced = (globalId: string, syncedAt?: number) => request({ type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt }).then(() => {});
-export const docConfirmSeenSynced = (globalId: string, syncedAt?: number) => request({ type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt }).then(() => {});
-export const docArchiveAllReadUnsaved = (platform?: string, feedUrl?: string) => request({ type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl }).then(() => {});
-export const docUnarchiveSavedItems = () => request({ type: "UNARCHIVE_SAVED_ITEMS" }).then(() => {});
-export const docPruneArchivedItems = (maxAgeMs?: number) => request({ type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs }).then(() => {});
-export const docDeleteAllArchived = () => request({ type: "DELETE_ALL_ARCHIVED" }).then(() => {});
-export const docAddRssFeed = (feed: RssFeed) => request({ type: "ADD_RSS_FEED", feed }).then(() => {});
-export const docRemoveRssFeed = (url: string, includeItems = false) => request({ type: "REMOVE_RSS_FEED", url, includeItems }).then(() => {});
-export const docUpdateRssFeed = (url: string, updates: Partial<RssFeed>) => request({ type: "UPDATE_RSS_FEED", url, updates }).then(() => {});
-export const docRemoveAllFeeds = (includeItems: boolean) => request({ type: "REMOVE_ALL_FEEDS", includeItems }).then(() => {});
-export const docUpdatePreferences = (updates: Partial<UserPreferences>) => request({ type: "UPDATE_PREFERENCES", updates }).then(() => {});
-export const docAddPerson = (person: Person) => request({ type: "ADD_PERSON", person }).then(() => {});
-export const docAddPersons = (persons: Person[]) => request({ type: "ADD_PERSONS", persons }).then(() => {});
-export const docUpdatePerson = (personId: string, updates: Partial<Person>) => request({ type: "UPDATE_PERSON", personId, updates }).then(() => {});
-export const docUpsertConnectionPersons = (candidates: Array<{ person: Person; accountIds: string[] }>) => candidates.length === 0 ? Promise.resolve() : request({ type: "UPSERT_CONNECTION_PERSONS", candidates }).then(() => {});
-export const docRemovePerson = (personId: string) => request({ type: "REMOVE_PERSON", personId }).then(() => {});
-export const docLogReachOut = (personId: string, entry: ReachOutLog) => request({ type: "LOG_REACH_OUT", personId, entry }).then(() => {});
-export const docAddAccount = (account: Account) => request({ type: "ADD_ACCOUNT", account }).then(() => {});
-export const docAddAccounts = (accounts: Account[]) => request({ type: "ADD_ACCOUNTS", accounts }).then(() => {});
-export const docUpdateAccount = (accountId: string, updates: Partial<Account>) => request({ type: "UPDATE_ACCOUNT", accountId, updates }).then(() => {});
-export const docRemoveAccount = (accountId: string) => request({ type: "REMOVE_ACCOUNT", accountId }).then(() => {});
-export const docAddFriend = docAddPerson;
-export const docAddFriends = docAddPersons;
-export const docUpdateFriend = docUpdatePerson;
-export const docRemoveFriend = docRemovePerson;
-
-export const docReconcileYouTubeCapture = (
+export const addLibraryFeedItem = (item: FeedItem) =>
+  request({ type: "ADD_FEED_ITEM", item }).then(() => {});
+export const addLibraryFeedItems = (items: FeedItem[]) =>
+  request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
+export const removeLibraryFeedItem = (globalId: string) =>
+  request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
+export const updateLibraryFeedItem = (
+  globalId: string,
+  updates: Partial<FeedItem>,
+) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
+export const markLibraryItemAsRead = (globalId: string) =>
+  request({ type: "MARK_AS_READ", globalId }).then(() => {});
+export const markLibraryItemsAsRead = (globalIds: string[]) =>
+  globalIds.length === 0
+    ? Promise.resolve()
+    : request({ type: "MARK_ITEMS_AS_READ", globalIds }).then(() => {});
+export const markAllLibraryItemsAsRead = (platform?: string) =>
+  request({ type: "MARK_ALL_AS_READ", platform }).then(() => {});
+export const toggleLibraryItemSaved = (globalId: string) =>
+  request({ type: "TOGGLE_SAVED", globalId }).then(() => {});
+export const toggleLibraryItemArchived = (globalId: string) =>
+  request({ type: "TOGGLE_ARCHIVED", globalId }).then(() => {});
+export const archiveLibraryItems = (globalIds: string[]) =>
+  globalIds.length === 0
+    ? Promise.resolve()
+    : request({ type: "ARCHIVE_ITEMS", globalIds }).then(() => {});
+export const toggleLibraryItemLiked = (globalId: string) =>
+  request({ type: "TOGGLE_LIKED", globalId }).then(() => {});
+export const confirmLibraryItemLikedSynced = (
+  globalId: string,
+  syncedAt?: number,
+) =>
+  request({ type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt }).then(() => {});
+export const confirmLibraryItemSeenSynced = (
+  globalId: string,
+  syncedAt?: number,
+) =>
+  request({ type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt }).then(() => {});
+export const archiveAllReadUnsavedLibraryItems = (
+  platform?: string,
+  feedUrl?: string,
+) =>
+  request({ type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl }).then(
+    () => {},
+  );
+export const unarchiveSavedLibraryItems = () =>
+  request({ type: "UNARCHIVE_SAVED_ITEMS" }).then(() => {});
+export const pruneArchivedLibraryItems = (maxAgeMs?: number) =>
+  request({ type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs }).then(() => {});
+export const deleteAllArchivedLibraryItems = () =>
+  request({ type: "DELETE_ALL_ARCHIVED" }).then(() => {});
+export const addLibraryRssFeed = (feed: RssFeed) =>
+  request({ type: "ADD_RSS_FEED", feed }).then(() => {});
+export const removeLibraryRssFeed = (url: string, includeItems = false) =>
+  request({ type: "REMOVE_RSS_FEED", url, includeItems }).then(() => {});
+export const updateLibraryRssFeed = (url: string, updates: Partial<RssFeed>) =>
+  request({ type: "UPDATE_RSS_FEED", url, updates }).then(() => {});
+export const removeAllLibraryFeeds = (includeItems: boolean) =>
+  request({ type: "REMOVE_ALL_FEEDS", includeItems }).then(() => {});
+export const updateLibraryPreferences = (updates: Partial<UserPreferences>) =>
+  request({ type: "UPDATE_PREFERENCES", updates }).then(() => {});
+export const reconcileYouTubeLibraryCapture = (
   accounts: Account[],
   items: FeedItem[],
   options: { rosterComplete: boolean; capturedAt: number },
-) => request({ type: "RECONCILE_YOUTUBE_CAPTURE", accounts, items, options }).then(() => {});
+) =>
+  request({ type: "RECONCILE_YOUTUBE_CAPTURE", accounts, items, options }).then(
+    () => {},
+  );
 
-export const docReconcileFollowRosterCapture = (
+export const reconcileFollowRosterLibraryCapture = (
   accounts: Account[],
   items: FeedItem[],
   options: { provider: "substack" | "medium"; capturedAt: number },
-) => request({ type: "RECONCILE_FOLLOW_ROSTER_CAPTURE", accounts, items, options }).then(() => {});
+) =>
+  request({
+    type: "RECONCILE_FOLLOW_ROSTER_CAPTURE",
+    accounts,
+    items,
+    options,
+  }).then(() => {});
 
-export const docAddSampleLibraryData = (data: {
+export const addSampleLibraryData = (data: {
   feeds: RssFeed[];
   items: FeedItem[];
   persons: Person[];
   accounts: Account[];
 }) => request({ type: "ADD_SAMPLE_LIBRARY_DATA", ...data }).then(() => {});
 
-export async function docClearSampleData(): Promise<SampleDataClearSummary> {
-  return await request({ type: "CLEAR_SAMPLE_DATA" }) as SampleDataClearSummary;
+export async function clearSampleLibraryData(): Promise<SampleDataClearSummary> {
+  return (await request({
+    type: "CLEAR_SAMPLE_DATA",
+  })) as SampleDataClearSummary;
 }
 
-export async function docBatchRefreshFeeds(
+export async function refreshLibraryFeeds(
   feeds: RssFeedRefreshUpdate[],
   items: FeedItem[],
 ): Promise<void> {
   await request({ type: "BATCH_REFRESH_FEEDS", feeds, items });
 }
 
-export async function docBatchImportItems(
+export async function importLibraryItems(
   items: FeedItem[],
-  onChunk?: (chunkIndex: number, totalChunks: number) => void,
-): Promise<void> {
-  await request({ type: "BATCH_IMPORT_ITEMS", items });
-  onChunk?.(1, 1);
+): Promise<readonly string[]> {
+  const result = await request({ type: "BATCH_IMPORT_ITEMS", items });
+  if (
+    !Array.isArray(result) ||
+    result.some((globalId) => typeof globalId !== "string")
+  ) {
+    throw new TypeError("SQLite import returned invalid inserted identities");
+  }
+  return Object.freeze([...result] as string[]);
 }
 
-export const docHealUntitledFeedTitles = () => request({ type: "HEAL_UNTITLED_FEEDS" }).then(() => {});
-export const docDeduplicateFeedItems = () => request({ type: "DEDUPLICATE_ITEMS" }).then(() => {});
+export const healUntitledLibraryFeedTitles = () =>
+  request({ type: "HEAL_UNTITLED_FEEDS" }).then(() => {});
 
-export async function docBackfillContentSignals(
-  _batchSize = 200,
+export async function backfillLibraryContentSignals(
+  batchSize = 200,
 ): Promise<ContentSignalBackfillSummary> {
-  return {
-    version: CONTENT_SIGNAL_VERSION,
-    total: lastState?.totalItemCount ?? 0,
-    scanned: 0,
-    updated: 0,
-    remaining: 0,
-    counts: Object.fromEntries(CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0])) as Record<ContentSignal, number>,
-    multiSignalCount: 0,
-    untaggedCount: 0,
-    samples: {},
-  };
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1_000) {
+    throw new TypeError("content signal batch size is invalid");
+  }
+  let summary!: ContentSignalBackfillSummary;
+  const operation = mutationQueue.then(async () => {
+    await ensureInitialized();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let batch: Awaited<
+        ReturnType<typeof readLibraryCoreAnalysisCandidateBatch>
+      >;
+      try {
+        batch = await readLibraryCoreAnalysisCandidateBatch(
+          CONTENT_SIGNAL_VERSION,
+          batchSize,
+        );
+      } catch (error) {
+        if (attempt === 0) continue;
+        throw error;
+      }
+      const beforeCommit = await loadSqliteLibraryState();
+      if (beforeCommit.searchCorpusVersion !== batch.sourceRevision) {
+        if (attempt === 0) continue;
+        throw new Error(
+          "Library source changed while selecting semantic analysis candidates",
+        );
+      }
+      const inferredAt = Date.now();
+      const analyses = batch.items.map((item) => {
+        const contentSignals = inferContentSignals(item, inferredAt);
+        return {
+          contentSignals,
+          entityId: item.globalId,
+          eventCandidate:
+            inferEventCandidate(item, contentSignals, inferredAt) ?? undefined,
+        };
+      });
+      await commitDesktopLibraryFeedItemAnalysisSets(analyses, inferredAt);
+      const state = await reloadSqliteLibraryState();
+      const counts = Object.fromEntries(
+        CONTENT_SIGNAL_KEYS.map((signal) => [
+          signal,
+          analyses.reduce(
+            (count, analysis) =>
+              count + Number(analysis.contentSignals.tags.includes(signal)),
+            0,
+          ),
+        ]),
+      ) as Record<ContentSignal, number>;
+      summary = {
+        version: CONTENT_SIGNAL_VERSION,
+        total: state.totalItemCount,
+        scanned: batch.items.length,
+        updated: batch.items.length,
+        remaining: batch.remaining ? 1 : 0,
+        counts,
+        multiSignalCount: analyses.filter(
+          (analysis) => analysis.contentSignals.tags.length > 1,
+        ).length,
+        untaggedCount: analyses.filter(
+          (analysis) => analysis.contentSignals.tags.length === 0,
+        ).length,
+        samples: {},
+      };
+      return;
+    }
+  });
+  mutationQueue = operation.catch(() => undefined);
+  await operation;
+  return summary;
 }
 
-export async function docAddStubItem(url: string, tags: string[] = []): Promise<FeedItem> {
+export interface LibraryPriorityBackfillSummary {
+  readonly passStartedAt: number;
+  readonly remaining: number;
+  readonly updated: number;
+}
+
+export async function backfillLibraryPriorities(
+  weights: WeightPreferences,
+  passStartedAt: number,
+  batchSize = 64,
+): Promise<LibraryPriorityBackfillSummary> {
+  if (
+    !Number.isSafeInteger(passStartedAt) ||
+    passStartedAt < 0 ||
+    !Number.isSafeInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > 64
+  ) {
+    throw new TypeError("priority backfill bounds are invalid");
+  }
+  let summary!: LibraryPriorityBackfillSummary;
+  const operation = mutationQueue.then(async () => {
+    await ensureInitialized();
+    const batch = await readLibraryCorePriorityCandidateBatch(
+      passStartedAt,
+      batchSize,
+    );
+    if (batch.items.length > 0) {
+      await commitDesktopLibraryFeedItemPriorities(
+        batch.items.map(({ careLevel, item }) => ({
+          entityId: item.globalId,
+          priorityBasisPoints:
+            calculatePriority(item, weights, passStartedAt, { careLevel }) *
+            100,
+        })),
+        passStartedAt,
+      );
+      await reloadSqliteLibraryState();
+    }
+    summary = Object.freeze({
+      passStartedAt,
+      remaining: batch.remaining ? 1 : 0,
+      updated: batch.items.length,
+    });
+  });
+  mutationQueue = operation.catch(() => undefined);
+  await operation;
+  return summary;
+}
+
+export async function addLibraryStubItem(
+  url: string,
+  tags: string[] = [],
+): Promise<FeedItem> {
   const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
   let hostname = url;
-  try { hostname = new URL(url).hostname; } catch {}
+  try {
+    hostname = new URL(url).hostname;
+  } catch {}
   const item: FeedItem = {
     globalId,
     platform: "saved",
@@ -356,9 +668,15 @@ export async function docAddStubItem(url: string, tags: string[] = []): Promise<
       mediaTypes: [],
       linkPreview: { url, title: url },
     },
-    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
+    userState: {
+      hidden: false,
+      saved: true,
+      savedAt: now,
+      archived: false,
+      tags,
+    },
     topics: [],
   };
-  await docAddFeedItem(item);
+  await addLibraryFeedItem(item);
   return item;
 }

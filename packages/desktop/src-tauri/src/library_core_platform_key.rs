@@ -20,7 +20,11 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_os = "macos")]
 use std::sync::{LazyLock, Mutex};
 
+#[cfg(not(feature = "isolated-preview-data-root"))]
 pub(crate) const KEYRING_SERVICE: &str = "wtf.freed.library-core";
+#[cfg(feature = "isolated-preview-data-root")]
+pub(crate) const KEYRING_SERVICE: &str =
+    "wtf.freed.library-core.sqlite-native-preview";
 const MAXIMUM_SUBJECT_BYTES: usize = 128;
 
 /// One named private key: which vault account holds it, and how its envelope
@@ -343,5 +347,14 @@ mod tests {
 
         assert_eq!(result.unwrap(), 7);
         assert_eq!(disable_calls.get(), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "isolated-preview-data-root")]
+    fn isolated_preview_never_opens_the_production_keyring_service() {
+        assert_eq!(
+            KEYRING_SERVICE,
+            "wtf.freed.library-core.sqlite-native-preview"
+        );
     }
 }

@@ -9,51 +9,36 @@
  *
  * Covers:
  *  - Hierarchical tags from webkitRelativePath
- *  - Phased progress callbacks (scanning → writing → caching → fetching)
+ *  - Progress callbacks for scanning, writing, caching, and fetching
  *  - Deduplication against existing Library Core items
- *  - Chunking behaviour for large batches (>500 items)
+ *  - A maximum of 128 source files in each import batch
  *  - Accurate imported / skipped counters
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { folderTagsFromRelativePath } from "@freed/capture-save/import-markdown";
+import JSZip from "jszip";
+import {
+  folderTagsFromRelativePath,
+  parseMarkdownArchiveFile,
+} from "@freed/capture-save/import-markdown";
+import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { ImportPhase, ImportProgress } from "./import-export.js";
 import type { FeedItem } from "@freed/shared";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // Only mock I/O — NOT the capture-save parser (ESM live bindings prevent it).
 
-const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
-  const docStore: Record<string, FeedItem> = {};
-
-  const mockBatchImport = vi.fn(
-    async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
-      const CHUNK = 500;
-      const total = Math.ceil(items.length / CHUNK);
-      for (let i = 0; i < items.length; i += CHUNK) {
-        for (const item of items.slice(i, i + CHUNK)) {
-          if (!docStore[item.globalId]) docStore[item.globalId] = item;
-        }
-        onChunk?.(Math.floor(i / CHUNK) + 1, total);
-      }
-    },
-  );
-
-  return {
-    mockBatchImport,
-    mockGetAllItemIds: vi.fn(async () => Object.keys(docStore)),
-    mockCacheSet: vi.fn(async () => undefined),
-    mockEnqueue: vi.fn(),
-    _docStore: docStore,
-  };
-});
+const { mockBatchImport, mockCacheSet, mockEnqueue } = vi.hoisted(() => ({
+  mockBatchImport: vi.fn(),
+  mockCacheSet: vi.fn(async () => undefined),
+  mockEnqueue: vi.fn(),
+}));
 
 // Module-level store accessible to test assertions
-const docStore: Record<string, FeedItem> = {};
+const libraryStore: Record<string, FeedItem> = {};
 
 vi.mock("./library-client.js", () => ({
-  docBatchImportItems: mockBatchImport,
-  getAllItemIds: mockGetAllItemIds,
+  importLibraryItems: mockBatchImport,
 }));
 
 vi.mock("./content-cache.js", () => ({
@@ -87,10 +72,15 @@ function makeMdFile(
     body + htmlExtra,
   ].join("\n");
 
-  const file = new File([content], `article-${idx}.md`, { type: "text/markdown" });
+  const file = new File([content], `article-${idx}.md`, {
+    type: "text/markdown",
+  });
 
   if (opts.relativePath) {
-    Object.defineProperty(file, "webkitRelativePath", { value: opts.relativePath, writable: false });
+    Object.defineProperty(file, "webkitRelativePath", {
+      value: opts.relativePath,
+      writable: false,
+    });
   }
   return file;
 }
@@ -98,6 +88,13 @@ function makeMdFile(
 function makeFileList(files: File[]): FileList {
   // Cast a plain array — Array.from() works directly on arrays
   return files as unknown as FileList;
+}
+
+async function parseExportItem(index: number): Promise<FeedItem> {
+  const file = makeMdFile(index);
+  const parsed = parseMarkdownArchiveFile(file.name, await file.text());
+  if (!parsed) throw new Error("expected valid archive fixture");
+  return parsed.item;
 }
 
 // ── folderTagsFromRelativePath tests ──────────────────────────────────────────
@@ -108,7 +105,9 @@ describe("folderTagsFromRelativePath", () => {
   });
 
   it("extracts single subfolder as tag", () => {
-    expect(folderTagsFromRelativePath("export/tech/article.md")).toEqual(["tech"]);
+    expect(folderTagsFromRelativePath("export/tech/article.md")).toEqual([
+      "tech",
+    ]);
   });
 
   it("builds all ancestor paths for nested folders", () => {
@@ -126,27 +125,50 @@ describe("folderTagsFromRelativePath", () => {
   });
 });
 
+describe("exportLibraryAsMarkdown", () => {
+  it("consumes and releases each bounded SQLite page before requesting the next", async () => {
+    const first = await parseExportItem(70);
+    const second = await parseExportItem(71);
+    const getHtml = vi.fn(async (globalId: string) =>
+      globalId === first.globalId ? "<p>First cached article</p>" : null,
+    );
+
+    const blob = await exportLibraryAsMarkdown(async (visit) => {
+      expect(getHtml).not.toHaveBeenCalled();
+      expect(await visit([first])).toBe("continue");
+      expect(getHtml).toHaveBeenCalledTimes(1);
+      expect(await visit([second])).toBe("continue");
+      expect(getHtml).toHaveBeenCalledTimes(2);
+    }, getHtml);
+
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(
+      Object.keys(zip.files).filter((path) => path.endsWith(".md")),
+    ).toHaveLength(2);
+    expect(
+      Object.keys(zip.files).filter((path) => path.endsWith(".html")),
+    ).toHaveLength(1);
+  });
+});
+
 // ── importMarkdownFiles tests ─────────────────────────────────────────────────
 
 describe("importMarkdownFiles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    Object.keys(docStore).forEach((k) => delete docStore[k]);
+    Object.keys(libraryStore).forEach((k) => delete libraryStore[k]);
 
     // Restore implementations cleared by resetAllMocks()
-    mockBatchImport.mockImplementation(
-      async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
-        const CHUNK = 500;
-        const total = Math.ceil(items.length / CHUNK);
-        for (let i = 0; i < items.length; i += CHUNK) {
-        for (const item of items.slice(i, i + CHUNK)) {
-          if (!docStore[item.globalId]) docStore[item.globalId] = item;
+    mockBatchImport.mockImplementation(async (items: FeedItem[]) => {
+      const insertedIds: string[] = [];
+      for (const item of items) {
+        if (!libraryStore[item.globalId]) {
+          libraryStore[item.globalId] = item;
+          insertedIds.push(item.globalId);
         }
-        onChunk?.(Math.floor(i / CHUNK) + 1, total);
       }
-      },
-    );
-    mockGetAllItemIds.mockImplementation(async () => Object.keys(docStore));
+      return insertedIds;
+    });
     mockCacheSet.mockResolvedValue(undefined);
   });
 
@@ -165,7 +187,11 @@ describe("importMarkdownFiles", () => {
 
   it("counts imported items correctly", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
-    const files = makeFileList([makeMdFile(10), makeMdFile(11), makeMdFile(12)]);
+    const files = makeFileList([
+      makeMdFile(10),
+      makeMdFile(11),
+      makeMdFile(12),
+    ]);
 
     const result = await importMarkdownFiles(files);
     expect(result.imported).toBe(3);
@@ -189,13 +215,15 @@ describe("importMarkdownFiles", () => {
 
   it("assigns folder hierarchy tags from webkitRelativePath", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
-    const file = makeMdFile(30, { relativePath: "my-export/Technology/AI/post.md" });
+    const file = makeMdFile(30, {
+      relativePath: "my-export/Technology/AI/post.md",
+    });
     const files = makeFileList([file]);
 
     const result = await importMarkdownFiles(files);
     expect(result.imported).toBe(1);
 
-    const writtenItem = Object.values(docStore)[0];
+    const writtenItem = Object.values(libraryStore)[0];
     expect(writtenItem).toBeDefined();
     expect(writtenItem!.userState.tags).toContain("Technology");
     expect(writtenItem!.userState.tags).toContain("Technology/AI");
@@ -212,9 +240,9 @@ describe("importMarkdownFiles", () => {
     expect(result.imported).toBe(1);
   });
 
-  it("emits per-chunk writing progress for large batches", async () => {
+  it("keeps every large import mutation within 128 source files", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
-    // 1001 items still force three batch writes while keeping the test fast
+    // 1,001 items force eight bounded writes while keeping the test fast
     // enough for the full release lane.
     const files = makeFileList(
       Array.from({ length: 1001 }, (_, i) => makeMdFile(1000 + i)),
@@ -225,10 +253,14 @@ describe("importMarkdownFiles", () => {
       if (p.phase === "writing") writingPhases.push({ ...p });
     });
 
-    // 1001 items → 3 chunks (500 + 500 + 1)
+    // 1,001 items become seven full 128-file batches and one final batch.
     const lastWrite = writingPhases[writingPhases.length - 1];
-    expect(lastWrite?.total).toBe(3);
-    expect(lastWrite?.current).toBe(3);
+    expect(lastWrite?.total).toBe(8);
+    expect(lastWrite?.current).toBe(8);
+    expect(mockBatchImport).toHaveBeenCalledTimes(8);
+    expect(
+      mockBatchImport.mock.calls.every(([items]) => items.length <= 128),
+    ).toBe(true);
   }, 10_000);
 
   it("caches HTML via contentCache for items with body text", async () => {
@@ -239,7 +271,7 @@ describe("importMarkdownFiles", () => {
     expect(mockCacheSet).toHaveBeenCalledOnce();
   });
 
-  it("does not invoke docBatchImportItems when all items are already known", async () => {
+  it("lets SQLite report an already known identity as skipped", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
     const files = makeFileList([makeMdFile(60)]);
 
@@ -248,9 +280,9 @@ describe("importMarkdownFiles", () => {
     expect(firstResult.imported).toBe(1);
 
     vi.clearAllMocks();
-    // The mock store now reflects docStore state via mockAllItemIds — no extra setup needed.
 
-    await importMarkdownFiles(files);
-    expect(mockBatchImport).not.toHaveBeenCalled();
+    const secondResult = await importMarkdownFiles(files);
+    expect(mockBatchImport).toHaveBeenCalledOnce();
+    expect(secondResult).toMatchObject({ imported: 0, skipped: 1 });
   });
 });

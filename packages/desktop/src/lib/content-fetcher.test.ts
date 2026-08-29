@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import type { LibraryCoreContentFetchCandidateV1 } from "@freed/shared/library-core";
 import { MAX_SYNCED_PRESERVED_TEXT_CHARS } from "./preserved-text.js";
 
 const SAMPLE_URL = "https://example.com/articles/memory-landfill";
@@ -69,7 +70,9 @@ async function loadContentFetcherModule(options: {
   cacheSetImpl?: () => Promise<void>;
   isFactoryResetInProgress?: () => boolean;
   scanItems?: (
-    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+    visitPage: (
+      items: readonly LibraryCoreContentFetchCandidateV1[],
+    ) => void | Promise<void>,
   ) => Promise<void>;
 } = {}) {
   vi.resetModules();
@@ -87,25 +90,39 @@ async function loadContentFetcherModule(options: {
     publishedAt: 1_700_000_000_000,
   }));
   const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
-  const mockDocUpdateFeedItem = vi.fn(async () => undefined);
+  const mockPinLibraryCoreItemContent = vi.fn(async () => undefined);
+  const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
-  const mockScanLibraryCoreItems = vi.fn(
+  const mockScanLibraryCoreContentFetchCandidates = vi.fn(
     options.scanItems ??
       (async (visitPage) => {
-        await visitPage(latestItems);
+        await visitPage(
+          latestItems.map((item) => ({
+            capturedAt: item.capturedAt,
+            globalId: item.globalId,
+            linkUrl: item.content.linkPreview?.url ?? "",
+            publishedAt: item.publishedAt,
+          })),
+        );
       }),
   );
   const mockSubscribe = vi.fn<(cb: (
-    state: { items: FeedItem[]; docItemCount: number },
+    state: { totalItemCount: number },
     event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
   ) => void) => () => void>();
   const subscriberRef: {
-    current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
-  } = { current: null };
+    current: ((state: { totalItemCount: number }) => void) | null;
+    emitItems: (items: readonly FeedItem[]) => void;
+  } = {
+    current: null,
+    emitItems: (items) => {
+      latestItems = items;
+      subscriberRef.current?.({ totalItemCount: items.length });
+    },
+  };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
-      latestItems = state.items;
       cb(state, {
         source: "state_update",
         changedItemIds: null,
@@ -126,11 +143,13 @@ async function loadContentFetcherModule(options: {
     contentCache: { set: mockCacheSet },
   }));
   vi.doMock("./library-client.js", () => ({
-    docUpdateFeedItem: mockDocUpdateFeedItem,
-    subscribe: mockSubscribe,
+    updateLibraryFeedItem: mockUpdateLibraryFeedItem,
+    subscribeDesktopLibraryRuntime: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
-    scanLibraryCoreItems: mockScanLibraryCoreItems,
+    pinLibraryCoreItemContent: mockPinLibraryCoreItemContent,
+    scanLibraryCoreContentFetchCandidates:
+      mockScanLibraryCoreContentFetchCandidates,
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -190,9 +209,10 @@ async function loadContentFetcherModule(options: {
     subscriberRef,
     mockInvoke,
     mockCacheSet,
-    mockDocUpdateFeedItem,
+    mockPinLibraryCoreItemContent,
+    mockUpdateLibraryFeedItem,
     mockRecordReaderArticleFetchAttempt,
-    mockScanLibraryCoreItems,
+    mockScanLibraryCoreContentFetchCandidates,
   };
 }
 
@@ -232,19 +252,25 @@ async function loadContentFetcherModuleWithAi({
     publishedAt: 1_700_000_000_000,
   }));
   const mockCacheSet = vi.fn(async () => undefined);
-  const mockDocUpdateFeedItem = vi.fn(async () => undefined);
+  const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
   const mockSubscribe = vi.fn<(cb: (
-    state: { items: FeedItem[]; docItemCount: number },
+    state: { totalItemCount: number },
     event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
   ) => void) => () => void>();
   const subscriberRef: {
-    current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
-  } = { current: null };
+    current: ((state: { totalItemCount: number }) => void) | null;
+    emitItems: (items: readonly FeedItem[]) => void;
+  } = {
+    current: null,
+    emitItems: (items) => {
+      latestItems = items;
+      subscriberRef.current?.({ totalItemCount: items.length });
+    },
+  };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
-      latestItems = state.items;
       cb(state, {
         source: "state_update",
         changedItemIds: null,
@@ -271,11 +297,20 @@ async function loadContentFetcherModuleWithAi({
     contentCache: { set: mockCacheSet },
   }));
   vi.doMock("./library-client.js", () => ({
-    docUpdateFeedItem: mockDocUpdateFeedItem,
-    subscribe: mockSubscribe,
+    updateLibraryFeedItem: mockUpdateLibraryFeedItem,
+    subscribeDesktopLibraryRuntime: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
-    scanLibraryCoreItems: vi.fn(async (visitPage) => visitPage(latestItems)),
+    scanLibraryCoreContentFetchCandidates: vi.fn(async (visitPage) =>
+      visitPage(
+        latestItems.map((item) => ({
+          capturedAt: item.capturedAt,
+          globalId: item.globalId,
+          linkUrl: item.content.linkPreview?.url ?? "",
+          publishedAt: item.publishedAt,
+        })),
+      ),
+    ),
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -336,7 +371,7 @@ async function loadContentFetcherModuleWithAi({
     subscriberRef,
     mockInvoke,
     mockCacheSet,
-    mockDocUpdateFeedItem,
+    mockUpdateLibraryFeedItem,
     mockSummarize,
     mockGetApiKey,
     mockRecordReaderArticleFetchAttempt,
@@ -353,22 +388,33 @@ afterEach(() => {
 describe("content fetcher", () => {
   it("discovers new article stubs through bounded SQLite pages", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockInvoke, mockScanLibraryCoreItems } =
+    const {
+      mod,
+      subscriberRef,
+      mockInvoke,
+      mockScanLibraryCoreContentFetchCandidates,
+    } =
       await loadContentFetcherModule({
         scanItems: async (visitPage) => {
-          await visitPage([makeStubItem()]);
+          await visitPage([
+            {
+              capturedAt: 1,
+              globalId: "rss:1",
+              linkUrl: SAMPLE_URL,
+              publishedAt: 1,
+            },
+          ]);
         },
       });
 
     mod.start();
-    subscriberRef.current?.({ items: [], docItemCount: 1 });
+    subscriberRef.emitItems([]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
-    expect(mockScanLibraryCoreItems).toHaveBeenCalledTimes(1);
-    expect(mockScanLibraryCoreItems).toHaveBeenCalledWith(
+    expect(mockScanLibraryCoreContentFetchCandidates).toHaveBeenCalledTimes(1);
+    expect(mockScanLibraryCoreContentFetchCandidates).toHaveBeenCalledWith(
       expect.any(Function),
-      { hasLinkPreview: true, missingPreservedText: true },
     );
     expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
       url: SAMPLE_URL,
@@ -383,7 +429,7 @@ describe("content fetcher", () => {
       releaseWrite = resolve;
     });
     const writeSettled = vi.fn();
-    const { mod, subscriberRef, mockCacheSet, mockDocUpdateFeedItem } =
+    const { mod, subscriberRef, mockCacheSet, mockUpdateLibraryFeedItem } =
       await loadContentFetcherModule({
         cacheSetImpl: async () => {
           await writeGate;
@@ -392,7 +438,7 @@ describe("content fetcher", () => {
       });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockCacheSet).toHaveBeenCalledOnce();
 
@@ -404,7 +450,7 @@ describe("content fetcher", () => {
     releaseWrite();
     await draining;
     expect(writeSettled).toHaveBeenCalledOnce();
-    expect(mockDocUpdateFeedItem).toHaveBeenCalledOnce();
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
     expect(writeSettled.mock.invocationCallOrder[0]).toBeLessThan(
       cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
@@ -424,7 +470,7 @@ describe("content fetcher", () => {
         subscriberRef,
         mockInvoke,
         mockCacheSet,
-        mockDocUpdateFeedItem,
+        mockUpdateLibraryFeedItem,
         mockSummarize,
         mockGetApiKey,
       } = await loadContentFetcherModuleWithAi({
@@ -436,7 +482,7 @@ describe("content fetcher", () => {
       });
 
       mod.start();
-      subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+      subscriberRef.emitItems([makeStubItem()]);
       await vi.advanceTimersByTimeAsync(0);
       expect(mockInvoke).toHaveBeenCalledOnce();
 
@@ -452,7 +498,7 @@ describe("content fetcher", () => {
       expect(mockCacheSet).not.toHaveBeenCalled();
       expect(mockGetApiKey).not.toHaveBeenCalled();
       expect(mockSummarize).not.toHaveBeenCalled();
-      expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+      expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
       expect(resetFinished).toHaveBeenCalledOnce();
     },
   );
@@ -468,7 +514,7 @@ describe("content fetcher", () => {
       mod,
       subscriberRef,
       mockCacheSet,
-      mockDocUpdateFeedItem,
+      mockUpdateLibraryFeedItem,
       mockSummarize,
       mockGetApiKey,
     } = await loadContentFetcherModuleWithAi({
@@ -480,7 +526,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockCacheSet).toHaveBeenCalledOnce();
     expect(mockGetApiKey).toHaveBeenCalledOnce();
@@ -491,7 +537,7 @@ describe("content fetcher", () => {
     await draining;
 
     expect(mockSummarize).not.toHaveBeenCalled();
-    expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
   });
 
   it("keeps full HTML in the local cache but syncs only a compact excerpt", async () => {
@@ -501,12 +547,12 @@ describe("content fetcher", () => {
       subscriberRef,
       mockInvoke,
       mockCacheSet,
-      mockDocUpdateFeedItem,
+      mockUpdateLibraryFeedItem,
       mockRecordReaderArticleFetchAttempt,
     } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -518,9 +564,9 @@ describe("content fetcher", () => {
     expect(mockRecordReaderArticleFetchAttempt).toHaveBeenCalledWith({
       source: "background-cache",
     });
-    expect(mockDocUpdateFeedItem).toHaveBeenCalledOnce();
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
 
-    const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as unknown as
+    const update = mockUpdateLibraryFeedItem.mock.calls.at(0)?.at(1) as unknown as
       | { preservedContent: { text: string; author?: string } }
       | undefined;
     expect(update).toBeDefined();
@@ -533,17 +579,17 @@ describe("content fetcher", () => {
 
   it("does not write topics when extractTopics is disabled", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+    const { mod, subscriberRef, mockUpdateLibraryFeedItem } = await loadContentFetcherModuleWithAi({
       autoSummarize: true,
       extractTopics: false,
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
-    const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
+    const update = mockUpdateLibraryFeedItem.mock.calls.at(0)?.at(1) as
       | { topics?: string[]; preservedContent: { text: string } }
       | undefined;
     expect(update?.preservedContent.text).toContain("Short AI summary");
@@ -552,17 +598,17 @@ describe("content fetcher", () => {
 
   it("writes topics when extractTopics is enabled", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+    const { mod, subscriberRef, mockUpdateLibraryFeedItem } = await loadContentFetcherModuleWithAi({
       autoSummarize: true,
       extractTopics: true,
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
-    const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
+    const update = mockUpdateLibraryFeedItem.mock.calls.at(0)?.at(1) as
       | { topics?: string[]; preservedContent: { text: string } }
       | undefined;
     expect(update?.preservedContent.text).toContain("Short AI summary");
@@ -578,7 +624,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -600,7 +646,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(10_000);
 
@@ -618,7 +664,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mod.getStatus()).toEqual(expect.objectContaining({
@@ -652,7 +698,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -674,19 +720,19 @@ describe("content fetcher", () => {
 
   it("skips oversized background article fetches without parsing or retry backoff", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockCacheSet, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+    const { mod, subscriberRef, mockCacheSet, mockUpdateLibraryFeedItem } = await loadContentFetcherModuleWithAi({
       autoSummarize: false,
       extractTopics: false,
       invokeImpl: () => Promise.reject(new Error("response_too_large content_length=22000000 limit=2097152 url=https://example.com/articles/memory-landfill")),
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
     expect(mockCacheSet).not.toHaveBeenCalled();
-    expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
     expect(mod.getStatus()).toEqual(expect.objectContaining({
       backoffLevel: 0,
       failedCount: 1,
@@ -696,19 +742,19 @@ describe("content fetcher", () => {
 
   it("writes extracted content and advances when AI summarization times out", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+    const { mod, subscriberRef, mockUpdateLibraryFeedItem } = await loadContentFetcherModuleWithAi({
       autoSummarize: true,
       extractTopics: true,
       summarizeImpl: () => new Promise<null>(() => undefined),
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(60_000);
     mod.stop();
 
-    const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
+    const update = mockUpdateLibraryFeedItem.mock.calls.at(0)?.at(1) as
       | { topics?: string[]; preservedContent: { text: string } }
       | undefined;
     expect(update?.preservedContent.text).toContain("Paragraph with noisy spacing");
@@ -718,10 +764,11 @@ describe("content fetcher", () => {
   });
 
   it("pins existing text posts by writing reader HTML to the local cache", async () => {
-    const { mod, mockCacheSet } = await loadContentFetcherModule();
+    const { mod, mockCacheSet, mockPinLibraryCoreItemContent } = await loadContentFetcherModule();
 
     await mod.pinReaderItem(makeTextPostItem());
 
+    expect(mockPinLibraryCoreItemContent).toHaveBeenCalledWith("x:post-1");
     expect(mockCacheSet).toHaveBeenCalledWith(
       "x:post-1",
       expect.stringContaining("Deployment confirmed."),
@@ -762,7 +809,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mod.getStatus()).toEqual(expect.objectContaining({
@@ -783,7 +830,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
 
     mod.start({ startupDelayMs: 60_000 });
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(59_999);
 
     expect(mockInvoke).not.toHaveBeenCalled();
@@ -859,7 +906,7 @@ describe("content fetcher", () => {
     });
 
     mod.start({ memoryGuard: true });
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
 
     const fetchCallsBeforeRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");

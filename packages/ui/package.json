@@ -56,8 +56,10 @@
     "./lib/sample-library-seed": "./src/lib/sample-library-seed.ts",
     "./lib/settings-store": "./src/lib/settings-store.ts",
     "./lib/theme": "./src/lib/theme.ts",
+    "./hooks/useSelectedLibraryItemValidity": "./src/hooks/useSelectedLibraryItemValidity.ts",
+    "./hooks/useLibraryFacetSummary": "./src/hooks/useLibraryFacetSummary.ts",
+    "./hooks/useLibraryRssFeedDetail": "./src/hooks/useLibraryRssFeedDetail.ts",
     "./context": "./src/context/index.ts",
-    "./hooks/useLegacyLibraryItems": "./src/hooks/useLegacyLibraryItems.ts",
     "./components/friends": "./src/components/friends/index.ts"
   },
   "peerDependencies": {
@@ -72,7 +74,6 @@
     "d3-force": "^3.0.0",
     "date-fns": "^4.4.0",
     "maplibre-gl": "^6.0.0",
-    "minisearch": "^7.2.0",
     "pixi.js": "^8.19.0",
     "three": "^0.185.1",
     "zustand": "^5.0.14"

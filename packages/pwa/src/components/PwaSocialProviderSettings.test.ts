@@ -1,9 +1,9 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Account, FeedItem, Person } from "@freed/shared";
 import type { PlatformConfig } from "@freed/ui/context";
 import { PlatformProvider } from "@freed/ui/context";
+import type { LibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
   PwaFacebookSettings,
   PwaFeedsSettings,
@@ -14,36 +14,36 @@ import { useAppStore } from "../lib/store";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function makeItem(overrides: Partial<FeedItem> = {}): FeedItem {
-  const now = 1_774_389_200_000;
+function facetSummary(
+  overrides: Partial<LibraryFacetSummary> = {},
+): LibraryFacetSummary {
   return {
-    globalId: "facebook:item-1",
-    platform: "facebook",
-    sourceUrl: "https://facebook.example/item",
-    author: {
-      id: "facebook-author",
-      displayName: "Facebook Author",
-      handle: "facebook-author",
-    },
-    content: {
-      text: "Post text",
-    },
-    userState: {
-      hidden: false,
-      saved: false,
-      archived: false,
-      tags: [],
-      highlights: [],
-    },
-    topics: [],
-    contentType: "post",
-    capturedAt: now,
-    publishedAt: now - 60_000,
+    archivedCount: 0,
+    archivableCount: 0,
+    contactAccountCount: 0,
+    contactLinkedPersonCount: 0,
+    enabledRssFeedCount: 0,
+    friendPersonCount: 0,
+    latestContactImportedAt: null,
+    latestRssFeedFetchedAt: null,
+    platformCounts: [],
+    rssFeedCount: 0,
+    sampleAccountCount: 0,
+    sampleFeedCount: 0,
+    sampleItemCount: 0,
+    samplePersonCount: 0,
+    savedArchivedCount: 0,
+    savedCount: 0,
+    savedPlatformCount: 0,
+    socialAccountCount: 0,
+    tags: [],
+    totalCount: 0,
+    unreadCount: 0,
     ...overrides,
-  } as FeedItem;
+  };
 }
 
-function createPlatform(): PlatformConfig {
+function createPlatform(summary: LibraryFacetSummary): PlatformConfig {
   return {
     store: useAppStore,
     SourceIndicator: null,
@@ -59,16 +59,21 @@ function createPlatform(): PlatformConfig {
     MediumSettingsContent: null,
     YouTubeSettingsContent: PwaYouTubeSettings,
     GoogleContactsSettingsContent: PwaGoogleContactsSettings,
+    readLibraryFacetSummary: async () => summary,
     releaseChannel: "production",
   };
 }
 
-function renderWithPlatform(node: ReactNode) {
+async function renderWithPlatform(
+  node: ReactNode,
+  summary = facetSummary(),
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => {
-    root.render(createElement(PlatformProvider, { value: createPlatform(), children: node }));
+  await act(async () => {
+    root.render(createElement(PlatformProvider, { value: createPlatform(summary), children: node }));
+    await Promise.resolve();
   });
 
   return {
@@ -85,35 +90,26 @@ function renderWithPlatform(node: ReactNode) {
 describe("PWA source provider settings", () => {
   afterEach(() => {
     useAppStore.setState({
-      items: [],
-      accounts: {},
-      feeds: {},
-      persons: {},
       pendingMatchCount: 0,
     });
     document.body.innerHTML = "";
   });
 
-  it("shows social sync statistics without provider management controls", () => {
-    useAppStore.setState({
-      items: [
-        makeItem(),
-        makeItem({
-          globalId: "facebook:item-2",
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            readAt: 1_774_389_199_000,
-            tags: [],
-            highlights: [],
-          },
-        }),
-      ],
-    });
-
-    const { container, cleanup } = renderWithPlatform(
+  it("shows social sync statistics from SQLite facets without provider management controls", async () => {
+    const { container, cleanup } = await renderWithPlatform(
       createElement(PwaFacebookSettings, { surface: "settings" }),
+      facetSummary({
+        platformCounts: [{
+          archivableCount: 0,
+          latestCapturedAt: 1_774_389_200_000,
+          latestPublishedAt: 1_774_389_140_000,
+          platform: "facebook",
+          totalCount: 2,
+          unreadCount: 1,
+        }],
+        totalCount: 2,
+        unreadCount: 1,
+      }),
     );
 
     expect(container.textContent).toContain("Facebook connections are managed in Freed Desktop");
@@ -131,20 +127,21 @@ describe("PWA source provider settings", () => {
     cleanup();
   });
 
-  it("shows YouTube sync status without provider management controls", () => {
-    useAppStore.setState({
-      items: [
-        makeItem({
-          globalId: "youtube:item-1",
-          platform: "youtube",
-          contentType: "video",
-          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        }),
-      ],
-    });
-
-    const { container, cleanup } = renderWithPlatform(
+  it("shows YouTube sync status without provider management controls", async () => {
+    const { container, cleanup } = await renderWithPlatform(
       createElement(PwaYouTubeSettings, { surface: "settings" }),
+      facetSummary({
+        platformCounts: [{
+          archivableCount: 0,
+          latestCapturedAt: 1_774_389_200_000,
+          latestPublishedAt: 1_774_389_140_000,
+          platform: "youtube",
+          totalCount: 1,
+          unreadCount: 1,
+        }],
+        totalCount: 1,
+        unreadCount: 1,
+      }),
     );
 
     expect(container.textContent).toContain("YouTube connections are managed in Freed Desktop");
@@ -155,36 +152,19 @@ describe("PWA source provider settings", () => {
     cleanup();
   });
 
-  it("shows Google Contacts sync status without connect or sync controls", () => {
-    const person: Person = {
-      id: "person-ada",
-      name: "Ada Lovelace",
-      relationshipStatus: "friend",
-      careLevel: 3,
-      createdAt: 1_774_389_100_000,
-      updatedAt: 1_774_389_100_000,
-    };
-    const account: Account = {
-      id: "contact:google:people/c123",
-      personId: person.id,
-      kind: "contact",
-      provider: "google_contacts",
-      externalId: "people/c123",
-      displayName: "Ada Lovelace",
-      importedAt: 1_774_389_200_000,
-      firstSeenAt: 1_774_389_200_000,
-      lastSeenAt: 1_774_389_200_000,
-      discoveredFrom: "contact_import",
-      createdAt: 1_774_389_200_000,
-      updatedAt: 1_774_389_200_000,
-    };
+  it("shows Google Contacts sync status without connect or sync controls", async () => {
     useAppStore.setState({
-      persons: { [person.id]: person },
-      accounts: { [account.id]: account },
       pendingMatchCount: 2,
     });
 
-    const { container, cleanup } = renderWithPlatform(createElement(PwaGoogleContactsSettings));
+    const { container, cleanup } = await renderWithPlatform(
+      createElement(PwaGoogleContactsSettings),
+      facetSummary({
+        contactAccountCount: 1,
+        contactLinkedPersonCount: 1,
+        latestContactImportedAt: 1_774_389_200_000,
+      }),
+    );
 
     expect(container.textContent).toContain("Google Contacts is managed in Freed Desktop");
     expect(container.textContent).toContain("Imported contacts");
@@ -196,48 +176,25 @@ describe("PWA source provider settings", () => {
     cleanup();
   });
 
-  it("shows feed sync status without subscription management controls", () => {
-    useAppStore.setState({
-      feeds: {
-        "https://example.com/feed.xml": {
-          url: "https://example.com/feed.xml",
-          title: "Example Feed",
-          enabled: true,
-          trackUnread: true,
-          lastFetched: 1_774_389_150_000,
-        },
-      },
-      items: [
-        makeItem({
-          globalId: "rss:item-1",
+  it("shows feed sync status without subscription management controls", async () => {
+    const { container, cleanup } = await renderWithPlatform(
+      createElement(PwaFeedsSettings),
+      facetSummary({
+        enabledRssFeedCount: 1,
+        latestRssFeedFetchedAt: 1_774_389_150_000,
+        platformCounts: [{
+          archivableCount: 0,
+          latestCapturedAt: 1_774_389_200_000,
+          latestPublishedAt: 1_774_389_140_000,
           platform: "rss",
-          rssSource: {
-            feedUrl: "https://example.com/feed.xml",
-            feedTitle: "Example Feed",
-            siteUrl: "https://example.com",
-          },
-        }),
-        makeItem({
-          globalId: "rss:item-2",
-          platform: "rss",
-          rssSource: {
-            feedUrl: "https://example.com/feed.xml",
-            feedTitle: "Example Feed",
-            siteUrl: "https://example.com",
-          },
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            readAt: 1_774_389_199_000,
-            tags: [],
-            highlights: [],
-          },
-        }),
-      ],
-    });
-
-    const { container, cleanup } = renderWithPlatform(createElement(PwaFeedsSettings));
+          totalCount: 2,
+          unreadCount: 1,
+        }],
+        rssFeedCount: 1,
+        totalCount: 2,
+        unreadCount: 1,
+      }),
+    );
 
     expect(container.textContent).toContain("Feed subscriptions are managed in Freed Desktop");
     expect(container.textContent).toContain("Synced feeds");

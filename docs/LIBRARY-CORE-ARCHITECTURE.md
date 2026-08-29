@@ -27,8 +27,10 @@ as follows:
   contract.
 - [TURSO-EVALUATION.md](TURSO-EVALUATION.md) records the measured database
   engine decision.
-- `library-core-activation-manifest.json` records release activation gates. It
-  must describe the SQLite-only storage epoch before that epoch is activated.
+- `library-core-activation-manifest.json` records the one SQLite storage-epoch
+  release gate and retired-engine proof. Its version 2 declaration binds the
+  immutable digest of the superseded incremental-cutover history without
+  carrying those fallback instructions into the current architecture.
 - `roadmap-status.json` is the machine-readable status mirror for product
   phases. The public website roadmap remains in its separate `www` lane.
 
@@ -71,7 +73,7 @@ The architecture has these non-negotiable properties:
 11. Desktop, headless, and PWA behavior derives from one executable contract
     source and the same checked-in SQL.
 12. Source migration logic is short lived and isolated. It is not a
-   permanent runtime compatibility engine.
+    permanent runtime compatibility engine.
 
 ## 2. Outcome
 
@@ -118,6 +120,14 @@ object. No browser worker retains the corpus merely to answer a page query.
   has no storage engine or synchronization authority.
 - `packages/capture-*` own isolated extraction and normalization. Captured
   values enter the Library through registered mutations.
+
+Freed Desktop stores the final normalized database below its private
+`library-sqlite` directory. The native binding holds the directory descriptor
+and process lease for the process lifetime. During the one-time migration,
+the historical `library-core` database remains a separate source. The two
+files never participate in a dual write. Activation selects the normalized
+database once, after which the historical source is removed on the documented
+receipt boundary.
 
 The explicit runtime deletion list is in section 21. Current delivery state is
 tracked in [STORAGE-ARCHITECTURE-ROADMAP.md](STORAGE-ARCHITECTURE-ROADMAP.md),
@@ -192,6 +202,15 @@ The extracted native crate owns:
 Tauri owns only command registration, serialization, cancellation, and host
 capability wiring. The headless Primary calls the same crate without Tauri.
 
+The headless supervisor never receives a SQLite path and never interprets SQL.
+It passes descriptor-bound roots to the native sidecar, then uses a generated,
+versioned command registry over dedicated inherited pipes. Four-byte
+big-endian frame lengths cap each request and response at 4 MiB. The native
+side accepts normalized checkpoint staging and pinned export, registered
+bounded queries, and exact storage inspection. Mutation commands require the
+established authority key and remain unavailable until the headless secret
+contract supplies that key without exposing it to workers or Drive adapters.
+
 Rust uses a bundled, pinned SQLite release with the required features. Runtime
 behavior must not depend on whichever SQLite happens to ship with an operating
 system.
@@ -201,13 +220,21 @@ system.
 The PWA uses the official SQLite WebAssembly distribution with:
 
 - OPFS `opfs-sahpool`
-- One SharedWorker owning the SQLite connection
-- A dedicated-worker recovery route if SharedWorker startup is unavailable
+- One dedicated worker owning the SQLite connection for the active PWA window
+- One browser-level exclusive writer lease that makes a second app window fail
+  closed until the active owner exits
 - One connection generation that fences stale tabs and old application code
-- One browser-level writer lock for the exact Library root
 - Durable transaction completion before acknowledgment
 - Reopen and recovery after worker suspension or termination
 - Persistent-storage request, quota inspection, and storage-pressure handling
+
+The database worker is deliberately not a SharedWorker. Chromium does not
+expose the OPFS APIs required by SQLite's SAH pool inside SharedWorker, and
+WebKit can terminate a SharedWorker when its creator document exits even while
+another document remains connected. Freed therefore uses the worker context
+that both engines actually support. A future multi-window router may forward
+typed requests to the active dedicated worker, but it may not become a second
+database authority or add another storage representation.
 
 The supported floor is iOS 17 because it supplies the complete
 Storage API and persistent-storage behavior required by the product contract.
@@ -221,6 +248,19 @@ IndexedDB may remain only as a narrow browser keystore for nonextractable
 WebCrypto key objects when WebKit supplies no appropriate alternative. It may
 not contain Library rows, checkpoints, cursors, operations, content metadata,
 or compatibility state.
+
+For follower mutations, OPFS SQLite returns one closed context containing the
+active Library and epoch, the enrolled nonretired actor, its public key, the
+next actor sequence, the previous actor tip, and the bounded accepted frontier.
+The browser keystore may only verify that exact identity and sign the exact
+operation digest. Transaction assembly then commits the canonical envelopes,
+sparse optimistic fields, actor tip, and durable receipt to SQLite atomically.
+There is no IndexedDB mutation journal or dual write. Response loss retries the
+same canonical bytes and accepts only the receipt for that exact transaction.
+This boundary covers every PWA product write. FeedItem, RSS, preferences,
+Person, Account, and user-state mutations all use their registered generated
+member schema and generated transaction ceiling. Browser product code has no
+IndexedDB mutation API.
 
 ### 5.3 React
 
@@ -382,7 +422,10 @@ Representative query families are:
 - Reader content
 - Person timelines
 - Friends surfaces
-- Map viewport rows
+- Map marker rows containing only location, time range, author, popup snippet,
+  and item locator fields
+- Story Wall candidate rows containing only compact caption metadata and at
+  most eight typed media references
 - Navigation counts
 - Facet summaries
 - Account and feed management
@@ -392,9 +435,24 @@ Representative query families are:
 Ordinary pages admit at most the registered row and byte ceilings. Full reader
 content is ID-addressed and streamed when it exceeds the ordinary DTO budget.
 
+The Saved list uses `saved_feed_page_v2`. One closed sort enum selects the
+generated date-saved, date-published, recommended, or shortest-read SQLite
+variant. Each variant owns matching forward and reverse keyset SQL plus its
+expression index. Filters, counts, ordering, and pagination stay inside
+SQLite. Edge cursors bind the filter digest, sort, complete order key,
+generation, and source revision. Desktop native SQLite and browser SQLite use
+the same generated programs and byte-identical cursor codec.
+
 Stores subscribe only to a compact change feed containing revision, bounded
 changed IDs, invalidation keys, and `resetRequired`. The feed contains no
 hydrated entity rows.
+
+Actor capabilities bind mutation and query authority separately. The query
+grant is a sorted subset of the generated agent read profile and is stored in
+normalized SQLite beside the mutation grant. Read-only agents need no
+synthetic mutation. A local socket, service account, or successful process
+connection is transport identity only and never substitutes for a signed
+query grant checked inside the native authority boundary.
 
 ## 8. Exhaustive mutation architecture
 
@@ -411,7 +469,7 @@ Each mutation declares:
 - Entity type and typed primary key
 - Closed payload schema
 - Preconditions
-- Touched field-registry entries
+- Closed operation field manifest
 - Merge algebra
 - Relationship and cascade effects
 - Blob dependencies
@@ -422,26 +480,38 @@ Each mutation declares:
 - Replication disposition
 - Provider-side-effect classification
 
-The initial registry inventory is deliberately broad. It includes at least the
-following distinct semantic mutations, with separate versions where payload or
-merge meaning differs:
+The canonical registry contains exactly the mutation programs the product can
+execute:
 
-| family | mutation inventory |
-| --- | --- |
-| FeedItem identity and content | `feed_item_capture`, `feed_item_replace_content`, `feed_item_set_published_time`, `feed_item_set_author`, `feed_item_set_feed`, `feed_item_set_source`, `feed_item_set_story_kind`, `feed_item_add_media`, `feed_item_remove_media`, `feed_item_set_preserved_text`, `feed_item_remove`, `feed_item_restore` |
-| Reader state | `item_assign_read`, `item_assign_saved`, `item_assign_archived`, `item_assign_liked`, `item_set_read_position`, `item_set_playback_position`, `item_add_highlight`, `item_update_highlight`, `item_remove_highlight`, `item_add_note`, `item_update_note`, `item_remove_note` |
-| Organization | `item_add_tag`, `item_remove_tag`, `tag_create`, `tag_rename`, `tag_move`, `tag_remove`, `collection_create`, `collection_rename`, `collection_add_item`, `collection_remove_item`, `collection_remove` |
-| Feeds and sources | `feed_create`, `feed_update_identity`, `feed_rename`, `feed_set_enabled`, `feed_set_unread_tracking`, `feed_set_refresh_policy`, `feed_remove`, `feed_remove_with_items`, `source_set_capture_policy`, `source_set_ranking_policy` |
-| People and accounts | `person_create`, `person_update_profile`, `person_set_relationship`, `person_record_reach_out`, `person_remove`, `account_create`, `account_update_profile`, `account_link_person`, `account_unlink_person`, `account_remove`, `identity_merge`, `identity_split` |
-| Preferences and ranking | `preference_assign`, `ranking_weight_assign`, `ranking_rule_create`, `ranking_rule_update`, `ranking_rule_remove`, `accessibility_preference_assign`, `content_policy_assign`, `synced_hydration_intent_assign` |
-| Imports and maintenance | `saved_link_capture`, `markdown_import_batch`, `sample_seed_batch`, `sample_clear_batch`, `bulk_mark_read`, `bulk_archive`, `bulk_unarchive`, `bulk_remove`, `duplicate_consolidate`, `repair_relationship`, `repair_content_reference` |
-| Content plane | `content_descriptor_register`, `content_descriptor_replace`, `content_reference_attach`, `content_reference_detach`, `content_availability_confirm`, `content_tombstone` |
-| Authority and actors | `actor_enroll`, `actor_retire`, `actor_capability_replace`, `writer_epoch_transfer`, `intent_accept`, `intent_reject`, `quarantine_accept`, `quarantine_reject`, `repair_certificate_apply`, `compaction_commit` |
+| family | mutation programs |
+| ------ | ----------------- |
+| FeedItem capture and state | `feed_item_capture_upsert`, `feed_item_read_assignment`, `feed_item_saved_assignment`, `feed_item_archive_assignment`, `feed_item_like_assignment`, `feed_item_like_sync_receipt`, `feed_item_seen_sync_receipt`, `feed_item_remove` |
+| FeedItem annotations and analysis | `feed_item_annotations_replace`, `feed_item_analysis_replace` |
+| People, Accounts, and Friends | `person_upsert`, `person_reach_out_append`, `person_remove_and_accounts`, `person_remove_detach_accounts`, `account_upsert`, `account_person_assignment`, `account_remove`, `friend_replace` |
+| RSS and preferences | `rss_feed_upsert`, `rss_feed_title_assignment`, `rss_feed_remove_keep_items`, `rss_feed_remove_with_items`, `preferences_leaf_assignment` |
 
-This inventory is not a license to combine operations behind generic payloads.
-Contract generation must census every durable call site and fail until each
-one maps to a closed registered mutation or is deleted. Device-local interface
-state does not enter this registry.
+Every name maps one-to-one to a generated SQL program and at least one product
+caller. Contract generation rejects a name without a program. Tests inventory
+the final callers. Device-local layout and content policy use five separate
+typed local SQLite programs. Bulk scope staging, contact generations, content
+publication, actor administration, writer transition, checkpoint import, and
+recovery use separate closed protocols and cannot masquerade as canonical
+mutation members.
+
+Provider capture owns FeedItem source fields, media, and topics. It does not
+own user tags, highlights, content signals, or event candidates. Annotation and
+analysis replacements use independent deterministic field clocks, so a new
+capture cannot erase user or enrichment records and a stale follower result
+cannot replace a newer child set.
+
+Local semantic enrichment uses the same authority boundary. SQLite selects
+only missing or stale analysis rows through the version-filtered
+`background_item_page_v1` contract in 64-row source-fenced pages. Shared code
+retains one bounded candidate batch. Freed Desktop infers signals and event
+candidates locally, rechecks the source revision, and submits the batch through
+the signed `feed_item_analysis_replace` program. OPFS SQLite implements the
+same selector and response contract. No document command, renderer scan, or
+fake zero-result maintenance path exists.
 
 The authority boundary forbids:
 
@@ -602,6 +672,109 @@ The Primary additionally reads actor-scoped intent heads, admits or rejects
 complete intent transactions, publishes result segments, and advances the
 authenticated manifest.
 
+Normalized result segments use protocol v2. Each immutable object contains one
+closed header followed by the canonical authority-signed follower result
+envelopes themselves. The segment does not project those results into receipt
+summaries and does not wrap canonical JSON in another JSON string. Every result
+record remains at or below 131,072 canonical bytes. One segment contains at
+most 128 results and at most 1,048,576 canonical result bytes. Its header binds
+the Library, storage epoch, actor, exact result sequence range, previous
+transport segment digest, total canonical result bytes, and a domain-separated
+semantic digest. The immutable descriptor independently binds the stored bytes
+and exact object key. Followers verify both layers plus the logical
+`previous_result_digest` chain before passing canonical result bytes to SQLite
+for authority-signature verification and atomic reconciliation.
+
+Normalized operation segments use protocol v2. The Primary pins one native
+export descriptor to the active Library, authority epoch, writer, and source
+revision. At each committed revision it emits the exact authority-signed
+Accepted result first, followed by the actor-signed operation envelopes named
+by that result in member order. Pages may split a transaction, but followers
+stage the records in SQLite and expose no partial effect. Application begins
+only after the authority signature, complete operation identity set,
+transaction digest, actor enrollment, actor chain, member signatures, and
+exact next source revision all verify. Every logical record is at most 131,072
+canonical bytes. A native page contains at most 128 records and 1,048,576
+canonical record bytes, and its serialized response is independently capped at
+1,048,576 bytes. Long-form content remains outside operation metadata as
+content-addressed chunks or authenticated range objects.
+
+Normalized intent segments also use protocol v2. Each immutable object contains
+one closed header followed by the canonical actor-signed operation envelopes
+themselves. A page contains at most 128 envelopes and at most 1,048,576
+canonical envelope bytes. It may begin or end inside a larger transaction. The
+actor counter, previous operation ID, and previous actor-chain digest remain
+contiguous inside every page, while the immutable head chains page ranges and
+stored-byte digests. The Primary stages each bounded page in SQLite. It does not
+verify, materialize, reject, or publish a result until all declared transaction
+members are present and the complete transaction passes actor, capability,
+epoch, signature, digest, precondition, and materialization checks in one
+SQLite transaction. A legal 1,000-member or 4,194,304-byte transaction never
+becomes one renderer response or one JavaScript authority object.
+
+Intent and result heads use the same exact publication algorithm. It verifies
+canonical starting head bytes, uploads and reads back the immutable object,
+advances the precise actor range through compare-and-swap, and treats response
+loss as success only when the complete canonical head bytes read back exactly.
+The two protocols retain distinct closed head types and sequence meanings.
+
+Followers persist the same intent publication fact inside normalized SQLite.
+One actor-scoped transport head records the next actor counter and latest stored
+segment digest. Each immutable page receipt separately records its counter
+range, previous stored digest, semantic body digest, stored-object digest,
+object key, transport object ID, publication time, and count of transactions
+that became fully visible at that boundary. Recording a page, advancing the
+head, and changing only fully covered transactions from pending to published
+happens in one immediate SQLite transaction. A page that ends inside a
+transaction advances transport progress but leaves that transaction pending.
+Exact response-loss replay returns the stored receipt. Any changed range,
+digest, object identity, or time fails closed.
+
+The PWA OPFS SQLite engine executes the same intent publication transaction
+from the shared closed v2 header and immutable-object reference. It verifies
+the active Library, storage epoch, actor, durable member range, semantic
+digest, stored-byte digest, object key, transport object ID, and publication
+time before advancing the actor transport head. A segment that ends inside a
+transaction advances transport progress without marking that transaction
+published. Exact retry returns the original receipt. The browser engine does
+not persist this fact in IndexedDB.
+
+Followers persist result transport progress by the same rule. Before SQLite
+changes product state, the native boundary reconstructs the closed v2 segment
+body from the canonical signed result records and verifies its semantic digest.
+One immediate transaction then verifies every authority signature and logical
+result-chain link, records accepted or rejected intent state, removes the
+matching sparse optimistic overlay, advances the logical result cursor, stores
+the immutable object's semantic digest, stored-byte digest, object key, and
+transport object ID, and advances the actor-scoped transport head. Exact retry
+returns that stored segment receipt. A changed record, digest, range, object
+identity, or receipt time fails closed. No Drive listing and no React state is
+used to infer whether a result was already applied.
+
+The PWA OPFS SQLite engine performs the same v2 result import. It reconstructs
+the closed semantic body from direct canonical signed result records, verifies
+the body digest and every authority signature before writing, then commits
+result materialization, optimistic overlay cleanup, logical cursor progress,
+the immutable-object receipt, and transport-head progress in one immediate
+transaction. A late receipt failure rolls back the product rows and both
+cursors. IndexedDB is not part of this result authority path.
+
+One coordinator in the shared sync package owns enrollment publication,
+normalized intent-head reconciliation, bounded intent publication,
+response-loss recovery, and verified result import ordering. Freed Desktop and
+the PWA supply only typed SQLite runtime callbacks and a provider transport.
+Freed Desktop obtains its transport frontier and actor-counter pages directly
+from the native core. The PWA obtains the identical contract from its OPFS
+SQLite worker. Neither host implements a second protocol state machine.
+
+The shared sync package also owns the one Google Drive normalized follower
+transport factory. It publishes and verifies enrollment objects, selects the
+certificate bound to the exact actor and request digest, opens the normalized
+intent head, and pages result references under closed bounds. A host may supply
+an authority fence that runs before every provider operation. Desktop uses that
+fence to recheck its Follower role. The factory does not refresh credentials,
+schedule work, retry a sync cycle, or own local SQLite authority.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 
@@ -716,6 +889,15 @@ hydration are different facts.
 Every follower synchronizes small content descriptors and authoritative
 references. Each device independently decides which bytes to hydrate.
 
+FeedItem capture follows the same separation. The signed capture mutation
+materializes bounded inline metadata, media references, and topics into
+normalized SQLite tables. Re-capture refreshes source-owned fields without
+overwriting saved, archived, liked, read, tag, or highlight state. A tombstone
+blocks re-capture. The complete signed operation envelope cannot exceed one
+131,072-byte canonical record. Longer bodies and media bytes enter through
+content descriptors and content-addressed chunks, never a larger FeedItem
+object.
+
 ### 13.1 Descriptor
 
 A content descriptor includes:
@@ -748,6 +930,29 @@ The final device-local enum will distinguish at least:
 Hydration state never enters normalized checkpoints or canonical Library
 mutations.
 
+SQLite keeps local intent and physical proof separate. The generated contract
+defines the six policy values. Rust, the headless native command boundary, and
+the PWA SQLite worker execute the same bounded policy mutation and point read.
+The state response can describe a multi-gigabyte object without reading or
+allocating its bytes. Local policy, availability, and verified range tables are
+absent from normalized checkpoint export.
+
+Range publication uses the same 256 KiB maximum append in native Rust and the
+PWA worker. Each writer first resolves the canonical range identity from
+SQLite, accepts sequential bytes only, hashes incrementally, crosses the host
+durability barrier, and then registers only the storage key and verification
+time. Local range rows are keyed by the canonical content digest and range
+index. They retain the verified length and digest as local proof, then reconcile
+against every activated canonical generation. Exact matches survive checkpoint
+replacement. Removed or changed ranges lose their local availability proof.
+Physical object keys bind the content digest, range index, and verified range
+digest. Desktop resolves its private vault through a held directory descriptor
+and crosses file and directory durability barriers before SQLite registration.
+The PWA owns the equivalent OPFS lifecycle in the SQLite worker. Startup scans
+physical entries and SQLite proofs in bounded pages. Exact length-bound matches
+survive. Orphans, partial files, missing objects, and mismatched proofs are
+removed before the vault becomes ready.
+
 ### 13.3 Device policy
 
 A device may choose:
@@ -776,16 +981,31 @@ The client does not need to download the complete video before playback. A
 paged authenticated range map contains byte offsets, lengths, and range
 digests. Optional container and time metadata can improve seeking.
 
-The range map uses a Merkle or authenticated radix structure. Each index node
-obeys the logical-record ceiling. Media ranges do not. Their size is selected
-by physical measurement across Drive overhead, seeking, Desktop disk, OPFS,
-iPhone memory, and resumable recovery.
+The canonical descriptor commits to the ordered typed range records with one
+SHA-256 root. The digest domain, content identity, total byte length, range
+count, and every ordered index, offset, length, and range digest enter that
+root. Each range record independently obeys the logical-record ceiling.
+Checkpoint activation streams the metadata, rejects gaps or overlaps, and does
+not allocate the logical media length. Media bytes do not enter these records.
+Their physical range size is selected by measurement across Drive overhead,
+seeking, Desktop disk, OPFS, iPhone memory, and resumable recovery.
 
 The initial benchmark compares 1 MiB, 4 MiB, 8 MiB, and 16 MiB media ranges.
 No range size becomes protocol law before that measurement.
 
 Streaming verifies each fetched range against the authenticated range map.
 Complete-file digest verification closes full offline hydration.
+
+Completion never invents a monolithic local object. It streams the ordered
+verified range set into the canonical content digest with a 262,144-byte
+working window. SQLite records the complete or pinned state only after exact
+range count, byte length, and digest close. Range rows remain the only physical
+locators.
+
+Playback reads one verified local range window at a time. Each read is capped
+at 262,144 bytes and resolves the physical object only after SQLite proves the
+canonical range identity. Views never receive a reconstructed media shell or
+an unbounded file allocation.
 
 ### 13.5 Reachability and garbage collection
 
@@ -798,25 +1018,52 @@ quarantine, and compaction receipts. Local retention follows device policy.
 - Cloud deletion is never inferred from connected-client cache state.
 - Pinned offline bytes are not automatically evicted without an explicit
   local policy transition.
+- Excluding a rendition cancels its local staging and purges its verified
+  ranges. Cache-pressure eviction refuses a pinned rendition until the device
+  explicitly changes its policy.
+- Physical deletion precedes SQLite proof deletion. A crash can therefore
+  leave a stale proof, but cannot leave SQLite claiming a successful purge
+  while the runtime knowingly retained the object.
 
 A follower can fully authenticate a checkpoint while holding zero media bytes.
 It must know that every required authoritative content object exists remotely,
 but local hydration is optional.
 
-## 14. Backups and restore
+## 14. Snapshots and restore
 
-A complete backup captures one normalized checkpoint, its reachable content
-root set, authority evidence, and exact frontier. It does not copy the live
-SQLite database.
+A local snapshot is an immutable `freed_normalized_local_snapshot_v1` archive.
+Its first line is one canonical closed manifest. Every later line is one
+canonical normalized checkpoint record whose encoded size is at most 131,072
+bytes. The archive binds its snapshot ID, Library identity, authority epoch,
+source revision, causal frontier, record count, canonical record bytes,
+checkpoint digest, creation time, and reason. It never copies the live SQLite
+database, WAL, or SHM file.
+
+Snapshot creation pins one checkpoint export, streams bounded typed pages into
+a private pending file, flushes the file, atomically installs the digest-named
+archive, flushes the directory, and retains the newest 24 valid archives.
+Listing and deletion stay relative to the already-open private snapshot
+directory. Path replacement, symbolic links, nonprivate files, changed
+manifests, changed records, trailing bytes, and digest disagreement fail
+closed.
 
 Device-local provider sessions, OAuth tokens, actor private keys, authority
-private keys, caches, free pages, and provisional local overlays do not enter
-portable backup objects.
+private keys, caches, Google Contacts matching generations, free pages, and
+provisional local overlays do not enter snapshot archives.
 
-Restore stages a fresh SQLite database and content plan, verifies the complete
-logical commitment, and selects the generation only after its exact receipt
-closes. Restoring into a new installation creates a new installation identity
-and actor enrollment. It does not clone actor private authority.
+Restore verifies the complete archive before any Library mutation, stages the
+bounded records through the normalized checkpoint importer, and commits them
+inside a new signed authority epoch. It carries the live causal frontier
+forward, advances the source revision, installs a fresh Primary capability,
+and records a canonical `freed_normalized_restore_receipt_v1` receipt. One
+caller-supplied operation ID and restore time are signed into the transition.
+An exact response-loss retry returns the committed snapshot summary without
+creating another epoch. Reusing that operation ID with changed inputs fails
+before mutation.
+
+Portable recovery uses the same normalized checkpoint and selective-content
+objects. Restoring into a new installation creates a new installation identity
+and actor enrollment. It never clones actor private authority.
 
 ## 15. Protocol version boundaries
 
@@ -866,6 +1113,100 @@ One short-lived native migration executable:
 It never calls a source-sized Automerge load and never turns its source decoder
 into a permanent application service.
 
+The bounded native decomposer now maps historical FeedItem rows plus the RSS,
+Person, Account, reach-out, follow-role, and preference portions of the old
+shell into final tables. The generated contract is the shared authority for
+preference field disposition in Rust and TypeScript. Local display state,
+local model endpoints, local graph placement, old cloud scheduler fields, and
+other obsolete values do not enter canonical SQLite. Invalid foreign
+keys, oversized metadata, malformed preference shapes, and unregistered nested
+policies abort the caller's one migration transaction.
+
+Current domain types contain only current fields. Person and Account never
+carry graph placement. RssFeed never carries retry or failure state. Synced AI,
+display, Facebook, and Story Wall preferences never carry installation-local
+provider, layout, discovery, or progress values. The synchronized preference
+mutation boundary rejects an unsupported key instead of stripping it or
+routing it to another store. Fenced one-time import readers accept opaque
+historical input and copy retained device values into their explicit local
+models before the historical source is retired.
+
+The inert migration candidate receipt binds the active old authority tuple,
+source document identity, source generation and revisions, and an ordered
+bounded digest of its causal frontier. Deleted historical FeedItem rows are
+counted and excluded explicitly at the new epoch boundary. Live rows and every
+normalized root family must close exactly, all foreign keys must pass, and the
+candidate product digest is computed by streaming canonical normalized records
+through the ordinary bounded checkpoint exporter. Historical Friend objects
+are discarded only when their canonical Person and Account sources exist.
+Neither the old shell nor a hash of it is migration, rollback, or activation
+evidence. Building this candidate does not select either database.
+
+The next-epoch certificate is signed only by the already accepted authority
+key. It binds the full candidate receipt, final contract and schema identities,
+checkpoint format, selected Primary writer, and acceptance time. The body
+digest names the epoch while the complete certificate has its own digest. The
+installer rechecks the old source tuple, key lineage, frontier, and counts, then
+rehashes the normalized target through bounded pages. It installs the signed
+epoch, carried causal baseline, writer admission, metadata, and generation in
+one target transaction. This makes the candidate internally complete. It does
+not switch the host's selected database or retire the old writer. The host does
+that only inside the final writer barrier and compare-and-swap.
+
+The new epoch receives a fresh installation actor, not an actor copied from the
+old epoch. Its version 2 enrollment proves the host actor key, is countersigned
+by the accepted authority key, observes the complete carried source frontier,
+and names exactly the generated Primary-writer mutation set with library-wide
+scope. Actor, capability, and mutation rows commit together after native
+certificate verification. Followers enroll separately under the same epoch.
+
+One restartable native preparation operation composes candidate construction,
+transition identity binding, authority installation, and Primary actor
+enrollment. The first invocation pins the installation witness and acceptance
+time in local normalized SQLite. Later invocations reuse those exact values,
+even when the wall clock has advanced. Its state moves only from candidate to
+authority installed to actor installed. The returned receipt proves the
+selected Library and admitted Primary actor.
+
+Desktop selection uses one bounded canonical record under the descriptor-bound
+app-data root. It is a one-way choice of normalized SQLite for one Library. The
+record binds the normalized Library ID, while SQLite owns the changing active
+epoch, certificate chain, actor, and materialization generation. The host
+verifies one internally consistent active authority and generation on every
+opening. A legitimate writer transition therefore never rewrites the selector.
+A valid selector permanently fences every old database, journal, store,
+backup, restore, clear, and mutation route. A missing selector means cutover
+has not occurred. A malformed selector or foreign Library fails both sides closed.
+Publication flushes one private pending file, atomically renames it to the
+fixed selector name, flushes the bound directory, and reads the exact record
+back through the same verifier. A different existing selector is never
+overwritten. Exact response-loss replay is idempotent.
+
+Freed Desktop runs this preparation before opening its product window while it
+holds the historical and normalized process leases. A fresh or inactive
+historical store is not a migration source. A complete active source is
+prepared and selected before renderer code can observe either authority.
+
+Freed Desktop and PWA product adapters call one shared query orchestration
+layer. The host supplies only a typed executor. Freed Desktop's executor calls
+the native core. The PWA executor calls its dedicated SQLite WebAssembly
+worker. The ordinary feed uses `feed_browse_page_v3`, Saved uses
+`saved_feed_page_v2`, and signal counts issue one-row bounded browse queries.
+Every response is parsed against the exact request before compact cards enter
+React. Cursor strings remain opaque. No adapter invents offsets, duplicates
+platform-specific pagination logic, or calls a whole-Library query. Friends
+uses the same query with a closed identity mode. SQLite resolves membership by
+joining FeedItem provider and author identity to Account, then Account to a
+Person whose relationship status is `friend`. The identity mode and predicate
+schema are part of the request, response, and opaque cursor digest.
+
+Item detail, maintained Library facets, Saved analytics, Map, and Story Wall
+use one shared secondary-surface adapter. Each host supplies the same executor
+used by its feed adapter. Map and Story Wall receive specialized compact rows
+instead of general FeedItems. Shared transforms create the visible-card fields
+used by product UI, so Desktop and PWA do not define separate request or
+projection semantics.
+
 ### 16.2 Cutover
 
 Cutover:
@@ -882,13 +1223,15 @@ Cutover:
 
 There is no period in which both stores acknowledge authoritative writes.
 
-### 16.3 Rollback
+### 16.3 Failure and recovery
 
-The old source remains immutable until the rollback window closes. Rollback is
-valid only to an exact same-frontier receipt. Once accepted new-epoch writes
-advance beyond that frontier, recovery rolls forward.
+Before the first accepted new-epoch mutation, a failed cutover aborts and
+leaves the historical source immutable. After the first accepted new-epoch
+mutation, SQLite remains authoritative. Recovery uses verified roll-forward
+repair or a normalized snapshot restore into a successor authority epoch.
 
-The historical shell is never rollback evidence.
+No release flag, receipt, historical shell, or retained source can reactivate
+a retired Library engine.
 
 ## 17. Failure semantics
 
@@ -940,20 +1283,26 @@ cookies, actor private keys, authority private keys, and secrets.
 
 ## 19. Performance budgets
 
+The first clean-slate SQLite benchmark is recorded in
+[`SQLITE-PERFORMANCE-BASELINE-2026-08-29.md`](./SQLITE-PERFORMANCE-BASELINE-2026-08-29.md).
+It keeps comparable browser-fixture improvements separate from native installed
+evidence and identifies Friends graphics as the remaining native measurement
+priority.
+
 Initial gates are:
 
-| Operation | Budget |
-| --- | ---: |
-| Warm bounded page query p95 | 50 ms |
-| Cold bounded page query p95 | 150 ms |
-| Navigation counts p95 | 100 ms |
-| Search p95 | 150 ms |
-| Commit and materialize 1,000 captured items | 500 ms |
-| Settled renderer Library DTO state | 48 MiB |
-| Burst renderer Library DTO state | 64 MiB |
-| Native checkpoint response | 1 MiB source bytes |
-| Decoded checkpoint page | 2 MiB and 128 records |
-| Logical checkpoint record | Initial 128 KiB protocol ceiling, frozen after required physical measurements |
+| Operation                                   |                                                                        Budget |
+| ------------------------------------------- | ----------------------------------------------------------------------------: |
+| Warm bounded page query p95                 |                                                                         50 ms |
+| Cold bounded page query p95                 |                                                                        150 ms |
+| Navigation counts p95                       |                                                                        100 ms |
+| Search p95                                  |                                                                        150 ms |
+| Commit and materialize 1,000 captured items |                                                                        500 ms |
+| Settled renderer Library DTO state          |                                                                        48 MiB |
+| Burst renderer Library DTO state            |                                                                        64 MiB |
+| Native checkpoint response                  |                                                            1 MiB source bytes |
+| Decoded checkpoint page                     |                                                         2 MiB and 128 records |
+| Logical checkpoint record                   | Initial 128 KiB protocol ceiling, frozen after required physical measurements |
 
 Every page query must return its first bounded result without decoding or
 scanning the complete corpus. Larger corpus validation runs at 100,000 items.
@@ -961,6 +1310,17 @@ scanning the complete corpus. Larger corpus validation runs at 100,000 items.
 PWA admission includes physical iPhone testing of reopen, worker termination,
 quota pressure, large search, range playback, cache eviction, and offline pin
 behavior.
+
+Changed-path and dev validation also run one persistent iPhone-class WebKit
+profile against the real OPFS SAH pool. It commits a typed device-local SQLite
+transaction, closes the document and dedicated worker twice, reopens the same
+database, verifies exact values and revisions, and proves idempotent replay.
+This deterministic browser proof catches OPFS VFS, worker lifecycle, schema,
+and persistence regressions. It does not substitute for physical iPhone
+suspension, quota pressure, storage eviction, or media playback evidence.
+The validation planner declares WebKit separately from Chromium and every CI
+lane that schedules this proof installs the matching browser executable before
+the test begins.
 
 ## 20. Test architecture
 
@@ -983,6 +1343,7 @@ It proves:
 - Exact retry after response loss
 - Native crash atomicity
 - Browser worker termination recovery
+- Persistent WebKit OPFS SQLite write, reopen, and replay durability
 - Migration full-field parity and explicit exclusion closure
 - No whole-corpus renderer, worker, or native response
 - Query-plan use of registered indexes
@@ -994,7 +1355,7 @@ record exact fixture, build, runtime, process generation, and storage identity.
 
 The final change deletes:
 
-- Every `shellJson` and `shell_json` field
+- Every current-state `shellJson` and `shell_json` field
 - `DesktopLibraryShell` and shell read or replacement commands
 - Monolithic `DocState` runtime authority
 - Library shell synchronization and checkpoint records
@@ -1016,10 +1377,23 @@ The final change deletes:
 - Historical imports, rebuilds, repair paths, flags, and exports with no final
   caller
 - Emergency rollback flags that revive the retired architecture
+- Full-corpus identity graph models, layout workers, renderers, and provisional
+  corpus repair passes superseded by the bounded SQLite Friends Galaxy source
+- Renderer Saved re-ranking and FeedItem tag-collection fallbacks superseded by
+  registered SQLite ordering and facet queries
+- Shared Friend, map, and graph-activity helpers that scan complete Person,
+  Account, or FeedItem dictionaries
+- Direct Friends Galaxy whole-source worker messages and caller-side source
+  queues superseded by source-fenced SQLite page staging
 - Tests that protect only deleted compatibility behavior
 
 Immutable migration receipts, source evidence, and backup provenance remain.
-Historical runtime code does not.
+The short-lived migration executable is the sole historical-shell reader. It
+may read the immutable source column once to rescue final-product fields, but
+it cannot copy, hash, checkpoint, export, retain, or reactivate those bytes.
+Deleting that fenced reader before the storage-epoch cutover would discard
+feeds, people, accounts, reach-out history, and synchronized preferences that
+the final product still requires. Historical runtime code does not remain.
 
 ## 22. Shortest path to total victory
 
@@ -1088,6 +1462,7 @@ Deliverable:
 - Stable normalized checkpoint registry and primary-key identities
 - Typed native export and browser import
 - Operation segments
+- Transaction-complete browser staging and exact next-revision application
 - Signed follower intents and results
 - Selective content descriptors and authenticated range indexes
 - Google Drive adapter integration without behavior changes
@@ -1189,7 +1564,8 @@ The Library Core follows these decisions:
    logical-record size.
 7. Migration moves directly into the final schema with no dual write or
    compatibility authority.
-8. Same-frontier rollback is the only rollback. Later recovery rolls forward.
+8. A cutover may abort only before the first accepted new-epoch mutation.
+   Later recovery always rolls forward with SQLite authoritative.
 9. Historical runtime paths and emergency fallbacks are deleted after verified
    cutover.
 10. The program prioritizes the shortest path to complete replacement, even

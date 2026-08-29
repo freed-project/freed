@@ -4,7 +4,7 @@
  * Small fixed-shape events appended to runtime-health.jsonl through the
  * record_runtime_health_event Tauri command so soak tooling can count the
  * verified idle-churn loops (cloud upload echo, relay broadcast volume,
- * worker INIT churn, scrape outcomes). Logging only: every helper swallows
+ * scrape outcomes). Logging only: every helper swallows
  * failures so counters can never affect sync or capture behavior.
  */
 
@@ -18,10 +18,11 @@ export interface RuntimeHealthIdentityFields {
   appSessionId: string;
 }
 
-const RUNTIME_APP_SESSION_ID =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `session-${Date.now().toLocaleString()}-${Math.random().toString(36).slice(2)}`;
+function createRuntimeAppSessionId(): string {
+  return crypto.randomUUID();
+}
+
+const RUNTIME_APP_SESSION_ID = createRuntimeAppSessionId();
 
 export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   return {
@@ -204,15 +205,4 @@ export function recordReaderArticleFetchAttempt(input: {
   pin?: boolean;
 }): void {
   recordRuntimeHealthEvent({ event: "reader_article_fetch_attempt", ...input });
-}
-
-/**
- * One line per Automerge worker INIT (full A.load of the document).
- * INITs/hour during a content backlog is the F20 worker-churn counter.
- */
-export function recordWorkerInit(input: {
-  durationMs: number;
-  docBytes: number;
-}): void {
-  recordRuntimeHealthEvent({ event: "worker_init", ...input });
 }

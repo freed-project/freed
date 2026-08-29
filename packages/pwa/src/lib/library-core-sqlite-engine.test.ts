@@ -1,0 +1,5996 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  CONTENT_SIGNAL_KEYS,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+} from "@freed/shared";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import sqlite3InitModule, {
+  type Database,
+  type Sqlite3Static,
+} from "@sqlite.org/sqlite-wasm";
+import {
+  LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
+  LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+  createLibraryCoreNormalizedCheckpointRecordV2,
+  createLibraryCoreImmutableObjectKey,
+  decodeLibraryCoreCanonicalBase64,
+  decodeLibraryCoreCanonicalValue,
+  digestLibraryCoreNormalizedCheckpointRecordsV2,
+  digestLibraryCoreMediaBlobBytesV1,
+  encodeLibraryCoreNormalizedCheckpointRecordV2,
+  isLibraryCoreOperationInstanceId,
+  isLibraryCoreLowercaseHex64,
+  splitLibraryCoreContentV1,
+  reassembleLibraryCoreContentV1,
+  type LibraryCoreNormalizedCheckpointRecordV2,
+  type LibraryCoreOperationInstanceId,
+  type LibraryCoreLowercaseHex64,
+  type LibraryCoreFeedBrowseFilterV1,
+  encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreDigestInput,
+  encodeLibraryCoreSignatureInput,
+  finalizeLibraryCoreTransactionV1,
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  assembleLibraryCoreTransactionV1,
+  type LibraryCoreCanonicalValue,
+  type LibraryCoreDigestDomain,
+  libraryCoreFollowerResultBodyV1,
+  normalizedResultSegmentHeaderFromBodyV2,
+  parseLibraryCoreFollowerResultEnvelopeV1,
+  parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  parseLibraryCoreNormalizedOperationExportDescriptorV2,
+  parseLibraryCoreNormalizedOperationExportPageV2,
+  parseLibraryCoreNormalizedResultSegmentBodyV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
+  constructLibraryCoreActorEnrollmentBodyV1,
+  constructLibraryCoreActorCapabilityCertificateV2,
+  constructLibraryCoreActorCapabilityRequestV2,
+  constructLibraryCoreActorRetirementCertificateV1,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+} from "@freed/shared/library-core";
+import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
+
+describe("PWA Library Core SQLite engine", () => {
+  let sqlite3: Sqlite3Static;
+  let database: Database;
+
+  beforeEach(async () => {
+    sqlite3 = await sqlite3InitModule();
+    database = new sqlite3.oo1.DB(":memory:", "c");
+  });
+
+  afterEach(() => {
+    if (database.isOpen()) database.close();
+  });
+  function operationId(value: string): LibraryCoreOperationInstanceId {
+    if (!isLibraryCoreOperationInstanceId(value)) {
+      throw new TypeError("invalid test operation instance ID");
+    }
+    return value;
+  }
+
+  function lowercaseHex64(value: string): LibraryCoreLowercaseHex64 {
+    if (!isLibraryCoreLowercaseHex64(value)) {
+      throw new TypeError("invalid test lowercase hexadecimal digest");
+    }
+    return value;
+  }
+
+  it("exports one descriptor-pinned bounded normalized checkpoint with lossless chunks", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const libraryId = "a".repeat(64);
+    const epochId = "b".repeat(64);
+    const actorId = "c".repeat(64);
+    const chunk = Uint8Array.from(
+      { length: 65_536 },
+      (_, index) => index % 251,
+    );
+    const contentDigest = digestLibraryCoreMediaBlobBytesV1(chunk);
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 7, 100);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 7, ?6, ?7, 100);`,
+      bind: [
+        epochId,
+        libraryId,
+        "d".repeat(64),
+        "e".repeat(64),
+        "f".repeat(64),
+        "1".repeat(64),
+        "2".repeat(64),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, ?3, 7, 100);`,
+      bind: [libraryId, epochId, actorId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               created_at, updated_at)
+            VALUES (?1, ?2, 'desktop', ?3, 'enrollment', ?4, '{}', ?5,
+                    0, NULL, ?5, 100, 100);`,
+      bind: [actorId, epochId, "3".repeat(64), "4".repeat(64), "5".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, ?2, 65536, 1, 'application/octet-stream');`,
+      bind: [contentDigest, chunk.byteLength],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blob_chunks
+              (content_digest, chunk_index, chunk_digest, bytes)
+            VALUES (?1, 0, ?1, ?3);`,
+      bind: [contentDigest, chunk.byteLength, chunk],
+    });
+
+    const snapshot = engine.describeNormalizedCheckpointExport();
+    expect(snapshot).toMatchObject({
+      authorityEpoch: epochId,
+      causalFrontierDigest:
+        "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446",
+      itemCount: 0,
+      libraryId,
+      recordCount: 6,
+      sourceRevision: 7,
+      writerId: actorId,
+    });
+    const records: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let after = null;
+    while (true) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({
+        page: {
+          after,
+          maximumRecords: 2,
+          maximumResponseBytes:
+            LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        },
+        snapshot,
+      });
+      expect(page.records.length).toBeLessThanOrEqual(2);
+      expect(
+        new TextEncoder().encode(JSON.stringify(page)).byteLength,
+      ).toBeLessThanOrEqual(LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES);
+      for (const record of page.records) {
+        expect(
+          encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
+        ).toBeLessThanOrEqual(
+          LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+        );
+        records.push(record);
+      }
+      after = page.nextCursor;
+      if (page.done) break;
+    }
+    expect(records).toHaveLength(snapshot.recordCount);
+    expect(
+      records.every((record) => !record.registryKey.includes("shell")),
+    ).toBe(true);
+    expect(reassembleLibraryCoreContentV1(records)).toEqual(chunk);
+
+    database.exec({
+      sql: `INSERT INTO library_intent_actors
+              (actor_id, next_counter, previous_operation_id,
+               previous_chain_digest)
+            VALUES (?1, 1, NULL, ?2);`,
+      bind: [actorId, "5".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_intent_transactions
+              (transaction_id, transaction_digest, actor_id, intent_epoch,
+               intent_epoch_id, member_count, first_counter, last_counter,
+               previous_operation_id, previous_chain_digest,
+               ending_operation_id, ending_chain_digest,
+               canonical_member_bytes, canonical_transaction, state, created_at)
+            VALUES ('transaction-1', ?1, ?2, 1, ?3, 1, 1, 1, NULL, ?4,
+                    'operation-1', ?5, 2, X'7b7d', 'pending', 101);`,
+      bind: ["6".repeat(64), actorId, epochId, "5".repeat(64), "7".repeat(64)],
+    });
+    expect(() => engine.describeNormalizedCheckpointExport()).toThrow(
+      "unresolved local intents",
+    );
+    database.exec(
+      "DELETE FROM library_intent_transactions; DELETE FROM library_intent_actors;",
+    );
+
+    database.exec(
+      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.exportPinnedNormalizedCheckpointPage({
+        page: {
+          after: null,
+          maximumRecords: 2,
+          maximumResponseBytes:
+            LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        },
+        snapshot,
+      }),
+    ).toThrow("changed during export");
+  });
+
+  it("builds and activates a replay-safe normalized contact generation", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:1",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 10,
+      }),
+    ).toMatchObject({ changed: true, stagedContactCount: 0 });
+    const delta = {
+      batchOrdinal: 0,
+      contacts: [
+        {
+          emails: [{ type: "home", value: "person@example.com" }],
+          name: { displayName: "Example Person" },
+          organizations: [{ name: "Example" }],
+          phones: [{ value: "+1 555 0100" }],
+          photos: [{ default: true, url: "https://example.com/person.jpg" }],
+          resourceName: "people/1",
+        },
+      ],
+      deletedResourceNames: [],
+      generationId: "contacts:1",
+      mutationKind: "device_contact_delta_append_v1" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 20,
+    };
+    expect(engine.mutateDeviceContactSync(delta)).toMatchObject({
+      changed: true,
+      stagedContactCount: 1,
+    });
+    expect(engine.mutateDeviceContactSync(delta)).toMatchObject({
+      changed: false,
+      stagedContactCount: 1,
+    });
+    expect(() =>
+      engine.mutateDeviceContactSync({
+        ...delta,
+        contacts: [{ ...delta.contacts[0]!, name: { displayName: "Changed" } }],
+      }),
+    ).toThrow("delta replay changed");
+    expect(
+      engine.queryDeviceContacts({
+        afterResourceName: null,
+        generationId: "contacts:1",
+        limit: 64,
+        queryId: "device_contact_match_page_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [{ resourceName: "people/1" }],
+    });
+    database.exec(`
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:1', 'Example Person', 'friend', 3, 1, 1);
+    `);
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:1",
+        matchedAt: 30,
+        matches: [
+          {
+            resourceName: "people/1",
+            suggestion: {
+              accountIds: [],
+              confidence: "high",
+              createdAt: 30,
+              id: "google:people/1:person:person:1:accounts:",
+              kind: "attach_accounts_to_person",
+              label: "Example Person",
+              personId: "person:1",
+            },
+          },
+        ],
+        mutationKind: "device_contact_match_append_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ changed: true, matchedContactCount: 1 });
+    expect(
+      engine.mutateDeviceContactSync({
+        activatedAt: 40,
+        expectedContactCount: 1,
+        generationId: "contacts:1",
+        mutationKind: "device_contact_generation_activate_v1",
+        nextSyncToken: "sync-token-1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      activeGenerationId: "contacts:1",
+      changed: true,
+      stagedContactCount: 1,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT contact.resource_name, email.value, phone.value,
+                     photo.url, organization.name, state.sync_token
+              FROM library_device_contact_sync_state AS state
+              JOIN library_device_contacts AS contact
+                ON contact.generation_id = state.active_generation_id
+              JOIN library_device_contact_emails AS email
+                ON email.generation_id = contact.generation_id
+               AND email.resource_name = contact.resource_name
+              JOIN library_device_contact_phones AS phone
+                ON phone.generation_id = contact.generation_id
+               AND phone.resource_name = contact.resource_name
+              JOIN library_device_contact_photos AS photo
+                ON photo.generation_id = contact.generation_id
+               AND photo.resource_name = contact.resource_name
+              JOIN library_device_contact_organizations AS organization
+                ON organization.generation_id = contact.generation_id
+               AND organization.resource_name = contact.resource_name
+              WHERE state.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        "people/1",
+        "person@example.com",
+        "+1 555 0100",
+        "https://example.com/person.jpg",
+        "Example",
+        "sync-token-1",
+      ],
+    ]);
+    expect(
+      engine.queryDeviceContacts({
+        queryId: "device_contact_status_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      activeContactCount: 1,
+      pendingSuggestionCount: 1,
+      syncToken: "sync-token-1",
+    });
+    expect(
+      engine.queryDeviceContacts({
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_suggestion_page_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [
+        {
+          contact: { resourceName: "people/1" },
+          suggestion: { id: "google:people/1:person:person:1:accounts:" },
+        },
+      ],
+    });
+  });
+
+  it("excludes contact Accounts from the bounded unmatched page", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_generation_begin_v1",
+      schemaVersion: 1,
+      startedAt: 10,
+    });
+    engine.mutateDeviceContactSync({
+      batchOrdinal: 0,
+      contacts: [
+        {
+          emails: [],
+          name: { displayName: "Grace Hopper" },
+          organizations: [],
+          phones: [],
+          photos: [],
+          resourceName: "people/grace",
+        },
+      ],
+      deletedResourceNames: [],
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_delta_append_v1",
+      schemaVersion: 1,
+      updatedAt: 20,
+    });
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:unmatched",
+      matchedAt: 30,
+      matches: [{ resourceName: "people/grace", suggestion: null }],
+      mutationKind: "device_contact_match_append_v1",
+      schemaVersion: 1,
+    });
+    engine.mutateDeviceContactSync({
+      activatedAt: 40,
+      expectedContactCount: 1,
+      generationId: "contacts:unmatched",
+      mutationKind: "device_contact_generation_activate_v1",
+      nextSyncToken: "sync-token",
+      schemaVersion: 1,
+    });
+    const query = () =>
+      engine.queryDeviceContacts({
+        cursor: null,
+        limit: 50,
+        queryId: "device_contact_unmatched_page_v1",
+        schemaVersion: 1,
+      });
+    expect(query()).toMatchObject({
+      rows: [{ resourceName: "people/grace" }],
+    });
+    database.exec(`
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:grace', 'Grace Hopper', 'friend', 3, 50, 50);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, first_seen_at, last_seen_at,
+         discovered_from, created_at, updated_at)
+      VALUES
+        ('contact:google:people/grace', 'person:grace', 'contact', 'google_contacts',
+         'people/grace', 50, 50, 'contact_import', 50, 50);
+    `);
+    expect(query()).toMatchObject({ rows: [] });
+    expect(
+      engine.queryDeviceContacts({
+        queryId: "device_contact_status_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ createdFriendCount: 1 });
+  });
+
+  it("replaces an interrupted building contact generation but rejects concurrency", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    engine.mutateDeviceContactSync({
+      generationId: "contacts:stale",
+      mutationKind: "device_contact_generation_begin_v1",
+      schemaVersion: 1,
+      startedAt: 10,
+    });
+    expect(() =>
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:concurrent",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 20,
+      }),
+    ).toThrow("another device contact generation is building");
+    engine.mutateDeviceContactSync({
+      authStatus: "connected",
+      errorCode: "network",
+      errorMessage: "interrupted",
+      mutationKind: "device_contact_status_set_v1",
+      schemaVersion: 1,
+      syncStartedAt: null,
+      syncStatus: "error",
+      updatedAt: 30,
+    });
+    expect(
+      engine.mutateDeviceContactSync({
+        generationId: "contacts:recovered",
+        mutationKind: "device_contact_generation_begin_v1",
+        schemaVersion: 1,
+        startedAt: 40,
+      }),
+    ).toMatchObject({ changed: true });
+    expect(
+      database.exec({
+        sql: "SELECT generation_id FROM library_device_contact_generations WHERE state = 'building';",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["contacts:recovered"]);
+  });
+
+  function coreDigest(domain: string, value: unknown): string {
+    return createHash("sha256")
+      .update(
+        encodeLibraryCoreDigestInput(
+          domain as LibraryCoreDigestDomain,
+          value as LibraryCoreCanonicalValue,
+        ),
+      )
+      .digest("hex");
+  }
+
+  it("freezes and pages a device-local scope action outside checkpoints", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const request = {
+      action: "read" as const,
+      filter: normalizeLibraryCoreFeedBrowseFilterV1({ platform: "rss" }),
+      identityMode: "all_content" as const,
+      query: null,
+      schemaVersion: 1 as const,
+    };
+    expect(engine.beginScopeAction("stage:1", request, 10)).toEqual({
+      memberCount: 0,
+      stageId: "stage:1",
+      state: "staging",
+    });
+    engine.appendScopeAction("stage:1", 0, ["item:1", "item:2"]);
+    expect(engine.pageScopeAction("stage:1", -1)).toEqual({
+      entityIds: [],
+      nextOrdinal: -1,
+      stageId: "stage:1",
+    });
+    expect(() => engine.appendScopeAction("stage:1", 0, ["item:3"])).toThrow(
+      "append fence is stale",
+    );
+    expect(engine.finalizeScopeAction("stage:1", 2)).toMatchObject({
+      memberCount: 2,
+      state: "ready",
+    });
+    expect(engine.pageScopeAction("stage:1", -1)).toEqual({
+      entityIds: ["item:1", "item:2"],
+      nextOrdinal: 1,
+      stageId: "stage:1",
+    });
+    engine.closeScopeAction("stage:1");
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_device_scope_actions;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("atomically freezes the exact RSS Feed scope before signed removals", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_rss_feeds
+        (url, title, enabled, track_unread, updated_at)
+      VALUES
+        ('https://z.example/feed', 'Z', 1, 0, 1),
+        ('https://a.example/feed', 'A', 1, 0, 1);
+    `);
+    expect(
+      engine.beginScopeAction(
+        "rss-stage:1",
+        { action: "rss_feeds_remove_keep_items", schemaVersion: 1 },
+        10,
+      ),
+    ).toEqual({
+      memberCount: 2,
+      stageId: "rss-stage:1",
+      state: "ready",
+    });
+    database.exec(`
+      INSERT INTO library_rss_feeds
+        (url, title, enabled, track_unread, updated_at)
+      VALUES ('https://m.example/feed', 'M', 1, 0, 1);
+    `);
+    expect(engine.pageScopeAction("rss-stage:1", -1)).toEqual({
+      entityIds: ["https://a.example/feed", "https://z.example/feed"],
+      nextOrdinal: 1,
+      stageId: "rss-stage:1",
+    });
+    engine.closeScopeAction("rss-stage:1");
+  });
+
+  function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
+    return createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: "epoch-1",
+        checkpointId: "library-1:epoch-1:7",
+        createdAtMs: 1_000,
+        libraryId: "library-1",
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+  }
+
+  function authorityRecords(): LibraryCoreNormalizedCheckpointRecordV2[] {
+    return [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "01_authority_epoch",
+        primaryKey: "epoch-1",
+        payload: {
+          acceptedAt: 400,
+          acceptedManifestGeneration: 7,
+          authorityKeyId: "a".repeat(64),
+          authorityPublicKey: "b".repeat(64),
+          canonicalTransitionCertificate: "{}",
+          checkpointFrontierDigest: "c".repeat(64),
+          epochNumber: 1,
+          libraryId: "library-1",
+          materializedStateDigest: "d".repeat(64),
+          transitionCertificateDigest: "e".repeat(64),
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "02_authority_frontier",
+        primaryKey: ["epoch-1", 0],
+        payload: {
+          acceptedChainDigest: "3".repeat(64),
+          acceptedCounter: 2,
+          acceptedOperationId: "operation-2",
+          actorId: "actor-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "03_active_authority",
+        primaryKey: "active",
+        payload: {
+          acceptedManifestGeneration: 7,
+          activatedAt: 400,
+          activeKey: "active",
+          epochId: "epoch-1",
+          libraryId: "library-1",
+          writerId: "writer-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "90_actor_state",
+        primaryKey: "actor-1",
+        payload: {
+          acceptedChainDigest: "3".repeat(64),
+          acceptedCounter: 2,
+          acceptedOperationId: "operation-2",
+          actorKind: "desktop",
+          authorityEpochId: "epoch-1",
+          canonicalEnrollmentCertificate: "{}",
+          chainGenesisDigest: "2".repeat(64),
+          createdAt: 500,
+          enrollmentCertificateDigest: "1".repeat(64),
+          enrollmentOperationId: "enroll-1",
+          publicKey: "f".repeat(64),
+          retiredAt: null,
+          updatedAt: 1_000,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "91_actor_capability",
+        primaryKey: "capability-1",
+        payload: {
+          actorClass: "editor",
+          actorId: "actor-1",
+          canonicalCertificate: "{}",
+          certificateDigest: "4".repeat(64),
+          certificateVersion: 2,
+          issuanceIdentity: "5".repeat(64),
+          issuedAt: 500,
+          retiredAt: null,
+          retirementCertificateDigest: null,
+          retirementIdentity: "6".repeat(64),
+          scopeId: null,
+          scopeKind: null,
+          scopeMode: "library_wide",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "92_actor_capability_mutation",
+        primaryKey: ["capability-1", "feed_item_read_assignment"],
+        payload: { mutationId: "feed_item_read_assignment" },
+      }),
+    ];
+  }
+
+  function stageRecords(
+    engine: PwaLibraryCoreSqliteEngine,
+    records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+    stageId: string,
+    identity: {
+      readonly authorityEpoch: string;
+      readonly libraryId: string;
+      readonly sourceRevision: number;
+    } = {
+      authorityEpoch: "epoch-1",
+      libraryId: "library-1",
+      sourceRevision: 7,
+    },
+  ): void {
+    engine.beginNormalizedCheckpointStage({
+      authorityEpoch: identity.authorityEpoch,
+      createdAt: 1_000,
+      expectedRecordCount: records.length,
+      libraryId: identity.libraryId,
+      sourceRevision: identity.sourceRevision,
+      stageId,
+    });
+    let page: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let pageBytes = 0;
+    for (const record of records) {
+      const recordBytes =
+        encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength;
+      if (
+        page.length > 0 &&
+        (page.length === 128 ||
+          pageBytes + recordBytes >
+            LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES)
+      ) {
+        engine.appendNormalizedCheckpointStagePage({ records: page, stageId });
+        page = [];
+        pageBytes = 0;
+      }
+      page.push(record);
+      pageBytes += recordBytes;
+    }
+    if (page.length > 0) {
+      engine.appendNormalizedCheckpointStagePage({ records: page, stageId });
+    }
+  }
+
+  it("verifies and activates authority-signed actor retirement records", async () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const capabilityId = "44".repeat(32);
+    const retirementIdentity = "55".repeat(32);
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityKeyId = coreDigest("authority-key", {
+      authority_public_key: authorityPublicKey,
+      signature_algorithm: "ed25519",
+    });
+    const certificate = await constructLibraryCoreActorRetirementCertificateV1(
+      {
+        authority_key_id: authorityKeyId,
+        authority_public_key: authorityPublicKey,
+        epoch: 1,
+        epoch_id: epochId,
+        library_id: libraryId,
+      } as never,
+      {
+        actor_id: actorId,
+        capability_certificate_digest: capabilityId,
+        capability_id: capabilityId,
+        retirement_identity: retirementIdentity,
+      } as never,
+      "device_removed",
+      1_234,
+      {
+        digest: coreDigest as never,
+        async signAuthority(message) {
+          return sign(null, message, authorityKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const canonicalCertificate = new TextDecoder().decode(
+      encodeLibraryCoreCanonicalValue(certificate as never),
+    );
+    const header = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: epochId,
+        checkpointId: `${libraryId}:${epochId}:7`,
+        createdAtMs: 1_234,
+        libraryId,
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    const records = [
+      header,
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "01_authority_epoch",
+        primaryKey: epochId,
+        payload: {
+          acceptedAt: 1,
+          acceptedManifestGeneration: 0,
+          authorityKeyId,
+          authorityPublicKey,
+          canonicalTransitionCertificate: "{}",
+          checkpointFrontierDigest: "66".repeat(32),
+          epochNumber: 1,
+          libraryId,
+          materializedStateDigest: "77".repeat(32),
+          transitionCertificateDigest: "88".repeat(32),
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "03_active_authority",
+        primaryKey: "active",
+        payload: {
+          acceptedManifestGeneration: 0,
+          activatedAt: 1,
+          activeKey: "active",
+          epochId,
+          libraryId,
+          writerId: "writer-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "90_actor_state",
+        primaryKey: actorId,
+        payload: {
+          acceptedChainDigest: "99".repeat(32),
+          acceptedCounter: 0,
+          acceptedOperationId: null,
+          actorKind: "pwa",
+          authorityEpochId: epochId,
+          canonicalEnrollmentCertificate: "{}",
+          chainGenesisDigest: "99".repeat(32),
+          createdAt: 1,
+          enrollmentCertificateDigest: "aa".repeat(32),
+          enrollmentOperationId: "enroll-1",
+          publicKey: "bb".repeat(32),
+          retiredAt: 1_234,
+          updatedAt: 1_234,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "91_actor_capability",
+        primaryKey: capabilityId,
+        payload: {
+          actorClass: "editor",
+          actorId,
+          canonicalCertificate: "{}",
+          certificateDigest: capabilityId,
+          certificateVersion: 2,
+          issuanceIdentity: capabilityId,
+          issuedAt: 1,
+          retiredAt: 1_234,
+          retirementCertificateDigest: certificate.certificate_digest,
+          retirementIdentity,
+          scopeId: null,
+          scopeKind: null,
+          scopeMode: "library_wide",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "93_actor_retirement",
+        primaryKey: retirementIdentity,
+        payload: {
+          actorId,
+          authorityEpochId: epochId,
+          canonicalCertificate,
+          capabilityCertificateDigest: capabilityId,
+          capabilityId,
+          certificateDigest: certificate.certificate_digest,
+          committedRevision: 6,
+          reason: "device_removed",
+          retiredAt: 1_234,
+        },
+      }),
+    ];
+    const identity = { authorityEpoch: epochId, libraryId, sourceRevision: 7 };
+    stageRecords(engine, records, "signed-retirement", identity);
+    await expect(
+      engine.verifyNormalizedCheckpointActorRetirements("signed-retirement"),
+    ).resolves.toBeUndefined();
+    expect(
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "signed-retirement",
+      }),
+    ).toMatchObject({ recordCount: records.length, sourceRevision: 7 });
+    expect(
+      database.exec({
+        sql: `SELECT canonical_certificate, certificate_digest, committed_revision
+              FROM library_actor_retirements WHERE retirement_identity = ?1;`,
+        bind: [retirementIdentity],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[canonicalCertificate, certificate.certificate_digest, 6]]);
+
+    const changed = records.map((record) =>
+      record.registryKey === "93_actor_retirement"
+        ? createLibraryCoreNormalizedCheckpointRecordV2({
+            ...record,
+            payload: { ...record.payload, reason: "key_compromised" },
+          })
+        : record,
+    );
+    stageRecords(engine, changed, "changed-retirement", identity);
+    await expect(
+      engine.verifyNormalizedCheckpointActorRetirements("changed-retirement"),
+    ).rejects.toThrow(/certificate changed/);
+  });
+
+  it("installs and verifies the exact generated normalized schema", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    const status = engine.initialize();
+    expect(status.schemaVersion).toBe(LIBRARY_CORE_SQLITE_SCHEMA_VERSION);
+    expect(status.schemaSha256).toBe(LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256);
+    expect(status.connectionGeneration).toBe(1);
+    expect(
+      database.exec({
+        sql: "PRAGMA application_id;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([LIBRARY_CORE_SQLITE_APPLICATION_ID]);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM sqlite_schema WHERE name = 'library_feed_items';",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([1]);
+    for (const table of [
+      "library_authority_epochs",
+      "library_active_authority",
+      "library_actor_capabilities",
+      "library_transactions",
+      "library_operations",
+      "library_replication_outbox",
+      "library_invalidations",
+      "library_intent_transactions",
+      "library_intent_members",
+      "library_intent_results",
+      "library_intent_result_cursors",
+      "library_optimistic_fields",
+      "library_local_change_state",
+      "library_local_invalidations",
+      "library_device_contact_generations",
+      "library_device_contact_sync_state",
+      "library_device_contacts",
+      "library_device_contact_delta_receipts",
+      "library_device_contact_emails",
+      "library_device_contact_phones",
+      "library_device_contact_photos",
+      "library_device_contact_organizations",
+      "library_device_contact_suggestions",
+      "library_device_contact_match_receipts",
+      "library_device_contact_suggestion_accounts",
+    ]) {
+      expect(
+        database.exec({
+          sql: "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?1;",
+          bind: [table],
+          rowMode: 0,
+          returnValue: "resultRows",
+        }),
+      ).toEqual([1]);
+    }
+  });
+
+  it("fails closed when durable schema identity is changed", () => {
+    const first = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    first.initialize();
+    database.exec(
+      "UPDATE library_storage_meta SET schema_sha256 = lower(hex(randomblob(32)));",
+    );
+    const second = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    expect(() => second.initialize()).toThrow(/does not match this build/);
+  });
+
+  it("stores one proof-only follower request and installs only its countersigned certificate", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityKeyId = coreDigest("authority-key", {
+      authority_public_key: authorityPublicKey,
+      signature_algorithm: "ed25519",
+    });
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest,
+               accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        authorityKeyId,
+        authorityPublicKey,
+        "33".repeat(32),
+        "44".repeat(32),
+        "55".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    const enrollment = constructLibraryCoreActorEnrollmentBodyV1(
+      {
+        actor_incarnation_nonce: "66".repeat(32),
+        actor_public_key: actorPublicKey,
+        authority_key_id: authorityKeyId,
+        created_at_ms: 1_000,
+        epoch: 1,
+        epoch_id: epochId,
+        installation_incarnation: "77".repeat(32),
+        library_id: libraryId,
+        observed_frontier: [],
+        operation_id: "actor-enrolled:test",
+      },
+      { digest: coreDigest },
+    );
+    const capabilityInput = {
+      actor_class: "editor" as const,
+      allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      allowed_query_ids: [],
+      scope: { mode: "library_wide" as const },
+    };
+    const signActorProof = async (message: Uint8Array) =>
+      sign(null, message, actorKeys.privateKey).toString("hex");
+    const request = await constructLibraryCoreActorCapabilityRequestV2(
+      enrollment,
+      capabilityInput,
+      { digest: coreDigest, signActorProof },
+    );
+    const canonicalRequestBytes = encodeLibraryCoreCanonicalValue(
+      request.request as unknown as LibraryCoreCanonicalValue,
+    );
+    const stored = await engine.storeFollowerActorRequest({
+      canonicalRequestBytes,
+      createdAt: 1_000,
+    });
+    expect(stored).toMatchObject({
+      actorId: enrollment.body.actor_id,
+      state: "pending",
+    });
+    const certificate = await constructLibraryCoreActorCapabilityCertificateV2(
+      enrollment,
+      capabilityInput,
+      {
+        digest: coreDigest,
+        signActorProof,
+        async signAuthorityCertificate(message) {
+          return sign(null, message, authorityKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const canonicalCertificateBytes = encodeLibraryCoreCanonicalValue(
+      certificate.certificate as unknown as LibraryCoreCanonicalValue,
+    );
+    const installed = await engine.installFollowerActorEnrollment({
+      canonicalCertificateBytes,
+      enrolledAt: 1_100,
+    });
+    expect(installed).toMatchObject({
+      actorId: enrollment.body.actor_id,
+      enrollmentCertificateDigest: certificate.certificate.certificate_digest,
+    });
+    expect(engine.followerActorEnrollmentContext().request?.state).toBe(
+      "enrolled",
+    );
+    await expect(
+      engine.installFollowerActorEnrollment({
+        canonicalCertificateBytes,
+        enrolledAt: 1_100,
+      }),
+    ).resolves.toEqual(installed);
+    await expect(
+      engine.installFollowerActorEnrollment({
+        canonicalCertificateBytes,
+        enrolledAt: 1_101,
+      }),
+    ).rejects.toThrow(/replay changed/);
+    expect(engine.followerMutationContext()).toMatchObject({
+      actor_id: enrollment.body.actor_id,
+      next_actor_sequence: 1,
+      previous_actor_chain_digest: certificate.actor_chain_genesis,
+    });
+  });
+
+  it("stages split normalized operation pages and atomically applies one verified large transaction", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const authorityKeyId = "55".repeat(32);
+    const writerId = "66".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        authorityKeyId,
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, ?3, 1, 1);`,
+      bind: [libraryId, epochId, writerId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'desktop', ?3, 'enroll-1', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+
+    const body = "x".repeat(65_536);
+    const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 2_000,
+        entity_id: "saved:item:maximum-inline-body",
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 2_000,
+        library_id: libraryId,
+        operation_id: "operation:maximum-inline-body",
+        payload: {
+          item: {
+            author: {
+              displayName: "Bounded Author",
+              handle: "bounded",
+              id: "author:bounded",
+            },
+            capturedAt: 2_000,
+            content: {
+              mediaTypes: [],
+              mediaUrls: [],
+              text: body,
+            },
+            contentType: "article",
+            globalId: "saved:item:maximum-inline-body",
+            platform: "saved",
+            publishedAt: 2_000,
+            topics: [],
+            userState: {
+              archived: false,
+              hidden: false,
+              saved: true,
+              tags: [],
+            },
+          },
+        },
+        previous_actor_operation_id: null,
+        transaction_id: "transaction:maximum-inline-body",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    const finalizedMember = finalized.members[0]!;
+    const canonicalOperation = encodeLibraryCoreCanonicalValue(
+      finalizedMember.envelope as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: 131_072 },
+    );
+    expect(canonicalOperation.byteLength).toBeLessThanOrEqual(131_072);
+
+    const signedResult = (
+      sourceRevision: number,
+      transactionId: string,
+      transactionDigest: string,
+      operationId: string,
+      receiptId: string,
+      resultSequence: number,
+    ) => {
+      const candidate = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: sourceRevision,
+        authority_key_id: authorityKeyId,
+        canonical_operation_ids: [operationId],
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: null,
+        receipt_ids: [receiptId],
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: 3_000 + sourceRevision,
+        result_body_digest: "0".repeat(64),
+        result_sequence: resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: transactionDigest,
+        transaction_id: transactionId,
+      });
+      const digest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(candidate),
+      );
+      const canonicalBytes = encodeLibraryCoreCanonicalValue({
+        ...candidate,
+        result_body_digest: digest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: digest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      return { canonicalBytes, digest };
+    };
+    const accepted = signedResult(
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+      finalizedMember.envelope.operation_id,
+      finalizedMember.envelope_digest,
+      1,
+    );
+    const gap = signedResult(
+      2,
+      "transaction:future-gap",
+      "cc".repeat(32),
+      "operation:future-gap",
+      "dd".repeat(32),
+      2,
+    );
+    const descriptor = parseLibraryCoreNormalizedOperationExportDescriptorV2({
+      authorityEpoch: epochId,
+      firstAvailableRevision: 1,
+      format: "freed_normalized_operation_export_v2" as const,
+      libraryId,
+      operationCount: 1,
+      protocolVersion: 2 as const,
+      sourceRevision: 1,
+      transactionCount: 1,
+      writerId,
+    });
+    const record = (
+      canonicalRecord: Uint8Array,
+      kind: "accepted_transaction" | "operation",
+      memberIndex: number,
+      recordDigest: string,
+      sourceRevision: number,
+      transactionId: string,
+      transactionDigest: string,
+    ) => ({
+      canonicalRecordJson: new TextDecoder().decode(canonicalRecord),
+      kind,
+      memberIndex,
+      recordDigest,
+      sourceRevision,
+      transactionDigest,
+      transactionId,
+    });
+    const page = (pageRecord: ReturnType<typeof record>, done: boolean) =>
+      parseLibraryCoreNormalizedOperationExportPageV2({
+        canonicalRecordBytes: new TextEncoder().encode(
+          pageRecord.canonicalRecordJson,
+        ).byteLength,
+        done,
+        nextCursor: {
+          kind: pageRecord.kind,
+          memberIndex: pageRecord.memberIndex,
+          recordDigest: pageRecord.recordDigest,
+          sourceRevision: pageRecord.sourceRevision,
+        },
+        records: [pageRecord],
+      });
+    const gapRecord = record(
+      gap.canonicalBytes,
+      "accepted_transaction",
+      -1,
+      gap.digest,
+      2,
+      "transaction:future-gap",
+      "cc".repeat(32),
+    );
+    const gapReceipt = await engine.importNormalizedOperationPage({
+      page: page(gapRecord, false),
+      receivedAt: 2_500,
+      snapshot: {
+        ...descriptor,
+        operationCount: 2,
+        sourceRevision: 2,
+        transactionCount: 2,
+      },
+    });
+    expect(gapReceipt).toMatchObject({
+      appliedThroughRevision: 0,
+      appliedTransactionCount: 0,
+      stagedRecordCount: 1,
+    });
+
+    const resultRecord = record(
+      accepted.canonicalBytes,
+      "accepted_transaction",
+      -1,
+      accepted.digest,
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+    );
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(resultRecord, false),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toEqual({
+      appliedThroughRevision: 0,
+      appliedTransactionCount: 0,
+      receivedAt: 2_600,
+      stagedRecordCount: 1,
+      stagedTransactionCount: 1,
+    });
+    const operationRecord = record(
+      canonicalOperation,
+      "operation",
+      0,
+      finalizedMember.envelope_digest,
+      1,
+      finalizedMember.envelope.transaction_id,
+      finalized.transaction_digest,
+    );
+    database.exec(`CREATE TEMP TRIGGER fail_operation_replication_receipt
+      BEFORE INSERT ON library_operation_replication_results
+      BEGIN SELECT RAISE(ABORT, 'injected operation replication fault'); END;`);
+    await expect(
+      engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).rejects.toThrow(/injected operation replication fault/);
+    expect(
+      database.exec({
+        sql: `SELECT m.source_revision,
+                     (SELECT count(*) FROM library_feed_items),
+                     (SELECT count(*) FROM library_operations),
+                     (SELECT count(*) FROM library_operation_replication_stage_members
+                       WHERE source_revision = 1)
+              FROM library_meta AS m WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 0, 0, 1]]);
+    database.exec("DROP TRIGGER fail_operation_replication_receipt;");
+
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toEqual({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 1,
+      receivedAt: 2_600,
+      stagedRecordCount: 1,
+      stagedTransactionCount: 1,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT length(content_text), content_text,
+                     (SELECT count(*) FROM library_replication_outbox),
+                     (SELECT count(*) FROM library_operation_replication_results),
+                     (SELECT count(*) FROM library_operation_replication_stages)
+              FROM library_feed_items
+              WHERE global_id = 'saved:item:maximum-inline-body';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[65_536, body, 0, 1, 1]]);
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(resultRecord, false),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toMatchObject({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 0,
+    });
+    expect(
+      await engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).toMatchObject({
+      appliedThroughRevision: 1,
+      appliedTransactionCount: 0,
+    });
+    const changedDigestRecord = {
+      ...operationRecord,
+      recordDigest: "ee".repeat(32),
+    };
+    await expect(
+      engine.importNormalizedOperationPage({
+        page: page(changedDigestRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).rejects.toThrow(/replay changed/);
+  });
+
+  it("atomically commits verified follower intents, optimistic fields, and exact retries", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const publicKeyHex = publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKeyHex = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 2_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 7, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec(
+      "UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;",
+    );
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKeyHex,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-1', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, publicKeyHex, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('capability-1', ?1, 2, 'editor', 'library_wide', NULL, NULL,
+                    ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_follower_actor_request
+              (singleton_id, library_id, authority_epoch_id, actor_id,
+               actor_public_key, enrollment_request_digest,
+               canonical_enrollment_request, created_at,
+               enrollment_certificate_digest, canonical_enrollment_certificate,
+               actor_chain_genesis, enrolled_at)
+            VALUES (1, ?1, ?2, ?3, ?4, ?5, '{}', 1, ?6, '{}', ?7, 1);`,
+      bind: [
+        libraryId,
+        epochId,
+        actorId,
+        publicKeyHex,
+        "ab".repeat(32),
+        "bb".repeat(32),
+        chainGenesis,
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES ('capability-1', 'feed_item_read_assignment');`,
+    });
+    database.exec({
+      sql: `INSERT INTO library_feed_items
+              (global_id, platform, content_type, captured_at, published_at,
+               author_id, author_handle, author_display_name, hidden, saved,
+               archived, updated_at)
+            VALUES ('item-1', 'saved', 'article', 1, 1, 'author-1', 'ada',
+                    'Ada', 0, 0, 0, 1);`,
+    });
+    const member =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 1,
+          causal_frontier: [],
+          created_at_ms: 1_500,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 1_500,
+          library_id: libraryId,
+          operation_id: "intent-operation-1",
+          payload: { read_at_ms: 1_400 },
+          previous_actor_operation_id: null,
+          transaction_id: "intent-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, privateKey).toString("hex");
+      },
+    });
+    const envelopeBytes = finalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+
+    expect(engine.followerMutationContext()).toStrictEqual({
+      actor_id: actorId,
+      actor_public_key: publicKeyHex,
+      epoch: 1,
+      epoch_id: epochId,
+      library_id: libraryId,
+      next_actor_sequence: 1,
+      observed_frontier: [],
+      previous_actor_chain_digest: chainGenesis,
+      previous_actor_operation_id: null,
+      schema_version: 1,
+    });
+
+    const first = await engine.commitFollowerIntent({ envelopeBytes });
+    expect(first).toEqual({
+      actorId,
+      firstCounter: 1,
+      lastCounter: 1,
+      memberCount: 1,
+      optimisticFieldCount: 1,
+      state: "pending",
+      transactionId: "intent-transaction-1",
+    });
+    expect(engine.followerMutationContext()).toMatchObject({
+      actor_id: actorId,
+      next_actor_sequence: 2,
+      previous_actor_operation_id: "intent-operation-1",
+    });
+    expect(await engine.commitFollowerIntent({ envelopeBytes })).toEqual(first);
+    expect(
+      database.exec({
+        sql: `SELECT value_type, integer_value
+              FROM library_optimistic_fields
+              WHERE transaction_id = 'intent-transaction-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["integer", 1_400]]);
+    expect(
+      engine.query({
+        afterRevision: 0,
+        cancellationId: "cancel-local-intent",
+        cursor: null,
+        limit: 512,
+        queryId: "local_change_feed_v1",
+        readerSessionId: "reader-local-intent",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      queryId: "local_change_feed_v1",
+      rows: [
+        {
+          entityId: "item-1",
+          ordinal: 0,
+          resetRequired: false,
+          revision: 1,
+          topic: "feed_item",
+        },
+      ],
+      source: { projectionRevision: 1, transitionSequence: 1 },
+    });
+    expect(
+      engine.query({
+        entityIds: ["item-1"],
+        queryId: "optimistic_fields_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "optimistic_fields_v1",
+      rows: [
+        {
+          entityId: "item-1",
+          fieldPath: "read_at",
+          value: 1_400,
+          valueType: "integer",
+        },
+      ],
+      source: { projectionRevision: 7, transitionSequence: 1 },
+    });
+    expect(
+      database.exec({
+        sql: `SELECT next_counter, previous_operation_id
+              FROM library_intent_actors WHERE actor_id = ?1;`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[2, "intent-operation-1"]]);
+    const intentPage = engine.pageFollowerIntents({
+      actorId,
+      cursor: null,
+      limit: 128,
+      schemaVersion: 1,
+    });
+    expect(engine.followerTransportContext()).toEqual({
+      actorId,
+      libraryId,
+      nextIntentActorCounter: 1,
+      nextResultSequence: 1,
+      previousIntentSegmentDigest: null,
+      previousResultSegmentDigest: null,
+      schemaVersion: 2,
+      storageEpochId: epochId,
+    });
+    expect(
+      engine.pageFollowerTransport({
+        actorId: lowercaseHex64(actorId),
+        firstActorCounter: 1,
+        limit: 128,
+        schemaVersion: 2,
+      }),
+    ).toEqual({
+      actorId,
+      canonicalEnvelopes: envelopeBytes,
+      done: true,
+      firstActorCounter: 1,
+      lastActorCounter: 1,
+      schemaVersion: 2,
+    });
+    expect(intentPage).toEqual({
+      actorId,
+      done: true,
+      nextCursor: {
+        actorCounter: 1,
+        operationId: "intent-operation-1",
+        transactionId: "intent-transaction-1",
+      },
+      records: [
+        {
+          actorCounter: 1,
+          actorId,
+          canonicalEnvelopeJson: new TextDecoder().decode(envelopeBytes[0]),
+          intentEpoch: 1,
+          intentEpochId: epochId,
+          memberCount: 1,
+          memberIndex: 0,
+          operationId: "intent-operation-1",
+          state: "pending",
+          transactionDigest: finalized.transaction_digest,
+          transactionId: "intent-transaction-1",
+        },
+      ],
+      schemaVersion: 1,
+    });
+    const storedSegmentDigest = "13".repeat(32);
+    const publication = parseLibraryCoreNormalizedIntentTransportPublicationV2({
+      header: {
+        actor_id: actorId,
+        canonical_envelope_bytes: envelopeBytes[0]!.byteLength,
+        first_actor_counter: 1,
+        format: "freed_normalized_intent_segment_v2" as const,
+        kind: "normalized_intent_segment_header" as const,
+        last_actor_counter: 1,
+        library_id: libraryId,
+        previous_segment_digest: null,
+        protocol: "normalized_intent_segments_v2" as const,
+        protocol_version: 2 as const,
+        record_count: 1,
+        segment_digest: "12".repeat(32),
+        storage_epoch_id: epochId,
+      },
+      publishedAt: 2_000,
+      reference: {
+        descriptor: {
+          byteLength: 1_024,
+          contentDigest: storedSegmentDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            actorId,
+            digest: storedSegmentDigest,
+            epochId,
+            firstSequence: 1,
+            kind: "intent_segment",
+            lastSequence: 1,
+            libraryId,
+          }),
+        },
+        transportObjectId: "drive-intent-object-1",
+      },
+    });
+    const publicationReceipt =
+      engine.publishNormalizedFollowerIntentTransport(publication);
+    expect(publicationReceipt).toEqual({
+      actorId,
+      firstActorCounter: 1,
+      lastActorCounter: 1,
+      newlyPublishedTransactionCount: 1,
+      nextActorCounter: 2,
+      publishedAt: 2_000,
+      semanticSegmentDigest: "12".repeat(32),
+      storedSegmentDigest,
+    });
+    expect(engine.followerTransportContext()).toMatchObject({
+      nextIntentActorCounter: 2,
+      previousIntentSegmentDigest: storedSegmentDigest,
+    });
+    expect(
+      engine.pageFollowerTransport({
+        actorId: lowercaseHex64(actorId),
+        firstActorCounter: 2,
+        limit: 128,
+        schemaVersion: 2,
+      }),
+    ).toMatchObject({ canonicalEnvelopes: [], done: true });
+    expect(
+      engine.publishNormalizedFollowerIntentTransport(publication),
+    ).toEqual(publicationReceipt);
+    expect(() =>
+      engine.publishNormalizedFollowerIntentTransport({
+        ...publication,
+        reference: {
+          ...publication.reference,
+          transportObjectId: "changed-object",
+        },
+      }),
+    ).toThrow(/replay changed/);
+    expect(
+      engine.pageFollowerIntents({
+        actorId,
+        cursor: null,
+        limit: 128,
+        schemaVersion: 1,
+      }).records[0]?.state,
+    ).toBe("published");
+    expect(() =>
+      engine.pageFollowerIntents({
+        actorId,
+        cursor: {
+          ...intentPage.nextCursor!,
+          operationId: "different-operation",
+        },
+        limit: 128,
+        schemaVersion: 1,
+      }),
+    ).toThrow(/does not name a stored member/);
+    const intentPlan = database.exec({
+      sql: `EXPLAIN QUERY PLAN
+            SELECT member.actor_counter, member.operation_id,
+                   member.transaction_id
+            FROM library_intent_members AS member
+            JOIN library_intent_transactions AS intent
+              ON intent.transaction_id = member.transaction_id
+             AND intent.actor_id = member.actor_id
+            WHERE member.actor_id = ?1
+              AND member.actor_counter > ?2
+              AND intent.state IN ('pending', 'published')
+            ORDER BY member.actor_counter
+            LIMIT ?3;`,
+      bind: [actorId, 0, 129],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    expect(intentPlan.map((row) => String(row[3])).join("\n")).toMatch(
+      /library_intent_members_actor_page/,
+    );
+    expect(intentPlan.map((row) => String(row[3])).join("\n")).not.toMatch(
+      /USE TEMP B-TREE/,
+    );
+
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 8,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["intent-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: [finalized.members[0]!.envelope_digest],
+      rejection_reason: null,
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_400,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_000,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "intent-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    const canonicalResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedResult,
+      result_body_digest: resultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: resultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    const resultEnvelope = parseLibraryCoreFollowerResultEnvelopeV1(
+      decodeLibraryCoreCanonicalValue(canonicalResultBytes),
+    );
+    const resultBody = parseLibraryCoreNormalizedResultSegmentBodyV2({
+      actor_id: actorId,
+      canonical_result_bytes: canonicalResultBytes.byteLength,
+      first_result_sequence: 1,
+      format: "freed_normalized_result_segment_v2",
+      kind: "normalized_result_segment_body",
+      last_result_sequence: 1,
+      library_id: libraryId,
+      previous_segment_digest: null,
+      protocol: "normalized_result_segments_v2",
+      protocol_version: 2,
+      result_count: 1,
+      results: [resultEnvelope],
+      storage_epoch_id: epochId,
+    });
+    const semanticResultDigest = coreDigest(
+      "normalized-result-segment-body-v2",
+      resultBody,
+    );
+    const storedResultDigest = "14".repeat(32);
+    const resultPublication = parseLibraryCoreNormalizedResultTransportImportV2(
+      {
+        header: normalizedResultSegmentHeaderFromBodyV2(
+          resultBody,
+          semanticResultDigest,
+        ),
+        receivedAt: 2_100,
+        reference: {
+          descriptor: {
+            byteLength: canonicalResultBytes.byteLength,
+            contentDigest: storedResultDigest,
+            objectKey: createLibraryCoreImmutableObjectKey({
+              actorId,
+              digest: storedResultDigest,
+              epochId,
+              firstSequence: 1,
+              kind: "result_segment",
+              lastSequence: 1,
+              libraryId,
+            }),
+          },
+          transportObjectId: "drive-result-object-1",
+        },
+        results: [resultEnvelope],
+      },
+    );
+    database.exec(`CREATE TEMP TRIGGER fail_result_transport_receipt
+      BEFORE INSERT ON library_result_transport_segments
+      BEGIN SELECT RAISE(ABORT, 'injected result transport fault'); END;`);
+    await expect(
+      engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).rejects.toThrow(/injected result transport fault/);
+    expect(
+      database.exec({
+        sql: `SELECT source_revision,
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields)
+              FROM library_meta WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, 0, 1]]);
+    database.exec("DROP TRIGGER fail_result_transport_receipt;");
+
+    database.exec(`CREATE TEMP TRIGGER fail_operation_replication_result
+      BEFORE INSERT ON library_operation_replication_results
+      BEGIN SELECT RAISE(ABORT, 'injected operation apply fault'); END;`);
+    await expect(
+      engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).rejects.toThrow(/injected operation apply fault/);
+    expect(
+      database.exec({
+        sql: `SELECT source_revision,
+                     (SELECT count(*) FROM library_result_transport_segments),
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields),
+                     (SELECT count(*) FROM library_transactions),
+                     (SELECT count(*) FROM library_operations),
+                     (SELECT count(*) FROM library_operation_replication_results)
+              FROM library_meta WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, 1, 1, 1, 0, 0, 0]]);
+    database.exec("DROP TRIGGER fail_operation_replication_result;");
+    const transportReceipt =
+      await engine.importNormalizedFollowerResultTransport(resultPublication);
+    expect(transportReceipt).toEqual({
+      acceptedTransactionCount: 1,
+      actorId,
+      firstResultSequence: 1,
+      lastResultSequence: 1,
+      nextResultSequence: 2,
+      receivedAt: 2_100,
+      rejectedTransactionCount: 0,
+      resultCount: 1,
+      semanticSegmentDigest: semanticResultDigest,
+      storedSegmentDigest: storedResultDigest,
+    });
+    expect(engine.followerTransportContext()).toMatchObject({
+      nextResultSequence: 2,
+      previousResultSegmentDigest: storedResultDigest,
+    });
+    expect(
+      await engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).toEqual(transportReceipt);
+    await expect(
+      engine.importNormalizedFollowerResultTransport({
+        ...resultPublication,
+        reference: {
+          ...resultPublication.reference,
+          transportObjectId: "changed-result-object",
+        },
+      }),
+    ).rejects.toThrow(/replay changed/);
+    expect(await engine.applyFollowerResult({ canonicalResultBytes })).toEqual({
+      actorId,
+      resultDigest,
+      resultSequence: 1,
+      sourceRevision: 8,
+      status: "accepted",
+      transactionId: "intent-transaction-1",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT read_at, (SELECT count(*) FROM library_optimistic_fields),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1),
+                     (SELECT count(*) FROM library_transactions
+                      WHERE transaction_id = 'intent-transaction-1'),
+                     (SELECT count(*) FROM library_operations
+                      WHERE transaction_id = 'intent-transaction-1'),
+                     (SELECT count(*) FROM library_operation_replication_results
+                      WHERE transaction_id = 'intent-transaction-1')
+              FROM library_feed_items WHERE global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_400, 0, 2, 1, 1, 1]]);
+
+    const changedResult = new Uint8Array(canonicalResultBytes);
+    changedResult[changedResult.byteLength - 2] =
+      changedResult[changedResult.byteLength - 2] === 48 ? 49 : 48;
+    await expect(
+      engine.applyFollowerResult({ canonicalResultBytes: changedResult }),
+    ).rejects.toThrow(/changed bytes|canonical/);
+
+    const decoded = decodeLibraryCoreCanonicalValue(envelopeBytes[0]!);
+    if (
+      decoded === null ||
+      typeof decoded !== "object" ||
+      Array.isArray(decoded)
+    ) {
+      throw new Error("test follower envelope is not a record");
+    }
+    const changed = [
+      encodeLibraryCoreCanonicalValue({
+        ...decoded,
+        created_at_ms: 1_501,
+      }),
+    ];
+    await expect(
+      engine.commitFollowerIntent({ envelopeBytes: changed }),
+    ).rejects.toThrow(/reused with changed bytes/);
+
+    database.exec(`CREATE TEMP TRIGGER fail_follower_optimistic_insert
+      BEFORE INSERT ON library_optimistic_fields
+      BEGIN SELECT RAISE(ABORT, 'injected optimistic fault'); END;`);
+    const secondMember =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 1_600,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 1_600,
+          library_id: libraryId,
+          operation_id: "intent-operation-2",
+          payload: { read_at_ms: 1_600 },
+          previous_actor_operation_id: "intent-operation-1",
+          transaction_id: "intent-transaction-2",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const secondAssembled = assembleLibraryCoreTransactionV1(
+      [secondMember],
+      finalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const secondFinalized = await finalizeLibraryCoreTransactionV1(
+      secondAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, privateKey).toString("hex");
+        },
+      },
+    );
+    await expect(
+      engine.commitFollowerIntent({
+        envelopeBytes: secondFinalized.members.map((value) =>
+          encodeLibraryCoreCanonicalValue(
+            value.envelope as unknown as LibraryCoreCanonicalValue,
+          ),
+        ),
+      }),
+    ).rejects.toThrow(/injected optimistic fault/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_intent_transactions;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([1]);
+    expect(
+      database.exec({
+        sql: `SELECT next_counter FROM library_intent_actors
+              WHERE actor_id = ?1;`,
+        bind: [actorId],
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([2]);
+
+    database.exec("DROP TRIGGER fail_follower_optimistic_insert;");
+    const secondEnvelopeBytes = secondFinalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+    await engine.commitFollowerIntent({ envelopeBytes: secondEnvelopeBytes });
+    const unsignedSecondResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 9,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["intent-operation-2"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: resultDigest,
+      receipt_ids: [secondFinalized.members[0]!.envelope_digest],
+      rejection_reason: null,
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_600,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_100,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 2,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: secondFinalized.transaction_digest,
+      transaction_id: "intent-transaction-2",
+    });
+    const secondResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedSecondResult),
+    );
+    const secondResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedSecondResult,
+      result_body_digest: secondResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: secondResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    database.exec(`CREATE TEMP TRIGGER fail_follower_result_cursor
+      BEFORE UPDATE OF next_result_sequence ON library_intent_result_cursors
+      BEGIN SELECT RAISE(ABORT, 'injected result cursor fault'); END;`);
+    await expect(
+      engine.applyFollowerResult({ canonicalResultBytes: secondResultBytes }),
+    ).rejects.toThrow(/injected result cursor fault/);
+    expect(
+      database.exec({
+        sql: `SELECT read_at,
+                     (SELECT source_revision FROM library_meta WHERE singleton_id = 1),
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields
+                      WHERE transaction_id = 'intent-transaction-2'),
+                     (SELECT state FROM library_intent_transactions
+                      WHERE transaction_id = 'intent-transaction-2'),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1)
+              FROM library_feed_items WHERE global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_400, 8, 1, 1, "pending", 2]]);
+
+    database.exec("DROP TRIGGER fail_follower_result_cursor;");
+    await engine.applyFollowerResult({
+      canonicalResultBytes: secondResultBytes,
+    });
+    const thirdMember =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "intent-operation-3",
+          payload: { read_at_ms: 2_200 },
+          previous_actor_operation_id: "intent-operation-2",
+          transaction_id: "intent-transaction-3",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const thirdAssembled = assembleLibraryCoreTransactionV1(
+      [thirdMember],
+      secondFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const thirdFinalized = await finalizeLibraryCoreTransactionV1(
+      thirdAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: thirdFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const currentEpochId = "66".repeat(32);
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 2, ?3, ?4, ?5, '{}', 2, ?6, ?7, 2200);`,
+      bind: [
+        currentEpochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKeyHex,
+        "67".repeat(32),
+        "68".repeat(32),
+        "69".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `UPDATE library_active_authority
+            SET epoch_id = ?1, accepted_manifest_generation = 2,
+                activated_at = 2200;`,
+      bind: [currentEpochId],
+    });
+    database.exec({
+      sql: `UPDATE library_meta SET authority_epoch = ?1, updated_at = 2200;`,
+      bind: [currentEpochId],
+    });
+    const unsignedStaleResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 9,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: [],
+      epoch: 2,
+      epoch_id: currentEpochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: secondResultDigest,
+      receipt_ids: [],
+      rejection_reason: "epoch_stale",
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_600,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_300,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 3,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "rejected",
+      transaction_digest: thirdFinalized.transaction_digest,
+      transaction_id: "intent-transaction-3",
+    });
+    const staleResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedStaleResult),
+    );
+    const staleResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedStaleResult,
+      result_body_digest: staleResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: staleResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    const staleReceipt = await engine.applyFollowerResult({
+      canonicalResultBytes: staleResultBytes,
+    });
+    expect(staleReceipt).toEqual({
+      actorId,
+      resultDigest: staleResultDigest,
+      resultSequence: 3,
+      sourceRevision: 9,
+      status: "rejected",
+      transactionId: "intent-transaction-3",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT item.read_at, intent.state,
+                     result.authority_epoch_id, result.intent_epoch_id,
+                     (SELECT count(*) FROM library_optimistic_fields
+                      WHERE transaction_id = intent.transaction_id),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1)
+              FROM library_feed_items AS item
+              JOIN library_intent_transactions AS intent
+                ON intent.transaction_id = 'intent-transaction-3'
+              JOIN library_intent_results AS result
+                ON result.transaction_id = intent.transaction_id
+              WHERE item.global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_400, "rejected", currentEpochId, epochId, 0, 4]]);
+  });
+
+  it("materializes an accepted signed FeedItem capture through the generated program", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 2_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);
+            `,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-capture', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('capture-capability', ?1, 2, 'agent', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES
+              ('capture-capability', 'feed_item_analysis_replace'),
+              ('capture-capability', 'feed_item_annotations_replace'),
+              ('capture-capability', 'feed_item_capture_upsert'),
+              ('capture-capability', 'feed_item_priority_assignment');`,
+    });
+    const item = {
+      author: { displayName: "Ada", handle: "ada", id: "author-1" },
+      capturedAt: 1_500,
+      content: {
+        mediaTypes: ["image"],
+        mediaUrls: ["https://example.com/image.jpg"],
+        text: "A bounded capture",
+      },
+      contentType: "post",
+      globalId: "captured-item-1",
+      platform: "saved",
+      publishedAt: 1_400,
+      topics: ["sqlite"],
+      userState: {
+        archived: false,
+        hidden: false,
+        saved: false,
+        tags: [],
+      },
+    };
+    const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 1_500,
+        entity_id: item.globalId,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 1_500,
+        library_id: libraryId,
+        operation_id: "capture-operation-1",
+        payload: { item },
+        previous_actor_operation_id: null,
+        transaction_id: "capture-transaction-1",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    const envelopeBytes = finalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+    const intent = await engine.commitFollowerIntent({ envelopeBytes });
+    expect(intent.optimisticFieldCount).toBe(0);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_feed_items;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 1,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["capture-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: [finalized.members[0]!.envelope_digest],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 2_100,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "capture-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    const resultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedResult,
+      result_body_digest: resultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: resultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    await engine.applyFollowerResult({ canonicalResultBytes: resultBytes });
+    expect(
+      database.exec({
+        sql: `SELECT global_id, content_text, saved, archived, updated_at,
+                     (SELECT source_url FROM library_feed_item_media
+                      WHERE global_id = 'captured-item-1' AND ordinal = 0),
+                     (SELECT topic FROM library_feed_item_topics
+                      WHERE global_id = 'captured-item-1')
+              FROM library_feed_items WHERE global_id = 'captured-item-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        "captured-item-1",
+        "A bounded capture",
+        0,
+        0,
+        2_100,
+        "https://example.com/image.jpg",
+        "sqlite",
+      ],
+    ]);
+
+    type FinalizedTestTransaction = Awaited<
+      ReturnType<typeof finalizeLibraryCoreTransactionV1>
+    >;
+    const applyAcceptedTestTransaction = async (
+      accepted: FinalizedTestTransaction,
+      authoritativeSourceRevision: number,
+      previousResultDigest: string,
+      resultSequence: number,
+      resolvedAtMs: number,
+    ): Promise<string> => {
+      await engine.commitFollowerIntent({
+        envelopeBytes: accepted.members.map((value) =>
+          encodeLibraryCoreCanonicalValue(
+            value.envelope as unknown as LibraryCoreCanonicalValue,
+          ),
+        ),
+      });
+      const firstEnvelope = accepted.members[0]!.envelope;
+      const unsignedAcceptedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: authoritativeSourceRevision,
+        authority_key_id: "55".repeat(32),
+        canonical_operation_ids: accepted.members.map(
+          (value) => value.envelope.operation_id,
+        ),
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: previousResultDigest,
+        receipt_ids: accepted.members.map((value) => value.envelope_digest),
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: resolvedAtMs,
+        result_body_digest: "0".repeat(64),
+        result_sequence: resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: accepted.transaction_digest,
+        transaction_id: firstEnvelope.transaction_id,
+      });
+      const acceptedResultDigest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(unsignedAcceptedResult),
+      );
+      const acceptedResultBytes = encodeLibraryCoreCanonicalValue({
+        ...unsignedAcceptedResult,
+        result_body_digest: acceptedResultDigest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: acceptedResultDigest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      await engine.applyFollowerResult({
+        canonicalResultBytes: acceptedResultBytes,
+      });
+      return acceptedResultDigest;
+    };
+
+    const annotationsMember =
+      FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "annotations-operation-1",
+          payload: {
+            assigned_at_ms: 2_200,
+            highlights: [
+              {
+                createdAt: 2_000,
+                note: "Remember",
+                text: "Bounded passage",
+                textBlobDigest: null,
+              },
+            ],
+            tags: ["alpha", "research"],
+          },
+          previous_actor_operation_id: "capture-operation-1",
+          transaction_id: "annotations-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const annotationsAssembled = assembleLibraryCoreTransactionV1(
+      [annotationsMember],
+      finalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const annotationsFinalized = await finalizeLibraryCoreTransactionV1(
+      annotationsAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const annotationsResultDigest = await applyAcceptedTestTransaction(
+      annotationsFinalized,
+      2,
+      resultDigest,
+      2,
+      2_250,
+    );
+
+    const analysisMember =
+      FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_201,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_201,
+          library_id: libraryId,
+          operation_id: "analysis-operation-1",
+          payload: {
+            assigned_at_ms: 2_201,
+            content_signals: {
+              inferred_at_ms: 2_100,
+              method: "rules",
+              scores: [
+                {
+                  score_basis_points: 8_750,
+                  signal: "event",
+                  tagged: true,
+                },
+                {
+                  score_basis_points: 2_500,
+                  signal: "essay",
+                  tagged: false,
+                },
+              ],
+              version: 1,
+            },
+            event_candidate: {
+              confidence_basis_points: 8_125,
+              detected_at_ms: 2_110,
+              ends_at_ms: 2_500,
+              evidence: "Saturday at noon",
+              evidence_blob_digest: null,
+              location_name: "Library",
+              location_url: null,
+              method: "rules",
+              starts_at_ms: 2_400,
+              timezone: "America/Los_Angeles",
+              title: "Meetup",
+              version: 1,
+            },
+          },
+          previous_actor_operation_id: "annotations-operation-1",
+          transaction_id: "analysis-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const analysisAssembled = assembleLibraryCoreTransactionV1(
+      [analysisMember],
+      annotationsFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const analysisFinalized = await finalizeLibraryCoreTransactionV1(
+      analysisAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const analysisResultDigest = await applyAcceptedTestTransaction(
+      analysisFinalized,
+      3,
+      annotationsResultDigest,
+      3,
+      2_260,
+    );
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT group_concat(tag, ',') FROM
+                   (SELECT tag FROM library_feed_item_tags
+                    WHERE global_id = 'captured-item-1'
+                    ORDER BY tag COLLATE BINARY)),
+                (SELECT text_value FROM library_feed_item_highlights
+                 WHERE global_id = 'captured-item-1' AND ordinal = 0),
+                (SELECT score FROM library_feed_item_signal_scores
+                 WHERE global_id = 'captured-item-1' AND signal = 'event'),
+                (SELECT tagged FROM library_feed_item_signal_scores
+                 WHERE global_id = 'captured-item-1' AND signal = 'event'),
+                (SELECT confidence FROM library_feed_item_events
+                 WHERE global_id = 'captured-item-1'),
+                (SELECT title FROM library_feed_item_events
+                 WHERE global_id = 'captured-item-1');`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["alpha,research", "Bounded passage", 0.875, 1, 0.8125, "Meetup"],
+    ]);
+
+    const itemUpdatedAtBeforePriority = database.exec({
+      sql: `SELECT updated_at FROM library_feed_items
+            WHERE global_id = 'captured-item-1';`,
+      rowMode: 0,
+      returnValue: "resultRows",
+    })[0] as number;
+    const priorityMember =
+      FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 4,
+          causal_frontier: [],
+          created_at_ms: 2_202,
+          entity_id: item.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_202,
+          library_id: libraryId,
+          operation_id: "priority-operation-1",
+          payload: {
+            assigned_at_ms: 2_202,
+            priority_basis_points: 8_125,
+          },
+          previous_actor_operation_id: "analysis-operation-1",
+          transaction_id: "priority-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const priorityAssembled = assembleLibraryCoreTransactionV1(
+      [priorityMember],
+      analysisFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const priorityFinalized = await finalizeLibraryCoreTransactionV1(
+      priorityAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const priorityResultDigest = await applyAcceptedTestTransaction(
+      priorityFinalized,
+      4,
+      analysisResultDigest,
+      4,
+      2_270,
+    );
+    expect(
+      database.exec({
+        sql: `SELECT priority, priority_computed_at, updated_at
+              FROM library_feed_items WHERE global_id = 'captured-item-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[81.25, 2_202, itemUpdatedAtBeforePriority]]);
+
+    const gapItem = {
+      ...item,
+      content: { ...item.content, text: "Must wait for revision two" },
+      globalId: "captured-item-gap",
+    };
+    const gapMember =
+      FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 5,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: gapItem.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "capture-operation-gap",
+          payload: { item: gapItem },
+          previous_actor_operation_id: "priority-operation-1",
+          transaction_id: "capture-transaction-gap",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const gapAssembled = assembleLibraryCoreTransactionV1(
+      [gapMember],
+      priorityFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const gapFinalized = await finalizeLibraryCoreTransactionV1(gapAssembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    await engine.commitFollowerIntent({
+      envelopeBytes: gapFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const unsignedGapResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 6,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["capture-operation-gap"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: priorityResultDigest,
+      receipt_ids: [gapFinalized.members[0]!.envelope_digest],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 2_300,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 5,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: gapFinalized.transaction_digest,
+      transaction_id: "capture-transaction-gap",
+    });
+    const gapResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedGapResult),
+    );
+    const gapResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedGapResult,
+      result_body_digest: gapResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: gapResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    await engine.applyFollowerResult({
+      canonicalResultBytes: gapResultBytes,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT source_revision FROM library_meta WHERE singleton_id = 1),
+                (SELECT revision FROM library_change_state WHERE singleton_id = 1),
+                (SELECT count(*) FROM library_feed_items
+                 WHERE global_id = 'captured-item-gap'),
+                (SELECT state FROM library_intent_transactions
+                 WHERE transaction_id = 'capture-transaction-gap'),
+                (SELECT authoritative_source_revision FROM library_intent_results
+                 WHERE transaction_id = 'capture-transaction-gap');`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[4, 4, 0, "accepted", 6]]);
+  });
+
+  it("atomically materializes an accepted signed Friend replacement", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 400 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-friend', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('friend-capability', ?1, 2, 'editor', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES ('friend-capability', 'friend_replace');`,
+    });
+    database.exec(`INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES ('person:friend', 'Before', 'friend', 3, 100, 100);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, display_name,
+         first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+      VALUES
+        ('account:keep', 'person:friend', 'social', 'instagram', 'keep', 'Keep',
+         100, 200, 'captured_item', 100, 200),
+        ('account:remove', 'person:friend', 'social', 'facebook', 'remove', 'Remove',
+         100, 200, 'captured_item', 100, 200),
+        ('contact:old', 'person:friend', 'contact', 'web_contact', 'old', 'Old',
+         100, 200, 'contact_import', 100, 200);`);
+
+    const person = {
+      id: "person:friend",
+      name: "After",
+      relationshipStatus: "friend" as const,
+      careLevel: 5,
+      tags: ["family"],
+      createdAt: 100,
+      updatedAt: 300,
+    };
+    const accounts = [
+      {
+        id: "account:keep",
+        personId: person.id,
+        kind: "social" as const,
+        provider: "instagram" as const,
+        externalId: "keep",
+        displayName: "Kept and updated",
+        followRosterRoles: ["follower", "following"] as const,
+        firstSeenAt: 100,
+        lastSeenAt: 300,
+        discoveredFrom: "captured_item" as const,
+        createdAt: 100,
+        updatedAt: 300,
+      },
+      {
+        id: "contact:new",
+        personId: person.id,
+        kind: "contact" as const,
+        provider: "web_contact" as const,
+        externalId: "new",
+        displayName: "New Contact",
+        firstSeenAt: 300,
+        lastSeenAt: 300,
+        discoveredFrom: "contact_import" as const,
+        createdAt: 300,
+        updatedAt: 300,
+      },
+    ];
+    const member = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 300,
+        entity_id: person.id,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 300,
+        library_id: libraryId,
+        operation_id: "friend-operation-1",
+        payload: { accounts, person },
+        previous_actor_operation_id: null,
+        transaction_id: "friend-transaction-1",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], chainGenesis, {
+        digest: coreDigest,
+      }),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: finalized.members.map(({ envelope }) =>
+        encodeLibraryCoreCanonicalValue(
+          envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 1,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["friend-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: [finalized.members[0]!.envelope_digest],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 500,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "friend-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    await engine.applyFollowerResult({
+      canonicalResultBytes: encodeLibraryCoreCanonicalValue({
+        ...unsignedResult,
+        result_body_digest: resultDigest,
+        signature: sign(
+          null,
+          encodeLibraryCoreSignatureInput("follower-result-envelope", {
+            result_body_digest: resultDigest,
+          }),
+          authorityKeys.privateKey,
+        ).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue),
+    });
+
+    expect(
+      database.exec({
+        sql: `SELECT name, care_level,
+                     (SELECT group_concat(tag, ',') FROM library_person_tags
+                      WHERE person_id = 'person:friend')
+              FROM library_persons WHERE id = 'person:friend';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["After", 5, "family"]]);
+    expect(
+      database.exec({
+        sql: `SELECT id, person_id, display_name, last_seen_at
+              FROM library_accounts
+              WHERE id IN ('account:keep', 'account:remove', 'contact:old', 'contact:new')
+              ORDER BY id;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["account:keep", "person:friend", "Kept and updated", 300],
+      ["account:remove", null, "Remove", 200],
+      ["contact:new", "person:friend", "New Contact", 300],
+    ]);
+    expect(
+      database.exec({
+        sql: `SELECT role FROM library_account_follow_roles
+              WHERE account_id = 'account:keep' ORDER BY role;`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["follower", "following"]);
+    expect(
+      database.exec({
+        sql: `SELECT topic, entity_id, reset_required
+              FROM library_invalidations WHERE revision = 1 ORDER BY ordinal;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      ["person", "person:friend", 0],
+      ["account", null, 1],
+    ]);
+  });
+
+  it("materializes an accepted signed RSS lifecycle through generated programs", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 1_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2,
+                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-rss', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('rss-capability', ?1, 2, 'editor', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec(`INSERT INTO library_actor_capability_mutations
+        (capability_id, mutation_id) VALUES
+        ('rss-capability', 'rss_feed_upsert'),
+        ('rss-capability', 'rss_feed_title_assignment'),
+        ('rss-capability', 'rss_feed_remove_keep_items');`);
+
+    const feedUrl = "https://example.com/feed.xml";
+    const feed = {
+      enabled: true,
+      folder: "Reading",
+      pollInterval: 900,
+      siteUrl: "https://example.com",
+      title: "Original title",
+      trackUnread: true,
+      url: feedUrl,
+    };
+    const upsertMember = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 1_500,
+        entity_id: feedUrl,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 1_500,
+        library_id: libraryId,
+        operation_id: "rss-upsert-operation",
+        payload: { feed },
+        previous_actor_operation_id: null,
+        transaction_id: "rss-upsert-transaction",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const upsertFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([upsertMember], chainGenesis, {
+        digest: coreDigest,
+      }),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: upsertFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+
+    const applyAccepted = async (input: {
+      canonicalOperationId: string;
+      previousResultDigest: string | null;
+      receiptId: string;
+      resolvedAt: number;
+      resultSequence: number;
+      sourceRevision: number;
+      transactionDigest: string;
+      transactionId: string;
+    }): Promise<string> => {
+      const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: input.sourceRevision,
+        authority_key_id: "55".repeat(32),
+        canonical_operation_ids: [input.canonicalOperationId],
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: input.previousResultDigest,
+        receipt_ids: [input.receiptId],
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: input.resolvedAt,
+        result_body_digest: "0".repeat(64),
+        result_sequence: input.resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: input.transactionDigest,
+        transaction_id: input.transactionId,
+      });
+      const digest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(unsigned),
+      );
+      await engine.applyFollowerResult({
+        canonicalResultBytes: encodeLibraryCoreCanonicalValue({
+          ...unsigned,
+          result_body_digest: digest,
+          signature: sign(
+            null,
+            encodeLibraryCoreSignatureInput("follower-result-envelope", {
+              result_body_digest: digest,
+            }),
+            authorityKeys.privateKey,
+          ).toString("hex"),
+        } as unknown as LibraryCoreCanonicalValue),
+      });
+      return digest;
+    };
+
+    const upsertResultDigest = await applyAccepted({
+      canonicalOperationId: "rss-upsert-operation",
+      previousResultDigest: null,
+      receiptId: upsertFinalized.members[0]!.envelope_digest,
+      resolvedAt: 2_000,
+      resultSequence: 1,
+      sourceRevision: 1,
+      transactionDigest: upsertFinalized.transaction_digest,
+      transactionId: "rss-upsert-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT title, enabled, track_unread, folder, updated_at
+              FROM library_rss_feeds WHERE url = ?1;`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["Original title", 1, 1, "Reading", 2_000]]);
+
+    const titleMember =
+      RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 2_100,
+          entity_id: feedUrl,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_100,
+          library_id: libraryId,
+          operation_id: "rss-title-operation",
+          payload: { assigned_at_ms: 2_100, title: "Renamed title" },
+          previous_actor_operation_id: "rss-upsert-operation",
+          transaction_id: "rss-title-transaction",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const titleFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(
+        [titleMember],
+        upsertFinalized.members[0]!.envelope.actor_chain_digest,
+        { digest: coreDigest },
+      ),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: titleFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const titleResultDigest = await applyAccepted({
+      canonicalOperationId: "rss-title-operation",
+      previousResultDigest: upsertResultDigest,
+      receiptId: titleFinalized.members[0]!.envelope_digest,
+      resolvedAt: 2_200,
+      resultSequence: 2,
+      sourceRevision: 2,
+      transactionDigest: titleFinalized.transaction_digest,
+      transactionId: "rss-title-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT title, updated_at,
+                     (SELECT updated_at FROM library_field_clocks
+                      WHERE entity_type = 'rss_feed' AND entity_id = ?1
+                        AND field_path = 'title')
+              FROM library_rss_feeds WHERE url = ?1;`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["Renamed title", 2_200, 2_100]]);
+
+    const removeMember =
+      RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_300,
+          entity_id: feedUrl,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_300,
+          library_id: libraryId,
+          operation_id: "rss-remove-operation",
+          payload: { removed_at_ms: 2_300 },
+          previous_actor_operation_id: "rss-title-operation",
+          transaction_id: "rss-remove-transaction",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const removeFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(
+        [removeMember],
+        titleFinalized.members[0]!.envelope.actor_chain_digest,
+        { digest: coreDigest },
+      ),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: removeFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    await applyAccepted({
+      canonicalOperationId: "rss-remove-operation",
+      previousResultDigest: titleResultDigest,
+      receiptId: removeFinalized.members[0]!.envelope_digest,
+      resolvedAt: 2_400,
+      resultSequence: 3,
+      sourceRevision: 3,
+      transactionDigest: removeFinalized.transaction_digest,
+      transactionId: "rss-remove-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_rss_feeds WHERE url = ?1),
+                (SELECT deleted_at FROM library_tombstones
+                 WHERE entity_type = 'rss_feed' AND entity_id = ?1),
+                (SELECT source_revision FROM library_meta WHERE singleton_id = 1);`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 2_300, 3]]);
+    expect(
+      database.exec({
+        sql: `SELECT revision, ordinal, topic, entity_id, reset_required
+              FROM library_invalidations ORDER BY revision, ordinal;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [1, 0, "rss_feed", feedUrl, 0],
+      [2, 0, "rss_feed", feedUrl, 0],
+      [3, 0, "rss_feed", feedUrl, 0],
+    ]);
+  });
+
+  it("refuses a foreign SQLite application identity before creating tables", () => {
+    database.exec("PRAGMA application_id = 7;");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    expect(() => engine.initialize()).toThrow(/identity is foreign/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM sqlite_schema WHERE type = 'table';",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("keeps selective content policy local and distinct from verified bytes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "d".repeat(64);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, 5000000000, 65536, 0, 'video/mp4');`,
+      bind: [digest],
+    });
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: null,
+      byteLength: 5_000_000_000,
+      contentRevision: 0,
+      policy: "metadata_only",
+    });
+    const mutation = {
+      contentDigest: digest,
+      policy: "pinned_offline" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 100,
+    };
+    expect(engine.mutateContentPolicy(mutation)).toMatchObject({
+      changed: true,
+      contentRevision: 1,
+      policy: "pinned_offline",
+    });
+    expect(engine.mutateContentPolicy(mutation).changed).toBe(false);
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: null,
+      contentRevision: 1,
+      policy: "pinned_offline",
+      policyUpdatedAt: 100,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT count(*) FROM library_checkpoint_export
+              WHERE registry_key LIKE '%device_content%';`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("publishes only range proofs that match canonical SQLite metadata", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "a".repeat(64);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, storage_layout, chunk_bytes,
+               chunk_count, range_count, range_granularity,
+               range_index_root_digest, rendition_id,
+               cloud_availability_commitment, media_type)
+            VALUES (?1, 10, 'authenticated_ranges', 0, 0, 2, 5, ?2,
+                    'video', ?3, 'video/mp4');`,
+      bind: [digest, "d".repeat(64), "e".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_content_ranges
+              (content_digest, range_index, byte_offset, byte_length, range_digest)
+            VALUES (?1, 0, 0, 5, ?2), (?1, 1, 5, 5, ?3);`,
+      bind: [digest, "b".repeat(64), "c".repeat(64)],
+    });
+    expect(engine.readCanonicalContentRange(digest, 0)).toEqual({
+      byteLength: 5,
+      rangeContentDigest: "b".repeat(64),
+    });
+    const publication = {
+      byteLength: 5,
+      contentDigest: digest,
+      rangeContentDigest: "b".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1 as const,
+      storageKey: "range-object-one",
+      storageKind: "opfs" as const,
+      verifiedAt: 50,
+    };
+    expect(engine.registerVerifiedContentRange(publication)).toMatchObject({
+      changed: true,
+      contentRevision: 1,
+      hydrationState: "partially_cached",
+      verifiedBytes: 5,
+    });
+    expect(engine.registerVerifiedContentRange(publication).changed).toBe(
+      false,
+    );
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: {
+        completeDigestVerifiedAt: null,
+        hydrationState: "partially_cached",
+        storageKind: "opfs",
+        verifiedBytes: 5,
+      },
+      contentRevision: 1,
+    });
+    expect(() =>
+      engine.registerVerifiedContentRange({
+        ...publication,
+        rangeContentDigest: "f".repeat(64),
+        storageKey: "untrusted-object",
+      }),
+    ).toThrow(/canonical metadata/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_device_content_ranges;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([1]);
+  });
+
+  it("pages source-fenced hydration and least-recently-used eviction work", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "a".repeat(64);
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"f".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"e".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+    `);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, storage_layout, chunk_bytes,
+               chunk_count, range_count, range_granularity,
+               range_index_root_digest, rendition_id,
+               cloud_availability_commitment, media_type)
+            VALUES (?1, 10, 'authenticated_ranges', 0, 0, 2, 5, ?2,
+                    'video', ?3, 'video/mp4');`,
+      bind: [digest, "b".repeat(64), "c".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_content_ranges
+              (content_digest, range_index, byte_offset, byte_length, range_digest)
+            VALUES (?1, 0, 0, 5, ?2), (?1, 1, 5, 5, ?3);`,
+      bind: [digest, "d".repeat(64), "9".repeat(64)],
+    });
+    engine.mutateContentPolicy({
+      contentDigest: digest,
+      policy: "complete_cache",
+      schemaVersion: 1,
+      updatedAt: 100,
+    });
+    engine.registerVerifiedContentRange({
+      byteLength: 5,
+      contentDigest: digest,
+      rangeContentDigest: "d".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1,
+      storageKey: "range-zero",
+      storageKind: "opfs",
+      verifiedAt: 50,
+    });
+    const hydration = engine.pageHydrationCandidates({
+      after: null,
+      limit: 1,
+      schemaVersion: 1,
+      source: null,
+    });
+    expect(hydration).toMatchObject({
+      next: null,
+      rows: [
+        {
+          byteLength: 5,
+          byteOffset: 5,
+          contentDigest: digest,
+          policy: "complete_cache",
+          rangeContentDigest: "9".repeat(64),
+          rangeIndex: 1,
+        },
+      ],
+      source: { contentRevision: 2, sourceRevision: 7 },
+    });
+    const eviction = engine.pageEvictionCandidates({
+      after: null,
+      limit: 1,
+      notAccessedAfter: 50,
+      schemaVersion: 1,
+      source: null,
+    });
+    expect(eviction).toMatchObject({
+      next: null,
+      rows: [
+        {
+          contentDigest: digest,
+          lastAccessedAt: 50,
+          policy: "complete_cache",
+          verifiedBytes: 5,
+        },
+      ],
+      source: { contentRevision: 2, sourceRevision: 7 },
+    });
+    engine.markContentAccessed(digest, 110_000);
+    expect(
+      engine.pageEvictionCandidates({
+        after: null,
+        limit: 1,
+        notAccessedAfter: 50,
+        schemaVersion: 1,
+        source: eviction.source,
+      }).rows,
+    ).toEqual([]);
+    engine.mutateContentPolicy({
+      contentDigest: digest,
+      policy: "partial_cache",
+      schemaVersion: 1,
+      updatedAt: 120_000,
+    });
+    expect(() =>
+      engine.pageHydrationCandidates({
+        after: hydration.next,
+        limit: 1,
+        schemaVersion: 1,
+        source: hydration.source,
+      }),
+    ).toThrow(/source is stale/);
+  });
+
+  it("pages normalized feed rows through the bounded named query", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_rss_feeds
+        (url, title, site_url, last_fetched, image_url, enabled, poll_interval,
+         track_unread, folder, sample_batch_id, sample_generated_at,
+         sample_generator_version, updated_at)
+      VALUES
+        ('https://alpha.example/feed', 'Alpha', 'https://alpha.example', 150,
+         NULL, 1, 15, 1, 'Research', 'sample-batch', 100, 1, 200),
+        ('https://beta.example/feed', 'Beta', NULL, NULL,
+         'https://beta.example/icon.png', 0, NULL, 1, NULL, NULL, NULL, NULL, 210);
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, author_avatar_url,
+         rss_feed_url, content_text, link_url,
+         hidden, saved, archived, updated_at)
+      VALUES
+        ('item-2', 'x', 'article', 200, 200, 'ada-remote', 'ada', 'Ada', NULL, NULL, 'newer', 'https://example.com/two', 0, 1, 0, 200),
+        ('item-1', 'rss', 'article', 100, 100, 'alpha', 'grace', 'Grace', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 'older', 'https://example.com/one', 0, 0, 0, 100),
+        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', NULL, NULL, 'nope', NULL, 1, 0, 0, 300);
+      INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('item-2', 'favorite');
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('item-2', 0, 'https://example.com/image', 'image');
+      INSERT INTO library_persons
+        (id, name, avatar_url, bio, relationship_status, care_level,
+         reach_out_interval_days, notes, created_at, updated_at)
+      VALUES
+        ('person-1', 'Ada', 'https://example.com/ada', 'Mathematician',
+         'friend', 5, 14, 'Write soon', 50, 200),
+        ('person-2', 'Grace', NULL, NULL, 'friend', 4, NULL, NULL, 60, 210);
+      INSERT INTO library_person_tags (person_id, tag)
+      VALUES ('person-1', 'close'), ('person-1', 'science');
+      INSERT INTO library_person_reach_outs
+        (person_id, reach_out_id, logged_at, channel, notes)
+      VALUES
+        ('person-1', 'reach-2', 200, 'text', 'Latest'),
+        ('person-1', 'reach-1', 100, NULL, NULL);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, handle, display_name,
+         first_seen_at, last_seen_at, discovered_from, follow_roster_active,
+         follow_roster_synced_at, created_at, updated_at)
+      VALUES
+        ('account-1', 'person-1', 'social', 'x', 'ada-remote', 'ada', 'Ada',
+         50, 200, 'capture', 1, 200, 50, 200),
+        ('account-2', 'person-2', 'social', 'x', 'grace-remote', 'grace', 'Grace',
+         60, 210, 'capture', NULL, NULL, 60, 210),
+        ('account-3', 'person-1', 'rss', 'rss', 'alpha', 'alpha', 'Alpha',
+         70, 220, 'capture', NULL, NULL, 70, 220),
+        ('account-4', NULL, 'social', 'instagram', 'ada-instagram',
+         'ada', 'Ada Lovelace', 80, 230, 'capture', NULL, NULL, 80, 230);
+      INSERT INTO library_account_follow_roles (account_id, role)
+      VALUES ('account-1', 'following'), ('account-1', 'follower');
+    `);
+    const personPosition = {
+      entityId: "person-1",
+      graphX: 12.5,
+      graphY: -8.25,
+      mutationId: "person_graph_position_set_v1" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 300,
+    };
+    expect(engine.mutateDeviceGraphLayout(personPosition)).toMatchObject({
+      changed: true,
+      mutationId: "person_graph_position_set_v1",
+    });
+    expect(engine.mutateDeviceGraphLayout(personPosition).changed).toBe(false);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "person-1",
+        mutationId: "person_graph_position_clear_v1",
+        schemaVersion: 1,
+      }).changed,
+    ).toBe(true);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "person-1",
+        mutationId: "person_graph_position_clear_v1",
+        schemaVersion: 1,
+      }).changed,
+    ).toBe(false);
+    expect(engine.mutateDeviceGraphLayout(personPosition).changed).toBe(true);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "account-1",
+        graphX: -4.5,
+        graphY: 6.75,
+        mutationId: "account_graph_position_set_v1",
+        schemaVersion: 1,
+        updatedAt: 301,
+      }).changed,
+    ).toBe(true);
+    expect(() =>
+      engine.mutateDeviceGraphLayout({
+        entityId: "missing",
+        mutationId: "account_graph_position_clear_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow("target is unavailable");
+    expect(
+      database.exec({
+        sql: "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([7]);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_replication_outbox;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+    const blobDigest = "7".repeat(64);
+    const firstChunk = new Uint8Array(65_536).fill(11);
+    const secondChunk = Uint8Array.from([21, 22, 23, 24, 25, 26, 27, 28]);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, ?2, 65536, 2, 'text/plain');`,
+      bind: [blobDigest, firstChunk.byteLength + secondChunk.byteLength],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blob_chunks
+              (content_digest, chunk_index, chunk_digest, bytes)
+            VALUES (?1, 0, ?2, ?3), (?1, 1, ?4, ?5);`,
+      bind: [
+        blobDigest,
+        "8".repeat(64),
+        firstChunk,
+        "9".repeat(64),
+        secondChunk,
+      ],
+    });
+    database.exec({
+      sql: `UPDATE library_feed_items
+            SET preserved_text_blob_digest = ?1
+            WHERE global_id = 'item-2';`,
+      bind: [blobDigest],
+    });
+    database.exec({
+      sql: `UPDATE library_feed_item_media
+            SET blob_content_digest = ?1
+            WHERE global_id = 'item-2' AND ordinal = 0;`,
+      bind: [blobDigest],
+    });
+    const request = {
+      cancellationId: operationId("cancel-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "feed_page_v1" as const,
+      readerSessionId: operationId("reader-1"),
+      schemaVersion: 1 as const,
+    };
+    const first = engine.query(request);
+    expect(first.totalCount).toBe(2);
+    expect(first.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(first.rows[0]?.tags).toEqual(["favorite"]);
+    expect(first.rows[0]?.mediaUrls).toEqual(["https://example.com/image"]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.query({
+      ...request,
+      cursor: first.nextCursor,
+    });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
+    expect(second.nextCursor).toBeNull();
+    const timelineRequest = {
+      cancellationId: operationId("cancel-person-timeline-1"),
+      cursor: null,
+      limit: 1,
+      personId: "person-1",
+      queryId: "person_timeline_v1" as const,
+      readerSessionId: operationId("reader-person-timeline-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstTimeline = engine.query(timelineRequest);
+    expect(firstTimeline.totalCount).toBe(2);
+    expect(firstTimeline.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(firstTimeline.nextCursor).not.toBeNull();
+    expect(
+      engine
+        .query({
+          ...timelineRequest,
+          cursor: firstTimeline.nextCursor,
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["item-1"]);
+    expect(() =>
+      engine.query({
+        ...timelineRequest,
+        cursor: firstTimeline.nextCursor,
+        personId: "person-2",
+      }),
+    ).toThrow("different person");
+    const accountTimeline = engine.query({
+      accountId: "account-1",
+      cancellationId: operationId("cancel-account-timeline-1"),
+      cursor: null,
+      limit: 10,
+      queryId: "account_timeline_v1" as const,
+      readerSessionId: operationId("reader-account-timeline-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(accountTimeline.totalCount).toBe(1);
+    expect(accountTimeline.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    const search = engine.query({
+      cancellationId: operationId("cancel-search-1"),
+      cursor: null,
+      filter: {
+        archivedOnly: false,
+        authorId: null,
+        feedUrl: null,
+        platform: null,
+        savedOnly: false,
+        schemaVersion: 1,
+        showHidden: false,
+        signals: [],
+        socialContentFilter: "all",
+        tags: [],
+      },
+      friendsPredicateSchemaVersion: 1,
+      identityMode: "friends",
+      limit: 32,
+      query: "Ada",
+      queryId: "search_page_v1" as const,
+      readerSessionId: operationId("reader-search-1"),
+      recommendationOrderSchemaVersion: 1,
+      schemaVersion: 1 as const,
+    });
+    expect(search.scannedRows).toBe(2);
+    expect(search.rows.map((row) => row.card.globalId)).toEqual(["item-2"]);
+    expect(search.rows[0]?.score).toBeGreaterThan(0);
+    expect(search.nextCursor).toBeNull();
+    database.exec(
+      "UPDATE library_accounts SET person_id = 'person-2' WHERE id = 'account-1';",
+    );
+    expect(
+      engine
+        .query({
+          ...timelineRequest,
+          limit: 10,
+          personId: "person-2",
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["item-2"]);
+    database.exec(
+      "UPDATE library_accounts SET person_id = 'person-1' WHERE id = 'account-1';",
+    );
+    database.exec(`
+      UPDATE library_feed_items
+      SET location_name = 'Observatory', location_lat = 34.2, location_lng = -118.2
+      WHERE global_id = 'item-2';
+      UPDATE library_feed_items
+      SET location_name = 'Library', location_lat = 34.1, location_lng = -118.1
+      WHERE global_id = 'item-1';
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('item-1', 0, 'https://example.com/older-image', 'image');
+    `);
+    const mapMarkers = engine.query({
+      cancellationId: operationId("cancel-map-1"),
+      limit: 1,
+      queryId: "map_markers_v1" as const,
+      readerSessionId: operationId("reader-map-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(mapMarkers.hasMore).toBe(true);
+    expect(mapMarkers.rows).toMatchObject([
+      {
+        friendName: "Ada",
+        friendPersonId: "person-1",
+        friendRelationshipStatus: "friend",
+        globalId: "item-2",
+        linkedAccountId: "account-1",
+        locationName: "Observatory",
+      },
+    ]);
+    expect(mapMarkers.rows[0]).not.toHaveProperty("tags");
+    expect(mapMarkers.rows[0]).not.toHaveProperty("mediaUrls");
+    const storyCandidates = engine.query({
+      cancellationId: operationId("cancel-story-wall-1"),
+      limit: 1,
+      queryId: "story_wall_candidates_v1" as const,
+      readerSessionId: operationId("reader-story-wall-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(storyCandidates.hasMore).toBe(true);
+    expect(storyCandidates.rows).toMatchObject([
+      {
+        globalId: "item-2",
+        linkedAccountId: "account-1",
+        linkedPersonId: "person-1",
+        mediaUrls: ["https://example.com/image"],
+      },
+    ]);
+    expect(storyCandidates.rows[0]).not.toHaveProperty("contentType");
+    const scanRequest = {
+      analysisVersion: null,
+      cancellationId: operationId("cancel-scan-1"),
+      cursor: null,
+      limit: 2,
+      priorityComputedBeforeMs: null,
+      queryId: "background_item_page_v1" as const,
+      readerSessionId: operationId("reader-scan-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstScan = engine.query(scanRequest);
+    expect(firstScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-1",
+    ]);
+    expect(firstScan.nextCursor).not.toBeNull();
+    const secondScan = engine.query({
+      ...scanRequest,
+      cursor: firstScan.nextCursor,
+    });
+    expect(secondScan.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(secondScan.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_feed_item_signals
+        (global_id, version, method, inferred_at)
+      VALUES
+        ('item-1', 3, 'rules', 400),
+        ('item-2', 2, 'rules', 400);
+    `);
+    const staleAnalysisScan = engine.query({
+      ...scanRequest,
+      analysisVersion: 3,
+      cursor: null,
+      limit: 64,
+    });
+    expect(staleAnalysisScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-2",
+    ]);
+    expect(staleAnalysisScan.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_feed_item_topics (global_id, topic)
+      VALUES ('item-2', 'sqlite');
+      UPDATE library_feed_items
+         SET priority_computed_at = 500,
+             engagement_reposts = 7,
+             engagement_views = 99
+       WHERE global_id = 'item-2';
+      UPDATE library_feed_items SET priority_computed_at = 700
+       WHERE global_id = 'item-1';
+    `);
+    const stalePriorityScan = engine.query({
+      ...scanRequest,
+      cursor: null,
+      limit: 64,
+      priorityComputedBeforeMs: 600,
+    });
+    expect(stalePriorityScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-2",
+    ]);
+    expect(stalePriorityScan.rows[1]).toMatchObject({
+      rankingCareLevel: 5,
+      rankingEngagementReposts: 7,
+      rankingEngagementViews: 99,
+      topics: ["sqlite"],
+    });
+    const contentFetchRequest = {
+      cancellationId: operationId("cancel-content-fetch-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "content_fetch_claim_v1" as const,
+      readerSessionId: operationId("reader-content-fetch-1"),
+      schemaVersion: 1 as const,
+    };
+    const contentFetch = engine.query(contentFetchRequest);
+    expect(contentFetch.rows).toEqual([
+      {
+        capturedAt: 100,
+        globalId: "item-1",
+        linkUrl: "https://example.com/one",
+        publishedAt: 100,
+      },
+    ]);
+    expect(contentFetch.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_invalidations
+        (revision, ordinal, topic, entity_id, reset_required)
+      VALUES
+        (1, 0, 'library', NULL, 1),
+        (2, 0, 'feed_item', 'item-1', 0),
+        (3, 0, 'feed_item', 'item-2', 0),
+        (4, 0, 'preferences', NULL, 0),
+        (5, 0, 'feed_item', 'hidden', 0),
+        (6, 0, 'feed_item', 'item-1', 0),
+        (7, 0, 'feed_item', 'item-2', 0);
+    `);
+    const changeRequest = {
+      afterRevision: 0,
+      cancellationId: operationId("cancel-changes-1"),
+      cursor: null,
+      limit: 4,
+      queryId: "change_feed_v1" as const,
+      readerSessionId: operationId("reader-changes-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstChanges = engine.query(changeRequest);
+    expect(firstChanges.rows.map((row) => row.revision)).toEqual([1, 2, 3, 4]);
+    expect(firstChanges.rows[0]).toMatchObject({
+      entityId: null,
+      resetRequired: true,
+      topic: "library",
+    });
+    expect(firstChanges.nextCursor).not.toBeNull();
+    expect(
+      engine.query({
+        globalId: "item-2",
+        queryId: "item_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      item: {
+        card: { contentText: "newer", globalId: "item-2" },
+        contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [blobDigest],
+        preservedBody: { blobDigest, storage: "blob" },
+      },
+      queryId: "item_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    database.exec(`
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, hidden, saved,
+         archived, updated_at)
+      VALUES
+        ('account-picker-item', 'instagram', 'post', 240, 240,
+         'ada-instagram', 'ada.lovelace', 'Ada Lovelace', 0, 0, 0, 240);
+    `);
+    const accountPickerRequest = {
+      cancellationId: operationId("cancel-account-picker-1"),
+      limit: 50,
+      queryId: "account_picker_page_v1" as const,
+      readerSessionId: operationId("reader-account-picker-1"),
+      schemaVersion: 1 as const,
+      search: "love",
+    };
+    expect(engine.query(accountPickerRequest)).toMatchObject({
+      queryId: "account_picker_page_v1",
+      rows: [
+        {
+          accountId: "account-4",
+          authorId: "ada-instagram",
+          displayName: "Ada Lovelace",
+          platform: "instagram",
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(() =>
+      engine.query({ ...accountPickerRequest, search: "lo" }),
+    ).toThrow("request is invalid");
+    database.exec(
+      "UPDATE library_feed_items SET hidden = 1 WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toEqual([]);
+    database.exec(
+      "UPDATE library_feed_items SET hidden = 0, published_at = 250 WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toHaveLength(1);
+    database.exec(
+      "DELETE FROM library_feed_items WHERE global_id = 'account-picker-item';",
+    );
+    expect(engine.query(accountPickerRequest).rows).toEqual([]);
+    expect(
+      engine.query({
+        globalId: "missing",
+        queryId: "item_detail_v1",
+        schemaVersion: 1,
+      }).item,
+    ).toBeNull();
+    expect(
+      engine.query({
+        personId: "person-1",
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      linkedAccountCount: 2,
+      linkedAccounts: [
+        { id: "account-1", provider: "x" },
+        { id: "account-3", provider: "rss" },
+      ],
+      person: {
+        id: "person-1",
+        name: "Ada",
+        reachOuts: [
+          { loggedAt: 200, notes: "Latest", reachOutId: "reach-2" },
+          { loggedAt: 100, notes: null, reachOutId: "reach-1" },
+        ],
+        tags: ["close", "science"],
+      },
+      queryId: "person_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        personId: "missing",
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }).person,
+    ).toBeNull();
+    expect(
+      engine.query({
+        accountId: "account-1",
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      account: {
+        followRosterActive: true,
+        followRosterRoles: ["follower", "following"],
+        id: "account-1",
+        personId: "person-1",
+      },
+      queryId: "account_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        accountId: "missing",
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      }).account,
+    ).toBeNull();
+    const friendsDirectoryRequest = {
+      cancellationId: operationId("cancel-friends-directory-1"),
+      cursor: null,
+      filters: [],
+      limit: 1,
+      nowMs: 1_800_000_000_000,
+      queryId: "friends_directory_page_v1" as const,
+      readerSessionId: operationId("reader-friends-directory-1"),
+      schemaVersion: 1 as const,
+      search: "",
+      sort: "name" as const,
+    };
+    const firstFriendsDirectoryPage = engine.query(friendsDirectoryRequest);
+    expect(firstFriendsDirectoryPage).toMatchObject({
+      rows: [{ id: "person-1", name: "Ada", needsOutreach: true }],
+      totalCount: 2,
+    });
+    expect(firstFriendsDirectoryPage.nextCursor).not.toBeNull();
+    expect(
+      engine
+        .query({
+          ...friendsDirectoryRequest,
+          cursor: firstFriendsDirectoryPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["person-2"]);
+    expect(
+      engine.query({
+        ...friendsDirectoryRequest,
+        filters: ["no_contact"],
+        limit: 32,
+      }),
+    ).toMatchObject({ rows: [{ id: "person-2" }], totalCount: 1 });
+    expect(
+      engine.query({
+        ...friendsDirectoryRequest,
+        limit: 32,
+        search: "grace-remote",
+      }),
+    ).toMatchObject({ rows: [{ id: "person-2" }], totalCount: 1 });
+    expect(() =>
+      engine.query({
+        ...friendsDirectoryRequest,
+        cursor: firstFriendsDirectoryPage.nextCursor,
+        search: "Grace",
+      }),
+    ).toThrow("cursor is invalid");
+    expect(
+      engine.query({
+        cancellationId: operationId("cancel-person-picker-1"),
+        limit: 12,
+        queryId: "person_picker_page_v1",
+        readerSessionId: operationId("reader-person-picker-1"),
+        schemaVersion: 1,
+        search: "Ad",
+      }),
+    ).toMatchObject({
+      queryId: "person_picker_page_v1",
+      rows: [
+        {
+          careLevel: 5,
+          id: "person-1",
+          name: "Ada",
+          relationshipStatus: "friend",
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        cancellationId: operationId("cancel-account-link-1"),
+        entityId: "account-4",
+        entityKind: "account",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        readerSessionId: operationId("reader-account-link-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "account_link_candidates_v1",
+      rows: [
+        {
+          accountDisplayName: "Ada Lovelace",
+          accountExternalId: "ada-instagram",
+          accountId: "account-4",
+          accountProvider: "instagram",
+          confidence: "high",
+          personId: "person-1",
+          personName: "Ada",
+          score: 95,
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        cancellationId: operationId("cancel-person-link-1"),
+        entityId: "person-1",
+        entityKind: "person",
+        limit: 5,
+        queryId: "account_link_candidates_v1",
+        readerSessionId: operationId("reader-person-link-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      rows: [{ accountId: "account-4", personId: "person-1" }],
+    });
+    expect(
+      engine.query({
+        emails: [],
+        names: ["ada", "ada lovelace"],
+        queryId: "contact_match_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      accountIds: ["account-4"],
+      confidence: "high",
+      personId: "person-1",
+      queryId: "contact_match_v1",
+      source: { projectionRevision: 7 },
+    });
+    database.exec(`
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, hidden, saved,
+         archived, updated_at)
+      VALUES
+        ('friend-candidate-item', 'instagram', 'post', 1799999999000,
+         1799999999000, 'ada-instagram', 'ada', 'Ada Lovelace', 0, 0, 0,
+         1799999999000);
+      INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+      VALUES
+        ('friend-candidate-item', 'life_update', 0.95, 1),
+        ('friend-candidate-item', 'event', 0.9, 1),
+        ('friend-candidate-item', 'request', 0.9, 1),
+        ('friend-candidate-item', 'place', 0.85, 1);
+    `);
+    const friendCandidateReviewRequest = {
+      cancellationId: operationId("cancel-friend-candidate-review-1"),
+      contactAccountIds: [] as string[],
+      contactPersonIds: [] as string[],
+      dismissedSuggestionIds: [] as string[],
+      limit: 10,
+      nowMs: 1_800_000_000_000,
+      queryId: "friend_candidate_review_v1" as const,
+      readerSessionId: operationId("reader-friend-candidate-review-1"),
+      schemaVersion: 1 as const,
+    };
+    const friendCandidateReview = engine.query(friendCandidateReviewRequest);
+    expect(friendCandidateReview).toMatchObject({
+      queryId: "friend_candidate_review_v1",
+      rows: [
+        {
+          accountIdsJson: '["account-4"]',
+          confidence: "medium",
+          displayName: "Ada Lovelace",
+          kind: "unlinked_account",
+          personId: null,
+          sampleItemIdsJson: '["friend-candidate-item"]',
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    expect(friendCandidateReview.rows[0]?.score).toBeGreaterThanOrEqual(60);
+    expect(
+      engine.query({
+        ...friendCandidateReviewRequest,
+        dismissedSuggestionIds: [friendCandidateReview.rows[0]!.id],
+      }).rows,
+    ).toEqual([]);
+    database.exec(
+      "DELETE FROM library_feed_items WHERE global_id = 'friend-candidate-item';",
+    );
+    expect(
+      engine.query({
+        queryId: "rss_feed_detail_v1",
+        schemaVersion: 1,
+        url: "https://alpha.example/feed",
+      }),
+    ).toMatchObject({
+      feed: {
+        enabled: true,
+        folder: "Research",
+        lastFetched: 150,
+        pollInterval: 15,
+        sampleBatchId: "sample-batch",
+        siteUrl: "https://alpha.example",
+        title: "Alpha",
+        trackUnread: true,
+        url: "https://alpha.example/feed",
+      },
+      queryId: "rss_feed_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        queryId: "rss_feed_detail_v1",
+        schemaVersion: 1,
+        url: "https://missing.example/feed",
+      }).feed,
+    ).toBeNull();
+    const personGraphRequest = {
+      cancellationId: operationId("cancel-person-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "person_graph_page_v1" as const,
+      readerSessionId: operationId("reader-person-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstPersonGraphPage = engine.query(personGraphRequest);
+    expect(firstPersonGraphPage.layoutRevision).toBe(4);
+    expect(firstPersonGraphPage.rows.map((row) => row.id)).toEqual([
+      "person-1",
+    ]);
+    expect(firstPersonGraphPage.rows[0]?.lastReachOutAt).toBe(200);
+    expect(firstPersonGraphPage.rows[0]).toMatchObject({
+      graphPinned: true,
+      graphUpdatedAt: 300,
+      graphX: 12.5,
+      graphY: -8.25,
+    });
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "account-2",
+        graphX: 1,
+        graphY: 2,
+        mutationId: "account_graph_position_set_v1",
+        schemaVersion: 1,
+        updatedAt: 302,
+      }).layoutRevision,
+    ).toBe(5);
+    expect(() =>
+      engine.query({
+        ...personGraphRequest,
+        cursor: firstPersonGraphPage.nextCursor,
+      }),
+    ).toThrow("cursor is stale");
+    const refreshedPersonGraphPage = engine.query(personGraphRequest);
+    expect(
+      engine
+        .query({
+          ...personGraphRequest,
+          cursor: refreshedPersonGraphPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["person-2"]);
+    const accountGraphRequest = {
+      cancellationId: operationId("cancel-account-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "account_graph_page_v1" as const,
+      readerSessionId: operationId("reader-account-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstAccountGraphPage = engine.query(accountGraphRequest);
+    expect(firstAccountGraphPage.layoutRevision).toBe(5);
+    expect(firstAccountGraphPage.rows).toMatchObject([
+      {
+        activityCount: 1,
+        graphPinned: true,
+        graphUpdatedAt: 301,
+        graphX: -4.5,
+        graphY: 6.75,
+        id: "account-1",
+        latestActivityAt: 200,
+        personName: "Ada",
+      },
+    ]);
+    expect(
+      engine
+        .query({
+          ...accountGraphRequest,
+          cursor: firstAccountGraphPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["account-2"]);
+    const maximumPersonName = "p".repeat(4_096);
+    database.exec({
+      sql: `INSERT INTO library_persons
+              (id, name, relationship_status, care_level, created_at, updated_at)
+            VALUES ('person-maximum', ?1, 'friend', 3, 1, 1);`,
+      bind: [maximumPersonName],
+    });
+    const maximumHandle = "h".repeat(512);
+    const maximumDisplayName = "d".repeat(512);
+    const maximumAvatarUrl = "a".repeat(8_192);
+    for (let index = 0; index < 130; index += 1) {
+      const suffix = index.toLocaleString("en-US", {
+        minimumIntegerDigits: 3,
+        useGrouping: false,
+      });
+      const accountIdPrefix = `000-large-account-${suffix}-`;
+      const externalIdPrefix = `external-${suffix}-`;
+      database.exec({
+        sql: `INSERT INTO library_accounts
+                (id, person_id, kind, provider, external_id, handle,
+                 display_name, avatar_url, first_seen_at, last_seen_at,
+                 discovered_from, created_at, updated_at)
+              VALUES (?1, 'person-maximum', 'social', 'x', ?2, ?3,
+                      ?4, ?5, 1, 1, 'captured_item', 1, 1);`,
+        bind: [
+          `${accountIdPrefix}${"i".repeat(2_048 - accountIdPrefix.length)}`,
+          `${externalIdPrefix}${"e".repeat(4_096 - externalIdPrefix.length)}`,
+          maximumHandle,
+          maximumDisplayName,
+          maximumAvatarUrl,
+        ],
+      });
+    }
+    const maximumAccountPageRequest = {
+      ...accountGraphRequest,
+      cancellationId: operationId("cancel-account-maximum-page"),
+      limit: 128,
+      readerSessionId: operationId("reader-account-maximum-page"),
+    };
+    const maximumAccountFirstPage = engine.query(maximumAccountPageRequest);
+    expect(maximumAccountFirstPage.nextCursor).not.toBeNull();
+    expect(maximumAccountFirstPage.rows.length).toBeLessThan(128);
+    expect(
+      new TextEncoder().encode(JSON.stringify(maximumAccountFirstPage))
+        .byteLength,
+    ).toBeLessThanOrEqual(
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    );
+    const maximumAccountRows = [...maximumAccountFirstPage.rows];
+    let maximumAccountCursor = maximumAccountFirstPage.nextCursor;
+    while (maximumAccountCursor !== null) {
+      const page = engine.query({
+        ...maximumAccountPageRequest,
+        cursor: maximumAccountCursor,
+      });
+      maximumAccountRows.push(...page.rows);
+      maximumAccountCursor = page.nextCursor;
+    }
+    expect(maximumAccountRows).toHaveLength(134);
+    expect(
+      maximumAccountRows.find((row) => row.id.startsWith("000-large-account-")),
+    ).toMatchObject({
+      avatarUrl: maximumAvatarUrl,
+      displayName: maximumDisplayName,
+      handle: maximumHandle,
+      personName: maximumPersonName,
+    });
+    const rssFeedGraphRequest = {
+      cancellationId: operationId("cancel-rss-feed-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "rss_feed_page_v1" as const,
+      readerSessionId: operationId("reader-rss-feed-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstRssFeedPage = engine.query(rssFeedGraphRequest);
+    expect(firstRssFeedPage.rows).toMatchObject([
+      {
+        activityCount: 1,
+        enabled: true,
+        imageUrl: "https://alpha.example/avatar.png",
+        latestActivityAt: 100,
+        title: "Alpha",
+        url: "https://alpha.example/feed",
+      },
+    ]);
+    expect(
+      engine
+        .query({
+          ...rssFeedGraphRequest,
+          cursor: firstRssFeedPage.nextCursor,
+        })
+        .rows.map((row) => row.url),
+    ).toEqual(["https://beta.example/feed"]);
+    const maximumTitle = "t".repeat(4_096);
+    const maximumFolder = "f".repeat(4_096);
+    const maximumSiteUrl = `https://example.com/${"s".repeat(4_076)}`;
+    const maximumImageUrl = `https://example.com/${"i".repeat(4_076)}`;
+    for (let index = 0; index < 130; index += 1) {
+      const feedUrlPrefix = `https://000-large-${index.toLocaleString("en-US", { minimumIntegerDigits: 3, useGrouping: false })}.example/`;
+      database.exec({
+        sql: `INSERT INTO library_rss_feeds
+                (url, title, site_url, image_url, enabled, track_unread,
+                 folder, updated_at)
+              VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, 1);`,
+        bind: [
+          `${feedUrlPrefix}${"u".repeat(4_096 - feedUrlPrefix.length)}`,
+          maximumTitle,
+          maximumSiteUrl,
+          maximumImageUrl,
+          maximumFolder,
+        ],
+      });
+    }
+    const maximumPageRequest = {
+      ...rssFeedGraphRequest,
+      cancellationId: operationId("cancel-rss-feed-maximum-page"),
+      limit: 128,
+      readerSessionId: operationId("reader-rss-feed-maximum-page"),
+    };
+    const maximumFirstPage = engine.query(maximumPageRequest);
+    expect(maximumFirstPage.nextCursor).not.toBeNull();
+    expect(maximumFirstPage.rows.length).toBeLessThan(128);
+    expect(
+      new TextEncoder().encode(JSON.stringify(maximumFirstPage)).byteLength,
+    ).toBeLessThanOrEqual(
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    );
+    const maximumRows = [...maximumFirstPage.rows];
+    let maximumCursor = maximumFirstPage.nextCursor;
+    while (maximumCursor !== null) {
+      const page = engine.query({
+        ...maximumPageRequest,
+        cursor: maximumCursor,
+      });
+      maximumRows.push(...page.rows);
+      maximumCursor = page.nextCursor;
+    }
+    expect(maximumRows).toHaveLength(132);
+    expect(
+      maximumRows.find((row) => row.url.startsWith("https://000-large-")),
+    ).toMatchObject({
+      folder: maximumFolder,
+      imageUrl: maximumImageUrl,
+      siteUrl: maximumSiteUrl,
+      title: maximumTitle,
+    });
+    expect(
+      engine.query({
+        queryId: "persons_graph_v1",
+        recentWindow: { startMs: 150, endMs: 250 },
+        rssFeedUrls: ["https://alpha.example/feed"],
+        schemaVersion: 1,
+        sources: [{ authorId: "ada-remote", platform: "x" }],
+      }),
+    ).toMatchObject({
+      rss: [
+        {
+          avatarGlobalId: "item-1",
+          feedUrl: "https://alpha.example/feed",
+          itemCount: 1,
+          sampleItems: [{ globalId: "item-1", publishedAt: 100 }],
+        },
+      ],
+      social: [
+        {
+          authorId: "ada-remote",
+          itemCount: 1,
+          platform: "x",
+          recentCount: 1,
+          sampleItems: [{ globalId: "item-2", publishedAt: 200 }],
+          signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
+            count: 0,
+            label,
+          })),
+        },
+      ],
+      totalItemCount: 3,
+    });
+    const inlineBody = engine.query({
+      bodyKind: "content",
+      globalId: "item-2",
+      limitBytes: 3,
+      offsetBytes: 1,
+      queryId: "item_reader_body_v1",
+      schemaVersion: 1,
+    }).body;
+    expect(inlineBody).toMatchObject({
+      blobDigest: null,
+      contentLength: 5,
+      endOffset: 4,
+      startOffset: 1,
+      storage: "inline",
+    });
+    expect(
+      new TextDecoder().decode(
+        decodeLibraryCoreCanonicalBase64(inlineBody?.bytesBase64 ?? ""),
+      ),
+    ).toBe("ewe");
+    const blobBody = engine.query({
+      bodyKind: "preserved",
+      globalId: "item-2",
+      limitBytes: 6,
+      offsetBytes: 65_534,
+      queryId: "item_reader_body_v1",
+      schemaVersion: 1,
+    }).body;
+    expect(blobBody).toMatchObject({
+      blobDigest,
+      contentLength: 65_544,
+      endOffset: 65_540,
+      startOffset: 65_534,
+      storage: "blob",
+    });
+    expect(
+      decodeLibraryCoreCanonicalBase64(blobBody?.bytesBase64 ?? ""),
+    ).toEqual(Uint8Array.from([11, 11, 21, 22, 23, 24]));
+    expect(
+      engine.query({
+        bodyKind: "preserved",
+        globalId: "missing",
+        limitBytes: 1,
+        offsetBytes: 0,
+        queryId: "item_reader_body_v1",
+        schemaVersion: 1,
+      }).body,
+    ).toBeNull();
+    expect(() =>
+      engine.query({
+        bodyKind: "content",
+        globalId: "item-2",
+        limitBytes: 1,
+        offsetBytes: 6,
+        queryId: "item_reader_body_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow(/offset exceeds content length/);
+    expect(
+      engine.query({
+        queryId: "library_facet_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "library_facet_summary_v1",
+      source: { projectionRevision: 7 },
+      summary: {
+        archivedCount: 0,
+        archivableCount: 0,
+        contactAccountCount: 0,
+        contactLinkedPersonCount: 0,
+        enabledRssFeedCount: 131,
+        friendPersonCount: 3,
+        latestContactImportedAt: null,
+        latestRssFeedFetchedAt: 150,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            latestCapturedAt: 100,
+            latestPublishedAt: 100,
+            platform: "rss",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+          {
+            archivableCount: 0,
+            latestCapturedAt: 300,
+            latestPublishedAt: 300,
+            platform: "saved",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+          {
+            archivableCount: 0,
+            latestCapturedAt: 200,
+            latestPublishedAt: 200,
+            platform: "x",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+        ],
+        rssFeedCount: 132,
+        sampleAccountCount: 0,
+        sampleFeedCount: 1,
+        sampleItemCount: 0,
+        samplePersonCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 1,
+        savedPlatformCount: 1,
+        socialAccountCount: 133,
+        tags: ["favorite"],
+        totalCount: 3,
+        unreadCount: 3,
+      },
+    });
+    expect(
+      engine.query({
+        authorId: null,
+        feedUrl: "https://alpha.example/feed",
+        platform: null,
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      accountId: null,
+      itemCount: 1,
+      label: "Alpha",
+      queryId: "filter_scope_summary_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        authorId: "ada-remote",
+        feedUrl: null,
+        platform: "x",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      accountId: "account-1",
+      itemCount: 1,
+      label: "Ada",
+      queryId: "filter_scope_summary_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        authorId: null,
+        feedUrl: "https://missing.example/feed",
+        platform: null,
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ accountId: null, itemCount: 0, label: null });
+    expect(() =>
+      engine.query({
+        authorId: "ada-remote",
+        feedUrl: "https://alpha.example/feed",
+        platform: "x",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow(/filter scope summary request is invalid/);
+    const analyticsWindows = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        endMs: (index + 1) * 100,
+        startMs: index * 100,
+      }));
+    expect(
+      engine.query({
+        dailyWindows: analyticsWindows(7),
+        hourlyWindows: analyticsWindows(24),
+        queryId: "saved_analytics_v2",
+        schemaVersion: 2,
+      }),
+    ).toMatchObject({
+      contentMix: [{ count: 1, label: "article" }],
+      dailyCounts: [0, 0, 1, 0, 0, 0, 0],
+      latestSavedAt: 200,
+      queryId: "saved_analytics_v2",
+      source: { projectionRevision: 7 },
+      sourceCounts: [{ count: 1, label: "x" }],
+      totalCount: 1,
+    });
+    database.exec(`
+      INSERT INTO library_preferences
+        (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at)
+      VALUES
+        ('v:$.zeta', 'boolean', 1, NULL, NULL, NULL, 1),
+        ('v:$.alpha', 'integer', NULL, 3, NULL, NULL, 2),
+        ('v:$.realValue', 'real', NULL, NULL, 0.5, NULL, 3),
+        ('v:$.textValue', 'text', NULL, NULL, NULL, 'neon', 4),
+        ('v:$.nullValue', 'null', NULL, NULL, NULL, NULL, 5);
+    `);
+    expect(
+      engine.query({
+        queryId: "preferences_snapshot_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "preferences_snapshot_v1",
+      rows: [
+        { integerValue: 3, path: "v:$.alpha", valueType: "integer" },
+        { path: "v:$.nullValue", valueType: "null" },
+        { path: "v:$.realValue", realValue: 0.5, valueType: "real" },
+        { path: "v:$.textValue", textValue: "neon", valueType: "text" },
+        { booleanValue: true, path: "v:$.zeta", valueType: "boolean" },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    database.exec(`
+      UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+      UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;
+      INSERT INTO library_invalidations
+        (revision, ordinal, topic, entity_id, reset_required)
+      VALUES (8, 0, 'feed_item', 'item-1', 0);
+    `);
+    const secondChanges = engine.query({
+      ...changeRequest,
+      cursor: firstChanges.nextCursor,
+    });
+    expect(secondChanges.rows.map((row) => row.revision)).toEqual([5, 6, 7]);
+    expect(secondChanges.source.projectionRevision).toBe(7);
+    expect(secondChanges.nextCursor).toBeNull();
+    expect(
+      engine.query({ ...changeRequest, afterRevision: 7, cursor: null }).rows,
+    ).toMatchObject([{ revision: 8, entityId: "item-1" }]);
+    expect(() =>
+      engine.query({ ...scanRequest, cursor: firstScan.nextCursor }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...personGraphRequest,
+        cursor: firstPersonGraphPage.nextCursor,
+      }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...accountGraphRequest,
+        cursor: firstAccountGraphPage.nextCursor,
+      }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...rssFeedGraphRequest,
+        cursor: firstRssFeedPage.nextCursor,
+      }),
+    ).toThrow(/cursor is stale/);
+  });
+
+  it("pages compact provider media rows with request-bound cursors", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, source_url, link_url,
+         fb_group_id, fb_group_name, fb_group_url, hidden, saved, archived, updated_at)
+      VALUES
+        ('facebook-1', 'facebook', 'video', 10, 10, 'author-1', 'one', 'One',
+         'https://facebook.test/1', 'https://example.test/1', 'group-1', 'Group',
+         'https://facebook.test/groups/1', 0, 1, 0, 10),
+        ('facebook-2', 'facebook', 'video', 20, 20, 'author-2', 'two', 'Two',
+         'https://facebook.test/2', 'https://example.test/2', NULL, NULL,
+         NULL, 0, 0, 0, 20),
+        ('facebook-hidden', 'facebook', 'video', 30, 30, 'author-3', 'three', 'Three',
+         'https://facebook.test/3', NULL, NULL, NULL, NULL, 1, 1, 0, 30),
+        ('saved-youtube', 'saved', 'article', 40, 40, 'author-4', 'four', 'Four',
+         'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+         'https://www.youtube.com/watch?v=dQw4w9WgXcQ', NULL, NULL, NULL, 0, 1, 0, 40);
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('facebook-1', 0, 'https://example.test/1.mp4', 'video');
+    `);
+    const request = {
+      cancellationId: operationId("cancel-provider-media-1"),
+      cursor: null,
+      limit: 1,
+      provider: "facebook" as const,
+      queryId: "provider_media_page_v1" as const,
+      readerSessionId: operationId("reader-provider-media-1"),
+      savedOnly: false,
+      schemaVersion: 1 as const,
+    };
+    const first = engine.query(request);
+    expect(first.rows).toMatchObject([
+      {
+        fbGroup: { id: "group-1", name: "Group" },
+        globalId: "facebook-1",
+        linkUrl: "https://example.test/1",
+        mediaUrls: ["https://example.test/1.mp4"],
+      },
+    ]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.query({ ...request, cursor: first.nextCursor });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["facebook-2"]);
+    expect(second.nextCursor).toBeNull();
+    expect(
+      engine
+        .query({ ...request, limit: 2, savedOnly: true })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["facebook-1"]);
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor, savedOnly: true }),
+    ).toThrow(/cursor is stale/);
+    expect(
+      engine
+        .query({
+          ...request,
+          limit: 2,
+          provider: "youtube",
+          savedOnly: true,
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["saved-youtube"]);
+  });
+
+  it("pages the ranked feed forward and backward through one indexed contract", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, rss_feed_url,
+         priority, hidden, saved, archived, updated_at)
+      VALUES
+        ('a', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 1, 0, 300),
+        ('b', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 0, 0, 300),
+        ('c', 'saved', 'article', 400, 400, 'grace', 'grace', 'Grace', 'https://example.com/feed', 80, 0, 0, 0, 400),
+        ('story', 'x', 'story', 500, 500, 'ada', 'ada', 'Ada', NULL, 95, 0, 0, 0, 500),
+        ('hidden', 'x', 'post', 600, 600, 'ada', 'ada', 'Ada', NULL, 100, 1, 0, 0, 600),
+        ('archived', 'x', 'post', 700, 700, 'ada', 'ada', 'Ada', NULL, 99, 0, 0, 1, 700);
+      INSERT INTO library_feed_item_tags (global_id, tag)
+      VALUES ('a', 'important');
+      INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+      VALUES ('a', 'essay', 1.0, 1);
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES
+        ('person-ada', 'Ada', 'friend', 5, 1, 1),
+        ('person-grace', 'Grace', 'connection', 3, 1, 1);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, first_seen_at,
+         last_seen_at, discovered_from, created_at, updated_at)
+      VALUES
+        ('account-ada', 'person-ada', 'social', 'x', 'ada', 1, 1, 'capture', 1, 1),
+        ('account-grace', 'person-grace', 'social', 'saved', 'grace', 1, 1, 'capture', 1, 1);
+    `);
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.feed_browse_page_v3;
+    const planBindings = [
+      0,
+      0,
+      null,
+      null,
+      null,
+      "posts",
+      0,
+      "[]",
+      "[]",
+      "all_content",
+      null,
+      null,
+      "",
+      3,
+    ];
+    for (const sql of [program.sql, program.reverseSql]) {
+      const details = database
+        .exec({
+          sql: `EXPLAIN QUERY PLAN ${sql}`,
+          bind: planBindings,
+          rowMode: "array",
+          returnValue: "resultRows",
+        })
+        .map((row) => String((row as unknown[])[3]));
+      expect(
+        details.some((detail) =>
+          detail.includes("library_feed_items_browse_rank_all"),
+        ),
+      ).toBe(true);
+      expect(details.every((detail) => !detail.includes("TEMP B-TREE"))).toBe(
+        true,
+      );
+    }
+    const filter: LibraryCoreFeedBrowseFilterV1 = {
+      archivedOnly: false,
+      authorId: null,
+      feedUrl: null,
+      platform: null,
+      savedOnly: false,
+      schemaVersion: 1 as const,
+      showHidden: false,
+      signals: [] as const,
+      socialContentFilter: "posts" as const,
+      tags: [] as const,
+    };
+    const request = {
+      cancellationId: operationId("cancel-browse-1"),
+      cursor: null,
+      direction: "next" as const,
+      filter,
+      friendsPredicateSchemaVersion: 1 as const,
+      identityMode: "all_content" as const,
+      limit: 2,
+      queryId: "feed_browse_page_v3" as const,
+      rankingClockMs: 1_000,
+      readerSessionId: operationId("reader-browse-1"),
+      recommendationOrderSchemaVersion: 1 as const,
+      schemaVersion: 3 as const,
+    };
+    const first = engine.query(request);
+    expect(first.totalCount).toBe(3);
+    expect(first.rows.map((row) => row.globalId)).toEqual(["a", "b"]);
+    expect(first.previousCursor).toBeNull();
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.query({ ...request, cursor: first.nextCursor });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["c"]);
+    expect(second.nextCursor).toBeNull();
+    expect(second.previousCursor).not.toBeNull();
+    const previous = engine.query({
+      ...request,
+      cursor: second.previousCursor,
+      direction: "previous",
+    });
+    expect(previous.rows.map((row) => row.globalId)).toEqual(["a", "b"]);
+    expect(previous.nextCursor).not.toBeNull();
+    expect(previous.previousCursor).toBeNull();
+
+    const matching = (filterOverrides: Partial<typeof filter>) =>
+      engine
+        .query({
+          ...request,
+          filter: { ...filter, ...filterOverrides },
+          limit: 10,
+        })
+        .rows.map((row) => row.globalId);
+    expect(matching({ savedOnly: true })).toEqual(["a"]);
+    expect(matching({ tags: ["important"] })).toEqual(["a"]);
+    expect(matching({ signals: ["essay"] })).toEqual(["a"]);
+    expect(matching({ platform: "rss" })).toEqual(["c"]);
+    expect(matching({ showHidden: true })).toEqual(["hidden", "a", "b", "c"]);
+    expect(matching({ archivedOnly: true })).toEqual(["archived"]);
+    expect(matching({ socialContentFilter: "stories" })).toEqual(["story"]);
+    expect(
+      engine
+        .query({ ...request, identityMode: "friends", limit: 10 })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["a", "b"]);
+    expect(() =>
+      engine.query({
+        ...request,
+        cursor: first.nextCursor,
+        identityMode: "friends",
+      }),
+    ).toThrow("cursor belongs to a different filter");
+    expect(() =>
+      engine.query({
+        ...request,
+        cursor: first.nextCursor,
+        filter: { ...filter, savedOnly: true },
+      }),
+    ).toThrow("cursor belongs to a different filter");
+
+    database.exec(
+      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1; UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor }),
+    ).toThrow("browse cursor is stale");
+  });
+
+  it("runs every Saved order and both page directions through matching indexes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 12, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, priority,
+         preserved_reading_time, hidden, saved, saved_at, archived, updated_at)
+      VALUES
+        ('saved:a', 'saved', 'article', 50, 400, 'author', 'author', 'Author', 10, 5, 0, 1, 100, 0, 400),
+        ('saved:b', 'saved', 'article', 60, 100, 'author', 'author', 'Author', 90, NULL, 0, 1, 300, 0, 300),
+        ('saved:c', 'saved', 'article', 70, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+        ('saved:d', 'saved', 'article', 80, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+        ('saved:e', 'saved', 'article', 250, 0, 'author', 'author', 'Author', 20, 7, 0, 1, NULL, 0, 250),
+        ('hidden', 'saved', 'article', 900, 900, 'author', 'author', 'Author', 100, 1, 1, 1, 900, 0, 900),
+        ('unsaved', 'saved', 'article', 999, 999, 'author', 'author', 'Author', 100, 1, 0, 0, NULL, 0, 999);
+    `);
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.saved_feed_page_v2;
+    const expectedIndexes = {
+      date_published: "library_feed_items_saved_date_published",
+      date_saved: "library_feed_items_saved_date_saved",
+      recommended: "library_feed_items_saved_recommended",
+      shortest_read: "library_feed_items_saved_shortest_read",
+    } as const;
+    const planBindings = [
+      0,
+      null,
+      null,
+      null,
+      "all",
+      "[]",
+      "[]",
+      null,
+      null,
+      null,
+      "",
+      6,
+    ];
+    for (const [sortMode, indexName] of Object.entries(expectedIndexes)) {
+      const variant =
+        program.variants[sortMode as keyof typeof program.variants];
+      for (const sql of [variant.sql, variant.reverseSql]) {
+        const details = database
+          .exec({
+            sql: `EXPLAIN QUERY PLAN ${sql}`,
+            bind: planBindings,
+            rowMode: "array",
+            returnValue: "resultRows",
+          })
+          .map((row) => String((row as unknown[])[3]));
+        expect(details.some((detail) => detail.includes(indexName))).toBe(true);
+        expect(details.every((detail) => !detail.includes("TEMP B-TREE"))).toBe(
+          true,
+        );
+      }
+    }
+    const filter: LibraryCoreFeedBrowseFilterV1 = {
+      archivedOnly: false,
+      authorId: null,
+      feedUrl: null,
+      platform: null,
+      savedOnly: true,
+      schemaVersion: 1,
+      showHidden: false,
+      signals: [],
+      socialContentFilter: "all",
+      tags: [],
+    };
+    const request = {
+      cancellationId: operationId("cancel-saved-v2"),
+      cursor: null,
+      direction: "next" as const,
+      filter,
+      limit: 10,
+      queryId: "saved_feed_page_v2" as const,
+      readerSessionId: operationId("reader-saved-v2"),
+      schemaVersion: 2 as const,
+      sortMode: "date_saved" as const,
+    };
+    const expectations = {
+      date_published: ["saved:a", "saved:c", "saved:d", "saved:e", "saved:b"],
+      date_saved: ["saved:b", "saved:e", "saved:c", "saved:d", "saved:a"],
+      recommended: ["saved:c", "saved:d", "saved:b", "saved:e", "saved:a"],
+      shortest_read: ["saved:c", "saved:d", "saved:a", "saved:e", "saved:b"],
+    } as const;
+    for (const [sortMode, expected] of Object.entries(expectations)) {
+      const response = engine.query({
+        ...request,
+        sortMode: sortMode as keyof typeof expectations,
+      });
+      expect(response.totalCount).toBe(5);
+      expect(response.rows.map((row) => row.globalId)).toEqual(expected);
+    }
+    const first = engine.query({ ...request, limit: 2 });
+    const second = engine.query({
+      ...request,
+      cursor: first.nextCursor,
+      limit: 2,
+    });
+    expect(second.rows.map((row) => row.globalId)).toEqual([
+      "saved:c",
+      "saved:d",
+    ]);
+    const previous = engine.query({
+      ...request,
+      cursor: second.previousCursor,
+      direction: "previous",
+      limit: 2,
+    });
+    expect(previous.rows.map((row) => row.globalId)).toEqual([
+      "saved:b",
+      "saved:e",
+    ]);
+    database.exec(
+      "UPDATE library_meta SET source_revision = 13 WHERE singleton_id = 1; UPDATE library_change_state SET revision = 13 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor, limit: 2 }),
+    ).toThrow("saved cursor is stale");
+  });
+
+  it("stages bounded normalized records idempotently and rejects changed replay", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const header = checkpointHeader();
+    const records = [header, ...authorityRecords()];
+    const stage = {
+      authorityEpoch: "epoch-1",
+      createdAt: 1_000,
+      expectedRecordCount: records.length,
+      libraryId: "library-1",
+      sourceRevision: 7,
+      stageId: "stage-1",
+    };
+    expect(engine.beginNormalizedCheckpointStage(stage)).toMatchObject({
+      complete: false,
+      stagedRecordCount: 0,
+    });
+    const complete = engine.appendNormalizedCheckpointStagePage({
+      records,
+      stageId: stage.stageId,
+    });
+    expect(complete.complete).toBe(true);
+    expect(complete.stagedRecordCount).toBe(records.length);
+    expect(complete.stagedCanonicalBytes).toBeGreaterThan(0);
+    expect(
+      engine.appendNormalizedCheckpointStagePage({
+        records,
+        stageId: stage.stageId,
+      }),
+    ).toEqual(complete);
+    const changed = createLibraryCoreNormalizedCheckpointRecordV2({
+      ...header,
+      payload: { ...header.payload, createdAtMs: 1_001 },
+    });
+    expect(() =>
+      engine.appendNormalizedCheckpointStagePage({
+        records: [changed],
+        stageId: stage.stageId,
+      }),
+    ).toThrow(/replay changed its bytes/);
+    expect(engine.beginNormalizedCheckpointStage(stage)).toEqual(complete);
+    expect(() =>
+      engine.beginNormalizedCheckpointStage({ ...stage, sourceRevision: 8 }),
+    ).toThrow(/replay changed its identity/);
+    expect(
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: stage.stageId,
+      }),
+    ).toMatchObject({
+      checkpointDigest: digestLibraryCoreNormalizedCheckpointRecordsV2(records),
+      libraryId: stage.libraryId,
+      recordCount: records.length,
+      sourceRevision: stage.sourceRevision,
+    });
+    expect(
+      database.exec({
+        sql: "SELECT library_id FROM library_meta;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["library-1"]);
+    expect(
+      database.exec({
+        sql: "SELECT revision FROM library_change_state;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([7]);
+    expect(
+      database.exec({
+        sql: `SELECT revision, topic, entity_id, reset_required
+              FROM library_invalidations;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, "library", null, 1]]);
+    expect(
+      engine.query({
+        afterRevision: 0,
+        cancellationId: operationId("cancel-reset-1"),
+        cursor: null,
+        limit: 1,
+        queryId: "change_feed_v1",
+        readerSessionId: operationId("reader-reset-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [{ resetRequired: true, revision: 7, topic: "library" }],
+      source: { projectionRevision: 7 },
+    });
+  });
+
+  it("rolls back browser activation on unresolved references", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const header = checkpointHeader();
+    const orphan = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "13_feed_item_tag",
+      primaryKey: ["missing-item", "favorite"],
+      payload: { tag: "favorite" },
+    });
+    stageRecords(engine, [header, ...authorityRecords(), orphan], "orphan");
+    expect(() =>
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "orphan",
+      }),
+    ).toThrow(/unresolved foreign reference/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_feed_item_tags;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("atomically replaces canonical rows and installs the exact follower receipt", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(
+      `INSERT INTO library_preferences (path, value_type, updated_at)
+       VALUES ('v:$.old', 'null', 1);`,
+    );
+    const records = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, records, "replacement");
+    const receipt = engine.activateNormalizedCheckpointStage({
+      followerReceipt: {
+        checkpointGeneration: 9,
+        controlRevision: "control-revision-1",
+        installedAt: 2_000,
+        manifestContentDigest: lowercaseHex64("9".repeat(64)),
+        manifestObjectKey: "manifest-key",
+        manifestTransportObjectId: "drive-object-1",
+        writerActorId: "actor-1",
+      },
+      replaceExisting: true,
+      stageId: "replacement",
+    });
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_preferences;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+    expect(
+      database.exec({
+        sql: `SELECT checkpoint_generation, source_revision,
+                     checkpoint_digest, writer_actor_id,
+                     manifest_transport_object_id, control_revision
+              FROM library_follower_checkpoint_receipt
+              WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        9,
+        7,
+        receipt.checkpointDigest,
+        "actor-1",
+        "drive-object-1",
+        "control-revision-1",
+      ],
+    ]);
+    expect(engine.readNormalizedCheckpointReceipt()).toEqual({
+      receipt: {
+        authorityEpoch: "epoch-1",
+        checkpointDigest: receipt.checkpointDigest,
+        checkpointGeneration: 9,
+        controlRevision: "control-revision-1",
+        installedAt: 2_000,
+        libraryId: "library-1",
+        manifestContentDigest: "9".repeat(64),
+        manifestObjectKey: "manifest-key",
+        manifestTransportObjectId: "drive-object-1",
+        sourceRevision: 7,
+        writerActorId: "actor-1",
+      },
+    });
+  });
+
+  it("preserves the accepted database when replacement has unresolved local work", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(
+      `INSERT INTO library_preferences (path, value_type, updated_at)
+         VALUES ('v:$.old', 'null', 1);
+       INSERT INTO library_primary_intent_stage_transactions
+         (transaction_id, transaction_digest, actor_id, intent_epoch,
+          intent_epoch_id, member_count, first_counter, last_counter,
+          received_count, canonical_member_bytes, created_at, updated_at)
+         VALUES ('pending-1',
+           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+           'actor-local', 1, 'epoch-local', 1, 1, 1, 0, 0, 1, 1);`,
+    );
+    const records = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, records, "pending-replacement");
+    expect(() =>
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: true,
+        stageId: "pending-replacement",
+      }),
+    ).toThrow(/unresolved local operations/);
+    expect(
+      database.exec({
+        sql: "SELECT path FROM library_preferences;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["v:$.old"]);
+    expect(
+      engine.beginNormalizedCheckpointStage({
+        authorityEpoch: "epoch-1",
+        createdAt: 1_000,
+        expectedRecordCount: records.length,
+        libraryId: "library-1",
+        sourceRevision: 7,
+        stageId: "pending-replacement",
+      }).complete,
+    ).toBe(true);
+  });
+
+  it("refuses browser activation without accepted authority", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const records = [checkpointHeader()];
+    stageRecords(engine, records, "missing-authority");
+    expect(() =>
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "missing-authority",
+      }),
+    ).toThrow(/active authority/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_meta;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("activates a multi-page content blob losslessly without a large SQLite row", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const original = Uint8Array.from(
+      { length: 4_194_304 },
+      (_, index) => (index * 31 + 17) % 251,
+    );
+    const content = splitLibraryCoreContentV1({
+      bytes: original,
+      mediaType: "application/octet-stream",
+    });
+    const records = [checkpointHeader(), ...authorityRecords(), ...content];
+    stageRecords(engine, records, "large-content");
+    const receipt = engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: false,
+      stageId: "large-content",
+    });
+    expect(receipt.recordCount).toBe(records.length);
+    expect(
+      database.exec({
+        sql: `SELECT count(*), sum(length(bytes)), max(length(bytes))
+              FROM library_blob_chunks;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[64, original.byteLength, 65_536]]);
+  });
+
+  it("authenticates a multi-gigabyte range map without hydrating media bytes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const contentDigest = "a".repeat(64);
+    const content = [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b0_blob_descriptor",
+        primaryKey: contentDigest,
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 5_000_000_000,
+          chunkBytes: 0,
+          chunkCount: 0,
+          cloudAvailabilityCommitment: "d".repeat(64),
+          encoding: "identity",
+          mediaType: "video/mp4",
+          rangeCount: 2,
+          rangeGranularity: 2_500_000_000,
+          rangeIndexRootDigest:
+            "add3359c5ff23df62183d1fd6e086763c2de356b292357cdf43cbb6967240b95",
+          renditionId: "video-1080p",
+          storageLayout: "authenticated_ranges",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b2_content_range",
+        primaryKey: [contentDigest, 0],
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 2_500_000_000,
+          byteOffset: 0,
+          rangeContentDigest: "b".repeat(64),
+          rangeIndex: 0,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b2_content_range",
+        primaryKey: [contentDigest, 1],
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 2_500_000_000,
+          byteOffset: 2_500_000_000,
+          rangeContentDigest: "c".repeat(64),
+          rangeIndex: 1,
+        },
+      }),
+    ];
+    const records = [checkpointHeader(), ...authorityRecords(), ...content];
+    stageRecords(engine, records, "ranged-content");
+    expect(
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "ranged-content",
+      }).recordCount,
+    ).toBe(records.length);
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_blob_chunks),
+                (SELECT count(*) FROM library_content_ranges),
+                (SELECT byte_length FROM library_blobs WHERE content_digest = ?1);`,
+        bind: [contentDigest],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 2, 5_000_000_000]]);
+
+    const publication = {
+      byteLength: 2_500_000_000,
+      contentDigest,
+      rangeContentDigest: "b".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1 as const,
+      storageKey: "large-range-one",
+      storageKind: "opfs" as const,
+      verifiedAt: 2_000,
+    };
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt: 2_000,
+    });
+    engine.registerVerifiedContentRange(publication);
+    stageRecords(engine, records, "ranged-content-exact-replacement");
+    engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: true,
+      stageId: "ranged-content-exact-replacement",
+    });
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: { verifiedBytes: 2_500_000_000 },
+      contentRevision: 2,
+      policy: "pinned_offline",
+    });
+
+    const withoutContent = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, withoutContent, "ranged-content-removed-replacement");
+    engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: true,
+      stageId: "ranged-content-removed-replacement",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_device_content_policies),
+                (SELECT count(*) FROM library_device_content_ranges),
+                (SELECT count(*) FROM library_device_content_availability),
+                (SELECT revision FROM library_device_content_state);`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 0, 0, 3]]);
+  });
+});

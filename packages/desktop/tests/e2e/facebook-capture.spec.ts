@@ -347,18 +347,18 @@ test("Facebook sync excludes posts from filtered groups", async ({
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => { accounts: Record<string, { displayName?: string }> };
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+      accounts: Record<string, { displayName?: string }>;
     };
-    return Object.values(store.getState().accounts).some((account) => account.displayName === "Bob Builder");
+    return Object.values(sqlite.accounts).some((account) => account.displayName === "Bob Builder");
   });
 
   const accountNames = await page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => { accounts: Record<string, { displayName?: string }> };
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+      accounts: Record<string, { displayName?: string }>;
     };
-    return Object.values(store.getState().accounts).map((account) => account.displayName);
+    return Object.values(sqlite.accounts).map((account) => account.displayName);
   });
 
   expect(accountNames).toContain("Bob Builder");

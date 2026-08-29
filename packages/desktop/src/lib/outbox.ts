@@ -1,7 +1,7 @@
 /**
  * Outbox Processor
  *
- * Subscribes to the Automerge doc, detects pending social engagement actions
+ * Subscribes to Library changes, detects pending social engagement actions
  * (liked && !likedSyncedAt, readAt && !seenSyncedAt), and drains them via the
  * platform actions registry.
  *
@@ -23,7 +23,7 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
-import type { DocChangeEvent } from "./library-types";
+import type { LibraryMutationEvent } from "./library-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -102,7 +102,7 @@ export type ConfirmFn = (id: string, syncedAt?: number) => Promise<void>;
 /**
  * Start the outbox processor.
  *
- * @param getItems         Returns the current item list (from worker DocState)
+ * @param scanItems        Visits bounded pages from the authoritative SQLite Library
  * @param subscribe        Subscribe to doc changes; returns unsubscribe fn
  * @param platformActions  Platform -> PlatformActions registry
  * @param confirmLiked     Called on successful like sync
@@ -110,14 +110,13 @@ export type ConfirmFn = (id: string, syncedAt?: number) => Promise<void>;
  * @returns Teardown function - call to stop the processor
  */
 export function startOutboxProcessor(
-  getItems: () => FeedItem[] | null,
-  subscribe: (cb: (event: DocChangeEvent) => void) => () => void,
+  scanItems: (
+    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  ) => Promise<void>,
+  subscribe: (cb: (event: LibraryMutationEvent) => void) => () => void,
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
-  scanItems?: (
-    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
-  ) => Promise<void>,
 ): () => void {
   if (factoryResetDrainInProgress) return () => {};
   activeOutboxRuntime?.stop();
@@ -130,7 +129,7 @@ export function startOutboxProcessor(
   let unsubscribe: () => void = () => {};
   const pendingChangedItems = new Map<string, FeedItem>();
 
-  function addDrainEvent(event?: DocChangeEvent) {
+  function addDrainEvent(event?: LibraryMutationEvent) {
     if (!event) {
       return;
     }
@@ -144,7 +143,7 @@ export function startOutboxProcessor(
       if (
         event.mutation === "TOGGLE_LIKED"
         && item.userState.liked
-        && item.userState.likedSyncedAt === undefined
+        && item.userState.likedSyncedAt == null
       ) {
         const intent = makeIntent(item, "like", item.userState.likedAt);
         if (intent) recordExplicitSocialOutboxIntent(intent);
@@ -193,7 +192,7 @@ export function startOutboxProcessor(
 
       const explicitLikeIntent = getExplicitSocialOutboxIntent(item.globalId, "like");
       const canRunLike = us.liked && (
-        us.likedSyncedAt === undefined
+        us.likedSyncedAt == null
         || (us.likedSyncedAt === -1 && explicitLikeIntent?.platform === item.platform)
       );
       if (canRunLike) {
@@ -205,7 +204,7 @@ export function startOutboxProcessor(
         }
       }
 
-      if (us.seenSyncedAt === undefined && item.sourceUrl) {
+      if (us.seenSyncedAt == null && item.sourceUrl) {
         const intent = makeIntent(item, "seen", us.readAt);
         if (intent) {
           seenQueue.push({ item, intent });
@@ -319,29 +318,20 @@ export function startOutboxProcessor(
     let likeQueue: PendingAction[] = [];
     let seenQueue: PendingAction[] = [];
     if (fullScanRequested) {
-      if (scanItems) {
-        try {
-          await scanItems(async (page) => {
-            const pending = await collectPendingQueues(page);
-            likeQueue.push(...pending.likeQueue);
-            seenQueue.push(...pending.seenQueue);
-          });
-        } catch (error) {
-          log.error(
-            `[Outbox] bounded SQLite scan unavailable; provider actions remain paused: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          isDraining = false;
-          return;
-        }
-      } else {
-        const currentItems = getItems();
-        if (!currentItems) {
-          isDraining = false;
-          return;
-        }
-        ({ likeQueue, seenQueue } = await collectPendingQueues(currentItems));
+      try {
+        await scanItems(async (page) => {
+          const pending = await collectPendingQueues(page);
+          likeQueue.push(...pending.likeQueue);
+          seenQueue.push(...pending.seenQueue);
+        });
+      } catch (error) {
+        log.error(
+          `[Outbox] bounded SQLite scan unavailable; provider actions remain paused: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        isDraining = false;
+        return;
       }
       fullScanRequested = false;
       pendingChangedItems.clear();
@@ -400,7 +390,7 @@ export function startOutboxProcessor(
     });
   }
 
-  function scheduleDrain(event?: DocChangeEvent) {
+  function scheduleDrain(event?: LibraryMutationEvent) {
     if (stopped) return;
     addDrainEvent(event);
     if (isDraining) {

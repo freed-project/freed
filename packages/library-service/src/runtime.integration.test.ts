@@ -13,6 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
+import net from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -20,6 +21,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { bindLibraryServiceConfig } from "./config.js";
 import { createNodeLibraryServicePorts } from "./node-ports.js";
+import {
+  LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+  LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+  LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+  LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+} from "./library-core-command-contract.generated.js";
 import {
   bindLibraryServiceStatusFile,
   createLibraryServiceStatusRecord,
@@ -176,10 +185,41 @@ for await (const chunk of process.stdin) control += chunk.toString("utf8");
 const envelope = JSON.parse(control.trim());
 let stopping = false;
 const watchdog = new Socket({ fd: 8, readable: true, writable: false });
+const commandRequest = new Socket({ fd: 9, readable: true, writable: false });
+const commandResponse = new Socket({ fd: 10, readable: false, writable: true });
+let commandBytes = Buffer.alloc(0);
+commandRequest.on("data", (chunk) => {
+  commandBytes = Buffer.concat([commandBytes, chunk]);
+  if (commandBytes.length < 4) return;
+  const length = commandBytes.readUInt32BE(0);
+  if (length === 0 || commandBytes.length !== length + 4) process.exit(72);
+  const request = JSON.parse(commandBytes.subarray(4).toString("utf8"));
+  if (request.commandId !== "inspect_storage_v1") process.exit(73);
+  const payload = Buffer.from(JSON.stringify({
+    protocolVersion: ${LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION},
+    requestId: request.requestId,
+    ok: true,
+    result: {
+      activeAuthority: null,
+      applicationId: ${LIBRARY_CORE_SQLITE_APPLICATION_ID},
+      contractVersion: ${LIBRARY_CORE_SQLITE_CONTRACT_VERSION},
+      protocolVersion: ${LIBRARY_CORE_SQLITE_PROTOCOL_VERSION},
+      schemaSha256: ${JSON.stringify(LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256)},
+      schemaVersion: ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION},
+    },
+  }));
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(payload.length, 0);
+  commandResponse.write(Buffer.concat([header, payload]));
+  commandBytes = Buffer.alloc(0);
+});
+commandRequest.resume();
 async function stop() {
   if (stopping) return;
   stopping = true;
   watchdog.destroy();
+  commandRequest.destroy();
+  commandResponse.destroy();
   descendant.kill("SIGTERM");
   const kill = setTimeout(() => descendant.kill("SIGKILL"), 200);
   if (descendant.exitCode === null && descendant.signalCode === null) {
@@ -200,7 +240,7 @@ const data = identity(4);
 const state = identity(5);
 const receipt = {
   type: "ready",
-  protocolVersion: 1,
+  protocolVersion: 2,
   role: "primary",
   pid: process.pid,
   leaseHeld: true,
@@ -208,6 +248,7 @@ const receipt = {
   admissionAccepted: true,
   credentialsReady: true,
   watchdogActive: true,
+  commandChannelReady: true,
   parentNonce: envelope.parentNonce,
   configDigest: envelope.configDigest,
   executableDigest: digest(3),
@@ -290,15 +331,19 @@ async function createHarnessFixture(
   };
 }
 
-async function createNativeSidecarFixture(input: {
-  backend?: "mounted-credential" | "os-vault";
-  admissionDigestOverride?: string;
-} = {}): Promise<{
+async function createNativeSidecarFixture(
+  input: {
+    backend?: "mounted-credential" | "os-vault";
+    admissionDigestOverride?: string;
+  } = {},
+): Promise<{
   dataRoot: string;
   stateRoot: string;
   supervisorArgs: string[];
 }> {
-  const fixtureRoot = await privateTemporaryRoot("freed-library-native-sidecar-");
+  const fixtureRoot = await privateTemporaryRoot(
+    "freed-library-native-sidecar-",
+  );
   const dataRoot = path.join(fixtureRoot, "data");
   const stateRoot = path.join(fixtureRoot, "state");
   const mountedRoot = path.join(stateRoot, "mounted-credentials");
@@ -320,10 +365,21 @@ async function createNativeSidecarFixture(input: {
       recordId,
     })}\n`,
   );
+  const primaryCredentialBytes = Buffer.from(
+    JSON.stringify({
+      actorKeyPkcs8Base64:
+        "MFECAQEwBQYDK2VwBCIEIGhZN6+p+sgxc+QXocH9OQjJ/kW0OLxTHCWx6GVWJh5fgSEAU6xH9YAKnyeUkzL10rdTMcRFhnYTx3JFlfnF+tf26Ug=",
+      authorityKeyPkcs8Base64:
+        "MFECAQEwBQYDK2VwBCIEICr3ByrhbzMvp/e8kNtImWyzMq16i50dfUrvVkDwdaDrgSEATjBB6287dnEVvSfctkIt5yZQeL2a36fkexyYj02pLso=",
+      format: "freed_library_primary_credentials_v1",
+      libraryId: "a".repeat(64),
+      schemaVersion: 1,
+    }),
+  );
   await Promise.all([
     writeFile(credential, credentialBytes, { mode: 0o600 }),
     writeFile(status, "", { mode: 0o600 }),
-    writeFile(path.join(mountedRoot, recordId), "opaque-local-material", {
+    writeFile(path.join(mountedRoot, recordId), primaryCredentialBytes, {
       mode: 0o600,
     }),
   ]);
@@ -454,7 +510,7 @@ async function runHarnessOnce(args: readonly string[]): Promise<{
 
 function launchSupervisorHarness(args: readonly string[]): {
   child: ChildProcess;
-  ready: Promise<{ sidecarPid: number }>;
+  ready: Promise<{ sidecarPid: number; localActorEndpoint: string }>;
 } {
   const harnessPath = path.resolve(
     "src/testing/fixtures/supervisor-runtime-harness.mjs",
@@ -465,7 +521,10 @@ function launchSupervisorHarness(args: readonly string[]): {
   });
   child.stdout!.setEncoding("utf8");
   child.stderr!.setEncoding("utf8");
-  const ready = new Promise<{ sidecarPid: number }>((resolve, reject) => {
+  const ready = new Promise<{
+    sidecarPid: number;
+    localActorEndpoint: string;
+  }>((resolve, reject) => {
     let stdout = "";
     let stderr = "";
     child.stderr!.on("data", (chunk: string) => {
@@ -478,12 +537,16 @@ function launchSupervisorHarness(args: readonly string[]): {
       const report = JSON.parse(stdout.slice(0, newline)) as {
         type: string;
         sidecarPid: number;
+        localActorEndpoint: string;
       };
       if (report.type !== "supervisor-ready") {
         reject(new Error("unexpected supervisor harness report"));
         return;
       }
-      resolve({ sidecarPid: report.sidecarPid });
+      resolve({
+        sidecarPid: report.sidecarPid,
+        localActorEndpoint: report.localActorEndpoint,
+      });
     });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
@@ -496,6 +559,23 @@ function launchSupervisorHarness(args: readonly string[]): {
     });
   });
   return { child, ready };
+}
+
+async function exchangeLocalActor(
+  endpoint: string,
+  request: Readonly<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const socket = net.createConnection(endpoint);
+    socket.once("error", reject);
+    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.once("end", () => resolve(Buffer.concat(chunks)));
+    socket.once("connect", () =>
+      socket.end(`${JSON.stringify(request)}\n`, "utf8"),
+    );
+  });
+  return JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
 }
 
 async function runSupervisorHarnessOnce(args: readonly string[]): Promise<{
@@ -578,21 +658,40 @@ afterEach(async () => {
 
 describe("compiled freed-library runtime", () => {
   darwinIt(
-    "runs the real descriptor-bound native sidecar with one lease and no SQLite transport",
+    "runs the real descriptor-bound native sidecar against normalized SQLite",
     async () => {
       const { dataRoot, stateRoot, supervisorArgs } =
         await createNativeSidecarFixture();
       const { child, ready } = launchSupervisorHarness(supervisorArgs);
-      const { sidecarPid } = await ready;
+      const { sidecarPid, localActorEndpoint } = await ready;
       expect(sidecarPid).toBeGreaterThan(0);
+      await expect(
+        exchangeLocalActor(localActorEndpoint, {
+          method: "submit_signed_intent_page_v1",
+          payload: { page: { records: [] } },
+          protocolVersion: 2,
+          requestId: "1".repeat(64),
+        }),
+      ).resolves.toMatchObject({
+        errorCode: "request_failed",
+        ok: false,
+        requestId: "1".repeat(64),
+      });
       expect(
         await stat(
-          path.join(dataRoot, "library-core", "library-core.sqlite"),
+          path.join(dataRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
+      await expect(
+        stat(path.join(dataRoot, "library-core")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
       const stateFiles = await readdir(stateRoot, { recursive: true });
       expect(
-        stateFiles.filter((file) => /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file)),
+        stateFiles.filter((file) =>
+          /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file),
+        ),
       ).toEqual([]);
 
       const competitor = await runSupervisorHarnessOnce(supervisorArgs);
@@ -624,13 +723,17 @@ describe("compiled freed-library runtime", () => {
       expect(await stat(path.join(movedRoot, "process.lock"))).toBeDefined();
       expect(
         await stat(
-          path.join(movedRoot, "library-core", "library-core.sqlite"),
+          path.join(movedRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
-      await expect(stat(path.join(dataRoot, "process.lock"))).rejects.toMatchObject({
+      await expect(
+        stat(path.join(dataRoot, "process.lock")),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
-      await expect(stat(path.join(dataRoot, "library-core"))).rejects.toMatchObject({
+      await expect(
+        stat(path.join(dataRoot, "library-sqlite")),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
 
@@ -677,6 +780,24 @@ describe("compiled freed-library runtime", () => {
       });
       expect(await readFile(statusPath, "utf8")).toBe("");
 
+      const serviceDefinition = await runCli([
+        "service-definition",
+        "--config",
+        configPath,
+      ]);
+      expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
+      expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
+        schemaVersion: 1,
+        service: "freed-library",
+        role: "primary",
+        platform: "darwin",
+        format: "launchd-plist-v1",
+        fileName: "wtf.freed.library.plist",
+        contentsSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        contents: expect.stringContaining("<key>ProgramArguments</key>"),
+      });
+      expect(await readFile(statusPath, "utf8")).toBe("");
+
       const status = await runCli(["status", "--config", configPath]);
       expect(status).toMatchObject({ code: 0, stderr: "" });
       expect(JSON.parse(status.stdout)).toMatchObject({ status: null });
@@ -697,17 +818,50 @@ describe("compiled freed-library runtime", () => {
   );
 
   linuxIt(
-    "fails doctor closed when the production ACL proof is unavailable",
+    "reports the production Linux ACL proof without assuming a clean runner root",
     async () => {
       const { configPath, statusPath } = await createServiceFixture();
 
       const doctor = await runCli(["doctor", "--config", configPath]);
-
-      expect(doctor).toMatchObject({ code: 2, stdout: "" });
-      expect(JSON.parse(doctor.stderr)).toMatchObject({
-        ok: false,
-        code: "acl_probe_unavailable",
-      });
+      let helperAvailable = true;
+      try {
+        await stat("/usr/bin/getfacl");
+      } catch {
+        helperAvailable = false;
+      }
+      if (helperAvailable) {
+        if (doctor.code === 0) {
+          expect(doctor.stderr).toBe("");
+          expect(JSON.parse(doctor.stdout)).toMatchObject({
+            ok: true,
+            code: "ready",
+          });
+          const serviceDefinition = await runCli([
+            "service-definition",
+            "--config",
+            configPath,
+          ]);
+          expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
+          expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
+            platform: "linux",
+            format: "systemd-user-unit-v1",
+            fileName: "freed-library.service",
+            contents: expect.stringContaining("ProtectSystem=strict"),
+          });
+        } else {
+          expect(doctor).toMatchObject({ code: 2, stdout: "" });
+          expect(JSON.parse(doctor.stderr)).toMatchObject({
+            ok: false,
+            code: "acl_present",
+          });
+        }
+      } else {
+        expect(doctor).toMatchObject({ code: 2, stdout: "" });
+        expect(JSON.parse(doctor.stderr)).toMatchObject({
+          ok: false,
+          code: "acl_probe_unavailable",
+        });
+      }
       expect(await readFile(statusPath, "utf8")).toBe("");
     },
     15_000,
@@ -746,6 +900,7 @@ describe("compiled freed-library runtime", () => {
           nowMs: Date.parse("2026-08-19T00:00:00.000Z"),
           startedAt: "2026-08-19T00:00:00.000Z",
           sidecarPid: 4_242,
+          localActorEndpoint: null,
           reasonCode: null,
         });
         await writeLibraryServiceStatus(statusFile!, ports.fileSystem, status);

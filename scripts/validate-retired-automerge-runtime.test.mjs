@@ -15,10 +15,13 @@ import {
   assertNoRetiredAutomergeArtifactDirectory,
   assertNoRetiredAutomergeRollupBundle,
   assertNoRetiredLibraryCorePublicExports,
+  assertNoRetiredNativeWholeRecordProjection,
 } from "./lib/retired-automerge-runtime.mjs";
 
 function withTempDirectory(run) {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-retired-runtime-"));
+  const directory = mkdtempSync(
+    path.join(os.tmpdir(), "freed-retired-runtime-"),
+  );
   try {
     return run(directory);
   } finally {
@@ -75,16 +78,21 @@ test("service-worker inspection rejects a renamed legacy sync route", () => {
   });
 });
 
-test("artifact inspection rejects retired registry payloads", () => {
+test("artifact inspection rejects retired Library payloads and browser row stores", () => {
   withTempDirectory((directory) => {
     writeFileSync(
       path.join(directory, "main.js"),
-      'const authority = "legacy-automerge-document";',
+      [
+        'const authority = "legacy-automerge-document";',
+        'const shellRecord = "00_library_shell";',
+        'const shellType = "DesktopLibraryShell";',
+        'const browserRows = "freed-library-core-portable-v1";',
+      ].join("\n"),
     );
 
     assert.throws(
       () => assertNoRetiredAutomergeArtifactDirectory(directory, "pwa"),
-      /retired-library-core-field-registry/,
+      /pwa-indexeddb-checkpoint-database[\s\S]*retired-library-core-field-registry[\s\S]*retired-library-shell-record[\s\S]*retired-library-shell-type/,
     );
   });
 });
@@ -135,13 +143,48 @@ test("current Library Core public entrypoint excludes retired registries", () =>
   assert.doesNotThrow(() => assertNoRetiredLibraryCorePublicExports(repoRoot));
 });
 
+test("native core inspection rejects the retired whole-record projector", () => {
+  withTempDirectory((directory) => {
+    const nativeSourceDirectory = path.join(
+      directory,
+      "packages",
+      "library-core-native",
+      "src",
+    );
+    mkdirSync(nativeSourceDirectory, { recursive: true });
+    writeFileSync(
+      path.join(nativeSourceDirectory, "lib.rs"),
+      "mod product_projection;\npub use product_projection::upsert_item;\n",
+    );
+    writeFileSync(
+      path.join(nativeSourceDirectory, "product_projection.rs"),
+      "pub fn upsert_item() {}\n",
+    );
+
+    assert.throws(
+      () => assertNoRetiredNativeWholeRecordProjection(directory),
+      /product_projection\.rs[\s\S]*mod product_projection[\s\S]*upsert_item/,
+    );
+  });
+});
+
+test("current native core excludes the retired whole-record projector", () => {
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+  assert.doesNotThrow(() =>
+    assertNoRetiredNativeWholeRecordProjection(repoRoot),
+  );
+});
+
 test("Vercel staging carries the current artifact guard without the retired patch", () => {
   const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   for (const fileName of [
     "vercel-deploy-preview.sh",
     "vercel-deploy-production.sh",
   ]) {
-    const source = readFileSync(path.join(repoRoot, "scripts", fileName), "utf8");
+    const source = readFileSync(
+      path.join(repoRoot, "scripts", fileName),
+      "utf8",
+    );
     assert.match(source, /retired-automerge-runtime\.mjs/);
     assert.match(source, /validate-retired-automerge-runtime\.mjs/);
     assert.doesNotMatch(source, /patch-automerge\.mjs/);

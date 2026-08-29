@@ -1,7 +1,7 @@
 /**
  * DebugPanel - in-app sync diagnostics overlay
  *
- * Three tabs: Connection, Events, Document.
+ * Runtime diagnostics for connection, events, Library, performance, and health.
  * Opened via Cmd/Ctrl+Shift+D, 5-tap on the sync indicator, or Settings → Developer.
  *
  * Responsive rendering:
@@ -182,7 +182,7 @@ const GDriveIcon = () => (
 
 function ConnectionTab() {
   const events = useDebugStore((s) => s.events);
-  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const runtimeMemory = useDebugStore((s) => s.runtimeMemory);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [, setTick] = useState(0);
@@ -273,9 +273,11 @@ function ConnectionTab() {
             </div>
 
             <div className={DEBUG_CARD_CLASS}>
-              <p className={DEBUG_LABEL_CLASS}>Doc Size</p>
+              <p className={DEBUG_LABEL_CLASS}>SQLite Storage</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
-                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "-"}
+                {librarySnapshot?.storageBytes === undefined
+                  ? "-"
+                  : formatBytes(librarySnapshot.storageBytes)}
               </p>
             </div>
           </div>
@@ -354,20 +356,6 @@ function ConnectionTab() {
               <p className={DEBUG_LABEL_CLASS}>Virtual Size</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {formatBytes(runtimeMemory.processVirtualBytes)}
-              </p>
-            </div>
-
-            <div className={DEBUG_CARD_CLASS}>
-              <p className={DEBUG_LABEL_CLASS}>Relay Doc</p>
-              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
-                {formatBytes(runtimeMemory.relayDocBytes)}
-              </p>
-            </div>
-
-            <div className={DEBUG_CARD_CLASS}>
-              <p className={DEBUG_LABEL_CLASS}>Relay Clients</p>
-              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
-                {runtimeMemory.relayClientCount.toLocaleString()}
               </p>
             </div>
 
@@ -490,22 +478,22 @@ function EventsTab() {
   );
 }
 
-function DocumentTab() {
-  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+function LibraryTab() {
+  const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const [copied, setCopied] = useState(false);
 
   const copyJson = async () => {
-    const json = window.__freed?.getDocJson?.();
+    const json = window.__freed?.getLibrarySummaryJson?.();
     if (!json) return;
     await navigator.clipboard.writeText(json);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (!docSnapshot) {
+  if (!librarySnapshot) {
     return (
       <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">
-        Document not yet initialized.
+        Library not yet initialized.
       </p>
     );
   }
@@ -515,26 +503,30 @@ function DocumentTab() {
       {/* Summary grid */}
       <div className="grid grid-cols-2 gap-2">
         <div className={DEBUG_CARD_CLASS}>
-          <p className={DEBUG_LABEL_CLASS}>Document ID</p>
-          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.documentId.slice(-8)}</p>
+          <p className={DEBUG_LABEL_CLASS}>Library ID</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{librarySnapshot.libraryId.slice(-8)}</p>
         </div>
         <div className={DEBUG_CARD_CLASS}>
-          <p className={DEBUG_LABEL_CLASS}>Doc Size</p>
-          <p className="font-mono text-xs text-[var(--theme-text-muted)]">{formatBytes(docSnapshot.binarySize)}</p>
+          <p className={DEBUG_LABEL_CLASS}>SQLite Storage</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">
+            {librarySnapshot.storageBytes === undefined
+              ? "-"
+              : formatBytes(librarySnapshot.storageBytes)}
+          </p>
         </div>
         <div className={DEBUG_CARD_CLASS}>
           <p className={DEBUG_LABEL_CLASS}>Feed Items</p>
-          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{docSnapshot.itemCount.toLocaleString()}</p>
+          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{librarySnapshot.itemCount.toLocaleString()}</p>
         </div>
         <div className={DEBUG_CARD_CLASS}>
           <p className={DEBUG_LABEL_CLASS}>RSS Feeds</p>
-          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{docSnapshot.feedCount.toLocaleString()}</p>
+          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{librarySnapshot.feedCount.toLocaleString()}</p>
         </div>
       </div>
 
       <div className={DEBUG_CARD_CLASS}>
         <p className={DEBUG_LABEL_CLASS}>Snapshot Taken</p>
-        <p className="font-mono text-xs text-[var(--theme-text-muted)]">{formatClockTime(docSnapshot.savedAt)}</p>
+        <p className="font-mono text-xs text-[var(--theme-text-muted)]">{formatClockTime(librarySnapshot.savedAt)}</p>
       </div>
 
       {/* Actions */}
@@ -543,12 +535,12 @@ function DocumentTab() {
           onClick={copyJson}
           className="btn-primary w-full py-2.5 text-sm"
         >
-          {copied ? "Copied!" : "Copy Doc as JSON"}
+          {copied ? "Copied!" : "Copy Library summary as JSON"}
         </button>
       </div>
 
       <p className="text-center text-[10px] text-[var(--theme-text-soft)]">
-        Or run <code className="font-mono">window.__freed.getDocJson()</code> in DevTools
+        Or run <code className="font-mono">window.__freed.getLibrarySummaryJson()</code> in DevTools
       </p>
     </div>
   );
@@ -1003,12 +995,12 @@ function HealthTab() {
 // Shared panel chrome - header + tabs + scrollable content + footer
 // ---------------------------------------------------------------------------
 
-type Tab = "connection" | "events" | "document" | "performance" | "health";
+type Tab = "connection" | "events" | "library" | "performance" | "health";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "connection", label: "Connection" },
   { id: "events", label: "Events" },
-  { id: "document", label: "Document" },
+  { id: "library", label: "Library" },
   { id: "performance", label: "Perf" },
   { id: "health", label: "Health" },
 ];
@@ -1064,7 +1056,7 @@ function PanelContent({
       <div className="flex-1 overflow-y-auto min-h-0 p-5">
         {tab === "connection" && <ConnectionTab />}
         {tab === "events" && <EventsTab />}
-        {tab === "document" && <DocumentTab />}
+        {tab === "library" && <LibraryTab />}
         {tab === "performance" && <PerformanceTab />}
         {tab === "health" && <HealthTab />}
       </div>

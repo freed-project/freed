@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  extractLocationFromItem,
   getLocationTimelineBounds,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
@@ -8,8 +7,8 @@ import {
   type LocationTimeRange,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
-import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
-import { useLibrarySurfaceItems } from "../../hooks/useLibrarySurfaceItems.js";
+import { useResolvedLocationCandidates } from "../../hooks/useResolvedLocations.js";
+import { useLibraryMapCandidates } from "../../hooks/useLibrarySurfaceItems.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
@@ -31,10 +30,6 @@ type MapViewportInsets = {
 
 interface MapViewProps {
   viewportInsets?: MapViewportInsets;
-}
-
-function hasLocationSignal(item: Parameters<typeof extractLocationFromItem>[0]): boolean {
-  return Boolean(extractLocationFromItem(item));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -146,10 +141,7 @@ function labelPositionStyle(
 }
 
 export function MapView({ viewportInsets }: MapViewProps) {
-  const items = useAppStore((state) => state.items);
   const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
-  const persons = useAppStore((state) => state.persons);
-  const accounts = useAppStore((state) => state.accounts);
   const selectedPersonId = useAppStore((state) => state.selectedPersonId);
   const setSelectedPerson = useAppStore((state) => state.setSelectedPerson);
   const setSelectedAccount = useAppStore((state) => state.setSelectedAccount);
@@ -161,16 +153,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const themeId = useAppliedThemeId();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
-  const readFallbackLocationItems = useCallback(
-    () => items.filter(hasLocationSignal),
-    [items],
-  );
-  const locationItems = useLibrarySurfaceItems(
-    "map",
-    readFallbackLocationItems,
-    searchCorpusVersion,
-  );
-  const { resolvedItems } = useResolvedLocations(locationItems, persons, accounts);
+  const locationCandidates = useLibraryMapCandidates(searchCorpusVersion);
+  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates);
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
   const timeBounds = useMemo(
     () => (rawTimeBounds ? snapTimeBoundsToDays(rawTimeBounds) : null),
@@ -414,7 +398,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
           });
         }}
         onPromoteAccount={(marker) => {
-          openAccountFromMap(marker, accounts, {
+          openAccountFromMap(marker, {
             setActiveView,
             setSelectedPerson,
             setSelectedAccount,
@@ -422,7 +406,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
           });
         }}
         onLinkAccount={(marker) => {
-          openAccountFromMap(marker, accounts, {
+          openAccountFromMap(marker, {
             setActiveView,
             setSelectedPerson,
             setSelectedAccount,

@@ -1,25 +1,44 @@
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
+  PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA,
+  PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  FRIEND_REPLACE_PAYLOAD_SCHEMA,
+  ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
+  type FeedItemAnalysisReplacePayloadV1,
+  type FeedItemPriorityAssignmentPayloadV1,
+  type FeedItemAnnotationsReplacePayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
+  type FeedItemSyncReceiptOperationTypeV1,
+  type FeedItemSyncReceiptPayloadV1,
   type RssFeedUpsertPayloadV1,
+  type RssFeedTitleAssignmentPayloadV1,
   type PreferencesLeafAssignmentPayloadV1,
   type PersonUpsertPayloadV1,
+  type FriendReplacePayloadV1,
+  type PersonReachOutAppendPayloadV1,
   type PersonRemovePayloadV1,
   type AccountRemovePayloadV1,
+  type AccountPersonAssignmentPayloadV1,
   type AccountUpsertPayloadV1,
 } from "./operation-payload-contracts.js";
 import {
@@ -31,6 +50,7 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import type { LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS } from "./sqlite-contract.generated.js";
 
 export const LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS = 4_096;
 
@@ -64,9 +84,19 @@ export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemCaptureUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemAnalysisReplaceTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemPriorityAssignmentTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemAnnotationsReplaceTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemSyncReceiptTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type RssFeedUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type RssFeedTitleAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type RssFeedRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
@@ -74,9 +104,15 @@ export type PreferencesLeafAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
+export type FriendReplaceTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type PersonReachOutAppendTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type AccountUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type AccountPersonAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type AccountRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
@@ -131,6 +167,64 @@ export interface FeedItemCaptureUpsertTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface FeedItemAnalysisReplaceTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "feed_item_analysis_replace";
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FeedItemAnalysisReplacePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface FeedItemPriorityAssignmentTransactionMemberBodyV1 extends Omit<
+  FeedItemReadAssignmentTransactionMemberBodyV1,
+  "operation_type" | "payload"
+> {
+  readonly operation_type: "feed_item_priority_assignment";
+  readonly payload: FeedItemPriorityAssignmentPayloadV1;
+}
+
+export interface FeedItemAnnotationsReplaceTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "feed_item_annotations_replace";
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FeedItemAnnotationsReplacePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export interface FeedItemUserStateAssignmentTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
@@ -153,6 +247,31 @@ export interface FeedItemUserStateAssignmentTransactionMemberBodyV1 {
     assigned: boolean;
     assigned_at_ms: number;
   }>;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface FeedItemSyncReceiptTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: FeedItemSyncReceiptOperationTypeV1;
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FeedItemSyncReceiptPayloadV1;
   readonly payload_digest: LibraryCoreLowercaseHex64;
   readonly blob_references: readonly [];
   readonly created_at_ms: number;
@@ -203,6 +322,31 @@ export interface RssFeedUpsertTransactionMemberBodyV1 {
   readonly entity_type: "RssFeed";
   readonly entity_id: LibraryCoreEntityId;
   readonly payload: RssFeedUpsertPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface RssFeedTitleAssignmentTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "rss_feed_title_assignment";
+  readonly entity_type: "RssFeed";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: RssFeedTitleAssignmentPayloadV1;
   readonly payload_digest: LibraryCoreLowercaseHex64;
   readonly blob_references: readonly [];
   readonly created_at_ms: number;
@@ -285,6 +429,56 @@ export interface PersonUpsertTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface FriendReplaceTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "friend_replace";
+  readonly entity_type: "Person";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FriendReplacePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface PersonReachOutAppendTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "person_reach_out_append";
+  readonly entity_type: "Person";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: PersonReachOutAppendPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export interface PersonRemoveTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
@@ -300,7 +494,8 @@ export interface PersonRemoveTransactionMemberBodyV1 {
   readonly transaction_id: LibraryCoreOperationInstanceId;
   readonly transaction_member_index: number;
   readonly transaction_member_count: number;
-  readonly operation_type: "person_remove_and_accounts";
+  readonly operation_type:
+    "person_remove_and_accounts" | "person_remove_detach_accounts";
   readonly entity_type: "Person";
   readonly entity_id: LibraryCoreEntityId;
   readonly payload: PersonRemovePayloadV1;
@@ -335,6 +530,31 @@ export interface AccountUpsertTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface AccountPersonAssignmentTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "account_person_assignment";
+  readonly entity_type: "Account";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: AccountPersonAssignmentPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export interface AccountRemoveTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
@@ -362,15 +582,23 @@ export interface AccountRemoveTransactionMemberBodyV1 {
 
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
+  | FeedItemAnalysisReplaceTransactionMemberBodyV1
+  | FeedItemPriorityAssignmentTransactionMemberBodyV1
+  | FeedItemAnnotationsReplaceTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
   | FeedItemUserStateAssignmentTransactionMemberBodyV1
+  | FeedItemSyncReceiptTransactionMemberBodyV1
   | FeedItemRemoveTransactionMemberBodyV1
   | RssFeedUpsertTransactionMemberBodyV1
+  | RssFeedTitleAssignmentTransactionMemberBodyV1
   | RssFeedRemoveTransactionMemberBodyV1
   | PreferencesLeafAssignmentTransactionMemberBodyV1
+  | FriendReplaceTransactionMemberBodyV1
   | PersonUpsertTransactionMemberBodyV1
+  | PersonReachOutAppendTransactionMemberBodyV1
   | PersonRemoveTransactionMemberBodyV1
   | AccountUpsertTransactionMemberBodyV1
+  | AccountPersonAssignmentTransactionMemberBodyV1
   | AccountRemoveTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
@@ -671,8 +899,28 @@ function constructEntityTransactionMember(
         readonly entityType: "FeedItem";
       }
     | {
+        readonly operationType: "feed_item_analysis_replace";
+        readonly validatePayload: typeof FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
+        readonly operationType: "feed_item_priority_assignment";
+        readonly validatePayload: typeof FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
+        readonly operationType: "feed_item_annotations_replace";
+        readonly validatePayload: typeof FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
         readonly operationType: FeedItemUserStateAssignmentOperationTypeV1;
         readonly validatePayload: typeof FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
+        readonly operationType: FeedItemSyncReceiptOperationTypeV1;
+        readonly validatePayload: typeof FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate;
         readonly entityType: "FeedItem";
       }
     | {
@@ -683,6 +931,11 @@ function constructEntityTransactionMember(
     | {
         readonly operationType: "rss_feed_upsert";
         readonly validatePayload: typeof RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "RssFeed";
+      }
+    | {
+        readonly operationType: "rss_feed_title_assignment";
+        readonly validatePayload: typeof RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
         readonly entityType: "RssFeed";
       }
     | {
@@ -702,13 +955,29 @@ function constructEntityTransactionMember(
         readonly entityType: "Person";
       }
     | {
-        readonly operationType: "person_remove_and_accounts";
+        readonly operationType: "friend_replace";
+        readonly validatePayload: typeof FRIEND_REPLACE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Person";
+      }
+    | {
+        readonly operationType: "person_reach_out_append";
+        readonly validatePayload: typeof PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Person";
+      }
+    | {
+        readonly operationType:
+          "person_remove_and_accounts" | "person_remove_detach_accounts";
         readonly validatePayload: typeof PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
       }
     | {
         readonly operationType: "account_upsert";
         readonly validatePayload: typeof ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Account";
+      }
+    | {
+        readonly operationType: "account_person_assignment";
+        readonly validatePayload: typeof ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Account";
       }
     | {
@@ -892,6 +1161,39 @@ function constructFeedItemCaptureUpsertTransactionMember(
   return construction;
 }
 
+function constructFeedItemAnalysisReplaceTransactionMember(
+  input: FeedItemAnalysisReplaceTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemAnalysisReplaceTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "feed_item_analysis_replace",
+    validatePayload: FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemAnalysisReplaceTransactionMemberBodyV1>;
+}
+
+function constructFeedItemPriorityAssignmentTransactionMember(
+  input: FeedItemPriorityAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemPriorityAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "feed_item_priority_assignment",
+    validatePayload: FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemPriorityAssignmentTransactionMemberBodyV1>;
+}
+
+function constructFeedItemAnnotationsReplaceTransactionMember(
+  input: FeedItemAnnotationsReplaceTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemAnnotationsReplaceTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "feed_item_annotations_replace",
+    validatePayload: FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemAnnotationsReplaceTransactionMemberBodyV1>;
+}
+
 function constructFeedItemUserStateAssignmentTransactionMember(
   input: FeedItemUserStateAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -907,6 +1209,21 @@ function constructFeedItemUserStateAssignmentTransactionMember(
           : FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
     entityType: "FeedItem",
   }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1>;
+}
+
+function constructFeedItemSyncReceiptTransactionMember(
+  input: FeedItemSyncReceiptTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+  operationType: FeedItemSyncReceiptOperationTypeV1,
+): LibraryCoreTransactionMemberConstruction<FeedItemSyncReceiptTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType,
+    validatePayload:
+      operationType === "feed_item_like_sync_receipt"
+        ? FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate
+        : FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemSyncReceiptTransactionMemberBodyV1>;
 }
 
 function constructFeedItemRemoveTransactionMember(
@@ -933,6 +1250,17 @@ function constructRssFeedUpsertTransactionMember(
     throw new TypeError("RSS feed URL must equal entity_id");
   }
   return construction;
+}
+
+function constructRssFeedTitleAssignmentTransactionMember(
+  input: RssFeedTitleAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<RssFeedTitleAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "rss_feed_title_assignment",
+    validatePayload: RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "RssFeed",
+  }) as LibraryCoreTransactionMemberConstruction<RssFeedTitleAssignmentTransactionMemberBodyV1>;
 }
 
 function constructRssFeedRemoveTransactionMember(
@@ -976,13 +1304,45 @@ function constructPersonUpsertTransactionMember(
   return construction;
 }
 
+function constructFriendReplaceTransactionMember(
+  input: FriendReplaceTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1> {
+  const construction = constructEntityTransactionMember(input, dependencies, {
+    operationType: "friend_replace",
+    validatePayload: FRIEND_REPLACE_PAYLOAD_SCHEMA.validate,
+    entityType: "Person",
+  }) as LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1>;
+  if (construction.body.payload.person.id !== construction.body.entity_id) {
+    throw new TypeError("Friend Person ID must equal entity_id");
+  }
+  return construction;
+}
+
+function constructPersonReachOutAppendTransactionMember(
+  input: PersonReachOutAppendTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<PersonReachOutAppendTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "person_reach_out_append",
+    validatePayload: PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate,
+    entityType: "Person",
+  }) as LibraryCoreTransactionMemberConstruction<PersonReachOutAppendTransactionMemberBodyV1>;
+}
+
 function constructPersonRemoveTransactionMember(
   input: PersonRemoveTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
+  operationType:
+    | "person_remove_and_accounts"
+    | "person_remove_detach_accounts" = "person_remove_and_accounts",
 ): LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1> {
   return constructEntityTransactionMember(input, dependencies, {
-    operationType: "person_remove_and_accounts",
-    validatePayload: PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate,
+    operationType,
+    validatePayload:
+      operationType === "person_remove_and_accounts"
+        ? PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate
+        : PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA.validate,
     entityType: "Person",
   }) as LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1>;
 }
@@ -1002,6 +1362,17 @@ function constructAccountUpsertTransactionMember(
   return construction;
 }
 
+function constructAccountPersonAssignmentTransactionMember(
+  input: AccountPersonAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<AccountPersonAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "account_person_assignment",
+    validatePayload: ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "Account",
+  }) as LibraryCoreTransactionMemberConstruction<AccountPersonAssignmentTransactionMemberBodyV1>;
+}
+
 function constructAccountRemoveTransactionMember(
   input: AccountRemoveTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -1014,7 +1385,7 @@ function constructAccountRemoveTransactionMember(
 }
 
 /**
- * Closed construction schema for the first dormant Library Core operation.
+ * Closed construction schema for a synchronized SQLite mutation.
  *
  * This creates only the transaction-member body and its digest. It does not
  * validate received bytes, derive a transaction or actor chain, sign an
@@ -1047,6 +1418,45 @@ export const FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze(
   FeedItemCaptureUpsertTransactionMemberBodyV1
 >;
 
+export const FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_analysis_replace_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_analysis_replace",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemAnalysisReplaceTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemAnalysisReplaceTransactionMemberInputV1,
+    FeedItemAnalysisReplaceTransactionMemberBodyV1
+  >;
+
+export const FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_priority_assignment_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_priority_assignment",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemPriorityAssignmentTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemPriorityAssignmentTransactionMemberInputV1,
+    FeedItemPriorityAssignmentTransactionMemberBodyV1
+  >;
+
+export const FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "feed_item_annotations_replace_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_annotations_replace",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemAnnotationsReplaceTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    FeedItemAnnotationsReplaceTransactionMemberInputV1,
+    FeedItemAnnotationsReplaceTransactionMemberBodyV1
+  >;
+
 function userStateAssignmentTransactionMemberSchema(
   operationType: FeedItemUserStateAssignmentOperationTypeV1,
 ) {
@@ -1075,6 +1485,32 @@ export const FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
 export const FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
   userStateAssignmentTransactionMemberSchema("feed_item_like_assignment");
 
+function feedItemSyncReceiptTransactionMemberSchema(
+  operationType: FeedItemSyncReceiptOperationTypeV1,
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_transaction_member_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    entityType: "FeedItem" as const,
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: FeedItemSyncReceiptTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructFeedItemSyncReceiptTransactionMember(
+        input,
+        dependencies,
+        operationType,
+      ),
+  });
+}
+
+export const FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA =
+  feedItemSyncReceiptTransactionMemberSchema("feed_item_like_sync_receipt");
+export const FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA =
+  feedItemSyncReceiptTransactionMemberSchema("feed_item_seen_sync_receipt");
+
 export const FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   schemaId: "feed_item_remove_transaction_member_v1",
   schemaVersion: 1,
@@ -1098,6 +1534,19 @@ export const RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   RssFeedUpsertTransactionMemberInputV1,
   RssFeedUpsertTransactionMemberBodyV1
 >;
+
+export const RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "rss_feed_title_assignment_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "rss_feed_title_assignment",
+    entityType: "RssFeed",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructRssFeedTitleAssignmentTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    RssFeedTitleAssignmentTransactionMemberInputV1,
+    RssFeedTitleAssignmentTransactionMemberBodyV1
+  >;
 
 function rssFeedRemoveTransactionMemberSchema(
   operationType: "rss_feed_remove_keep_items" | "rss_feed_remove_with_items",
@@ -1150,6 +1599,30 @@ export const PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   PersonUpsertTransactionMemberBodyV1
 >;
 
+export const FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "friend_replace_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "friend_replace",
+  entityType: "Person",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructFriendReplaceTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  FriendReplaceTransactionMemberInputV1,
+  FriendReplaceTransactionMemberBodyV1
+>;
+
+export const PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "person_reach_out_append_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "person_reach_out_append",
+  entityType: "Person",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructPersonReachOutAppendTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  PersonReachOutAppendTransactionMemberInputV1,
+  PersonReachOutAppendTransactionMemberBodyV1
+>;
+
 export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
   Object.freeze({
     schemaId: "person_remove_and_accounts_transaction_member_v1",
@@ -1160,7 +1633,28 @@ export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
     construct: constructPersonRemoveTransactionMember,
   }) satisfies LibraryCoreTransactionMemberSchema<
     PersonRemoveTransactionMemberInputV1,
-  PersonRemoveTransactionMemberBodyV1
+    PersonRemoveTransactionMemberBodyV1
+  >;
+
+export const PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "person_remove_detach_accounts_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "person_remove_detach_accounts",
+    entityType: "Person",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: PersonRemoveTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructPersonRemoveTransactionMember(
+        input,
+        dependencies,
+        "person_remove_detach_accounts",
+      ),
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    PersonRemoveTransactionMemberInputV1,
+    PersonRemoveTransactionMemberBodyV1
   >;
 
 export const ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
@@ -1175,6 +1669,19 @@ export const ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   AccountUpsertTransactionMemberBodyV1
 >;
 
+export const ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "account_person_assignment_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "account_person_assignment",
+    entityType: "Account",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructAccountPersonAssignmentTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    AccountPersonAssignmentTransactionMemberInputV1,
+    AccountPersonAssignmentTransactionMemberBodyV1
+  >;
+
 export const ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   schemaId: "account_remove_transaction_member_v1",
   schemaVersion: 1,
@@ -1185,4 +1692,60 @@ export const ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreTransactionMemberSchema<
   AccountRemoveTransactionMemberInputV1,
   AccountRemoveTransactionMemberBodyV1
+>;
+
+type LibraryCoreExecutableMutationId =
+  keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
+
+/**
+ * Closed transaction schemas for every executable synchronized SQLite
+ * mutation. The generated mutation program catalog supplies the exact key set,
+ * so adding or removing a program cannot leave this boundary partially wired.
+ */
+export const LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS = Object.freeze({
+  account_person_assignment:
+    ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  account_remove: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  account_upsert: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_analysis_replace:
+    FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_annotations_replace:
+    FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_archive_assignment:
+    FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_capture_upsert: FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_like_assignment:
+    FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_like_sync_receipt:
+    FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_priority_assignment:
+    FEED_ITEM_PRIORITY_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_read_assignment:
+    FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_remove: FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_saved_assignment:
+    FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  feed_item_seen_sync_receipt:
+    FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  friend_replace: FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  person_reach_out_append: PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
+  person_remove_and_accounts:
+    PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  person_remove_detach_accounts:
+    PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  person_upsert: PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  preferences_leaf_assignment:
+    PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_remove_keep_items:
+    RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_remove_with_items:
+    RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_title_assignment:
+    RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  rss_feed_upsert: RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+}) satisfies Readonly<
+  Record<
+    LibraryCoreExecutableMutationId,
+    LibraryCoreTransactionMemberSchemaDescriptor
+  >
 >;

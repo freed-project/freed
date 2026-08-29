@@ -25,6 +25,7 @@ import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-n
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
@@ -247,33 +248,6 @@ function SidebarNavRow({
       ) : null}
     </div>
   );
-}
-
-interface SearchableFeed {
-  feed: RssFeed;
-  title: string;
-  siteUrl: string;
-  url: string;
-  folder: string;
-}
-
-function scoreFeedMatch(feed: SearchableFeed, queryTerms: string[]): number {
-  if (queryTerms.length === 0) return 0;
-
-  let score = 0;
-  for (const term of queryTerms) {
-    if (feed.title === term) score += 120;
-    else if (feed.title.startsWith(term)) score += 90;
-    else if (feed.title.includes(term)) score += 60;
-
-    if (feed.folder.startsWith(term)) score += 40;
-    else if (feed.folder.includes(term)) score += 24;
-
-    if (feed.siteUrl.startsWith(term) || feed.url.startsWith(term)) score += 36;
-    else if (feed.siteUrl.includes(term) || feed.url.includes(term)) score += 18;
-  }
-
-  return score;
 }
 
 interface SidebarProps {
@@ -698,28 +672,18 @@ export function Sidebar({
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
-  const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const [sidebarSearchInput, setSidebarSearchInput] = useState(searchQuery);
-  const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.persons);
-  const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
-  const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
   const removeFeed = useAppStore((s) => s.removeFeed);
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalItemCount = useAppStore((s) => s.totalItemCount);
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
-  const rssUnreadCount = useMemo(
-    () => Object.values(feedUnreadCounts).reduce((total, count) => total + count, 0),
-    [feedUnreadCounts],
-  );
-  const rssItemCount = useMemo(
-    () => Object.values(feedTotalCounts).reduce((total, count) => total + count, 0),
-    [feedTotalCounts],
-  );
+  const rssUnreadCount = unreadCountByPlatform.rss ?? 0;
+  const rssItemCount = itemCountByPlatform.rss ?? 0;
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
@@ -740,7 +704,6 @@ export function Sidebar({
   const mobileMenuTopPx = scaleInterfaceChromePx(MOBILE_MENU_TOP_PX, interfaceZoom);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -748,10 +711,10 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
-  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const friendCount = libraryFacets.friendPersonCount;
   const requestCopyFriendsDiagnostics = useCommandSurfaceStore(
     (state) => state.requestCopyFriendsDiagnostics,
   );
@@ -770,7 +733,6 @@ export function Sidebar({
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedWidth, setCommittedWidth] = useState(persistedSidebarBaseWidth);
   const [rssFeedsOpen, setRssFeedsOpen] = useState(false);
-  const [rssFeedPage, setRssFeedPage] = useState(0);
 
   // Allow external packages (desktop, pwa) to open settings to a specific section
   // via a DOM event rather than importing the store directly across package boundaries.
@@ -1082,21 +1044,6 @@ export function Sidebar({
     ],
   );
 
-  const feedList = useMemo(
-    () => Object.values(feeds).filter((feed) => feed.enabled),
-    [feeds],
-  );
-  const searchableFeedList = useMemo(
-    () =>
-      feedList.map((feed) => ({
-        feed,
-        title: feed.title.toLocaleLowerCase(),
-        siteUrl: feed.siteUrl?.toLocaleLowerCase() ?? "",
-        url: feed.url.toLocaleLowerCase(),
-        folder: feed.folder?.toLocaleLowerCase() ?? "",
-      })),
-    [feedList],
-  );
   useEffect(() => {
     setSidebarSearchInput(searchQuery);
   }, [searchQuery]);
@@ -1104,36 +1051,21 @@ export function Sidebar({
     setSidebarSearchInput(value);
   }, []);
   const deferredSidebarSearchInput = useDeferredValue(sidebarSearchInput);
-  const trimmedSearchQuery = deferredSidebarSearchInput.trim().toLocaleLowerCase();
-  const searchTerms = useMemo(
-    () => trimmedSearchQuery.split(/\s+/).filter(Boolean),
-    [trimmedSearchQuery],
+  const rssFeedPage = useLibraryRssFeedPage({
+    enabledOnly: true,
+    pageSize: FEEDS_PAGE_SIZE,
+    search: deferredSidebarSearchInput,
+    sourceVersion: searchCorpusVersion,
+  });
+  const pagedFeeds = rssFeedPage.feeds;
+  const rssFeedRowsByUrl = useMemo(
+    () => new Map(rssFeedPage.rows.map((row) => [row.url, row])),
+    [rssFeedPage.rows],
   );
-  const visibleFeedList = useMemo(() => {
-    if (searchTerms.length === 0) return feedList;
-
-    const matches: Array<{ feed: SearchableFeed; score: number }> = [];
-    for (const feed of searchableFeedList) {
-      const score = scoreFeedMatch(feed, searchTerms);
-      if (score > 0) {
-        matches.push({ feed, score });
-      }
-    }
-
-    matches.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (a.feed.feed.url === activeFilter.feedUrl) return -1;
-      if (b.feed.feed.url === activeFilter.feedUrl) return 1;
-      return a.feed.feed.title.localeCompare(b.feed.feed.title);
-    });
-
-    return matches.map(({ feed }) => feed.feed);
-  }, [activeFilter.feedUrl, feedList, searchableFeedList, searchTerms]);
-  const totalFeedPages = Math.max(1, Math.ceil(visibleFeedList.length / FEEDS_PAGE_SIZE));
-  const pagedFeeds = useMemo(() => {
-    const startIndex = rssFeedPage * FEEDS_PAGE_SIZE;
-    return visibleFeedList.slice(startIndex, startIndex + FEEDS_PAGE_SIZE);
-  }, [rssFeedPage, visibleFeedList]);
+  const pagedFeedsByUrl = useMemo(
+    () => new Map(pagedFeeds.map((feed) => [feed.url, feed])),
+    [pagedFeeds],
+  );
   const activeFeedVisibleOnCurrentPage = !!(
     activeFilter.feedUrl &&
     rssFeedsOpen &&
@@ -1144,14 +1076,14 @@ export function Sidebar({
     navigateToFeedView(
       {
         setActiveView,
-        setSelectedPerson: setSelectedFriend,
+        setSelectedPerson,
         setSelectedItem,
         setFilter,
       },
       filter,
     );
     onMobileClose();
-  }, [onMobileClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
+  }, [onMobileClose, setActiveView, setFilter, setSelectedItem, setSelectedPerson]);
 
   const handleSourceClick = (source: SourceNavigationItem) => {
     showFeed({ platform: source.id });
@@ -1274,21 +1206,6 @@ export function Sidebar({
     () => (selectedMenuSource ? (getSourceStatus?.(selectedMenuSourceId) ?? null) : null),
     [getSourceStatus, selectedMenuSource, selectedMenuSourceId, providerSyncCounts, health],
   );
-
-  useEffect(() => {
-    const maxPage = Math.max(0, totalFeedPages - 1);
-    if (rssFeedPage > maxPage) {
-      setRssFeedPage(maxPage);
-    }
-  }, [rssFeedPage, totalFeedPages]);
-
-  const handleFeedPageChange = useCallback((direction: "prev" | "next") => {
-    setRssFeedPage((page) =>
-      direction === "prev"
-        ? Math.max(0, page - 1)
-        : Math.min(totalFeedPages - 1, page + 1),
-    );
-  }, [totalFeedPages]);
 
   const settingsButtonContent = (
     <>
@@ -1619,7 +1536,7 @@ export function Sidebar({
                   active: activeView === "friends",
                   onClick: () => {
                     setActiveView("friends");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     onMobileClose();
                   },
@@ -1653,7 +1570,7 @@ export function Sidebar({
                   menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     onMobileClose();
                   }}
@@ -1674,7 +1591,7 @@ export function Sidebar({
                   active: activeView === "map",
                   onClick: () => {
                     setActiveView("map");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     setSearchQuery("");
                     onMobileClose();
@@ -1692,7 +1609,7 @@ export function Sidebar({
                   labelClass={sidebarLabelClass}
                   onClick={() => {
                     setActiveView("map");
-                    setSelectedFriend(null);
+                    setSelectedPerson(null);
                     setSelectedItem(null);
                     setSearchQuery("");
                     onMobileClose();
@@ -1711,7 +1628,7 @@ export function Sidebar({
                 const isRssSource =
                   source.id === "rss" &&
                   !compactRail &&
-                  (feedList.length > 0 || sourceStatus !== null);
+                  (pagedFeeds.length > 0 || rssFeedPage.loading || sourceStatus !== null);
 
                 if (compactRail) {
                   const compactBadge = getSourceBadge(source, sourceStatus);
@@ -1784,13 +1701,14 @@ export function Sidebar({
 
                         {rssAccordionVisible && rssFeedsOpen && (
                           <div className="space-y-2">
-                            {visibleFeedList.length > 0 ? (
+                            {pagedFeeds.length > 0 ? (
                               <>
                                 <div className="pl-4">
                                   <ul className="space-y-0.5">
                                   {pagedFeeds.map((feed) => {
-                                    const unread = feedUnreadCounts[feed.url] ?? 0;
-                                    const total = feedTotalCounts[feed.url] ?? 0;
+                                    const row = rssFeedRowsByUrl.get(feed.url);
+                                    const unread = row?.unreadCount ?? 0;
+                                    const total = row?.activityCount ?? 0;
                                     const isActive = isFeedView && activeFilter.feedUrl === feed.url;
                                     const menuOpen = openMenuFeedUrl === feed.url;
 
@@ -1831,26 +1749,24 @@ export function Sidebar({
                                   </ul>
                                 </div>
 
-                                {visibleFeedList.length > FEEDS_PAGE_SIZE && (
+                                {(rssFeedPage.hasPrevious || rssFeedPage.hasNext) && (
                                   <div className="flex w-full items-center justify-between gap-2 px-1">
                                     <button
                                       type="button"
-                                      onClick={() => handleFeedPageChange("prev")}
-                                      disabled={rssFeedPage === 0}
+                                      onClick={rssFeedPage.previousPage}
+                                      disabled={!rssFeedPage.hasPrevious || rssFeedPage.loading}
                                       aria-label="Previous feeds page"
                                       className="rounded-md px-2 py-1 text-xs font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                       &lt;
                                     </button>
                                     <span className={`${countTextClass} text-[color:var(--theme-text-soft)]`}>
-                                      {(rssFeedPage * FEEDS_PAGE_SIZE + 1).toLocaleString()} to{" "}
-                                      {Math.min((rssFeedPage + 1) * FEEDS_PAGE_SIZE, visibleFeedList.length).toLocaleString()} of{" "}
-                                      {visibleFeedList.length.toLocaleString()}
+                                      Page {rssFeedPage.pageNumber.toLocaleString()}
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => handleFeedPageChange("next")}
-                                      disabled={rssFeedPage >= totalFeedPages - 1}
+                                      onClick={rssFeedPage.nextPage}
+                                      disabled={!rssFeedPage.hasNext || rssFeedPage.loading}
                                       aria-label="Next feeds page"
                                       className="rounded-md px-2 py-1 text-xs font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
@@ -1859,9 +1775,19 @@ export function Sidebar({
                                   </div>
                                 )}
                               </>
+                            ) : rssFeedPage.loading ? (
+                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                                Loading feeds...
+                              </p>
+                            ) : rssFeedPage.error ? (
+                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                                Feed list unavailable.
+                              </p>
                             ) : (
                               <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
-                                No feeds match &ldquo;{searchQuery.trim()}&rdquo;.
+                                {deferredSidebarSearchInput.trim()
+                                  ? <>No feeds match &ldquo;{deferredSidebarSearchInput.trim()}&rdquo;.</>
+                                  : <>No feeds subscribed yet.</>}
                               </p>
                             )}
                           </div>
@@ -2073,9 +1999,9 @@ export function Sidebar({
       <SettingsDialog open={showSettings} onClose={closeSettings} />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
-      {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (
+      {openMenuFeedUrl && menuAnchorRect && pagedFeedsByUrl.has(openMenuFeedUrl) && (
         <FeedContextMenu
-          feed={feeds[openMenuFeedUrl]}
+          feed={pagedFeedsByUrl.get(openMenuFeedUrl)!}
           anchorRect={menuAnchorRect}
           anchorElement={menuAnchorElement}
           onClose={() => {

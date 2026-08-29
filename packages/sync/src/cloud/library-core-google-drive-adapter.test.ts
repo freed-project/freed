@@ -8,6 +8,8 @@ import {
   encodeLibraryCoreCanonicalValue,
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreIntentHeadV1,
+  parseLibraryCoreNormalizedIntentHeadV2,
+  parseLibraryCoreNormalizedResultHeadV2,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
@@ -15,6 +17,8 @@ import {
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
+  createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
@@ -22,6 +26,8 @@ import {
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
+  provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2,
+  provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   provisionGoogleDriveLibraryCoreResultHeadV1,
 } from "./library-core-google-drive-adapter.js";
 
@@ -110,6 +116,19 @@ function emptyIntentHead() {
   });
 }
 
+function emptyNormalizedIntentHead() {
+  return parseLibraryCoreNormalizedIntentHeadV2({
+    actor_id: "11".repeat(32),
+    latest_segment: null,
+    latest_segment_digest: null,
+    library_id: "22".repeat(32),
+    next_actor_counter: 1,
+    protocol: "normalized_intent_head_v2",
+    protocol_version: 2,
+    storage_epoch_id: "33".repeat(32),
+  });
+}
+
 function emptyResultHead() {
   return parseLibraryCoreResultHeadV1({
     actor_id: "actor-1",
@@ -121,6 +140,19 @@ function emptyResultHead() {
     protocol: "result_head_v1",
     protocol_version: 1,
     schema_version: 1,
+  });
+}
+
+function emptyNormalizedResultHead() {
+  return parseLibraryCoreNormalizedResultHeadV2({
+    actor_id: "11".repeat(32),
+    latest_segment: null,
+    latest_segment_digest: null,
+    library_id: "22".repeat(32),
+    next_result_sequence: 1,
+    protocol: "normalized_result_head_v2",
+    protocol_version: 2,
+    storage_epoch_id: "33".repeat(32),
   });
 }
 
@@ -142,8 +174,14 @@ class FakeGoogleDrive {
   uploadCount = 0;
   nextId = 1;
   uploadFixture: ReturnType<typeof operationObject> | null = null;
-  intentHeadFixture: ReturnType<typeof emptyIntentHead> | null = null;
-  resultHeadFixture: ReturnType<typeof emptyResultHead> | null = null;
+  intentHeadFixture:
+    | ReturnType<typeof emptyIntentHead>
+    | ReturnType<typeof emptyNormalizedIntentHead>
+    | null = null;
+  resultHeadFixture:
+    | ReturnType<typeof emptyResultHead>
+    | ReturnType<typeof emptyNormalizedResultHead>
+    | null = null;
   exposeMediaEtag = true;
 
   addControl(
@@ -188,15 +226,19 @@ class FakeGoogleDrive {
   }
 
   addIntentHead(
-    head = emptyIntentHead(),
+    head:
+      | ReturnType<typeof emptyIntentHead>
+      | ReturnType<typeof emptyNormalizedIntentHead> = emptyIntentHead(),
     id = "intent-head-1",
     etag = '"intent-head-revision-1"',
   ): FakeDriveFile {
+    const epochId =
+      "storage_epoch_id" in head ? head.storage_epoch_id : head.epoch_id;
     const file: FakeDriveFile = {
       id,
       name: createLibraryCoreIntentHeadObjectKey(
         head.library_id,
-        head.epoch_id,
+        epochId,
         head.actor_id,
       ),
       bytes: encodeLibraryCoreCanonicalValue(
@@ -206,7 +248,7 @@ class FakeGoogleDrive {
         freedProtocol: "library-core-v1",
         freedLibraryDigest: libraryDigest(head.library_id),
         freedObjectKind: "intent_head",
-        freedEpochDigest: libraryDigest(head.epoch_id),
+        freedEpochDigest: libraryDigest(epochId),
         freedActorDigest: libraryDigest(head.actor_id),
       },
       etag,
@@ -216,15 +258,19 @@ class FakeGoogleDrive {
   }
 
   addResultHead(
-    head = emptyResultHead(),
+    head:
+      | ReturnType<typeof emptyResultHead>
+      | ReturnType<typeof emptyNormalizedResultHead> = emptyResultHead(),
     id = "result-head-1",
     etag = '"result-head-revision-1"',
   ): FakeDriveFile {
+    const epochId =
+      "storage_epoch_id" in head ? head.storage_epoch_id : head.epoch_id;
     const file: FakeDriveFile = {
       id,
       name: createLibraryCoreResultHeadObjectKey(
         head.library_id,
-        head.epoch_id,
+        epochId,
         head.actor_id,
       ),
       bytes: encodeLibraryCoreCanonicalValue(
@@ -234,7 +280,7 @@ class FakeGoogleDrive {
         freedProtocol: "library-core-v1",
         freedLibraryDigest: libraryDigest(head.library_id),
         freedObjectKind: "result_head",
-        freedEpochDigest: libraryDigest(head.epoch_id),
+        freedEpochDigest: libraryDigest(epochId),
         freedActorDigest: libraryDigest(head.actor_id),
       },
       etag,
@@ -291,7 +337,9 @@ class FakeGoogleDrive {
       if (bodyText.includes('"freedObjectKind":"intent_head"')) {
         const fixture = this.intentHeadFixture;
         if (fixture === null) {
-          return new Response("missing fake intent-head fixture", { status: 500 });
+          return new Response("missing fake intent-head fixture", {
+            status: 500,
+          });
         }
         const file = this.addIntentHead(
           fixture,
@@ -304,7 +352,9 @@ class FakeGoogleDrive {
       if (bodyText.includes('"freedObjectKind":"result_head"')) {
         const fixture = this.resultHeadFixture;
         if (fixture === null) {
-          return new Response("missing fake result-head fixture", { status: 500 });
+          return new Response("missing fake result-head fixture", {
+            status: 500,
+          });
         }
         const file = this.addResultHead(
           fixture,
@@ -786,9 +836,12 @@ describe("Google Drive Library Core immutable adapter", () => {
         mediaReads += 1;
         const file = fake.files.get("control-1");
         if (file !== undefined) {
-          file.etag = `"control-revision-${(mediaReads + 1).toLocaleString("en-US", {
-            useGrouping: false,
-          })}"`;
+          file.etag = `"control-revision-${(mediaReads + 1).toLocaleString(
+            "en-US",
+            {
+              useGrouping: false,
+            },
+          )}"`;
         }
       }
       return response;
@@ -813,25 +866,32 @@ describe("Google Drive Library Core immutable adapter", () => {
     ["wrong id", { id: "control-2", etag: '"revision"' }],
     ["v3 version only", { id: "control-1", version: "12" }],
     ["head revision only", { id: "control-1", headRevisionId: "13" }],
-  ])("rejects %s mutable revision metadata before media or CAS", async (_label, metadata) => {
-    const fake = new FakeGoogleDrive();
-    fake.addControl();
-    const invalidRevisionFetch: typeof fetch = async (input, init) => {
-      if (String(input).includes("/drive/v2/files/control-1?fields=id,etag")) {
-        return Response.json(metadata);
-      }
-      return fake.fetch(input, init);
-    };
-    const guarded = createGoogleDriveLibraryCoreAdapterV1({
-      accessToken: "test-token",
-      controlFileId: "control-1",
-      googleFetch: invalidRevisionFetch,
-      libraryId: "library-1",
-    });
+  ])(
+    "rejects %s mutable revision metadata before media or CAS",
+    async (_label, metadata) => {
+      const fake = new FakeGoogleDrive();
+      fake.addControl();
+      const invalidRevisionFetch: typeof fetch = async (input, init) => {
+        if (
+          String(input).includes("/drive/v2/files/control-1?fields=id,etag")
+        ) {
+          return Response.json(metadata);
+        }
+        return fake.fetch(input, init);
+      };
+      const guarded = createGoogleDriveLibraryCoreAdapterV1({
+        accessToken: "test-token",
+        controlFileId: "control-1",
+        googleFetch: invalidRevisionFetch,
+        libraryId: "library-1",
+      });
 
-    await expect(guarded.readControl()).rejects.toThrow(/identity|entity tag|bounded nonempty text/u);
-    expect(fake.requests).toHaveLength(0);
-  });
+      await expect(guarded.readControl()).rejects.toThrow(
+        /identity|entity tag|bounded nonempty text/u,
+      );
+      expect(fake.requests).toHaveLength(0);
+    },
+  );
 
   it("returns the exact current control after a precondition race", async () => {
     const fake = new FakeGoogleDrive();
@@ -869,54 +929,57 @@ describe("Google Drive Library Core immutable adapter", () => {
     ["weak", 'W/"revision"'],
     ["unquoted", "revision"],
     ["multiple tags", '"revision-1", "revision-2"'],
-  ])("rejects %s If-Match admission for every mutable head before fetch", async (_label, revision) => {
-    const fake = new FakeGoogleDrive();
-    fake.addControl();
-    const intentHead = emptyIntentHead();
-    const resultHead = emptyResultHead();
-    const intentAdapter = createGoogleDriveLibraryCoreIntentAdapterV1({
-      accessToken: "test-token",
-      actorId: intentHead.actor_id,
-      controlFileId: "control-1",
-      epochId: intentHead.epoch_id,
-      googleFetch: fake.fetch,
-      intentHeadFileId: "intent-head-1",
-      libraryId: intentHead.library_id,
-    });
-    const resultAdapter = createGoogleDriveLibraryCoreResultAdapterV1({
-      accessToken: "test-token",
-      actorId: resultHead.actor_id,
-      controlFileId: "control-1",
-      epochId: resultHead.epoch_id,
-      googleFetch: fake.fetch,
-      libraryId: resultHead.library_id,
-      resultHeadFileId: "result-head-1",
-    });
+  ])(
+    "rejects %s If-Match admission for every mutable head before fetch",
+    async (_label, revision) => {
+      const fake = new FakeGoogleDrive();
+      fake.addControl();
+      const intentHead = emptyIntentHead();
+      const resultHead = emptyResultHead();
+      const intentAdapter = createGoogleDriveLibraryCoreIntentAdapterV1({
+        accessToken: "test-token",
+        actorId: intentHead.actor_id,
+        controlFileId: "control-1",
+        epochId: intentHead.epoch_id,
+        googleFetch: fake.fetch,
+        intentHeadFileId: "intent-head-1",
+        libraryId: intentHead.library_id,
+      });
+      const resultAdapter = createGoogleDriveLibraryCoreResultAdapterV1({
+        accessToken: "test-token",
+        actorId: resultHead.actor_id,
+        controlFileId: "control-1",
+        epochId: resultHead.epoch_id,
+        googleFetch: fake.fetch,
+        libraryId: resultHead.library_id,
+        resultHeadFileId: "result-head-1",
+      });
 
-    await expect(
-      adapter(fake).compareAndSwapControl({
-        bytes: bytes('{"next":true}'),
-        expectedRevision: revision,
-      }),
-    ).rejects.toThrow("must be a bounded strong entity tag");
-    await expect(
-      intentAdapter.compareAndSwapIntentHead({
-        bytes: encodeLibraryCoreCanonicalValue(
-          intentHead as unknown as LibraryCoreCanonicalValue,
-        ),
-        expectedRevision: revision,
-      }),
-    ).rejects.toThrow("must be a bounded strong entity tag");
-    await expect(
-      resultAdapter.compareAndSwapResultHead({
-        bytes: encodeLibraryCoreCanonicalValue(
-          resultHead as unknown as LibraryCoreCanonicalValue,
-        ),
-        expectedRevision: revision,
-      }),
-    ).rejects.toThrow("must be a bounded strong entity tag");
-    expect(fake.requests).toHaveLength(0);
-  });
+      await expect(
+        adapter(fake).compareAndSwapControl({
+          bytes: bytes('{"next":true}'),
+          expectedRevision: revision,
+        }),
+      ).rejects.toThrow("must be a bounded strong entity tag");
+      await expect(
+        intentAdapter.compareAndSwapIntentHead({
+          bytes: encodeLibraryCoreCanonicalValue(
+            intentHead as unknown as LibraryCoreCanonicalValue,
+          ),
+          expectedRevision: revision,
+        }),
+      ).rejects.toThrow("must be a bounded strong entity tag");
+      await expect(
+        resultAdapter.compareAndSwapResultHead({
+          bytes: encodeLibraryCoreCanonicalValue(
+            resultHead as unknown as LibraryCoreCanonicalValue,
+          ),
+          expectedRevision: revision,
+        }),
+      ).rejects.toThrow("must be a bounded strong entity tag");
+      expect(fake.requests).toHaveLength(0);
+    },
+  );
 
   it("rejects an intent-head body from the wrong epoch after exact readback", async () => {
     const fake = new FakeGoogleDrive();
@@ -943,7 +1006,9 @@ describe("Google Drive Library Core immutable adapter", () => {
     await expect(intentAdapter.readIntentHead()).rejects.toThrow(
       "intent-head identity is incorrect",
     );
-    expect(fake.requests.some((request) => request.method === "PUT")).toBe(false);
+    expect(fake.requests.some((request) => request.method === "PUT")).toBe(
+      false,
+    );
   });
 
   it("rejects a proposed intent head from the wrong epoch before fetch", async () => {
@@ -1034,6 +1099,49 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(updates[0]?.headers.get("If-Match")).toBe(initial.revision);
   });
 
+  it("uses the same bounded Drive routes for the normalized v2 intent head", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl();
+    const head = emptyNormalizedIntentHead();
+    fake.intentHeadFixture = head;
+
+    await expect(
+      provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+        head,
+      }),
+    ).resolves.toEqual({ intentHeadFileId: "intent-head-1", created: true });
+
+    const intentAdapter = createGoogleDriveLibraryCoreNormalizedIntentAdapterV2(
+      {
+        accessToken: "test-token",
+        actorId: head.actor_id,
+        controlFileId: "control-1",
+        epochId: head.storage_epoch_id,
+        googleFetch: fake.fetch,
+        intentHeadFileId: "intent-head-1",
+        libraryId: head.library_id,
+      },
+    );
+    const initial = await intentAdapter.readHead();
+    await expect(
+      intentAdapter.compareAndSwapHead({
+        bytes: encodeLibraryCoreCanonicalValue(
+          head as unknown as LibraryCoreCanonicalValue,
+        ),
+        expectedRevision: initial.revision,
+      }),
+    ).resolves.toEqual({ status: "committed" });
+
+    const updates = fake.requests.filter((request) => request.method === "PUT");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.url).toBe(
+      "https://www.googleapis.com/upload/drive/v2/files/intent-head-1?uploadType=media&fields=id,etag",
+    );
+    expect(updates[0]?.headers.get("If-Match")).toBe(initial.revision);
+  });
+
   it("provisions and advances one actor result head through the same v2 CAS boundary", async () => {
     const fake = new FakeGoogleDrive();
     fake.addControl();
@@ -1082,10 +1190,58 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(updates[0]?.headers.get("If-Match")).toBe(initial.revision);
   });
 
+  it("uses the same bounded Drive routes for the normalized v2 result head", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl();
+    const head = emptyNormalizedResultHead();
+    fake.resultHeadFixture = head;
+
+    await expect(
+      provisionGoogleDriveLibraryCoreNormalizedResultHeadV2({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+        head,
+      }),
+    ).resolves.toEqual({ resultHeadFileId: "result-head-1", created: true });
+
+    const resultAdapter = createGoogleDriveLibraryCoreNormalizedResultAdapterV2(
+      {
+        accessToken: "test-token",
+        actorId: head.actor_id,
+        controlFileId: "control-1",
+        epochId: head.storage_epoch_id,
+        googleFetch: fake.fetch,
+        libraryId: head.library_id,
+        resultHeadFileId: "result-head-1",
+      },
+    );
+    const initial = await resultAdapter.readHead();
+    await expect(
+      resultAdapter.compareAndSwapHead({
+        bytes: encodeLibraryCoreCanonicalValue(
+          head as unknown as LibraryCoreCanonicalValue,
+        ),
+        expectedRevision: initial.revision,
+      }),
+    ).resolves.toEqual({ status: "committed" });
+
+    const updates = fake.requests.filter((request) => request.method === "PUT");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.url).toBe(
+      "https://www.googleapis.com/upload/drive/v2/files/result-head-1?uploadType=media&fields=id,etag",
+    );
+    expect(updates[0]?.headers.get("If-Match")).toBe(initial.revision);
+  });
+
   it("discovers one actor's immutable intent segments in sequence order", async () => {
     const fake = new FakeGoogleDrive();
-    for (const [first, last, id] of [[3, 4, "segment-2"], [1, 2, "segment-1"]] as const) {
-      const source = bytes(`intent-${first.toLocaleString("en-US", { useGrouping: false })}`);
+    for (const [first, last, id] of [
+      [3, 4, "segment-2"],
+      [1, 2, "segment-1"],
+    ] as const) {
+      const source = bytes(
+        `intent-${first.toLocaleString("en-US", { useGrouping: false })}`,
+      );
       const contentDigest = digest(source);
       const objectKey = createLibraryCoreImmutableObjectKey({
         actorId: "actor-1",

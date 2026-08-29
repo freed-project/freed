@@ -37,8 +37,55 @@ interface MockFeedItem {
 
 // ─── AppFixture ───────────────────────────────────────────────────────────────
 
+export async function setDeviceDisplayPreferences(
+  page: Page,
+  update: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  await page.evaluate((values) => {
+    const key = "freed-device-display-preferences-v1";
+    const oldValue = window.localStorage.getItem(key);
+    let current: Record<string, unknown> = {};
+    if (oldValue !== null) {
+      try {
+        const parsed = JSON.parse(oldValue) as {
+          version?: unknown;
+          values?: unknown;
+        };
+        if (
+          parsed.version === 1 &&
+          typeof parsed.values === "object" &&
+          parsed.values !== null &&
+          !Array.isArray(parsed.values)
+        ) {
+          current = parsed.values as Record<string, unknown>;
+        }
+      } catch {
+        current = {};
+      }
+    }
+    const newValue = JSON.stringify({
+      version: 1,
+      values: { ...current, ...values },
+    });
+    window.localStorage.setItem(key, newValue);
+    window.dispatchEvent(new StorageEvent("storage", {
+      key,
+      newValue,
+      oldValue,
+      storageArea: window.localStorage,
+      url: window.location.href,
+    }));
+  }, update);
+}
+
 export class AppFixture {
   constructor(public readonly page: Page) {}
+
+  async setDeviceDisplayPreferences(
+    update: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    await setDeviceDisplayPreferences(this.page, update);
+  }
 
   async acceptLegalGateIfPresent(timeout = 5_000): Promise<boolean> {
     const acceptButton = this.page.getByTestId("legal-gate-accept");
@@ -129,7 +176,7 @@ export class AppFixture {
   /**
    * Block until the app store reports isInitialized = true and the first
    * render of <main> is visible. Typically resolves in under 500 ms with an
-   * empty Automerge doc.
+   * empty SQLite Library.
    */
   async waitForReady(timeout = 15_000): Promise<void> {
     await this.acceptLegalGateIfPresent();
@@ -158,17 +205,17 @@ export class AppFixture {
   }
 
   /**
-   * Generate and inject `count` mock RSS feed items into the live Automerge doc
-   * via docBatchImportItems(). Items are chunked at 500 per the existing helper.
+   * Generate and inject `count` mock RSS feed items through the typed SQLite
+   * import mutation.
    *
-   * Call waitForReady() before this so the doc is initialised.
+   * Call waitForReady() before this so the Library is initialized.
    */
   async injectRssItems(count: number, feedUrl = "https://bench.example/feed.xml"): Promise<void> {
     await this.page.evaluate(
       async ({ count, feedUrl }) => {
         const w = window as Record<string, unknown>;
-        const automerge = w.__FREED_LIBRARY_CORE__ as {
-          docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+        const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+          importLibraryItems: (items: unknown[]) => Promise<unknown>;
         };
 
         const now = Date.now();
@@ -201,14 +248,13 @@ export class AppFixture {
           },
         }));
 
-        // docBatchImportItems chunks at 500 items per Automerge change.
-        await automerge.docBatchImportItems(items);
+        await libraryCore.importLibraryItems(items);
       },
       { count, feedUrl },
     );
 
-    // SQLite keeps the corpus out of Zustand. Wait for either the SQLite mock
-    // row store or the legacy fallback store, depending on the active engine.
+    // SQLite keeps the corpus out of Zustand. Wait for the native mock rows and
+    // the bounded aggregate consumed by the visible store.
     await this.page.waitForFunction(
       (expectedCount: number) => {
         const w = window as Record<string, unknown>;
@@ -230,7 +276,7 @@ export class AppFixture {
             (store?.getState().itemCountByPlatform.rss ?? 0) >= expectedCount
           );
         }
-        return (store?.getState().items.length ?? 0) >= expectedCount;
+        return false;
       },
       count,
       { timeout: 30_000 },
@@ -240,23 +286,20 @@ export class AppFixture {
   async seedFriendLocation(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docAddPerson: (person: unknown) => Promise<void>;
-        docAddAccount: (account: unknown) => Promise<void>;
-        docAddFeedItems: (items: unknown[]) => Promise<void>;
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+        upsertLibraryPerson: (person: unknown) => Promise<void>;
+        upsertLibraryAccount: (account: unknown) => Promise<void>;
+        addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
-          friends: Record<string, unknown>;
-          accounts: Record<string, unknown>;
-          items: unknown[];
           setActiveView: (view: string) => void;
-          setSelectedFriend: (id: string | null) => void;
+          setSelectedPerson: (id: string | null) => void;
         };
       };
 
       const now = Date.now();
-      await automerge.docAddPerson({
+      await libraryCore.upsertLibraryPerson({
         id: "friend-ada",
         name: "Ada Lovelace",
         relationshipStatus: "friend",
@@ -264,7 +307,7 @@ export class AppFixture {
         createdAt: now,
         updatedAt: now,
       });
-      await automerge.docAddAccount({
+      await libraryCore.upsertLibraryAccount({
         id: "friend-ada:instagram:ada-ig",
         personId: "friend-ada",
         kind: "social",
@@ -279,7 +322,7 @@ export class AppFixture {
         updatedAt: now,
       });
 
-      await automerge.docAddFeedItems([
+      await libraryCore.addLibraryFeedItems([
         {
           globalId: "ig:ada:paris",
           platform: "instagram",
@@ -314,8 +357,16 @@ export class AppFixture {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
-          const state = store.getState();
-          if (state.friends["friend-ada"] && state.accounts["friend-ada:instagram:ada-ig"] && state.items.length > 0) {
+          const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+            accounts: Record<string, unknown>;
+            items: Record<string, unknown>;
+            persons: Record<string, unknown>;
+          };
+          if (
+            sqlite.persons["friend-ada"] &&
+            sqlite.accounts["friend-ada:instagram:ada-ig"] &&
+            sqlite.items["ig:ada:paris"]
+          ) {
             clearInterval(interval);
             resolve();
             return;
@@ -326,9 +377,6 @@ export class AppFixture {
               | { active?: boolean; items?: Record<string, unknown>; shell?: Record<string, unknown> }
               | undefined;
             reject(new Error(`seed timeout ${JSON.stringify({
-              storeItems: state.items.length,
-              friends: Object.keys(state.friends),
-              accounts: Object.keys(state.accounts),
               sqliteActive: sqlite?.active,
               sqliteItems: Object.keys(sqlite?.items ?? {}),
               sqliteShellKeys: Object.keys(sqlite?.shell ?? {}),
@@ -342,18 +390,11 @@ export class AppFixture {
   async seedAllContentLocationsWithoutFriends(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_LIBRARY_CORE__ as {
-        docAddFeedItems: (items: unknown[]) => Promise<void>;
+      const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+        addLibraryFeedItems: (items: unknown[]) => Promise<void>;
       };
-      const store = w.__FREED_STORE__ as {
-        getState: () => {
-          friends: Record<string, unknown>;
-          items: Array<{ globalId: string }>;
-        };
-      };
-
       const now = Date.now();
-      await automerge.docAddFeedItems([
+      await libraryCore.addLibraryFeedItems([
         {
           globalId: "ig:nora:paris",
           platform: "instagram",
@@ -446,9 +487,11 @@ export class AppFixture {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
-          const state = store.getState();
-          const hasNora = state.items.some((item) => item.globalId === "ig:nora:story");
-          const hasGhost = state.items.some((item) => item.globalId === "ig:ghost:story");
+          const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+            items: Record<string, unknown>;
+          };
+          const hasNora = Boolean(sqlite.items["ig:nora:story"]);
+          const hasGhost = Boolean(sqlite.items["ig:ghost:story"]);
           if (hasNora && hasGhost) {
             clearInterval(interval);
             resolve();

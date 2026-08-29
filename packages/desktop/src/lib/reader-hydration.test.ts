@@ -8,7 +8,7 @@ import {
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   cacheSet: vi.fn(async () => {}),
-  docUpdateFeedItem: vi.fn(async () => {}),
+  updateLibraryFeedItem: vi.fn(async () => {}),
   recordReaderArticleFetchAttempt: vi.fn(),
   fetchFacebookComments: vi.fn(async () => []),
   fetchInstagramComments: vi.fn(async () => []),
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("./content-cache", () => ({ contentCache: { set: mocks.cacheSet } }));
-vi.mock("./library-client", () => ({ docUpdateFeedItem: mocks.docUpdateFeedItem }));
+vi.mock("./library-client", () => ({ updateLibraryFeedItem: mocks.updateLibraryFeedItem }));
 vi.mock("./store", () => ({
   useAppStore: { getState: () => ({ xAuth: { isAuthenticated: false, cookies: null } }) },
 }));
@@ -88,7 +88,7 @@ describe("reader hydration request counter", () => {
         releaseFetch = resolve;
       }),
     );
-    const clearDocument = vi.fn(async () => {});
+    const clearLibrary = vi.fn(async () => {});
 
     const hydration = hydrateReaderItem(makeItem("https://example.com/slow"), { pin: true });
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce());
@@ -99,10 +99,10 @@ describe("reader hydration request counter", () => {
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => {},
-      clearDocument,
+      clearLibrary,
     });
     await Promise.resolve();
-    expect(clearDocument).not.toHaveBeenCalled();
+    expect(clearLibrary).not.toHaveBeenCalled();
 
     releaseFetch(`
       <article>
@@ -114,8 +114,8 @@ describe("reader hydration request counter", () => {
     await reset;
 
     expect(mocks.cacheSet).not.toHaveBeenCalled();
-    expect(mocks.docUpdateFeedItem).not.toHaveBeenCalled();
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(mocks.updateLibraryFeedItem).not.toHaveBeenCalled();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("tracks social reply hydration and rejects its stale result after reset", async () => {
@@ -135,22 +135,22 @@ describe("reader hydration request counter", () => {
     const hydration = hydrateReaderItem(item, { pin: false, includeReplies: true });
     await vi.waitFor(() => expect(mocks.fetchFacebookComments).toHaveBeenCalledOnce());
 
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
     const reset = runFactoryResetOperations({
       quiesceLocalWriters: [],
       clearDeviceStores: () => [],
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => undefined,
-      clearDocument,
+      clearLibrary,
     });
     await Promise.resolve();
-    expect(clearDocument).not.toHaveBeenCalled();
+    expect(clearLibrary).not.toHaveBeenCalled();
 
     releaseReplies([]);
     await expect(hydration).rejects.toThrow("Factory reset is in progress");
     await reset;
 
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 });

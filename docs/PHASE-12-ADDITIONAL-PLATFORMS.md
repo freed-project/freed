@@ -9,21 +9,47 @@
 > fully cache, pin offline, or exclude a rendition. Provider acquisition and
 > Library replication remain separate authority and traffic decisions.
 
+> **Current Library Core checkpoint:** Rust, the headless native boundary, and
+> the PWA SQLite worker share one generated six-state local policy contract.
+> Policy and byte availability are separate facts. Device content rows do not
+> enter checkpoints, authority revisions, or replication. Canonical typed range
+> records now authenticate multi-gigabyte logical content without allocating
+> media bytes. The PWA worker publishes verified content-addressed OPFS ranges
+> through bounded frames. Freed Desktop streams the same verified ranges into
+> its private descriptor-bound content vault. Both runtimes reconcile physical
+> objects against local SQLite proofs at startup and serve bounded verified
+> range windows without exposing physical paths. Both close complete and pinned
+> availability through the full-content digest without a monolithic cache
+> object. Both now purge excluded local content and refuse eviction until a
+> pinned rendition is explicitly unpinned. Both runtimes now discover missing
+> ranges and least-recently-used eviction candidates through one generated,
+> bounded, source-fenced SQLite contract. Transport execution remains in
+> progress.
+
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
 ## Selective long-form media work
 
-- [ ] Represent each rendition as a content-addressed logical blob with typed
-      codec, duration, byte length, digest, and range-index descriptors.
-- [ ] Verify independently retrievable ranges through a paged authenticated
+- [x] Represent each rendition as a content-addressed logical blob with typed
+      encoding, rendition identity, byte length, digest, and range-index
+      descriptors. Playback duration remains item metadata rather than range
+      integrity metadata.
+- [x] Verify independently retrievable ranges through a paged authenticated
       range map so multi-gigabyte media never becomes one logical wire record.
+- [x] Read locally cached playback bytes through bounded, proof-checked range
+      windows on Freed Desktop and the PWA without allocating a full rendition.
+- [x] Prove complete local hydration by hashing every authenticated range in
+      order, then record fully cached or pinned-offline state in local SQLite.
 - [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
       follower hydration.
 - [ ] Let a client stream selected ranges through the approved user-owned
       storage transport, keep a partial cache, complete the cache, or exclude
       the rendition entirely.
-- [ ] Keep hydration and eviction state device-local. Synchronize only content
+- [x] Keep hydration and eviction state device-local. Synchronize only content
       identity, availability descriptors, and canonical metadata.
+- [x] Discover hydration and eviction work through identical native and browser
+      SQLite queries, with 128-row keyset pages, source fences, coalesced access
+      recency, and stale-candidate refusal before cache-pressure deletion.
 - [ ] Require separate provider-risk approval before any new resolver request,
       page load, click, timing pattern, header, cookie use, or background media
       acquisition is implemented.
@@ -149,8 +175,8 @@ packages/capture-medium/
   titles. Embedded essay excerpts are not archived as activity text.
 - Incidental author links do not become roster accounts. A rendered profile
   needs an explicit follower, following, or subscription role.
-- Raw page data, cookies, and provider sessions do not enter Automerge,
-  diagnostics, or bug reports.
+- Raw page data, cookies, and provider sessions do not enter normalized Library
+  rows, checkpoints, diagnostics, or bug reports.
 
 **Known beta limits:**
 
@@ -289,7 +315,7 @@ import { BskyAgent } from "@atproto/api";
 
 export async function getTimeline(
   agent: BskyAgent,
-  cursor?: string
+  cursor?: string,
 ): Promise<TimelineResponse> {
   return agent.getTimeline({ cursor, limit: 50 });
 }
@@ -367,7 +393,8 @@ packages/capture-youtube/
 - No YouTube developer project, Google OAuth grant, Data API client, shared
   quota, or central subscription service is required.
 - Provider cookies, session state, raw responses, and page data stay on Freed
-  Desktop and never enter Automerge, logs, or diagnostics.
+  Desktop and never enter normalized Library rows, checkpoints, logs, or
+  diagnostics.
 
 `capture-rss` continues to handle public YouTube channel feeds that a user adds
 directly. It is a separate manual intake mode. The authenticated roster is not
@@ -408,7 +435,8 @@ inside YouTube, and Freed does not claim to detect download completion.
   only after audio passes real iPhone offline and locked-screen acceptance.
 - The PWA receives media over an authenticated LAN endpoint first, then through
   chunk-encrypted objects in the user's configured cloud when Desktop is away.
-- Large media lives in the PWA Origin Private File System and never in Automerge.
+- Large media lives in the PWA Origin Private File System and never in
+  synchronized Library rows or checkpoint records.
 - iPhone downloads remain foreground, resumable jobs because Safari cannot be
   trusted to finish a large PWA transfer after lock or app switching.
 - A Freed-hosted media relay is a later decision because it increases privacy,
@@ -422,52 +450,53 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 
 ## Tasks
 
-| Task  | Description                                | Complexity | Status |
-| ----- | ------------------------------------------ | ---------- | ------ |
-| 12.1  | `@freed/capture-linkedin` package scaffold | Low        | ✓ Done |
-| 12.2  | LinkedIn DOM selectors                     | High       | ✓ Done |
-| 12.3  | LinkedIn session management                | High       | ✓ Done |
-| 12.4  | LinkedIn desktop source integration        | Medium     | ✓ Done |
-| 12.5  | LinkedIn regression test coverage          | Medium     | ✓ Done |
-| 12.6  | `@freed/capture-mozi` package scaffold     | Low        |        |
-| 12.7  | Mozi auth and session flow research        | High       |        |
-| 12.8  | Mozi extraction strategy: payload first    | High       |        |
-| 12.9  | Mozi desktop source integration            | Medium     |        |
-| 12.10 | Mozi regression test coverage              | Medium     |        |
-| 12.11 | `@freed/capture-tiktok` package scaffold   | Low        |        |
-| 12.12 | TikTok capture strategy research           | High       |        |
-| 12.13 | `@freed/capture-threads` package scaffold  | Low        |        |
-| 12.14 | Threads capture (similar to Instagram)     | Medium     |        |
-| 12.15 | `@freed/capture-bluesky` package scaffold  | Low        |        |
-| 12.16 | Bluesky AT Protocol client                 | Medium     |        |
-| 12.17 | Bluesky authentication flow                | Medium     |        |
-| 12.18 | `@freed/capture-reddit` package scaffold   | Low        |        |
-| 12.19 | Reddit OAuth setup                         | Medium     |        |
-| 12.20 | Reddit home feed capture                   | Medium     |        |
-| 12.21 | `@freed/capture-youtube` package scaffold  | Low        | ✓ Done |
-| 12.22 | YouTube authenticated website-session capture | High    | ✓ Done |
-| 12.23 | YouTube roster and Subscriptions page capture | High    | ✓ Done |
-| 12.24 | Focus player and exact-video handoff       | Medium     | ✓ Done |
-| 12.25 | Private `Freed Offline` playlist through website controls | High | ✓ Done |
-| 12.26 | Persistent YouTube WebView session and recovery | Medium | ✓ Done |
-| 12.27 | Desktop audio resolver and package laboratory | High   |        |
-| 12.28 | Authenticated LAN media transfer to PWA    | High       |        |
-| 12.29 | PWA offline audio storage and locked-screen validation | High |        |
-| 12.30 | Encrypted user-cloud media transfer        | High       |        |
-| 12.31 | Optional offline video rendition           | High       |        |
-| 12.32 | Hosted relay measurement and owner decision | High      |        |
-| 12.33 | YouTube installed-build terminal sync trigger | Low      | ✓ Done |
-| 12.34 | Substack and Medium browser-safe capture packages | Medium | ✓ Done |
-| 12.35 | Isolated authenticated WebView login and disconnect flows | High | ✓ Done |
-| 12.36 | Bounded visible roster traversal plus activity and essay extraction | High | ✓ Done |
-| 12.37 | Atomic follow-roster and activity reconciliation | High | ✓ Done |
-| 12.38 | Beta source UI, consent, health, filtering, and diagnostics | Medium | ✓ Done |
-| 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage | Medium | ✓ Done |
-| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state | High | ✓ Done |
-| 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
-| 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
-| 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
-| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High | ✓ Done |
+| Task  | Description                                                                                    | Complexity | Status         |
+| ----- | ---------------------------------------------------------------------------------------------- | ---------- | -------------- |
+| 12.1  | `@freed/capture-linkedin` package scaffold                                                     | Low        | ✓ Done         |
+| 12.2  | LinkedIn DOM selectors                                                                         | High       | ✓ Done         |
+| 12.3  | LinkedIn session management                                                                    | High       | ✓ Done         |
+| 12.4  | LinkedIn desktop source integration                                                            | Medium     | ✓ Done         |
+| 12.5  | LinkedIn regression test coverage                                                              | Medium     | ✓ Done         |
+| 12.6  | `@freed/capture-mozi` package scaffold                                                         | Low        |                |
+| 12.7  | Mozi auth and session flow research                                                            | High       |                |
+| 12.8  | Mozi extraction strategy: payload first                                                        | High       |                |
+| 12.9  | Mozi desktop source integration                                                                | Medium     |                |
+| 12.10 | Mozi regression test coverage                                                                  | Medium     |                |
+| 12.11 | `@freed/capture-tiktok` package scaffold                                                       | Low        |                |
+| 12.12 | TikTok capture strategy research                                                               | High       |                |
+| 12.13 | `@freed/capture-threads` package scaffold                                                      | Low        |                |
+| 12.14 | Threads capture (similar to Instagram)                                                         | Medium     |                |
+| 12.15 | `@freed/capture-bluesky` package scaffold                                                      | Low        |                |
+| 12.16 | Bluesky AT Protocol client                                                                     | Medium     |                |
+| 12.17 | Bluesky authentication flow                                                                    | Medium     |                |
+| 12.18 | `@freed/capture-reddit` package scaffold                                                       | Low        |                |
+| 12.19 | Reddit OAuth setup                                                                             | Medium     |                |
+| 12.20 | Reddit home feed capture                                                                       | Medium     |                |
+| 12.21 | `@freed/capture-youtube` package scaffold                                                      | Low        | ✓ Done         |
+| 12.22 | YouTube authenticated website-session capture                                                  | High       | ✓ Done         |
+| 12.23 | YouTube roster and Subscriptions page capture                                                  | High       | ✓ Done         |
+| 12.24 | Focus player and exact-video handoff                                                           | Medium     | ✓ Done         |
+| 12.25 | Private `Freed Offline` playlist through website controls                                      | High       | ✓ Done         |
+| 12.26 | Persistent YouTube WebView session and recovery                                                | Medium     | ✓ Done         |
+| 12.27 | Desktop audio resolver and package laboratory                                                  | High       |                |
+| 12.28 | Authenticated LAN media transfer to PWA                                                        | High       |                |
+| 12.29 | PWA offline audio storage and locked-screen validation                                         | High       |                |
+| 12.30 | Encrypted user-cloud media transfer                                                            | High       |                |
+| 12.31 | Optional offline video rendition                                                               | High       |                |
+| 12.32 | Hosted relay measurement and owner decision                                                    | High       |                |
+| 12.33 | YouTube installed-build terminal sync trigger                                                  | Low        | ✓ Done         |
+| 12.34 | Substack and Medium browser-safe capture packages                                              | Medium     | ✓ Done         |
+| 12.35 | Isolated authenticated WebView login and disconnect flows                                      | High       | ✓ Done         |
+| 12.36 | Bounded visible roster traversal plus activity and essay extraction                            | High       | ✓ Done         |
+| 12.37 | Atomic follow-roster and activity reconciliation                                               | High       | ✓ Done         |
+| 12.38 | Beta source UI, consent, health, filtering, and diagnostics                                    | Medium     | ✓ Done         |
+| 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage                         | Medium     | ✓ Done         |
+| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state                  | High       | ✓ Done         |
+| 12.41 | Installed Substack and Medium selector soak                                                    | High       | 🚧 In Progress |
+| 12.42 | Device-local provider RSS essay body preservation                                              | Medium     | ✓ Done         |
+| 12.43 | Origin-scoped native event bridge capabilities                                                 | High       | ✓ Done         |
+| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High       | ✓ Done         |
+| 12.45 | Shared bounded hydration and least-recently-used eviction scheduler contract                    | High       | ✓ Done         |
 
 ---
 
@@ -513,7 +542,8 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       regimes, deadlines, yield state, ordering, and cooldowns inside the shared
       device-local provider scheduler outside the RSS poll job
 - [x] Substack subscriber dashboards and sensitive subscriber metadata stay out
-      of capture, Automerge, diagnostics, and bug reports
+      of capture, normalized Library rows, checkpoints, diagnostics, and bug
+      reports
 - [ ] Installed Substack and Medium beta sessions pass real-account selector and
       runtime soak validation
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
@@ -540,11 +570,13 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       video without claiming it was downloaded
 - [x] The private offline playlist can open in YouTube for the user's Premium-managed playlist download
 - [x] YouTube website cookies, session state, and raw page data stay on Freed
-      Desktop and out of Automerge, application logs, diagnostics, and bug reports
+      Desktop and out of normalized Library rows, checkpoints, application
+      logs, diagnostics, and bug reports
 - [ ] One user-selected public video can produce a validated, seekable
       audio-first package on Freed Desktop without exporting YouTube credentials
 - [ ] A paired iPhone can download, resume, verify, store, evict, and delete an
-      audio package over the local network without media bytes entering Automerge
+      audio package over the local network without media bytes entering
+      synchronized Library rows or checkpoint records
 - [ ] Offline audio passes real iPhone airplane-mode, cold-launch, lock-screen,
       interruption, Bluetooth, AirPlay, and long-seek acceptance
 - [x] Provider-neutral media blobs use a separate zero-byte-capable descriptor,
@@ -563,17 +595,17 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 
 ## Platform Comparison
 
-| Platform | Method                | Auth Required | API Quality           | Difficulty | Primary Value |
-| -------- | --------------------- | ------------- | --------------------- | ---------- | ------------- |
-| LinkedIn | DOM scrape            | Cookies       | N/A                   | Very High  | Professional posts |
-| Substack | Authenticated WebView plus user-added RSS | Website session | Public RSS only | High | Essays, notes, follows, subscriptions |
-| Medium   | Authenticated WebView plus user-added RSS | Website session | No new general integration tokens | High | Stories, responses, follows |
-| Mozi     | WebView payload + DOM | Phone session | Unknown / likely none | High       | Social planning, trips, overlaps |
-| TikTok   | TBD                   | TBD           | Limited               | Very High  | Short-form video feed |
-| Threads  | DOM scrape            | Cookies       | N/A                   | High       | Social posts |
-| Bluesky  | AT Protocol           | App password  | Excellent             | Low        | Timeline capture |
-| Reddit   | OAuth API             | OAuth         | Good                  | Medium     | Home feed beyond RSS |
-| YouTube  | Authenticated website session, optional manual RSS | Website session | N/A | High | Subscriptions, focused viewing, Premium handoff, future offline media |
+| Platform | Method                                             | Auth Required   | API Quality                       | Difficulty | Primary Value                                                         |
+| -------- | -------------------------------------------------- | --------------- | --------------------------------- | ---------- | --------------------------------------------------------------------- |
+| LinkedIn | DOM scrape                                         | Cookies         | N/A                               | Very High  | Professional posts                                                    |
+| Substack | Authenticated WebView plus user-added RSS          | Website session | Public RSS only                   | High       | Essays, notes, follows, subscriptions                                 |
+| Medium   | Authenticated WebView plus user-added RSS          | Website session | No new general integration tokens | High       | Stories, responses, follows                                           |
+| Mozi     | WebView payload + DOM                              | Phone session   | Unknown / likely none             | High       | Social planning, trips, overlaps                                      |
+| TikTok   | TBD                                                | TBD             | Limited                           | Very High  | Short-form video feed                                                 |
+| Threads  | DOM scrape                                         | Cookies         | N/A                               | High       | Social posts                                                          |
+| Bluesky  | AT Protocol                                        | App password    | Excellent                         | Low        | Timeline capture                                                      |
+| Reddit   | OAuth API                                          | OAuth           | Good                              | Medium     | Home feed beyond RSS                                                  |
+| YouTube  | Authenticated website session, optional manual RSS | Website session | N/A                               | High       | Subscriptions, focused viewing, Premium handoff, future offline media |
 
 ---
 
@@ -593,7 +625,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - Substack subscriber management, private chats, direct messages, paid status,
   subscriber email addresses, and private audience tools are not capture
   surfaces
-- Future offline media is audio-first, Desktop-resolved, LAN-first, stored outside Automerge, and transferred through encrypted user cloud only when direct device transfer is unavailable
+- Future offline media is audio-first, Desktop-resolved, LAN-first, stored outside normalized Library rows, and transferred through encrypted user cloud only when direct device transfer is unavailable
 - A hosted YouTube media relay remains a later owner decision because centralized traffic directly conflicts with the goal of minimizing provider differentiation
 - Mozi should be treated as a planning source, not squeezed into the RSS mental model
 - Mozi overlap views should be derived from captured items at read time, not stored as source-authored canonical records

@@ -187,7 +187,7 @@ if (mode === "invalid-lifetime") {
   });
   const envelope = {
     type: "start",
-    protocolVersion: 1,
+    protocolVersion: 2,
     role: "primary",
     parentNonce: "1".repeat(64),
     configDigest: "2".repeat(64),
@@ -198,6 +198,8 @@ if (mode === "invalid-lifetime") {
     admissionFd: 6,
     credentialDescriptorFd: 7,
     lifetimeFd: 8,
+    commandRequestFd: 9,
+    commandResponseFd: 10,
   };
   await sidecar.writeControl(`${JSON.stringify(envelope)}\n`);
   await sidecar.closeControlInput();

@@ -1,26 +1,68 @@
 import {
-  createDefaultPreferences,
-  friendFromPerson,
-  hasSampleDataFingerprint,
-  sanitizeFeedItemWrite,
+  sanitizeFeedItemCaptureWrite,
   sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
+  type Highlight,
   type Person,
+  type ReachOutLog,
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
 } from "@freed/shared";
-import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
+import {
+  sanitizeAccountWrite,
+  sanitizePersonRootWrite,
+  sanitizeReachOutLogWrite,
+} from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
-  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
-  isLibraryCoreSearchAccountAliasV1,
-  isLibraryCoreSearchQueryV1,
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+  LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+  readLibraryCoreNormalizedAccountDetailV1,
+  openLibraryCoreNormalizedFeedReaderV1,
+  openLibraryCoreNormalizedSavedFeedReaderV1,
+  readLibraryCoreNormalizedFacetSummaryV1,
+  readLibraryCoreNormalizedAccountTimelineV1,
+  readLibraryCoreNormalizedFeedSignalCountsV1,
+  readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedItemContentV1,
+  libraryCoreNormalizedItemContentDigestsV1,
+  readLibraryCoreNormalizedPersonTimelineV1,
+  readLibraryCoreNormalizedPersonDetailV1,
+  readLibraryCoreNormalizedFriendDetailV1,
+  readLibraryCoreNormalizedPreferencesV1,
+  readLibraryCoreNormalizedPersonsGraphV1,
+  readLibraryCoreNormalizedFriendsLocationItemV1,
+  readLibraryCoreNormalizedSavedAnalyticsV1,
+  collectLibraryCoreSampleRemovalPlanV1,
+  canonicalizeFeedItemTagsV1,
+  canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemAnalysisV1,
+  createLibraryCoreOperationInstanceId,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
+  searchLibraryCoreNormalizedItemsV1,
+  executeLibraryCoreScopeActionV1,
+  createEmptyLibraryCoreRuntimeStateV1,
+  libraryCoreRuntimeStateFromFacetSummaryV1,
+  libraryCoreFeedBrowseFilterInputFromV1,
+  readLibraryCoreNormalizedStoryWallCandidatesV1,
+  readLibraryCoreNormalizedMapCandidatesV1,
   parseLibraryCoreControlPointerV1,
-  type LibraryCoreCanonicalValue,
+  sha256LowerHex,
   type FeedItemUserStateAssignmentFieldV1,
-  type LibraryCoreOperationInstanceId,
+  type LibraryCoreFollowerTransportContextV2,
+  type LibraryCoreLocalChangeFeedResponseV1,
+  type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreRssFeedScopeActionKindV1,
+  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionReceiptV1,
+  type LibraryCoreRuntimeStateV1,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type {
@@ -31,278 +73,253 @@ import type {
 } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
-  createGoogleDriveLibraryCoreIntentAdapterV1,
-  createGoogleDriveLibraryCoreResultAdapterV1,
-  discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
-  discoverGoogleDriveLibraryCoreResultHeadV1,
-  discoverGoogleDriveLibraryCoreResultSegmentsV1,
+  createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
-  importLibraryCorePortableCheckpointV1,
-  importLibraryCoreResultSegmentV1,
-  provisionGoogleDriveLibraryCoreIntentHeadV1,
-  publishLibraryCoreIntentCandidateV1,
+  importLibraryCoreNormalizedCheckpointV2,
 } from "@freed/sync/cloud/library-core";
-import type { LibraryState } from "./library-state-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
-  createPwaLibraryCorePortableCheckpointStore,
-  PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT,
-  PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
-  PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
-  type PwaLibraryCoreSelectedCheckpointReceiptV1,
-  type PwaLibraryCoreIntentOverlayRecoveryStateV1,
-} from "./library-core-portable-checkpoint-store";
+  appendPwaScopeActionStage,
+  beginPwaScopeActionStage,
+  closePwaScopeActionStage,
+  finalizePwaScopeActionStage,
+  pagePwaScopeActionStage,
+  queryPwaNormalizedLibrary,
+  mutatePwaContentPolicy,
+  describePwaNormalizedCheckpointExport,
+  readPwaNormalizedCheckpointExportPage,
+  readPwaFollowerTransportContext,
+  readPwaNormalizedCheckpointReceipt,
+  resetPwaNormalizedLibrary,
+} from "./library-core-sqlite-runtime";
+import { createPwaNormalizedCheckpointWriter } from "./library-core-pwa-normalized-checkpoint-writer";
+import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-vault";
+import { syncPwaLibraryCoreFollowerV2 } from "./library-core-pwa-follower-sync";
 import {
-  PwaLibraryCoreSearchIndex,
-  type PwaLibraryCoreSearchSourceV1,
-} from "./library-core-search-index";
-import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
+  commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountPersonAssignment,
+  commitPwaLibraryCoreAccountUpserts,
+  commitPwaLibraryCoreFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemAnalysisSets,
+  commitPwaLibraryCoreFeedItemAnnotationSets,
+  commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFriendReplace,
+  commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonReachOutAppend,
+  commitPwaLibraryCorePersonUpserts,
+  commitPwaLibraryCorePreferencesPatch,
+  commitPwaLibraryCoreReadAssignments,
+  commitPwaLibraryCoreRssFeedRemove,
+  commitPwaLibraryCoreRssFeedRemoves,
+  commitPwaLibraryCoreRssFeedTitleAssignment,
+  commitPwaLibraryCoreRssFeedUpsert,
+  commitPwaLibraryCoreUserStateAssignments,
+  PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
+} from "./library-core-pwa-follower-mutations";
 
-const DATABASE_NAME = "freed-library-core-portable-v1";
-const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
-const READ_MODEL_DATABASE_NAME = "freed-library-core-read-model-v1";
-const MAXIMUM_INITIAL_FEED_ITEMS = 512;
-const COLLECTION_PAGE_LIMIT = 128;
-const LIBRARY_SCAN_PAGE_LIMIT = 32;
-const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
-const MAXIMUM_RESULT_SEGMENTS_PER_SYNC = 128;
+export interface PwaLibraryCoreLocalChangeV1 {
+  readonly changedItemIds: readonly string[] | null;
+  readonly localSequence: number;
+  readonly requiresFullScan: boolean;
+}
 
-type LibraryCoreStateListener = (state: LibraryState) => void;
+type LibraryCoreStateListener = (
+  state: LibraryCoreRuntimeStateV1,
+  localChange?: PwaLibraryCoreLocalChangeV1,
+) => void;
 
 const listeners = new Set<LibraryCoreStateListener>();
-let lastState: LibraryState | null = null;
+let lastState: LibraryCoreRuntimeStateV1 | null = null;
+let lastLocalChangeSequence = 0;
 
-let portableStore: ReturnType<
-  typeof createPwaLibraryCorePortableCheckpointStore
-> | null = null;
-let searchIndex: PwaLibraryCoreSearchIndex | null = null;
-let indexedDbReaders: ReturnType<
-  typeof createPwaLibraryCoreIndexedDbReaders
-> | null = null;
-let libraryReadModelRevision = 0;
-const READY_INTENT_OVERLAY_RECOVERY = Object.freeze({
-  canonicalEnvelopeBytes: 0,
-  countsAreLowerBounds: false,
-  operationCount: 0,
-  schemaVersion: 1,
-  status: "ready",
-  transactionCount: 0,
-}) satisfies PwaLibraryCoreIntentOverlayRecoveryStateV1;
-let intentOverlayRecoveryState: PwaLibraryCoreIntentOverlayRecoveryStateV1 =
-  READY_INTENT_OVERLAY_RECOVERY;
+const NORMALIZED_READER_RUNTIME = Object.freeze({
+  query: queryPwaNormalizedLibrary,
+  randomId: () => crypto.randomUUID(),
+});
 
-function getPortableStore(): ReturnType<
-  typeof createPwaLibraryCorePortableCheckpointStore
-> {
-  portableStore ??= createPwaLibraryCorePortableCheckpointStore({
-    databaseName: DATABASE_NAME,
-    indexedDb: globalThis.indexedDB,
-    keyRange: globalThis.IDBKeyRange,
-    subtle: globalThis.crypto.subtle,
-  });
-  return portableStore;
+export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null> {
+  return (await readPwaNormalizedCheckpointReceipt()).receipt;
 }
 
-function getSearchIndex(): PwaLibraryCoreSearchIndex {
-  searchIndex ??= new PwaLibraryCoreSearchIndex({
-    databaseName: SEARCH_DATABASE_NAME,
-    indexedDb: globalThis.indexedDB,
-    keyRange: globalThis.IDBKeyRange,
-  });
-  return searchIndex;
+export interface PwaLibraryCoreCloudReceiptV2 {
+  readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
+  readonly follower: LibraryCoreFollowerTransportContextV2 | null;
+  readonly localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
 }
 
-function searchSourceFromReceipt(
-  receipt: PwaLibraryCoreSelectedCheckpointReceiptV1,
-): PwaLibraryCoreSearchSourceV1 {
-  return {
-    corpusVersion: receipt.selectionSequence,
-    sourceToken: JSON.stringify([
-      receipt.libraryId,
-      receipt.generationId,
-      receipt.selectionSequence,
-    ]),
-  };
-}
-
-async function readCurrentSearchSource(
-  expectedCorpusVersion?: number,
-): Promise<PwaLibraryCoreSearchSourceV1> {
-  const receipt = await getPortableStore().readSelectedCheckpointReceipt();
-  if (!receipt) throw new Error("Selected PWA Library is unavailable");
-  if (
-    expectedCorpusVersion !== undefined &&
-    receipt.selectionSequence !== expectedCorpusVersion
-  ) {
-    throw new Error("Selected PWA Library changed before search admission");
-  }
-  return searchSourceFromReceipt(receipt);
-}
-
-function getIndexedDbReaders(): ReturnType<
-  typeof createPwaLibraryCoreIndexedDbReaders
-> {
-  indexedDbReaders ??= createPwaLibraryCoreIndexedDbReaders({
-    databaseName: READ_MODEL_DATABASE_NAME,
-    indexedDb: globalThis.indexedDB,
-    keyRange: globalThis.IDBKeyRange,
-    subtle: globalThis.crypto.subtle,
-    scanItems: scanPwaLibraryCoreItems,
-    readItem: readPwaLibraryCoreItemDetail,
-    getState: () => lastState ?? emptyState(),
-    getSourceRevision: () => libraryReadModelRevision,
-  });
-  return indexedDbReaders;
-}
-
-export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
-  return getPortableStore().readSelectedCheckpointReceipt();
-}
-
-export function readPwaLibraryCoreIntentOverlayRecoveryState(): PwaLibraryCoreIntentOverlayRecoveryStateV1 {
-  return intentOverlayRecoveryState;
-}
-
-function emptyState(): LibraryState {
-  return {
-    items: [],
-    searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-  };
-}
-
-function stateFromShell(
-  shell: Readonly<Record<string, LibraryCoreCanonicalValue>>,
-  items: FeedItem[],
-  counts: Pick<
-    LibraryState,
-    | "archivableCountByPlatform"
-    | "archivableFeedCounts"
-    | "feedTotalCounts"
-    | "feedUnreadCounts"
-    | "itemCountByPlatform"
-    | "totalArchivableCount"
-    | "totalItemCount"
-    | "totalUnreadCount"
-    | "unreadCountByPlatform"
-  >,
-): LibraryState {
-  const base = { ...emptyState(), ...shell } as LibraryState;
-  const persons = base.persons as Record<string, Person>;
-  const accounts = base.accounts as Record<string, Account>;
-  return {
-    ...base,
-    ...counts,
-    items,
-    friends: Object.fromEntries(
-      Object.values(persons).map((person) => [
-        person.id,
-        friendFromPerson(person, accounts),
-      ]),
-    ),
-  };
-}
-
-async function readSelectedState(): Promise<LibraryState | null> {
-  const store = getPortableStore();
-  const selected = await store.readSelectedCheckpointReceipt();
-  if (!selected) return null;
-  const shell = await store.readSelectedMaterializedRow(
-    "00_library_shell",
-    "shell",
-  );
-  if (!shell) return null;
-
-  const items: FeedItem[] = [];
-  const feedUnreadCounts: Record<string, number> = {};
-  const feedTotalCounts: Record<string, number> = {};
-  const unreadCountByPlatform: Record<string, number> = {};
-  const itemCountByPlatform: Record<string, number> = {};
-  const archivableCountByPlatform: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  let totalUnreadCount = 0;
-  let totalItemCount = 0;
-  let totalArchivableCount = 0;
-  const bump = (record: Record<string, number>, key: string) => {
-    record[key] = (record[key] ?? 0) + 1;
-  };
-  let cursor: string | null = null;
-  do {
-    const page = await store.readSelectedMaterializedPage({
-      cursor,
-      limit: COLLECTION_PAGE_LIMIT,
+/** Read one bounded local view of checkpoint and follower cloud progress. */
+export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCoreCloudReceiptV2> {
+  const checkpoint = await readPwaLibraryCoreSelectedCheckpointReceipt();
+  if (!checkpoint) {
+    return Object.freeze({
+      checkpoint: null,
+      follower: null,
+      localExport: null,
     });
-    for (const entry of page.entries) {
-      if (entry.registryKey === "10_feed_items") {
-        const item = entry.row as unknown as FeedItem;
-        if (items.length < MAXIMUM_INITIAL_FEED_ITEMS) items.push(item);
-        if (item.userState.hidden || item.userState.archived) continue;
-        totalItemCount += 1;
-        bump(itemCountByPlatform, item.platform);
-        if (item.rssSource) bump(feedTotalCounts, item.rssSource.feedUrl);
-        if (!item.userState.readAt) {
-          totalUnreadCount += 1;
-          bump(unreadCountByPlatform, item.platform);
-          if (item.rssSource) bump(feedUnreadCounts, item.rssSource.feedUrl);
-        } else if (!item.userState.saved) {
-          totalArchivableCount += 1;
-          bump(archivableCountByPlatform, item.platform);
-          if (item.rssSource)
-            bump(archivableFeedCounts, item.rssSource.feedUrl);
-        }
+  }
+  let localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
+  try {
+    localExport = await describePwaNormalizedCheckpointExport();
+    if (
+      localExport.libraryId !== checkpoint.libraryId ||
+      localExport.authorityEpoch !== checkpoint.authorityEpoch ||
+      localExport.writerId !== checkpoint.writerActorId
+    ) {
+      throw new Error("PWA local checkpoint export crosses Library authority");
+    }
+    const firstPage = await readPwaNormalizedCheckpointExportPage({
+      page: {
+        after: null,
+        maximumRecords: 1,
+        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+      },
+      snapshot: localExport,
+    });
+    const header = firstPage.records[0];
+    if (
+      header?.registryKey !== "00_checkpoint_header" ||
+      header.payload.libraryId !== localExport.libraryId ||
+      header.payload.authorityEpoch !== localExport.authorityEpoch ||
+      header.payload.sourceRevision !== localExport.sourceRevision
+    ) {
+      throw new Error("PWA local checkpoint export header is invalid");
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "normalized checkpoint export has unresolved local intents"
+    ) {
+      localExport = null;
+    } else {
+      throw error;
+    }
+  }
+  let follower: LibraryCoreFollowerTransportContextV2 | null;
+  try {
+    follower = await readPwaFollowerTransportContext();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      error.message !== "PWA follower transport context is unavailable"
+    ) {
+      throw error;
+    }
+    follower = null;
+  }
+  if (
+    follower !== null &&
+    (follower.libraryId !== checkpoint.libraryId ||
+      follower.storageEpochId !== checkpoint.authorityEpoch)
+  ) {
+    throw new Error("PWA follower cloud receipt crosses Library authority");
+  }
+  return Object.freeze({ checkpoint, follower, localExport });
+}
+
+async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
+  const selected = await readPwaLibraryCoreSelectedCheckpointReceipt();
+  if (!selected) return null;
+  const [preferences, facetSummary] = await Promise.all([
+    readLibraryCoreNormalizedPreferencesV1(NORMALIZED_READER_RUNTIME),
+    readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME),
+  ]);
+  const current = await readPwaLibraryCoreSelectedCheckpointReceipt();
+  if (
+    current === null ||
+    current.checkpointDigest !== selected.checkpointDigest ||
+    current.sourceRevision !== selected.sourceRevision
+  ) {
+    throw new Error("Selected PWA Library changed while reading its window");
+  }
+  return libraryCoreRuntimeStateFromFacetSummaryV1(
+    preferences,
+    facetSummary,
+    selected.sourceRevision,
+  );
+}
+
+function publishState(
+  state: LibraryCoreRuntimeStateV1,
+  localChange?: PwaLibraryCoreLocalChangeV1,
+): void {
+  lastState = state;
+  for (const listener of listeners) listener(state, localChange);
+}
+
+async function readPwaLocalChangeSequence(
+  expectedCanonicalRevision: number,
+): Promise<number> {
+  const response = await queryPwaNormalizedLibrary({
+    entityIds: [],
+    queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
+  });
+  if (response.source.projectionRevision !== expectedCanonicalRevision) {
+    throw new Error(
+      "PWA SQLite Library changed while local sequence was loading",
+    );
+  }
+  return response.source.transitionSequence;
+}
+
+/** Drain bounded device-local invalidations without advancing canonical state. */
+export async function drainPwaLibraryCoreLocalChanges(
+  expectedCanonicalRevision: number,
+): Promise<PwaLibraryCoreLocalChangeV1 | null> {
+  const afterRevision = lastLocalChangeSequence;
+  let cursor: string | null = null;
+  let upperSequence = afterRevision;
+  let requiresFullScan = false;
+  const changedItemIds = new Set<string>();
+  const cancellationId = createLibraryCoreOperationInstanceId(
+    "pwa-local-change-cancel",
+    crypto.randomUUID(),
+  );
+  const readerSessionId = createLibraryCoreOperationInstanceId(
+    "pwa-local-change-reader",
+    crypto.randomUUID(),
+  );
+  do {
+    const response: LibraryCoreLocalChangeFeedResponseV1 =
+      await queryPwaNormalizedLibrary({
+        afterRevision,
+        cancellationId,
+        cursor,
+        limit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+        queryId: LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
+        readerSessionId,
+        schemaVersion: LIBRARY_CORE_CHANGE_FEED_SCHEMA_VERSION,
+      });
+    upperSequence = response.source.transitionSequence;
+    for (const row of response.rows) {
+      requiresFullScan ||= row.resetRequired || row.topic !== "feed_item";
+      if (row.topic === "feed_item" && row.entityId !== null) {
+        changedItemIds.add(row.entityId);
       }
     }
-    cursor = page.nextCursor;
+    cursor = response.nextCursor;
   } while (cursor !== null);
-
-  const current = await store.readSelectedCheckpointReceipt();
-  if (
-    !current ||
-    current.generationId !== selected.generationId ||
-    current.selectionSequence !== selected.selectionSequence
-  ) {
-    throw new Error("Selected PWA Library changed while reading its state");
+  const currentSequence = await readPwaLocalChangeSequence(
+    expectedCanonicalRevision,
+  );
+  if (currentSequence !== upperSequence) {
+    throw new Error(
+      "PWA SQLite Library changed while local invalidations were loading",
+    );
   }
-
-  return {
-    ...stateFromShell(shell, items, {
-      archivableCountByPlatform,
-      archivableFeedCounts,
-      feedTotalCounts,
-      feedUnreadCounts,
-      itemCountByPlatform,
-      totalArchivableCount,
-      totalItemCount,
-      totalUnreadCount,
-      unreadCountByPlatform,
-    }),
-    searchCorpusVersion: selected.selectionSequence,
-  };
-}
-
-function publishState(state: LibraryState): void {
-  libraryReadModelRevision += 1;
-  lastState = state;
-  for (const listener of listeners) listener(state);
-}
-
-export function isPwaLibraryCoreEnabled(): boolean {
-  return true;
+  lastLocalChangeSequence = currentSequence;
+  if (currentSequence === afterRevision) return null;
+  return Object.freeze({
+    changedItemIds: requiresFullScan
+      ? null
+      : Object.freeze([...changedItemIds]),
+    localSequence: currentSequence,
+    requiresFullScan,
+  });
 }
 
 export function subscribePwaLibraryCoreState(
@@ -313,22 +330,31 @@ export function subscribePwaLibraryCoreState(
   return () => listeners.delete(listener);
 }
 
-export async function initializePwaLibraryCoreState(): Promise<LibraryState> {
-  intentOverlayRecoveryState =
-    await getPortableStore().reapplySelectedIntentOverlay();
-  const state = (await readSelectedState()) ?? emptyState();
+export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
+  const state =
+    (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
+  lastLocalChangeSequence =
+    state.searchCorpusVersion === 0
+      ? 0
+      : await readPwaLocalChangeSequence(state.searchCorpusVersion);
   publishState(state);
   return state;
 }
 
 /** Establish the isolated signed Library used by local sample-data previews. */
 export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
-  await getPortableStore().bootstrapFeaturePreviewAuthority();
+  if (
+    import.meta.env.DEV ||
+    import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1"
+  ) {
+    const preview = await import("./library-core-preview-bootstrap");
+    await preview.ensurePwaLibraryCorePreviewState();
+  }
   const state = await readSelectedState();
   if (state) publishState(state);
 }
 
-/** Queue a signed, durable PWA read-state intent without touching Automerge. */
+/** Commit a signed, durable PWA read-state intent to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreReadAssignments(
   globalIds: readonly string[],
 ): Promise<void> {
@@ -344,15 +370,11 @@ export async function enqueuePwaLibraryCoreReadAssignments(
       start,
       start + LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
     );
-    await getPortableStore().enqueueReadAssignments({
-      entityIds: batch,
-      readAtMs,
-    });
-    await refreshPersistentSearchItems(batch);
+    await commitPwaLibraryCoreReadAssignments(batch, readAtMs);
   }
 }
 
-/** Queue complete-library read intents through bounded IndexedDB scans. */
+/** Queue complete-library read intents through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreMarkAllAsRead(
   platform?: string,
 ): Promise<void> {
@@ -379,17 +401,16 @@ export async function enqueuePwaLibraryCoreMarkAllAsRead(
   await enqueuePwaLibraryCoreReadAssignments(pending);
 }
 
-/** Queue explicit item archives without waking the legacy worker. */
+/** Queue explicit item archives through bounded normalized SQLite reads. */
 export async function enqueuePwaLibraryCoreArchiveItems(
   globalIds: readonly string[],
 ): Promise<void> {
   const assignments: string[] = [];
   for (const globalId of new Set(globalIds.filter(Boolean))) {
-    const row = await getPortableStore().readSelectedMaterializedRow(
-      "10_feed_items",
+    const item = await readLibraryCoreNormalizedItemDetailV1(
+      NORMALIZED_READER_RUNTIME,
       globalId,
     );
-    const item = row as unknown as FeedItem | null;
     if (
       !item ||
       item.userState.hidden ||
@@ -415,7 +436,7 @@ export async function enqueuePwaLibraryCoreArchiveItems(
   );
 }
 
-/** Archive every eligible item through bounded IndexedDB scans and intents. */
+/** Archive every eligible item through bounded SQLite scans and intents. */
 export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
   platform?: string,
   feedUrl?: string,
@@ -449,7 +470,7 @@ export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
   await enqueuePwaLibraryCoreUserStateAssignments(pending, "archived", true);
 }
 
-/** Repair every saved and archived item through bounded IndexedDB scans. */
+/** Repair every saved and archived item through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> {
   let pending: string[] = [];
   await scanPwaLibraryCoreItems(async (items) => {
@@ -473,7 +494,7 @@ export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> 
   if (state) publishState(state);
 }
 
-/** Delete every archived, unsaved item through bounded IndexedDB scans. */
+/** Delete every archived, unsaved item through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreDeleteAllArchived(): Promise<void> {
   await scanPwaLibraryCoreItems(async (items) => {
     for (const item of items) {
@@ -491,50 +512,34 @@ export async function enqueuePwaLibraryCoreUserStateToggle(
   globalId: string,
   field: FeedItemUserStateAssignmentFieldV1,
 ): Promise<void> {
-  const row = await getPortableStore().readSelectedMaterializedRow(
-    "10_feed_items",
+  const item = await readLibraryCoreNormalizedItemDetailV1(
+    NORMALIZED_READER_RUNTIME,
     globalId,
   );
-  const item = row as unknown as FeedItem | null;
   if (!item) throw new Error("PWA assignment targets an unavailable FeedItem");
-  await enqueuePwaLibraryCoreUserStateAssignment(
-    globalId,
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    [globalId],
     field,
     item.userState[field] !== true,
   );
 }
 
-/** Queue one signed, idempotent PWA user-state assignment. */
-export async function enqueuePwaLibraryCoreUserStateAssignment(
-  globalId: string,
-  field: FeedItemUserStateAssignmentFieldV1,
-  assigned: boolean,
-): Promise<void> {
-  await enqueuePwaLibraryCoreUserStateAssignments([globalId], field, assigned);
-}
-
-/** Queue one signed FeedItem removal and remove it from local IndexedDB. */
+/** Commit one signed FeedItem removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemRemove(
   globalId: string,
 ): Promise<void> {
   if (!globalId) throw new TypeError("remove entity ID is required");
-  await getPortableStore().enqueueFeedItemRemove({
-    entityId: globalId,
-    removedAtMs: Date.now(),
-  });
-  if (searchIndex && lastState) {
-    await searchIndex.removeItems(await readCurrentSearchSource(), [globalId]);
-  }
+  await commitPwaLibraryCoreFeedItemRemove(globalId, Date.now());
 }
 
-/** Queue one signed FeedItem capture and expose it from local IndexedDB. */
+/** Commit one signed FeedItem capture to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemCapture(
   item: FeedItem,
 ): Promise<void> {
   await enqueuePwaLibraryCoreFeedItemCaptures([item]);
 }
 
-/** Queue bounded signed FeedItem captures and expose them from IndexedDB. */
+/** Commit bounded signed FeedItem captures to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemCaptures(
   items: readonly FeedItem[],
 ): Promise<void> {
@@ -543,17 +548,14 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
   let identities = new Set<string>();
   const flush = async () => {
     if (batch.length === 0) return;
-    await getPortableStore().enqueueFeedItemCaptures(batch);
-    if (searchIndex && lastState) {
-      await searchIndex.updateItems(await readCurrentSearchSource(), batch);
-    }
+    await commitPwaLibraryCoreFeedItemCaptures(batch, Date.now());
     batch = [];
     identities = new Set<string>();
   };
   for (const input of items) {
-    const item = sanitizeFeedItemWrite(input) as FeedItem;
+    const item = sanitizeFeedItemCaptureWrite(input);
     if (
-      batch.length === PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT ||
+      batch.length === PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT ||
       identities.has(item.globalId)
     ) {
       await flush();
@@ -562,18 +564,94 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     identities.add(item.globalId);
   }
   await flush();
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one signed RSS feed upsert and update the selected IndexedDB shell. */
+/** Commit bounded signed normalized FeedItem annotation replacements. */
+export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
+  assignments: readonly Readonly<{
+    entityId: string;
+    highlights: readonly Highlight[];
+    tags: readonly string[];
+  }>[],
+): Promise<void> {
+  if (assignments.length === 0) return;
+  const unique = new Map<
+    string,
+    Readonly<{
+      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
+      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
+    }>
+  >();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("annotation entity ID is required");
+    unique.set(assignment.entityId, {
+      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
+      tags: canonicalizeFeedItemTagsV1(assignment.tags),
+    });
+  }
+  const rows = [...unique].map(([entityId, annotations]) => ({
+    entityId,
+    ...annotations,
+  }));
+  for (
+    let start = 0;
+    start < rows.length;
+    start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemAnnotationSets(
+      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT),
+      Date.now(),
+    );
+  }
+}
+
+/** Commit bounded signed normalized FeedItem analysis replacements. */
+export async function enqueuePwaLibraryCoreFeedItemAnalysisSets(
+  assignments: readonly Readonly<{
+    contentSignals: FeedItem["contentSignals"];
+    entityId: string;
+    eventCandidate: FeedItem["eventCandidate"];
+  }>[],
+): Promise<void> {
+  if (assignments.length === 0) return;
+  const unique = new Map<
+    string,
+    ReturnType<typeof canonicalizeFeedItemAnalysisV1>
+  >();
+  for (const assignment of assignments) {
+    if (!assignment.entityId)
+      throw new TypeError("analysis entity ID is required");
+    unique.set(
+      assignment.entityId,
+      canonicalizeFeedItemAnalysisV1(
+        assignment.contentSignals,
+        assignment.eventCandidate,
+      ),
+    );
+  }
+  const rows = [...unique].map(([entityId, analysis]) => ({
+    analysis,
+    entityId,
+  }));
+  for (
+    let start = 0;
+    start < rows.length;
+    start += PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemAnalysisSets(
+      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT),
+      Date.now(),
+    );
+  }
+}
+
+/** Commit one signed RSS feed upsert to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreRssFeedUpsert(
   input: RssFeed,
 ): Promise<void> {
   const feed = sanitizeRssFeedWrite(input) as RssFeed;
-  await getPortableStore().enqueueRssFeedUpsert(feed);
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCoreRssFeedUpsert(feed, Date.now());
 }
 
 /** Queue one signed RSS removal, optionally removing its local feed items. */
@@ -581,45 +659,65 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
   url: string,
   includeItems: boolean,
 ): Promise<void> {
-  await getPortableStore().enqueueRssFeedRemove({
-    includeItems,
-    removedAtMs: Date.now(),
-    url,
+  await commitPwaLibraryCoreRssFeedRemove(url, includeItems, Date.now());
+}
+
+/** Freeze the complete RSS scope in SQLite, then emit bounded signed removals. */
+export async function removeAllPwaLibraryCoreRssFeeds(
+  includeItems: boolean,
+): Promise<number> {
+  const action: LibraryCoreRssFeedScopeActionKindV1 = includeItems
+    ? "rss_feeds_remove_with_items"
+    : "rss_feeds_remove_keep_items";
+  const stageId = `pwa-rss-scope:${crypto.randomUUID()}`;
+  const status = await beginPwaScopeActionStage(stageId, {
+    action,
+    schemaVersion: 1,
   });
-  if (includeItems && searchIndex) {
-    await searchIndex.invalidate();
+  if (status.state !== "ready") {
+    await closePwaScopeActionStage(stageId);
+    throw new Error("PWA RSS Feed scope did not freeze atomically");
   }
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  try {
+    let afterOrdinal = -1;
+    for (;;) {
+      const page = await pagePwaScopeActionStage(stageId, afterOrdinal);
+      if (page.entityIds.length === 0) break;
+      for (let offset = 0; offset < page.entityIds.length; offset += 256) {
+        await commitPwaLibraryCoreRssFeedRemoves(
+          page.entityIds.slice(offset, offset + 256),
+          includeItems,
+          Date.now(),
+        );
+      }
+      if (page.nextOrdinal <= afterOrdinal) {
+        throw new Error("PWA RSS Feed scope page did not advance");
+      }
+      afterOrdinal = page.nextOrdinal;
+    }
+    return status.memberCount;
+  } finally {
+    await closePwaScopeActionStage(stageId);
+  }
+}
+
+/** Assign one RSS title without reading or replacing the complete feed row. */
+export async function enqueuePwaLibraryCoreRssFeedTitleAssignment(
+  url: string,
+  title: string,
+): Promise<void> {
+  const sanitized = sanitizeRssFeedWrite({ title });
+  await commitPwaLibraryCoreRssFeedTitleAssignment(
+    url,
+    sanitized.title ?? title,
+    Date.now(),
+  );
 }
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */
 export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSummary> {
-  const state = lastState ?? (await readSelectedState()) ?? emptyState();
-  const feedUrls = Object.values(state.feeds)
-    .filter(hasSampleDataFingerprint)
-    .map((feed) => feed.url);
-  const personIds = new Set(
-    Object.values(state.persons)
-      .filter(hasSampleDataFingerprint)
-      .map((person) => person.id),
-  );
-  const sampleAccountIds = Object.values(state.accounts)
-    .filter(hasSampleDataFingerprint)
-    .map((account) => account.id);
-  const realLinkedAccounts = Object.values(state.accounts).filter(
-    (account) =>
-      !hasSampleDataFingerprint(account) &&
-      account.personId !== undefined &&
-      personIds.has(account.personId),
-  );
-  const itemIds: string[] = [];
-  await scanPwaLibraryCoreItems((items) => {
-    for (const item of items) {
-      if (hasSampleDataFingerprint(item)) itemIds.push(item.globalId);
-    }
-    return "continue";
-  });
+  const { feedUrls, itemIds, personIds, realLinkedAccounts, sampleAccountIds } =
+    await collectLibraryCoreSampleRemovalPlanV1(NORMALIZED_READER_RUNTIME);
 
   const updatedAt = Date.now();
   await enqueuePwaLibraryCoreAccountUpserts(
@@ -647,72 +745,137 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
   return {
     feeds: feedUrls.length,
     items: itemIds.length,
-    persons: personIds.size,
+    persons: personIds.length,
     accounts: sampleAccountIds.length,
     total:
       feedUrls.length +
       itemIds.length +
-      personIds.size +
+      personIds.length +
       sampleAccountIds.length,
   };
 }
 
-/** Queue one synchronized preference patch and update the selected shell. */
+/** Commit one synchronized preference patch to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePreferencesPatch(
   updates: Partial<UserPreferences>,
 ): Promise<void> {
-  await getPortableStore().enqueuePreferencesLeafAssignment(updates);
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCorePreferencesPatch(updates, Date.now());
 }
 
-/** Queue one whole sanitized Person and update the selected IndexedDB shell. */
-export async function enqueuePwaLibraryCorePersonUpsert(
+export async function upsertPwaLibraryCorePerson(
   person: Person,
 ): Promise<void> {
   await enqueuePwaLibraryCorePersonUpserts([person]);
 }
 
-/** Queue one bounded batch of whole sanitized Persons and update the selected shell. */
+export async function appendPwaLibraryCorePersonReachOut(
+  personId: string,
+  entry: ReachOutLog,
+): Promise<void> {
+  const synchronized = sanitizeReachOutLogWrite(entry) as ReachOutLog;
+  await commitPwaLibraryCorePersonReachOutAppend(
+    personId,
+    synchronized,
+    Date.now(),
+  );
+}
+
+export async function assignPwaLibraryCoreAccountToPerson(
+  accountId: string,
+  personId: string | null,
+): Promise<void> {
+  await commitPwaLibraryCoreAccountPersonAssignment(
+    accountId,
+    personId,
+    Date.now(),
+  );
+}
+
+/** Commit bounded whole sanitized Persons to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonUpserts(
   persons: readonly Person[],
 ): Promise<void> {
   const synchronized = persons.map(
-    (person) => sanitizePersonWrite(person) as Person,
+    (person) => sanitizePersonRootWrite(person) as Person,
   );
   for (
     let offset = 0;
     offset < synchronized.length;
-    offset += PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT
+    offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await getPortableStore().enqueuePersonUpserts(
+    await commitPwaLibraryCorePersonUpserts(
       synchronized.slice(
         offset,
-        offset + PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
+        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
       ),
+      Date.now(),
     );
   }
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one atomic Person and linked-account removal and refresh the shell. */
+export async function replacePwaLibraryCoreFriend(
+  person: Person,
+  desiredAccounts: readonly Account[],
+): Promise<void> {
+  const committedAt = Date.now();
+  const currentPerson = await readLibraryCoreNormalizedPersonDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    person.id,
+  );
+  const resolvedPerson = sanitizePersonRootWrite({
+    ...currentPerson,
+    ...person,
+    createdAt: currentPerson?.createdAt ?? person.createdAt,
+    updatedAt: committedAt,
+  }) as Person;
+  const resolvedAccounts = await Promise.all(
+    desiredAccounts.map(async (desired) => {
+      const current = await readLibraryCoreNormalizedAccountDetailV1(
+        NORMALIZED_READER_RUNTIME,
+        desired.id,
+      );
+      return sanitizeAccountWrite({
+        ...current,
+        ...desired,
+        personId: person.id,
+        createdAt: current?.createdAt ?? desired.createdAt,
+        firstSeenAt: current
+          ? Math.min(current.firstSeenAt, desired.firstSeenAt)
+          : desired.firstSeenAt,
+        lastSeenAt: current
+          ? Math.max(current.lastSeenAt, desired.lastSeenAt)
+          : desired.lastSeenAt,
+        updatedAt: committedAt,
+      }) as Account;
+    }),
+  );
+  await commitPwaLibraryCoreFriendReplace(
+    resolvedPerson,
+    resolvedAccounts,
+    committedAt,
+  );
+}
+
+/** Commit one atomic Person and linked-account removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonRemove(
   personId: string,
 ): Promise<void> {
-  await getPortableStore().enqueuePersonRemove(personId, Date.now());
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCorePersonRemove(personId, Date.now());
 }
 
-/** Queue one whole sanitized Account and update the selected IndexedDB shell. */
-export async function enqueuePwaLibraryCoreAccountUpsert(
+export async function removePwaLibraryCorePerson(
+  personId: string,
+): Promise<void> {
+  await enqueuePwaLibraryCorePersonRemove(personId);
+}
+
+export async function upsertPwaLibraryCoreAccount(
   account: Account,
 ): Promise<void> {
   await enqueuePwaLibraryCoreAccountUpserts([account]);
 }
 
-/** Queue one bounded batch of whole sanitized Accounts and update the selected shell. */
+/** Commit bounded whole sanitized Accounts to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountUpserts(
   accounts: readonly Account[],
 ): Promise<void> {
@@ -722,26 +885,23 @@ export async function enqueuePwaLibraryCoreAccountUpserts(
   for (
     let offset = 0;
     offset < synchronized.length;
-    offset += PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT
+    offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await getPortableStore().enqueueAccountUpserts(
+    await commitPwaLibraryCoreAccountUpserts(
       synchronized.slice(
         offset,
-        offset + PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
+        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
       ),
+      Date.now(),
     );
   }
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one Account removal and refresh the selected IndexedDB shell. */
+/** Commit one Account removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountRemove(
   accountId: string,
 ): Promise<void> {
-  await getPortableStore().enqueueAccountRemove(accountId, Date.now());
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCoreAccountRemove(accountId, Date.now());
 }
 
 async function enqueuePwaLibraryCoreUserStateAssignments(
@@ -751,155 +911,169 @@ async function enqueuePwaLibraryCoreUserStateAssignments(
 ): Promise<void> {
   if (globalIds.length === 0) return;
   const assignedAtMs = Date.now();
-  await getPortableStore().enqueueUserStateAssignments(
-    globalIds.map((entityId) => ({
-      assigned,
-      assignedAtMs,
-      entityId,
-      field,
-    })),
+  await commitPwaLibraryCoreUserStateAssignments(
+    globalIds,
+    field,
+    assigned,
+    assignedAtMs,
   );
-  await refreshPersistentSearchItems(globalIds);
 }
 
-async function refreshPersistentSearchItems(
-  globalIds: readonly string[],
-): Promise<void> {
-  if (!searchIndex || !lastState) return;
-  const items: FeedItem[] = [];
-  for (const globalId of globalIds) {
-    const row = await getPortableStore().readSelectedMaterializedRow(
-      "10_feed_items",
-      globalId,
-    );
-    if (row?.globalId === globalId) items.push(row as unknown as FeedItem);
-  }
-  await searchIndex.updateItems(await readCurrentSearchSource(), items);
-}
+/** Visit compact background metadata directly through PWA OPFS SQLite. */
+export const scanPwaLibraryCoreItems: ScanLibraryItems = (visit) =>
+  scanLibraryCoreNormalizedBackgroundItemsV1(NORMALIZED_READER_RUNTIME, visit);
 
-/**
- * Visit the complete selected PWA Library one bounded IndexedDB page at a time.
- *
- * Shared search, facet, and command surfaces already consume this contract
- * without retaining the scanned corpus. Keeping the adapter here means an
- * active Library Core PWA never has to restart Automerge merely to search
- * beyond its initial renderer window.
- */
-export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
-  const store = getPortableStore();
-  const readModelRevision = libraryReadModelRevision;
-  let cursor: string | null = null;
-  let source: Readonly<{
-    generationId: string;
-    selectionSequence: number;
-  }> | null = null;
-  const assertSourceCurrent = async () => {
-    if (libraryReadModelRevision !== readModelRevision) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-    if (!source) return;
-    const selected = await store.readSelectedCheckpointReceipt();
-    if (
-      !selected ||
-      selected.generationId !== source.generationId ||
-      selected.selectionSequence !== source.selectionSequence
-    ) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-  };
-  do {
-    const page = await store.readSelectedMaterializedPage({
-      cursor,
-      limit: LIBRARY_SCAN_PAGE_LIMIT,
-    });
-    if (source === null) source = page.source;
-    else if (
-      page.source.generationId !== source.generationId ||
-      page.source.selectionSequence !== source.selectionSequence
-    ) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-    const items: FeedItem[] = [];
-    for (const entry of page.entries) {
-      if (entry.registryKey === "10_feed_items") {
-        items.push(entry.row as unknown as FeedItem);
-      }
-    }
-    if (items.length > 0 && (await visit(Object.freeze(items))) === "stop") {
-      await assertSourceCurrent();
-      return;
-    }
-    cursor = page.nextCursor;
-  } while (cursor !== null);
-  await assertSourceCurrent();
-};
-
-/** Search the selected Library through a persistent IndexedDB projection. */
+/** Search the selected Library directly through normalized OPFS SQLite. */
 export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
   query,
-  searchCorpusVersion,
+  _searchCorpusVersion,
   visit,
   options,
-) => {
-  if (!isLibraryCoreSearchQueryV1(query)) {
-    throw new Error("Library Core search query exceeds its byte limit");
-  }
-  const index = getSearchIndex();
-  const source = await readCurrentSearchSource(searchCorpusVersion);
-  await index.ensureBuilt(source, scanPwaLibraryCoreItems, options?.signal);
-  const aliasEntries = options?.accountAliases ?? [];
-  if (aliasEntries.length > LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT) {
-    throw new Error("Library Core search account alias count is invalid");
-  }
-  const accountAliases = new Map<string, string>();
-  for (const entry of aliasEntries) {
-    if (!isLibraryCoreSearchAccountAliasV1(entry)) {
-      throw new Error("Library Core search account alias is invalid");
-    }
-    const key = `${entry.platform}:${entry.authorId}`;
-    if (accountAliases.has(key)) {
-      throw new Error("Library Core search account alias is duplicated");
-    }
-    accountAliases.set(key, entry.aliases);
-  }
-  await index.search(query, source, visit, {
-    accountAliases,
-    signal: options?.signal,
-  });
-};
+) =>
+  searchLibraryCoreNormalizedItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    {
+      filter: options?.filter ?? {},
+      identityMode: options?.identityMode ?? "all_content",
+      query,
+      signal: options?.signal,
+    },
+    visit,
+  );
 
-/** Read one complete FeedItem from the selected IndexedDB generation. */
+/** Resolve a complete SQLite scope and emit only bounded explicit intents. */
+export async function executePwaLibraryCoreScopeAction(
+  request: LibraryCoreScopeActionRequestV1,
+): Promise<LibraryCoreScopeActionReceiptV1> {
+  const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  let stagedCount = 0;
+  return executeLibraryCoreScopeActionV1(request, {
+    scan: async (visit) => {
+      if (request.query !== null) {
+        await searchLibraryCoreNormalizedItemsV1(
+          NORMALIZED_READER_RUNTIME,
+          {
+            filter,
+            identityMode: request.identityMode,
+            query: request.query,
+          },
+          async (matches) => {
+            await visit(matches.map((match) => match.item));
+            return "continue" as const;
+          },
+        );
+        return;
+      }
+      const reader = await openLibraryCoreNormalizedFeedReaderV1(
+        NORMALIZED_READER_RUNTIME,
+        filter,
+        Date.now(),
+        request.identityMode,
+      );
+      try {
+        for (;;) {
+          const items = await reader.readNext();
+          if (items.length === 0) return;
+          await visit(items);
+        }
+      } finally {
+        await reader.close();
+      }
+    },
+    beginStage: async (stageRequest) => {
+      const stageId = `scope-action:${crypto.randomUUID()}`;
+      stagedCount = 0;
+      await beginPwaScopeActionStage(stageId, stageRequest);
+      return stageId;
+    },
+    appendStage: async (stageId, entityIds) => {
+      await appendPwaScopeActionStage(stageId, stagedCount, entityIds);
+      stagedCount += entityIds.length;
+    },
+    finalizeStage: (stageId) =>
+      finalizePwaScopeActionStage(stageId, stagedCount),
+    readStage: async (stageId, afterOrdinal) => {
+      const page = await pagePwaScopeActionStage(stageId, afterOrdinal);
+      return {
+        entityIds: page.entityIds,
+        nextOrdinal: page.nextOrdinal,
+      };
+    },
+    closeStage: closePwaScopeActionStage,
+    commitBatch: async (action, entityIds) => {
+      if (action === "read") {
+        await enqueuePwaLibraryCoreReadAssignments(entityIds);
+      } else {
+        await enqueuePwaLibraryCoreUserStateAssignments(
+          entityIds,
+          "archived",
+          true,
+        );
+      }
+    },
+  });
+}
+
+/** Read one compact item detail through normalized SQLite. */
 export async function readPwaLibraryCoreItemDetail(
   globalId: string,
 ): Promise<FeedItem | null> {
-  const row = await getPortableStore().readSelectedMaterializedRow(
-    "10_feed_items",
+  return readLibraryCoreNormalizedItemDetailV1(
+    NORMALIZED_READER_RUNTIME,
     globalId,
   );
-  if (row === null) return null;
-  if (row.globalId !== globalId) {
-    throw new Error("Selected PWA Library item identity is inconsistent");
-  }
-  return row as unknown as FeedItem;
 }
 
-/** Open a complete filtered feed through a bounded IndexedDB projection. */
+/** Persist the device-local offline policy for every blob referenced by one item. */
+export async function pinPwaLibraryCoreItemContent(
+  globalId: string,
+  updatedAt = Date.now(),
+): Promise<void> {
+  const content = await readLibraryCoreNormalizedItemContentV1(
+    NORMALIZED_READER_RUNTIME,
+    globalId,
+  );
+  if (content === null) {
+    throw new Error("Library Core item no longer exists");
+  }
+  for (const contentDigest of libraryCoreNormalizedItemContentDigestsV1(
+    content,
+  )) {
+    await mutatePwaContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt,
+    });
+  }
+}
+
+/** Open a filtered feed through the shared bounded SQLite query adapter. */
 export async function openPwaLibraryCoreFeedReader(
   filter: FilterOptions,
   rankingClockMs = Date.now(),
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openFeedReader(filter, rankingClockMs);
+  return openLibraryCoreNormalizedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    rankingClockMs,
+  );
 }
 
-/** Open the complete Person-first Friends feed through bounded IndexedDB pages. */
+/** Open the complete Person-first Friends feed through bounded SQLite pages. */
 export async function openPwaLibraryCoreFriendsFeedReader(
   filter: FilterOptions,
   rankingClockMs: number,
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openFriendsFeedReader(filter, rankingClockMs);
+  return openLibraryCoreNormalizedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    rankingClockMs,
+    "friends",
+  );
 }
 
-/** Open every Saved sort mode through one bounded IndexedDB projection. */
+/** Open every Saved sort mode through the shared bounded SQLite query adapter. */
 export async function openPwaLibraryCoreSavedFeedReader(
   filter: FilterOptions,
   sortMode: Parameters<
@@ -907,76 +1081,115 @@ export async function openPwaLibraryCoreSavedFeedReader(
   >[1],
   rankingClockMs: number,
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openSavedFeedReader(
+  if (!Number.isSafeInteger(rankingClockMs) || rankingClockMs < 0) {
+    throw new RangeError("saved feed ranking clock is invalid");
+  }
+  return openLibraryCoreNormalizedSavedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
     filter,
     sortMode,
-    rankingClockMs,
   );
 }
 
 /** Read exact full-library facets without consulting the renderer window. */
 export const readPwaLibraryCoreFacetSummary: NonNullable<
   PlatformConfig["readLibraryFacetSummary"]
-> = () => getIndexedDbReaders().readFacetSummary();
+> = () => readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME);
 
-/** Count every signal chip from the complete selected IndexedDB generation. */
+/** Count every signal chip through bounded normalized SQLite queries. */
 export const readPwaLibraryCoreFeedSignalCounts: NonNullable<
   PlatformConfig["readFeedSignalCounts"]
-> = (filter) => getIndexedDbReaders().readFeedSignalCounts(filter);
+> = (filter) =>
+  readLibraryCoreNormalizedFeedSignalCountsV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    Date.now(),
+  );
 
-/** Read exact Saved overview aggregates from bounded IndexedDB scans. */
+/** Read exact Saved overview aggregates through normalized SQLite. */
 export const readPwaLibraryCoreSavedAnalytics: NonNullable<
   PlatformConfig["readLibrarySavedAnalytics"]
-> = (request) => getIndexedDbReaders().readSavedAnalytics(request);
+> = (request) =>
+  readLibraryCoreNormalizedSavedAnalyticsV1(NORMALIZED_READER_RUNTIME, request);
 
-/** Read compact Friends graph activity from bounded IndexedDB scans. */
+/** Read compact Friends graph activity through bounded SQLite aggregates. */
 export const readPwaLibraryCoreFriendsGraph: NonNullable<
   PlatformConfig["readLibraryFriendsGraph"]
-> = (request) => getIndexedDbReaders().readFriendsGraph(request);
+> = (request) =>
+  readLibraryCoreNormalizedPersonsGraphV1(NORMALIZED_READER_RUNTIME, request);
 
-/** Read one complete source-keyed Friends timeline page. */
+/** Read one exact Person from OPFS SQLite. */
+export const readPwaLibraryCorePersonDetail: NonNullable<
+  PlatformConfig["readLibraryPersonDetail"]
+> = (personId) =>
+  readLibraryCoreNormalizedPersonDetailV1(NORMALIZED_READER_RUNTIME, personId);
+
+/** Read one selected Friend and linked Account window from OPFS SQLite. */
+export const readPwaLibraryCoreFriendDetail: NonNullable<
+  PlatformConfig["readLibraryFriendDetail"]
+> = (personId) =>
+  readLibraryCoreNormalizedFriendDetailV1(NORMALIZED_READER_RUNTIME, personId);
+
+/** Read one exact Account from OPFS SQLite. */
+export const readPwaLibraryCoreAccountDetail: NonNullable<
+  PlatformConfig["readLibraryAccountDetail"]
+> = (accountId) =>
+  readLibraryCoreNormalizedAccountDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    accountId,
+  );
+
+/** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<
   PlatformConfig["readLibraryPersonTimeline"]
-> = (request) => getIndexedDbReaders().readPersonTimeline(request);
+> = (request) =>
+  typeof request.accountId === "string"
+    ? readLibraryCoreNormalizedAccountTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      )
+    : readLibraryCoreNormalizedPersonTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      );
 
 /** Resolve one exact location item against its Friends source token. */
 export const readPwaLibraryCoreFriendsLocationItem: NonNullable<
   PlatformConfig["readLibraryFriendsLocationItem"]
-> = (request) => getIndexedDbReaders().readFriendsLocationItem(request);
+> = (request) =>
+  readLibraryCoreNormalizedFriendsLocationItemV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 
-/** Read bounded Map or Story Wall candidates from the complete Library. */
-export const readPwaLibraryCoreSurfaceItems: NonNullable<
-  PlatformConfig["readLibrarySurfaceItems"]
-> = (surface) => getIndexedDbReaders().readSurfaceItems(surface);
+/** Read bounded Map or Story Wall candidates through normalized SQLite. */
+export const readPwaLibraryCoreStoryWallCandidates: NonNullable<
+  PlatformConfig["readLibraryStoryWallCandidates"]
+> = () =>
+  readLibraryCoreNormalizedStoryWallCandidatesV1(NORMALIZED_READER_RUNTIME);
 
-async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState> {
+/** Read bounded Map candidates with linked Friend identity from SQLite. */
+export const readPwaLibraryCoreMapCandidates: NonNullable<
+  PlatformConfig["readLibraryMapCandidates"]
+> = () => readLibraryCoreNormalizedMapCandidatesV1(NORMALIZED_READER_RUNTIME);
+
+async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRuntimeStateV1> {
   const state = await readSelectedState();
   if (!state) {
-    throw new Error("Imported SQLite Library checkpoint has no readable shell");
+    throw new Error("Imported SQLite Library checkpoint is not selected");
   }
-  if (searchIndex) {
-    if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
-      await searchIndex.invalidate();
-    } else {
-      await searchIndex.updateItems(
-        await readCurrentSearchSource(state.searchCorpusVersion),
-        state.items,
-      );
-    }
-  }
-  publishState(state);
+  const localChange = await drainPwaLibraryCoreLocalChanges(
+    state.searchCorpusVersion,
+  );
+  publishState(state, localChange ?? undefined);
   return state;
 }
 
-/**
- * Import the sole published immutable Desktop checkpoint into IndexedDB.
- * This is the production PWA Library path. Setting the activation key to
- * `"0"` is the local emergency rollback switch.
- */
+/** Import the published normalized Desktop checkpoint into OPFS SQLite. */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
   readonly signal?: AbortSignal;
-}): Promise<LibraryState> {
+}): Promise<LibraryCoreRuntimeStateV1> {
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
     signal: input.signal,
@@ -997,179 +1210,39 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     libraryId: pointer.libraryId,
     signal: input.signal,
   });
-  const store = getPortableStore();
-  await importLibraryCorePortableCheckpointV1({
+  const controlRevision = sha256LowerHex(discovered.control.bytes);
+  await importLibraryCoreNormalizedCheckpointV2({
     adapter,
     generation: pointer.generation,
     libraryId: pointer.libraryId,
     manifest: pointer.manifest,
     storageEpoch: pointer.storageEpoch,
     subtle: crypto.subtle,
-    writer: store,
+    writer: createPwaNormalizedCheckpointWriter({
+      checkpointGeneration: pointer.generation,
+      controlRevision,
+      installedAt: Date.now(),
+      writerActorId: pointer.writerId,
+    }),
   });
-  intentOverlayRecoveryState = await store.readIntentOverlayRecoveryState();
-  if (readPwaLibraryCoreIntentOverlayRecoveryState().status !== "ready") {
-    return publishSelectedStateAfterLibraryCoreSync();
-  }
-  const acceptedAuthority = await store.readSelectedAcceptedAuthorityState();
-  if (acceptedAuthority === null) {
-    throw new Error(
-      "Imported SQLite Library checkpoint has no accepted authority",
-    );
-  }
-  const enrollments = await discoverGoogleDriveLibraryCoreActorEnrollmentsV1({
-    accessToken: input.accessToken,
-    epochId: acceptedAuthority.epoch_id,
-    libraryId: acceptedAuthority.library_id,
-    signal: input.signal,
-  });
-  for (const enrollment of enrollments) {
-    await store.installActorEnrollment({
-      acceptedAuthorityState: acceptedAuthority,
-      certificateBytes: enrollment.bytes,
-    });
-  }
-  const enrollment = await store.preparePwaActorEnrollmentRequest();
-  if (enrollment && enrollment.publishedReference === null) {
-    const uploaded = await adapter.putImmutable(enrollment.immutableObject);
-    const reference = Object.freeze({
-      descriptor: enrollment.immutableObject.descriptor,
-      transportObjectId: uploaded.transportObjectId,
-    });
-    await adapter.verifyImmutable(reference);
-    await store.recordPwaActorEnrollmentRequestPublication({
-      actorId: enrollment.actorId,
-      authorityStateDigest: enrollment.authorityStateDigest,
-      libraryId: enrollment.acceptedAuthorityState
-        .library_id as unknown as LibraryCoreOperationInstanceId,
-      reference,
-    });
-  }
-  const pendingActors = await store.readPendingIntentActors({
-    epochId: pointer.storageEpoch,
-    libraryId: pointer.libraryId,
-  });
-  for (const actor of pendingActors) {
-    let candidate = await store.readUnpublishedIntentSegmentCandidate(actor);
-    if (candidate === null) continue;
-    const provisioned = await provisionGoogleDriveLibraryCoreIntentHeadV1({
+  await syncPwaLibraryCoreFollowerV2(
+    createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       accessToken: input.accessToken,
-      head: candidate.expectedHead,
-      signal: input.signal,
-    });
-    const intentAdapter = createGoogleDriveLibraryCoreIntentAdapterV1({
-      accessToken: input.accessToken,
-      actorId: actor.actorId,
       controlFileId: discovered.controlFileId,
-      epochId: actor.epochId,
-      intentHeadFileId: provisioned.intentHeadFileId,
       libraryId: pointer.libraryId,
       signal: input.signal,
-    });
-    let publishedSegmentCount = 0;
-    while (candidate !== null) {
-      if (publishedSegmentCount >= MAXIMUM_INTENT_SEGMENTS_PER_SYNC) {
-        throw new Error("PWA intent publication exceeded its sync bound");
-      }
-      const published = await publishLibraryCoreIntentCandidateV1({
-        adapter: intentAdapter,
-        candidate,
-        subtle: crypto.subtle,
-      });
-      if (published.status === "conflict") {
-        throw new Error(
-          `PWA intent head changed for actor ...${actor.actorId.slice(-8)}`,
-        );
-      }
-      await store.recordIntentSegmentPublication(published);
-      publishedSegmentCount += 1;
-      candidate = await store.readUnpublishedIntentSegmentCandidate(actor);
-    }
-  }
-  const resultActors = await store.readIntentActors({
-    epochId: pointer.storageEpoch,
-    libraryId: pointer.libraryId,
-  });
-  for (const actor of resultActors) {
-    const locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
-      accessToken: input.accessToken,
-      actorId: actor.actorId,
-      epochId: pointer.storageEpoch,
-      libraryId: pointer.libraryId,
-      signal: input.signal,
-    });
-    if (locator === null) continue;
-    const resultAdapter = createGoogleDriveLibraryCoreResultAdapterV1({
-      accessToken: input.accessToken,
-      actorId: actor.actorId,
-      controlFileId: discovered.controlFileId,
-      epochId: pointer.storageEpoch,
-      libraryId: pointer.libraryId,
-      resultHeadFileId: locator.resultHeadFileId,
-      signal: input.signal,
-    });
-    const resultHead = (await resultAdapter.readResultHead()).head;
-    if (resultHead.epoch_id !== pointer.storageEpoch) {
-      throw new Error("PWA result head belongs to a retired writer epoch");
-    }
-    const discoveredSegments =
-      await discoverGoogleDriveLibraryCoreResultSegmentsV1({
-        accessToken: input.accessToken,
-        actorId: actor.actorId,
-        epochId: pointer.storageEpoch,
-        libraryId: pointer.libraryId,
-        signal: input.signal,
-      });
-    const cursor = await store.readResultImportCursor(actor);
-    const segments = discoveredSegments.filter(
-      (segment) => segment.lastResultSequence >= cursor.nextResultSequence,
-    );
-    if (segments.length > MAXIMUM_RESULT_SEGMENTS_PER_SYNC) {
-      throw new Error("PWA pending result import exceeded its sync bound");
-    }
-    let nextResultSequence = cursor.nextResultSequence;
-    let previousSegmentDigest = cursor.latestSegmentDigest;
-    for (const segment of segments) {
-      if (segment.firstResultSequence !== nextResultSequence) {
-        throw new Error("PWA result segment chain has a gap or overlap");
-      }
-      await importLibraryCoreResultSegmentV1({
-        actorId: actor.actorId,
-        adapter: resultAdapter,
-        expectedFirstResultSequence: nextResultSequence,
-        expectedPreviousSegmentDigest: previousSegmentDigest,
-        libraryId: pointer.libraryId,
-        reference: segment.reference,
-        storageEpoch: pointer.storageEpoch,
-        subtle: crypto.subtle,
-        writer: store,
-      });
-      nextResultSequence = segment.lastResultSequence + 1;
-      previousSegmentDigest = segment.reference.descriptor.contentDigest;
-      if (nextResultSequence >= resultHead.next_result_sequence) break;
-    }
-    if (
-      nextResultSequence !== resultHead.next_result_sequence ||
-      previousSegmentDigest !== resultHead.latest_segment_digest
-    ) {
-      throw new Error("PWA result objects do not match the actor result head");
-    }
-  }
+    }),
+    { signal: input.signal },
+  );
   return publishSelectedStateAfterLibraryCoreSync();
 }
 
 registerPwaFactoryResetQuiesceHandler(
-  "library-core-indexeddb",
+  "library-core-storage",
   async () => {
-    await indexedDbReaders?.quiesce();
-    indexedDbReaders = null;
-    await portableStore?.quiesce();
-    portableStore = null;
-    await searchIndex?.close();
-    searchIndex = null;
+    await resetPwaNormalizedLibrary();
     lastState = null;
-    libraryReadModelRevision = 0;
-    intentOverlayRecoveryState = READY_INTENT_OVERLAY_RECOVERY;
+    lastLocalChangeSequence = 0;
     const deleteDatabase = (databaseName: string) =>
       new Promise<void>((resolve, reject) => {
         const request = globalThis.indexedDB.deleteDatabase(databaseName);
@@ -1189,9 +1262,7 @@ registerPwaFactoryResetQuiesceHandler(
           { once: true },
         );
       });
-    await deleteDatabase(DATABASE_NAME);
-    await deleteDatabase(SEARCH_DATABASE_NAME);
-    await deleteDatabase(READ_MODEL_DATABASE_NAME);
+    await deleteDatabase(PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
   },
   25,
 );

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  countFriendsWithRecentLocationUpdates,
   extractLocationFromItem,
   extractLocationFromText,
   filterResolvedLocationsByTime,
@@ -84,6 +83,7 @@ describe("location grouping", () => {
     const friend = makeFriend({ id: "friend-1" });
     const resolved: ResolvedLocationItem[] = [
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend,
         lat: 48.8566,
@@ -91,6 +91,7 @@ describe("location grouping", () => {
         label: "Paris",
       },
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:2", publishedAt: 20 }),
         friend,
         lat: 48.8566,
@@ -108,6 +109,7 @@ describe("location grouping", () => {
   it("groups unmatched authors independently by platform author identity", () => {
     const resolved: ResolvedLocationItem[] = [
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend: null,
         lat: 40.7128,
@@ -115,6 +117,7 @@ describe("location grouping", () => {
         label: "New York",
       },
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:2",
           publishedAt: 20,
@@ -136,6 +139,7 @@ describe("location grouping", () => {
     const lastSeen = getLastSeenLocationForFriend(
       [
         {
+          accountId: null,
           item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
           friend,
           lat: 37.7749,
@@ -143,6 +147,7 @@ describe("location grouping", () => {
           label: "San Francisco",
         },
         {
+          accountId: null,
           item: makeItem({ globalId: "ig:2", publishedAt: 40 }),
           friend,
           lat: 51.5072,
@@ -173,6 +178,7 @@ describe("location grouping", () => {
 
     const markers = getLatestFriendLocationMarkers([
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend: ada,
         lat: 37.7749,
@@ -180,6 +186,7 @@ describe("location grouping", () => {
         label: "San Francisco",
       },
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:2", publishedAt: 40 }),
         friend: ada,
         lat: 51.5072,
@@ -187,6 +194,7 @@ describe("location grouping", () => {
         label: "London",
       },
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:3",
           publishedAt: 30,
@@ -198,6 +206,7 @@ describe("location grouping", () => {
         label: "Paris",
       },
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:4",
           publishedAt: 20,
@@ -224,6 +233,7 @@ describe("location grouping", () => {
 
     const markers = getLatestAuthorLocationMarkers([
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend: ada,
         lat: 37.7749,
@@ -231,6 +241,7 @@ describe("location grouping", () => {
         label: "San Francisco",
       },
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:2", publishedAt: 40 }),
         friend: ada,
         lat: 51.5072,
@@ -238,6 +249,7 @@ describe("location grouping", () => {
         label: "London",
       },
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:3",
           publishedAt: 30,
@@ -304,62 +316,13 @@ describe("location grouping", () => {
     expect(resolveMapMode(undefined, 0, 4)).toBe("all_content");
   });
 
-  it("counts only confirmed friends as mapped friends", () => {
-    const now = 1_710_000_000_000;
-    const friend = makeFriend({ id: "friend-ada" });
-    const connection = makeFriend({
-      id: "person-joe",
-      name: "Joe Jarvis",
-      relationshipStatus: "connection",
-      sources: [
-        {
-          platform: "instagram",
-          authorId: "joe-ig",
-          handle: "joe",
-        },
-      ],
-    });
-
-    const count = countFriendsWithRecentLocationUpdates(
-      [
-        makeItem({
-          globalId: "ig:ada:paris",
-          publishedAt: now - 60_000,
-          location: {
-            name: "Paris",
-            coordinates: { lat: 48.8566, lng: 2.3522 },
-            source: "geo_tag",
-          },
-        }),
-        makeItem({
-          globalId: "ig:joe:puerto-rico",
-          publishedAt: now - 30_000,
-          author: { id: "joe-ig", handle: "joe", displayName: "Joe Jarvis" },
-          location: {
-            name: "Puerto Rico",
-            coordinates: { lat: 18.2208, lng: -66.5901 },
-            source: "geo_tag",
-          },
-        }),
-      ],
-      {
-        [friend.id]: friend,
-        [connection.id]: connection,
-      },
-      undefined,
-      7 * 24 * 60 * 60 * 1000,
-      now,
-    );
-
-    expect(count).toBe(1);
-  });
-
   it("keeps future time windows out of the current map until they start", () => {
     const now = 1_710_000_000_000;
     const friend = makeFriend({ id: "friend-1" });
     const markers = getLatestFriendLocationMarkers(
       [
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:1",
             publishedAt: now - 60_000,
@@ -370,6 +333,7 @@ describe("location grouping", () => {
           label: "Paris",
         },
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:2",
             publishedAt: now - 30_000,
@@ -399,6 +363,7 @@ describe("location grouping", () => {
     const markers = getLatestFriendLocationMarkers(
       [
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:1",
             publishedAt: now - 60_000,
@@ -409,6 +374,7 @@ describe("location grouping", () => {
           label: "Paris",
         },
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:2",
             publishedAt: now - 30_000,
@@ -437,6 +403,7 @@ describe("location grouping", () => {
     const friend = makeFriend({ id: "friend-1" });
     const resolved: ResolvedLocationItem[] = [
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:1",
           publishedAt: now - 8 * 60 * 60_000,
@@ -452,6 +419,7 @@ describe("location grouping", () => {
         label: "Tokyo",
       },
       {
+        accountId: null,
         item: makeItem({
           globalId: "ig:2",
           publishedAt: now - 60_000,
@@ -480,6 +448,7 @@ describe("location grouping", () => {
     const lastSeen = getLastSeenLocationForFriend(
       [
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:1",
             publishedAt: now - 60_000,
@@ -490,6 +459,7 @@ describe("location grouping", () => {
           label: "Paris",
         },
         {
+          accountId: null,
           item: makeItem({
             globalId: "ig:2",
             publishedAt: now - 30_000,
@@ -518,6 +488,7 @@ describe("map navigation helpers", () => {
     const friend = makeFriend({ id: "friend-1" });
     const marker = markerFromResolved([
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend,
         lat: 48.8566,
@@ -548,6 +519,7 @@ describe("map navigation helpers", () => {
     const friend = makeFriend({ id: "friend-1" });
     const marker = markerFromResolved([
       {
+        accountId: null,
         item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
         friend,
         lat: 48.8566,

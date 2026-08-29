@@ -12,7 +12,7 @@
  *   import { log } from "./logger";
  *   log.info("[rss-poller] heartbeat feeds=12");
  *   log.warn("[content-fetcher] fetch_url TIMEOUT url=https://...");
- *   log.error("[automerge-worker] request TIMEOUT op=MERGE_DOC");
+ *   log.error("[library-core] request TIMEOUT op=QUERY_NORMALIZED_LIBRARY");
  */
 
 import type { SyncEventKind } from "@freed/ui/lib/debug-store";

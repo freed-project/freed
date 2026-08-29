@@ -2,7 +2,7 @@
  * Unit tests for @freed/capture-x normalize functions
  *
  * Asserts that tweetToFeedItem and extractLinkPreview never produce objects
- * containing `undefined` values — Automerge's proxy throws on them.
+ * containing `undefined` values, which violate the closed mutation contracts.
  */
 
 import { describe, it, expect } from "vitest";

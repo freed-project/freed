@@ -23,6 +23,7 @@ const STATUS_KEYS = new Set([
   "updatedAt",
   "startedAt",
   "sidecarPid",
+  "localActorEndpoint",
   "reasonCode",
 ]);
 const PHASES = new Set(["starting", "running", "stopping", "stopped", "failed"]);
@@ -74,6 +75,11 @@ function parseStatus(text: string): LibraryServiceStatusRecord {
       (typeof raw.sidecarPid !== "number" ||
         !Number.isSafeInteger(raw.sidecarPid) ||
         raw.sidecarPid <= 0)) ||
+    (raw.localActorEndpoint !== null &&
+      (typeof raw.localActorEndpoint !== "string" ||
+        raw.localActorEndpoint.length === 0 ||
+        raw.localActorEndpoint.length > 512 ||
+        /[\u0000-\u001f\u007f]/u.test(raw.localActorEndpoint))) ||
     (raw.reasonCode !== null &&
       (typeof raw.reasonCode !== "string" || !REASON_CODES.has(raw.reasonCode)))
   ) {
@@ -178,6 +184,7 @@ export function createLibraryServiceStatusRecord(input: {
   nowMs: number;
   startedAt: string | null;
   sidecarPid: number | null;
+  localActorEndpoint: string | null;
   reasonCode: LibraryServiceFailureCode | "requested_stop" | null;
 }): LibraryServiceStatusRecord {
   return {
@@ -188,6 +195,7 @@ export function createLibraryServiceStatusRecord(input: {
     updatedAt: new Date(input.nowMs).toISOString(),
     startedAt: input.startedAt,
     sidecarPid: input.sidecarPid,
+    localActorEndpoint: input.localActorEndpoint,
     reasonCode: input.reasonCode,
   };
 }

@@ -1,12 +1,12 @@
 /**
  * Debug store for Freed sync diagnostics
  *
- * Zustand store that tracks sync events, document state snapshots, and
+ * Zustand store that tracks sync events, bounded Library state snapshots, and
  * panel visibility. Consumed by DebugPanel; written to by Library clients.
  * and sync.ts in both the PWA and desktop packages.
  *
  * Also exposes window.__freed as a console escape hatch for inspecting
- * live document state without opening the panel.
+ * live Library state without opening the panel.
  */
 
 import { create } from "zustand";
@@ -45,11 +45,11 @@ export interface SyncEvent {
   bytes?: number;
 }
 
-export interface DocSnapshot {
-  documentId: string;
+export interface LibrarySnapshot {
+  libraryId: string;
   itemCount: number;
   feedCount: number;
-  binarySize: number;
+  storageBytes?: number;
   savedAt: number;
 }
 
@@ -93,8 +93,6 @@ export interface RuntimeMemorySnapshot {
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
   pressureLevel?: "normal" | "high" | "critical";
-  relayDocBytes: number;
-  relayClientCount: number;
   contentQueuePending: number;
   contentCompleted: number;
   contentFailed: number;
@@ -113,21 +111,21 @@ export interface RuntimeMemorySnapshot {
    * nobody has measured.
    */
   rendererHeapAvailable?: boolean;
-  /** Main renderer RSS sampled before Automerge hydration, captured once per launch. */
-  shellBaselineMainRendererResidentBytes?: number;
-  /** PID that owns the shell baseline. Later samples are comparable only while this process survives. */
-  shellBaselineMainRendererProcessId?: number;
+  /** Main renderer RSS sampled before SQLite Library load, captured once per launch. */
+  preLibraryBaselineMainRendererResidentBytes?: number;
+  /** PID that owns the pre-Library baseline. Later samples are comparable only while this process survives. */
+  preLibraryBaselineMainRendererProcessId?: number;
   /** Native process start time paired with the PID so PID reuse cannot resurrect an old baseline. */
-  shellBaselineMainRendererStartedAtUnixSeconds?: number;
+  preLibraryBaselineMainRendererStartedAtUnixSeconds?: number;
   /** Native microsecond process start identity used for exact same-process comparisons. */
-  shellBaselineMainRendererStartedAtUnixMicros?: number;
-  /** Same-process main renderer growth since the shell baseline. This is undefined after renderer replacement. */
-  mainRendererResidentOverShellBaselineBytes?: number;
+  preLibraryBaselineMainRendererStartedAtUnixMicros?: number;
+  /** Same-process main renderer growth since the pre-Library baseline. This is undefined after renderer replacement. */
+  mainRendererResidentOverPreLibraryBaselineBytes?: number;
   /** Why a same-process comparison is or is not available for this sample. */
-  shellBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
-  shellBaselineAgeMs?: number;
-  /** Whether the document had been hydrated when this sample was taken. A baseline is only valid from a pre-hydration sample. */
-  documentHydrated?: boolean;
+  preLibraryBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
+  preLibraryBaselineAgeMs?: number;
+  /** Whether authoritative SQLite Library startup had completed when this sample was taken. */
+  libraryRuntimeReady?: boolean;
   domNodeCount?: number;
   sampleTs: number;
 }
@@ -296,7 +294,7 @@ export interface ProviderHealthDebugState {
 interface DebugState {
   visible: boolean;
   events: SyncEvent[];
-  docSnapshot: DocSnapshot | null;
+  librarySnapshot: LibrarySnapshot | null;
   runtimeMemory: RuntimeMemorySnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
   health: ProviderHealthDebugState | null;
@@ -309,7 +307,7 @@ interface DebugState {
   setVisible: (visible: boolean) => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
-  setDocSnapshot: (snap: DocSnapshot) => void;
+  setLibrarySnapshot: (snap: LibrarySnapshot) => void;
   setRuntimeMemory: (snap: RuntimeMemorySnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
   updateCloudProvider: (provider: keyof CloudProvidersDebugState, state: Partial<CloudProviderDebugState>) => void;
@@ -332,7 +330,7 @@ const MAX_CLOUD_PROVIDER_EVENTS = 12;
 export const useDebugStore = create<DebugState>()((set) => ({
   visible: false,
   events: [],
-  docSnapshot: null,
+  librarySnapshot: null,
   runtimeMemory: null,
   cloudProviders: null,
   health: null,
@@ -357,7 +355,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
 
   clearEvents: () => set({ events: [] }),
 
-  setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
+  setLibrarySnapshot: (librarySnapshot) => set({ librarySnapshot }),
 
   setRuntimeMemory: (runtimeMemory) => set({ runtimeMemory }),
 
@@ -463,8 +461,8 @@ export function addDebugEvent(
   }
 }
 
-export function setDocSnapshot(snap: DocSnapshot): void {
-  useDebugStore.getState().setDocSnapshot(snap);
+export function setLibrarySnapshot(snap: LibrarySnapshot): void {
+  useDebugStore.getState().setLibrarySnapshot(snap);
 }
 
 export function setRuntimeMemory(snap: RuntimeMemorySnapshot): void {
@@ -503,24 +501,21 @@ export function setProviderHealth(state: ProviderHealthDebugState): void {
 declare global {
   interface Window {
     __freed: {
-      getDoc?: () => unknown;
-      getDocJson?: () => string;
-      getDocBinary?: () => Uint8Array | Promise<Uint8Array>;
+      getLibrarySummary?: () => unknown;
+      getLibrarySummaryJson?: () => string;
       debug?: () => DebugState;
     };
   }
 }
 
-export function registerDocAccessors(
-  getDoc: () => unknown,
-  getDocJson: () => string,
-  getDocBinary?: () => Uint8Array | Promise<Uint8Array>,
+export function registerLibraryAccessors(
+  getLibrarySummary: () => unknown,
+  getLibrarySummaryJson: () => string,
 ): void {
   window.__freed = {
     ...window.__freed,
-    getDoc,
-    getDocJson,
-    ...(getDocBinary ? { getDocBinary } : {}),
+    getLibrarySummary,
+    getLibrarySummaryJson,
     debug: () => useDebugStore.getState(),
   };
 }

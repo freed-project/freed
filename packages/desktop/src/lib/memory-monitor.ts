@@ -11,7 +11,6 @@ const MIN_CRITICAL_RESIDENT_BYTES = 3.5 * BYTES_PER_GIB;
 const MAX_CRITICAL_RESIDENT_BYTES = 12 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_COOLDOWN_MS = 5 * 60_000;
-const HIGH_RELAY_DOC_BYTES = 64 * 1024 * 1024;
 const PRESSURE_SAMPLE_MAX_AGE_MS = 30_000;
 
 interface NativeRuntimeMemoryStats {
@@ -53,8 +52,6 @@ interface NativeRuntimeMemoryStats {
   sampleDurationMs?: number;
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
-  relayDocBytes: number;
-  relayClientCount: number;
 }
 
 interface ScrapeMemoryPreparation {
@@ -108,45 +105,45 @@ function getRendererMemoryStats(): BrowserMemoryStats | null {
 }
 
 /**
- * WebKit resident bytes captured before the Automerge document is loaded.
+ * WebKit resident bytes captured before the SQLite Library runtime loads.
  *
  * This is the single largest unmeasured term in the storage roadmap's floor
- * estimates: the WebKit shell plus React baseline, which four independent
+ * estimates: the renderer plus React baseline, which four independent
  * design passes estimated anywhere from 60 to 250 MB. Everything else in the
  * renderer budget is derived by subtracting from the observed total, so a 4x
  * uncertainty here makes every ratio in that document soft.
  *
- * Recorded once per app launch, at the first sample taken before hydration.
+ * Recorded once per app launch, at the first sample taken before Library load.
  */
-let shellBaselineMainRendererResidentBytes: number | undefined;
-let shellBaselineMainRendererProcessId: number | undefined;
-let shellBaselineMainRendererStartedAtUnixSeconds: number | undefined;
-let shellBaselineMainRendererStartedAtUnixMicros: number | undefined;
-let shellBaselineCapturedAtMs: number | undefined;
-let shellBaselineCapturePromise: Promise<boolean> | undefined;
-let documentHydrationStartedAtMs: number | undefined;
-let documentHydratedAtMs: number | undefined;
+let preLibraryBaselineMainRendererResidentBytes: number | undefined;
+let preLibraryBaselineMainRendererProcessId: number | undefined;
+let preLibraryBaselineMainRendererStartedAtUnixSeconds: number | undefined;
+let preLibraryBaselineMainRendererStartedAtUnixMicros: number | undefined;
+let preLibraryBaselineCapturedAtMs: number | undefined;
+let preLibraryBaselineCapturePromise: Promise<boolean> | undefined;
+let libraryRuntimeLoadStartedAtMs: number | undefined;
+let libraryRuntimeReadyAtMs: number | undefined;
 
-export function recordDocumentHydrationStarted(): void {
-  documentHydrationStartedAtMs ??= Date.now();
+export function recordLibraryRuntimeLoadStarted(): void {
+  libraryRuntimeLoadStartedAtMs ??= Date.now();
 }
 
-export function recordDocumentHydrated(): void {
-  if (documentHydratedAtMs !== undefined) return;
-  recordDocumentHydrationStarted();
-  documentHydratedAtMs = Date.now();
+export function recordLibraryRuntimeReady(): void {
+  if (libraryRuntimeReadyAtMs !== undefined) return;
+  recordLibraryRuntimeLoadStarted();
+  libraryRuntimeReadyAtMs = Date.now();
   recordRuntimeHealthEvent({
-    event: "memory_document_hydrated",
-    shellBaselineMainRendererResidentBytes,
-    shellBaselineMainRendererProcessId,
-    shellBaselineMainRendererStartedAtUnixSeconds,
-    shellBaselineMainRendererStartedAtUnixMicros,
-    shellBaselineCaptured: shellBaselineMainRendererResidentBytes !== undefined,
+    event: "memory_library_runtime_ready",
+    preLibraryBaselineMainRendererResidentBytes,
+    preLibraryBaselineMainRendererProcessId,
+    preLibraryBaselineMainRendererStartedAtUnixSeconds,
+    preLibraryBaselineMainRendererStartedAtUnixMicros,
+    preLibraryBaselineCaptured: preLibraryBaselineMainRendererResidentBytes !== undefined,
   });
 }
 
-export function getShellBaselineBytes(): number | undefined {
-  return shellBaselineMainRendererResidentBytes;
+export function getPreLibraryBaselineBytes(): number | undefined {
+  return preLibraryBaselineMainRendererResidentBytes;
 }
 
 function findMainRendererProcess(
@@ -169,7 +166,7 @@ function findMainRendererProcess(
   return rootedCandidates.length === 1 ? rootedCandidates[0] : undefined;
 }
 
-function captureShellBaselineFromNative(
+function capturePreLibraryBaselineFromNative(
   native: Pick<
     NativeRuntimeMemoryStats,
     "webkitAttributionPrecise" | "webkitTelemetryAvailable" | "webkitProcesses"
@@ -177,47 +174,47 @@ function captureShellBaselineFromNative(
 ): boolean {
   const mainRenderer = findMainRendererProcess(native);
   if (
-    shellBaselineMainRendererResidentBytes !== undefined ||
-    documentHydrationStartedAtMs !== undefined ||
+    preLibraryBaselineMainRendererResidentBytes !== undefined ||
+    libraryRuntimeLoadStartedAtMs !== undefined ||
     !native.webkitTelemetryAvailable ||
     !mainRenderer ||
     mainRenderer.residentBytes <= 0
   ) {
     return false;
   }
-  shellBaselineMainRendererResidentBytes = mainRenderer.residentBytes;
-  shellBaselineMainRendererProcessId = mainRenderer.processId;
-  shellBaselineMainRendererStartedAtUnixSeconds =
+  preLibraryBaselineMainRendererResidentBytes = mainRenderer.residentBytes;
+  preLibraryBaselineMainRendererProcessId = mainRenderer.processId;
+  preLibraryBaselineMainRendererStartedAtUnixSeconds =
     mainRenderer.startedAtUnixSeconds;
-  shellBaselineMainRendererStartedAtUnixMicros =
+  preLibraryBaselineMainRendererStartedAtUnixMicros =
     mainRenderer.startedAtUnixMicros;
-  shellBaselineCapturedAtMs = Date.now();
+  preLibraryBaselineCapturedAtMs = Date.now();
   return true;
 }
 
 /**
- * Capture the WebKit shell before the Automerge document starts loading.
+ * Capture the renderer baseline before the SQLite Library runtime loads.
  *
  * `startMemoryMonitor()` runs only after the store reports initialized. Calling
  * it there is correct for pressure handling but too late for attribution. App
- * startup primes this probe before legal and document initialization. The store
+ * startup primes this probe before legal checks and Library initialization. The store
  * also primes it as a fallback, then closes the baseline window before
- * `initDoc()` begins.
+ * SQLite runtime initialization begins.
  *
  * Measurement is never a startup dependency. Callers deliberately do not await
  * this promise. The sample disables storage scans but requires rooted WebKit
- * attribution and a process start time. If it does not finish before hydration
- * starts, or cannot prove one exact main renderer, it is discarded.
+ * attribution and a process start time. If it does not finish before Library
+ * loading starts, or cannot prove one exact main renderer, it is discarded.
  */
-export async function captureShellMemoryBaseline(): Promise<boolean> {
+export async function capturePreLibraryMemoryBaseline(): Promise<boolean> {
   if (
-    shellBaselineMainRendererResidentBytes !== undefined ||
-    documentHydrationStartedAtMs !== undefined ||
+    preLibraryBaselineMainRendererResidentBytes !== undefined ||
+    libraryRuntimeLoadStartedAtMs !== undefined ||
     !canSampleNativeMemoryStats()
   ) {
     return false;
   }
-  if (shellBaselineCapturePromise) return shellBaselineCapturePromise;
+  if (preLibraryBaselineCapturePromise) return preLibraryBaselineCapturePromise;
 
   const capture = (async () => {
     try {
@@ -225,16 +222,16 @@ export async function captureShellMemoryBaseline(): Promise<boolean> {
         includeStorageSizes: false,
         preciseWebkitAttribution: true,
       });
-      const captured = captureShellBaselineFromNative(native);
+      const captured = capturePreLibraryBaselineFromNative(native);
       if (captured) {
         recordRuntimeHealthEvent({
-          event: "memory_shell_baseline",
-          mainRendererProcessId: shellBaselineMainRendererProcessId,
+          event: "memory_pre_library_baseline",
+          mainRendererProcessId: preLibraryBaselineMainRendererProcessId,
           mainRendererStartedAtUnixSeconds:
-            shellBaselineMainRendererStartedAtUnixSeconds,
+            preLibraryBaselineMainRendererStartedAtUnixSeconds,
           mainRendererStartedAtUnixMicros:
-            shellBaselineMainRendererStartedAtUnixMicros,
-          mainRendererResidentBytes: shellBaselineMainRendererResidentBytes,
+            preLibraryBaselineMainRendererStartedAtUnixMicros,
+          mainRendererResidentBytes: preLibraryBaselineMainRendererResidentBytes,
           webkitProcessCount: native.webkitProcessCount,
           webkitAttributionPrecise: native.webkitAttributionPrecise,
         });
@@ -242,14 +239,14 @@ export async function captureShellMemoryBaseline(): Promise<boolean> {
       return captured;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      log.warn(`[memory] shell baseline unavailable: ${message}`);
+      log.warn(`[memory] pre-Library baseline unavailable: ${message}`);
       return false;
     }
   })();
-  shellBaselineCapturePromise = capture;
+  preLibraryBaselineCapturePromise = capture;
   void capture.then(() => {
-    if (shellBaselineCapturePromise === capture) {
-      shellBaselineCapturePromise = undefined;
+    if (preLibraryBaselineCapturePromise === capture) {
+      preLibraryBaselineCapturePromise = undefined;
     }
   });
   return capture;
@@ -257,14 +254,14 @@ export async function captureShellMemoryBaseline(): Promise<boolean> {
 
 /** Test seam: clears the once-per-launch baseline. */
 export function resetMemoryAttributionForTests(): void {
-  shellBaselineMainRendererResidentBytes = undefined;
-  shellBaselineMainRendererProcessId = undefined;
-  shellBaselineMainRendererStartedAtUnixSeconds = undefined;
-  shellBaselineMainRendererStartedAtUnixMicros = undefined;
-  shellBaselineCapturedAtMs = undefined;
-  shellBaselineCapturePromise = undefined;
-  documentHydrationStartedAtMs = undefined;
-  documentHydratedAtMs = undefined;
+  preLibraryBaselineMainRendererResidentBytes = undefined;
+  preLibraryBaselineMainRendererProcessId = undefined;
+  preLibraryBaselineMainRendererStartedAtUnixSeconds = undefined;
+  preLibraryBaselineMainRendererStartedAtUnixMicros = undefined;
+  preLibraryBaselineCapturedAtMs = undefined;
+  preLibraryBaselineCapturePromise = undefined;
+  libraryRuntimeLoadStartedAtMs = undefined;
+  libraryRuntimeReadyAtMs = undefined;
 }
 
 function getDomNodeCount(): number | undefined {
@@ -308,7 +305,6 @@ let startupFollowupHandles: Array<ReturnType<typeof setTimeout>> = [];
 let sampleCount = 0;
 let peakResidentBytes = 0;
 let peakWebkitResidentBytes = 0;
-let peakRelayDocBytes = 0;
 let lastCriticalToastAt = 0;
 let currentPressureLevel: MemoryPressureLevel = "normal";
 let currentPressureSampleAt = 0;
@@ -426,8 +422,6 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
     sampleDurationMs: 0,
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   };
 }
 
@@ -460,11 +454,11 @@ async function sampleRuntimeMemory(
     : emptyNativeRuntimeMemoryStats();
   const nativeSampleDurationMs = Math.round(performance.now() - nativeStartedAt);
 
-  // Capture the shell baseline exactly once, and only from a sample taken
-  // before the document is hydrated. Taking it later would fold the Automerge
-  // document into the "baseline" and make the delta meaningless, which is the
+  // Capture the pre-Library baseline exactly once, and only from a sample taken
+  // before the SQLite Library runtime loads. Taking it later would fold the visible
+  // Library window into the baseline and make the delta meaningless, which is the
   // specific way this measurement is easy to get wrong.
-  captureShellBaselineFromNative(native);
+  capturePreLibraryBaselineFromNative(native);
   const limits = {
     highBytes:
       native.memoryHighBytes ??
@@ -486,19 +480,18 @@ async function sampleRuntimeMemory(
     peakWebkitResidentBytes,
     native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0,
   );
-  peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);
   const baselineMainRenderer =
-    shellBaselineMainRendererProcessId === undefined ||
-    shellBaselineMainRendererStartedAtUnixMicros === undefined
+    preLibraryBaselineMainRendererProcessId === undefined ||
+    preLibraryBaselineMainRendererStartedAtUnixMicros === undefined
       ? undefined
       : native.webkitProcesses?.find(
           (process) =>
-            process.processId === shellBaselineMainRendererProcessId &&
+            process.processId === preLibraryBaselineMainRendererProcessId &&
             process.startedAtUnixMicros ===
-              shellBaselineMainRendererStartedAtUnixMicros,
+              preLibraryBaselineMainRendererStartedAtUnixMicros,
         );
-  const shellBaselineComparisonStatus =
-    shellBaselineMainRendererResidentBytes === undefined
+  const preLibraryBaselineComparisonStatus =
+    preLibraryBaselineMainRendererResidentBytes === undefined
       ? "not_captured"
       : baselineMainRenderer
         ? "same_process"
@@ -535,8 +528,6 @@ async function sampleRuntimeMemory(
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
     pressureLevel,
-    relayDocBytes: native.relayDocBytes,
-    relayClientCount: native.relayClientCount,
     contentQueuePending: fetcher.pending,
     contentCompleted: fetcher.completed,
     contentFailed: fetcher.failedCount,
@@ -552,28 +543,28 @@ async function sampleRuntimeMemory(
     // flag that reads as "the JS heap is negligible" rather than "unmeasured".
     rendererHeapAvailable: renderer !== null,
     // Attribution terms. The baseline is one main renderer process captured
-    // before document hydration. A delta is valid only while that exact PID is
+    // before SQLite Library load. A delta is valid only while that exact PID is
     // still present. Provider WebViews and renderer replacements must never be
     // folded into a number that looks like corpus cost.
-    shellBaselineMainRendererResidentBytes,
-    shellBaselineMainRendererProcessId,
-    shellBaselineMainRendererStartedAtUnixSeconds,
-    shellBaselineMainRendererStartedAtUnixMicros,
-    mainRendererResidentOverShellBaselineBytes:
-      shellBaselineMainRendererResidentBytes === undefined ||
+    preLibraryBaselineMainRendererResidentBytes,
+    preLibraryBaselineMainRendererProcessId,
+    preLibraryBaselineMainRendererStartedAtUnixSeconds,
+    preLibraryBaselineMainRendererStartedAtUnixMicros,
+    mainRendererResidentOverPreLibraryBaselineBytes:
+      preLibraryBaselineMainRendererResidentBytes === undefined ||
       baselineMainRenderer === undefined
         ? undefined
         : Math.max(
             0,
             baselineMainRenderer.residentBytes -
-              shellBaselineMainRendererResidentBytes,
+              preLibraryBaselineMainRendererResidentBytes,
           ),
-    shellBaselineComparisonStatus,
-    shellBaselineAgeMs:
-      shellBaselineCapturedAtMs === undefined
+    preLibraryBaselineComparisonStatus,
+    preLibraryBaselineAgeMs:
+      preLibraryBaselineCapturedAtMs === undefined
         ? undefined
-        : Date.now() - shellBaselineCapturedAtMs,
-    documentHydrated: documentHydratedAtMs !== undefined,
+        : Date.now() - preLibraryBaselineCapturedAtMs,
+    libraryRuntimeReady: libraryRuntimeReadyAtMs !== undefined,
     domNodeCount,
     sampleTs: Date.now(),
   };
@@ -585,26 +576,25 @@ async function sampleRuntimeMemory(
   const shouldLog =
     reason === "startup" ||
     sampleCount % MEMORY_LOG_INTERVAL === 0 ||
-    pressureLevel !== "normal" ||
-    native.relayDocBytes >= HIGH_RELAY_DOC_BYTES;
+    pressureLevel !== "normal";
 
   if (!shouldLog) return;
 
   recordRuntimeHealthEvent({
     event: "renderer_memory_attribution",
     reason,
-    documentHydrated: snapshot.documentHydrated,
-    shellBaselineMainRendererResidentBytes:
-      snapshot.shellBaselineMainRendererResidentBytes,
-    shellBaselineMainRendererProcessId:
-      snapshot.shellBaselineMainRendererProcessId,
-    shellBaselineMainRendererStartedAtUnixSeconds:
-      snapshot.shellBaselineMainRendererStartedAtUnixSeconds,
-    shellBaselineMainRendererStartedAtUnixMicros:
-      snapshot.shellBaselineMainRendererStartedAtUnixMicros,
-    mainRendererResidentOverShellBaselineBytes:
-      snapshot.mainRendererResidentOverShellBaselineBytes,
-    shellBaselineComparisonStatus: snapshot.shellBaselineComparisonStatus,
+    libraryRuntimeReady: snapshot.libraryRuntimeReady,
+    preLibraryBaselineMainRendererResidentBytes:
+      snapshot.preLibraryBaselineMainRendererResidentBytes,
+    preLibraryBaselineMainRendererProcessId:
+      snapshot.preLibraryBaselineMainRendererProcessId,
+    preLibraryBaselineMainRendererStartedAtUnixSeconds:
+      snapshot.preLibraryBaselineMainRendererStartedAtUnixSeconds,
+    preLibraryBaselineMainRendererStartedAtUnixMicros:
+      snapshot.preLibraryBaselineMainRendererStartedAtUnixMicros,
+    mainRendererResidentOverPreLibraryBaselineBytes:
+      snapshot.mainRendererResidentOverPreLibraryBaselineBytes,
+    preLibraryBaselineComparisonStatus: snapshot.preLibraryBaselineComparisonStatus,
     appResidentBytes: snapshot.appResidentBytes,
     appMemoryPressureBytes: snapshot.appMemoryPressureBytes,
     webkitTotalResidentBytes: snapshot.webkitTotalResidentBytes,
@@ -616,11 +606,7 @@ async function sampleRuntimeMemory(
     rendererHeapAvailable: snapshot.rendererHeapAvailable,
   });
 
-  const level =
-    pressureLevel !== "normal" ||
-    native.relayDocBytes >= HIGH_RELAY_DOC_BYTES
-      ? "warn"
-      : "info";
+  const level = pressureLevel !== "normal" ? "warn" : "info";
 
   log[level](
     `[memory] pressure=${pressureLevel} ` +
@@ -650,9 +636,6 @@ async function sampleRuntimeMemory(
       `webkit_precise=${String(native.webkitAttributionPrecise === true)} ` +
       `sample_ms=${(native.sampleDurationMs ?? 0).toLocaleString()} ` +
       `native_sample_ms=${nativeSampleDurationMs.toLocaleString()} ` +
-      `relay_doc=${formatBytesForMemoryLog(native.relayDocBytes)} ` +
-      `peak_relay_doc=${formatBytesForMemoryLog(peakRelayDocBytes)} ` +
-      `relay_clients=${native.relayClientCount.toLocaleString()} ` +
       `fetch_pending=${fetcher.pending.toLocaleString()} ` +
       `fetch_completed=${fetcher.completed.toLocaleString()} ` +
       `fetch_failed=${fetcher.failedCount.toLocaleString()} ` +

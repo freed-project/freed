@@ -40,7 +40,7 @@ function operations(overrides: Partial<Parameters<typeof runFactoryResetOperatio
       clearProviderDataAndConnections: vi.fn(async () => {
         calls.push("providers");
       }),
-      clearDocument: vi.fn(async () => {
+      clearLibrary: vi.fn(async () => {
         calls.push("document");
       }),
       ...overrides,
@@ -81,7 +81,7 @@ describe("factory reset sequencing", () => {
     expect(laterDrain).toHaveBeenCalledOnce();
     expect(reset.input.clearDeviceStores).not.toHaveBeenCalled();
     expect(reset.input.clearLocalData[0]).not.toHaveBeenCalled();
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
   });
 
   it("treats tracked operation rejection as settled before destructive phases", async () => {
@@ -101,7 +101,7 @@ describe("factory reset sequencing", () => {
     await resetting;
 
     expect(reset.input.clearDeviceStores).toHaveBeenCalledOnce();
-    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
+    expect(reset.input.clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("continues after the reset boundary cancels tracked work before its first microtask", async () => {
@@ -119,7 +119,7 @@ describe("factory reset sequencing", () => {
     await runFactoryResetOperations(reset.input);
 
     expect(reset.input.clearDeviceStores).toHaveBeenCalledOnce();
-    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
+    expect(reset.input.clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("stops before destructive work when a device store cannot persist reset state", async () => {
@@ -131,7 +131,7 @@ describe("factory reset sequencing", () => {
     expect(reset.input.clearLocalSettings[0]).not.toHaveBeenCalled();
     expect(reset.input.clearLocalData[0]).not.toHaveBeenCalled();
     expect(reset.input.clearProviderDataAndConnections).not.toHaveBeenCalled();
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
   });
 
   it("does not delete cloud data, disconnect providers, or delete the document after local cleanup fails", async () => {
@@ -145,7 +145,7 @@ describe("factory reset sequencing", () => {
       "local deletion failed",
     );
     expect(reset.input.clearProviderDataAndConnections).not.toHaveBeenCalled();
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
   });
 
   it("settles every local cleanup before reporting a failure", async () => {
@@ -189,7 +189,7 @@ describe("factory reset sequencing", () => {
     );
     expect(laterData).toHaveBeenCalledOnce();
     expect(reset.input.clearProviderDataAndConnections).not.toHaveBeenCalled();
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
   });
 
   it("does not delete the document after provider cleanup fails", async () => {
@@ -202,7 +202,7 @@ describe("factory reset sequencing", () => {
     await expect(runFactoryResetOperations(reset.input)).rejects.toThrow(
       "provider disconnect failed",
     );
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
   });
 });
 
@@ -315,7 +315,7 @@ describe("factory reset runtime recovery", () => {
     await vi.advanceTimersByTimeAsync(25);
 
     expect(reload).toHaveBeenCalledOnce();
-    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(reset.input.clearLibrary).not.toHaveBeenCalled();
     expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
   });
 
@@ -331,6 +331,6 @@ describe("factory reset runtime recovery", () => {
 
     clearFactoryResetCloudCleanupBarrier();
     expect(hasFactoryResetCloudCleanupBarrier()).toBe(false);
-    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
+    expect(reset.input.clearLibrary).toHaveBeenCalledOnce();
   });
 });

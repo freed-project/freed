@@ -150,7 +150,7 @@ const BUCKET_DEFINITIONS = [
   {
     id: "worker-churn",
     taskId: "wave5-worker-lifecycle",
-    title: "Automerge worker INIT churn",
+    title: "Legacy worker initialization churn",
     severity: 3,
     debtIssueNumber: 1084,
     providerVisible: false,
@@ -916,15 +916,13 @@ function main() {
   if (args.json) {
     process.stdout.write(
       `${JSON.stringify(
-        ranked.map(
-          ({ bucket, githubIssueNumber, hits, score, evidence }) => ({
+        ranked.map(({ bucket, githubIssueNumber, hits, score, evidence }) => ({
           id: bucket.id,
           githubIssueNumber,
           hits,
           score,
           evidence,
-          }),
-        ),
+        })),
         null,
         2,
       )}\n`,

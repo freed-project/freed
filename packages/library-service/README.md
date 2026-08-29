@@ -5,10 +5,11 @@ headless Library Primary. It supervises the explicitly pinned
 `library-authority-sidecar` binary from `freed-library-core`. Node never opens
 the Library SQLite database or acquires its data-root lease.
 
-The compiled `freed-library` CLI currently provides three commands:
+The compiled `freed-library` CLI currently provides four commands:
 
 ```text
 freed-library doctor --config /physical/path/service.json
+freed-library service-definition --config /physical/path/service.json
 freed-library status --config /physical/path/service.json
 freed-library serve --config /physical/path/service.json
 ```
@@ -17,6 +18,16 @@ freed-library serve --config /physical/path/service.json
 status record. Neither command starts the sidecar. `serve` revalidates every
 prerequisite immediately before it starts one sidecar. The service exposes no
 network listener.
+
+`service-definition` revalidates the same bound configuration and emits one
+deterministic, digest-bound service-manager definition. macOS receives a
+LaunchAgent plist with exact argument elements, mode `0077`, background
+restart policy, and no shell or environment fields. Linux receives a systemd
+user unit with exact quoted arguments, mode `0077`, a read-only home and system
+view except for the configured data and state roots, process-group shutdown,
+bounded restart policy, and no shell. The command does not write, install,
+load, enable, or start the definition. Windows fails closed until its native
+service-account handle and named-pipe ACL contract is implemented.
 
 ## Configuration schema version 1
 
@@ -49,11 +60,14 @@ executes the already verified descriptor. macOS repeats the descriptor digest,
 path identity, and canonical path checks immediately before launching the
 protected path. No sidecar arguments or environment values are inherited.
 
-This slice provides the production ACL proof on macOS. Linux descriptor
-execution and process-group containment are covered, but `doctor` and `serve`
-return `acl_probe_unavailable` until a bounded Linux ACL proof backend lands.
-Every platform without the complete descriptor, containment, and ACL contract
-fails closed.
+The production ACL proof is available on macOS and Linux. macOS validates the
+bounded `ls -lde` record. Linux invokes one pinned root-owned
+`/usr/bin/getfacl` helper with numeric identities, no header, and no symbolic
+link traversal. It accepts exactly the owner, group, and other entries implied
+by the inspected mode. Named users, named groups, masks, default ACLs,
+malformed output, helper drift, or target replacement fail closed. A Linux host
+without that helper returns `acl_probe_unavailable`. Every platform without
+the complete descriptor, containment, and ACL contract fails closed.
 
 The credential descriptor is also exact-shape private JSON. It contains a
 record identifier, never credential bytes:
@@ -79,14 +93,52 @@ and oversized records fail closed. Reads use one fixed-size zeroizing buffer,
 stop after the first byte beyond the limit, and recheck the same inode, owner,
 mode, link count, and exact size before readiness.
 
-`credentialsReady: true` proves only that the descriptor-bound sidecar could
-securely open and read the exact local mounted material, then zeroize its
-in-memory copy. The bytes remain opaque. The receipt does not prove that they
-match a generic secret format, a Drive credential format, Google Drive
-authentication, OAuth validity, cloud reachability, or writer admission. The
-sidecar never interprets a Drive token and makes no provider request in this
-slice. Generic or Drive-specific secret parsing remains unavailable until task
-11.5 defines and approves that contract.
+The mounted record is exact-shape JSON with format
+`freed_library_primary_credentials_v1`. It contains one lowercase hexadecimal
+Library ID, one base64 Ed25519 authority PKCS#8 key, and one base64 Ed25519
+Primary actor PKCS#8 key. Unknown fields, invalid base64, invalid keys, and a
+foreign Library identity fail closed. Decoded keys remain only in zeroizing
+native memory. They never enter Node, SQLite, command frames, responses, or
+logs.
+
+The native command registry can derive the stable Primary actor ID from the
+retained actor key and one installation witness. Its writer-reassignment
+command accepts one canonical source-control record, exact target actor ID,
+installation witness, and accepted timestamp. The native core rechecks local
+authority, signs one successor epoch, enrolls the target actor, and commits the
+new writer admission atomically. Exact replay returns the same certificate.
+Stale source control, a changed witness, a foreign target actor, or changed
+local authority fails without partial promotion.
+
+One reusable bounded command client owns every Node-to-sidecar exchange. Its
+command IDs and native refusal codes are generated from the executable SQLite
+contract. It binds each response to one fresh request ID, accepts only an exact
+success or refusal envelope, and rejects unknown error text, malformed UTF-8,
+oversized frames, and response identity drift. Startup storage inspection uses
+this same client instead of a separate parser.
+
+The service package also exposes one provider-neutral Primary runtime. It
+binds the shared 15-second local revision poll and 60-second inbound actor
+refresh scheduler to that native command client. Startup reads the stable
+Primary actor identity and pinned checkpoint descriptor from the sidecar, then
+requires the exact Library ID and current writer to match before publication.
+Each scheduled pass rereads the checkpoint descriptor and stops when native
+SQLite reports another writer. The publication port receives only the native
+client, the closed reason `initial`, `local_revision`, or `inbound_refresh`,
+and an abort signal. It owns any transport credential or provider adapter.
+
+The compiled `dist/index.js` and `dist/bin.js` artifacts bundle the shared
+provider-neutral coordinator. An installed service does not need an
+unpublished `@freed/sync` package at runtime. The `serve` command does not yet
+bind a Drive OAuth store or Drive publication port, so it does not start the
+recurring cloud loop. Task 11.5 owns that installed credential and transport
+binding.
+
+`credentialsReady: true` proves that exact native Primary signing custody. It
+does not prove Drive authentication, OAuth validity, cloud reachability, or
+writer promotion. The sidecar never interprets a Drive token and makes no
+provider request in this slice. Drive OAuth remains a separate credential and
+task 11.5 remains responsible for its platform-safe custody.
 
 The admission record on fd6 is exact-shape JSON. It binds the operator's local
 Primary admission to the start envelope, executable, both inherited root

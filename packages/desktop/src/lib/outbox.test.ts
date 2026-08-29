@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import type { DocChangeEvent } from "./library-types";
+import type { LibraryMutationEvent } from "./library-types";
 import type { ConfirmFn } from "./outbox";
 import type { PlatformActions } from "./platform-actions";
 
@@ -79,7 +79,7 @@ function makeItem(
   };
 }
 
-function makePatchEvent(item: FeedItem): DocChangeEvent {
+function makePatchEvent(item: FeedItem): LibraryMutationEvent {
   return {
     source: "item_patch",
     mutation: "TOGGLE_LIKED",
@@ -89,7 +89,7 @@ function makePatchEvent(item: FeedItem): DocChangeEvent {
   };
 }
 
-function makeFullScanEvent(): DocChangeEvent {
+function makeFullScanEvent(): LibraryMutationEvent {
   return {
     source: "state_update",
     mutation: "ADD_FEED_ITEMS",
@@ -98,9 +98,19 @@ function makeFullScanEvent(): DocChangeEvent {
   };
 }
 
+function scanFixtureItems(
+  getItems: () => readonly FeedItem[],
+) {
+  return vi.fn(async (
+    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  ) => {
+    await visitPage(getItems());
+  });
+}
+
 function requireSubscriber(
-  subscriber: ((event: DocChangeEvent) => void) | null,
-): (event: DocChangeEvent) => void {
+  subscriber: ((event: LibraryMutationEvent) => void) | null,
+): (event: LibraryMutationEvent) => void {
   expect(subscriber).not.toBeNull();
   if (!subscriber) {
     throw new Error("outbox processor did not subscribe");
@@ -133,8 +143,8 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
-    const getItems = vi.fn(() => [makeItem("x:startup")]);
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
+    const scanItems = scanFixtureItems(() => [makeItem("x:startup")]);
     const like = vi.fn(async () => true);
     const actions: PlatformActions = {
       like,
@@ -144,7 +154,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      getItems,
+      scanItems,
       (cb) => {
         subscriber = cb;
         return () => {
@@ -156,10 +166,10 @@ describe("outbox processor", () => {
       vi.fn(async () => undefined),
     );
     await vi.runAllTimersAsync();
-    expect(getItems).toHaveBeenCalledTimes(1);
+    expect(scanItems).toHaveBeenCalledTimes(1);
     const notify = requireSubscriber(subscriber);
 
-    getItems.mockImplementation(() => {
+    scanItems.mockImplementation(async () => {
       throw new Error("patch drain should not scan all items");
     });
 
@@ -167,9 +177,46 @@ describe("outbox processor", () => {
     notify(makePatchEvent(patchedItem));
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(getItems).toHaveBeenCalledTimes(1);
+    expect(scanItems).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledWith(patchedItem);
+    teardown();
+  });
+
+  it("drains normalized SQLite null synchronization receipts", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor } = await loadOutbox();
+    const pending = makeItem("x:normalized-null", {
+      hidden: false,
+      saved: false,
+      archived: false,
+      tags: [],
+      liked: true,
+      likedAt: 10,
+      likedSyncedAt: null,
+      readAt: 11,
+      seenSyncedAt: null,
+    } as unknown as FeedItem["userState"]);
+    const scanItems = scanFixtureItems(() => [pending]);
+    const like = vi.fn(async () => true);
+    const markSeen = vi.fn(async () => true);
+
+    const teardown = startOutboxProcessor(
+      scanItems,
+      () => () => {},
+      new Map([["x", {
+        like,
+        unlike: vi.fn(async () => true),
+        markSeen,
+        commentUrl: vi.fn(() => null),
+      }]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    await vi.runAllTimersAsync();
+
+    expect(like).toHaveBeenCalledWith(pending);
+    expect(markSeen).toHaveBeenCalledWith(pending);
     teardown();
   });
 
@@ -196,7 +243,7 @@ describe("outbox processor", () => {
 
     const { startOutboxProcessor } = await loadOutbox();
     const teardown = startOutboxProcessor(
-      () => [makeItem("x:retired", { liked: true, likedAt: 10 })],
+      scanFixtureItems(() => [makeItem("x:retired", { liked: true, likedAt: 10 })]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -216,9 +263,6 @@ describe("outbox processor", () => {
     const { startOutboxProcessor } = await loadOutbox();
     const first = makeItem("x:first", { liked: true, likedAt: 10 });
     const second = makeItem("x:second", { liked: true, likedAt: 20 });
-    const getItems = vi.fn(() => {
-      throw new Error("full Automerge corpus must not be read");
-    });
     const like = vi.fn(async () => true);
     const actions: PlatformActions = {
       like,
@@ -234,17 +278,15 @@ describe("outbox processor", () => {
     });
 
     const teardown = startOutboxProcessor(
-      getItems,
+      scanItems,
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
       vi.fn(async () => undefined),
-      scanItems,
     );
     await vi.runAllTimersAsync();
 
     expect(scanItems).toHaveBeenCalledTimes(1);
-    expect(getItems).not.toHaveBeenCalled();
     expect(like).toHaveBeenCalledTimes(2);
     expect(like).toHaveBeenNthCalledWith(1, first);
     expect(like).toHaveBeenNthCalledWith(2, second);
@@ -255,8 +297,8 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
-    const getItems = vi.fn(() => [makeItem("x:startup")]);
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
+    const scanItems = scanFixtureItems(() => [makeItem("x:startup")]);
     const like = vi.fn()
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
@@ -268,7 +310,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      getItems,
+      scanItems,
       (cb) => {
         subscriber = cb;
         return () => {
@@ -280,10 +322,10 @@ describe("outbox processor", () => {
       vi.fn(async () => undefined),
     );
     await vi.runAllTimersAsync();
-    expect(getItems).toHaveBeenCalledTimes(1);
+    expect(scanItems).toHaveBeenCalledTimes(1);
     const notify = requireSubscriber(subscriber);
 
-    getItems.mockImplementation(() => {
+    scanItems.mockImplementation(async () => {
       throw new Error("patch retry should not scan all items");
     });
 
@@ -292,7 +334,7 @@ describe("outbox processor", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(getItems).toHaveBeenCalledTimes(1);
+    expect(scanItems).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledTimes(2);
     expect(like).toHaveBeenNthCalledWith(1, patchedItem);
     expect(like).toHaveBeenNthCalledWith(2, patchedItem);
@@ -303,8 +345,9 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
-    const getItems = vi.fn(() => [makeItem("x:startup")]);
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
+    let scanRows = [makeItem("x:startup")];
+    const scanItems = scanFixtureItems(() => scanRows);
     const like = vi.fn(async () => true);
     const actions: PlatformActions = {
       like,
@@ -314,7 +357,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      getItems,
+      scanItems,
       (cb) => {
         subscriber = cb;
         return () => {
@@ -326,16 +369,16 @@ describe("outbox processor", () => {
       vi.fn(async () => undefined),
     );
     await vi.runAllTimersAsync();
-    expect(getItems).toHaveBeenCalledTimes(1);
+    expect(scanItems).toHaveBeenCalledTimes(1);
     const notify = requireSubscriber(subscriber);
 
     const pendingItem = makeItem("x:full-scan", { liked: true, likedAt: 20 });
-    getItems.mockReturnValue([pendingItem]);
+    scanRows = [pendingItem];
 
     notify(makeFullScanEvent());
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(getItems).toHaveBeenCalledTimes(2);
+    expect(scanItems).toHaveBeenCalledTimes(2);
     expect(like).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledWith(pendingItem);
     teardown();
@@ -355,7 +398,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -394,7 +437,7 @@ describe("outbox processor", () => {
     };
 
     const firstTeardown = loaded.startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -406,7 +449,7 @@ describe("outbox processor", () => {
 
     loaded = await loadOutbox();
     const secondTeardown = loaded.startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -433,7 +476,7 @@ describe("outbox processor", () => {
     });
 
     const { startOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const like = vi.fn(async () => false);
     const actions: PlatformActions = {
       like,
@@ -442,7 +485,7 @@ describe("outbox processor", () => {
       commentUrl: vi.fn(() => null),
     };
     const teardown = startOutboxProcessor(
-      () => [makeItem("x:visible")],
+      scanFixtureItems(() => [makeItem("x:visible")]),
       (cb) => {
         subscriber = cb;
         return () => {
@@ -496,7 +539,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [historical],
+      scanFixtureItems(() => [historical]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -513,7 +556,7 @@ describe("outbox processor", () => {
   it("gives a new like intent a fresh budget after a historical failure", async () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const historical = makeItem("x:new-intent", {
       liked: true,
       likedAt: 60,
@@ -529,7 +572,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [historical],
+      scanFixtureItems(() => [historical]),
       (cb) => {
         subscriber = cb;
         return () => { subscriber = null; };
@@ -574,7 +617,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -601,7 +644,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -620,7 +663,7 @@ describe("outbox processor", () => {
     teardown();
   });
 
-  it("retries a failed Automerge acknowledgement without repeating the provider action", async () => {
+  it("retries a failed SQLite acknowledgement without repeating the provider action", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(11_000);
     const { startOutboxProcessor } = await loadOutbox();
@@ -637,7 +680,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -680,7 +723,7 @@ describe("outbox processor", () => {
     };
 
     const teardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -715,7 +758,7 @@ describe("outbox processor", () => {
     });
 
     const firstTeardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -725,7 +768,7 @@ describe("outbox processor", () => {
     expect(like).toHaveBeenCalledTimes(1);
 
     const secondTeardown = startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -760,7 +803,7 @@ describe("outbox processor", () => {
     };
 
     startOutboxProcessor(
-      () => [pendingItem],
+      scanFixtureItems(() => [pendingItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,
@@ -790,7 +833,7 @@ describe("outbox processor", () => {
   it("drops a provider action queued by the debounce when reset begins", async () => {
     vi.useFakeTimers();
     const { startOutboxProcessor, stopAndDrainOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const like = vi.fn(async () => true);
     const confirmLiked = vi.fn(async () => undefined);
     const actions: PlatformActions = {
@@ -801,7 +844,7 @@ describe("outbox processor", () => {
     };
 
     startOutboxProcessor(
-      () => [],
+      scanFixtureItems(() => []),
       (callback) => {
         subscriber = callback;
         return () => {
@@ -848,7 +891,7 @@ describe("outbox processor", () => {
     };
 
     startOutboxProcessor(
-      () => [makeItem("x:not-issued", { liked: true, likedAt: 100 })],
+      scanFixtureItems(() => [makeItem("x:not-issued", { liked: true, likedAt: 100 })]),
       () => () => {},
       new Map([["x", actions]]),
       vi.fn(async () => undefined),
@@ -885,7 +928,7 @@ describe("outbox processor", () => {
     };
 
     startOutboxProcessor(
-      () => [firstItem, secondItem],
+      scanFixtureItems(() => [firstItem, secondItem]),
       () => () => {},
       new Map([["x", actions]]),
       confirmLiked,

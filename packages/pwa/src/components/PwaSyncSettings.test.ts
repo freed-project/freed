@@ -9,43 +9,68 @@ import { PwaSyncSettings } from "./PwaSyncSettings";
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(async () => {}),
   clearCloudSync: vi.fn(),
-  clearStoredRelayUrl: vi.fn(),
-  disconnect: vi.fn(),
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
-  readSelectedCheckpoint: vi.fn(async () => ({
-    generationId: "67".repeat(32),
-    selectionSequence: 3,
-    libraryId: "01".repeat(32),
-    storageEpoch: "02".repeat(32),
-    manifestGeneration: 4,
-    manifest: {
-      descriptor: {
-        byteLength: 123,
-        contentDigest: "67".repeat(32),
-        objectKey: "checkpoint-manifest-object-key",
-      },
-      transportObjectId: "drive-object-12345678",
+  readCloudReceipt: vi.fn(async () => ({
+    checkpoint: {
+      authorityEpoch: "02".repeat(32),
+      checkpointDigest: "67".repeat(32),
+      checkpointGeneration: 4,
+      controlRevision: "68".repeat(32),
+      installedAt: Date.now(),
+      libraryId: "01".repeat(32),
+      manifestContentDigest: "67".repeat(32),
+      manifestObjectKey: "checkpoint-manifest-object-key",
+      manifestTransportObjectId: "drive-object-12345678",
+      sourceRevision: 7,
+      writerActorId: "69".repeat(32),
     },
-    importedThroughIngestSequence: 7,
-    totalRecordCount: 19_003,
-    itemCount: 19_000,
-    checkpointStoredByteLength: 1_536,
+    follower: {
+      actorId: "70".repeat(32),
+      libraryId: "01".repeat(32),
+      nextIntentActorCounter: 4,
+      nextResultSequence: 3,
+      previousIntentSegmentDigest: "71".repeat(32),
+      previousResultSegmentDigest: "72".repeat(32),
+      schemaVersion: 2 as const,
+      storageEpochId: "02".repeat(32),
+    },
+  })),
+  readFacetSummary: vi.fn(async () => ({
+    archivedCount: 0,
+    archivableCount: 0,
+    contactAccountCount: 0,
+    contactLinkedPersonCount: 0,
+    enabledRssFeedCount: 1,
+    friendPersonCount: 0,
+    latestContactImportedAt: null,
+    latestRssFeedFetchedAt: Date.now() - 90_000,
+    platformCounts: [],
+    rssFeedCount: 1,
+    sampleAccountCount: 0,
+    sampleFeedCount: 0,
+    savedArchivedCount: 0,
+    savedCount: 0,
+    savedPlatformCount: 0,
+    socialAccountCount: 0,
+    sampleItemCount: 0,
+    samplePersonCount: 0,
+    tags: [],
+    totalCount: 0,
+    unreadCount: 0,
   })),
 }));
 
 vi.mock("../lib/sync", () => ({
   clearCloudSync: mocks.clearCloudSync,
-  clearStoredRelayUrl: mocks.clearStoredRelayUrl,
-  disconnect: mocks.disconnect,
   getCloudProvider: mocks.getCloudProvider,
   stopCloudSync: mocks.stopCloudSync,
   syncCloudProviderNow: mocks.syncCloudProviderNow,
 }));
 
 vi.mock("../lib/library-core-runtime", () => ({
-  readPwaLibraryCoreSelectedCheckpointReceipt: mocks.readSelectedCheckpoint,
+  readPwaLibraryCoreCloudReceiptV2: mocks.readCloudReceipt,
 }));
 
 function createPlatform(): PlatformConfig {
@@ -63,6 +88,7 @@ function createPlatform(): PlatformConfig {
     SubstackSettingsContent: null,
     MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
+    readLibraryFacetSummary: mocks.readFacetSummary,
     releaseChannel: "production",
   };
 }
@@ -101,14 +127,13 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     useAppStore.setState({
       syncConnected: true,
       isSyncing: false,
-      feeds: {},
     });
     useDebugStore.setState({
-      docSnapshot: {
-        documentId: "document-1",
+      librarySnapshot: {
+        libraryId: "document-1",
         itemCount: 1,
         feedCount: 0,
-        binarySize: 1536,
+        storageBytes: 1536,
         savedAt: Date.now(),
       },
       cloudProviders: {
@@ -139,9 +164,8 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     useAppStore.setState({
       syncConnected: false,
       isSyncing: false,
-      feeds: {},
     });
-    useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
+    useDebugStore.setState({ librarySnapshot: null, cloudProviders: null });
     document.body.innerHTML = "";
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -153,6 +177,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       createElement(PwaSyncSettings),
     );
     await act(async () => {
+      await Promise.resolve();
       await Promise.resolve();
     });
 
@@ -167,6 +192,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     );
 
     expect(diagnostics?.textContent).toContain("Sync diagnostics");
+    expect(container.textContent).toContain("Last synced 1m ago");
     expect(diagnostics?.textContent).toContain("Local items");
     expect(diagnostics?.textContent).toContain("1");
     expect(diagnostics?.textContent).toContain("No remote changes found.");
@@ -176,10 +202,20 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     expect(diagnostics?.textContent).toContain(
       "Checked cloud storage. No remote changes found.",
     );
-    expect(diagnostics?.textContent).toContain("Manifest records");
-    expect(diagnostics?.textContent).toContain("19,003");
-    expect(diagnostics?.textContent).toContain("19,000");
-    expect(diagnostics?.textContent).toContain("1.5 KB");
+    expect(diagnostics?.textContent).toContain("Source revision");
+    expect(diagnostics?.textContent).toContain("7");
+    expect(diagnostics?.textContent).toContain("Checkpoint digest");
+    expect(diagnostics?.textContent).toContain("Control revision");
+    expect(diagnostics?.textContent).toContain("Follower actor");
+    expect(diagnostics?.textContent).toContain("...70707070");
+    expect(diagnostics?.textContent).toContain("Next intent");
+    expect(diagnostics?.textContent).toContain("4");
+    expect(diagnostics?.textContent).toContain("Intent head");
+    expect(diagnostics?.textContent).toContain("...71717171");
+    expect(diagnostics?.textContent).toContain("Next result");
+    expect(diagnostics?.textContent).toContain("3");
+    expect(diagnostics?.textContent).toContain("Result head");
+    expect(diagnostics?.textContent).toContain("...72727272");
     expect(diagnostics?.textContent).toContain("...67676767");
     expect(diagnostics?.textContent).toContain("...12345678");
     const manifestDigest = Array.from(
@@ -198,9 +234,9 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       await Promise.resolve();
     });
     expect(mocks.clipboardWrite).toHaveBeenCalledWith(
-      JSON.stringify(await mocks.readSelectedCheckpoint(), null, 2),
+      JSON.stringify(await mocks.readCloudReceipt(), null, 2),
     );
-    expect(copyReceipt?.textContent).toContain("PWA receipt copied");
+    expect(copyReceipt?.textContent).toContain("PWA sync receipt copied");
 
     await act(async () => {
       syncNow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -351,7 +387,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
 
     expect(container.textContent).toContain("Merging 30s");
     expect(activeCounter?.textContent).toContain(
-      "Merging Google Drive data into this library",
+      "Applying Google Drive records to this Library",
     );
     expect(activeCounter?.textContent).toContain("30s");
     expect(activeCounter?.querySelector("[aria-label='Syncing']")).toBeTruthy();

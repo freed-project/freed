@@ -3,18 +3,14 @@
  *
  * Native SQLite owns persistence and emits bounded materialized state updates.
  * The subscriber here applies them directly, with no document decode or
- * corpus-sized hydration on the main thread.
+ * corpus-sized materialization on the main thread.
  */
 
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
-  Account,
   FeedItem,
   FilterOptions,
-  Friend,
-  Person,
-  ReachOutLog,
   RemoveFeedOptions,
   RssFeed,
   SampleDataClearSummary,
@@ -25,92 +21,42 @@ import type {
 } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
-  accountsFromLegacyFriend,
-  buildConnectionPersonDraftFromAccounts,
+  assertSupportedUserPreferenceWrite,
   createDefaultPreferences,
-  getDeviceLocalGraphPositionUpdates,
-  getDeviceLocalPreferenceUpdates,
-  isPrunableConnectionPerson,
-  personFromLegacyFriend,
-  stripDeviceLocalPreferenceUpdates,
-  stripDeviceLocalGraphPositionUpdates,
 } from "@freed/shared";
-import {
-  migrateLegacyDeviceAIPreferences,
-  setDeviceAIPreferences,
-} from "@freed/ui/lib/device-ai-preferences";
-import {
-  migrateLegacyDeviceDisplayPreferences,
-  setDeviceDisplayPreferences,
-} from "@freed/ui/lib/device-display-preferences";
+import { migrateLegacyDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
+import { migrateLegacyDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
-import {
-  applyDeviceAccountGraphPositionUpdate,
-  applyDevicePersonGraphPositionUpdate,
-  getDeviceGraphLayout,
-  migrateLegacyDeviceGraphLayout,
-  pruneDeviceGraphLayout,
-  restoreReplacedDeviceAccountGraphPositions,
-} from "@freed/ui/lib/device-graph-layout";
+import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
 import {
-  projectArchiveAllReadUnsaved,
-  projectArchiveItems,
-  projectMarkAllAsRead,
-  projectMarkItemsAsRead,
-  projectRemoveItem,
-  projectRenameFeed,
-  projectToggleArchived,
-  projectToggleLiked,
-  projectToggleSaved,
-  projectUpdateAccount,
-  projectUpdateItem,
-  projectUpdatePerson,
-  rollbackOptimisticPatch,
-  type OptimisticPatch,
-} from "@freed/shared/optimistic-state";
-import {
-  initDoc,
-  subscribe,
-  getDocState,
-  docAddFeedItems,
-  docAddSampleLibraryData,
-  docAddRssFeed,
-  docRemoveRssFeed,
-  docRemoveAllFeeds,
-  docUpdateRssFeed,
-  docUpdateFeedItem,
-  docMarkItemsAsRead,
-  docMarkAllAsRead,
-  docToggleSaved,
-  docRemoveFeedItem,
-  docClearSampleData,
-  docToggleArchived,
-  docArchiveItems,
-  docArchiveAllReadUnsaved,
-  docUnarchiveSavedItems,
-  docDeleteAllArchived,
-  docPruneArchivedItems,
-  docUpdatePreferences,
-  docBackfillContentSignals,
-  docDeduplicateFeedItems,
-  docHealUntitledFeedTitles,
-  docAddAccount,
-  docAddAccounts,
-  docAddPerson,
-  docAddPersons,
-  docUpdateAccount,
-  docUpdatePerson,
-  docUpsertConnectionPersons,
-  docRemoveAccount,
-  docRemovePerson,
-  docLogReachOut,
-  docToggleLiked,
-  docConfirmLikedSynced,
-  docConfirmSeenSynced,
+  initializeDesktopLibraryRuntime,
+  subscribeDesktopLibraryRuntime,
+  addLibraryFeedItems,
+  addSampleLibraryData,
+  addLibraryRssFeed,
+  removeLibraryRssFeed,
+  removeAllLibraryFeeds,
+  updateLibraryRssFeed,
+  updateLibraryFeedItem,
+  markLibraryItemsAsRead,
+  markAllLibraryItemsAsRead,
+  toggleLibraryItemSaved,
+  removeLibraryFeedItem,
+  clearSampleLibraryData,
+  toggleLibraryItemArchived,
+  archiveLibraryItems,
+  archiveAllReadUnsavedLibraryItems,
+  unarchiveSavedLibraryItems,
+  deleteAllArchivedLibraryItems,
+  pruneArchivedLibraryItems,
+  updateLibraryPreferences,
+  healUntitledLibraryFeedTitles,
+  toggleLibraryItemLiked,
+  confirmLibraryItemLikedSynced,
+  confirmLibraryItemSeenSynced,
   quiesceDesktopLibraryForFactoryReset,
-  type DocChangeEvent,
-  type DocState,
+  type LibraryMutationEvent,
 } from "./library-client";
 import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor, stopAndDrainOutboxProcessor } from "./outbox";
@@ -118,7 +64,6 @@ import {
   readLibraryCoreItemDetail,
   scanLibraryCoreItems,
 } from "./library-core-item-detail-runtime";
-import { isSqliteLibraryActive } from "./sqlite-library";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -129,9 +74,13 @@ import {
 } from "@freed/ui/lib/background-activity-store";
 import { pinReaderItem } from "./content-fetcher";
 import {
-  isBackgroundRuntimeDeferredError,
-  runBackgroundJob,
-} from "./background-runtime-coordinator";
+  scanLibraryCoreRssFeedsV1,
+  type LibraryCoreRuntimeStateV1,
+} from "@freed/shared/library-core";
+import {
+  mutateNormalizedDeviceGraphLayout,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
 import { log } from "./logger";
 import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
 import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
@@ -140,9 +89,9 @@ import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import {
-  captureShellMemoryBaseline,
-  recordDocumentHydrated,
-  recordDocumentHydrationStarted,
+  capturePreLibraryMemoryBaseline,
+  recordLibraryRuntimeReady,
+  recordLibraryRuntimeLoadStarted,
 } from "./memory-monitor";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
@@ -153,10 +102,8 @@ import {
 
 let outboxTeardown: (() => void) | null = null;
 let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
-let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
-let startupContentSignalBackfillRunning = false;
 let appInitializationPromise: Promise<void> | null = null;
-let documentSubscriptionTeardown: (() => void) | null = null;
+let librarySubscriptionTeardown: (() => void) | null = null;
 let storeAcceptingResetSensitiveWork = true;
 const activeResetSensitiveStoreOperations = new Set<Promise<unknown>>();
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
@@ -198,7 +145,7 @@ function compactSavedFeedUserState(
 function mergeSavedFeedPresentationPatch(
   previous: SavedFeedPresentationPatch | null,
   sourceVersion: number,
-  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+  event: Extract<LibraryMutationEvent, { source: "item_patch" }>,
 ): SavedFeedPresentationPatch {
   const current =
     previous?.sourceVersion === sourceVersion ? previous : null;
@@ -248,7 +195,7 @@ function mergeSavedFeedPresentationPatch(
 function savedFeedPresentationPatchExceedsLimit(
   previous: SavedFeedPresentationPatch | null,
   sourceVersion: number,
-  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+  event: Extract<LibraryMutationEvent, { source: "item_patch" }>,
 ): boolean {
   const current = previous?.sourceVersion === sourceVersion ? previous : null;
   if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
@@ -317,31 +264,26 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
 
 // App state interface
 interface AppState {
-  // Data (received pre-hydrated from Automerge worker as DocState)
-  items: FeedItem[];
+  // Bounded SQLite query invalidation and visible settings state.
   searchCorpusVersion: number;
   libraryItemVersion: number;
   savedFeedVersion: number;
   savedFeedPresentationPatch: SavedFeedPresentationPatch | null;
-  feeds: Record<string, RssFeed>;
-  persons: Record<string, Person>;
-  accounts: Record<string, Account>;
-  friends: Record<string, Friend>;
   preferences: UserPreferences;
-  desktopClientIds: string[];
-  feedUnreadCounts: Record<string, number>;
-  feedTotalCounts: Record<string, number>;
   totalUnreadCount: number;
   unreadCountByPlatform: Record<string, number>;
   totalItemCount: number;
   itemCountByPlatform: Record<string, number>;
+  rssFeedCount: number;
+  enabledRssFeedCount: number;
+  archivedItemCount: number;
+  friendPersonCount: number;
+  socialAccountCount: number;
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
-  archivableFeedCounts: Record<string, number>;
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
-  /** Total feed-item records including hidden and archived items. */
-  docItemCount: number;
+  visibleFeedTotalCount: number;
 
   // X auth state
   xAuth: XAuthState;
@@ -368,7 +310,7 @@ interface AppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  selectedFriendId: string | null;
+  setVisibleFeedTotalCount: (totalCount: number) => void;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -377,7 +319,7 @@ interface AppState {
     revision: number,
   ) => void;
 
-  // Item actions (persisted to Automerge)
+  // Item actions persisted through typed SQLite mutations.
   addItems: (items: FeedItem[]) => Promise<void>;
   updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
@@ -390,36 +332,16 @@ interface AppState {
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
-  /** Record like intent in Automerge. Outbox processor drains to platform. */
+  /** Record like intent in SQLite. The outbox processor drains it to the provider. */
   toggleLiked: (id: string) => Promise<void>;
 
-  // Feed actions (persisted to Automerge)
+  // Feed actions persisted through typed SQLite mutations.
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string, options?: RemoveFeedOptions) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
-  // Friend actions (persisted to Automerge)
-  addPerson: (person: Person) => Promise<void>;
-  addPersons: (persons: Person[]) => Promise<void>;
-  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
-  removePerson: (id: string) => Promise<void>;
-  addFriend: (friend: Friend) => Promise<void>;
-  addFriends: (friends: Friend[]) => Promise<void>;
-  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
-  removeFriend: (id: string) => Promise<void>;
-  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
-  addAccount: (account: Account) => Promise<void>;
-  addAccounts: (accounts: Account[]) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  removeAccount: (id: string) => Promise<void>;
-  linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
-  createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
-  createConnectionPersonsFromCandidates: (
-    candidates: Array<{ person: Person; accountIds: string[] }>,
-  ) => Promise<number>;
-
-  // Preference actions (persisted to Automerge)
+  // Preference actions persisted through typed SQLite mutations.
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
 
   // X auth actions
@@ -442,7 +364,6 @@ interface AppState {
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
   setSelectedAccount: (id: string | null) => void;
-  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setProviderSyncing: (provider: SyncProviderId, syncing: boolean) => void;
@@ -473,6 +394,43 @@ function shallowEqualRecord(
   );
 }
 
+function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
+  AppState,
+  | "archivableCountByPlatform"
+  | "itemCountByPlatform"
+  | "rssFeedCount"
+  | "enabledRssFeedCount"
+  | "archivedItemCount"
+  | "friendPersonCount"
+  | "socialAccountCount"
+  | "mapAllContentLocationCount"
+  | "mapFriendLocationCount"
+  | "preferences"
+  | "searchCorpusVersion"
+  | "totalArchivableCount"
+  | "totalItemCount"
+  | "totalUnreadCount"
+  | "unreadCountByPlatform"
+> {
+  return {
+    archivableCountByPlatform: state.archivableCountByPlatform,
+    itemCountByPlatform: state.itemCountByPlatform,
+    rssFeedCount: state.rssFeedCount,
+    enabledRssFeedCount: state.enabledRssFeedCount,
+    archivedItemCount: state.archivedItemCount,
+    friendPersonCount: state.friendPersonCount,
+    socialAccountCount: state.socialAccountCount,
+    mapAllContentLocationCount: state.mapAllContentLocationCount,
+    mapFriendLocationCount: state.mapFriendLocationCount,
+    preferences: state.preferences,
+    searchCorpusVersion: state.searchCorpusVersion,
+    totalArchivableCount: state.totalArchivableCount,
+    totalItemCount: state.totalItemCount,
+    totalUnreadCount: state.totalUnreadCount,
+    unreadCountByPlatform: state.unreadCountByPlatform,
+  };
+}
+
 function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -500,22 +458,11 @@ function mergeFacebookCapturePreferenceUpdate(
   current: UserPreferences["fbCapture"],
   update: Partial<UserPreferences["fbCapture"]>,
 ): UserPreferences["fbCapture"] {
-  const next: UserPreferences["fbCapture"] = {
+  return {
     excludedGroupIds: update.excludedGroupIds
       ? { ...update.excludedGroupIds }
       : { ...current.excludedGroupIds },
   };
-  const knownGroups = update.knownGroups ?? current.knownGroups;
-  if (knownGroups) next.knownGroups = { ...knownGroups };
-  return next;
-}
-
-function optimisticBefore(state: AppState, patch: OptimisticPatch): OptimisticPatch {
-  const before: OptimisticPatch = {};
-  for (const key of Object.keys(patch) as Array<keyof OptimisticPatch>) {
-    before[key] = state[key] as never;
-  }
-  return before;
 }
 
 function optimisticMutationTestFailure(source: string): Error | null {
@@ -527,34 +474,12 @@ function optimisticMutationTestFailure(source: string): Error | null {
   return message ? new Error(message) : null;
 }
 
-async function runOptimisticMutation(
-  getState: () => AppState,
-  setState: (patch: Partial<AppState>) => void,
+async function runStoreMutation(
   source: string,
-  project: (state: AppState) => OptimisticPatch | null,
   task: () => Promise<void>,
   options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
 ): Promise<void> {
   assertDesktopStoreWritable();
-  const projected = project(getState());
-  if (!projected) {
-    if (options.waitForPersistence === false) {
-      void task().catch((error) => {
-        if (options.recordFailure !== false) {
-          const detail = error instanceof Error ? error.message : String(error);
-          recordRuntimeError({ source, error, fatal: false });
-          recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
-        }
-      });
-      return;
-    }
-    await task();
-    return;
-  }
-
-  const before = optimisticBefore(getState(), projected);
-  setState(projected as Partial<AppState>);
-
   const persist = async () => {
     try {
       const testFailure = optimisticMutationTestFailure(source);
@@ -564,14 +489,10 @@ async function runOptimisticMutation(
       }
       await task();
     } catch (error) {
-      const rollback = rollbackOptimisticPatch(getState(), before, projected);
-      if (rollback) {
-        setState(rollback as Partial<AppState>);
-      }
       if (options.recordFailure !== false) {
         const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source, error, fatal: false });
-        recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+        recordBugReportEvent(source, "error", "SQLite mutation failed", detail);
       }
       throw error;
     }
@@ -584,46 +505,24 @@ async function runOptimisticMutation(
   await persist();
 }
 
-async function pruneConnectionPersonIfNeeded(
-  getState: () => AppState,
-  personId: string | null | undefined,
-  ignoredAccountIds: string[] = [],
-): Promise<void> {
-  const state = getState();
-  if (!isPrunableConnectionPerson(state.persons, state.accounts, personId, ignoredAccountIds)) {
-    return;
-  }
-  await docRemovePerson(personId!);
-}
-
 /**
  * Run idempotent startup migrations after the app survives launch.
- * subscribe() is already wired up at call time, so any doc mutations propagate
- * to the UI automatically. Errors are swallowed - all three ops are non-fatal.
- * Migrations run in the worker, but WebKit still owns worker memory. Delaying
- * them keeps large libraries from immediately reloading the Automerge document
- * right after first paint.
+ * The SQLite runtime subscription is already wired up at call time, so
+ * mutation invalidations propagate to the UI automatically. Errors are
+ * swallowed because archive maintenance is non-fatal. Delaying maintenance
+ * keeps startup work away from first paint.
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
-  if (!isSqliteLibraryActive()) {
-    try {
-      await docHealUntitledFeedTitles();
-    } catch { /* non-fatal */ }
-    if (!storeAcceptingResetSensitiveWork) return;
-    try {
-      await docDeduplicateFeedItems();
-    } catch { /* non-fatal */ }
-  }
+  try {
+    await healUntitledLibraryFeedTitles();
+  } catch { /* non-fatal */ }
   if (!storeAcceptingResetSensitiveWork) return;
   try {
     if (archivePruneDays > 0) {
-      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+      await pruneArchivedLibraryItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
-  if (!isSqliteLibraryActive()) {
-    scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
-  }
 }
 
 const STARTUP_MAINTENANCE_INITIAL_DELAY_MS = 15 * 60 * 1000;
@@ -670,63 +569,12 @@ function recordReadStateInfo(message: string, detail: Record<string, unknown>): 
   );
 }
 
-const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 10 * 60 * 1000;
-const STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS = 30 * 1000;
-const STARTUP_CONTENT_SIGNAL_INTERVAL_MS = 60 * 1000;
-const STARTUP_CONTENT_SIGNAL_BATCH_SIZE = 50;
-
 function scheduleStartupMigrations(archivePruneDays: number): void {
   if (!storeAcceptingResetSensitiveWork || startupMaintenanceTimer) return;
   startupMaintenanceTimer = setTimeout(() => {
     startupMaintenanceTimer = null;
     void trackResetSensitiveStoreOperation(runStartupMigrations(archivePruneDays));
   }, STARTUP_MAINTENANCE_INITIAL_DELAY_MS);
-}
-
-function scheduleStartupContentSignalBackfill(delayMs: number): void {
-  if (!storeAcceptingResetSensitiveWork || startupContentSignalTimer) return;
-  startupContentSignalTimer = setTimeout(() => {
-    startupContentSignalTimer = null;
-    void trackResetSensitiveStoreOperation(runStartupContentSignalBackfill());
-  }, delayMs);
-}
-
-async function runStartupContentSignalBackfill(): Promise<void> {
-  if (!storeAcceptingResetSensitiveWork || startupContentSignalBackfillRunning) return;
-  startupContentSignalBackfillRunning = true;
-
-  try {
-    const summary = await runBackgroundJob({
-      kind: "content-signal-backfill",
-      source: "startup-migration",
-      blocking: false,
-      timeoutMs: 120_000,
-      run: () => trackResetSensitiveStoreOperation(
-        docBackfillContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
-      ),
-    });
-
-    if (summary.updated > 0) {
-      log.info(
-        `[content-signals] startup backfilled ${summary.updated.toLocaleString()} item${summary.updated === 1 ? "" : "s"}, ${summary.remaining.toLocaleString()} remaining`,
-      );
-    }
-
-    if (summary.remaining > 0) {
-      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INTERVAL_MS);
-    }
-  } catch (error) {
-    if (isBackgroundRuntimeDeferredError(error)) {
-      log.info(`[content-signals] startup backfill deferred reason=${error.reason}`);
-      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS);
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    log.warn(`[content-signals] startup backfill failed err=${message}`);
-  } finally {
-    startupContentSignalBackfillRunning = false;
-  }
 }
 
 async function flushPendingReadMarks(): Promise<void> {
@@ -739,7 +587,7 @@ async function flushPendingReadMarks(): Promise<void> {
       pendingReadIds.clear();
 
       try {
-        await docMarkItemsAsRead(ids);
+        await markLibraryItemsAsRead(ids);
       } catch (error) {
         recordReadStateFailure(error, ids.length);
       }
@@ -751,6 +599,21 @@ async function flushPendingReadMarks(): Promise<void> {
     waiters.forEach((resolve) => resolve());
     scheduleReadMarkBatchFlush();
   }
+}
+
+async function collectRssFeedUrls(): Promise<string[]> {
+  const urls: string[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (feeds) => {
+      for (const feed of feeds) urls.push(feed.url);
+      return "continue";
+    },
+  );
+  return urls;
 }
 
 function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
@@ -774,29 +637,25 @@ function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolea
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
-  items: [],
   searchCorpusVersion: 0,
   libraryItemVersion: 0,
   savedFeedVersion: 0,
   savedFeedPresentationPatch: null,
-  feeds: {},
-  persons: {},
-  accounts: {},
-  friends: {},
   preferences: createDefaultPreferences(),
-  desktopClientIds: [],
-  feedUnreadCounts: {},
-  feedTotalCounts: {},
   totalUnreadCount: 0,
   unreadCountByPlatform: {},
   totalItemCount: 0,
   itemCountByPlatform: {},
+  rssFeedCount: 0,
+  enabledRssFeedCount: 0,
+  archivedItemCount: 0,
+  friendPersonCount: 0,
+  socialAccountCount: 0,
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
-  archivableFeedCounts: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
-  docItemCount: 0,
+  visibleFeedTotalCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -813,10 +672,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedItemId: null,
   selectedPersonId: null,
   selectedAccountId: null,
-  selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
+  setVisibleFeedTotalCount: (totalCount) => {
+    set({ visibleFeedTotalCount: totalCount });
+  },
   acknowledgeSavedFeedPresentationPatch: (sourceVersion, revision) => {
     set((state) =>
       state.savedFeedPresentationPatch?.sourceVersion === sourceVersion &&
@@ -836,41 +697,38 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         set({ isLoading: true });
 
-        // Prime the empty-shell probe before the SQLite shell is loaded.
+        // Prime the pre-initialization memory probe before Library Core starts.
         // This is intentionally fire-and-forget: telemetry must never delay
-        // startup. The hydration-start marker below rejects a late result.
-        void captureShellMemoryBaseline();
+        // startup. The Library-load marker below rejects a late result.
+        void capturePreLibraryMemoryBaseline();
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
 
-        recordDocumentHydrationStarted();
+        recordLibraryRuntimeLoadStarted();
         assertDesktopStoreWritable();
-        const docState = await initDoc(desktopClientRegistration);
-        // Closes the shell-baseline window. Any memory sample after this point
-        // includes the materialized Library shell, so it cannot be a baseline.
-        recordDocumentHydrated();
+        const runtimeState = await initializeDesktopLibraryRuntime(
+          desktopClientRegistration,
+        );
+        // Close the startup-baseline window. Any memory sample after this point
+        // includes the active Library Core runtime, so it cannot be a baseline.
+        recordLibraryRuntimeReady();
         assertDesktopStoreWritable();
-        migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
-        migrateLegacyThemePreference(docState.preferences.display.themeId);
-        migrateLegacyDeviceAIPreferences(docState.preferences.ai);
-        migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
-        migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
+        migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display as unknown);
+        migrateLegacyThemePreference(runtimeState.preferences.display as unknown);
+        migrateLegacyDeviceAIPreferences(runtimeState.preferences.ai as unknown);
+        await migrateLegacyDeviceGraphLayoutToSqlite({
+          mutate: mutateNormalizedDeviceGraphLayout,
+          query: queryNormalizedLibrary,
+        });
+        migrateLegacyFacebookGroupDiscovery(runtimeState.preferences.fbCapture as unknown);
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on
         // count maps to avoid spurious selector re-renders.
-        documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribe((state: DocState, event) => {
+        librarySubscriptionTeardown?.();
+        librarySubscriptionTeardown = subscribeDesktopLibraryRuntime((state, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
-          if (
-            event.mutation === "REMOVE_PERSON"
-            || event.mutation === "REMOVE_ACCOUNT"
-          ) {
-            pruneDeviceGraphLayout(state.persons, state.accounts);
-          }
           const prev = get();
           const libraryItemVersion =
-            event.source === "item_patch" ||
-            (event.source === "state_update" &&
-              event.mutation !== "SET_RENDERER_ITEM_HYDRATION")
+            event.source === "item_patch" || event.source === "state_update"
               ? prev.libraryItemVersion + 1
               : prev.libraryItemVersion;
           const savedFeedPresentationPatchOverflow =
@@ -888,8 +746,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             event.source === "preferences_patch" &&
             state.preferences.weights !== prev.preferences.weights;
           const savedFeedVersion =
-            (event.source === "state_update" &&
-              event.mutation !== "SET_RENDERER_ITEM_HYDRATION") ||
+            event.source === "state_update" ||
             savedFeedRankingWeightsChanged ||
             (event.source === "item_patch" &&
               (!SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
@@ -913,16 +770,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? null
                 : prev.savedFeedPresentationPatch;
           let next: Partial<AppState> = {
-            ...state,
+            ...runtimeStatePatch(state),
             libraryItemVersion,
             savedFeedPresentationPatch,
             savedFeedVersion,
           };
 
-          if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
-            next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
-          if (shallowEqualRecord(state.feedTotalCounts, prev.feedTotalCounts))
-            next = { ...next, feedTotalCounts: prev.feedTotalCounts };
           if (shallowEqualRecord(state.unreadCountByPlatform, prev.unreadCountByPlatform))
             next = { ...next, unreadCountByPlatform: prev.unreadCountByPlatform };
           if (shallowEqualRecord(state.itemCountByPlatform, prev.itemCountByPlatform))
@@ -954,9 +807,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (liAuth !== previousAuth.liAuth) storeLiAuthState(liAuth);
         }
 
-        // Hydrate immediately from the initial DocState returned by the worker.
+        // Initialize immediately from the row-free SQLite runtime snapshot.
         set({
-          ...docState,
+          ...runtimeStatePatch(runtimeState),
           activeFilter: applyFeedSignalModesToFilter(
             get().activeFilter,
             getDeviceDisplayPreferences().feedSignalModes,
@@ -983,22 +836,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
         const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
         outboxTeardown = startOutboxProcessor(
-          () => getDocState()?.items ?? null,
-          (cb) => subscribe((_state, event) => cb(event)),
-          platformActionsRegistry,
-          async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
-          async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
           scanLibraryCoreItems,
+          (cb) =>
+            subscribeDesktopLibraryRuntime((_state, event) => cb(event)),
+          platformActionsRegistry,
+          async (id, syncedAt) => { await confirmLibraryItemLikedSynced(id, syncedAt); },
+          async (id, syncedAt) => { await confirmLibraryItemSeenSynced(id, syncedAt); },
         );
 
-        // Schedule bounded local SQLite maintenance after initial hydration.
-        const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
+        // Schedule bounded local SQLite maintenance after Library startup.
+        const archivePruneDays =
+          runtimeState.preferences.display.archivePruneDays ?? 30;
         scheduleStartupMigrations(archivePruneDays);
       } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
-        recordBugReportEvent("desktop:initialize", "error", "Initialization failed");
+        recordBugReportEvent(
+          "desktop:initialize",
+          "error",
+          `Initialization failed: ${detail}`,
+        );
+        log.error(`[desktop:initialize] ${detail}`);
         set({
-          error: error instanceof Error ? error.message : "Failed to initialize",
+          error: detail,
           isLoading: false,
         });
       }
@@ -1011,21 +871,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions
   addItems: async (items) => {
-    const before = get().docItemCount;
-    await docAddFeedItems(items);
-    const after = get().docItemCount;
+    const before = get().totalItemCount;
+    await addLibraryFeedItems(items);
+    const after = get().totalItemCount;
     log.info(
       `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
     );
   },
 
   updateItem: async (id, update) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:updateItem",
-      (state) => projectUpdateItem(state, id, update),
-      () => docUpdateFeedItem(id, update),
+      () => updateLibraryFeedItem(id, update),
     );
   },
 
@@ -1049,11 +906,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
 
     try {
-      await runOptimisticMutation(
-        get,
-        set,
+      await runStoreMutation(
         "desktop:readState",
-        (state) => projectMarkItemsAsRead(state, nextIds),
         () => queueReadMarks(nextIds),
         { recordFailure: false },
       );
@@ -1074,28 +928,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllAsRead: async (platform) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:markAllAsRead",
-      (state) => projectMarkAllAsRead(state, platform),
-      () => docMarkAllAsRead(platform),
+      () => markAllLibraryItemsAsRead(platform),
     );
   },
 
   toggleSaved: async (id) => {
-    let item = get().items.find((candidate) => candidate.globalId === id);
-    if (!item) {
-      item =
-        (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
-    }
+    const item =
+      (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
     const itemToPin = item && !item.userState.saved ? item : null;
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleSaved",
-      (state) => projectToggleSaved(state, id),
-      () => docToggleSaved(id),
+      () => toggleLibraryItemSaved(id),
     );
     if (itemToPin) {
       void pinReaderItem(itemToPin).catch((error) => {
@@ -1109,86 +954,71 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleArchived: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleArchived",
-      (state) => projectToggleArchived(state, id),
-      () => docToggleArchived(id),
+      () => toggleLibraryItemArchived(id),
       { waitForPersistence: false },
     );
   },
 
   archiveItems: async (ids) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:archiveItems",
-      (state) => projectArchiveItems(state, ids),
-      () => docArchiveItems(ids),
+      () => archiveLibraryItems(ids),
     );
   },
 
   toggleLiked: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleLiked",
-      (state) => projectToggleLiked(state, id),
-      () => docToggleLiked(id),
+      () => toggleLibraryItemLiked(id),
       { waitForPersistence: false },
     );
     // The outbox processor will pick up the pending like on its next drain.
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:archiveAllReadUnsaved",
-      (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
-      () => docArchiveAllReadUnsaved(platform, feedUrl),
+      () => archiveAllReadUnsavedLibraryItems(platform, feedUrl),
     );
   },
 
   unarchiveSavedItems: async () => {
-    await docUnarchiveSavedItems();
+    await unarchiveSavedLibraryItems();
   },
 
   deleteAllArchived: async () => {
-    await docDeleteAllArchived();
+    await deleteAllArchivedLibraryItems();
   },
 
   removeItem: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:removeItem",
-      (state) => projectRemoveItem(state, id),
-      () => docRemoveFeedItem(id),
+      () => removeLibraryFeedItem(id),
     );
   },
 
   clearSampleData: async () => {
-    return docClearSampleData();
+    return clearSampleLibraryData();
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
-    await docAddSampleLibraryData({
+    await addSampleLibraryData({
       feeds: data.feeds,
       items: data.items,
-      persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
+      persons: data.persons,
       accounts: data.accounts,
     });
   },
 
   // Feed actions
   addFeed: async (feed) => {
-    await docAddRssFeed(feed);
+    await addLibraryRssFeed(feed);
   },
 
   removeFeed: async (url, options) => {
-    await docRemoveRssFeed(url, options?.includeItems ?? false);
+    await removeLibraryRssFeed(url, options?.includeItems ?? false);
     const { removeRssRuntimeState } = await import("./rss-runtime-state");
     removeRssRuntimeState(url);
     const { forgetRssFeedHealth } = await import("./provider-health");
@@ -1196,8 +1026,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeAllFeeds: async (includeItems) => {
-    const feedUrls = Object.keys(get().feeds);
-    await docRemoveAllFeeds(includeItems);
+    const feedUrls = await collectRssFeedUrls();
+    await removeAllLibraryFeeds(includeItems);
     const { removeRssRuntimeState } = await import("./rss-runtime-state");
     for (const url of feedUrls) removeRssRuntimeState(url);
     const { forgetRssFeedHealth } = await import("./provider-health");
@@ -1205,185 +1035,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   renameFeed: async (url, title) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:renameFeed",
-      (state) => projectRenameFeed(state, url, title),
-      () => docUpdateRssFeed(url, { title }),
+      () => updateLibraryRssFeed(url, { title }),
     );
-  },
-
-  // Person actions
-  addPerson: async (person: Person) => {
-    await docAddPerson(person);
-  },
-
-  addPersons: async (persons: Person[]) => {
-    await docAddPersons(persons);
-  },
-
-  updatePerson: async (id: string, updates: Partial<Person>) => {
-    assertDesktopStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error("Freed could not save this graph position on this device.");
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "desktop:updatePerson",
-      (state) => projectUpdatePerson(state, id, syncedUpdates),
-      () => docUpdatePerson(id, syncedUpdates),
-    );
-  },
-
-  removePerson: async (id: string) => {
-    await docRemovePerson(id);
-  },
-
-  logReachOut: async (id: string, entry: ReachOutLog) => {
-    await docLogReachOut(id, entry);
-  },
-
-  linkAccountToPerson: async (accountId: string, personId: string | null) => {
-    const account = get().accounts[accountId];
-    if (!account) return;
-    const previousPersonId = account.personId ?? null;
-    if (previousPersonId === personId) return;
-    const updates = {
-      personId: personId ?? undefined,
-      updatedAt: Date.now(),
-    };
-    await docUpdateAccount(accountId, updates);
-    await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
-  },
-
-  createConnectionPersonFromAccounts: async (accountIds: string[], personOverride?: Person) => {
-    const person = buildConnectionPersonDraftFromAccounts(get().accounts, accountIds, Date.now(), personOverride);
-    if (!person) {
-      throw new Error("Connection person requires at least one social account with a likely human name.");
-    }
-    if (get().persons[person.id]) {
-      await docUpdatePerson(person.id, person);
-    } else {
-      await docAddPerson(person);
-    }
-    for (const accountId of accountIds) {
-      await get().linkAccountToPerson(accountId, person.id);
-    }
-    return person.id;
-  },
-
-  createConnectionPersonsFromCandidates: async (candidates) => {
-    if (candidates.length === 0) return 0;
-    await docUpsertConnectionPersons(candidates);
-    return candidates.length;
-  },
-
-  // Deprecated friend aliases
-  addFriend: async (friend: Friend) => {
-    await docAddPerson(personFromLegacyFriend(friend));
-    const accounts = accountsFromLegacyFriend(friend);
-    if (accounts.length > 0) {
-      await docAddAccounts(accounts);
-    }
-  },
-
-  addFriends: async (friends: Friend[]) => {
-    const persons = friends.map((friend) => personFromLegacyFriend(friend as Friend));
-    await docAddPersons(persons);
-    const accounts = friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend));
-    if (accounts.length > 0) {
-      await docAddAccounts(accounts);
-    }
-  },
-
-  updateFriend: async (id: string, updates: Partial<Friend>) => {
-    assertDesktopStoreWritable();
-    const current = get().friends[id];
-    if (!current) {
-      await docUpdatePerson(id, updates);
-      return;
-    }
-    const nextFriend = {
-      ...current,
-      ...updates,
-      sources: "sources" in updates ? ((updates as Partial<Friend>).sources ?? []) : current.sources,
-      contact: "contact" in updates ? (updates as Partial<Friend>).contact : current.contact,
-    } as Friend;
-    await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
-    const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
-    const existingAccountIds = new Set(existingAccounts.map((account) => account.id));
-    const graphLayoutBeforeReplacement = getDeviceGraphLayout();
-    await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
-    const nextAccounts = accountsFromLegacyFriend(nextFriend);
-    if (nextAccounts.length > 0) {
-      assertDesktopStoreWritable();
-      await docAddAccounts(nextAccounts);
-      restoreReplacedDeviceAccountGraphPositions(
-        nextAccounts
-          .map((account) => account.id)
-          .filter((accountId) => existingAccountIds.has(accountId)),
-        graphLayoutBeforeReplacement,
-      );
-    }
-  },
-
-  removeFriend: async (id: string) => {
-    await docRemovePerson(id);
-  },
-
-  addAccount: async (account: Account) => {
-    await docAddAccount(account);
-  },
-
-  addAccounts: async (accounts: Account[]) => {
-    await docAddAccounts(accounts);
-  },
-
-  updateAccount: async (id: string, updates: Partial<Account>) => {
-    assertDesktopStoreWritable();
-    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
-    if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
-    ) {
-      throw new Error("Freed could not save this graph position on this device.");
-    }
-    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
-    if (Object.keys(syncedUpdates).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "desktop:updateAccount",
-      (state) => projectUpdateAccount(state, id, syncedUpdates),
-      () => docUpdateAccount(id, syncedUpdates),
-    );
-  },
-
-  removeAccount: async (id: string) => {
-    const previousPersonId = get().accounts[id]?.personId ?? null;
-    await docRemoveAccount(id);
-    await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 
   // Preference actions
   updatePreferences: async (update) => {
     assertDesktopStoreWritable();
-    const localUpdate = getDeviceLocalPreferenceUpdates(update);
-    if (localUpdate.display && !setDeviceDisplayPreferences(localUpdate.display)) {
-      throw new Error("Freed could not save the display settings on this device.");
-    }
-    if (localUpdate.ai && !setDeviceAIPreferences(localUpdate.ai)) {
-      throw new Error("Freed could not save the AI settings on this device.");
-    }
-    const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
+    const syncedUpdate = assertSupportedUserPreferenceWrite(update);
     if (Object.keys(syncedUpdate).length === 0) return;
     const currentPreferences = get().preferences;
     const nextPreferences = mergePreferenceUpdate(currentPreferences, syncedUpdate);
@@ -1393,17 +1054,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         syncedUpdate.fbCapture,
       );
     }
-
     try {
-      await runOptimisticMutation(
-        get,
-        set,
+      set({ preferences: nextPreferences });
+      await runStoreMutation(
         "desktop:updatePreferences",
-        () => ({ preferences: nextPreferences }),
-        () => docUpdatePreferences(syncedUpdate),
+        () => updateLibraryPreferences(syncedUpdate),
         { recordFailure: false },
       );
     } catch (error) {
+      set({ preferences: currentPreferences });
       const detail = error instanceof Error ? error.message : String(error);
       recordRuntimeError({ source: "desktop:updatePreferences", error, fatal: false });
       recordBugReportEvent(
@@ -1434,9 +1093,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
-  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id, selectedFriendId: null }),
-  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
+  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null }),
+  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setProviderSyncing: (provider, syncing) =>
@@ -1457,7 +1115,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeView: "map",
       selectedPersonId: personId,
       selectedAccountId: null,
-      selectedFriendId: personId,
       selectedItemId: null,
     }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
@@ -1499,19 +1156,15 @@ export function withProviderSyncing<T>(
   return trackResetSensitiveStoreOperation(runWithProviderSyncing(provider, task));
 }
 
-/** Stop every store-owned writer and wait for already-issued work before document deletion. */
+/** Stop every store-owned writer and wait for already-issued work before Library deletion. */
 export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   storeAcceptingResetSensitiveWork = false;
-  documentSubscriptionTeardown?.();
-  documentSubscriptionTeardown = null;
+  librarySubscriptionTeardown?.();
+  librarySubscriptionTeardown = null;
 
   if (startupMaintenanceTimer) {
     clearTimeout(startupMaintenanceTimer);
     startupMaintenanceTimer = null;
-  }
-  if (startupContentSignalTimer) {
-    clearTimeout(startupContentSignalTimer);
-    startupContentSignalTimer = null;
   }
   if (readMarkBatchTimer) {
     clearTimeout(readMarkBatchTimer);

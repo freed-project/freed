@@ -28,7 +28,8 @@ function isWrapper(value: unknown): value is LibraryCoreBinary64V1 {
     value === null ||
     typeof value !== "object" ||
     Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
+    Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null
   ) {
     return false;
   }
