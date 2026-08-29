@@ -1275,6 +1275,12 @@ cookies, actor private keys, authority private keys, and secrets.
 
 ## 19. Performance budgets
 
+The first clean-slate SQLite benchmark is recorded in
+[`SQLITE-PERFORMANCE-BASELINE-2026-08-29.md`](./SQLITE-PERFORMANCE-BASELINE-2026-08-29.md).
+It keeps comparable browser-fixture improvements separate from native installed
+evidence and identifies Friends graphics as the remaining native measurement
+priority.
+
 Initial gates are:
 
 | Operation                                   |                                                                        Budget |
