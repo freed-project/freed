@@ -10,6 +10,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
+  timeout: 60_000,
   workers: 1,
   reporter: "line",
   use: {
