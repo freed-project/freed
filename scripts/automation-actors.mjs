@@ -871,6 +871,11 @@ function buildHostArtifacts(dependencies, directory) {
     "automation-actor-provisioner",
   );
   const hostBuildPath = inspectRegularFile(dependencies.hostBuildPath);
+  const buildEnvironment =
+    dependencies.platform === "linux" &&
+    typeof dependencies.env.FREED_GO_EXECUTABLE === "string"
+      ? { FREED_GO_EXECUTABLE: dependencies.env.FREED_GO_EXECUTABLE }
+      : {};
   runChecked(
     dependencies,
     "/bin/bash",
@@ -881,7 +886,11 @@ function buildHostArtifacts(dependencies, directory) {
       "--provisioner-output",
       provisionerOutput,
     ],
-    { cwd: dependencies.repoRoot, purpose: "Automation actor host build" },
+    {
+      cwd: dependencies.repoRoot,
+      purpose: "Automation actor host build",
+      additionalEnv: buildEnvironment,
+    },
   );
   return {
     hostOutput: inspectRegularFile(hostOutput, { executable: true }),
