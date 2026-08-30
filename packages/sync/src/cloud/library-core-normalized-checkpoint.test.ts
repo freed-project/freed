@@ -95,6 +95,7 @@ class MemoryCheckpointAdapter
 
 describe("normalized checkpoint publication", () => {
   it("stores exact typed normalized records without a shell envelope", async () => {
+    const longFeedItemId = `https://example.com/items/${"path-segment/".repeat(96)}`;
     const records = [
       createLibraryCoreNormalizedCheckpointRecordV2({
         registryKey: "00_checkpoint_header",
@@ -110,7 +111,7 @@ describe("normalized checkpoint publication", () => {
       }),
       createLibraryCoreNormalizedCheckpointRecordV2({
         registryKey: "10_feed_item",
-        primaryKey: "item-1",
+        primaryKey: longFeedItemId,
         payload: {
           archived: false,
           archivedAt: null,
@@ -170,6 +171,11 @@ describe("normalized checkpoint publication", () => {
         },
       }),
     ];
+    expect(
+      new TextEncoder().encode(
+        libraryCoreNormalizedCheckpointRecordIdentityV2(records[1]!),
+      ).byteLength,
+    ).toBeGreaterThan(512);
     const pages = [];
     for await (const page of prepareLibraryCoreNormalizedCheckpointPagesV2({
       descriptor: {
