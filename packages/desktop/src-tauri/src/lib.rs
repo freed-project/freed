@@ -1166,6 +1166,8 @@ enum StartupFailureStage {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 struct StartupFailureDetail {
     stage: StartupFailureStage,
+    #[serde(default)]
+    detail_stage: String,
     code: String,
     message: String,
     occurred_at_ms: u64,
@@ -2721,7 +2723,10 @@ fn mark_startup_failed(data_dir: &Path) {
     save_startup_recovery_state(data_dir, &state);
 }
 
-fn mark_startup_library_core_failure(data_dir: &Path, message: &str) {
+fn mark_startup_library_core_failure(
+    data_dir: &Path,
+    error: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
     let occurred_at_ms = now_unix_ms();
     let mut state = load_startup_recovery_state(data_dir);
     state.pending_boot_started_at_ms = None;
@@ -2729,26 +2734,32 @@ fn mark_startup_library_core_failure(data_dir: &Path, message: &str) {
     state.last_failed_boot_at_ms = Some(occurred_at_ms);
     state.last_failure = Some(StartupFailureDetail {
         stage: StartupFailureStage::NormalizedSqliteCutover,
-        code: "library_core_cutover_refused".to_owned(),
-        message: bounded_startup_failure_message(message),
+        detail_stage: error.stage().as_str().to_owned(),
+        code: error.stage().failure_code().to_owned(),
+        message: bounded_startup_failure_message(error.message()),
         occurred_at_ms,
     });
     save_startup_recovery_state(data_dir, &state);
 }
 
-fn record_startup_library_core_failure(app: &tauri::AppHandle, data_dir: &Path, message: &str) {
-    mark_startup_library_core_failure(data_dir, message);
+fn record_startup_library_core_failure(
+    app: &tauri::AppHandle,
+    data_dir: &Path,
+    failure: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
+    mark_startup_library_core_failure(data_dir, failure);
     error!(
-        "[library-core] normalized SQLite startup cutover refused: {}",
-        message
+        "[library-core] normalized SQLite startup cutover refused stage={}: {}",
+        failure.stage().as_str(),
+        failure.message()
     );
     append_runtime_health(
         app,
         serde_json::json!({
             "event": "library_core_startup_failure",
-            "stage": "normalized_sqlite_cutover",
-            "code": "library_core_cutover_refused",
-            "error": bounded_startup_failure_message(message),
+            "stage": failure.stage().as_str(),
+            "code": failure.stage().failure_code(),
+            "error": bounded_startup_failure_message(failure.message()),
         }),
     );
 }
@@ -15843,15 +15854,23 @@ mod tests {
     fn library_core_cutover_refusal_is_preserved_without_reopening_library_state() {
         let temp = tempfile::tempdir().unwrap();
         let oversized_message = format!("{}é", "x".repeat(STARTUP_FAILURE_MESSAGE_MAX_BYTES));
+        let error = library_core_desktop_runtime::NormalizedDesktopCutoverError::new(
+            library_core_desktop_runtime::NormalizedDesktopCutoverStage::CandidatePrepare,
+            oversized_message,
+        );
 
-        mark_startup_library_core_failure(temp.path(), &oversized_message);
+        mark_startup_library_core_failure(temp.path(), &error);
 
         let state = load_startup_recovery_state(temp.path());
         assert!(startup_requires_recovery(&state));
         assert_eq!(state.consecutive_failed_boots, 1);
         let failure = state.last_failure.expect("typed failure must be retained");
         assert_eq!(failure.stage, StartupFailureStage::NormalizedSqliteCutover);
-        assert_eq!(failure.code, "library_core_cutover_refused");
+        assert_eq!(failure.detail_stage, "candidate_prepare");
+        assert_eq!(
+            failure.code,
+            "library_core_cutover_candidate_prepare_refused"
+        );
         assert_eq!(failure.message.len(), STARTUP_FAILURE_MESSAGE_MAX_BYTES);
         assert!(failure.message.is_char_boundary(failure.message.len()));
     }
@@ -15868,6 +15887,7 @@ mod tests {
                 last_successful_boot_at_ms: Some(100),
                 last_failure: Some(StartupFailureDetail {
                     stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
                     code: "library_core_cutover_refused".to_owned(),
                     message: "historical Library source refused".to_owned(),
                     occurred_at_ms: 123,
@@ -15903,6 +15923,7 @@ mod tests {
                 last_successful_boot_at_ms: Some(100),
                 last_failure: Some(StartupFailureDetail {
                     stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
                     code: "library_core_cutover_refused".to_owned(),
                     message: "historical Library source refused".to_owned(),
                     occurred_at_ms: 123,
@@ -15941,6 +15962,10 @@ mod tests {
         assert_eq!(
             json["startupRecovery"]["last_failure"]["stage"],
             "normalized_sqlite_cutover"
+        );
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["detail_stage"],
+            "historical_source_state"
         );
         assert!(json["runtimeHealth"].as_str().unwrap().contains("new"));
         assert!(json["runtimeDiagnostics"]
@@ -17097,6 +17122,7 @@ mod tests {
                 last_successful_boot_at_ms: None,
                 last_failure: Some(StartupFailureDetail {
                     stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
                     code: "library_core_cutover_refused".to_owned(),
                     message: "source refused".to_owned(),
                     occurred_at_ms: 789,

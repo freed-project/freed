@@ -19,6 +19,77 @@ use super::library_core_actor_key_store::{
 use super::library_core_authority_key_store::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NormalizedDesktopCutoverStage {
+    DesktopBinding,
+    AuthoritySelection,
+    HistoricalSourceOpen,
+    HistoricalSourceState,
+    NormalizedTargetOpen,
+    InstallationWitness,
+    CandidatePrepare,
+    SelectorPublish,
+}
+
+impl NormalizedDesktopCutoverStage {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::DesktopBinding => "desktop_binding",
+            Self::AuthoritySelection => "authority_selection",
+            Self::HistoricalSourceOpen => "historical_source_open",
+            Self::HistoricalSourceState => "historical_source_state",
+            Self::NormalizedTargetOpen => "normalized_target_open",
+            Self::InstallationWitness => "installation_witness",
+            Self::CandidatePrepare => "candidate_prepare",
+            Self::SelectorPublish => "selector_publish",
+        }
+    }
+
+    pub(super) const fn failure_code(self) -> &'static str {
+        match self {
+            Self::DesktopBinding => "library_core_cutover_desktop_binding_refused",
+            Self::AuthoritySelection => "library_core_cutover_authority_selection_refused",
+            Self::HistoricalSourceOpen => "library_core_cutover_historical_source_open_refused",
+            Self::HistoricalSourceState => "library_core_cutover_historical_source_state_refused",
+            Self::NormalizedTargetOpen => "library_core_cutover_normalized_target_open_refused",
+            Self::InstallationWitness => "library_core_cutover_installation_witness_refused",
+            Self::CandidatePrepare => "library_core_cutover_candidate_prepare_refused",
+            Self::SelectorPublish => "library_core_cutover_selector_publish_refused",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct NormalizedDesktopCutoverError {
+    stage: NormalizedDesktopCutoverStage,
+    message: String,
+}
+
+impl NormalizedDesktopCutoverError {
+    pub(super) fn new(stage: NormalizedDesktopCutoverStage, message: impl ToString) -> Self {
+        Self {
+            stage,
+            message: message.to_string(),
+        }
+    }
+
+    pub(super) const fn stage(&self) -> NormalizedDesktopCutoverStage {
+        self.stage
+    }
+
+    pub(super) fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for NormalizedDesktopCutoverError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.stage.as_str(), self.message)
+    }
+}
+
+impl std::error::Error for NormalizedDesktopCutoverError {}
 #[cfg(not(unix))]
 const SNAPSHOT_DIRECTORY: &str = "library-snapshots";
 #[cfg(not(unix))]
@@ -294,7 +365,7 @@ fn publish_windows_authority_selection(
 
 pub(super) fn complete_normalized_desktop_cutover_if_ready(
     app: &tauri::AppHandle,
-) -> Result<bool, String> {
+) -> Result<bool, NormalizedDesktopCutoverError> {
     #[cfg(not(unix))]
     {
         return complete_windows_normalized_cutover(app);
@@ -302,17 +373,29 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready(
     #[cfg(unix)]
     {
         let _ = app;
-        let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+        let binding = freed_library_core::desktop_binding().map_err(|error| {
+            NormalizedDesktopCutoverError::new(NormalizedDesktopCutoverStage::DesktopBinding, error)
+        })?;
         if binding
             .normalized_authority_is_selected_v1()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| {
+                NormalizedDesktopCutoverError::new(
+                    NormalizedDesktopCutoverStage::AuthoritySelection,
+                    error,
+                )
+            })?
         {
             return Ok(false);
         }
         if !binding.historical_source_is_present_v1() {
             return Ok(false);
         }
-        let mut source = binding.connect().map_err(|error| error.to_string())?;
+        let mut source = binding.connect().map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::HistoricalSourceOpen,
+                error,
+            )
+        })?;
         let source_state: Option<(i64, i64, i64, Option<i64>)> = source
             .query_row(
                 "SELECT active, expectedItemCount, importedItemCount, activatedAtMs
@@ -321,7 +404,12 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready(
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                NormalizedDesktopCutoverError::new(
+                    NormalizedDesktopCutoverStage::HistoricalSourceState,
+                    error,
+                )
+            })?;
         let Some((active, expected_items, imported_items, activated_at)) = source_state else {
             return Ok(false);
         };
@@ -329,14 +417,29 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready(
             return Ok(false);
         }
         if active != 1 || activated_at.is_none() || expected_items != imported_items {
-            return Err("historical Library is not a complete migration source".to_owned());
+            return Err(NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::HistoricalSourceState,
+                "historical Library is not a complete migration source",
+            ));
         }
-        let mut target = binding
-            .connect_normalized()
-            .map_err(|error| error.to_string())?;
-        let installation_witness = crate::get_desktop_installation_witness()?;
-        let accepted_at = i64::try_from(crate::unix_millis_now())
-            .map_err(|_| "Desktop cutover time is invalid".to_owned())?;
+        let mut target = binding.connect_normalized().map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::NormalizedTargetOpen,
+                error,
+            )
+        })?;
+        let installation_witness = crate::get_desktop_installation_witness().map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::InstallationWitness,
+                error,
+            )
+        })?;
+        let accepted_at = i64::try_from(crate::unix_millis_now()).map_err(|_| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::CandidatePrepare,
+                "Desktop cutover time is invalid",
+            )
+        })?;
         let prepared = freed_library_core::prepare_normalized_desktop_cutover_v1(
             &mut source,
             &mut target,
@@ -345,24 +448,48 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready(
             &PlatformAuthorityKeyStore,
             accepted_at,
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::CandidatePrepare,
+                error,
+            )
+        })?;
         binding
             .publish_normalized_authority_selection_v1(&prepared)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                NormalizedDesktopCutoverError::new(
+                    NormalizedDesktopCutoverStage::SelectorPublish,
+                    error,
+                )
+            })?;
         Ok(true)
     }
 }
 
 #[cfg(not(unix))]
-fn complete_windows_normalized_cutover(app: &tauri::AppHandle) -> Result<bool, String> {
-    if app_root(app)?.join(AUTHORITY_SELECTION_FILE).exists() {
-        open_normalized_database(app)?;
+fn complete_windows_normalized_cutover(
+    app: &tauri::AppHandle,
+) -> Result<bool, NormalizedDesktopCutoverError> {
+    let root = app_root(app).map_err(|error| {
+        NormalizedDesktopCutoverError::new(NormalizedDesktopCutoverStage::DesktopBinding, error)
+    })?;
+    if root.join(AUTHORITY_SELECTION_FILE).exists() {
+        open_normalized_database(app).map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::AuthoritySelection,
+                error,
+            )
+        })?;
         return Ok(false);
     }
-    let Some(mut source) = freed_library_core::open_historical_migration_source_v1(
-        &app_root(app)?.join("library-core"),
-    )
-    .map_err(|error| error.to_string())?
+    let Some(mut source) =
+        freed_library_core::open_historical_migration_source_v1(&root.join("library-core"))
+            .map_err(|error| {
+                NormalizedDesktopCutoverError::new(
+                    NormalizedDesktopCutoverStage::HistoricalSourceOpen,
+                    error,
+                )
+            })?
     else {
         return Ok(false);
     };
@@ -374,7 +501,12 @@ fn complete_windows_normalized_cutover(app: &tauri::AppHandle) -> Result<bool, S
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            NormalizedDesktopCutoverError::new(
+                NormalizedDesktopCutoverStage::HistoricalSourceState,
+                error,
+            )
+        })?;
     let Some((active, expected_items, imported_items, activated_at)) = source_state else {
         return Ok(false);
     };
@@ -382,12 +514,29 @@ fn complete_windows_normalized_cutover(app: &tauri::AppHandle) -> Result<bool, S
         return Ok(false);
     }
     if active != 1 || activated_at.is_none() || expected_items != imported_items {
-        return Err("historical Library is not a complete migration source".into());
+        return Err(NormalizedDesktopCutoverError::new(
+            NormalizedDesktopCutoverStage::HistoricalSourceState,
+            "historical Library is not a complete migration source",
+        ));
     }
-    let mut target = open_unselected_normalized_database(app, true)?;
-    let installation_witness = crate::get_desktop_installation_witness()?;
-    let accepted_at = i64::try_from(crate::unix_millis_now())
-        .map_err(|_| "Desktop cutover time is invalid".to_owned())?;
+    let mut target = open_unselected_normalized_database(app, true).map_err(|error| {
+        NormalizedDesktopCutoverError::new(
+            NormalizedDesktopCutoverStage::NormalizedTargetOpen,
+            error,
+        )
+    })?;
+    let installation_witness = crate::get_desktop_installation_witness().map_err(|error| {
+        NormalizedDesktopCutoverError::new(
+            NormalizedDesktopCutoverStage::InstallationWitness,
+            error,
+        )
+    })?;
+    let accepted_at = i64::try_from(crate::unix_millis_now()).map_err(|_| {
+        NormalizedDesktopCutoverError::new(
+            NormalizedDesktopCutoverStage::CandidatePrepare,
+            "Desktop cutover time is invalid",
+        )
+    })?;
     let prepared = freed_library_core::prepare_normalized_desktop_cutover_v1(
         &mut source,
         &mut target,
@@ -396,9 +545,13 @@ fn complete_windows_normalized_cutover(app: &tauri::AppHandle) -> Result<bool, S
         &PlatformAuthorityKeyStore,
         accepted_at,
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| {
+        NormalizedDesktopCutoverError::new(NormalizedDesktopCutoverStage::CandidatePrepare, error)
+    })?;
     drop(target);
-    publish_windows_authority_selection(app, &prepared)?;
+    publish_windows_authority_selection(app, &prepared).map_err(|error| {
+        NormalizedDesktopCutoverError::new(NormalizedDesktopCutoverStage::SelectorPublish, error)
+    })?;
     Ok(true)
 }
 
