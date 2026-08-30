@@ -3464,6 +3464,32 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   ).toHaveLength(0);
 });
 
+test("leaving Map keeps the destination mounted without destroying the main renderer", async ({
+  app,
+  ipc,
+  page,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId("source-row-friends").click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 10_000 });
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "friends";
+  });
+
+  expect((await ipc.invocations()).map((invocation) => invocation.cmd)).not.toContain(
+    "release_main_renderer_memory",
+  );
+});
+
 test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
