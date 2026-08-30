@@ -1155,12 +1155,32 @@ async fn restore_scraper_feed(
     Ok(())
 }
 
+const STARTUP_FAILURE_MESSAGE_MAX_BYTES: usize = 4 * 1024;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum StartupFailureStage {
+    NormalizedSqliteCutover,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct StartupFailureDetail {
+    stage: StartupFailureStage,
+    #[serde(default)]
+    detail_stage: String,
+    code: String,
+    message: String,
+    occurred_at_ms: u64,
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 struct StartupRecoveryState {
     consecutive_failed_boots: u32,
     pending_boot_started_at_ms: Option<u64>,
     last_failed_boot_at_ms: Option<u64>,
     last_successful_boot_at_ms: Option<u64>,
+    last_failure: Option<StartupFailureDetail>,
 }
 
 #[derive(Default)]
@@ -1263,6 +1283,18 @@ fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
             error
         );
     }
+}
+
+fn bounded_startup_failure_message(message: &str) -> String {
+    if message.len() <= STARTUP_FAILURE_MESSAGE_MAX_BYTES {
+        return message.to_owned();
+    }
+
+    let mut end = STARTUP_FAILURE_MESSAGE_MAX_BYTES;
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    message[..end].to_owned()
 }
 
 fn runtime_health_path(data_dir: &Path) -> PathBuf {
@@ -2691,6 +2723,47 @@ fn mark_startup_failed(data_dir: &Path) {
     save_startup_recovery_state(data_dir, &state);
 }
 
+fn mark_startup_library_core_failure(
+    data_dir: &Path,
+    error: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
+    let occurred_at_ms = now_unix_ms();
+    let mut state = load_startup_recovery_state(data_dir);
+    state.pending_boot_started_at_ms = None;
+    state.consecutive_failed_boots = state.consecutive_failed_boots.saturating_add(1);
+    state.last_failed_boot_at_ms = Some(occurred_at_ms);
+    state.last_failure = Some(StartupFailureDetail {
+        stage: StartupFailureStage::NormalizedSqliteCutover,
+        detail_stage: error.stage().as_str().to_owned(),
+        code: error.stage().failure_code().to_owned(),
+        message: bounded_startup_failure_message(error.message()),
+        occurred_at_ms,
+    });
+    save_startup_recovery_state(data_dir, &state);
+}
+
+fn record_startup_library_core_failure(
+    app: &tauri::AppHandle,
+    data_dir: &Path,
+    failure: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
+    mark_startup_library_core_failure(data_dir, failure);
+    error!(
+        "[library-core] normalized SQLite startup cutover refused stage={}: {}",
+        failure.stage().as_str(),
+        failure.message()
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "library_core_startup_failure",
+            "stage": failure.stage().as_str(),
+            "code": failure.stage().failure_code(),
+            "error": bounded_startup_failure_message(failure.message()),
+        }),
+    );
+}
+
 fn mark_startup_pending(data_dir: &Path) {
     let mut state = load_startup_recovery_state(data_dir);
     state.pending_boot_started_at_ms = Some(now_unix_ms());
@@ -2706,13 +2779,17 @@ fn prepare_startup_recovery_retry(data_dir: &Path) {
 
 fn mark_startup_success(data_dir: &Path) {
     let mut state = load_startup_recovery_state(data_dir);
-    if state.pending_boot_started_at_ms.is_none() && state.consecutive_failed_boots == 0 {
+    if state.pending_boot_started_at_ms.is_none()
+        && state.consecutive_failed_boots == 0
+        && state.last_failure.is_none()
+    {
         return;
     }
 
     state.pending_boot_started_at_ms = None;
     state.consecutive_failed_boots = 0;
     state.last_successful_boot_at_ms = Some(now_unix_ms());
+    state.last_failure = None;
     save_startup_recovery_state(data_dir, &state);
     info!("[recovery] renderer reached healthy startup state");
 }
@@ -7760,6 +7837,18 @@ fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     std::fs::create_dir_all(&data_dir).ok();
     prepare_startup_recovery_retry(&data_dir);
+
+    match library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(&app) {
+        Ok(true) => info!("[library-core] selected normalized SQLite authority during retry"),
+        Ok(false) => {}
+        Err(error) => {
+            record_startup_library_core_failure(&app, &data_dir, &error);
+            return Err(
+                "Freed could not safely open this Library. Download diagnostics and keep the existing Library files unchanged."
+                    .to_owned(),
+            );
+        }
+    }
 
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         scrub_webview_before_destroy(&window);
@@ -12940,23 +13029,20 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
-            if library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(
+            let mut startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
+            match library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(
                 &app_handle,
-            )
-                .map_err(std::io::Error::other)?
-            {
-                info!("[library-core] selected normalized SQLite authority");
+            ) {
+                Ok(true) => info!("[library-core] selected normalized SQLite authority"),
+                Ok(false) => {}
+                Err(error) => {
+                    record_startup_library_core_failure(&app_handle, &data_dir, &error);
+                    startup_recovery_state = load_startup_recovery_state(&data_dir);
+                }
             }
-            let dev_sync_result_data_dir = data_dir.clone();
-            app.listen("dev-sync-trigger-native-result", move |event| {
-                handle_dev_sync_trigger_result_event(&dev_sync_result_data_dir, event.payload());
-            });
-            start_dev_sync_trigger_watcher(app_handle.clone(), data_dir.clone());
-
             #[cfg(target_os = "macos")]
             clear_saved_window_state(&app_handle);
 
-            let startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
             if startup_requires_recovery(&startup_recovery_state) {
                 warn!(
                     "[recovery] opening native recovery window after {} failed early startup attempt(s)",
@@ -12965,6 +13051,14 @@ pub fn run() {
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
                 let _ = start_main_window_quietly(&app_handle)?;
+                let dev_sync_result_data_dir = data_dir.clone();
+                app.listen("dev-sync-trigger-native-result", move |event| {
+                    handle_dev_sync_trigger_result_event(
+                        &dev_sync_result_data_dir,
+                        event.payload(),
+                    );
+                });
+                start_dev_sync_trigger_watcher(app_handle.clone(), data_dir.clone());
             }
 
             // Build system tray
@@ -15757,6 +15851,31 @@ mod tests {
     }
 
     #[test]
+    fn library_core_cutover_refusal_is_preserved_without_reopening_library_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let oversized_message = format!("{}é", "x".repeat(STARTUP_FAILURE_MESSAGE_MAX_BYTES));
+        let error = library_core_desktop_runtime::NormalizedDesktopCutoverError::new(
+            library_core_desktop_runtime::NormalizedDesktopCutoverStage::CandidatePrepare,
+            oversized_message,
+        );
+
+        mark_startup_library_core_failure(temp.path(), &error);
+
+        let state = load_startup_recovery_state(temp.path());
+        assert!(startup_requires_recovery(&state));
+        assert_eq!(state.consecutive_failed_boots, 1);
+        let failure = state.last_failure.expect("typed failure must be retained");
+        assert_eq!(failure.stage, StartupFailureStage::NormalizedSqliteCutover);
+        assert_eq!(failure.detail_stage, "candidate_prepare");
+        assert_eq!(
+            failure.code,
+            "library_core_cutover_candidate_prepare_refused"
+        );
+        assert_eq!(failure.message.len(), STARTUP_FAILURE_MESSAGE_MAX_BYTES);
+        assert!(failure.message.is_char_boundary(failure.message.len()));
+    }
+
+    #[test]
     fn startup_recovery_retry_rearms_pending_boot_without_preserving_failure_count() {
         let temp = tempfile::tempdir().unwrap();
         save_startup_recovery_state(
@@ -15766,6 +15885,13 @@ mod tests {
                 pending_boot_started_at_ms: None,
                 last_failed_boot_at_ms: Some(123),
                 last_successful_boot_at_ms: Some(100),
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "historical Library source refused".to_owned(),
+                    occurred_at_ms: 123,
+                }),
             },
         );
 
@@ -15775,6 +15901,13 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_some());
         assert_eq!(state.last_failed_boot_at_ms, Some(123));
+        assert_eq!(
+            state
+                .last_failure
+                .as_ref()
+                .map(|failure| failure.code.as_str()),
+            Some("library_core_cutover_refused")
+        );
     }
 
     #[test]
@@ -15788,6 +15921,13 @@ mod tests {
                 pending_boot_started_at_ms: None,
                 last_failed_boot_at_ms: Some(123),
                 last_successful_boot_at_ms: Some(100),
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "historical Library source refused".to_owned(),
+                    occurred_at_ms: 123,
+                }),
             },
         );
         std::fs::write(runtime_health_path(data_dir.path()), "old\nnew\n").unwrap();
@@ -15815,6 +15955,18 @@ mod tests {
         assert_eq!(json["version"], "26.6.901");
         assert_eq!(json["platform"], "macos");
         assert_eq!(json["startupRecovery"]["consecutive_failed_boots"], 1);
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["code"],
+            "library_core_cutover_refused"
+        );
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["stage"],
+            "normalized_sqlite_cutover"
+        );
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["detail_stage"],
+            "historical_source_state"
+        );
         assert!(json["runtimeHealth"].as_str().unwrap().contains("new"));
         assert!(json["runtimeDiagnostics"]
             .as_str()
@@ -16946,6 +17098,7 @@ mod tests {
                 pending_boot_started_at_ms: Some(123),
                 last_failed_boot_at_ms: None,
                 last_successful_boot_at_ms: None,
+                last_failure: None,
             },
         );
 
@@ -16967,6 +17120,13 @@ mod tests {
                 pending_boot_started_at_ms: Some(456),
                 last_failed_boot_at_ms: Some(789),
                 last_successful_boot_at_ms: None,
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "source refused".to_owned(),
+                    occurred_at_ms: 789,
+                }),
             },
         );
 
@@ -16976,6 +17136,7 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+        assert!(state.last_failure.is_none());
     }
 
     #[test]
