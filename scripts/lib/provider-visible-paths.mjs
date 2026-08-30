@@ -196,6 +196,14 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/capture-rss/src/discovery.ts", ["other"]],
   ["packages/capture-save/src/extract.ts", ["other"]],
+  ["packages/library-service/src/cli-runtime.ts", ["other"]],
+  ["packages/library-service/src/config.ts", ["other"]],
+  ["packages/library-service/src/google-drive-publication.ts", ["other"]],
+  ["packages/library-service/src/node-google-drive-auth.ts", ["other"]],
+  ["packages/library-service/src/node-google-drive-token.ts", ["other"]],
+  ["packages/library-service/src/node-ports.ts", ["other"]],
+  ["packages/library-service/src/primary-cloud-runtime.ts", ["other"]],
+  ["packages/library-service/src/supervisor.ts", ["other"]],
   ["packages/desktop/src-tauri/src/webkit-mask.js", ALL_SOCIAL_PROVIDER_SCOPES],
   [
     "packages/desktop/src-tauri/src/lib.rs",

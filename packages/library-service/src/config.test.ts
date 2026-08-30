@@ -48,6 +48,56 @@ describe("loadLibraryServiceConfig", () => {
     );
   });
 
+  it("binds one private Google Drive publication state file", async () => {
+    const fileSystem = validConfigFileSystem();
+    const raw = JSON.parse(fileSystem.texts.get("/safe/config.json")!);
+    raw.cloud = {
+      provider: "google-drive",
+      installationWitness: "e".repeat(64),
+      credentialRecordId: "library-drive",
+      publicationStateFile: "/safe/state/library-drive-state.json",
+    };
+    fileSystem.addFile("/safe/config.json", JSON.stringify(raw));
+    fileSystem.addFile("/safe/state/library-drive-state.json", "");
+
+    const bound = await bindLibraryServiceConfig(
+      "/safe/config.json",
+      fileSystem,
+      new FakeIdentity(),
+      new FakeAclProof(),
+    );
+    try {
+      expect(bound.config.cloud).toEqual(raw.cloud);
+      expect(bound.cloudState?.path).toBe(
+        "/safe/state/library-drive-state.json",
+      );
+    } finally {
+      await bound.close();
+    }
+  });
+
+  it("rejects a Google Drive state file outside the private state root", async () => {
+    const fileSystem = validConfigFileSystem();
+    const raw = JSON.parse(fileSystem.texts.get("/safe/config.json")!);
+    raw.cloud = {
+      provider: "google-drive",
+      installationWitness: "e".repeat(64),
+      credentialRecordId: "library-drive",
+      publicationStateFile: "/safe/cloud-state.json",
+    };
+    fileSystem.addFile("/safe/config.json", JSON.stringify(raw));
+    fileSystem.addFile("/safe/cloud-state.json", "");
+
+    await expect(
+      bindLibraryServiceConfig(
+        "/safe/config.json",
+        fileSystem,
+        new FakeIdentity(),
+        new FakeAclProof(),
+      ),
+    ).rejects.toMatchObject({ code: "config_invalid" });
+  });
+
   it("fails closed when the configured role is not Primary", async () => {
     const fileSystem = validConfigFileSystem();
     const raw = JSON.parse(fileSystem.texts.get("/safe/config.json")!);

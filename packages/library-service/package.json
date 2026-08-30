@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json"
   },
   "devDependencies": {
+    "@freed/shared": "*",
     "@freed/sync": "*",
     "@types/node": "^24.10.1",
     "esbuild": "0.28.2",

@@ -50,6 +50,8 @@ import {
   createLibraryServiceStatusRecord,
   writeLibraryServiceStatus,
 } from "./status.js";
+import type { LibraryServicePrimaryCloudPortV1 } from "./primary-cloud-runtime.js";
+import type { LibraryServicePrimaryRuntimeV1 } from "./primary-runtime.js";
 
 const READY_KEYS = new Set([
   "type",
@@ -86,6 +88,7 @@ export interface LibraryServiceSupervisorDependencies {
   clock: LibraryServiceClockPort;
   entropy: LibraryServiceEntropyPort;
   localActorIngress: LibraryServiceLocalActorIngressPortV1;
+  primaryCloud?: LibraryServicePrimaryCloudPortV1;
 }
 
 export interface LibraryServiceStartResult {
@@ -264,6 +267,7 @@ export class LibraryServiceSupervisor {
   readonly #clock: LibraryServiceClockPort;
   readonly #entropy: LibraryServiceEntropyPort;
   readonly #localActorIngress: LibraryServiceLocalActorIngressPortV1;
+  readonly #primaryCloud: LibraryServicePrimaryCloudPortV1 | null;
   #config: LibraryServiceConfig | null = null;
   #state: SupervisorState = "idle";
   #child: LibraryServiceSidecarProcess | null = null;
@@ -275,6 +279,10 @@ export class LibraryServiceSupervisor {
   #startupCommitted = false;
   #statusTail: Promise<void> = Promise.resolve();
   #localActor: LibraryServiceLocalActorListenerV1 | null = null;
+  #cloudState: LibraryServiceBoundPath | null = null;
+  #primaryRuntime: LibraryServicePrimaryRuntimeV1<{
+    readonly status: string;
+  }> | null = null;
 
   constructor(dependencies: LibraryServiceSupervisorDependencies) {
     this.#configPath = dependencies.configPath;
@@ -285,6 +293,7 @@ export class LibraryServiceSupervisor {
     this.#clock = dependencies.clock;
     this.#entropy = dependencies.entropy;
     this.#localActorIngress = dependencies.localActorIngress;
+    this.#primaryCloud = dependencies.primaryCloud ?? null;
   }
 
   #requireConfig(): LibraryServiceConfig {
@@ -354,11 +363,14 @@ export class LibraryServiceSupervisor {
   async #closeRuntimeBindings(): Promise<void> {
     const stateRoot = this.#stateRoot;
     const statusFile = this.#statusFile;
+    const cloudState = this.#cloudState;
     this.#stateRoot = null;
     this.#statusFile = null;
+    this.#cloudState = null;
     await Promise.all([
       stateRoot?.close().catch(() => undefined),
       statusFile?.close().catch(() => undefined),
+      cloudState?.close().catch(() => undefined),
     ]);
   }
 
@@ -493,6 +505,8 @@ export class LibraryServiceSupervisor {
     const localActorSettlement =
       this.#localActor?.stop().catch(() => undefined) ?? Promise.resolve();
     this.#localActor = null;
+    this.#primaryRuntime?.stop();
+    this.#primaryRuntime = null;
     const child = this.#child;
     const settlement =
       child === null
@@ -557,6 +571,7 @@ export class LibraryServiceSupervisor {
 
       this.#config = bound.config;
       this.#stateRoot = bound.bindings.stateRoot;
+      this.#cloudState = bound.cloudState;
       this.#startedAt = new Date(this.#clock.nowMs()).toISOString();
       throwIfAborted(signal);
       const statusBindingPromise = bindLibraryServiceStatusFile(
@@ -725,6 +740,24 @@ export class LibraryServiceSupervisor {
       });
       throwIfAborted(signal);
 
+      if (bound.config.cloud !== null) {
+        if (this.#primaryCloud === null || bound.cloudState === null) {
+          throw new LibraryServiceFailure("cloud_runtime_failed");
+        }
+        try {
+          this.#primaryRuntime = await this.#primaryCloud.start({
+            config: bound.config.cloud,
+            stateFile: bound.cloudState,
+            fileSystem: this.#fileSystem,
+            clock: this.#clock,
+            native: commandClient,
+          });
+        } catch (error) {
+          throw toFailure(error, "cloud_runtime_failed");
+        }
+      }
+      throwIfAborted(signal);
+
       this.#state = "running";
       if (localActorFailed) {
         throw new LibraryServiceFailure("local_actor_failed");
@@ -737,6 +770,8 @@ export class LibraryServiceSupervisor {
           this.#state = "settled";
           const localActorAtExit = this.#localActor;
           this.#localActor = null;
+          this.#primaryRuntime?.stop();
+          this.#primaryRuntime = null;
           await localActorAtExit?.stop().catch(() => undefined);
           try {
             await this.#settleAfterKill(
@@ -803,6 +838,7 @@ export class LibraryServiceSupervisor {
         } else {
           await bound.close().catch(() => undefined);
           this.#stateRoot = null;
+          this.#cloudState = null;
           await this.#statusFile?.close().catch(() => undefined);
           this.#statusFile = null;
         }
@@ -827,6 +863,8 @@ export class LibraryServiceSupervisor {
     const child = this.#child;
     const localActor = this.#localActor;
     this.#localActor = null;
+    this.#primaryRuntime?.stop();
+    this.#primaryRuntime = null;
     const localActorSettlement = localActor?.stop() ?? Promise.resolve();
     const settlement = this.#settleAfterTerm(
       child,
@@ -867,6 +905,8 @@ export class LibraryServiceSupervisor {
     this.#state = "stopping";
     const localActor = this.#localActor;
     this.#localActor = null;
+    this.#primaryRuntime?.stop();
+    this.#primaryRuntime = null;
     void localActor?.stop().catch(() => undefined);
     try {
       child.terminate("SIGKILL");

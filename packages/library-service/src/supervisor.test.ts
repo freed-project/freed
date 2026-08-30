@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LibraryServiceFailure } from "./contracts.js";
 import { LibraryServiceSupervisor } from "./supervisor.js";
+import type { LibraryServicePrimaryCloudPortV1 } from "./primary-cloud-runtime.js";
 import {
   Deferred,
   FakeAclProof,
@@ -22,6 +23,7 @@ function createSupervisor(
     fileSystem?: FakeFileSystem;
     aclProof?: FakeAclProof;
     localActorIngress?: FakeLocalActorIngress;
+    primaryCloud?: LibraryServicePrimaryCloudPortV1;
   } = {},
 ) {
   const child = input.child ?? new FakeSidecarProcess();
@@ -40,6 +42,7 @@ function createSupervisor(
     clock,
     entropy: new FakeEntropy(),
     localActorIngress,
+    primaryCloud: input.primaryCloud,
   });
   return {
     child,
@@ -147,6 +150,42 @@ describe("LibraryServiceSupervisor", () => {
       JSON.parse(contents),
     );
     expect(statuses.map(({ phase }) => phase)).toEqual(["starting", "running"]);
+  });
+
+  it("starts and stops the recurring Primary when Google Drive is explicitly configured", async () => {
+    const fileSystem = validConfigFileSystem();
+    const config = JSON.parse(fileSystem.texts.get("/safe/config.json")!);
+    config.cloud = {
+      provider: "google-drive",
+      installationWitness: "e".repeat(64),
+      credentialRecordId: "library-drive",
+      publicationStateFile: "/safe/state/library-drive-state.json",
+    };
+    fileSystem.addFile("/safe/config.json", JSON.stringify(config));
+    fileSystem.addFile("/safe/state/library-drive-state.json", "");
+    const stop = vi.fn();
+    const primaryCloud: LibraryServicePrimaryCloudPortV1 = {
+      start: vi.fn(async () => ({
+        start: async () => ({ status: "current" }),
+        stop,
+      })),
+    };
+    const { supervisor } = createSupervisor({ fileSystem, primaryCloud });
+
+    await supervisor.start();
+    expect(primaryCloud.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          credentialRecordId: "library-drive",
+        }),
+        stateFile: expect.objectContaining({
+          path: "/safe/state/library-drive-state.json",
+        }),
+      }),
+    );
+
+    await supervisor.stop();
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 
   it("maps signed local actor methods into their closed native commands", async () => {

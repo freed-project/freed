@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, and provider-neutral headless runtime have landed; installed Drive coordination, Windows service transport, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, macOS Drive PKCE and Keychain custody, and installed immutable checkpoint publication have landed; inbound follower processing, Linux and Windows Drive secret custody, Windows service transport, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -108,10 +108,21 @@ The current product already provides the protocol foundation:
   writer. Its compiled artifacts bundle the shared coordinator and need no
   unpublished workspace package at installation time.
 
-These pieces do not yet create a complete installed headless authority. The
-service CLI has no Drive OAuth store or Drive publication binding. Freed
-Desktop retains its existing host-owned Drive credential and adapter. The
-native sidecar acquires the
+The installed macOS service now binds the shared Primary scheduler to Google
+Drive without giving Node an authority key or the native sidecar a Drive
+token. `drive-auth` uses PKCE through the existing Freed OAuth proxy, requests
+only `drive.appdata` and `drive.file`, and stores one refresh token in an exact
+Keychain record. `serve` resolves short-lived access tokens into memory, proves
+the current cloud writer, exports one pinned SQLite read transaction through
+bounded native pages, publishes the existing immutable checkpoint protocol,
+and persists only the committed control receipt through an already-bound
+private state-file descriptor. The coordinator stops before service
+settlement. A missing token, changed Library identity, cloud writer conflict,
+malformed response, or unavailable secret backend fails closed. Linux sealed
+credential custody and complete inbound enrollment, intent, and result
+processing remain open.
+
+The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
 private `library-sqlite` directory. It verifies the exact schema, application,
 contract, and protocol identity before it reports ready. It creates no
@@ -135,10 +146,10 @@ sidecar never opens that store. The sidecar command channel calls normalized
 checkpoint staging, pinned export, and registered query functions directly. It
 does not translate the old import, status, database-copy, or whole-item DTOs.
 Canonical mutation admission now loads the established authority and Primary
-actor keys only inside the native sidecar. The provider-neutral recurring
-headless runtime is present, but `serve` does not start it until installed
-Drive OAuth custody and immutable transport are bound. No service-side
-provider request occurs today.
+actor keys only inside the native sidecar. A configuration without the exact
+`cloud` block remains provider-dormant. A configuration with that block starts
+the recurring scheduler only after local SQLite authority and Keychain custody
+both pass.
 
 The macOS and Linux native authorities never reopen a verified root through a
 discovered pathname and never change the process working directory. A shared
@@ -247,10 +258,10 @@ digest, data and state root identities, and credential descriptor digest. Only
 one private bounded `freed_library_primary_credentials_v1` mounted record is
 accepted today. It binds exact Library identity plus authority and Primary
 actor Ed25519 keys. Parsing, identity checks, and signing happen only in the
-native sidecar, with decoded keys held in zeroizing memory. `os-vault`, Drive
-OAuth, cloud writer readiness, and every provider request fail closed or
-remain absent until task 11.5. A true ready receipt proves local native signing
-custody, not cloud authentication or writer promotion.
+native sidecar, with decoded keys held in zeroizing memory. The native
+`credentialsReady` receipt proves local signing custody only. Drive OAuth and
+cloud writer readiness remain separate Node-host proofs and never change that
+native receipt.
 
 Planned commands:
 
@@ -518,16 +529,16 @@ review before implementation.
 | 11.2  | Complete    | Enforce one operating system backed Library data-root lease before SQLite opens                                                                                                                                                                                                                                                                                                                                                    |
 | 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
-| 11.5  | Open        | Add Drive PKCE setup and platform-safe secret stores                                                                                                                                                                                                                                                                                                                                                                               |
-| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands; bind installed Drive coordination next                                                                                                                                          |
-| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. Bind the installed Drive publication port next                                                                                                                                                                                           |
+| 11.5  | In Progress | macOS `drive-auth` now uses PKCE through the existing OAuth proxy, requests only Library Core Drive scopes, stores only the refresh token in Keychain, and keeps access tokens memory-only. Complete the versioned Linux sealed credential store and Windows vault adapter next.                                                                                                                                                   |
+| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, follower-intent admission, actor state, and result export commands. Installed Drive checkpoint export now consumes the pinned bounded page contract. Complete service-side enrollment, intent, and result transport next.                           |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Complete installed promotion and competing-Primary acceptance next.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
 | 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |
 | 11.11 | Complete    | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Canonical signed query bytes now cross local actor protocol 2, and native SQLite proves the active actor, exact capability certificate, Library-wide scope, registered query grant, body digest, and Ed25519 signature before dispatch. Signed edits use the local intent method. |
 | 11.12 | Open        | Add provider-neutral RSS and explicit-save workers                                                                                                                                                                                                                                                                                                                                                                                 |
 | 11.13 | Blocked     | Add social capture workers after provider-specific owner approval                                                                                                                                                                                                                                                                                                                                                                  |
-| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd user-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Complete installed lifecycle receipts and the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                   |
+| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd user-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Complete installed lifecycle receipts and the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                  |
 | 11.15 | Open        | Complete installed Primary migration and editable follower acceptance                                                                                                                                                                                                                                                                                                                                                              |
 | 11.16 | Open        | Complete forward recovery, competing-Primary, and fault-injection acceptance                                                                                                                                                                                                                                                                                                                                                       |
 | 11.20 | Open        | Define the signed Omi actor and user-triggered voice capture contract                                                                                                                                                                                                                                                                                                                                                              |
@@ -538,6 +549,10 @@ review before implementation.
 
 ## Acceptance criteria
 
+- [x] The macOS service uses PKCE with only Library Core Drive scopes, keeps
+      the refresh token in Keychain, keeps access tokens memory-only, exports
+      bounded pinned SQLite pages, and persists state only after the immutable
+      control compare and swap commits.
 - [ ] A headless service imports a verified checkpoint into a fresh SQLite
       generation without copying a SQLite file from another host.
 - [ ] One exact writer promotion succeeds and a competing Primary loses the
