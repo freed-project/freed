@@ -15,6 +15,25 @@ export {
   type LibraryCoreNormalizedFollowerTransportV2,
 } from "./library-core-normalized-follower-sync.js";
 export {
+  syncLibraryCoreNormalizedPrimaryEnrollmentsV2,
+  syncLibraryCoreNormalizedPrimaryIntentsV2,
+  syncLibraryCoreNormalizedPrimaryResultsV2,
+  type LibraryCoreNormalizedPrimaryEnrollmentPageV2,
+  type LibraryCoreNormalizedPrimaryEnrollmentReceiptV2,
+  type LibraryCoreNormalizedPrimaryEnrollmentRequestV2,
+  type LibraryCoreNormalizedPrimaryEnrollmentRuntimeV2,
+  type LibraryCoreNormalizedPrimaryEnrollmentTransportV2,
+  type LibraryCoreNormalizedPrimaryIntentReceiptV2,
+  type LibraryCoreNormalizedPrimaryIntentReferencePageV2,
+  type LibraryCoreNormalizedPrimaryIntentRuntimeV2,
+  type LibraryCoreNormalizedPrimaryIntentStageRecordV1,
+  type LibraryCoreNormalizedPrimaryIntentTransportV2,
+  type LibraryCoreNormalizedPrimaryResultPageV1,
+  type LibraryCoreNormalizedPrimaryResultReceiptV2,
+  type LibraryCoreNormalizedPrimaryResultRuntimeV2,
+  type LibraryCoreNormalizedPrimaryResultTransportV2,
+} from "./library-core-normalized-primary-sync.js";
+export {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,
