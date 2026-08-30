@@ -338,7 +338,7 @@ export function FriendDetailPanel({
 
         <MiniFriendMapCard
           friend={friend}
-          feedItems={[...locationItems]}
+          feedItems={locationItems}
           onOpenMap={onOpenMap}
         />
       </div>

@@ -4,7 +4,7 @@ import { useFriendLastSeenLocation } from "../../hooks/useResolvedLocations.js";
 
 interface MiniFriendMapCardProps {
   friend: Person;
-  feedItems: FeedItem[];
+  feedItems: readonly FeedItem[];
   onOpenMap: () => void;
 }
 

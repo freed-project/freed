@@ -207,7 +207,7 @@ export function useResolvedLocationCandidates(
 
 export function useFriendLastSeenLocation(
   friend: Person,
-  feedItems: FeedItem[],
+  feedItems: readonly FeedItem[],
 ): {
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
