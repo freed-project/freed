@@ -16,7 +16,7 @@ import { toast } from "../Toast.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
-import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
+import { useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
@@ -107,10 +107,8 @@ export function AppShell({ children }: AppShellProps) {
     queryLibraryCore,
     readLibraryAccountDetail,
     readLibraryPersonDetail,
-    releaseMapRendererMemory,
     replaceLibraryFriend,
   } = usePlatform();
-  const previousActiveViewRef = useRef(activeView);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
@@ -129,23 +127,6 @@ export function AppShell({ children }: AppShellProps) {
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
   const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
-
-  useEffect(() => {
-    const previousActiveView = previousActiveViewRef.current;
-    previousActiveViewRef.current = activeView;
-    if (previousActiveView !== "map" || activeView === "map" || !releaseMapRendererMemory) {
-      return;
-    }
-
-    void releaseMapRendererMemory().catch((error) => {
-      addDebugEvent(
-        "error",
-        `[map] native renderer memory release failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
-  }, [activeView, releaseMapRendererMemory]);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
