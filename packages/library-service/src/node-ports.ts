@@ -32,6 +32,7 @@ import { LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES } from "./library-core-
 import { assertLinuxAclOutputHasOnlyModeEntries } from "./linux-acl-proof.js";
 import { createNodeLibraryServiceLocalActorIngressPortV1 } from "./local-actor-node-server.js";
 import type { LibraryServiceLocalActorIngressPortV1 } from "./local-actor-transport.js";
+import type { LibraryServicePrimaryCloudPortV1 } from "./primary-cloud-runtime.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_ACL_OUTPUT_BYTES = 32 * 1_024;
@@ -951,6 +952,7 @@ interface NodeLibraryServicePorts {
   entropy: LibraryServiceEntropyPort;
   process: LibraryServiceProcessPort;
   localActorIngress: LibraryServiceLocalActorIngressPortV1;
+  primaryCloud: LibraryServicePrimaryCloudPortV1;
 }
 
 interface NodeLibraryServicePortsOptions {
@@ -970,5 +972,12 @@ export function createNodeLibraryServicePorts(
     entropy: new NodeLibraryServiceEntropy(),
     process: new NodeLibraryServiceProcess(clock, options.spawnChild ?? spawn),
     localActorIngress: createNodeLibraryServiceLocalActorIngressPortV1(),
+    primaryCloud: {
+      async start(input) {
+        const { createNodeLibraryServicePrimaryCloudPortV1 } =
+          await import("./primary-cloud-runtime.js");
+        return createNodeLibraryServicePrimaryCloudPortV1().start(input);
+      },
+    },
   };
 }

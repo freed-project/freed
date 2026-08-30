@@ -5,10 +5,11 @@ headless Library Primary. It supervises the explicitly pinned
 `library-authority-sidecar` binary from `freed-library-core`. Node never opens
 the Library SQLite database or acquires its data-root lease.
 
-The compiled `freed-library` CLI currently provides four commands:
+The compiled `freed-library` CLI currently provides five commands:
 
 ```text
 freed-library doctor --config /physical/path/service.json
+freed-library drive-auth --config /physical/path/service.json
 freed-library service-definition --config /physical/path/service.json
 freed-library status --config /physical/path/service.json
 freed-library serve --config /physical/path/service.json
@@ -43,6 +44,12 @@ directories owned by that user with mode `0700`.
   "stateRoot": "/srv/freed/library-state",
   "admissionFile": "/srv/freed/library-state/admission.json",
   "credentialDescriptorFile": "/srv/freed/library-state/credentials.json",
+  "cloud": {
+    "provider": "google-drive",
+    "installationWitness": "0000000000000000000000000000000000000000000000000000000000000000",
+    "credentialRecordId": "freed-library-primary-drive",
+    "publicationStateFile": "/srv/freed/library-state/library-drive-state.json"
+  },
   "sidecar": {
     "executable": "/opt/freed/bin/library-authority-sidecar",
     "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -80,10 +87,10 @@ record identifier, never credential bytes:
 }
 ```
 
-The supervisor accepts `os-vault` or `mounted-credential` as descriptor
-syntax. The current native sidecar supports only `mounted-credential` and
-fails closed for `os-vault` until task 11.5 provides the platform vault
-adapter. A mounted record lives at
+The supervisor accepts `os-vault` or `mounted-credential` as native authority
+descriptor syntax. The current native sidecar supports only
+`mounted-credential`. That record remains separate from the Google Drive
+credential. A mounted record lives at
 `<stateRoot>/mounted-credentials/<recordId>`. The directory must be a physical
 directory owned by the service user with mode `0700`. The record must be one
 physical file owned by the service user with mode `0600`, exactly one link,
@@ -128,17 +135,22 @@ client, the closed reason `initial`, `local_revision`, or `inbound_refresh`,
 and an abort signal. It owns any transport credential or provider adapter.
 
 The compiled `dist/index.js` and `dist/bin.js` artifacts bundle the shared
-provider-neutral coordinator. An installed service does not need an
-unpublished `@freed/sync` package at runtime. The `serve` command does not yet
-bind a Drive OAuth store or Drive publication port, so it does not start the
-recurring cloud loop. Task 11.5 owns that installed credential and transport
-binding.
+provider-neutral coordinator and immutable Google Drive adapter. An installed
+service does not need an unpublished workspace package at runtime. When the
+exact `cloud` block is present, `serve` requires the precreated private
+publication state file, retrieves the refresh token from the named macOS
+Keychain record, resolves one short-lived access token through the existing
+OAuth proxy, and starts the shared recurring cloud loop. Without that block,
+the service remains provider-dormant.
 
 `credentialsReady: true` proves that exact native Primary signing custody. It
 does not prove Drive authentication, OAuth validity, cloud reachability, or
-writer promotion. The sidecar never interprets a Drive token and makes no
-provider request in this slice. Drive OAuth remains a separate credential and
-task 11.5 remains responsible for its platform-safe custody.
+writer promotion. The sidecar never interprets a Drive token or makes a
+provider request. On macOS, `drive-auth` performs one interactive PKCE flow and
+writes only the refresh token to Keychain. The token is sent to `security`
+through standard input, never an argument or environment value. Linux and
+Windows Drive secret stores remain fail-closed until their platform custody
+contracts land.
 
 The admission record on fd6 is exact-shape JSON. It binds the operator's local
 Primary admission to the start envelope, executable, both inherited root

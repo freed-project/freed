@@ -27,6 +27,12 @@ const CONFIG_KEYS = new Set([
   "credentialDescriptorFile",
   "sidecar",
 ]);
+const CLOUD_CONFIG_KEYS = new Set([
+  "provider",
+  "installationWitness",
+  "credentialRecordId",
+  "publicationStateFile",
+]);
 const SIDECAR_KEYS = new Set([
   "executable",
   "sha256",
@@ -60,6 +66,7 @@ export interface BoundLibraryServiceConfiguration {
   admissionDigest: string;
   credentialDescriptorDigest: string;
   configFile: LibraryServiceBoundPath;
+  cloudState: LibraryServiceBoundPath | null;
   bindings: LibraryServiceBoundInputs;
   close(): Promise<void>;
 }
@@ -318,7 +325,11 @@ function parseConfig(text: string): LibraryServiceConfig {
   } catch {
     throw new LibraryServiceFailure("config_invalid");
   }
-  if (!isObject(raw) || !hasExactKeys(raw, CONFIG_KEYS)) {
+  if (
+    !isObject(raw) ||
+    (!hasExactKeys(raw, CONFIG_KEYS) &&
+      !hasExactKeys(raw, new Set([...CONFIG_KEYS, "cloud"])))
+  ) {
     throw new LibraryServiceFailure("config_invalid");
   }
   if (
@@ -350,6 +361,29 @@ function parseConfig(text: string): LibraryServiceConfig {
     raw.sidecar.executable,
     "sidecar_invalid",
   );
+  let cloud: LibraryServiceConfig["cloud"] = null;
+  if ("cloud" in raw && raw.cloud !== null) {
+    if (
+      !isObject(raw.cloud) ||
+      !hasExactKeys(raw.cloud, CLOUD_CONFIG_KEYS) ||
+      raw.cloud.provider !== "google-drive" ||
+      typeof raw.cloud.installationWitness !== "string" ||
+      !LOWERCASE_SHA256.test(raw.cloud.installationWitness) ||
+      typeof raw.cloud.credentialRecordId !== "string" ||
+      !SAFE_RECORD_ID.test(raw.cloud.credentialRecordId)
+    ) {
+      throw new LibraryServiceFailure("config_invalid");
+    }
+    cloud = {
+      provider: "google-drive",
+      installationWitness: raw.cloud.installationWitness,
+      credentialRecordId: raw.cloud.credentialRecordId,
+      publicationStateFile: requireAbsolutePhysicalPath(
+        raw.cloud.publicationStateFile,
+        "cloud_state_missing",
+      ),
+    };
+  }
 
   if (
     typeof raw.sidecar.sha256 !== "string" ||
@@ -375,6 +409,7 @@ function parseConfig(text: string): LibraryServiceConfig {
     stateRoot,
     admissionFile,
     credentialDescriptorFile,
+    cloud,
     sidecar: {
       executable,
       sha256: raw.sidecar.sha256,
@@ -429,6 +464,7 @@ function validatePathSeparation(
   config: LibraryServiceConfig,
 ): void {
   const statusPath = path.join(config.stateRoot, "library-service-status.json");
+  const cloudStatePath = config.cloud?.publicationStateFile ?? null;
   if (
     config.dataRoot === config.stateRoot ||
     isWithinOrEqual(config.dataRoot, config.stateRoot) ||
@@ -443,7 +479,13 @@ function validatePathSeparation(
     !isStrictChild(config.credentialDescriptorFile, config.stateRoot) ||
     config.admissionFile === config.credentialDescriptorFile ||
     config.admissionFile === statusPath ||
-    config.credentialDescriptorFile === statusPath
+    config.credentialDescriptorFile === statusPath ||
+    (cloudStatePath !== null &&
+      (!isStrictChild(cloudStatePath, config.stateRoot) ||
+        isWithinOrEqual(cloudStatePath, config.dataRoot) ||
+        cloudStatePath === statusPath ||
+        cloudStatePath === config.admissionFile ||
+        cloudStatePath === config.credentialDescriptorFile))
   ) {
     throw new LibraryServiceFailure("config_invalid");
   }
@@ -475,7 +517,11 @@ export async function assertLibraryServiceBindingsStable(
   fileSystem: LibraryServiceFileSystemPort,
   signal?: AbortSignal,
 ): Promise<void> {
-  const paths = [bound.configFile, ...Object.values(bound.bindings)];
+  const paths = [
+    bound.configFile,
+    ...Object.values(bound.bindings),
+    ...(bound.cloudState === null ? [] : [bound.cloudState]),
+  ];
   for (const resource of paths) {
     throwIfAborted(signal);
     try {
@@ -601,6 +647,21 @@ export async function bindLibraryServiceConfig(
     parseCredentialDescriptor(
       decodeBoundedText(credentialBytes, "credential_descriptor_invalid"),
     );
+    const cloudState =
+      config.cloud === null
+        ? null
+        : await bindPrivateFile(
+            config.cloud.publicationStateFile,
+            context,
+            "cloud_state_missing",
+            "cloud_state_not_private",
+          );
+    if (cloudState !== null) {
+      opened.push(cloudState);
+      if (cloudState.metadata.size > LIBRARY_SERVICE_MAX_DESCRIPTOR_BYTES) {
+        throw new LibraryServiceFailure("cloud_state_invalid");
+      }
+    }
     const sidecar = await bindPinnedSidecar(config, context);
     opened.push(sidecar.bound);
 
@@ -620,6 +681,7 @@ export async function bindLibraryServiceConfig(
       admissionDigest: await admission.sha256(),
       credentialDescriptorDigest: sha256(credentialBytes),
       configFile,
+      cloudState,
       bindings: {
         executable: sidecar.bound,
         dataRoot,
@@ -635,6 +697,7 @@ export async function bindLibraryServiceConfig(
           stateRoot,
           admission,
           credentialDescriptor,
+          ...(cloudState === null ? [] : [cloudState]),
         ]);
       },
     };

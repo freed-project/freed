@@ -581,6 +581,7 @@ export function validConfig(): LibraryServiceConfig {
     stateRoot: "/safe/state",
     admissionFile: "/safe/state/admission.json",
     credentialDescriptorFile: "/safe/state/credentials.json",
+    cloud: null,
     sidecar: {
       executable: "/trusted/sidecar",
       sha256: "a".repeat(64),

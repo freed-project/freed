@@ -16,9 +16,10 @@ import {
 } from "./status.js";
 import { createLibraryServiceDefinitionV1 } from "./service-definition.js";
 import { LibraryServiceSupervisor } from "./supervisor.js";
+import { authorizeNodeGoogleDriveV1 } from "./node-google-drive-auth.js";
 
 interface ParsedArguments {
-  command: "serve" | "status" | "doctor" | "service-definition";
+  command: "serve" | "status" | "doctor" | "service-definition" | "drive-auth";
   configPath: string;
 }
 
@@ -31,7 +32,8 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
     command !== "serve" &&
     command !== "status" &&
     command !== "doctor" &&
-    command !== "service-definition"
+    command !== "service-definition" &&
+    command !== "drive-auth"
   ) {
     throw new LibraryServiceFailure("config_invalid");
   }
@@ -65,6 +67,7 @@ async function serve(configPath: string): Promise<number> {
     clock: ports.clock,
     entropy: ports.entropy,
     localActorIngress: ports.localActorIngress,
+    primaryCloud: ports.primaryCloud,
   });
   const startup = new AbortController();
   let signalCount = 0;
@@ -100,7 +103,6 @@ async function serve(configPath: string): Promise<number> {
     const startResult = await supervisor.start(startup.signal);
     started = true;
     writeStandardReport({
-      schemaVersion: 1,
       service: "freed-library",
       ok: true,
       ...startResult,
@@ -169,6 +171,35 @@ async function writeServiceDefinition(configPath: string): Promise<number> {
   }
 }
 
+async function authorizeGoogleDrive(configPath: string): Promise<number> {
+  const ports = createNodeLibraryServicePorts();
+  const bound = await bindLibraryServiceConfig(
+    configPath,
+    ports.fileSystem,
+    ports.identity,
+    ports.aclProof,
+  );
+  try {
+    if (bound.config.cloud === null) {
+      throw new LibraryServiceFailure("config_invalid");
+    }
+    const receipt = await authorizeNodeGoogleDriveV1(
+      bound.config.cloud.credentialRecordId,
+    );
+    await assertLibraryServiceBindingsStable(bound, ports.fileSystem);
+    writeStandardReport({
+      service: "freed-library",
+      ok: true,
+      role: "primary",
+      phase: "drive-authenticated",
+      ...receipt,
+    });
+    return 0;
+  } finally {
+    await bound.close();
+  }
+}
+
 export async function runLibraryServiceCli(
   argv: readonly string[],
 ): Promise<number> {
@@ -216,6 +247,9 @@ export async function runLibraryServiceCli(
     }
     if (parsed.command === "service-definition") {
       return await writeServiceDefinition(parsed.configPath);
+    }
+    if (parsed.command === "drive-auth") {
+      return await authorizeGoogleDrive(parsed.configPath);
     }
     return await serve(parsed.configPath);
   } catch (error) {

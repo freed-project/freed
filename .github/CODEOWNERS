@@ -77,6 +77,7 @@
 /packages/desktop/src/lib/authenticated-essay-*.ts @AubreyF
 /packages/desktop/src/lib/substack-*.ts @AubreyF
 /packages/desktop/src/lib/medium-*.ts @AubreyF
+/packages/library-service/src/ @AubreyF
 /packages/sync/ @AubreyF
 /packages/capture-facebook/ @AubreyF
 /packages/capture-instagram/ @AubreyF

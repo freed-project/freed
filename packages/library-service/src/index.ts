@@ -13,6 +13,11 @@ export {
 } from "./contracts.js";
 export { runLibraryServiceCli } from "./cli-runtime.js";
 export {
+  authorizeNodeGoogleDriveV1,
+  type NodeGoogleDriveAuthDependenciesV1,
+  type NodeGoogleDriveAuthReceiptV1,
+} from "./node-google-drive-auth.js";
+export {
   createLibraryServiceDefinitionV1,
   LIBRARY_SERVICE_DEFINITION_SCHEMA_VERSION,
   LIBRARY_SERVICE_LAUNCHD_LABEL,
@@ -41,3 +46,16 @@ export {
   type LibraryServicePrimaryRuntimeOptionsV1,
   type LibraryServicePrimaryRuntimeV1,
 } from "./primary-runtime.js";
+export {
+  createBoundGoogleDrivePublicationStatePortV1,
+  createLibraryServiceGoogleDrivePublicationV1,
+  type LibraryServiceGoogleDrivePublicationOptionsV1,
+  type LibraryServiceGoogleDrivePublicationResultV1,
+  type LibraryServiceGoogleDrivePublicationStatePortV1,
+  type LibraryServiceGoogleDrivePublicationStateV1,
+  type LibraryServiceGoogleDriveTokenPortV1,
+} from "./google-drive-publication.js";
+export {
+  createNodeLibraryServicePrimaryCloudPortV1,
+  type LibraryServicePrimaryCloudPortV1,
+} from "./primary-cloud-runtime.js";

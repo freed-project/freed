@@ -28,9 +28,15 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "config_not_private",
   "command_channel_failed",
   "command_response_invalid",
+  "cloud_runtime_failed",
+  "cloud_state_invalid",
+  "cloud_state_missing",
+  "cloud_state_not_private",
   "credential_descriptor_invalid",
   "credential_descriptor_missing",
   "credential_descriptor_not_private",
+  "drive_auth_failed",
+  "drive_credential_unavailable",
   "data_root_invalid",
   "data_root_not_private",
   "filesystem_failure",
@@ -90,7 +96,15 @@ export interface LibraryServiceConfig {
   stateRoot: string;
   admissionFile: string;
   credentialDescriptorFile: string;
+  cloud: LibraryServiceGoogleDriveConfig | null;
   sidecar: LibraryServiceSidecarConfig;
+}
+
+export interface LibraryServiceGoogleDriveConfig {
+  provider: "google-drive";
+  installationWitness: string;
+  credentialRecordId: string;
+  publicationStateFile: string;
 }
 
 export interface LibraryServiceCredentialDescriptor {
@@ -248,11 +262,7 @@ export interface LibraryServiceProcessPort {
 }
 
 export type LibraryServicePhase =
-  | "starting"
-  | "running"
-  | "stopping"
-  | "stopped"
-  | "failed";
+  "starting" | "running" | "stopping" | "stopped" | "failed";
 
 export interface LibraryServiceStatusRecord {
   schemaVersion: typeof LIBRARY_SERVICE_STATUS_SCHEMA_VERSION;

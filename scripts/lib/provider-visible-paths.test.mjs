@@ -424,6 +424,20 @@ test("background media and Google sync network surfaces are provider-visible", (
     isProviderVisiblePath("packages/sync/src/cloud/gdrive.ts"),
     true,
   );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/library-service/src/google-drive-publication.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/library-service/src/supervisor.ts"),
+    true,
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/library-service/src/node-google-drive-auth.ts"),
+    ["other"],
+  );
 });
 
 test("non-provider paths are not provider-visible", () => {
