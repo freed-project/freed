@@ -18,7 +18,8 @@ const LIBRARY_DIRECTORY: &str = "library-core";
 const LIBRARY_FILE: &str = "library-core.sqlite";
 const RESET_LOCK_FILE: &str = "migration-reset.lock";
 const HISTORICAL_APPLICATION_ID: i64 = 0x4652_4545;
-const HISTORICAL_SCHEMA_VERSION: i64 = 12;
+const HISTORICAL_MINIMUM_SCHEMA_VERSION: i64 = 6;
+const HISTORICAL_MAXIMUM_SCHEMA_VERSION: i64 = 12;
 const HISTORICAL_REQUIRED_COLUMNS: [(&str, &[&str]); 5] = [
     (
         "library_core_desktop_state",
@@ -278,7 +279,10 @@ fn validate_historical_source(connection: &Connection) -> LibraryCoreStorageResu
     let application_id: i64 =
         connection.query_row("PRAGMA application_id;", [], |row| row.get(0))?;
     let schema_version: i64 = connection.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
-    if application_id != HISTORICAL_APPLICATION_ID || schema_version != HISTORICAL_SCHEMA_VERSION {
+    if application_id != HISTORICAL_APPLICATION_ID
+        || !(HISTORICAL_MINIMUM_SCHEMA_VERSION..=HISTORICAL_MAXIMUM_SCHEMA_VERSION)
+            .contains(&schema_version)
+    {
         return Err(LibraryCoreStorageError(
             "historical Desktop migration source identity is unsupported".to_string(),
         ));
@@ -425,43 +429,63 @@ mod tests {
     }
 
     #[test]
-    fn exact_historical_source_is_read_only() {
-        let fixture = tempfile::TempDir::new().expect("create historical source fixture");
-        create_source(
-            fixture.path(),
-            HISTORICAL_APPLICATION_ID,
-            HISTORICAL_SCHEMA_VERSION,
-            true,
-        );
+    fn supported_historical_sources_are_read_only() {
+        for schema_version in [
+            HISTORICAL_MINIMUM_SCHEMA_VERSION,
+            HISTORICAL_MAXIMUM_SCHEMA_VERSION,
+        ] {
+            let fixture = tempfile::TempDir::new().expect("create historical source fixture");
+            create_source(
+                fixture.path(),
+                HISTORICAL_APPLICATION_ID,
+                schema_version,
+                true,
+            );
 
-        let source = open_bound(fixture.path())
-            .expect("admit exact historical source")
-            .expect("historical source is present");
-        let connection = source.connect().expect("reopen exact historical source");
-        assert_eq!(
-            connection
-                .query_row("PRAGMA query_only;", [], |row| row.get::<_, i64>(0))
-                .expect("read query-only mode"),
-            1
-        );
-        assert!(connection
-            .execute("DELETE FROM library_core_feed_items;", [])
-            .is_err());
+            let source = open_bound(fixture.path())
+                .expect("admit supported historical source")
+                .expect("historical source is present");
+            let connection = source
+                .connect()
+                .expect("reopen supported historical source");
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA query_only;", [], |row| row.get::<_, i64>(0))
+                    .expect("read query-only mode"),
+                1
+            );
+            assert!(connection
+                .execute("DELETE FROM library_core_feed_items;", [])
+                .is_err());
+        }
     }
 
     #[test]
     fn changed_identity_or_incomplete_schema_is_rejected() {
-        for (application_id, complete) in [
-            (HISTORICAL_APPLICATION_ID + 1, true),
-            (HISTORICAL_APPLICATION_ID, false),
+        for (application_id, schema_version, complete) in [
+            (
+                HISTORICAL_APPLICATION_ID + 1,
+                HISTORICAL_MAXIMUM_SCHEMA_VERSION,
+                true,
+            ),
+            (
+                HISTORICAL_APPLICATION_ID,
+                HISTORICAL_MINIMUM_SCHEMA_VERSION - 1,
+                true,
+            ),
+            (
+                HISTORICAL_APPLICATION_ID,
+                HISTORICAL_MAXIMUM_SCHEMA_VERSION + 1,
+                true,
+            ),
+            (
+                HISTORICAL_APPLICATION_ID,
+                HISTORICAL_MAXIMUM_SCHEMA_VERSION,
+                false,
+            ),
         ] {
             let fixture = tempfile::TempDir::new().expect("create rejected source fixture");
-            create_source(
-                fixture.path(),
-                application_id,
-                HISTORICAL_SCHEMA_VERSION,
-                complete,
-            );
+            create_source(fixture.path(), application_id, schema_version, complete);
             assert!(open_bound(fixture.path()).is_err());
         }
     }
