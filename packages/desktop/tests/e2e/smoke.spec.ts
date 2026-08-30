@@ -1493,6 +1493,9 @@ test("reader toolbar keeps the Focus toggle text vertically centered", async ({ 
   await app.injectRssItems(4);
 
   await page.locator("[data-feed-item-id]").first().click();
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
   const focusButton = page.getByRole("button", { name: "Toggle focus reading mode" });
   await expect(focusButton).toBeVisible({ timeout: 5_000 });
 
