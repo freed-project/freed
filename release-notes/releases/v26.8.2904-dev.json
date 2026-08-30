@@ -3,7 +3,7 @@
   "version": "26.8.2904-dev",
   "channel": "dev",
   "dayKey": "26.8.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-30T05:18:00.171Z",
   "model": "heuristic",
@@ -103,14 +103,16 @@
     ]
   },
   "release": {
-    "deck": "Replace library authority with SQLite, support trusted automation launchers on Linux, and run every Library view from bounded SQLite queries",
+    "deck": "Stop recurring Library view reloads, finish sample-data clearing in bounded batches, and keep the clean-slate SQLite Library responsive",
     "features": [
       "Replace library authority with SQLite",
       "Support trusted automation launchers on Linux",
       "Run every Library view from bounded SQLite queries"
     ],
     "fixes": [
-      "SQLite background mutations are now more stable",
+      "Keep Feed, Map, and Story rows visible while background SQLite revisions load",
+      "Batch semantic-classifier operation signing through one bounded native Library Core call",
+      "Clear marked sample Accounts and People in bounded transactions, with dependent Accounts removed before People",
       "Recover legacy Library cutover",
       "Admit supported Library predecessors",
       "Run Library Core on Windows",
@@ -123,20 +125,10 @@
       "Keep refused cutovers in typed recovery and stop Library sync until retry succeeds"
     ],
     "followUps": [
-      "Align Vite 8 build tooling",
-      "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri",
-      "Bump vite from 7.3.6 to 8.2.1",
-      "Bump globals from 16.5.0 to 17.11.0",
-      "Bump react-router and react-router-dom",
-      "Bump postcss from 8.5.23 to 8.5.24",
-      "Bump the cargo-updates group across 1 directory with 2 updates",
-      "Bump js-yaml from 4.3.0 to 4.3.1",
-      "Bump fast-uri from 3.1.4 to 3.1.5",
-      "Bump undici from 7.28.0 to 7.29.0",
-      "Store and sync normalized Library records without the historical engines",
-      "Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support",
-      "The SQLite release now upgrades real-world Libraries without reopening the retired engines"
+      "Verify the build against a fully hydrated Library through the classifier's ten-minute start window",
+      "Confirm marked sample data clears without blanking or prolonged native CPU saturation",
+      "Continue removing remaining compatibility paths before production promotion"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2904-dev\n\nReplace library authority with SQLite, support trusted automation launchers on Linux, and run every Library view from bounded SQLite queries\n\n### Features\n\n- Replace library authority with SQLite\n- Support trusted automation launchers on Linux\n- Run every Library view from bounded SQLite queries\n\n### Fixes\n\n- SQLite background mutations are now more stable\n- Recover legacy Library cutover\n- Admit supported Library predecessors\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n- Accept historical schemas 6 through 12 at cutover\n- Migrate tag-only content analysis without inventing confidence scores\n- Treat preserved non-finite publication timestamps as missing data\n- Keep refused cutovers in typed recovery and stop Library sync until retry succeeds\n\n### Follow-ups\n\n- Align Vite 8 build tooling\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump vite from 7.3.6 to 8.2.1\n- Bump globals from 16.5.0 to 17.11.0\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n- Store and sync normalized Library records without the historical engines\n- Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support\n- The SQLite release now upgrades real-world Libraries without reopening the retired engines\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2904-dev\n\nStop recurring Library view reloads, finish sample-data clearing in bounded batches, and keep the clean-slate SQLite Library responsive\n\n### Features\n\n- Replace library authority with SQLite\n- Support trusted automation launchers on Linux\n- Run every Library view from bounded SQLite queries\n\n### Fixes\n\n- Keep Feed, Map, and Story rows visible while background SQLite revisions load\n- Batch semantic-classifier operation signing through one bounded native Library Core call\n- Clear marked sample Accounts and People in bounded transactions, with dependent Accounts removed before People\n- Recover legacy Library cutover\n- Admit supported Library predecessors\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n- Accept historical schemas 6 through 12 at cutover\n- Migrate tag-only content analysis without inventing confidence scores\n- Treat preserved non-finite publication timestamps as missing data\n- Keep refused cutovers in typed recovery and stop Library sync until retry succeeds\n\n### Follow-ups\n\n- Verify the build against a fully hydrated Library through the classifier's ten-minute start window\n- Confirm marked sample data clears without blanking or prolonged native CPU saturation\n- Continue removing remaining compatibility paths before production promotion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
