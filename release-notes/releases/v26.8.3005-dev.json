@@ -3,7 +3,7 @@
   "version": "26.8.3005-dev",
   "channel": "dev",
   "dayKey": "26.8.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-30T21:47:38.741Z",
   "model": "heuristic",
@@ -95,31 +95,31 @@
     ]
   },
   "release": {
-    "deck": "Orchestrate bounded Primary inbound passes, bind normalized Primary native transport, and normalized Primary inbound orchestration",
+    "deck": "Google Drive checkpoint sync, stable Library views, and bounded SQLite reads",
     "features": [
-      "Orchestrate bounded Primary inbound passes",
-      "Bind normalized Primary native transport",
-      "Normalized Primary inbound orchestration"
+      "Publish immutable Google Drive checkpoints from bounded SQLite pages",
+      "Run bounded Primary inbound passes through normalized native transport",
+      "Expose headless follower enrollment authority"
     ],
     "fixes": [
-      "Compress GitHub release history reads",
-      "Admit long checkpoint record identities",
+      "Sync libraries containing long URL-shaped record identities",
       "Keep Library queries off the desktop command thread",
-      "Preserve navigation after leaving map",
       "Recover Friends graph from stale cursors",
       "Prove installed primary native identity",
       "Stop Friend location render loops",
+      "Preserve navigation after leaving Map",
+      "Create and upload checkpoints from one consistent SQLite revision",
       "Keep checkpoint exports on one SQLite snapshot",
       "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history",
-      "Create local Library snapshots from one consistent SQLite revision",
       "Open the full Map from a Friend's last-seen card after the location resolves"
     ],
     "followUps": [
+      "Prepare v26.8.3001-dev",
+      "Prepare v26.8.3002-dev",
+      "Prepare v26.8.3003-dev",
       "Prepare v26.8.3004-dev",
-      "Expose headless follower enrollment authority",
-      "Bind headless Primary to Google Drive",
-      "Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory"
+      "Bind headless Primary to Google Drive"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3005-dev\n\nOrchestrate bounded Primary inbound passes, bind normalized Primary native transport, and normalized Primary inbound orchestration\n\n### Features\n\n- Orchestrate bounded Primary inbound passes\n- Bind normalized Primary native transport\n- Normalized Primary inbound orchestration\n\n### Fixes\n\n- Compress GitHub release history reads\n- Admit long checkpoint record identities\n- Keep Library queries off the desktop command thread\n- Preserve navigation after leaving map\n- Recover Friends graph from stale cursors\n- Prove installed primary native identity\n- Stop Friend location render loops\n- Keep checkpoint exports on one SQLite snapshot\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Create local Library snapshots from one consistent SQLite revision\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Follow-ups\n\n- Prepare v26.8.3004-dev\n- Expose headless follower enrollment authority\n- Bind headless Primary to Google Drive\n- Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3005-dev\n\nGoogle Drive checkpoint sync, stable Library views, and bounded SQLite reads\n\n### Features\n\n- Publish immutable Google Drive checkpoints from bounded SQLite pages\n- Run bounded Primary inbound passes through normalized native transport\n- Expose headless follower enrollment authority\n\n### Fixes\n\n- Sync libraries containing long URL-shaped record identities\n- Keep Library queries off the desktop command thread\n- Recover Friends graph from stale cursors\n- Prove installed primary native identity\n- Stop Friend location render loops\n- Preserve navigation after leaving Map\n- Create and upload checkpoints from one consistent SQLite revision\n- Keep checkpoint exports on one SQLite snapshot\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Follow-ups\n\n- Prepare v26.8.3001-dev\n- Prepare v26.8.3002-dev\n- Prepare v26.8.3003-dev\n- Prepare v26.8.3004-dev\n- Bind headless Primary to Google Drive\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
