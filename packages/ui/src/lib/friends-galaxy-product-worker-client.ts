@@ -1,4 +1,5 @@
 import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
+import { normalizeFriendsGalaxySqliteSourceFailure } from "./friends-galaxy-sqlite-source.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   validateFriendsGalaxyProductWorkerResponse,
@@ -520,7 +521,11 @@ export class FriendsGalaxyProductWorkerClient {
           this.normalizedSourceJob !== job ||
           job.queryToken !== queryToken
         ) return;
-        this.fail("source", error, null);
+        this.fail(
+          "source",
+          normalizeFriendsGalaxySqliteSourceFailure(error),
+          null,
+        );
       });
   }
 

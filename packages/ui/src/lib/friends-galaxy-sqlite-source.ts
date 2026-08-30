@@ -23,6 +23,21 @@ export const FRIENDS_GALAXY_SQLITE_SOURCE_ROW_CAP = 100_000;
 export const FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED =
   "Friends Galaxy SQLite source page moved to a different source fence.";
 
+const FRIENDS_GALAXY_NATIVE_STALE_CURSOR_MESSAGES = new Set([
+  "normalized Person graph page cursor is stale",
+  "normalized Account graph page cursor is stale",
+  "normalized RSS Feed page cursor is stale",
+]);
+
+export function normalizeFriendsGalaxySqliteSourceFailure(
+  error: unknown,
+): unknown {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return FRIENDS_GALAXY_NATIVE_STALE_CURSOR_MESSAGES.has(message.trim())
+    ? new Error(FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED)
+    : error;
+}
+
 export type FriendsGalaxySqliteSourcePage =
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCoreAccountGraphPageResponseV1
