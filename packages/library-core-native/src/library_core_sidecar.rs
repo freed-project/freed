@@ -24,11 +24,12 @@ use crate::sqlite_contract_generated::{
 use crate::{
     accept_normalized_operation_transaction_v1, append_normalized_checkpoint_stage_page_v2,
     apply_normalized_actor_retirement_v1, begin_normalized_checkpoint_stage_v2,
-    describe_normalized_checkpoint_export_v2, describe_normalized_operation_export_v2,
-    execute_normalized_agent_query_v1, export_normalized_follower_result_page_v1,
-    export_normalized_operation_page_v2, export_pinned_normalized_checkpoint_page_v2,
-    finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
-    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
+    countersign_normalized_follower_actor_request_v2, describe_normalized_checkpoint_export_v2,
+    describe_normalized_operation_export_v2, execute_normalized_agent_query_v1,
+    export_normalized_follower_result_page_v1, export_normalized_operation_page_v2,
+    export_pinned_normalized_checkpoint_page_v2, finalize_normalized_checkpoint_stage_v2,
+    get_content_state_v1, ingest_normalized_follower_intent_page_v1,
+    load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
     reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
@@ -258,6 +259,13 @@ struct CommitTransactionCommandV1 {
     library_id: String,
     canonical_envelope_json: Vec<String>,
     committed_at_ms: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CountersignFollowerActorRequestCommandV2 {
+    accepted_at_ms: i64,
+    canonical_enrollment_request_json: String,
 }
 
 #[derive(Deserialize)]
@@ -714,6 +722,19 @@ fn execute_native_command_v1(
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
             encode_command_result(
                 get_content_state_v1(connection, &command).map_err(selective_content_error)?,
+            )
+        }
+        "countersign_follower_actor_request_v2" => {
+            let command: CountersignFollowerActorRequestCommandV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                countersign_normalized_follower_actor_request_v2(
+                    connection,
+                    command.canonical_enrollment_request_json.as_bytes(),
+                    &MountedAuthorityKeyStore(credentials),
+                    command.accepted_at_ms,
+                )
+                .map_err(normalized_command_error)?,
             )
         }
         "describe_checkpoint_export_v2" => {
@@ -1577,6 +1598,17 @@ mod tests {
                 .public_key()
                 .as_ref(),
         );
+        let authority_key_id = lower_hex(&Sha256::digest(
+            crate::library_core_canonical::encode_operation_digest_input(
+                "authority-key",
+                &json!({
+                    "authority_public_key": authority_public_key,
+                    "signature_algorithm": "ed25519"
+                }),
+                64 * 1_024,
+            )
+            .expect("encode authority key identity"),
+        ));
         connection
             .execute(
                 "INSERT INTO library_meta
@@ -1597,7 +1629,7 @@ mod tests {
                 rusqlite::params![
                     epoch_id,
                     credentials.library_id,
-                    "d".repeat(64),
+                    authority_key_id,
                     authority_public_key,
                     "e".repeat(64),
                     "f".repeat(64),
@@ -1893,6 +1925,84 @@ mod tests {
         assert_eq!(
             assert_primary_credentials_match_storage(&connection, &foreign_credentials),
             Err(failure("credential_invalid"))
+        );
+
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation
+                 (singleton_id, generation_id) VALUES (1, ?1);",
+                [&"6".repeat(64)],
+            )
+            .expect("install materialization generation");
+        let checkpoint = describe_normalized_checkpoint_export_v2(&connection)
+            .expect("describe Primary checkpoint");
+        let checkpoint_digest = "d".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_follower_checkpoint_receipt
+                 (singleton_id, library_id, authority_epoch_id, writer_actor_id,
+                  checkpoint_generation, source_revision, checkpoint_digest,
+                  manifest_object_key, manifest_transport_object_id,
+                  manifest_content_digest, control_revision, installed_at)
+                 VALUES (1, ?1, ?2, ?3, 0, 0, ?4,
+                         'manifest', 'object', ?4, 'revision', 1000);",
+                rusqlite::params![
+                    checkpoint.library_id,
+                    checkpoint.authority_epoch,
+                    checkpoint.writer_id,
+                    checkpoint_digest,
+                ],
+            )
+            .expect("install follower checkpoint receipt");
+        let follower_request = crate::prepare_normalized_follower_actor_request_v2(
+            &mut connection,
+            &"5".repeat(64),
+            &MountedActorKeyStore(&test_primary_credentials(&credentials.library_id)),
+            1_100,
+        )
+        .expect("prepare follower actor request");
+        let enrollment = execute_native_command_v1(
+            &mut connection,
+            &credentials,
+            "countersign_follower_actor_request_v2",
+            json!({
+                "acceptedAtMs": 1_200,
+                "canonicalEnrollmentRequestJson": follower_request.canonical_enrollment_request_json
+            }),
+        )
+        .expect("countersign follower actor request inside sidecar");
+        assert_eq!(enrollment["actorId"], follower_request.actor_id);
+        assert!(enrollment["canonicalEnrollmentCertificateJson"]
+            .as_str()
+            .is_some_and(|certificate| !certificate.is_empty()));
+        assert!(enrollment.get("authorityKeyPkcs8Base64").is_none());
+        let revision_after_enrollment: i64 = connection
+            .query_row(
+                "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read enrollment revision");
+        let replay = execute_native_command_v1(
+            &mut connection,
+            &credentials,
+            "countersign_follower_actor_request_v2",
+            json!({
+                "acceptedAtMs": 1_200,
+                "canonicalEnrollmentRequestJson": follower_request.canonical_enrollment_request_json
+            }),
+        )
+        .expect("replay follower actor countersignature");
+        assert_eq!(replay, enrollment);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("read replay revision"),
+            revision_after_enrollment
         );
 
         let context = execute_native_command_v1(
