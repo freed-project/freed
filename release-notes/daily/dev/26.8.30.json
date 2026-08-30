@@ -8,7 +8,9 @@
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Open the full Map from a Friend's last-seen card after the location resolves"
+  ],
   "editorialNotes": [],
-  "updatedAt": "2026-08-30T09:15:52.093Z"
+  "updatedAt": "2026-08-30T12:00:41.724Z"
 }
