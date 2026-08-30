@@ -26,10 +26,10 @@ use crate::{
     apply_normalized_actor_retirement_v1, begin_normalized_checkpoint_stage_v2,
     countersign_normalized_follower_actor_request_v2, describe_normalized_checkpoint_export_v2,
     describe_normalized_operation_export_v2, execute_normalized_agent_query_v1,
-    export_normalized_follower_result_page_v1, export_normalized_operation_page_v2,
-    export_pinned_normalized_checkpoint_page_v2, finalize_normalized_checkpoint_stage_v2,
-    get_content_state_v1, ingest_normalized_follower_intent_page_v1,
-    load_or_create_normalized_actor_id_v2, lower_hex,
+    export_normalized_follower_result_page_v1, export_normalized_follower_result_page_v2,
+    export_normalized_operation_page_v2, export_pinned_normalized_checkpoint_page_v2,
+    finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
+    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
     reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
@@ -37,8 +37,9 @@ use crate::{
     ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
     LibraryCoreProcessLease, NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerResultPageRequestV1,
-    NormalizedOperationExportRequestV2, NormalizedSqliteError,
-    PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity, SelectiveContentError,
+    NormalizedFollowerResultPageRequestV2, NormalizedOperationExportRequestV2,
+    NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
+    SelectiveContentError,
 };
 
 const PROTOCOL_VERSION: u8 = 2;
@@ -766,6 +767,14 @@ fn execute_native_command_v1(
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
             encode_command_result(
                 export_normalized_follower_result_page_v1(connection, &command)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "export_follower_result_page_v2" => {
+            let command: NormalizedFollowerResultPageRequestV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                export_normalized_follower_result_page_v2(connection, &command)
                     .map_err(normalized_command_error)?,
             )
         }

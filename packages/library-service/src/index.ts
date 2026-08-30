@@ -47,6 +47,10 @@ export {
   type LibraryServicePrimaryRuntimeV1,
 } from "./primary-runtime.js";
 export {
+  createLibraryServiceNormalizedPrimaryNativeRuntimeV2,
+  type LibraryServiceNormalizedPrimaryNativeRuntimeOptionsV2,
+} from "./normalized-primary-native-runtime.js";
+export {
   createBoundGoogleDrivePublicationStatePortV1,
   createLibraryServiceGoogleDrivePublicationV1,
   type LibraryServiceGoogleDrivePublicationOptionsV1,
