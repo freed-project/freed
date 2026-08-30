@@ -23,6 +23,7 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "content_hydration_candidates_page_v1",
   "content_policy_set_v1",
   "content_state_get_v1",
+  "countersign_follower_actor_request_v2",
   "describe_checkpoint_export_v2",
   "describe_operation_export_v2",
   "export_checkpoint_page_v2",
