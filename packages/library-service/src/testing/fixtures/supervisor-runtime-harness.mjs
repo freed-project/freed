@@ -23,6 +23,8 @@ const [
   stateRoot,
   admissionPath,
   credentialPath,
+  cloudStatePath,
+  acceptanceMode,
 ] = process.argv.slice(2);
 const statusPath = path.join(stateRoot, "library-service-status.json");
 const userOwnedPaths = new Set([
@@ -32,7 +34,28 @@ const userOwnedPaths = new Set([
   admissionPath,
   credentialPath,
   statusPath,
+  cloudStatePath,
 ]);
+
+let normalizedPrimaryAcceptance = null;
+
+function createNormalizedPrimaryAcceptanceCloud() {
+  if (acceptanceMode !== "normalized-primary-identity-v1") return undefined;
+  return Object.freeze({
+    async start(input) {
+      const actor = await input.native.execute("primary_actor_identity_v1", {
+        installationWitness: input.config.installationWitness,
+      });
+      normalizedPrimaryAcceptance = { actor };
+      return Object.freeze({
+        async start() {
+          return { status: "current" };
+        },
+        stop() {},
+      });
+    },
+  });
+}
 
 function rawMetadata(stats) {
   return {
@@ -203,6 +226,7 @@ const supervisor = new LibraryServiceSupervisor({
   clock: nodePorts.clock,
   entropy: nodePorts.entropy,
   localActorIngress: nodePorts.localActorIngress,
+  primaryCloud: createNormalizedPrimaryAcceptanceCloud(),
 });
 
 try {
@@ -212,6 +236,7 @@ try {
       type: "supervisor-ready",
       sidecarPid: started.sidecarPid,
       localActorEndpoint: started.localActorEndpoint,
+      normalizedPrimaryAcceptance,
     })}\n`,
   );
   process.stdin.setEncoding("utf8");
