@@ -335,6 +335,7 @@ async function createNativeSidecarFixture(
   input: {
     backend?: "mounted-credential" | "os-vault";
     admissionDigestOverride?: string;
+    normalizedPrimaryAcceptance?: boolean;
   } = {},
 ): Promise<{
   dataRoot: string;
@@ -356,6 +357,7 @@ async function createNativeSidecarFixture(
   const admission = path.join(stateRoot, "admission.json");
   const credential = path.join(stateRoot, "credentials.json");
   const status = path.join(stateRoot, "library-service-status.json");
+  const cloudState = path.join(stateRoot, "google-drive-publication.json");
   const config = path.join(fixtureRoot, "service.json");
   const recordId = "fixture-primary";
   const credentialBytes = Buffer.from(
@@ -379,6 +381,9 @@ async function createNativeSidecarFixture(
   await Promise.all([
     writeFile(credential, credentialBytes, { mode: 0o600 }),
     writeFile(status, "", { mode: 0o600 }),
+    ...(input.normalizedPrimaryAcceptance
+      ? [writeFile(cloudState, "", { mode: 0o600 })]
+      : []),
     writeFile(path.join(mountedRoot, recordId), primaryCredentialBytes, {
       mode: 0o600,
     }),
@@ -394,6 +399,16 @@ async function createNativeSidecarFixture(
       stateRoot,
       admissionFile: admission,
       credentialDescriptorFile: credential,
+      ...(input.normalizedPrimaryAcceptance
+        ? {
+            cloud: {
+              provider: "google-drive",
+              installationWitness: "b".repeat(64),
+              credentialRecordId: "fixture-drive",
+              publicationStateFile: cloudState,
+            },
+          }
+        : {}),
       sidecar: {
         executable: sidecar,
         sha256: executableDigest,
@@ -435,6 +450,9 @@ async function createNativeSidecarFixture(
       stateRoot,
       admission,
       credential,
+      ...(input.normalizedPrimaryAcceptance
+        ? [cloudState, "normalized-primary-identity-v1"]
+        : []),
     ],
   };
 }
@@ -510,7 +528,11 @@ async function runHarnessOnce(args: readonly string[]): Promise<{
 
 function launchSupervisorHarness(args: readonly string[]): {
   child: ChildProcess;
-  ready: Promise<{ sidecarPid: number; localActorEndpoint: string }>;
+  ready: Promise<{
+    sidecarPid: number;
+    localActorEndpoint: string;
+    normalizedPrimaryAcceptance: unknown;
+  }>;
 } {
   const harnessPath = path.resolve(
     "src/testing/fixtures/supervisor-runtime-harness.mjs",
@@ -524,6 +546,7 @@ function launchSupervisorHarness(args: readonly string[]): {
   const ready = new Promise<{
     sidecarPid: number;
     localActorEndpoint: string;
+    normalizedPrimaryAcceptance: unknown;
   }>((resolve, reject) => {
     let stdout = "";
     let stderr = "";
@@ -538,6 +561,7 @@ function launchSupervisorHarness(args: readonly string[]): {
         type: string;
         sidecarPid: number;
         localActorEndpoint: string;
+        normalizedPrimaryAcceptance: unknown;
       };
       if (report.type !== "supervisor-ready") {
         reject(new Error("unexpected supervisor harness report"));
@@ -546,6 +570,7 @@ function launchSupervisorHarness(args: readonly string[]): {
       resolve({
         sidecarPid: report.sidecarPid,
         localActorEndpoint: report.localActorEndpoint,
+        normalizedPrimaryAcceptance: report.normalizedPrimaryAcceptance,
       });
     });
     child.once("error", reject);
@@ -700,6 +725,30 @@ describe("compiled freed-library runtime", () => {
       expect(JSON.parse(competitor.stderr)).toMatchObject({
         type: "supervisor-failed",
         code: expect.stringMatching(/^(?:sidecar_exited|ready_response_lost)$/),
+      });
+
+      child.stdin!.end("stop\n");
+      await waitForHarnessExit(child);
+      await waitForGone([sidecarPid]);
+      expect(child.exitCode).toBe(0);
+    },
+    30_000,
+  );
+
+  darwinIt(
+    "binds installed Primary identity through the real native command channel",
+    async () => {
+      const { supervisorArgs } = await createNativeSidecarFixture({
+        normalizedPrimaryAcceptance: true,
+      });
+      const { child, ready } = launchSupervisorHarness(supervisorArgs);
+      const { sidecarPid, normalizedPrimaryAcceptance } = await ready;
+
+      expect(normalizedPrimaryAcceptance).toEqual({
+        actor: {
+          actorId: expect.stringMatching(/^[a-f0-9]{64}$/),
+          libraryId: "a".repeat(64),
+        },
       });
 
       child.stdin!.end("stop\n");
