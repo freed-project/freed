@@ -2752,7 +2752,11 @@ test("feed toolbar bulk action counts follow the active filter", async ({ app, p
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
-  await app.setDeviceDisplayPreferences({ markReadOnScroll: false });
+  await app.updatePreferences({
+    display: {
+      reading: { markReadOnScroll: false },
+    },
+  });
 
   const activeFeedUrl = "https://bench.example/active-filter-feed.xml";
   const otherFeedUrl = "https://bench.example/other-filter-feed.xml";

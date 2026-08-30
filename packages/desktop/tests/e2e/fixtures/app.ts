@@ -78,6 +78,24 @@ export async function setDeviceDisplayPreferences(
   }, update);
 }
 
+async function updatePreferences(
+  page: Page,
+  update: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  await page.evaluate(async (values) => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (next: Record<string, unknown>) => Promise<void>;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    if (!state) throw new Error("Freed store is unavailable");
+    await state.updatePreferences(values);
+  }, update);
+}
+
 export class AppFixture {
   constructor(public readonly page: Page) {}
 
@@ -85,6 +103,12 @@ export class AppFixture {
     update: Readonly<Record<string, unknown>>,
   ): Promise<void> {
     await setDeviceDisplayPreferences(this.page, update);
+  }
+
+  async updatePreferences(
+    update: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    await updatePreferences(this.page, update);
   }
 
   async acceptLegalGateIfPresent(timeout = 5_000): Promise<boolean> {
