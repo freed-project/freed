@@ -51,6 +51,15 @@ export {
   type LibraryServiceNormalizedPrimaryNativeRuntimeOptionsV2,
 } from "./normalized-primary-native-runtime.js";
 export {
+  createLibraryServiceNormalizedPrimaryOrchestrationV2,
+  createLibraryServiceNormalizedPrimaryPublicationV2,
+  type LibraryServiceNormalizedPrimaryActorPageV2,
+  type LibraryServiceNormalizedPrimaryOrchestrationOptionsV2,
+  type LibraryServiceNormalizedPrimaryOrchestrationV2,
+  type LibraryServiceNormalizedPrimaryRefreshReceiptV2,
+  type LibraryServiceNormalizedPrimaryTransportV2,
+} from "./normalized-primary-orchestration.js";
+export {
   createBoundGoogleDrivePublicationStatePortV1,
   createLibraryServiceGoogleDrivePublicationV1,
   type LibraryServiceGoogleDrivePublicationOptionsV1,
@@ -62,4 +71,5 @@ export {
 export {
   createNodeLibraryServicePrimaryCloudPortV1,
   type LibraryServicePrimaryCloudPortV1,
+  type NodeLibraryServicePrimaryCloudOptionsV2,
 } from "./primary-cloud-runtime.js";

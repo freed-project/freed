@@ -14,6 +14,11 @@ import {
   createLibraryServicePrimaryRuntimeV1,
   type LibraryServicePrimaryRuntimeV1,
 } from "./primary-runtime.js";
+import {
+  createLibraryServiceNormalizedPrimaryOrchestrationV2,
+  createLibraryServiceNormalizedPrimaryPublicationV2,
+  type LibraryServiceNormalizedPrimaryTransportV2,
+} from "./normalized-primary-orchestration.js";
 
 export interface LibraryServicePrimaryCloudPortV1 {
   start(input: {
@@ -29,8 +34,14 @@ type PrimaryCloudStartInputV1 = Parameters<
   LibraryServicePrimaryCloudPortV1["start"]
 >[0];
 
+export interface NodeLibraryServicePrimaryCloudOptionsV2 {
+  readonly normalizedPrimaryTransport?: LibraryServiceNormalizedPrimaryTransportV2;
+}
+
 /** Create the installed Node host for the shared Primary coordinator. */
-export function createNodeLibraryServicePrimaryCloudPortV1(): LibraryServicePrimaryCloudPortV1 {
+export function createNodeLibraryServicePrimaryCloudPortV1(
+  options: NodeLibraryServicePrimaryCloudOptionsV2 = {},
+): LibraryServicePrimaryCloudPortV1 {
   return Object.freeze({
     async start(input: PrimaryCloudStartInputV1) {
       const publication = createLibraryServiceGoogleDrivePublicationV1({
@@ -42,12 +53,28 @@ export function createNodeLibraryServicePrimaryCloudPortV1(): LibraryServicePrim
           input.config.credentialRecordId,
         ),
       });
+      const normalizedPrimary =
+        options.normalizedPrimaryTransport === undefined
+          ? null
+          : createLibraryServiceNormalizedPrimaryOrchestrationV2({
+              native: input.native,
+              now: () => input.clock.nowMs(),
+              subtle: crypto.subtle,
+              transport: options.normalizedPrimaryTransport,
+            });
+      const coordinatedPublication =
+        normalizedPrimary === null
+          ? publication
+          : createLibraryServiceNormalizedPrimaryPublicationV2(
+              publication,
+              normalizedPrimary,
+            );
       const runtime = createLibraryServicePrimaryRuntimeV1({
         clock: { nowMs: () => input.clock.nowMs() },
         diagnostics: { record() {} },
         installationWitness: input.config.installationWitness,
         native: input.native,
-        publication,
+        publication: coordinatedPublication,
         publicationState: publication,
         scheduler: {
           schedule(callback, delayMs) {
