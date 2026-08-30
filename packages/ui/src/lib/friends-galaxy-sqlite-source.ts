@@ -97,12 +97,10 @@ function sameFence(
   left: FriendsGalaxySqliteSourceFence,
   right: FriendsGalaxySqliteSourceFence,
 ): boolean {
-  return (
-    left.generationId === right.generationId &&
+  return left.generationId === right.generationId &&
     left.layoutRevision === right.layoutRevision &&
     left.projectionRevision === right.projectionRevision &&
-    left.transitionSequence === right.transitionSequence
-  );
+    left.transitionSequence === right.transitionSequence;
 }
 
 function nextPhase(phase: Exclude<SourcePhase, "complete">): SourcePhase {
@@ -177,24 +175,19 @@ export class FriendsGalaxySqliteSourceAccumulator {
     return this.#fence;
   }
 
-  append(
-    input: FriendsGalaxySqliteSourcePageInput,
-  ): FriendsGalaxySqliteSourceProgress {
+  append(input: FriendsGalaxySqliteSourcePageInput): FriendsGalaxySqliteSourceProgress {
     if (this.#taken || this.#phase === "complete") {
       throw new Error("Friends Galaxy SQLite source is already complete.");
     }
     if (input.cursor !== this.#expectedCursor) {
-      throw new Error(
-        "Friends Galaxy SQLite source page cursor is not contiguous.",
-      );
+      throw new Error("Friends Galaxy SQLite source page cursor is not contiguous.");
     }
     const request = requestFor(this.#phase, input.cursor);
-    const parsed =
-      this.#phase === LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID
-        ? parseLibraryCorePersonGraphPageResponseV1(input.page, request)
-        : this.#phase === LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
-          ? parseLibraryCoreAccountGraphPageResponseV1(input.page, request)
-          : parseLibraryCoreRssFeedPageResponseV1(input.page, request);
+    const parsed = this.#phase === LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID
+      ? parseLibraryCorePersonGraphPageResponseV1(input.page, request)
+      : this.#phase === LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
+        ? parseLibraryCoreAccountGraphPageResponseV1(input.page, request)
+        : parseLibraryCoreRssFeedPageResponseV1(input.page, request);
     if (!parsed.ok) throw new Error(parsed.error);
     const page = parsed.value;
     const fence = sourceFence(page.source, page.layoutRevision);
@@ -205,33 +198,25 @@ export class FriendsGalaxySqliteSourceAccumulator {
     for (const row of page.rows) {
       const identity = "id" in row ? row.id : row.url;
       if (this.#lastIdentity !== null && identity <= this.#lastIdentity) {
-        throw new Error(
-          "Friends Galaxy SQLite source identities are not strictly increasing.",
-        );
+        throw new Error("Friends Galaxy SQLite source identities are not strictly increasing.");
       }
       this.#lastIdentity = identity;
       this.#totalRows += 1;
       if (this.#totalRows > FRIENDS_GALAXY_SQLITE_SOURCE_ROW_CAP) {
-        throw new Error(
-          "Friends Galaxy SQLite source exceeded its semantic row cap.",
-        );
+        throw new Error("Friends Galaxy SQLite source exceeded its semantic row cap.");
       }
       if (page.queryId === LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID) {
-        const person =
-          row as LibraryCorePersonGraphPageResponseV1["rows"][number];
-        this.#persons.push(
-          Object.freeze({
-            avatarUrl: person.avatarUrl ?? undefined,
-            careLevel: person.careLevel as Person["careLevel"],
-            id: person.id,
-            name: person.name,
-            relationshipStatus: person.relationshipStatus,
-            ...graphPosition(person),
-          }),
-        );
+        const person = row as LibraryCorePersonGraphPageResponseV1["rows"][number];
+        this.#persons.push(Object.freeze({
+          avatarUrl: person.avatarUrl ?? undefined,
+          careLevel: person.careLevel as Person["careLevel"],
+          id: person.id,
+          name: person.name,
+          relationshipStatus: person.relationshipStatus,
+          ...graphPosition(person),
+        }));
       } else if (page.queryId === LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID) {
-        const account =
-          row as LibraryCoreAccountGraphPageResponseV1["rows"][number];
+        const account = row as LibraryCoreAccountGraphPageResponseV1["rows"][number];
         if (account.kind !== "social") continue;
         this.#accounts[account.id] = Object.freeze({
           activityCount: account.activityCount,

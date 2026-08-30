@@ -74,7 +74,12 @@ export interface FriendsGalaxyProductWorkerPort {
 }
 
 export type FriendsGalaxyProductWorkerFailurePhase =
-  "source" | "presentation" | "activity" | "protocol" | "runtime" | "post";
+  | "source"
+  | "presentation"
+  | "activity"
+  | "protocol"
+  | "runtime"
+  | "post";
 
 export interface FriendsGalaxyProductWorkerFailure {
   phase: FriendsGalaxyProductWorkerFailurePhase;
@@ -103,8 +108,7 @@ function createProductWorker(): FriendsGalaxyProductWorkerPort {
 }
 
 function defaultNow(): number {
-  return typeof performance !== "undefined" &&
-    typeof performance.now === "function"
+  return typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
     : Date.now();
 }
@@ -161,18 +165,13 @@ export class FriendsGalaxyProductWorkerClient {
   private generation = 0;
   private nextRequestId = 1;
   private currentSourceRevision: number | null = null;
-  private sourceRequest: FriendsGalaxyProductWorkerSourceLaneRequest | null =
-    null;
+  private sourceRequest: FriendsGalaxyProductWorkerSourceLaneRequest | null = null;
   private normalizedSourceJob: FriendsGalaxyNormalizedSourceJob | null = null;
   private residentScene: FriendsGalaxyRendererScene | null = null;
-  private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null =
-    null;
-  private queuedPresentation: FriendsGalaxyProductWorkerPresentationRequest | null =
-    null;
-  private inFlightActivity: FriendsGalaxyProductWorkerActivityRequest | null =
-    null;
-  private queuedActivity: FriendsGalaxyProductWorkerActivityRequest | null =
-    null;
+  private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
+  private queuedPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
+  private inFlightActivity: FriendsGalaxyProductWorkerActivityRequest | null = null;
+  private queuedActivity: FriendsGalaxyProductWorkerActivityRequest | null = null;
   private latestPresentationRequestId = 0;
   private latestActivityRevision = -1;
   private sourceDeadline = 0;
@@ -257,9 +256,7 @@ export class FriendsGalaxyProductWorkerClient {
     return request.requestId;
   }
 
-  private startSourceLane(
-    request: FriendsGalaxyProductWorkerSourceLaneRequest,
-  ): void {
+  private startSourceLane(request: FriendsGalaxyProductWorkerSourceLaneRequest): void {
     this.sourceRequest = request;
     try {
       if (!this.worker) {
@@ -267,20 +264,18 @@ export class FriendsGalaxyProductWorkerClient {
         const worker = this.createWorker();
         this.worker = worker;
         worker.onmessage = (event) => this.receive(generation, event.data);
-        worker.onmessageerror = () =>
-          this.receivePortFailure(
-            generation,
-            "protocol",
-            "Friends Galaxy worker response could not be deserialized.",
-            request,
-          );
-        worker.onerror = (event) =>
-          this.receivePortFailure(
-            generation,
-            "runtime",
-            event.message || "Friends Galaxy worker failed.",
-            request,
-          );
+        worker.onmessageerror = () => this.receivePortFailure(
+          generation,
+          "protocol",
+          "Friends Galaxy worker response could not be deserialized.",
+          request,
+        );
+        worker.onerror = (event) => this.receivePortFailure(
+          generation,
+          "runtime",
+          event.message || "Friends Galaxy worker failed.",
+          request,
+        );
       }
       this.post(request);
     } catch (error) {
@@ -292,8 +287,7 @@ export class FriendsGalaxyProductWorkerClient {
     input: FriendsGalaxyProductWorkerPresentationInput,
   ): number | null {
     this.assertActive();
-    if (this.currentSourceRevision !== input.sourceRevision || !this.worker)
-      return null;
+    if (this.currentSourceRevision !== input.sourceRevision || !this.worker) return null;
     const request: FriendsGalaxyProductWorkerPresentationRequest = {
       ...input,
       kind: "presentation",
@@ -306,9 +300,7 @@ export class FriendsGalaxyProductWorkerClient {
     return request.requestId;
   }
 
-  requestActivity(
-    input: FriendsGalaxyProductWorkerActivityInput,
-  ): number | null {
+  requestActivity(input: FriendsGalaxyProductWorkerActivityInput): number | null {
     this.assertActive();
     if (
       this.currentSourceRevision !== input.sourceRevision ||
@@ -316,8 +308,7 @@ export class FriendsGalaxyProductWorkerClient {
       !Number.isSafeInteger(input.activityRevision) ||
       input.activityRevision < 0 ||
       input.activityRevision <= this.latestActivityRevision
-    )
-      return null;
+    ) return null;
     const request: FriendsGalaxyProductWorkerActivityRequest = {
       ...input,
       patches: cloneActivityPatches(input.patches),
@@ -389,10 +380,8 @@ export class FriendsGalaxyProductWorkerClient {
       request.kind === "normalized-source-begin" ||
       request.kind === "normalized-source-page" ||
       request.kind === "normalized-source-commit"
-    )
-      this.sourceDeadline = deadline;
-    else if (request.kind === "presentation")
-      this.presentationDeadline = deadline;
+    ) this.sourceDeadline = deadline;
+    else if (request.kind === "presentation") this.presentationDeadline = deadline;
     else this.activityDeadline = deadline;
     this.worker.postMessage(request);
   }
@@ -456,9 +445,7 @@ export class FriendsGalaxyProductWorkerClient {
         request.kind === "normalized-source-page"
       ) {
         if (candidate.kind !== "normalized-source-staged") {
-          throw new Error(
-            "Friends Galaxy worker returned the wrong normalized source response.",
-          );
+          throw new Error("Friends Galaxy worker returned the wrong normalized source response.");
         }
         this.sourceDeadline = 0;
         this.sourceRequest = null;
@@ -475,9 +462,7 @@ export class FriendsGalaxyProductWorkerClient {
         return;
       }
       if (candidate.kind !== "source-ready") {
-        throw new Error(
-          "Friends Galaxy worker returned the wrong source response.",
-        );
+        throw new Error("Friends Galaxy worker returned the wrong source response.");
       }
       this.sourceDeadline = 0;
       this.sourceRequest = null;
@@ -491,9 +476,7 @@ export class FriendsGalaxyProductWorkerClient {
     }
   }
 
-  private queryNormalizedSourcePage(
-    job: FriendsGalaxyNormalizedSourceJob,
-  ): void {
+  private queryNormalizedSourcePage(job: FriendsGalaxyNormalizedSourceJob): void {
     const queryId = NORMALIZED_SOURCE_QUERY_IDS[job.queryIndex];
     if (!queryId) {
       this.fail(
@@ -521,8 +504,7 @@ export class FriendsGalaxyProductWorkerClient {
           this.normalizedSourceJob !== job ||
           job.queryToken !== queryToken ||
           this.sourceRequest
-        )
-          return;
+        ) return;
         const request: FriendsGalaxyProductWorkerNormalizedSourcePageRequest = {
           cursor: job.cursor,
           kind: "normalized-source-page",
@@ -538,8 +520,7 @@ export class FriendsGalaxyProductWorkerClient {
           this.disposed ||
           this.normalizedSourceJob !== job ||
           job.queryToken !== queryToken
-        )
-          return;
+        ) return;
         this.fail(
           "source",
           normalizeFriendsGalaxySqliteSourceFailure(error),
@@ -593,9 +574,7 @@ export class FriendsGalaxyProductWorkerClient {
         return;
       }
       if (candidate.kind !== "presentation-ready") {
-        throw new Error(
-          "Friends Galaxy worker returned the wrong presentation response.",
-        );
+        throw new Error("Friends Galaxy worker returned the wrong presentation response.");
       }
       this.presentationDeadline = 0;
       this.inFlightPresentation = null;
@@ -628,9 +607,7 @@ export class FriendsGalaxyProductWorkerClient {
         return;
       }
       if (candidate.kind !== "activity-ready") {
-        throw new Error(
-          "Friends Galaxy worker returned the wrong activity response.",
-        );
+        throw new Error("Friends Galaxy worker returned the wrong activity response.");
       }
       this.activityDeadline = 0;
       this.inFlightActivity = null;
@@ -643,13 +620,9 @@ export class FriendsGalaxyProductWorkerClient {
 
   private flushPresentation(): void {
     if (
-      !this.worker ||
-      !this.residentScene ||
-      this.sourceRequest ||
-      this.inFlightPresentation ||
-      !this.queuedPresentation
-    )
-      return;
+      !this.worker || !this.residentScene || this.sourceRequest ||
+      this.inFlightPresentation || !this.queuedPresentation
+    ) return;
     const request = this.queuedPresentation;
     this.queuedPresentation = null;
     this.inFlightPresentation = request;
@@ -662,13 +635,9 @@ export class FriendsGalaxyProductWorkerClient {
 
   private flushActivity(): void {
     if (
-      !this.worker ||
-      !this.residentScene ||
-      this.sourceRequest ||
-      this.inFlightActivity ||
-      !this.queuedActivity
-    )
-      return;
+      !this.worker || !this.residentScene || this.sourceRequest ||
+      this.inFlightActivity || !this.queuedActivity
+    ) return;
     const request = this.queuedActivity;
     this.queuedActivity = null;
     this.inFlightActivity = request;
