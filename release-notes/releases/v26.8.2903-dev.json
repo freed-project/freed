@@ -1,0 +1,130 @@
+{
+  "tag": "v26.8.2903-dev",
+  "version": "26.8.2903-dev",
+  "channel": "dev",
+  "dayKey": "26.8.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T03:05:30.645Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.2902-dev",
+    "previousPublishedDayTag": "v26.8.2002-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "f77d8f035f0944eacf20448811e1e82df241b989",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.2902-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "57486577813719373272b3581309487e8b8194cd",
+        "toInclusiveProductCommitSha": "f77d8f035f0944eacf20448811e1e82df241b989"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:c89f638d83bb23aad4c8db5feda04a332a1255ab7a1393a2508c47a4d8317883",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev",
+      "v26.8.2903-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev",
+      "v26.8.2903-dev"
+    ],
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1635,
+      1638,
+      1640,
+      1641,
+      1642,
+      1643,
+      1644
+    ],
+    "commitSubjects": [
+      "fix: recover legacy Library cutover (#1644)",
+      "chore: prepare v26.8.2902-dev (#1643)",
+      "fix: admit supported Library predecessors (#1642)",
+      "chore: prepare v26.8.2901-dev (#1641)",
+      "fix: run Library Core on Windows (#1640)",
+      "fix: align claim freshness with trusted launcher (#1638)",
+      "chore: prepare v26.8.2900-dev (#1635)",
+      "feat: replace library authority with SQLite (#1616)",
+      "fix: forward Go compiler to Linux actor build (#1631)",
+      "feat: support trusted automation launchers on Linux (#1512)",
+      "fix: add event history witness repair (#1629)",
+      "chore(deps-dev): align Vite 8 build tooling (#1619)",
+      "chore(deps): bump serde_with in /packages/desktop/src-tauri (#1617)",
+      "chore(deps-dev): bump vite from 7.3.6 to 8.2.1 (#1187)",
+      "chore(deps-dev): bump globals from 16.5.0 to 17.11.0 (#1189)",
+      "chore(deps): bump react-router and react-router-dom (#1362)",
+      "chore(deps-dev): bump postcss from 8.5.23 to 8.5.24 (#1439)",
+      "chore(deps): bump the cargo-updates group across 1 directory with 2 updates (#1514)",
+      "chore(deps-dev): bump js-yaml from 4.3.0 to 4.3.1 (#1366)",
+      "chore(deps-dev): bump fast-uri from 3.1.4 to 3.1.5 (#1357)",
+      "chore(deps): bump undici from 7.28.0 to 7.29.0 (#1356)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop now repairs real-world legacy Library data during SQLite cutover instead of aborting at launch",
+    "features": [
+      "Run every Library view from bounded SQLite queries",
+      "Store and sync normalized Library records without the historical engines",
+      "Support trusted automation launchers on Linux"
+    ],
+    "fixes": [
+      "Migrate tag-only content analysis without inventing confidence scores",
+      "Treat preserved non-finite publication timestamps as missing data",
+      "Keep refused cutovers in typed recovery and stop Library sync until retry succeeds",
+      "Accept historical schemas 6 through 12 at cutover",
+      "Run Library Core on Windows",
+      "Align claim freshness with trusted launcher",
+      "Forward Go compiler to Linux actor build",
+      "Add event history witness repair"
+    ],
+    "followUps": [
+      "Align Vite 8 build tooling",
+      "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri",
+      "Bump vite from 7.3.6 to 8.2.1",
+      "Bump globals from 16.5.0 to 17.11.0",
+      "Bump react-router and react-router-dom",
+      "Bump postcss from 8.5.23 to 8.5.24",
+      "Bump the cargo-updates group across 1 directory with 2 updates",
+      "Bump js-yaml from 4.3.0 to 4.3.1",
+      "Bump fast-uri from 3.1.4 to 3.1.5",
+      "Bump undici from 7.28.0 to 7.29.0"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2903-dev\n\nFreed Desktop now repairs real-world legacy Library data during SQLite cutover instead of aborting at launch.\n\n### Features\n\n- Run every Library view from bounded SQLite queries\n- Store and sync normalized Library records without the historical engines\n- Support trusted automation launchers on Linux\n\n### Fixes\n\n- Migrate tag-only content analysis without inventing confidence scores\n- Treat preserved non-finite publication timestamps as missing data\n- Keep refused cutovers in typed recovery and stop Library sync until retry succeeds\n- Accept historical schemas 6 through 12 at cutover\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n\n### Follow-ups\n\n- Align Vite 8 build tooling\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump vite from 7.3.6 to 8.2.1\n- Bump globals from 16.5.0 to 17.11.0\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
