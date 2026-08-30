@@ -8,6 +8,8 @@ use freed_library_core::{
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 #[cfg(not(unix))]
 use std::{fs, path::PathBuf};
 #[cfg(not(unix))]
@@ -100,6 +102,41 @@ const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 #[cfg(not(unix))]
 const NORMALIZED_DATABASE_FILE: &str = "library-core.sqlite";
+
+const CHECKPOINT_EXPORT_SESSION_MAX_AGE: Duration = Duration::from_secs(5 * 60);
+
+struct DesktopCheckpointExportSession {
+    export: freed_library_core::NormalizedCheckpointExportSessionV2,
+    last_touched: Instant,
+}
+
+fn checkpoint_export_session() -> &'static Mutex<Option<DesktopCheckpointExportSession>> {
+    static SESSION: OnceLock<Mutex<Option<DesktopCheckpointExportSession>>> = OnceLock::new();
+    SESSION.get_or_init(|| Mutex::new(None))
+}
+
+fn ensure_checkpoint_export_reaper() -> Result<(), String> {
+    static REAPER: OnceLock<Result<(), String>> = OnceLock::new();
+    REAPER
+        .get_or_init(|| {
+            std::thread::Builder::new()
+                .name("freed-checkpoint-export-reaper".to_owned())
+                .spawn(|| loop {
+                    std::thread::sleep(Duration::from_secs(30));
+                    let mut guard = checkpoint_export_session()
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if guard.as_ref().is_some_and(|session| {
+                        session.last_touched.elapsed() >= CHECKPOINT_EXPORT_SESSION_MAX_AGE
+                    }) {
+                        guard.take();
+                    }
+                })
+                .map(|_| ())
+                .map_err(|error| format!("normalized checkpoint export reaper failed: {error}"))
+        })
+        .clone()
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -807,9 +844,43 @@ pub(super) fn read_normalized_library_checkpoint_page(
     app: tauri::AppHandle,
     request: freed_library_core::PinnedNormalizedCheckpointExportRequestV2,
 ) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
-    let mut connection = open_normalized_database(&app)?;
-    freed_library_core::export_pinned_normalized_checkpoint_page_v2(&mut connection, &request)
-        .map_err(|error| error.to_string())
+    ensure_checkpoint_export_reaper()?;
+    let starting = request.page.after.is_none();
+    let candidate = if starting {
+        Some(
+            freed_library_core::NormalizedCheckpointExportSessionV2::begin(
+                open_normalized_database(&app)?,
+                request.snapshot.clone(),
+            )
+            .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
+    let mut guard = checkpoint_export_session()
+        .lock()
+        .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
+    if let Some(export) = candidate {
+        *guard = Some(DesktopCheckpointExportSession {
+            export,
+            last_touched: Instant::now(),
+        });
+    }
+    let active = guard
+        .as_mut()
+        .ok_or_else(|| "normalized checkpoint export session is unavailable".to_owned())?;
+    let page = match active.export.read_page(&request) {
+        Ok(page) => page,
+        Err(error) => {
+            guard.take();
+            return Err(error.to_string());
+        }
+    };
+    active.last_touched = Instant::now();
+    if active.export.is_finished() {
+        guard.take();
+    }
+    Ok(page)
 }
 
 #[derive(Debug, Deserialize)]

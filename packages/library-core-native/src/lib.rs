@@ -187,7 +187,7 @@ pub use normalized_sqlite::{
     open_normalized_sqlite_database_v1, BeginNormalizedCheckpointStageV2,
     NormalizedCheckpointCursorV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{

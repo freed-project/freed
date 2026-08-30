@@ -12,10 +12,9 @@ use crate::normalized_import::{
 use crate::normalized_operation::VerifiedActorEnrollment;
 use crate::normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
-    describe_normalized_checkpoint_export_v2, export_pinned_normalized_checkpoint_page_v2,
+    describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
-    PinnedNormalizedCheckpointExportRequestV2,
 };
 use crate::normalized_writer_certificate::{
     prepare_writer_epoch_reassignment, WriterEpochReassignment,
@@ -672,20 +671,18 @@ fn create_normalized_local_snapshot_in_v1(
     snapshot_root.remove_file(SNAPSHOT_RECORDS_PENDING_FILE)?;
     snapshot_root.remove_file(SNAPSHOT_PENDING_FILE)?;
 
-    let descriptor = describe_normalized_checkpoint_export_v2(connection)?;
+    let transaction = connection.transaction()?;
+    let descriptor = describe_normalized_checkpoint_export_v2(&transaction)?;
     let records_file = snapshot_root.create_private_file(SNAPSHOT_RECORDS_PENDING_FILE)?;
     let mut records_writer = BufWriter::new(records_file);
     let mut cursor = None;
     let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
     loop {
-        let page = export_pinned_normalized_checkpoint_page_v2(
-            connection,
-            &PinnedNormalizedCheckpointExportRequestV2 {
-                snapshot: descriptor.clone(),
-                page: NormalizedCheckpointExportRequestV2 {
-                    after: cursor,
-                    ..NormalizedCheckpointExportRequestV2::default()
-                },
+        let page = export_normalized_checkpoint_page_v2(
+            &transaction,
+            &NormalizedCheckpointExportRequestV2 {
+                after: cursor,
+                ..NormalizedCheckpointExportRequestV2::default()
             },
         )?;
         for record in &page.records {
@@ -703,6 +700,7 @@ fn create_normalized_local_snapshot_in_v1(
             return Err(snapshot_error("normalized snapshot export lost its cursor"));
         }
     }
+    transaction.commit()?;
     records_writer
         .flush()
         .and_then(|_| records_writer.get_ref().sync_all())
