@@ -1391,6 +1391,10 @@ Immutable migration receipts, source evidence, and backup provenance remain.
 The short-lived migration executable is the sole historical-shell reader. It
 may read the immutable source column once to rescue final-product fields, but
 it cannot copy, hash, checkpoint, export, retain, or reactivate those bytes.
+The reader admits only the closed predecessor schema range 6 through 12. Every
+accepted version must expose the exact stable Desktop state, FeedItem,
+authority, and causal-frontier columns used by the final migration. It opens
+the source read-only and never recreates the deleted schema-upgrade engine.
 Deleting that fenced reader before the storage-epoch cutover would discard
 feeds, people, accounts, reach-out history, and synchronized preferences that
 the final product still requires. Historical runtime code does not remain.

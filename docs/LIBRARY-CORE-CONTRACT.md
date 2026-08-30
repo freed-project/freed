@@ -1908,6 +1908,11 @@ Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner
 activation authority. One SQLite-only storage epoch is then selected.
+The fenced Desktop source reader accepts only historical schema versions 6
+through 12, the complete predecessor range that carries the stable product and
+authority fields consumed by the migration. It verifies the exact application
+identity, required columns, and database integrity, opens the source read-only,
+and performs no historical schema upgrade.
 
 Rollback is legal only before a later canonical SQLite write and only to the
 same accepted frontier. After a later write, recovery rolls forward from typed

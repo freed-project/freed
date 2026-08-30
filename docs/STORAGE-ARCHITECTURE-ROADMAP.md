@@ -42,8 +42,11 @@ service installation remain separate gated work.
 The source tree no longer retains the 18 unreferenced authoritative-migration,
 shadow-schema, shadow-generation registry, and shadow-generation schema SQL
 artifacts. They had no caller, package export, build consumer, migration role,
-or test role. The generated normalized schema and the fenced read-only schema
-12 source verifier are now the only Library schema boundaries.
+or test role. The generated normalized schema and the fenced read-only
+predecessor verifier are now the only Library schema boundaries. That verifier
+admits only historical schemas 6 through 12, requires the exact stable product
+columns consumed by the final migration, and never upgrades or writes its
+source.
 
 The extracted native core owns current actor capabilities, authority,
 enrollment, operation verification, mutation admission, checkpoints,
