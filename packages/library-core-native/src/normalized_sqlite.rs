@@ -627,6 +627,79 @@ pub fn export_pinned_normalized_checkpoint_page_v2(
     Ok(page)
 }
 
+/// Hold one SQLite read transaction across a complete bounded checkpoint export.
+///
+/// Hosts retain this session outside their ordinary command connection so
+/// concurrent Library mutations can continue in WAL mode without changing the
+/// revision observed by later export pages. Dropping an unfinished session
+/// rolls its read transaction back and releases the WAL reader immediately.
+pub struct NormalizedCheckpointExportSessionV2 {
+    connection: Connection,
+    snapshot: NormalizedCheckpointExportDescriptorV2,
+    next_cursor: Option<NormalizedCheckpointCursorV2>,
+    finished: bool,
+}
+
+impl NormalizedCheckpointExportSessionV2 {
+    pub fn begin(
+        connection: Connection,
+        snapshot: NormalizedCheckpointExportDescriptorV2,
+    ) -> Result<Self, NormalizedSqliteError> {
+        if !connection.is_autocommit() {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint export connection is already in a transaction",
+            ));
+        }
+        connection.execute_batch("BEGIN DEFERRED TRANSACTION;")?;
+        let current = describe_normalized_checkpoint_export_v2(&connection)?;
+        if current != snapshot {
+            connection.execute_batch("ROLLBACK;")?;
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint changed before export",
+            ));
+        }
+        Ok(Self {
+            connection,
+            snapshot,
+            next_cursor: None,
+            finished: false,
+        })
+    }
+
+    pub fn read_page(
+        &mut self,
+        request: &PinnedNormalizedCheckpointExportRequestV2,
+    ) -> Result<NormalizedCheckpointExportPageV2, NormalizedSqliteError> {
+        if self.finished
+            || request.snapshot != self.snapshot
+            || request.page.after != self.next_cursor
+        {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint export session changed",
+            ));
+        }
+        let page = export_normalized_checkpoint_page_v2(&self.connection, &request.page)?;
+        self.next_cursor = page.next_cursor.clone();
+        if page.done {
+            self.connection.execute_batch("COMMIT;")?;
+            self.finished = true;
+        }
+        Ok(page)
+    }
+
+    pub const fn is_finished(&self) -> bool {
+        self.finished
+    }
+}
+
+impl Drop for NormalizedCheckpointExportSessionV2 {
+    fn drop(&mut self) {
+        if !self.connection.is_autocommit() {
+            let _ = self.connection.execute_batch("ROLLBACK;");
+        }
+    }
+}
+
 pub fn export_normalized_checkpoint_page_v2(
     connection: &Connection,
     request: &NormalizedCheckpointExportRequestV2,
@@ -1305,8 +1378,11 @@ mod tests {
     }
 
     #[test]
-    fn pinned_checkpoint_export_refuses_a_revision_change_between_pages() {
-        let mut connection = fixture();
+    fn pinned_checkpoint_export_session_keeps_one_revision_while_writes_continue() {
+        let directory = tempfile::tempdir().expect("temporary Library");
+        let database_path = directory.path().join("library.sqlite");
+        let connection =
+            open_normalized_sqlite_database_v1(&database_path, true).expect("open Library");
         let library_id = "a".repeat(64);
         let epoch_id = "b".repeat(64);
         let actor_id = "c".repeat(64);
@@ -1376,40 +1452,57 @@ mod tests {
             "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446"
         );
         assert_eq!(snapshot.record_count, 4);
-        let first = export_pinned_normalized_checkpoint_page_v2(
-            &mut connection,
-            &PinnedNormalizedCheckpointExportRequestV2 {
+        let mut export = NormalizedCheckpointExportSessionV2::begin(connection, snapshot.clone())
+            .expect("begin pinned export");
+        let first = export
+            .read_page(&PinnedNormalizedCheckpointExportRequestV2 {
                 snapshot: snapshot.clone(),
                 page: NormalizedCheckpointExportRequestV2 {
                     after: None,
                     maximum_records: 2,
                     maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
                 },
-            },
-        )
-        .expect("first page");
+            })
+            .expect("first page");
         assert!(!first.done);
         assert_eq!(first.records.len(), 2);
-        connection
+        let writer =
+            open_normalized_sqlite_database_v1(&database_path, false).expect("open writer");
+        writer
             .execute(
                 "UPDATE library_meta SET source_revision = 1, updated_at = 101
                  WHERE singleton_id = 1;",
                 [],
             )
             .expect("advance revision");
-        let error = export_pinned_normalized_checkpoint_page_v2(
-            &mut connection,
-            &PinnedNormalizedCheckpointExportRequestV2 {
-                snapshot,
+        let second = export
+            .read_page(&PinnedNormalizedCheckpointExportRequestV2 {
+                snapshot: snapshot.clone(),
                 page: NormalizedCheckpointExportRequestV2 {
                     after: first.next_cursor,
                     maximum_records: 2,
                     maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
                 },
-            },
-        )
-        .expect_err("stale checkpoint");
-        assert!(error.to_string().contains("changed during export"));
+            })
+            .expect("second page from pinned revision");
+        assert!(second.done);
+        assert_eq!(second.records.len(), 2);
+        assert!(export.is_finished());
+        let header = first
+            .records
+            .iter()
+            .chain(second.records.iter())
+            .find(|record| record.registry_key == "00_checkpoint_header")
+            .expect("checkpoint header");
+        assert_eq!(header.payload["sourceRevision"], 0);
+        let current =
+            open_normalized_sqlite_database_v1(&database_path, false).expect("reopen Library");
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&current)
+                .expect("current descriptor")
+                .source_revision,
+            1
+        );
     }
 
     #[test]

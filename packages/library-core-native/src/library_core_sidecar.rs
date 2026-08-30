@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::{FileExt, FileTypeExt, MetadataExt};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -32,10 +34,10 @@ use crate::{
     reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
     ActorKeyStore, AuthorityKeyStore, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
     ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
-    LibraryCoreProcessLease, NormalizedCheckpointRecordV2, NormalizedFollowerIntentStagePageV1,
-    NormalizedFollowerResultPageRequestV1, NormalizedOperationExportRequestV2,
-    NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
-    SelectiveContentError,
+    LibraryCoreProcessLease, NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
+    NormalizedFollowerIntentStagePageV1, NormalizedFollowerResultPageRequestV1,
+    NormalizedOperationExportRequestV2, NormalizedSqliteError,
+    PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity, SelectiveContentError,
 };
 
 const PROTOCOL_VERSION: u8 = 2;
@@ -53,6 +55,7 @@ const MAX_CREDENTIAL_DESCRIPTOR_BYTES: usize = 4 * 1_024;
 const MAX_MOUNTED_CREDENTIAL_BYTES: usize = 64 * 1_024;
 const MOUNTED_CREDENTIAL_READ_BUFFER_BYTES: usize = 8 * 1_024;
 const MOUNTED_CREDENTIAL_DIRECTORY: &str = "mounted-credentials";
+const CHECKPOINT_EXPORT_SESSION_MAX_AGE: Duration = Duration::from_secs(5 * 60);
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const SIDECAR_IDENTITY: ProcessLeaseIdentity<'static> =
     ProcessLeaseIdentity::new("library-authority-sidecar", env!("CARGO_PKG_VERSION"));
@@ -493,6 +496,25 @@ fn run_command_loop(
     mut request: File,
     mut response: File,
 ) -> Result<(), LibraryCoreSidecarError> {
+    let checkpoint_export = Arc::new(Mutex::new(
+        None::<(NormalizedCheckpointExportSessionV2, Instant)>,
+    ));
+    let reaper_export = Arc::clone(&checkpoint_export);
+    std::thread::Builder::new()
+        .name("freed-sidecar-checkpoint-export-reaper".to_owned())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(30));
+            let mut guard = reaper_export
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if guard
+                .as_ref()
+                .is_some_and(|(_, touched)| touched.elapsed() >= CHECKPOINT_EXPORT_SESSION_MAX_AGE)
+            {
+                guard.take();
+            }
+        })
+        .map_err(|_| failure("command_channel_unavailable"))?;
     loop {
         let payload = read_command_frame(&mut request)?;
         let command: NativeCommandRequestV1 =
@@ -502,17 +524,62 @@ fn run_command_loop(
         {
             return Err(failure("command_invalid"));
         }
-        let mut connection = database
-            .open(normalized_sqlite_open_flags(false))
-            .map_err(|_| failure("command_storage_failed"))?;
-        configure_normalized_sqlite_connection(&connection)
-            .map_err(|_| failure("command_storage_failed"))?;
-        let outcome = execute_native_command_v1(
-            &mut connection,
-            &credentials,
-            command.command_id.as_str(),
-            command.payload,
-        );
+        let outcome = if command.command_id == "export_checkpoint_page_v2" {
+            (|| -> Result<Value, &'static str> {
+                let export_request: PinnedNormalizedCheckpointExportRequestV2 =
+                    serde_json::from_value(command.payload).map_err(|_| "request_invalid")?;
+                if export_request.page.after.is_none() {
+                    let connection = database
+                        .open(normalized_sqlite_open_flags(false))
+                        .map_err(|_| "command_failed")?;
+                    configure_normalized_sqlite_connection(&connection)
+                        .map_err(|_| "command_failed")?;
+                    let export = NormalizedCheckpointExportSessionV2::begin(
+                        connection,
+                        export_request.snapshot.clone(),
+                    )
+                    .map_err(normalized_command_error)?;
+                    *checkpoint_export.lock().map_err(|_| "command_failed")? =
+                        Some((export, Instant::now()));
+                }
+                let mut export_guard = checkpoint_export.lock().map_err(|_| "command_failed")?;
+                let page =
+                    export_guard
+                        .as_mut()
+                        .ok_or("request_invalid")
+                        .and_then(|(export, touched)| {
+                            let page = export
+                                .read_page(&export_request)
+                                .map_err(normalized_command_error)?;
+                            *touched = Instant::now();
+                            Ok((page, export.is_finished()))
+                        });
+                match page {
+                    Ok((page, finished)) => {
+                        if finished {
+                            export_guard.take();
+                        }
+                        encode_command_result(page)
+                    }
+                    Err(error) => {
+                        export_guard.take();
+                        Err(error)
+                    }
+                }
+            })()
+        } else {
+            let mut connection = database
+                .open(normalized_sqlite_open_flags(false))
+                .map_err(|_| failure("command_storage_failed"))?;
+            configure_normalized_sqlite_connection(&connection)
+                .map_err(|_| failure("command_storage_failed"))?;
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                command.command_id.as_str(),
+                command.payload,
+            )
+        };
         let response_record = match outcome {
             Ok(result) => NativeCommandResponseV1 {
                 protocol_version: NATIVE_COMMAND_PROTOCOL_VERSION,

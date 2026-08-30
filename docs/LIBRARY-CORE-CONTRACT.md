@@ -951,6 +951,18 @@ Ordinary interactive queries return no more than 2 MiB. Reader content uses a
 separate ranged API. Export, backup, and migration enumerate a pinned durable
 checkpoint through bounded pages.
 
+Native checkpoint export begins one dedicated SQLite read transaction before
+describing the source and holds that transaction across every bounded page.
+Desktop and headless Primary keep this shared-core session on a separate WAL
+reader, so ordinary signed mutations continue while every exported record
+still comes from the exact described revision. Cursor continuity and the full
+descriptor are checked on every page. Completion commits and drops the reader.
+An abandoned host session expires after five minutes and rolls back, which
+prevents a canceled provider upload from pinning WAL history indefinitely.
+Local canonical snapshot creation uses the same single-transaction rule while
+streaming records to its private archive. No whole database copy or renderer
+corpus is created.
+
 A cursor is opaque to the interface layer and binds the query version,
 normalized filter digest, ordering keys, projection version, database
 generation, and snapshot identity. A stale cursor returns `CURSOR_STALE`.
