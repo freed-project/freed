@@ -12887,17 +12887,23 @@ fn handle_primary_menu_action(app: &tauri::AppHandle, id: &str) -> bool {
     }
 }
 
+fn build_primary_show_item<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+) -> tauri::Result<MenuItem<R>> {
+    MenuItem::with_id(
+        manager,
+        PRIMARY_MENU_ITEM_SHOW,
+        "Show Freed",
+        true,
+        None::<&str>,
+    )
+}
+
 fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
     manager: &M,
 ) -> tauri::Result<(MenuItem<R>, MenuItem<R>)> {
     Ok((
-        MenuItem::with_id(
-            manager,
-            PRIMARY_MENU_ITEM_SHOW,
-            "Show Freed",
-            true,
-            None::<&str>,
-        )?,
+        build_primary_show_item(manager)?,
         MenuItem::with_id(
             manager,
             PRIMARY_MENU_ITEM_QUIT,
@@ -12928,7 +12934,9 @@ fn handle_macos_reopen(app: &tauri::AppHandle, has_visible_windows: bool) {
 
 #[cfg(target_os = "macos")]
 fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
-    let (show_item, quit_item) = build_primary_action_items(manager)?;
+    let show_item = build_primary_show_item(manager)?;
+    // The native Quit item owns the standard Command-Q accelerator on macOS.
+    let quit_item = PredefinedMenuItem::quit(manager, Some("Quit Freed"))?;
     let app_menu = Submenu::with_items(
         manager,
         manager.app_handle().package_info().name.clone(),
