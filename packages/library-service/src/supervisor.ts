@@ -35,6 +35,7 @@ import {
   createLibraryCoreNativeCommandClientV1,
   type LibraryCoreNativeCommandClientV1,
 } from "./native-command.js";
+import { createLibraryServiceNormalizedPrimaryNativeRuntimeV2 } from "./normalized-primary-native-runtime.js";
 import {
   createLibraryServiceLocalActorProcessorV1,
   type LibraryServiceLocalActorIngressPortV1,
@@ -698,6 +699,12 @@ export class LibraryServiceSupervisor {
         this.#entropy,
       );
       await inspectNormalizedCommandStorage(commandClient);
+      const normalizedPrimaryNative =
+        createLibraryServiceNormalizedPrimaryNativeRuntimeV2({
+          native: commandClient,
+          now: () => this.#clock.nowMs(),
+          subtle: crypto.subtle,
+        });
       throwIfAborted(signal);
 
       const expectedUserId = this.#identity.currentUserId();
@@ -713,9 +720,10 @@ export class LibraryServiceSupervisor {
               executeSignedQuery: (payload) =>
                 commandClient.execute("agent_query_v1", payload),
               submitSignedIntentPage: (payload) =>
-                commandClient.execute(
-                  "ingest_follower_intent_page_v1",
-                  payload,
+                normalizedPrimaryNative.ingestIntentPage(
+                  payload as Parameters<
+                    typeof normalizedPrimaryNative.ingestIntentPage
+                  >[0],
                 ),
             },
             this.#clock,

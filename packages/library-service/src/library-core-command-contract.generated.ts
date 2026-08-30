@@ -28,6 +28,7 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "describe_operation_export_v2",
   "export_checkpoint_page_v2",
   "export_follower_result_page_v1",
+  "export_follower_result_page_v2",
   "export_operation_page_v2",
   "finalize_checkpoint_stage_v2",
   "ingest_follower_intent_page_v1",

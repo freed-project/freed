@@ -334,6 +334,15 @@ pub struct NormalizedFollowerResultPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerResultPageRequestV2 {
+    pub actor_id: String,
+    pub first_result_sequence: i64,
+    pub maximum_records: usize,
+    pub maximum_response_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFollowerResultRecordV1 {
     pub transaction_id: String,
     pub transaction_digest: String,
@@ -1131,6 +1140,47 @@ pub fn export_normalized_follower_result_page_v1(
         ));
     }
     Ok(page)
+}
+
+pub fn export_normalized_follower_result_page_v2(
+    connection: &Connection,
+    request: &NormalizedFollowerResultPageRequestV2,
+) -> Result<NormalizedFollowerResultPageV1, NormalizedSqliteError> {
+    if !(1..=MAX_SAFE_INTEGER).contains(&request.first_result_sequence) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result firstResultSequence is invalid",
+        ));
+    }
+    let after = if request.first_result_sequence == 1 {
+        None
+    } else {
+        let previous_sequence = request.first_result_sequence - 1;
+        let previous_digest = connection
+            .query_row(
+                "SELECT result_digest FROM library_follower_result_outbox
+                 WHERE actor_id = ?1 AND result_sequence = ?2;",
+                params![request.actor_id, previous_sequence],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(NormalizedSqliteError::InvalidRequest(
+                "normalized follower result predecessor is unavailable",
+            ))?;
+        Some(NormalizedFollowerResultCursorV1 {
+            actor_id: request.actor_id.clone(),
+            result_sequence: previous_sequence,
+            result_digest: previous_digest,
+        })
+    };
+    export_normalized_follower_result_page_v1(
+        connection,
+        &NormalizedFollowerResultPageRequestV1 {
+            actor_id: request.actor_id.clone(),
+            after,
+            maximum_records: request.maximum_records,
+            maximum_response_bytes: request.maximum_response_bytes,
+        },
+    )
 }
 
 fn verify_staged_follower_intent_identity(
@@ -3769,6 +3819,19 @@ pub(crate) mod tests {
         );
         assert!(!second.done);
 
+        let second_from_sequence = export_normalized_follower_result_page_v2(
+            &connection,
+            &NormalizedFollowerResultPageRequestV2 {
+                actor_id: enrollment.actor_id.clone(),
+                first_result_sequence: 2,
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .expect("sequence-bound result page");
+        assert_eq!(second_from_sequence.records, second.records);
+        assert_eq!(second_from_sequence.next_cursor, second.next_cursor);
+
         let third = export_normalized_follower_result_page_v1(
             &connection,
             &NormalizedFollowerResultPageRequestV1 {
@@ -3804,6 +3867,16 @@ pub(crate) mod tests {
                     result_sequence: 4,
                     result_digest: "1".repeat(64),
                 }),
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .is_err());
+        assert!(export_normalized_follower_result_page_v2(
+            &connection,
+            &NormalizedFollowerResultPageRequestV2 {
+                actor_id: enrollment.actor_id.clone(),
+                first_result_sequence: 5,
                 maximum_records: 1,
                 maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
             },
