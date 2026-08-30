@@ -33,10 +33,7 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import {
-  discoveredSocialAccountFromItem,
-  type FeedItem,
-} from "@freed/shared";
+import { discoveredSocialAccountFromItem, type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   animationAwareScrollBehavior,
@@ -537,16 +534,24 @@ export function FeedView() {
     ? savedFeedRankingClockMs(savedContentSortMode, identityRankingClockMs)
     : identityRankingClockMs;
   const renderedReaderIdentityRef = useRef(boundedReaderIdentity);
+  const renderedSelectionIdentityRef = useRef(boundedSelectionIdentity);
   const boundedFeedStatusIsCurrent =
     renderedReaderIdentityRef.current === boundedReaderIdentity;
+  const boundedFeedPresentationMatchesSelection =
+    renderedSelectionIdentityRef.current === boundedSelectionIdentity;
   useLayoutEffect(() => {
     renderedReaderIdentityRef.current = boundedReaderIdentity;
-  }, [boundedReaderIdentity]);
+    renderedSelectionIdentityRef.current = boundedSelectionIdentity;
+  }, [boundedReaderIdentity, boundedSelectionIdentity]);
   const activeBoundedFeedReader = useMemo(() => {
     if (savedBoundedFeedEligible) {
       if (!openBoundedSavedFeedReader) return undefined;
       return (filter: typeof activeFilter, rankingClockMs: number) =>
-        openBoundedSavedFeedReader(filter, savedContentSortMode, rankingClockMs);
+        openBoundedSavedFeedReader(
+          filter,
+          savedContentSortMode,
+          rankingClockMs,
+        );
     }
     if (friendsBoundedFeedEligible) return openBoundedFriendsFeedReader;
     return openBoundedFeedReader;
@@ -574,6 +579,10 @@ export function FeedView() {
   });
   const boundedFeedReadyIsCurrent =
     boundedFeedStatusIsCurrent && boundedFeed.status === "ready";
+  const boundedFeedPresentationIsAvailable =
+    boundedFeedPresentationMatchesSelection &&
+    boundedFeed.items.length > 0 &&
+    (boundedFeed.status === "ready" || boundedFeed.status === "loading");
   const handleItemSave = useCallback(
     (item: FeedItem) => {
       patchBoundedItems((candidate) => {
@@ -639,23 +648,23 @@ export function FeedView() {
     libraryItemVersion,
   );
   const visibleItems = useMemo(() => {
-    if (boundedFeedReadyIsCurrent) return boundedFeed.items;
+    if (boundedFeedPresentationIsAvailable) return boundedFeed.items;
     return isSearching ? filteredItems : EMPTY_FEED_ITEMS;
   }, [
     boundedFeed.items,
-    boundedFeedReadyIsCurrent,
+    boundedFeedPresentationIsAvailable,
     filteredItems,
     isSearching,
   ]);
   useEffect(() => {
-    if (boundedFeedReadyIsCurrent) {
+    if (boundedFeedPresentationIsAvailable) {
       setVisibleFeedTotalCount(boundedFeed.totalCount);
       return;
     }
     setVisibleFeedTotalCount(0);
   }, [
     boundedFeed.totalCount,
-    boundedFeedReadyIsCurrent,
+    boundedFeedPresentationIsAvailable,
     setVisibleFeedTotalCount,
   ]);
 
@@ -1146,9 +1155,7 @@ export function FeedView() {
                   markItemsAsRead={markBoundedItemsAsRead}
                   width={panelWidth}
                   onLoadMore={loadMoreBoundedItems}
-                  hasMore={
-                    boundedFeedReadyIsCurrent && boundedFeed.hasMore
-                  }
+                  hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}
                   onLoadPrevious={loadPreviousBoundedItems}
                   hasPrevious={
                     boundedFeedReadyIsCurrent && boundedFeed.hasPrevious

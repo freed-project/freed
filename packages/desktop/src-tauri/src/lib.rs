@@ -14235,7 +14235,7 @@ pub fn run() {
             library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
             library_core_desktop_runtime::reassign_normalized_library_writer_epoch,
             library_core_desktop_runtime::normalized_library_primary_mutation_context,
-            library_core_desktop_runtime::sign_normalized_library_operation,
+            library_core_desktop_runtime::sign_normalized_library_operations,
             library_core_desktop_runtime::commit_normalized_library_transaction,
             library_core_desktop_runtime::begin_normalized_scope_action,
             library_core_desktop_runtime::freeze_normalized_rss_feed_scope,

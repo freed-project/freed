@@ -34,6 +34,7 @@ use crate::normalized_authority_credentials::{
 };
 use crate::normalized_enrollment_verifier::verify_actor_enrollment as verify_actor_enrollment_certificate;
 use crate::normalized_operation::VerifiedActorEnrollment;
+use crate::sqlite_contract_generated::OPERATION_TRANSACTION_MAXIMUM_MEMBERS;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
@@ -408,9 +409,32 @@ pub fn sign_library_core_operation_digest(
     expected_actor_public_key: &str,
     operation_signing_body_digest: &str,
 ) -> Result<String, String> {
+    let signatures = sign_library_core_operation_digests(
+        store,
+        library_id,
+        expected_actor_public_key,
+        &[operation_signing_body_digest.to_string()],
+    )?;
+    signatures
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Library Core operation signing request is invalid".to_string())
+}
+
+/// Sign one bounded transaction after opening and verifying its actor key once.
+pub fn sign_library_core_operation_digests(
+    store: &dyn ActorKeyStore,
+    library_id: &str,
+    expected_actor_public_key: &str,
+    operation_signing_body_digests: &[String],
+) -> Result<Vec<String>, String> {
     if !is_lower_sha256(library_id)
         || !is_lower_sha256(expected_actor_public_key)
-        || !is_lower_sha256(operation_signing_body_digest)
+        || operation_signing_body_digests.is_empty()
+        || operation_signing_body_digests.len() > OPERATION_TRANSACTION_MAXIMUM_MEMBERS
+        || operation_signing_body_digests
+            .iter()
+            .any(|digest| !is_lower_sha256(digest))
     {
         return Err("Library Core operation signing request is invalid".to_string());
     }
@@ -418,12 +442,17 @@ pub fn sign_library_core_operation_digest(
     if lower_hex(key_pair.public_key().as_ref()) != expected_actor_public_key {
         return Err("Library Core actor signing key changed".to_string());
     }
-    let input = encode_operation_signature_input(
-        &json!({ "operation_signing_body_digest": operation_signing_body_digest }),
-        MAX_CERTIFICATE_BYTES,
-    )
-    .map_err(|_| "Library Core operation signature input is invalid".to_string())?;
-    Ok(lower_hex(key_pair.sign(&input).as_ref()))
+    operation_signing_body_digests
+        .iter()
+        .map(|operation_signing_body_digest| {
+            let input = encode_operation_signature_input(
+                &json!({ "operation_signing_body_digest": operation_signing_body_digest }),
+                MAX_CERTIFICATE_BYTES,
+            )
+            .map_err(|_| "Library Core operation signature input is invalid".to_string())?;
+            Ok(lower_hex(key_pair.sign(&input).as_ref()))
+        })
+        .collect()
 }
 
 /// Verify and countersign one canonical proof-only PWA enrollment request.
@@ -596,6 +625,68 @@ mod tests {
             &signature_input,
         )
         .unwrap());
+    }
+
+    #[test]
+    fn one_verified_actor_key_signs_a_bounded_operation_batch() {
+        let authority = NormalizedAuthorityStateV2 {
+            library_id: "a".repeat(64),
+            epoch: 1,
+            epoch_id: "b".repeat(64),
+            authority_key_id: "c".repeat(64),
+            authority_public_key: "d".repeat(64),
+            observed_frontier: Vec::new(),
+        };
+        let store = MemoryActorKeyStore::default();
+        let prepared = prepare_normalized_follower_actor_enrollment_request_v2(
+            &authority,
+            &"e".repeat(64),
+            &store,
+            2_000,
+        )
+        .unwrap();
+        let digests = vec!["1".repeat(64), "2".repeat(64), "3".repeat(64)];
+
+        let signatures = sign_library_core_operation_digests(
+            &store,
+            &authority.library_id,
+            &prepared.actor_public_key,
+            &digests,
+        )
+        .unwrap();
+
+        assert_eq!(signatures.len(), digests.len());
+        for (digest, signature) in digests.iter().zip(signatures) {
+            let signature_input = encode_operation_signature_input(
+                &json!({ "operation_signing_body_digest": digest }),
+                MAX_CERTIFICATE_BYTES,
+            )
+            .unwrap();
+            assert!(crate::library_core_ed25519::verify_library_core_ed25519(
+                &prepared.actor_public_key,
+                &signature,
+                &signature_input,
+            )
+            .unwrap());
+        }
+    }
+
+    #[test]
+    fn an_empty_or_oversized_operation_batch_is_refused_before_key_access() {
+        let store = MemoryActorKeyStore::default();
+        let oversized = vec!["1".repeat(64); OPERATION_TRANSACTION_MAXIMUM_MEMBERS + 1];
+
+        for digests in [&[][..], oversized.as_slice()] {
+            let error = sign_library_core_operation_digests(
+                &store,
+                &"a".repeat(64),
+                &"b".repeat(64),
+                digests,
+            )
+            .unwrap_err();
+            assert_eq!(error, "Library Core operation signing request is invalid");
+        }
+        assert!(store.stored.borrow().is_none());
     }
 
     #[test]

@@ -647,6 +647,29 @@ async function finalizeAndSubmitTransaction(
     context.previousChainDigest as LibraryCoreLowercaseHex64,
     { digest: operationDigest },
   );
+  const primarySignatures =
+    context.mode === "primary"
+      ? await invoke<readonly SqliteLibraryFollowerOperationSignature[]>(
+          "sign_normalized_library_operations",
+          {
+            request: {
+              libraryId: context.libraryId,
+              epochId: context.epochId,
+              actorId: context.actorId,
+              actorPublicKey: context.actorPublicKey,
+              operationSigningBodyDigests: assembled.members.map(
+                (member) => member.signing_body_digest,
+              ),
+            },
+          },
+        )
+      : null;
+  if (
+    primarySignatures !== null &&
+    primarySignatures.length !== assembled.members.length
+  ) {
+    throw new Error("Primary signer returned the wrong signature count");
+  }
   let signatureIndex = 0;
   const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
     digest: operationDigest,
@@ -661,27 +684,17 @@ async function finalizeAndSubmitTransaction(
           "Follower signer input does not match its assembled member",
         );
       }
-      const signed =
-        context.mode === "primary"
-          ? await invoke<SqliteLibraryFollowerOperationSignature>(
-              "sign_normalized_library_operation",
-              {
-                request: {
-                  libraryId: context.libraryId,
-                  epochId: context.epochId,
-                  actorId: context.actorId,
-                  actorPublicKey: context.actorPublicKey,
-                  operationSigningBodyDigest: member.signing_body_digest,
-                },
-              },
-            )
-          : await signNormalizedLibraryFollowerOperation({
-              libraryId: context.libraryId,
-              epochId: context.epochId,
-              actorId: context.actorId,
-              actorPublicKey: context.actorPublicKey,
-              operationSigningBodyDigest: member.signing_body_digest,
-            });
+      const signed = primarySignatures
+        ? primarySignatures[signatureIndex - 1]
+        : await signNormalizedLibraryFollowerOperation({
+            libraryId: context.libraryId,
+            epochId: context.epochId,
+            actorId: context.actorId,
+            actorPublicKey: context.actorPublicKey,
+            operationSigningBodyDigest: member.signing_body_digest,
+          });
+      if (!signed)
+        throw new Error("Primary signer omitted a transaction member");
       if (
         signed.actorId !== context.actorId ||
         signed.operationSigningBodyDigest !== member.signing_body_digest
@@ -1768,32 +1781,61 @@ async function maybeSubmitPersonRemove(
   personId: string,
   removedAtMs: number,
 ): Promise<boolean> {
-  const context = await mutationContext();
+  return maybeSubmitPersonRemoves([personId], removedAtMs);
+}
+
+async function maybeSubmitPersonRemoves(
+  personIds: readonly string[],
+  removedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
   if (!context) return false;
-  const transactionId =
-    `desktop-library-person-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
-    {
-      operation_id: `${transactionId}:0`,
-      library_id: context.libraryId,
-      epoch: context.epoch,
-      epoch_id: context.epochId,
-      actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.observedFrontier,
-      hlc_wall_ms: removedAtMs,
-      hlc_counter: 0,
-      transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
-      entity_id: personId,
-      payload: { removed_at_ms: removedAtMs },
-      created_at_ms: removedAtMs,
-    } satisfies PersonRemoveTransactionMemberInputV1,
-    { digest: operationDigest },
-  );
-  await finalizeAndSubmitTransaction(context, [member], removedAtMs);
+  const uniqueIds = [...new Set(personIds)];
+  if (uniqueIds.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_remove_and_accounts
+      .maximumMembers;
+  for (let start = 0; start < uniqueIds.length; start += batchLimit) {
+    const batchContext = context;
+    const batch = uniqueIds.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-person-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((personId, index) =>
+      PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: removedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: personId,
+          payload: { removed_at_ms: removedAtMs },
+          created_at_ms: removedAtMs,
+        } satisfies PersonRemoveTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
+    if (start + batch.length < uniqueIds.length) {
+      context = await mutationContext();
+      if (!context) {
+        throw new Error(
+          "Library mutation context changed during Person removal",
+        );
+      }
+    }
+  }
   return true;
 }
 
@@ -1884,36 +1926,57 @@ export async function upsertSqliteLibraryAccounts(
   }
 }
 
-async function maybeSubmitAccountRemove(
-  accountId: string,
+async function maybeSubmitAccountRemoves(
+  accountIds: readonly string[],
   removedAtMs: number,
 ): Promise<boolean> {
-  const context = await mutationContext();
+  let context = await mutationContext();
   if (!context) return false;
-  const transactionId =
-    `desktop-library-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
-    {
-      operation_id: `${transactionId}:0`,
-      library_id: context.libraryId,
-      epoch: context.epoch,
-      epoch_id: context.epochId,
-      actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.observedFrontier,
-      hlc_wall_ms: removedAtMs,
-      hlc_counter: 0,
-      transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
-      entity_id: accountId,
-      payload: { removed_at_ms: removedAtMs },
-      created_at_ms: removedAtMs,
-    } satisfies AccountRemoveTransactionMemberInputV1,
-    { digest: operationDigest },
-  );
-  await finalizeAndSubmitTransaction(context, [member], removedAtMs);
+  const uniqueIds = [...new Set(accountIds)];
+  if (uniqueIds.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_remove.maximumMembers;
+  for (let start = 0; start < uniqueIds.length; start += batchLimit) {
+    const batchContext = context;
+    const batch = uniqueIds.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((accountId, index) =>
+      ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: removedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: accountId,
+          payload: { removed_at_ms: removedAtMs },
+          created_at_ms: removedAtMs,
+        } satisfies AccountRemoveTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
+    if (start + batch.length < uniqueIds.length) {
+      context = await mutationContext();
+      if (!context) {
+        throw new Error(
+          "Library mutation context changed during Account removal",
+        );
+      }
+    }
+  }
   return true;
 }
 
@@ -2457,6 +2520,44 @@ async function refreshNormalizedMutationProjection(
   };
 }
 
+/** Commit one resolved sample-data plan in bounded transactions. */
+export async function commitDesktopLibrarySampleRemovalPlan(
+  plan: Readonly<{
+    feedUrls: readonly string[];
+    itemIds: readonly string[];
+    personIds: readonly string[];
+    realLinkedAccounts: readonly Account[];
+    sampleAccountIds: readonly string[];
+  }>,
+  removedAtMs: number,
+): Promise<void> {
+  if (
+    !(await maybeSubmitAccountUpserts(
+      plan.realLinkedAccounts.map(({ personId, ...account }) => {
+        void personId;
+        return { ...account, updatedAt: removedAtMs };
+      }),
+      removedAtMs,
+    ))
+  ) {
+    throw new Error("Normalized SQLite Account mutation context changed");
+  }
+  if (!(await maybeSubmitFeedItemRemoves(plan.itemIds, removedAtMs))) {
+    throw new Error("Normalized SQLite item mutation context changed");
+  }
+  if (!(await maybeSubmitRssFeedRemoves(plan.feedUrls, false, removedAtMs))) {
+    throw new Error("Normalized SQLite RSS Feed mutation context changed");
+  }
+  // Remove explicit sample Accounts first. Person removal also deletes linked
+  // Accounts, after which an Account tombstone could no longer be admitted.
+  if (!(await maybeSubmitAccountRemoves(plan.sampleAccountIds, removedAtMs))) {
+    throw new Error("Normalized SQLite Account mutation context changed");
+  }
+  if (!(await maybeSubmitPersonRemoves(plan.personIds, removedAtMs))) {
+    throw new Error("Normalized SQLite Person mutation context changed");
+  }
+}
+
 export async function dispatchSqliteMutation(
   message: LibraryMutationRequest,
 ): Promise<{
@@ -2575,58 +2676,22 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "CLEAR_SAMPLE_DATA": {
+      const plan = await collectLibraryCoreSampleRemovalPlanV1(
+        NORMALIZED_MUTATION_READER_RUNTIME,
+      );
       const {
         feedUrls,
         itemIds: sampleItemIds,
         personIds: samplePersonIds,
-        realLinkedAccounts,
         sampleAccountIds,
-      } = await collectLibraryCoreSampleRemovalPlanV1(
-        NORMALIZED_MUTATION_READER_RUNTIME,
-      );
+      } = plan;
       const normalizedHandled = (await mutationContext()) !== null;
       if (!normalizedHandled) {
         throw new Error(
           "Normalized SQLite sample mutation context is required",
         );
       }
-      if (
-        !(await maybeSubmitAccountUpserts(
-          realLinkedAccounts.map(({ personId, ...account }) => {
-            void personId;
-            return { ...account, updatedAt: timestamp };
-          }),
-          timestamp,
-        ))
-      ) {
-        throw new Error("Normalized SQLite Account mutation context changed");
-      }
-      if (!(await maybeSubmitFeedItemRemoves(sampleItemIds, timestamp))) {
-        throw new Error("Normalized SQLite item mutation context changed");
-      }
-      for (const url of feedUrls) {
-        if (
-          !(await maybeSubmitRssFeedRemove({
-            includeItems: false,
-            removedAtMs: timestamp,
-            url,
-          }))
-        ) {
-          throw new Error(
-            "Normalized SQLite RSS Feed mutation context changed",
-          );
-        }
-      }
-      for (const personId of samplePersonIds) {
-        if (!(await maybeSubmitPersonRemove(personId, timestamp))) {
-          throw new Error("Normalized SQLite Person mutation context changed");
-        }
-      }
-      for (const accountId of sampleAccountIds) {
-        if (!(await maybeSubmitAccountRemove(accountId, timestamp))) {
-          throw new Error("Normalized SQLite Account mutation context changed");
-        }
-      }
+      await commitDesktopLibrarySampleRemovalPlan(plan, timestamp);
       const summary = {
         feeds: feedUrls.length,
         items: sampleItemIds.length,

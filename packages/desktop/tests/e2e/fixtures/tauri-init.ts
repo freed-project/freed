@@ -1797,11 +1797,12 @@ export function tauriInitScript(): string {
       query_normalized_library: sqliteNormalizedQuery,
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
       normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
-      sign_normalized_library_operation: (args) => ({
-        actorId: args.request.actorId,
-        operationSigningBodyDigest: args.request.operationSigningBodyDigest,
-        signature: 'a'.repeat(128),
-      }),
+      sign_normalized_library_operations: (args) =>
+        args.request.operationSigningBodyDigests.map((digest) => ({
+          actorId: args.request.actorId,
+          operationSigningBodyDigest: digest,
+          signature: 'a'.repeat(128),
+        })),
       sign_normalized_library_follower_operation: (args) => ({
         actorId: args.request.actorId,
         operationSigningBodyDigest: args.request.operationSigningBodyDigest,

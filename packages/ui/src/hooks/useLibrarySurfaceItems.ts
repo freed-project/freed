@@ -72,17 +72,19 @@ function useVersionedRows<Row, Reader, Key>(
   load: (reader: Reader, key: Key) => Promise<readonly Row[]>,
   emptyRows: readonly Row[],
 ): readonly Row[] {
-  const [versionedRows, setVersionedRows] = useState<VersionedRows<Row> | null>(() => {
-    if (!reader) return null;
-    const result = prepareRows(
-      cache,
-      key,
-      reader,
-      sourceVersion,
-      load,
-    ).result;
-    return result ? { sourceVersion, rows: result } : null;
-  });
+  const [versionedRows, setVersionedRows] = useState<VersionedRows<Row> | null>(
+    () => {
+      if (!reader) return null;
+      const result = prepareRows(
+        cache,
+        key,
+        reader,
+        sourceVersion,
+        load,
+      ).result;
+      return result ? { sourceVersion, rows: result } : null;
+    },
+  );
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
 
   useEffect(() => {
@@ -96,13 +98,7 @@ function useVersionedRows<Row, Reader, Key>(
     }
 
     setFailedVersion(null);
-    const prepared = prepareRows(
-      cache,
-      key,
-      reader,
-      sourceVersion,
-      load,
-    );
+    const prepared = prepareRows(cache, key, reader, sourceVersion, load);
     if (prepared.result) {
       setVersionedRows({ sourceVersion, rows: prepared.result });
     }
@@ -122,9 +118,7 @@ function useVersionedRows<Row, Reader, Key>(
   if (!reader || failedVersion === sourceVersion) {
     return emptyRows;
   }
-  return versionedRows?.sourceVersion === sourceVersion
-    ? versionedRows.rows
-    : emptyRows;
+  return versionedRows?.rows ?? emptyRows;
 }
 
 function loadStoryWallCandidates(

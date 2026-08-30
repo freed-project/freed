@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 import {
   appendSqliteLibraryPersonReachOut,
   assignSqliteLibraryAccountToPerson,
+  commitDesktopLibraryFeedItemAnalysisSets,
+  commitDesktopLibrarySampleRemovalPlan,
   dispatchSqliteMutation,
   removeSqliteLibraryPerson,
   replaceSqliteLibraryFriend,
@@ -339,17 +341,17 @@ describe("SQLite Primary mutations", () => {
           observedFrontier: [],
         };
       }
-      if (command === "sign_normalized_library_operation") {
+      if (command === "sign_normalized_library_operations") {
         const request = (
           args as {
-            request: { actorId: string; operationSigningBodyDigest: string };
+            request: { actorId: string; operationSigningBodyDigests: string[] };
           }
         ).request;
-        return {
+        return request.operationSigningBodyDigests.map((digest) => ({
           actorId: request.actorId,
-          operationSigningBodyDigest: request.operationSigningBodyDigest,
+          operationSigningBodyDigest: digest,
           signature: "45".repeat(64),
-        };
+        }));
       }
       if (command === "sign_normalized_library_follower_operation") {
         const request = (
@@ -832,7 +834,7 @@ describe("SQLite Primary mutations", () => {
     });
     expect(
       mocks.invoke.mock.calls.some(
-        ([command]) => command === "sign_normalized_library_operation",
+        ([command]) => command === "sign_normalized_library_operations",
       ),
     ).toBe(false);
     expect(
@@ -840,5 +842,78 @@ describe("SQLite Primary mutations", () => {
         ([command]) => command === "commit_normalized_library_transaction",
       ),
     ).toBe(false);
+  });
+
+  it("signs every member of an analysis transaction in one native batch", async () => {
+    await commitDesktopLibraryFeedItemAnalysisSets(
+      ["rss:analysis-1", "rss:analysis-2", "rss:analysis-3"].map(
+        (entityId) => ({
+          contentSignals: undefined,
+          entityId,
+          eventCandidate: undefined,
+        }),
+      ),
+      1_000,
+    );
+
+    const signingCalls = mocks.invoke.mock.calls.filter(
+      ([command]) => command === "sign_normalized_library_operations",
+    );
+    expect(signingCalls).toHaveLength(1);
+    expect(signingCalls[0]?.[1]).toMatchObject({
+      request: {
+        actorId: "12".repeat(32),
+        operationSigningBodyDigests: [
+          expect.stringMatching(/^[0-9a-f]{64}$/),
+          expect.stringMatching(/^[0-9a-f]{64}$/),
+          expect.stringMatching(/^[0-9a-f]{64}$/),
+        ],
+      },
+    });
+  });
+
+  it("clears large sample identity sets in bounded Account-first transactions", async () => {
+    await commitDesktopLibrarySampleRemovalPlan(
+      {
+        feedUrls: [],
+        itemIds: [],
+        personIds: Array.from({ length: 300 }, (_, index) => `person-${index}`),
+        realLinkedAccounts: [],
+        sampleAccountIds: Array.from(
+          { length: 300 },
+          (_, index) => `account-${index}`,
+        ),
+      },
+      1_000,
+    );
+
+    const signingBatchSizes = mocks.invoke.mock.calls
+      .filter(([command]) => command === "sign_normalized_library_operations")
+      .map(
+        ([, args]) =>
+          (
+            args as {
+              request: { operationSigningBodyDigests: readonly string[] };
+            }
+          ).request.operationSigningBodyDigests.length,
+      );
+    expect(signingBatchSizes).toEqual([256, 44, 256, 44]);
+
+    const committedOperationTypes = mocks.invoke.mock.calls
+      .filter(
+        ([command]) => command === "commit_normalized_library_transaction",
+      )
+      .map(([, args]) => {
+        const firstEnvelope = (
+          args as { request: { canonicalEnvelopeJson: readonly string[] } }
+        ).request.canonicalEnvelopeJson[0];
+        return JSON.parse(firstEnvelope ?? "null").operation_type;
+      });
+    expect(committedOperationTypes).toEqual([
+      "account_remove",
+      "account_remove",
+      "person_remove_and_accounts",
+      "person_remove_and_accounts",
+    ]);
   });
 });

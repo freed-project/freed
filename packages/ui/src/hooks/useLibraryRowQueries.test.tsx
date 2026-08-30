@@ -215,19 +215,23 @@ function PersonPickerHarness({
 
 function SurfaceHarness({
   onItems,
+  sourceVersion = 7,
 }: {
   onItems: (items: readonly StoryWallCandidate[]) => void;
+  sourceVersion?: number;
 }) {
-  onItems(useLibraryStoryWallCandidates(7));
+  onItems(useLibraryStoryWallCandidates(sourceVersion));
   return null;
 }
 
 function MapHarness({
   onCandidates,
+  sourceVersion = 7,
 }: {
   onCandidates: (candidates: readonly LibraryMapLocationCandidate[]) => void;
+  sourceVersion?: number;
 }) {
-  onCandidates(useLibraryMapCandidates(7));
+  onCandidates(useLibraryMapCandidates(sourceVersion));
   return null;
 }
 
@@ -886,6 +890,54 @@ describe("Library row query hooks", () => {
       "native-story",
     ]);
     expect(readLibraryStoryWallCandidates).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the last complete surface rows visible while a new revision loads", async () => {
+    const first = {
+      accountId: "account-1",
+      item: item("first-story"),
+      personId: "person-1",
+    };
+    const second = {
+      accountId: "account-2",
+      item: item("second-story"),
+      personId: "person-2",
+    };
+    let resolveSecond: ((rows: readonly StoryWallCandidate[]) => void) | null =
+      null;
+    const secondLoad = new Promise<readonly StoryWallCandidate[]>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const readLibraryStoryWallCandidates = vi
+      .fn()
+      .mockResolvedValueOnce([first])
+      .mockReturnValueOnce(secondLoad);
+    let current: readonly StoryWallCandidate[] = [];
+    const node = (sourceVersion: number) => (
+      <PlatformProvider
+        value={platformConfig({ readLibraryStoryWallCandidates })}
+      >
+        <SurfaceHarness
+          sourceVersion={sourceVersion}
+          onItems={(items) => {
+            current = items;
+          }}
+        />
+      </PlatformProvider>
+    );
+
+    renderHarness(node(7));
+    await flush();
+    expect(current).toEqual([first]);
+
+    act(() => root?.render(node(8)));
+    expect(current).toEqual([first]);
+    await act(async () => {
+      resolveSecond?.([second]);
+      await secondLoad;
+    });
+    await flush();
+    expect(current).toEqual([second]);
   });
 
   it("loads bounded Map rows with their SQLite-joined Friend identity", async () => {

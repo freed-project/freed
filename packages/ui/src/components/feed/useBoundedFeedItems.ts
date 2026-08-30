@@ -139,14 +139,12 @@ export function useBoundedFeedItems({
       };
     }
 
-    setFeed({
+    setFeed((current) => ({
+      ...current,
       status: "loading",
-      items: [],
       hasMore: false,
       hasPrevious: false,
-      windowStartIndex: 0,
-      totalCount: 0,
-    });
+    }));
     void openReader(activeFilter, rankingClockMs)
       .then(async (reader) => {
         openedReader = reader;
@@ -235,7 +233,12 @@ export function useBoundedFeedItems({
 
   const loadMore = useCallback(() => {
     const reader = readerRef.current;
-    if (!reader || feed.status !== "ready" || !feed.hasMore || loadRef.current) {
+    if (
+      !reader ||
+      feed.status !== "ready" ||
+      !feed.hasMore ||
+      loadRef.current
+    ) {
       return;
     }
     const trailingCursor =
