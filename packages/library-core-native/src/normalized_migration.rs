@@ -2340,12 +2340,22 @@ pub(crate) fn migrate_legacy_feed_item_v1(
     let content_bytes = take_large_text(object_mut(&mut item, "content")?, "text")?;
     let preserved_bytes = match item.get_mut("preservedContent") {
         None | Some(Value::Null) => None,
-        Some(value) => take_large_text(
-            value
+        Some(value) => {
+            let preserved = value
                 .as_object_mut()
-                .ok_or_else(|| invalid("legacy preserved content is invalid"))?,
-            "text",
-        )?,
+                .ok_or_else(|| invalid("legacy preserved content is invalid"))?;
+            if preserved
+                .get("publishedAt")
+                .and_then(Value::as_object)
+                .is_some_and(|value| {
+                    value.len() == 1
+                        && value.get("__nonFinite").and_then(Value::as_str) == Some("NaN")
+                })
+            {
+                preserved.insert("publishedAt".to_owned(), Value::Null);
+            }
+            take_large_text(preserved, "text")?
+        }
     };
     let content_digest = content_bytes
         .as_deref()
@@ -2456,51 +2466,79 @@ pub(crate) fn migrate_legacy_feed_item_v1(
         let signals = signals
             .as_object()
             .ok_or_else(|| invalid("legacy FeedItem signals are invalid"))?;
-        let version = signals
-            .get("version")
-            .and_then(Value::as_i64)
-            .filter(|value| *value >= 0)
-            .ok_or_else(|| invalid("legacy FeedItem signal version is invalid"))?;
-        let method = signals
-            .get("method")
-            .and_then(Value::as_str)
-            .ok_or_else(|| invalid("legacy FeedItem signal method is invalid"))?;
-        let inferred_at = signals
-            .get("inferredAt")
-            .and_then(Value::as_i64)
-            .filter(|value| *value >= 0)
-            .ok_or_else(|| invalid("legacy FeedItem signal time is invalid"))?;
-        transaction.execute(
-            "INSERT INTO library_feed_item_signals (global_id, version, method, inferred_at)
-             VALUES (?1, ?2, ?3, ?4);",
-            params![global_id, version, method, inferred_at],
-        )?;
-        let scores = signals
-            .get("scores")
-            .and_then(Value::as_object)
-            .ok_or_else(|| invalid("legacy FeedItem signal scores are invalid"))?;
-        if scores.len() > MAXIMUM_SIGNALS {
-            return Err(invalid("legacy FeedItem signal scores exceed their bound"));
-        }
-        let tags = bounded_array(
-            signals.get("tags"),
-            MAXIMUM_SIGNALS,
-            "legacy FeedItem signal tags exceed their bound",
-        )?;
-        for (signal, score) in scores {
-            if signal.is_empty() || signal.len() > 512 {
-                return Err(invalid("legacy FeedItem signal identity is invalid"));
+        if !signals.contains_key("version") {
+            if signals.len() != 1 || !signals.contains_key("tags") {
+                return Err(invalid("legacy FeedItem signal metadata is incomplete"));
             }
-            let score = score
-                .as_f64()
-                .filter(|value| value.is_finite())
-                .ok_or_else(|| invalid("legacy FeedItem signal score is invalid"))?;
-            let tagged = tags.iter().any(|tag| tag.as_str() == Some(signal.as_str()));
-            transaction.execute(
-                "INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
-                 VALUES (?1, ?2, ?3, ?4);",
-                params![global_id, signal, score, tagged],
+            let tags = bounded_array(
+                signals.get("tags"),
+                MAXIMUM_SIGNALS,
+                "legacy FeedItem signal tags exceed their bound",
             )?;
+            for (ordinal, tag) in tags.iter().enumerate() {
+                let signal = tag
+                    .as_str()
+                    .filter(|value| !value.is_empty() && value.len() <= 512)
+                    .ok_or_else(|| invalid("legacy FeedItem signal identity is invalid"))?;
+                if tags[..ordinal]
+                    .iter()
+                    .any(|prior| prior.as_str() == Some(signal))
+                {
+                    return Err(invalid("legacy FeedItem signal identity is duplicated"));
+                }
+                transaction.execute(
+                    "INSERT INTO library_feed_item_signal_scores
+                     (global_id, signal, score, tagged) VALUES (?1, ?2, NULL, 1);",
+                    params![global_id, signal],
+                )?;
+            }
+        } else {
+            let version = signals
+                .get("version")
+                .and_then(Value::as_i64)
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| invalid("legacy FeedItem signal version is invalid"))?;
+            let method = signals
+                .get("method")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("legacy FeedItem signal method is invalid"))?;
+            let inferred_at = signals
+                .get("inferredAt")
+                .and_then(Value::as_i64)
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| invalid("legacy FeedItem signal time is invalid"))?;
+            transaction.execute(
+                "INSERT INTO library_feed_item_signals (global_id, version, method, inferred_at)
+             VALUES (?1, ?2, ?3, ?4);",
+                params![global_id, version, method, inferred_at],
+            )?;
+            let scores = signals
+                .get("scores")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid("legacy FeedItem signal scores are invalid"))?;
+            if scores.len() > MAXIMUM_SIGNALS {
+                return Err(invalid("legacy FeedItem signal scores exceed their bound"));
+            }
+            let tags = bounded_array(
+                signals.get("tags"),
+                MAXIMUM_SIGNALS,
+                "legacy FeedItem signal tags exceed their bound",
+            )?;
+            for (signal, score) in scores {
+                if signal.is_empty() || signal.len() > 512 {
+                    return Err(invalid("legacy FeedItem signal identity is invalid"));
+                }
+                let score = score
+                    .as_f64()
+                    .filter(|value| value.is_finite())
+                    .ok_or_else(|| invalid("legacy FeedItem signal score is invalid"))?;
+                let tagged = tags.iter().any(|tag| tag.as_str() == Some(signal.as_str()));
+                transaction.execute(
+                    "INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+                     VALUES (?1, ?2, ?3, ?4);",
+                    params![global_id, signal, score, tagged],
+                )?;
+            }
         }
     }
 
@@ -2733,8 +2771,13 @@ mod tests {
             "publishedAt": 9,
             "author": {"id": "author", "handle": "ada", "displayName": "Ada"},
             "content": {"text": "Body", "mediaUrls": [], "mediaTypes": []},
+            "preservedContent": {
+                "text": "Preserved body",
+                "publishedAt": {"__nonFinite": "NaN"}
+            },
             "userState": {"hidden": false, "saved": false, "archived": false, "tags": tags},
-            "topics": []
+            "topics": [],
+            "contentSignals": {"tags": ["essay", "recommendation"]}
         });
         connection
             .execute(
@@ -2774,6 +2817,39 @@ mod tests {
             (1, 1, 1)
         );
         assert_eq!(receipt.reach_outs, 1);
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT preserved_published_at FROM library_feed_items
+                     WHERE global_id = 'rss:live';",
+                    [],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_feed_item_signals
+                     WHERE global_id = 'rss:live';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_feed_item_signal_scores
+                     WHERE global_id = 'rss:live' AND score IS NULL AND tagged = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            2
+        );
         assert_eq!(receipt.normalized_product_digest.len(), 64);
         assert!(receipt.normalized_record_count > 5);
         assert_eq!(
@@ -3517,5 +3593,113 @@ mod tests {
             .records
             .iter()
             .all(|record| !record.registry_key.contains("shell")));
+    }
+
+    #[test]
+    fn migrates_legacy_tag_only_signals_without_inventing_analysis_metadata() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        let item = json!({
+            "globalId": "rss:tag-only-signals",
+            "platform": "rss",
+            "contentType": "article",
+            "capturedAt": 10,
+            "publishedAt": 9,
+            "author": {"id": "author", "handle": "author", "displayName": "Author"},
+            "content": {"text": "Body", "mediaUrls": [], "mediaTypes": []},
+            "userState": {
+                "hidden": false,
+                "saved": false,
+                "archived": false,
+                "tags": [],
+                "highlights": []
+            },
+            "contentSignals": {"tags": ["essay", "recommendation"]}
+        });
+        let transaction = connection.transaction().unwrap();
+        migrate_legacy_feed_item_v1(&transaction, "rss:tag-only-signals", &item.to_string(), 11)
+            .unwrap();
+        transaction.commit().unwrap();
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_feed_item_signals
+                     WHERE global_id = 'rss:tag-only-signals';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        let mut statement = connection
+            .prepare(
+                "SELECT signal, score, tagged FROM library_feed_item_signal_scores
+                 WHERE global_id = 'rss:tag-only-signals' ORDER BY signal;",
+            )
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<f64>>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("essay".to_owned(), None, 1),
+                ("recommendation".to_owned(), None, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_non_finite_preserved_publication_time_as_absent() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        let item = json!({
+            "globalId": "x:legacy-preserved-time",
+            "platform": "x",
+            "contentType": "post",
+            "capturedAt": 10,
+            "publishedAt": 9,
+            "author": {"id": "author", "handle": "author", "displayName": "Author"},
+            "content": {"text": "Body", "mediaUrls": [], "mediaTypes": []},
+            "preservedContent": {
+                "text": "Preserved body",
+                "publishedAt": {"__nonFinite": "NaN"}
+            },
+            "userState": {
+                "hidden": false,
+                "saved": false,
+                "archived": false,
+                "tags": [],
+                "highlights": []
+            }
+        });
+        let transaction = connection.transaction().unwrap();
+        migrate_legacy_feed_item_v1(
+            &transaction,
+            "x:legacy-preserved-time",
+            &item.to_string(),
+            11,
+        )
+        .unwrap();
+        transaction.commit().unwrap();
+
+        let preserved_published_at = connection
+            .query_row(
+                "SELECT preserved_published_at FROM library_feed_items
+                 WHERE global_id = 'x:legacy-preserved-time';",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .unwrap();
+        assert_eq!(preserved_published_at, None);
     }
 }
