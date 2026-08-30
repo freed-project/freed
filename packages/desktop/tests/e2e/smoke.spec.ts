@@ -3390,6 +3390,15 @@ test("Map view popup exposes friend actions and supports post navigation", async
 });
 
 test("Friend detail last seen card opens the full Map view", async ({ app }) => {
+  const renderLoopErrors: string[] = [];
+  app.page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      message.text().includes("Maximum update depth exceeded")
+    ) {
+      renderLoopErrors.push(message.text());
+    }
+  });
   await app.page.route("https://nominatim.openstreetmap.org/search**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -3429,8 +3438,10 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
-  const lastSeenCard = page.getByRole("button", { name: /last seen paris/i });
-  await expect(lastSeenCard).toBeVisible({ timeout: 5_000 });
+  const lastSeenCard = page
+    .getByTestId("friends-sidebar")
+    .getByRole("button", { name: /last seen paris/i });
+  await expect(lastSeenCard).toBeVisible({ timeout: 10_000 });
   await lastSeenCard.evaluate((element) => {
     (element as HTMLElement).click();
   });
@@ -3444,6 +3455,10 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     return state?.activeView === "map" && state.selectedPersonId === "friend-ada";
   }, { timeout: 10_000 });
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+  expect(
+    renderLoopErrors,
+    `Friend location rendering looped: ${renderLoopErrors.join("\n")}`,
+  ).toHaveLength(0);
 });
 
 test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
