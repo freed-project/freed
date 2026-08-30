@@ -190,7 +190,9 @@
         generated query reads at most eleven result rows, returns ten rows
         under 512 KiB, and filters exact evidence-bound dismissals before the
         renderer receives them. Friends retains only that visible window.
-        The Friends review surface retains only this result window.
+        The Friends review surface retains only this result window. Desktop
+        runs normalized SQLite reads on its blocking worker pool so this
+        ranking query cannot stall Galaxy page reads or renderer heartbeats.
   - [x] `rss_feed_detail_v1` now performs one primary-key SQLite lookup through
         the shared native and PWA dispatch and returns every synchronized RSS
         Feed field under a 64 KiB ceiling. Freed Desktop uses it when a partial

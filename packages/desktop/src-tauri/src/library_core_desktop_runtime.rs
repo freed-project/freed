@@ -721,13 +721,26 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
 }
 
 #[tauri::command]
-pub(super) fn query_normalized_library(
+pub(super) async fn query_normalized_library(
     app: tauri::AppHandle,
     request: Value,
 ) -> Result<Value, String> {
-    let mut connection = open_normalized_database(&app)?;
-    freed_library_core::query_normalized_json_v1(&mut connection, request)
-        .map_err(|error| error.to_string())
+    run_normalized_query_off_main(move || {
+        let mut connection = open_normalized_database(&app)?;
+        freed_library_core::query_normalized_json_v1(&mut connection, request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+async fn run_normalized_query_off_main<T, F>(query: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(query)
+        .await
+        .map_err(|error| format!("normalized Library query worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1836,6 +1849,18 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalized_library_queries_leave_the_command_thread() {
+        let command_thread = std::thread::current().id();
+        let query_thread =
+            tauri::async_runtime::block_on(run_normalized_query_off_main(move || {
+                Ok(std::thread::current().id())
+            }))
+            .expect("run normalized query worker");
+
+        assert_ne!(query_thread, command_thread);
+    }
 
     #[test]
     fn cloud_writer_admission_is_device_local_normalized_sqlite_state() {
