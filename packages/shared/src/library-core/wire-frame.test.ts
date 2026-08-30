@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES,
   LIBRARY_CORE_MAX_WIRE_RECORD_BYTES,
   LIBRARY_CORE_WIRE_FRAME_VERSION,
   LibraryCoreWireFrameDecoderV1,
@@ -50,6 +51,28 @@ describe("Library Core wire frame v1", () => {
     decoder.finish();
     expect(decoded).toEqual(RECORDS);
     expect(Object.isFrozen(decoded[0])).toBe(true);
+  });
+
+  it("accepts bounded checkpoint identities larger than legacy URL limits", () => {
+    const longIdentity = `10_feed_item:${"u".repeat(2_048)}`;
+    const encoded = encodeLibraryCoreWireFrameV1(RECORDS.slice(0, 1), {
+      kind: "checkpoint",
+      recordIdentity: () => longIdentity,
+    });
+    expect(
+      decodeLibraryCoreWireFrameV1(encoded, {
+        kind: "checkpoint",
+        recordIdentity: () => longIdentity,
+      }),
+    ).toEqual(RECORDS.slice(0, 1));
+
+    expect(() =>
+      encodeLibraryCoreWireFrameV1(RECORDS.slice(0, 1), {
+        kind: "checkpoint",
+        recordIdentity: () =>
+          "u".repeat(LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES + 1),
+      }),
+    ).toThrow(/nonempty bounded string/);
   });
 
   it("rejects duplicate identities during construction and receipt", () => {

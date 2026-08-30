@@ -855,6 +855,10 @@ IPC and never becomes a row or content limit.
 The producer records exact canonical bytes before append. It never estimates
 from JavaScript strings or compressed output.
 
+Record identities remain bounded to 8,192 UTF-8 bytes. This contains comparison
+state while admitting the normalized schema's canonical primary keys, which may
+legitimately exceed 512 bytes for source URLs and compound row identities.
+
 ### 12.4 Manifest
 
 The checkpoint manifest binds:

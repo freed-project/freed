@@ -769,6 +769,7 @@ export async function captureDomFeed(
 | 5.190 | Remove compatibility-shaped fields from current Person, Account, Friend, RSS, AI, display, Facebook, Story Wall, and app-state contracts. Installation-local settings use their dedicated stores, synchronized preference mutations reject unsupported fields, graph and RSS runtime state use explicit local models, and opaque historical values remain readable only by fenced one-time import functions | High       | ✓ Complete |
 | 5.191 | Make the activated SQLite storage epoch operational on Windows. Freed Desktop holds one process lease over the canonical app data root, opens the normalized database with the same stock SQLite schema and bounded query contract as macOS and Linux, verifies the one-way authority selector before product access, supports fresh genesis and the fenced historical cutover, and stores local snapshots as typed checkpoint records. Native authority changes compile the real Windows target before release | High       | ✓ Complete |
 | 5.192 | Admit the complete historical schema 6 through 12 predecessor range through the fenced read-only cutover verifier. Every accepted source keeps the exact application identity and stable migration columns, unsupported versions fail closed, and the deleted historical schema-upgrade engine does not return | High       | ✓ Complete |
+| 5.193 | Admit normalized checkpoint identities up to the canonical primary-key ceiling so real long URL identities publish to Google Drive without weakening bounded frame verification | High       | ✓ Complete |
 
 ---
 

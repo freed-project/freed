@@ -8,6 +8,7 @@ export const LIBRARY_CORE_WIRE_FRAME_VERSION = 1 as const;
 export const LIBRARY_CORE_MAX_WIRE_RECORDS = 4_096;
 export const LIBRARY_CORE_MAX_WIRE_RECORD_BYTES = 1_048_576;
 export const LIBRARY_CORE_MAX_DECODED_WIRE_BYTES = 33_554_432;
+export const LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES = 8_192;
 
 export const LIBRARY_CORE_WIRE_FRAME_KINDS = [
   "checkpoint",
@@ -29,6 +30,7 @@ export interface LibraryCoreWireFrameOptions {
 }
 
 const MAGIC = new TextEncoder().encode("FRDV2FRM");
+const textEncoder = new TextEncoder();
 export const LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES = 16;
 export const LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES = 4;
 
@@ -109,7 +111,13 @@ function checkedIdentity(
   identity: (record: LibraryCoreCanonicalValue) => string,
 ): string {
   const value = identity(record);
-  if (typeof value !== "string" || value.length === 0 || value.length > 512) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES ||
+    textEncoder.encode(value).byteLength >
+      LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES
+  ) {
     throw new TypeError(
       "Library Core frame record identity must be a nonempty bounded string",
     );
