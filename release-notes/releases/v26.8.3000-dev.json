@@ -1,0 +1,70 @@
+{
+  "tag": "v26.8.3000-dev",
+  "version": "26.8.3000-dev",
+  "channel": "dev",
+  "dayKey": "26.8.30",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T09:15:52.093Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.2906-dev",
+    "previousPublishedDayTag": "v26.8.2906-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "fbc9bf841c9a0dab9d68ac9bfdffaa2c6bd44838",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.2906-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "1de8556adccc2d0a9eafc12d6a88d4bb46e36946",
+        "toInclusiveProductCommitSha": "fbc9bf841c9a0dab9d68ac9bfdffaa2c6bd44838"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:dc10a24093ee29b82cbd6d5eec4865c3ff1944506dd3e9d2bf2fe7fd0309c180",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3000-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3000-dev"
+    ],
+    "prNumbers": [
+      1652,
+      1653
+    ],
+    "commitSubjects": [
+      "fix: stop Friend location render loops (#1653)",
+      "fix: keep checkpoint exports on one SQLite snapshot (#1652)"
+    ]
+  },
+  "release": {
+    "deck": "Keep Google Drive Library backups stable during active sync and stop Friend location cards from rerendering",
+    "features": [],
+    "fixes": [
+      "Keep each Google Drive Library checkpoint on one SQLite snapshot while new items and background updates continue",
+      "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history",
+      "Create local Library snapshots from one consistent SQLite revision",
+      "Stop Friend location cards from restarting geocoding on every render",
+      "Open the full Map from a Friend's last-seen card after the location resolves"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3000-dev\n\nKeep Google Drive Library backups stable during active sync and stop Friend location cards from rerendering\n\n### Fixes\n\n- Keep each Google Drive Library checkpoint on one SQLite snapshot while new items and background updates continue\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Create local Library snapshots from one consistent SQLite revision\n- Stop Friend location cards from restarting geocoding on every render\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
