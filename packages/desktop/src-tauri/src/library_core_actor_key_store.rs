@@ -3,7 +3,9 @@
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
 use freed_library_core::ActorKeyStore;
 
-pub(super) use freed_library_core::sign_library_core_operation_digest;
+pub(super) use freed_library_core::{
+    sign_library_core_operation_digest, sign_library_core_operation_digests,
+};
 
 const ACTOR_VAULT: PlatformKeyVault = PlatformKeyVault {
     account: "actor-current",

@@ -14,7 +14,7 @@ use std::{fs, path::PathBuf};
 use tauri::Manager;
 
 use super::library_core_actor_key_store::{
-    sign_library_core_operation_digest, PlatformActorKeyStore,
+    sign_library_core_operation_digest, sign_library_core_operation_digests, PlatformActorKeyStore,
 };
 use super::library_core_authority_key_store::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
@@ -168,6 +168,16 @@ pub(super) struct SignNormalizedOperationRequest {
     actor_id: String,
     actor_public_key: String,
     operation_signing_body_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SignNormalizedOperationsRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    operation_signing_body_digests: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1161,12 +1171,12 @@ pub(super) fn normalized_library_primary_mutation_context(
     normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())
 }
 
-/// Sign one finalized normalized operation with the native Primary actor key.
+/// Sign one bounded normalized transaction with one verified Primary key open.
 #[tauri::command]
-pub(super) fn sign_normalized_library_operation(
+pub(super) fn sign_normalized_library_operations(
     app: tauri::AppHandle,
-    request: SignNormalizedOperationRequest,
-) -> Result<DesktopLibraryOperationSignature, String> {
+    request: SignNormalizedOperationsRequest,
+) -> Result<Vec<DesktopLibraryOperationSignature>, String> {
     let connection = open_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
@@ -1177,17 +1187,24 @@ pub(super) fn sign_normalized_library_operation(
     {
         return Err("normalized mutation signer context changed".into());
     }
-    let signature = sign_library_core_operation_digest(
+    let signatures = sign_library_core_operation_digests(
         &PlatformActorKeyStore,
         &context.library_id,
         &context.actor_public_key,
-        &request.operation_signing_body_digest,
+        &request.operation_signing_body_digests,
     )?;
-    Ok(DesktopLibraryOperationSignature {
-        actor_id: context.actor_id,
-        operation_signing_body_digest: request.operation_signing_body_digest,
-        signature,
-    })
+    Ok(request
+        .operation_signing_body_digests
+        .into_iter()
+        .zip(signatures)
+        .map(
+            |(operation_signing_body_digest, signature)| DesktopLibraryOperationSignature {
+                actor_id: context.actor_id.clone(),
+                operation_signing_body_digest,
+                signature,
+            },
+        )
+        .collect())
 }
 
 /// Verify and commit one complete Primary transaction into normalized SQLite.

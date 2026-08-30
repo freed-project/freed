@@ -28,6 +28,13 @@
       outside this database and receives no mirrored normalized writes. A fresh
       installation creates only the normalized database and never creates the
       historical directory, process lease, backup directory, store, or shell.
+- [x] Keep large background and maintenance mutations bounded without making
+      the installed app appear to reload. The Primary signs every member of a
+      typed transaction after one verified SQLite authority open and one actor
+      key load. Feed, Map, and Story surfaces retain their last complete
+      revision while the next complete revision loads. Marker-only sample-data
+      clearing batches FeedItem, RSS Feed, Account, and Person removals, and it
+      removes explicit sample Accounts before Person cascades can delete them.
 - [x] Generate the shared checkpoint registry, protocol limits, 23 canonical
       mutation programs, 5 device-local mutation programs, and 33 bounded query
       programs for Rust and TypeScript from one executable contract source,

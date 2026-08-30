@@ -79,7 +79,7 @@ pub use historical_migration_source::{
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request_bytes, load_or_create_normalized_actor_id_v2,
     prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
-    ActorKeyStore, PreparedActorEnrollmentRequest,
+    sign_library_core_operation_digests, ActorKeyStore, PreparedActorEnrollmentRequest,
 };
 #[cfg(unix)]
 pub use library_core_desktop_binding::{
