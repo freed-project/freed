@@ -33,6 +33,11 @@
       idempotent replay after each restart. This deterministic browser gate
       does not replace the physical iPhone suspension, quota, and playback
       evidence above.
+- [x] Recover an interrupted local sample-library bootstrap only when the
+      selected checkpoint carries the complete synthetic preview receipt.
+      Native and browser checkpoint replacement clear the retired follower
+      enrollment singleton before creating the new actor. A real connected
+      Library with missing or mismatched local authority still fails closed.
 - [x] Run official SQLite WebAssembly through one dedicated Library worker over
       the high-performance `opfs-sahpool` VFS, with one bounded protocol, one
       connection generation, one cross-window Library lock, exact schema

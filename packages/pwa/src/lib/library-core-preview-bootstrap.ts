@@ -80,6 +80,7 @@ function digest(
 
 async function createPreviewLibrary(): Promise<void> {
   const selected = await readPwaNormalizedCheckpointReceipt();
+  let replaceExistingCheckpoint = false;
   let authority: PwaLibraryCoreLocalSampleAuthority | null;
   try {
     authority = await readPwaLibraryCoreLocalSampleAuthority();
@@ -97,11 +98,27 @@ async function createPreviewLibrary(): Promise<void> {
   }
   if (selected.receipt) {
     if (!authority || authority.libraryId !== selected.receipt.libraryId) {
-      throw new Error(
-        "Sample data is available only in an unconnected local Library",
-      );
+      const isOrphanedPreviewCheckpoint =
+        selected.receipt.checkpointGeneration === 0 &&
+        selected.receipt.sourceRevision === 0 &&
+        selected.receipt.controlRevision.startsWith("preview:") &&
+        selected.receipt.manifestObjectKey ===
+          `preview/checkpoint/${selected.receipt.libraryId}` &&
+        selected.receipt.manifestTransportObjectId.startsWith("preview:");
+      if (!isOrphanedPreviewCheckpoint) {
+        throw new Error(
+          "Sample data is available only in an unconnected local Library",
+        );
+      }
+      // OPFS and IndexedDB do not share a transaction. WebKit can therefore
+      // preserve the activated preview checkpoint while losing its browser key
+      // record after an interrupted launch. Only our fully identified preview
+      // receipt is safe to rebuild. A connected Library still fails closed.
+      await deletePwaLibraryCoreLocalSampleAuthority();
+      authority = null;
+      replaceExistingCheckpoint = true;
     }
-    if (authority.status === "ready") {
+    if (authority?.status === "ready") {
       if (authority.preparedResult) {
         const receipt = await applyPwaFollowerResult({
           canonicalResultBytes: authority.preparedResult.canonicalResultBytes,
@@ -132,9 +149,11 @@ async function createPreviewLibrary(): Promise<void> {
       }
       return;
     }
-    await resetPwaNormalizedLibrary();
-    await deletePwaLibraryCoreLocalSampleAuthority();
-    authority = null;
+    if (authority) {
+      await resetPwaNormalizedLibrary();
+      await deletePwaLibraryCoreLocalSampleAuthority();
+      authority = null;
+    }
   } else if (authority) {
     await resetPwaNormalizedLibrary();
     await deletePwaLibraryCoreLocalSampleAuthority();
@@ -250,7 +269,7 @@ async function createPreviewLibrary(): Promise<void> {
       manifestTransportObjectId: `preview:${randomHex64()}`,
       writerActorId,
     },
-    replaceExisting: false,
+    replaceExisting: replaceExistingCheckpoint,
     stageId,
   });
 
