@@ -23,13 +23,16 @@ vi.mock("./library-core-sqlite-runtime", () => ({
 import {
   commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountRemoves,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemAnalysisSets,
   commitPwaLibraryCoreFeedItemAnnotationSets,
   commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFeedItemRemoves,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonRemoves,
   commitPwaLibraryCorePersonReachOutAppend,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
@@ -223,6 +226,34 @@ describe("PWA SQLite follower mutations", () => {
       operation_type: "feed_item_remove",
       payload: { removed_at_ms: 5_000 },
     });
+  });
+
+  it("batches removal tombstones into bounded signed transactions", async () => {
+    await commitPwaLibraryCoreFeedItemRemoves(["item:1", "item:2"], 5_001);
+    await commitPwaLibraryCorePersonRemoves(["person:1", "person:2"], 5_002);
+    await commitPwaLibraryCoreAccountRemoves(["account:1", "account:2"], 5_003);
+
+    const commits = mocks.commitFollowerIntent.mock.calls.map(([commit]) =>
+      decodeCommit(commit),
+    );
+    expect(
+      commits.map((envelopes) =>
+        envelopes.map((envelope) => envelope.entity_id),
+      ),
+    ).toEqual([
+      ["item:1", "item:2"],
+      ["person:1", "person:2"],
+      ["account:1", "account:2"],
+    ]);
+    expect(
+      commits.map((envelopes) =>
+        envelopes.map((envelope) => envelope.transaction_member_count),
+      ),
+    ).toEqual([
+      [2, 2],
+      [2, 2],
+      [2, 2],
+    ]);
   });
 
   it("commits annotations and analysis as distinct closed child sets", async () => {

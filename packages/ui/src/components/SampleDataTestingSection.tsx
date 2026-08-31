@@ -22,7 +22,6 @@ export function SampleDataTestingSection() {
   const { seedSocialConnections } = usePlatform();
 
   const [seeding, setSeeding] = useState(false);
-  const [seedDone, setSeedDone] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
@@ -43,6 +42,7 @@ export function SampleDataTestingSection() {
   const hasSampleData = sampleDataSummary.total > 0;
 
   const handleSeedSampleData = useCallback(async () => {
+    if (hasSampleData) return;
     setSeeding(true);
     toast.info("Populating sample data...");
     try {
@@ -52,7 +52,6 @@ export function SampleDataTestingSection() {
         addSampleLibraryData,
         seedSocialConnections,
       });
-      setSeedDone(true);
       toast.success(
         `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
       );
@@ -63,6 +62,7 @@ export function SampleDataTestingSection() {
     }
   }, [
     addSampleLibraryData,
+    hasSampleData,
     initialize,
     isInitialized,
     seedSocialConnections,
@@ -73,7 +73,6 @@ export function SampleDataTestingSection() {
     toast.info("Clearing sample data...");
     try {
       const summary = await clearSampleData();
-      setSeedDone(false);
       setConfirmClear(false);
       toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
     } catch (error) {
@@ -98,7 +97,7 @@ export function SampleDataTestingSection() {
       <button
         type="button"
         onClick={handleSeedSampleData}
-        disabled={seeding}
+        disabled={seeding || hasSampleData}
         className="theme-accent-button mt-7 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       >
         <svg
@@ -114,7 +113,11 @@ export function SampleDataTestingSection() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l.9 2.1L8 18l-2.1.9L5 21l-.9-2.1L2 18l2.1-.9L5 15z" />
         </svg>
         <span>
-          {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
+          {hasSampleData
+            ? "Sample data populated"
+            : seeding
+              ? "Populating..."
+              : "Populate sample data"}
         </span>
       </button>
       {hasSampleData && (

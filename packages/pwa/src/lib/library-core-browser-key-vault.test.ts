@@ -7,7 +7,14 @@ import {
 } from "@freed/shared/library-core";
 
 import {
+  commitPwaLibraryCoreLocalSampleResult,
+  createPwaLibraryCoreLocalSampleAuthority,
+  markPwaLibraryCoreLocalSampleAuthorityReady,
+  PwaLibraryCoreLegacyLocalSampleAuthorityError,
+  preparePwaLibraryCoreLocalSampleResult,
+  readPwaLibraryCoreLocalSampleAuthority,
   getOrCreatePwaLibraryCoreActorIdentity,
+  signPwaLibraryCoreLocalSampleAuthority,
   signPwaLibraryCoreActorProof,
   signPwaLibraryCoreFollowerOperation,
 } from "./library-core-browser-key-vault";
@@ -74,6 +81,113 @@ describe("PWA Library Core browser key vault", () => {
         authority.previous_actor_chain_digest,
       ),
     ).resolves.toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it("persists local sample authority and an interrupted result receipt", async () => {
+    const created = await createPwaLibraryCoreLocalSampleAuthority();
+    const same = await createPwaLibraryCoreLocalSampleAuthority();
+    expect(same).toEqual(created);
+
+    const actorId = lowercaseHex64("55".repeat(32));
+    const ready = await markPwaLibraryCoreLocalSampleAuthorityReady(
+      created.libraryId,
+      actorId,
+    );
+    await expect(
+      signPwaLibraryCoreLocalSampleAuthority(ready, Uint8Array.of(1, 2, 3)),
+    ).resolves.toMatch(/^[0-9a-f]{128}$/);
+
+    const resultDigest = lowercaseHex64("66".repeat(32));
+    await preparePwaLibraryCoreLocalSampleResult(created.libraryId, {
+      canonicalResultBytes: Uint8Array.of(4, 5, 6),
+      nextActorCounter: 2,
+      nextResultSequence: 2,
+      previousResultDigest: resultDigest,
+      sourceRevision: 1,
+    });
+    expect(await readPwaLibraryCoreLocalSampleAuthority()).toMatchObject({
+      actorId,
+      nextActorCounter: 1,
+      nextResultSequence: 1,
+      preparedResult: {
+        canonicalResultBytes: Uint8Array.of(4, 5, 6),
+        previousResultDigest: resultDigest,
+      },
+      sourceRevision: 0,
+      status: "ready",
+    });
+
+    await expect(
+      commitPwaLibraryCoreLocalSampleResult(created.libraryId, resultDigest),
+    ).resolves.toMatchObject({
+      nextActorCounter: 2,
+      nextResultSequence: 2,
+      preparedResult: null,
+      previousResultDigest: resultDigest,
+      sourceRevision: 1,
+    });
+  });
+
+  it("identifies the retired WebKit sample authority for bounded recovery", async () => {
+    const pair = (await crypto.subtle.generateKey(
+      { name: "Ed25519" },
+      false,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const authorityPublicKey = Array.from(
+      new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("");
+    const request = indexedDB.open("freed-library-core-key-vault-v1", 2);
+    request.addEventListener("upgradeneeded", () => {
+      request.result.createObjectStore("actor_keys", { keyPath: "libraryId" });
+      request.result.createObjectStore("local_sample_authority", {
+        keyPath: "key",
+      });
+    });
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.addEventListener("success", () => resolve(request.result), {
+        once: true,
+      });
+      request.addEventListener("error", () => reject(request.error), {
+        once: true,
+      });
+    });
+    const transaction = database.transaction(
+      "local_sample_authority",
+      "readwrite",
+    );
+    transaction.objectStore("local_sample_authority").put({
+      actorId: null,
+      authorityKeyId: HEX.digest,
+      authorityPrivateKey: pair.privateKey,
+      authorityPublicKey,
+      createdAt: 1,
+      epochId: HEX.epoch,
+      key: "active",
+      libraryId: HEX.library,
+      nextActorCounter: 1,
+      nextResultSequence: 1,
+      preparedResult: null,
+      previousResultDigest: null,
+      schemaVersion: 1,
+      sourceRevision: 0,
+      status: "preparing",
+    });
+    await new Promise<void>((resolve, reject) => {
+      transaction.addEventListener("complete", () => resolve(), { once: true });
+      transaction.addEventListener("error", () => reject(transaction.error), {
+        once: true,
+      });
+    });
+    database.close();
+
+    await expect(readPwaLibraryCoreLocalSampleAuthority()).rejects.toEqual(
+      expect.objectContaining({
+        libraryId: HEX.library,
+        name: PwaLibraryCoreLegacyLocalSampleAuthorityError.name,
+      }),
+    );
   });
 
   it("refuses an actor identity that differs from SQLite authority", async () => {

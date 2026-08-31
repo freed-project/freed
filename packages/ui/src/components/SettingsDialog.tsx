@@ -886,6 +886,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;
 
   const handleSeedSampleData = useCallback(async () => {
+    if (hasSampleData) return;
     setSeeding(true);
     toast.info("Populating sample data...");
     try {
@@ -906,18 +907,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [
     addSampleLibraryData,
+    hasSampleData,
     initialize,
     isInitialized,
     seedSocialConnections,
   ]);
 
   const requestSeedSampleData = useCallback(() => {
+    if (hasSampleData) return;
     if (hasExistingLibraryData) {
       setShowSampleSeedConfirm(true);
       return;
     }
     void handleSeedSampleData();
-  }, [handleSeedSampleData, hasExistingLibraryData]);
+  }, [handleSeedSampleData, hasExistingLibraryData, hasSampleData]);
 
   const handleClearSampleData = useCallback(async () => {
     setClearingSampleData(true);
@@ -1869,16 +1872,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </button>
               <button
                 onClick={requestSeedSampleData}
-                disabled={seeding}
+                disabled={seeding || hasSampleData}
                 className="theme-feedback-panel-warning w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div>
                   <p className="theme-feedback-text-warning text-sm">
-                    {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
+                    {hasSampleData
+                      ? "Sample data populated"
+                      : seeding
+                        ? "Populating..."
+                        : "Populate sample data"}
                   </p>
                   <p className="theme-feedback-text-warning-muted mt-0.5 text-xs">
-                    {seedDone
-                      ? `Adds another ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and map-ready activity`
+                    {hasSampleData
+                      ? "Clear the current sample library before populating it again"
                       : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>

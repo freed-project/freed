@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   commitUserStateAssignments: vi.fn(),
   commitFeedItemCaptures: vi.fn(),
   commitFeedItemRemove: vi.fn(),
+  commitFeedItemRemoves: vi.fn(),
   commitRssFeedUpsert: vi.fn(),
   commitRssFeedRemove: vi.fn(),
   commitRssFeedRemoves: vi.fn(),
@@ -14,8 +15,10 @@ const mocks = vi.hoisted(() => ({
   commitPreferencesPatch: vi.fn(),
   commitPersonUpserts: vi.fn(),
   commitPersonRemove: vi.fn(),
+  commitPersonRemoves: vi.fn(),
   commitAccountUpserts: vi.fn(),
   commitAccountRemove: vi.fn(),
+  commitAccountRemoves: vi.fn(),
   readNormalizedCheckpointReceipt: vi.fn(),
   describeNormalizedCheckpointExport: vi.fn(),
   readNormalizedCheckpointExportPage: vi.fn(),
@@ -38,11 +41,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./library-core-pwa-follower-mutations", () => ({
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT: 32,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT: 256,
+  PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT: 256,
   commitPwaLibraryCoreAccountRemove: mocks.commitAccountRemove,
+  commitPwaLibraryCoreAccountRemoves: mocks.commitAccountRemoves,
   commitPwaLibraryCoreAccountUpserts: mocks.commitAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures: mocks.commitFeedItemCaptures,
   commitPwaLibraryCoreFeedItemRemove: mocks.commitFeedItemRemove,
+  commitPwaLibraryCoreFeedItemRemoves: mocks.commitFeedItemRemoves,
   commitPwaLibraryCorePersonRemove: mocks.commitPersonRemove,
+  commitPwaLibraryCorePersonRemoves: mocks.commitPersonRemoves,
   commitPwaLibraryCorePersonUpserts: mocks.commitPersonUpserts,
   commitPwaLibraryCorePreferencesPatch: mocks.commitPreferencesPatch,
   commitPwaLibraryCoreReadAssignments: mocks.commitReadAssignments,
@@ -373,6 +380,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitUserStateAssignments.mockReset();
     mocks.commitFeedItemCaptures.mockReset();
     mocks.commitFeedItemRemove.mockReset();
+    mocks.commitFeedItemRemoves.mockReset();
     mocks.commitRssFeedUpsert.mockReset();
     mocks.commitRssFeedRemove.mockReset();
     mocks.commitRssFeedRemoves.mockReset();
@@ -383,8 +391,10 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitPreferencesPatch.mockReset();
     mocks.commitPersonUpserts.mockReset();
     mocks.commitPersonRemove.mockReset();
+    mocks.commitPersonRemoves.mockReset();
     mocks.commitAccountUpserts.mockReset();
     mocks.commitAccountRemove.mockReset();
+    mocks.commitAccountRemoves.mockReset();
   });
 
   it("reads the exact selected OPFS SQLite checkpoint receipt", async () => {
@@ -518,7 +528,7 @@ describe("PWA Library Core bounded scanner", () => {
       return {
         queryId: "library_facet_summary_v1",
         schemaVersion: 1,
-        source: SELECTED_SOURCE,
+        source: QUERY_SOURCE,
         summary: facetSummary(),
       };
     });
@@ -898,21 +908,21 @@ describe("PWA Library Core bounded scanner", () => {
       expect.objectContaining({ id: "account-real" }),
     );
     expect(detachedAccount).not.toHaveProperty("personId");
-    expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
-      "account-sample",
+    expect(mocks.commitAccountRemoves).toHaveBeenCalledWith(
+      ["account-sample"],
       expect.any(Number),
     );
-    expect(mocks.commitPersonRemove).toHaveBeenCalledWith(
-      "person-sample",
+    expect(mocks.commitPersonRemoves).toHaveBeenCalledWith(
+      ["person-sample"],
       expect.any(Number),
     );
-    expect(mocks.commitRssFeedRemove).toHaveBeenCalledWith(
-      rssRow.url,
+    expect(mocks.commitRssFeedRemoves).toHaveBeenCalledWith(
+      [rssRow.url],
       false,
       expect.any(Number),
     );
-    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
-      "item-sample",
+    expect(mocks.commitFeedItemRemoves).toHaveBeenCalledWith(
+      ["item-sample"],
       expect.any(Number),
     );
   });

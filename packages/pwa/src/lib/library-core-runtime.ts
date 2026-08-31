@@ -97,14 +97,17 @@ import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-v
 import { syncPwaLibraryCoreFollowerV2 } from "./library-core-pwa-follower-sync";
 import {
   commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountRemoves,
   commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemAnalysisSets,
   commitPwaLibraryCoreFeedItemAnnotationSets,
   commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFeedItemRemoves,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonRemoves,
   commitPwaLibraryCorePersonReachOutAppend,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
@@ -117,6 +120,7 @@ import {
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
@@ -223,22 +227,24 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
   const selected = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (!selected) return null;
-  const [preferences, facetSummary] = await Promise.all([
+  const [preferences, facetResponse] = await Promise.all([
     readLibraryCoreNormalizedPreferencesV1(NORMALIZED_READER_RUNTIME),
-    readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME),
+    queryPwaNormalizedLibrary({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+    }),
   ]);
   const current = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (
     current === null ||
-    current.checkpointDigest !== selected.checkpointDigest ||
-    current.sourceRevision !== selected.sourceRevision
+    current.checkpointDigest !== selected.checkpointDigest
   ) {
     throw new Error("Selected PWA Library changed while reading its window");
   }
   return libraryCoreRuntimeStateFromFacetSummaryV1(
     preferences,
-    facetSummary,
-    selected.sourceRevision,
+    facetResponse.summary,
+    facetResponse.source.projectionRevision,
   );
 }
 
@@ -343,13 +349,16 @@ export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntim
 
 /** Establish the isolated signed Library used by local sample-data previews. */
 export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
-  if (
-    import.meta.env.DEV ||
-    import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1"
-  ) {
-    const preview = await import("./library-core-preview-bootstrap");
-    await preview.ensurePwaLibraryCorePreviewState();
-  }
+  const preview = await import("./library-core-preview-bootstrap");
+  await preview.ensurePwaLibraryCorePreviewState();
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Settle local sample mutations without publishing a cloud intent. */
+export async function settlePwaLibraryCoreLocalSampleState(): Promise<void> {
+  const preview = await import("./library-core-preview-bootstrap");
+  await preview.settlePwaLibraryCorePreviewIntents();
   const state = await readSelectedState();
   if (state) publishState(state);
 }
@@ -729,17 +738,58 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
       };
     }),
   );
-  for (const accountId of sampleAccountIds) {
-    await enqueuePwaLibraryCoreAccountRemove(accountId);
+  for (
+    let offset = 0;
+    offset < sampleAccountIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreAccountRemoves(
+      sampleAccountIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
-  for (const personId of personIds) {
-    await enqueuePwaLibraryCorePersonRemove(personId);
+  for (
+    let offset = 0;
+    offset < personIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCorePersonRemoves(
+      personIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
-  for (const url of feedUrls) {
-    await enqueuePwaLibraryCoreRssFeedRemove(url, false);
+  for (
+    let offset = 0;
+    offset < feedUrls.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreRssFeedRemoves(
+      feedUrls.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      false,
+      updatedAt,
+    );
   }
-  for (const itemId of itemIds) {
-    await enqueuePwaLibraryCoreFeedItemRemove(itemId);
+  for (
+    let offset = 0;
+    offset < itemIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemRemoves(
+      itemIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
 
   return {
