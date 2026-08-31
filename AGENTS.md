@@ -227,6 +227,20 @@ Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
 - `npm run validate:release` is the heaviest lane for release-prep work on `main`.
 - Do not default feature threads to the full integration suite when the touched surface is narrow.
 
+### Release Economy
+
+Maximize trustworthy evidence per unit of machine time. Use the shallowest loop that can actually prove the contract at risk, reuse exact green receipts, and move deeper as soon as a shallower loop cannot answer the question. Economy never means skipping unique proof for data integrity, migrations, authority, provider safety, native command admission, platform behavior, signing, installation, updating, rollback, or soak stability.
+
+Signed releases are normally terminal validation, not the ordinary debugging loop. Use this sequence for Desktop release work:
+
+1. Prove logic, migrations, UI behavior, and deterministic sync behavior with the cheapest relevant local tests and mocked Desktop runs.
+2. Build and exercise an exact local native Desktop candidate for SQLite, command registration, OAuth callbacks, provider triggers, real-library behavior, and every changed native entry point. A frontend call is not proof that the installed binary admits it.
+3. Cut one signed dev release only after the local logic and native candidate pass. Use the signed build to prove updater identity, signing, notarization, release metadata, installation, rollback, and installed-build behavior.
+
+Batch local fixes into the current candidate. Do not cut another dev release for each test or defect. Cut another only when a verified fix changes installed behavior or a release-only surface that cannot be proved locally. Promote to production only after one signed dev candidate passes installation, real-data verification, and the required soak.
+
+This sequence is a routing rule, not a mandatory delay. Start at the native or signed stage when the failure exists only there. Run full dev build loops whenever the affected contract spans packaging, multiple operating systems, updater behavior, signed identity, destructive migration risk, provider-observable behavior, or long-running process state. Do not repeat a full dev build loop whose exact source, artifact, platform, and result are already covered by a healthy receipt.
+
 ### Test Economy
 
 The binding standard is [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md). Read it before adding, moving, or deleting a permanent test.
