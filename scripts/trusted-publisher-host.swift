@@ -283,7 +283,11 @@ private final class PublisherCancellationController {
             atPath: testingStateRoot + "/test-publisher-finalization-blocked",
             contents: Data()
           )
-          usleep(1_000 * 1_000)
+          guard try nextSignal(timeoutMilliseconds: 10_000) != nil else {
+            throw HostFailure(
+              "the publisher test did not deliver a terminal cancellation signal"
+            )
+          }
         }
       }
     #endif

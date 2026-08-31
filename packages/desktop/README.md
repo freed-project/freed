@@ -70,6 +70,16 @@ npm run tauri:build
 
 The macOS app bundle will be at `src-tauri/target/release/bundle/macos/Freed.app`
 
+### Isolated local release build
+
+```bash
+npm run tauri:build:isolated
+```
+
+This build uses the closed `wtf.freed.desktop.sqlite-native-preview` application
+data root and does not create updater artifacts. It cannot open or mutate the
+installed Freed Library and does not require production signing credentials.
+
 ## Architecture
 
 This desktop app:

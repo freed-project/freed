@@ -483,7 +483,7 @@ export async function unfavoriteTweet(
 // =============================================================================
 
 /**
- * Capture the X timeline and persist new items to the Automerge store.
+ * Capture the X timeline and persist new items through typed SQLite mutations.
  * Returns the full sync result including per-stage diagnostics.
  *
  * @param cookies   Valid X session cookies.
@@ -607,14 +607,12 @@ async function captureXTimelineInternal(
         "change",
         `[X] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
-      const before = store.itemCountByPlatform?.x
-        ?? store.items.filter((item) => item.platform === "x").length;
+      const before = store.itemCountByPlatform?.x ?? 0;
       assertFactoryResetEpoch(resetEpoch);
       await store.addItems(result.items);
       assertFactoryResetEpoch(resetEpoch);
       const afterState = useAppStore.getState();
-      const after = afterState.itemCountByPlatform?.x
-        ?? afterState.items.filter((item) => item.platform === "x").length;
+      const after = afterState.itemCountByPlatform?.x ?? before;
       result.diag.itemsAdded = Math.max(0, after - before);
       addDebugEvent(
         "change",

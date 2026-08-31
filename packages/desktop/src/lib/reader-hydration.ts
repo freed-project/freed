@@ -4,7 +4,7 @@ import type { FeedItem } from "@freed/shared";
 import type { ReaderHydrationResult, ReaderThreadReply } from "@freed/ui/context";
 import { contentCache } from "./content-cache";
 import { toSyncedPreservedText } from "./preserved-text";
-import { docUpdateFeedItem } from "./library-client";
+import { updateLibraryFeedItem } from "./library-client";
 import { useAppStore } from "./store";
 import { fetchFacebookComments, fetchInstagramComments } from "./social-comment-hydration";
 import { fetchXThreadReplies } from "./x-capture";
@@ -53,7 +53,7 @@ async function hydrateArticle(
   await contentCache.set(item.globalId, content.html);
   assertFactoryResetEpoch(resetEpoch);
 
-  await docUpdateFeedItem(item.globalId, {
+  await updateLibraryFeedItem(item.globalId, {
     preservedContent: {
       text: toSyncedPreservedText(content.text),
       ...(content.author ? { author: content.author } : {}),

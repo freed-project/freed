@@ -13,8 +13,8 @@ const SAVED_SORT_ITEM_IDS = [
 async function seedSavedSortItems(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -49,7 +49,7 @@ async function seedSavedSortItems(page: Page): Promise<void> {
       },
     };
 
-    await automerge.docBatchImportItems([
+    await libraryCore.importLibraryItems([
       {
         ...base,
         globalId: "rss:https://saved-sort.example/feed.xml:saved-newest",

@@ -9,6 +9,7 @@ import {
 import { hasAcceptedDesktopBundle } from "./legal-consent";
 import { loadDesktopReleaseChannelState } from "./release-channel";
 import { useAppStore } from "./store";
+import { syncCloudProviderNow } from "./sync";
 
 const DEV_SYNC_TRIGGER_FILE = "dev-sync-trigger.json";
 const DEV_SYNC_TRIGGER_RESULT_FILE = "dev-sync-trigger-result.json";
@@ -30,6 +31,8 @@ type DevSyncTriggerBridgeRequest = {
   provider?: unknown;
 };
 
+type DevSyncProvider = RetriableSocialProvider | "gdrive";
+
 declare global {
   interface Window {
     __FREED_RUN_SOCIAL_SYNC__?: (
@@ -38,8 +41,12 @@ declare global {
   }
 }
 
-function parseProvider(value: unknown): RetriableSocialProvider | null {
-  return value === "facebook" || value === "instagram" || value === "linkedin" || value === "youtube"
+function parseProvider(value: unknown): DevSyncProvider | null {
+  return value === "facebook" ||
+    value === "instagram" ||
+    value === "linkedin" ||
+    value === "youtube" ||
+    value === "gdrive"
     ? value
     : null;
 }
@@ -88,7 +95,7 @@ async function resolveDevSyncTriggersEnabled(
 
 async function writeResult(
   requestId: string,
-  provider: RetriableSocialProvider | null,
+  provider: DevSyncProvider | null,
   status: "started" | "completed" | "error" | "ignored",
   detail?: string,
 ): Promise<void> {
@@ -120,7 +127,7 @@ async function runDevSyncTrigger(
       requestId,
       null,
       "ignored",
-      "Unsupported provider. Use facebook, instagram, linkedin, or youtube.",
+      "Unsupported provider. Use facebook, instagram, linkedin, youtube, or gdrive.",
     );
     return;
   }
@@ -152,6 +159,20 @@ async function runDevSyncTrigger(
     log.info(
       `[dev-sync-trigger] starting ${provider} sync request ${requestId}`,
     );
+    if (provider === "gdrive") {
+      await syncCloudProviderNow("gdrive");
+      await writeResult(
+        requestId,
+        provider,
+        "completed",
+        "Google Drive Library sync completed.",
+      );
+      log.info(
+        `[dev-sync-trigger] ${provider} sync request ${requestId} finished status=completed`,
+      );
+      return;
+    }
+
     const result = await refreshSocialProvider(provider, "dev_trigger");
     const status = mapRefreshResultToTriggerStatus(result);
     await writeResult(
@@ -249,7 +270,7 @@ export function startDevSyncTriggerPoller(
         requestId,
         null,
         "ignored",
-        "Unsupported provider. Use facebook, instagram, linkedin, or youtube.",
+        "Unsupported provider. Use facebook, instagram, linkedin, youtube, or gdrive.",
       );
       return;
     }

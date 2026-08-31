@@ -23,6 +23,7 @@ import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
+import { usePlatform } from "../../context/PlatformContext.js";
 
 type PopupInstance = HTMLElement;
 type MarkerInstance = MapLibreMarker;
@@ -1119,6 +1120,7 @@ export function MapSurface({
   emptyBody = "Posts with location data will show up here.",
   showFitAllControl = false,
 }: MapSurfaceProps) {
+  const { geographicMapMode = "online" } = usePlatform();
   const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -1362,7 +1364,7 @@ export function MapSurface({
     setMapReady(false);
     setLoadFailed(false);
 
-    if (shouldForceMapFallback()) {
+    if (geographicMapMode === "local-showcase" || shouldForceMapFallback()) {
       setLoadFailed(true);
       return () => {
         cancelled = true;
@@ -1571,6 +1573,7 @@ export function MapSurface({
     clearNativeMarkerRestoreTimeout,
     closeActivePopup,
     focusedMarkerKey,
+    geographicMapMode,
     interactive,
     mapGeneration,
     mapReady,

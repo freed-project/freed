@@ -4,7 +4,7 @@ export interface FactoryResetOperations {
   clearLocalSettings: readonly (() => void | Promise<void>)[];
   clearLocalData: readonly (() => Promise<void>)[];
   clearProviderDataAndConnections: () => Promise<void>;
-  clearDocument: () => Promise<void>;
+  clearLibrary: () => Promise<void>;
   phaseTimeoutMs?: number;
   trackedWorkDrainTimeoutMs?: number;
 }
@@ -22,7 +22,7 @@ export type FactoryResetPhase =
   | "clear local settings"
   | "clear local data"
   | "clear provider data and connections"
-  | "clear document";
+  | "clear Library";
 
 export class FactoryResetPhaseError extends Error {
   readonly phase: FactoryResetPhase;
@@ -283,7 +283,7 @@ export async function runFactoryResetOperations(
     phaseTimeoutMs,
     operations.clearProviderDataAndConnections,
   );
-  await runFactoryResetPhase("clear document", phaseTimeoutMs, operations.clearDocument);
+  await runFactoryResetPhase("clear Library", phaseTimeoutMs, operations.clearLibrary);
 }
 
 /**

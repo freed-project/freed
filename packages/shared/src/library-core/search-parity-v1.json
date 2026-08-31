@@ -1,0 +1,47 @@
+[
+  {
+    "query": "CAFÉ architecture",
+    "queryTerms": ["cafe", "architecture"],
+    "fields": [{ "value": "Café Architecture", "weight": 4 }],
+    "score": 32
+  },
+  {
+    "query": "sqlte",
+    "queryTerms": ["sqlte"],
+    "fields": [
+      { "value": "sqlite", "weight": 4 },
+      { "value": "sqlte elsewhere", "weight": 2 }
+    ],
+    "score": 8
+  },
+  {
+    "query": "résumé resume",
+    "queryTerms": ["resume"],
+    "fields": [{ "value": "Résumé résumé", "weight": 3 }],
+    "score": 12
+  },
+  {
+    "query": "archtecture",
+    "queryTerms": ["archtecture"],
+    "fields": [{ "value": "architecture", "weight": 3 }],
+    "score": 5.9
+  },
+  {
+    "query": "tiny",
+    "queryTerms": ["tiny"],
+    "fields": [{ "value": "tin", "weight": 4 }],
+    "score": 7.9
+  },
+  {
+    "query": "abc",
+    "queryTerms": ["abc"],
+    "fields": [{ "value": "abd", "weight": 4 }],
+    "score": 0
+  },
+  {
+    "query": "ΟΣ",
+    "queryTerms": ["οσ"],
+    "fields": [{ "value": "οσ", "weight": 4 }],
+    "score": 16
+  }
+]

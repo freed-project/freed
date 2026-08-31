@@ -94,8 +94,6 @@ function setMemoryPressure(
     runtimeMemory: {
       processResidentBytes: 0,
       processVirtualBytes: 0,
-      relayDocBytes: 0,
-      relayClientCount: 0,
       contentQueuePending: 0,
       contentCompleted: 0,
       contentFailed: 0,

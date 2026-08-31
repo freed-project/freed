@@ -66,8 +66,8 @@ const themeTransitionState: ThemeTransitionState = {
 type ThemePreferenceListener = () => void;
 type AppliedThemeListener = () => void;
 
-// Theme is installation-local. The Automerge field is legacy migration input,
-// never live authority, so a synchronized snapshot cannot repaint this device.
+// Theme is installation-local. Historical synchronized values are migration
+// input only, so a remote checkpoint cannot repaint this device.
 const themePreferenceListeners = new Set<ThemePreferenceListener>();
 const appliedThemeListeners = new Set<AppliedThemeListener>();
 let currentThemeId = DEFAULT_THEME_ID;
@@ -277,13 +277,18 @@ export function setThemePreference(themeId: ThemeId): boolean {
   return true;
 }
 
-export function migrateLegacyThemePreference(themeId: ThemeId): boolean {
+export function migrateLegacyThemePreference(value: unknown): boolean {
   if (typeof window === "undefined") return false;
   if (
     window.localStorage.getItem(THEME_STORAGE_KEY) !== null
     || window.localStorage.getItem(THEME_LEGACY_MIGRATION_KEY) === "complete"
   ) return false;
-  const migratedThemeId = resolveThemeId(themeId);
+  const historicalTheme = typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>).themeId
+    : value;
+  const migratedThemeId = resolveThemeId(
+    typeof historicalTheme === "string" ? historicalTheme : undefined,
+  );
   if (!setThemePreference(migratedThemeId)) return false;
   window.localStorage.setItem(THEME_LEGACY_MIGRATION_KEY, "complete");
   applyThemeToDocument(migratedThemeId);

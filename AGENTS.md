@@ -1,5 +1,33 @@
 # Agent Instructions
 
+## Authorization levels
+
+When authorization is required and the owner has not already set a level for the task, ask:
+
+> What authorization level should this task proceed at?
+>
+> 1. Inspect
+> 2. Build
+> 3. Publish
+> 4. Ship dev
+> 5. Change provider behavior
+> 6. Ship production
+> 7. Full task authority
+>
+> Reply with a number.
+
+Do not request authorization for one isolated action. Do not append exclusions, caveats, safety boilerplate, or a restatement of normal task boundaries.
+
+1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
+2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
+3. **Publish:** Level 2 plus commits, pushes, pull requests, CI repair, and non-production merges.
+4. **Ship dev:** Level 3 plus dev releases, installation, deployment, real local-data testing, and exercising existing provider behavior at its current cadence. No production release or provider-observable behavior change.
+5. **Change provider behavior:** Level 4 plus new or changed provider requests, navigation, refresh frequency, timing, retries, cookies, headers, scraping behavior, and live provider mutations necessary for the stated task.
+6. **Ship production:** Level 5 plus production releases, production deployments, installation, rollback, and post-release verification.
+7. **Full task authority:** Level 6 plus autonomous execution of every reasonably necessary task-scoped action until the task is complete or a hard external blocker makes further progress impossible.
+
+Authorization applies to the stated task. Each level includes every lower level. The newest explicitly granted level controls. Once a level is active, do not ask again for actions included within it. Clarification questions about ambiguous task scope are not authorization challenges.
+
 ## Rules
 
 - **After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
@@ -17,15 +45,16 @@
 - **Toolbar right-edge controls:** Any new control added to the right edge of a shared toolbar must also map into an existing overflow section or add a new named overflow section at the same time. The control must remain reachable at every supported desktop and mobile toolbar width. When controls collapse into a menu, form controls such as selects, radio groups, segmented controls, sliders, and toggles must fill the menu content width instead of keeping their inline toolbar width. If a control is wrapped by a tooltip or trigger element, that wrapper must also fill the menu content width. Add or update focused e2e coverage for both the inline state and the overflow state, including menu-section width assertions for collapsed form controls, before shipping.
 - **Menu scroll bounds:** Any floating menu, command palette, context menu, overflow menu, or dropdown must scroll internally and stay inside the viewport. Use the shared `theme-menu-shell` class with a top or max-height CSS variable instead of raw `overflow-hidden`. Add or update focused e2e coverage when a menu can grow beyond the visible viewport.
 - **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
-- **Fingerprinting risk requires a stop sign:** Before implementing or enabling any feature that could increase provider fingerprinting or detection risk, stop and warn the user in plain language. This includes new authenticated WebView loads, background provider navigation, extra provider API calls, automatic reply or comment hydration, scripted scrolling or clicking, altered timing patterns, new cookies or headers, media preloads, canvas or WebGL behavior, device fingerprint masking, and anything that changes how often Freed contacts X, Facebook, Instagram, LinkedIn, or another third-party provider. The warning must name the provider, describe the new observable behavior, explain why it could make Freed easier to fingerprint, and offer the lowest-profile alternative. Gate 1 requires the owner to explicitly approve that exact behavior and risk before code. Broad permission such as "proceed with everything" is not provider approval. The canonical machine-readable provider-visible path list lives in `scripts/lib/provider-visible-paths.mjs`; add new provider surfaces there, not in per-script copies. Provider-visible branches may publish as draft after implementation and validation. Draft publication does not authorize live provider traffic. Before the human review path publishes, write the approved Gate 1 decision as a healthy `provider-risk-review` stability artifact and pass it with `--provider-risk-review-artifact`. The helper posts one GitHub review comment bound to that artifact, the provider-visible path set, and the provider-only binary diff. That comment is the audit record, not a second approval step: the Gate 1 artifact is the authority, and a provider-visible branch carrying one may publish directly with `--ready`. The artifact approves the described behavior, not one exact diff, so a later commit does not mechanically invalidate it and the helper will not block on a changed fingerprint. What the helper still enforces is classification: it detects every provider-visible path in the diff, including files renamed out of the provider tree, and posts an audit comment naming them on every publish. Enforcement of the approval itself rests on this rule and that audit record, so any change to provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a fresh Gate 1 artifact before it is written. The optional signed `control-task` path remains available for unattended publication. It binds the same provider-only fingerprint to a governed task and approved provider authority. Any material behavior change returns to Gate 1.
+- **Fingerprinting risk requires a stop sign:** Before implementing or enabling any feature that could increase provider fingerprinting or detection risk, stop and warn the user in plain language. This includes new authenticated WebView loads, background provider navigation, extra provider API calls, automatic reply or comment hydration, scripted scrolling or clicking, altered timing patterns, new cookies or headers, media preloads, canvas or WebGL behavior, device fingerprint masking, and anything that changes how often Freed contacts X, Facebook, Instagram, LinkedIn, or another third-party provider. The warning must name the provider, describe the new observable behavior, explain why it could make Freed easier to fingerprint, and offer the lowest-profile alternative. Gate 1 requires sufficient authorization before code. Level 5 or higher covers necessary provider-observable behavior within the stated task after the warning has been given. If the active level is lower, give the warning and ask what authorization level the task should proceed at. Permission without an authorization level is not provider approval. The canonical machine-readable provider-visible path list lives in `scripts/lib/provider-visible-paths.mjs`; add new provider surfaces there, not in per-script copies. Provider-visible branches may publish as draft after implementation and validation. Draft publication does not authorize live provider traffic. Before the human review path publishes, write the approved Gate 1 decision as a healthy `provider-risk-review` stability artifact and pass it with `--provider-risk-review-artifact`. The helper posts one GitHub review comment bound to that artifact, the provider-visible path set, and the provider-only binary diff. That comment is the audit record, not a second approval step: the Gate 1 artifact is the authority, and a provider-visible branch carrying one may publish directly with `--ready`. The artifact approves the described behavior, not one exact diff, so a later commit does not mechanically invalidate it and the helper will not block on a changed fingerprint. What the helper still enforces is classification: it detects every provider-visible path in the diff, including files renamed out of the provider tree, and posts an audit comment naming them on every publish. Enforcement of the approval itself rests on this rule and that audit record, so any change to provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a new Gate 1 artifact before it is written. The optional signed `control-task` path remains available for unattended publication. It binds the same provider-only fingerprint to a governed task and approved provider authority. Any material behavior change returns to Gate 1.
 
 There is no reaction-based second gate. It was removed on owner instruction: on a single-maintainer repository it asked the same person to re-confirm a decision they had already made and recorded in the artifact, and it forced a draft-then-react-then-republish cycle for every provider-visible change.
 
-Be clear about what that removed. The reaction was the only thing binding an approval to a specific diff: a changed subdiff produced a new review comment, and the reaction had to be fresh on it. Nothing now checks the artifact against the diff, and that is deliberate. Binding to a diff SHA would require the code to exist before the artifact could be written, which contradicts Gate 1 approving behavior *before* code. The owner chose behavior-only approval on 2026-07-24 and accepted that the remaining control is judgment rather than mechanism.
+Be clear about what that removed. The reaction was the only thing binding an approval to a specific diff: a changed subdiff produced a new review comment, and the reaction had to be fresh on it. Nothing now checks the artifact against the diff, and that is deliberate. Binding to a diff SHA would require the code to exist before the artifact could be written, which contradicts Gate 1 approving behavior _before_ code. The owner chose behavior-only approval on 2026-07-24 and accepted that the remaining control is judgment rather than mechanism.
 
 Two machine checks do remain: the artifact must be healthy and record `behavior_approved` or `diff_authorized`, and its `payload.providers` must match the provider set of the current provider-visible diff. An approval scoped to Instagram cannot authorize a Facebook extractor change.
 
 Everything else rests on the rule itself. Changing provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond what the approved artifact describes requires a new Gate 1 approval, even though no check will stop you. This is a behavior rule, not a file rule: editing a provider-visible file without changing provider-observable behavior is fine, and changing provider-observable behavior from a file outside the list is not. When it is unclear which side a change falls on, ask before writing code. Use `./scripts/worktree-publish.sh --print-provider-subdiff` to see the provider surface a branch touches.
+
 - **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root.
   - This monorepo uses local workspace packages. Raw subdirectory deploys like `vercel deploy website/` and `vercel deploy packages/pwa/` can upload an incomplete tree and fail at `npm install`.
   - Always use the preview helper instead:
@@ -85,6 +114,7 @@ Run `./scripts/release.sh` with no args from a fresh release-prep worktree based
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
 For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
+
 - **Local-first iteration:** Build, run, and test feature work locally in its worktree. Do not push a branch, update a PR, or wait for GitHub Actions merely to obtain a test build or to see whether an ordinary implementation step works. GitHub CI validates a locally runnable final candidate. It is not the development loop.
 - Publish only when the complete intended slice is locally runnable and ready for exact-head gates. An intermediate push is justified only when the failure depends on a GitHub-hosted runner, signing, notarization, release infrastructure, or another environment that cannot be reproduced locally, or when the owner explicitly requests remote publication.
 - A local Desktop build does not require a version bump, tag, release, or GitHub workflow. Use the native worktree preview or build commands for manual testing, then publish once at the real integration boundary.
@@ -197,6 +227,20 @@ Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
 - `npm run validate:release` is the heaviest lane for release-prep work on `main`.
 - Do not default feature threads to the full integration suite when the touched surface is narrow.
 
+### Release Economy
+
+Maximize trustworthy evidence per unit of machine time. Use the shallowest loop that can actually prove the contract at risk, reuse exact green receipts, and move deeper as soon as a shallower loop cannot answer the question. Economy never means skipping unique proof for data integrity, migrations, authority, provider safety, native command admission, platform behavior, signing, installation, updating, rollback, or soak stability.
+
+Signed releases are normally terminal validation, not the ordinary debugging loop. Use this sequence for Desktop release work:
+
+1. Prove logic, migrations, UI behavior, and deterministic sync behavior with the cheapest relevant local tests and mocked Desktop runs.
+2. Build and exercise an exact local native Desktop candidate for SQLite, command registration, OAuth callbacks, provider triggers, real-library behavior, and every changed native entry point. A frontend call is not proof that the installed binary admits it.
+3. Cut one signed dev release only after the local logic and native candidate pass. Use the signed build to prove updater identity, signing, notarization, release metadata, installation, rollback, and installed-build behavior.
+
+Batch local fixes into the current candidate. Do not cut another dev release for each test or defect. Cut another only when a verified fix changes installed behavior or a release-only surface that cannot be proved locally. Promote to production only after one signed dev candidate passes installation, real-data verification, and the required soak.
+
+This sequence is a routing rule, not a mandatory delay. Start at the native or signed stage when the failure exists only there. Run full dev build loops whenever the affected contract spans packaging, multiple operating systems, updater behavior, signed identity, destructive migration risk, provider-observable behavior, or long-running process state. Do not repeat a full dev build loop whose exact source, artifact, platform, and result are already covered by a healthy receipt.
+
 ### Test Economy
 
 The binding standard is [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md). Read it before adding, moving, or deleting a permanent test.
@@ -295,7 +339,7 @@ test("invoke a command", async ({ app, ipc }) => {
   await ipc.setHandler("my_command", (_args) => ({ ok: true }));
 
   const result = await app.page.evaluate(async () =>
-    (window as any).__TAURI_MOCK_INVOKE__("my_command", {})
+    (window as any).__TAURI_MOCK_INVOKE__("my_command", {}),
   );
   expect(result).toEqual({ ok: true });
 });

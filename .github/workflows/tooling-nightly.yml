@@ -30,6 +30,71 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  pwa-library-corpus-hardening:
+    name: PWA Library corpus hardening (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - browser: chromium
+            target: "100000"
+          - browser: webkit
+            target: "25000"
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browser
+        run: npx playwright install --with-deps "${{ matrix.browser }}"
+        working-directory: packages/pwa
+
+      - name: Exercise the OPFS Library corpus
+        run: npm run test:e2e:corpus
+        working-directory: packages/pwa
+        env:
+          FREED_PWA_CORPUS_BROWSER: ${{ matrix.browser }}
+          FREED_PWA_CORPUS_TARGET: ${{ matrix.target }}
+
+      - name: Upload PWA corpus measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pwa-library-corpus-hardening-${{ matrix.browser }}
+          path: packages/pwa/test-results/pwa-library-corpus-hardening.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Record a corpus hardening failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Commit: ${GITHUB_SHA}
+          Browser: ${{ matrix.browser }}
+          Target: ${{ matrix.target }}
+
+          The nonblocking PWA OPFS corpus hardening lane failed before it could
+          prove its configured corpus checkpoints. The uploaded measurement
+          report, when present, contains the last completed checkpoint."
+          gh issue comment 1446 --body "$body"
+
   exhaustive-tooling:
     name: Exhaustive tooling suites
     runs-on: ubuntu-latest

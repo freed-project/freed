@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import type { AIPreferences } from "@freed/shared";
 import {
   parseVersionedLocalStorage,
   readVersionedLocalStorage,
@@ -8,7 +7,13 @@ import {
 } from "./versioned-local-storage.js";
 import { isFactoryResetInProgress } from "./factory-reset.js";
 
-export type DeviceAIProvider = NonNullable<AIPreferences["provider"]>;
+export type DeviceAIProvider =
+  | "none"
+  | "integrated"
+  | "ollama"
+  | "openai"
+  | "anthropic"
+  | "gemini";
 
 export interface DeviceAIPreferences {
   provider: DeviceAIProvider;
@@ -134,12 +139,15 @@ export function clearDeviceAIPreferences(): boolean {
   return true;
 }
 
-export function migrateLegacyDeviceAIPreferences(value: AIPreferences | null | undefined): boolean {
+export function migrateLegacyDeviceAIPreferences(value: unknown): boolean {
   if (readStored().status !== "missing") return false;
+  const historical = isRecord(value) ? value : {};
   const migrated = normalize({
-    provider: value?.provider,
-    model: value?.model,
-    ollamaUrl: value?.ollamaUrl,
+    provider: isProvider(historical.provider) ? historical.provider : undefined,
+    model: typeof historical.model === "string" ? historical.model : undefined,
+    ollamaUrl: typeof historical.ollamaUrl === "string"
+      ? historical.ollamaUrl
+      : undefined,
   });
   if (!persist(migrated)) return false;
   current = migrated;

@@ -208,7 +208,7 @@ export function BackgroundActivityPopover({
       role="dialog"
       aria-label="Background activity"
       data-testid="background-activity-popover"
-      className="theme-dialog-shell theme-menu-shell fixed z-[330] flex w-[min(28rem,calc(100vw-1.5rem))] flex-col !overflow-y-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-0 shadow-2xl shadow-black/45"
+      className="theme-dialog-shell theme-menu-shell fixed z-[330] flex w-[min(28rem,calc(100vw-1.5rem))] flex-col rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-0 shadow-2xl shadow-black/45"
       style={position}
     >
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] px-3 pb-2.5 pt-3">

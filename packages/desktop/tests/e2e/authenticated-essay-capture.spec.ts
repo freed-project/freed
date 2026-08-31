@@ -567,8 +567,6 @@ test("memory pressure blocks native essay capture commands", async ({
       webkitCacheBytes: 64 * 1024 * 1024,
       memoryHighBytes: 6 * 1024 * 1024 * 1024,
       memoryCriticalBytes: 8 * 1024 * 1024 * 1024,
-      relayDocBytes: 0,
-      relayClientCount: 0,
     };
     return {
       before: snapshot,

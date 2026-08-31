@@ -50,7 +50,10 @@ export class LibraryCoreSha256 {
   private finalDigest: LibraryCoreLowercaseHex64 | null = null;
 
   update(input: Uint8Array): this {
-    if (!(input instanceof Uint8Array)) {
+    if (
+      !ArrayBuffer.isView(input) ||
+      Object.prototype.toString.call(input) !== "[object Uint8Array]"
+    ) {
       throw new TypeError("SHA-256 input must be a Uint8Array");
     }
     if (this.finalDigest !== null) {

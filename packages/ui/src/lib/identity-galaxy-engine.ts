@@ -17,7 +17,7 @@ import {
   providerGalaxyLocalPoint,
   providerGalaxySeed,
 } from "./identity-galaxy-provider-field.js";
-import type { ViewTransform } from "./identity-graph-layout.js";
+import type { FriendsGalaxyTransform as ViewTransform } from "./friends-galaxy-viewport.js";
 import {
   IDENTITY_GALAXY_CAMERA_FOV,
   identityGalaxyCameraPose,

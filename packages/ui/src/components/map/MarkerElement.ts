@@ -1,4 +1,8 @@
-import type { FeedItem, Person, LocationMarkerSummary } from "@freed/shared";
+import type {
+  FeedItem,
+  LocationMarkerSummary,
+  LocationPersonIdentity,
+} from "@freed/shared";
 import {
   channelInitialForName,
   personInitialsForName,
@@ -26,11 +30,11 @@ function markerSize(publishedAt: number): MarkerSize {
   return "small";
 }
 
-function displayName(item: FeedItem, friend: Person | null): string {
+function displayName(item: FeedItem, friend: LocationPersonIdentity | null): string {
   return friend?.name ?? item.author.displayName;
 }
 
-function markerInitials(item: FeedItem, friend: Person | null): string {
+function markerInitials(item: FeedItem, friend: LocationPersonIdentity | null): string {
   return friend
     ? personInitialsForName(friend.name)
     : channelInitialForName(item.author.displayName);

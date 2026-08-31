@@ -6,6 +6,7 @@ import {
   LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
   LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT,
   LIBRARY_CORE_CLOUD_TRANSPORT_IDS,
+  LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES,
   parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreControlPointerV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
@@ -114,8 +115,9 @@ function boundedIdentity(value: unknown, label: string): string {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    value.length > 512 ||
-    textEncoder.encode(value).byteLength > 512
+    value.length > LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES ||
+    textEncoder.encode(value).byteLength >
+      LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES
   ) {
     throw new TypeError(`${label} must be bounded nonempty text`);
   }

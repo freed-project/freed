@@ -33,9 +33,9 @@ import { useDebugStore } from "../lib/debug-store.js";
 import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
+  clearSampleLibraryDataWithProgressToast,
   formatSampleDataSummary,
-  refreshSampleLibraryData,
-  summarizeSampleData,
+  populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
@@ -863,75 +863,70 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [seedDone, setSeedDone] = useState(false);
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.friends);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
   const [clearingSampleData, setClearingSampleData] = useState(false);
-  const existingFeedCount = Object.keys(feeds).length;
-  const existingFriendCount = Object.keys(friends).length;
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const existingFeedCount = libraryFacets.rssFeedCount;
+  const existingFriendCount = libraryFacets.friendPersonCount;
   const existingItemCount = libraryFacets.totalCount;
-  const sampleDataSummary = useMemo(
-    () =>
-      summarizeSampleData(
-        { items, feeds, persons, accounts },
-        libraryFacets.sampleItemCount,
-      ),
-    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
-  );
+  const sampleDataSummary = {
+    accounts: libraryFacets.sampleAccountCount,
+    feeds: libraryFacets.sampleFeedCount,
+    items: libraryFacets.sampleItemCount,
+    persons: libraryFacets.samplePersonCount,
+    total:
+      libraryFacets.sampleAccountCount +
+      libraryFacets.sampleFeedCount +
+      libraryFacets.sampleItemCount +
+      libraryFacets.samplePersonCount,
+  };
   const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
     existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;
 
   const handleSeedSampleData = useCallback(async () => {
+    if (hasSampleData) return;
     setSeeding(true);
-    toast.info("Populating sample data...");
     try {
-      await refreshSampleLibraryData({
+      await populateSampleLibraryDataWithProgressToast({
         initialize,
         isInitialized,
         addSampleLibraryData,
         seedSocialConnections,
       });
       setSeedDone(true);
-      toast.success(
-        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setSeeding(false);
     }
   }, [
     addSampleLibraryData,
+    hasSampleData,
     initialize,
     isInitialized,
     seedSocialConnections,
   ]);
 
   const requestSeedSampleData = useCallback(() => {
+    if (hasSampleData) return;
     if (hasExistingLibraryData) {
       setShowSampleSeedConfirm(true);
       return;
     }
     void handleSeedSampleData();
-  }, [handleSeedSampleData, hasExistingLibraryData]);
+  }, [handleSeedSampleData, hasExistingLibraryData, hasSampleData]);
 
   const handleClearSampleData = useCallback(async () => {
     setClearingSampleData(true);
-    toast.info("Clearing sample data...");
     try {
-      const summary = await clearSampleData();
+      await clearSampleLibraryDataWithProgressToast({ clearSampleData });
       setSeedDone(false);
       setShowSampleClearConfirm(false);
-      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to clear sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setClearingSampleData(false);
     }
@@ -1067,12 +1062,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
 
     const scrollPosition = container.scrollTop + 56;
-    let anchorSection = sections[0];
-    for (const section of sections) {
-      if (section.offsetTop <= scrollPosition) {
-        anchorSection = section;
-      } else {
-        break;
+    const maximumScrollTop = Math.max(
+      0,
+      container.scrollHeight - container.clientHeight,
+    );
+    const reachedScrollEnd = maximumScrollTop - container.scrollTop <= 1;
+    let anchorSection = sections.at(reachedScrollEnd ? -1 : 0)!;
+    if (!reachedScrollEnd) {
+      for (const section of sections) {
+        if (section.offsetTop <= scrollPosition) {
+          anchorSection = section;
+        } else {
+          break;
+        }
       }
     }
 
@@ -1866,26 +1868,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </button>
               <button
                 onClick={requestSeedSampleData}
-                disabled={seeding}
+                disabled={seeding || hasSampleData}
                 className="theme-feedback-panel-warning w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div>
                   <p className="theme-feedback-text-warning text-sm">
-                    {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
+                    {seeding
+                      ? "Populating sample data..."
+                      : hasSampleData
+                        ? "Sample data populated"
+                        : "Populate sample data"}
                   </p>
                   <p className="theme-feedback-text-warning-muted mt-0.5 text-xs">
-                    {seedDone
-                      ? `Adds another ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and map-ready activity`
-                      : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
+                    {seeding
+                      ? "Durable Library writes are in progress"
+                      : hasSampleData
+                        ? "Clear the current sample library before populating it again"
+                        : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>
-                {seedDone ? (
-                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : seeding ? (
+                {seeding ? (
                   <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : seedDone ? (
+                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
                   <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1893,7 +1901,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </svg>
                 )}
               </button>
-              {hasSampleData && (
+              {hasSampleData && !seeding && (
                 <button
                   onClick={() => setShowSampleClearConfirm(true)}
                   disabled={clearingSampleData}

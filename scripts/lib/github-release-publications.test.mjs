@@ -42,6 +42,7 @@ test("GitHub release pagination accepts a page larger than one MiB within its bo
   assert.equal(releases[0].body.length, body.length);
   assert.equal(request.command, "/usr/bin/curl");
   assert.equal(request.args[0], "--disable");
+  assert.equal(request.args.includes("--compressed"), true);
   assert.equal(request.options.maxBuffer, GITHUB_RELEASE_PAGE_MAX_BYTES);
   assert.equal(
     request.options.input,

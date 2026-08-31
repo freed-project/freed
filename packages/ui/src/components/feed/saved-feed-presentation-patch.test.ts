@@ -45,11 +45,11 @@ function patch(
 }
 
 describe("Saved bounded presentation patches", () => {
-  it("drops an evicted selection instead of rebinding a stale row to a new generation", () => {
+  it("retains an evicted selection only inside the same bounded view scope", () => {
     const selected = item("saved-1");
     const current = {
       item: selected,
-      readerIdentity: "saved-generation-1",
+      readerIdentity: "saved-scope-1",
       selectedItemId: selected.globalId,
     };
 
@@ -57,7 +57,7 @@ describe("Saved bounded presentation patches", () => {
       resolveSavedFeedSelectionPin({
         current,
         eligible: true,
-        readerIdentity: "saved-generation-1",
+        readerIdentity: "saved-scope-1",
         residentSelectedItem: null,
         selectedItemId: selected.globalId,
       }),
@@ -65,10 +65,9 @@ describe("Saved bounded presentation patches", () => {
     expect(
       resolveSavedFeedSelectionPin({
         current,
-        eligible: false,
-        readerIdentity: "saved-generation-2",
-        // The old ready page can still be visible for this render.
-        residentSelectedItem: selected,
+        eligible: true,
+        readerIdentity: "saved-scope-2",
+        residentSelectedItem: null,
         selectedItemId: selected.globalId,
       }),
     ).toBeNull();

@@ -1,0 +1,115 @@
+{
+  "tag": "v26.8.3004-dev",
+  "version": "26.8.3004-dev",
+  "channel": "dev",
+  "dayKey": "26.8.30",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T18:49:09.158Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3003-dev",
+    "previousPublishedDayTag": "v26.8.2906-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "86cd37aaf3bf65f95abfc6cdf820373da093ccac",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3003-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "6af3ed473a639d8ab34b888524977acfee65492f",
+        "toInclusiveProductCommitSha": "86cd37aaf3bf65f95abfc6cdf820373da093ccac"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:38bc996e09a7f30b4be106884717466811f91473c3fdbbb88deb8dd8456f12bf",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev",
+      "v26.8.3002-dev",
+      "v26.8.3003-dev",
+      "v26.8.3004-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev",
+      "v26.8.3002-dev",
+      "v26.8.3003-dev",
+      "v26.8.3004-dev"
+    ],
+    "prNumbers": [
+      1652,
+      1653,
+      1655,
+      1657,
+      1658,
+      1659,
+      1660,
+      1661,
+      1662,
+      1663,
+      1664,
+      1665,
+      1666
+    ],
+    "commitSubjects": [
+      "fix: keep Library queries off the desktop command thread (#1666)",
+      "chore: prepare v26.8.3003-dev (#1665)",
+      "fix: preserve navigation after leaving map (#1664)",
+      "chore: prepare v26.8.3002-dev (#1663)",
+      "fix: recover Friends graph from stale cursors (#1662)",
+      "fix: prove installed primary native identity (#1661)",
+      "feat: orchestrate bounded Primary inbound passes (#1660)",
+      "feat: bind normalized Primary native transport (#1659)",
+      "feat: add normalized Primary inbound orchestration (#1658)",
+      "feat: expose headless follower enrollment authority (#1657)",
+      "chore: prepare v26.8.3001-dev",
+      "feat: bind headless Primary to Google Drive (#1655)",
+      "release: v26.8.3000-dev (#1654)",
+      "fix: stop Friend location render loops (#1653)",
+      "fix: keep checkpoint exports on one SQLite snapshot (#1652)"
+    ]
+  },
+  "release": {
+    "deck": "Orchestrate bounded Primary inbound passes, bind normalized Primary native transport, and normalized Primary inbound orchestration",
+    "features": [
+      "Orchestrate bounded Primary inbound passes",
+      "Bind normalized Primary native transport",
+      "Normalized Primary inbound orchestration"
+    ],
+    "fixes": [
+      "Keep Library queries off the desktop command thread",
+      "Preserve navigation after leaving map",
+      "Recover Friends graph from stale cursors",
+      "Prove installed primary native identity",
+      "Stop Friend location render loops",
+      "Keep checkpoint exports on one SQLite snapshot",
+      "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history",
+      "Create local Library snapshots from one consistent SQLite revision",
+      "Open the full Map from a Friend's last-seen card after the location resolves"
+    ],
+    "followUps": [
+      "Prepare v26.8.3003-dev",
+      "Expose headless follower enrollment authority",
+      "Bind headless Primary to Google Drive",
+      "Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3004-dev\n\nOrchestrate bounded Primary inbound passes, bind normalized Primary native transport, and normalized Primary inbound orchestration\n\n### Features\n\n- Orchestrate bounded Primary inbound passes\n- Bind normalized Primary native transport\n- Normalized Primary inbound orchestration\n\n### Fixes\n\n- Keep Library queries off the desktop command thread\n- Preserve navigation after leaving map\n- Recover Friends graph from stale cursors\n- Prove installed primary native identity\n- Stop Friend location render loops\n- Keep checkpoint exports on one SQLite snapshot\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Create local Library snapshots from one consistent SQLite revision\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Follow-ups\n\n- Prepare v26.8.3003-dev\n- Expose headless follower enrollment authority\n- Bind headless Primary to Google Drive\n- Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -1,0 +1,132 @@
+{
+  "tag": "v26.8.2901-dev",
+  "version": "26.8.2901-dev",
+  "channel": "dev",
+  "dayKey": "26.8.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-29T20:58:05.800Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.2002-dev",
+    "previousPublishedDayTag": "v26.8.2002-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "a03c92fa96bf2dcab0cb97396eaf5b487b31a99f",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.2002-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "ddda14c99c44eb149f738246b8f142859e9175c4",
+        "toInclusiveProductCommitSha": "a03c92fa96bf2dcab0cb97396eaf5b487b31a99f"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:6bf7d9b047d6cbbbe70687134136b148f125e934ba92f584f47180238d586955",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [
+        {
+          "activationId": "sqlite-normalized-storage-epoch-v1",
+          "gate": "F",
+          "kind": "storage_epoch_cutover",
+          "failureResponse": "Before the first accepted new-epoch mutation, abort activation and leave the historical source immutable. After the first accepted new-epoch mutation, keep SQLite authoritative and recover only by verified roll-forward repair or normalized restore.",
+          "receiptExpectations": [
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "sqlite-retired-library-engines-v1",
+          "gate": "H",
+          "kind": "legacy_engine_retirement",
+          "failureResponse": "Fail the release if a production bundle, runtime caller, checkpoint, follower protocol, or rollback control can load a retired Library engine. Repair the SQLite-only path and ship a successor build without restoring a compatibility runtime.",
+          "receiptExpectations": [
+            "retirement_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:2f87648a3b05718d45b0000dbb788deda1f6f66244aaf0adb40b435c44f53d81",
+      "decision": {
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-8-2901-dev#sha256:ec5371da6d71648a8a635d48d082a8639210104c943989c31d61dd92700b0b5c",
+        "approvedInspectionDigest": "sha256:2f87648a3b05718d45b0000dbb788deda1f6f66244aaf0adb40b435c44f53d81",
+        "approvedReleaseArtifactDigest": "sha256:ea4763e15557ac203c20c98296dcad68ba2b0432eba8a7d1abb09a344caf2a71"
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.2901-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.2901-dev"
+    ],
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1635,
+      1638,
+      1640
+    ],
+    "commitSubjects": [
+      "fix: run Library Core on Windows (#1640)",
+      "fix: align claim freshness with trusted launcher (#1638)",
+      "chore: prepare v26.8.2900-dev (#1635)",
+      "feat: replace library authority with SQLite (#1616)",
+      "fix: forward Go compiler to Linux actor build (#1631)",
+      "feat: support trusted automation launchers on Linux (#1512)",
+      "fix: add event history witness repair (#1629)",
+      "chore(deps-dev): align Vite 8 build tooling (#1619)",
+      "chore(deps): bump serde_with in /packages/desktop/src-tauri (#1617)",
+      "chore(deps-dev): bump vite from 7.3.6 to 8.2.1 (#1187)",
+      "chore(deps-dev): bump globals from 16.5.0 to 17.11.0 (#1189)",
+      "chore(deps): bump react-router and react-router-dom (#1362)",
+      "chore(deps-dev): bump postcss from 8.5.23 to 8.5.24 (#1439)",
+      "chore(deps): bump the cargo-updates group across 1 directory with 2 updates (#1514)",
+      "chore(deps-dev): bump js-yaml from 4.3.0 to 4.3.1 (#1366)",
+      "chore(deps-dev): bump fast-uri from 3.1.4 to 3.1.5 (#1357)",
+      "chore(deps): bump undici from 7.28.0 to 7.29.0 (#1356)"
+    ]
+  },
+  "release": {
+    "deck": "Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support",
+    "features": [
+      "Run every Library view from bounded SQLite queries",
+      "Store and sync normalized Library records without the historical engines",
+      "Support trusted automation launchers on Linux"
+    ],
+    "fixes": [
+      "Run Library Core on Windows",
+      "Align claim freshness with trusted launcher",
+      "Forward Go compiler to Linux actor build",
+      "Add event history witness repair"
+    ],
+    "followUps": [
+      "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri",
+      "Bump react-router and react-router-dom",
+      "Bump postcss from 8.5.23 to 8.5.24",
+      "Bump the cargo-updates group across 1 directory with 2 updates",
+      "Bump js-yaml from 4.3.0 to 4.3.1",
+      "Bump fast-uri from 3.1.4 to 3.1.5",
+      "Bump undici from 7.28.0 to 7.29.0"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2901-dev\n\nFreed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support\n\n### Features\n\n- Run every Library view from bounded SQLite queries\n- Store and sync normalized Library records without the historical engines\n- Support trusted automation launchers on Linux\n\n### Fixes\n\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n\n### Follow-ups\n\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

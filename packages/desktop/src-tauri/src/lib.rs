@@ -2,17 +2,10 @@
 //!
 //! Native desktop app that bundles capture and the reader UI.
 
-mod library_core_actor_enrollment;
-mod library_core_authority_genesis;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_canonical;
+mod library_core_actor_key_store;
+mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
-mod library_core_ed25519;
-mod library_core_hash;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_journal;
-mod library_core_journal_runtime;
 mod library_core_platform_key;
 mod youtube;
 
@@ -27,7 +20,7 @@ use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, Mutex as StdMutex, RwLock as StdRwLock,
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -806,12 +799,10 @@ enum WindowDestroyedReason {
     LoginFlow,
     JobComplete,
     StartupRecovery,
-    MapRendererRelease,
 }
 
 static WINDOW_CREATED_AT: std::sync::LazyLock<StdMutex<HashMap<String, Instant>>> =
     std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
-static MAP_RENDERER_RELEASE_PENDING: AtomicBool = AtomicBool::new(false);
 
 /// Record when a tracked webview window was (re)created so kill records can
 /// report the victim's age. Insert-if-absent: ensure-window paths call this
@@ -1162,12 +1153,32 @@ async fn restore_scraper_feed(
     Ok(())
 }
 
+const STARTUP_FAILURE_MESSAGE_MAX_BYTES: usize = 4 * 1024;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum StartupFailureStage {
+    NormalizedSqliteCutover,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct StartupFailureDetail {
+    stage: StartupFailureStage,
+    #[serde(default)]
+    detail_stage: String,
+    code: String,
+    message: String,
+    occurred_at_ms: u64,
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 struct StartupRecoveryState {
     consecutive_failed_boots: u32,
     pending_boot_started_at_ms: Option<u64>,
     last_failed_boot_at_ms: Option<u64>,
     last_successful_boot_at_ms: Option<u64>,
+    last_failure: Option<StartupFailureDetail>,
 }
 
 #[derive(Default)]
@@ -1270,6 +1281,18 @@ fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
             error
         );
     }
+}
+
+fn bounded_startup_failure_message(message: &str) -> String {
+    if message.len() <= STARTUP_FAILURE_MESSAGE_MAX_BYTES {
+        return message.to_owned();
+    }
+
+    let mut end = STARTUP_FAILURE_MESSAGE_MAX_BYTES;
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    message[..end].to_owned()
 }
 
 fn runtime_health_path(data_dir: &Path) -> PathBuf {
@@ -2214,7 +2237,10 @@ fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
 }
 
 fn is_supported_dev_sync_provider(provider: &str) -> bool {
-    matches!(provider, "facebook" | "instagram" | "linkedin" | "youtube")
+    matches!(
+        provider,
+        "facebook" | "instagram" | "linkedin" | "youtube" | "gdrive"
+    )
 }
 
 fn dev_sync_trigger_request_expiration_detail(
@@ -2493,7 +2519,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     request_id,
                                     None,
                                     "ignored",
-                                    Some("Unsupported provider. Use facebook, instagram, linkedin, or youtube."),
+                                    Some("Unsupported provider. Use facebook, instagram, linkedin, youtube, or gdrive."),
                                 );
                             } else if let Some(detail) =
                                 dev_sync_trigger_lock_deferral_detail(&get_desktop_session_state())
@@ -2698,6 +2724,47 @@ fn mark_startup_failed(data_dir: &Path) {
     save_startup_recovery_state(data_dir, &state);
 }
 
+fn mark_startup_library_core_failure(
+    data_dir: &Path,
+    error: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
+    let occurred_at_ms = now_unix_ms();
+    let mut state = load_startup_recovery_state(data_dir);
+    state.pending_boot_started_at_ms = None;
+    state.consecutive_failed_boots = state.consecutive_failed_boots.saturating_add(1);
+    state.last_failed_boot_at_ms = Some(occurred_at_ms);
+    state.last_failure = Some(StartupFailureDetail {
+        stage: StartupFailureStage::NormalizedSqliteCutover,
+        detail_stage: error.stage().as_str().to_owned(),
+        code: error.stage().failure_code().to_owned(),
+        message: bounded_startup_failure_message(error.message()),
+        occurred_at_ms,
+    });
+    save_startup_recovery_state(data_dir, &state);
+}
+
+fn record_startup_library_core_failure(
+    app: &tauri::AppHandle,
+    data_dir: &Path,
+    failure: &library_core_desktop_runtime::NormalizedDesktopCutoverError,
+) {
+    mark_startup_library_core_failure(data_dir, failure);
+    error!(
+        "[library-core] normalized SQLite startup cutover refused stage={}: {}",
+        failure.stage().as_str(),
+        failure.message()
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "library_core_startup_failure",
+            "stage": failure.stage().as_str(),
+            "code": failure.stage().failure_code(),
+            "error": bounded_startup_failure_message(failure.message()),
+        }),
+    );
+}
+
 fn mark_startup_pending(data_dir: &Path) {
     let mut state = load_startup_recovery_state(data_dir);
     state.pending_boot_started_at_ms = Some(now_unix_ms());
@@ -2713,13 +2780,17 @@ fn prepare_startup_recovery_retry(data_dir: &Path) {
 
 fn mark_startup_success(data_dir: &Path) {
     let mut state = load_startup_recovery_state(data_dir);
-    if state.pending_boot_started_at_ms.is_none() && state.consecutive_failed_boots == 0 {
+    if state.pending_boot_started_at_ms.is_none()
+        && state.consecutive_failed_boots == 0
+        && state.last_failure.is_none()
+    {
         return;
     }
 
     state.pending_boot_started_at_ms = None;
     state.consecutive_failed_boots = 0;
     state.last_successful_boot_at_ms = Some(now_unix_ms());
+    state.last_failure = None;
     save_startup_recovery_state(data_dir, &state);
     info!("[recovery] renderer reached healthy startup state");
 }
@@ -2844,8 +2915,6 @@ struct RuntimeMemoryStats {
     sample_duration_ms: u64,
     memory_high_bytes: u64,
     memory_critical_bytes: u64,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -4138,8 +4207,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(main_renderer_memory_should_recover(
@@ -4214,8 +4281,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4273,8 +4338,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4321,8 +4384,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4362,8 +4423,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let mut after = before.clone();
         after.app_resident_bytes = 2 * BYTES_PER_GIB;
@@ -4406,8 +4465,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let after = before.clone();
 
@@ -4448,8 +4505,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4497,8 +4552,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!webkit_resident_tail_is_probably_reclaimable(&stats));
@@ -4544,8 +4597,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4590,8 +4641,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -4645,8 +4694,6 @@ mod renderer_watchdog_tests {
             sample_duration_ms: 0,
             memory_high_bytes: 9 * BYTES_PER_GIB,
             memory_critical_bytes: 12 * BYTES_PER_GIB,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert_eq!(
@@ -6409,23 +6456,12 @@ fn freed_webkit_memory_stats(
     }
 }
 
-fn collect_runtime_memory_stats(
-    app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
-) -> RuntimeMemoryStats {
-    collect_runtime_memory_stats_with_options(
-        app,
-        relay_doc_bytes,
-        relay_client_count,
-        RuntimeMemoryStatsOptions::full(),
-    )
+fn collect_runtime_memory_stats(app: &tauri::AppHandle) -> RuntimeMemoryStats {
+    collect_runtime_memory_stats_with_options(app, RuntimeMemoryStatsOptions::full())
 }
 
 fn collect_runtime_memory_stats_with_options(
     app: &tauri::AppHandle,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     options: RuntimeMemoryStatsOptions,
 ) -> RuntimeMemoryStats {
     let sample_started_at = Instant::now();
@@ -6524,8 +6560,6 @@ fn collect_runtime_memory_stats_with_options(
             .min(u128::from(u64::MAX)) as u64,
         memory_high_bytes,
         memory_critical_bytes,
-        relay_doc_bytes,
-        relay_client_count,
     }
 }
 
@@ -6896,7 +6930,7 @@ fn social_scrape_may_continue(
     pass_index: usize,
     total_passes: usize,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = scrape_memory_may_proceed(&stats);
     if !may_continue {
         warn!(
@@ -6946,7 +6980,7 @@ fn optional_story_scrape_may_continue(
     provider: &str,
     operation: &str,
 ) -> bool {
-    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let stats = collect_runtime_memory_stats(app);
     let may_continue = optional_story_scrape_may_proceed(&stats);
     if !may_continue {
         info!(
@@ -7041,7 +7075,7 @@ async fn maybe_recover_after_social_feed_scrape(
 ) {
     tokio::time::sleep(Duration::from_millis(700)).await;
 
-    let after = collect_runtime_memory_stats(app, 0, 0);
+    let after = collect_runtime_memory_stats(app);
     let reason = post_social_scrape_memory_recovery_reason(before, &after);
     let before_webkit_footprint = before.webkit_total_footprint_bytes.unwrap_or(0);
     let after_webkit_footprint = after.webkit_total_footprint_bytes.unwrap_or(0);
@@ -7108,7 +7142,7 @@ async fn maybe_recover_after_social_feed_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7220,7 +7254,7 @@ async fn recover_main_renderer_after_blocked_social_scrape(
     ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
-            let recovered = collect_runtime_memory_stats(app, 0, 0);
+            let recovered = collect_runtime_memory_stats(app);
             append_runtime_health(
                 app,
                 serde_json::json!({
@@ -7259,11 +7293,9 @@ async fn prepare_social_scrape_memory_internal(
     background_runtime: Option<&BackgroundRuntimeCoordinator>,
     provider: &str,
     operation: &str,
-    relay_doc_bytes: u64,
-    relay_client_count: u64,
     preserve_label: Option<&str>,
 ) -> ScrapeMemoryPreparation {
-    let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let before = collect_runtime_memory_stats(app);
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycle_started_at = Instant::now();
     let recycled_scraper_windows = recycle_social_scraper_windows_except(
@@ -7279,7 +7311,7 @@ async fn prepare_social_scrape_memory_internal(
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
 
-    let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let after = collect_runtime_memory_stats(app);
     let scraper_recycle_verification = build_scraper_recycle_verification(
         recycled_scraper_windows,
         &before,
@@ -7419,8 +7451,6 @@ async fn ensure_social_scrape_memory(
         Some(background_runtime),
         provider,
         operation,
-        0,
-        0,
         preserve_label,
     )
     .await;
@@ -7492,8 +7522,6 @@ async fn get_runtime_memory_stats(
 ) -> Result<RuntimeMemoryStats, String> {
     Ok(collect_runtime_memory_stats_with_options(
         &app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: include_storage_sizes.unwrap_or(true),
             precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
@@ -7595,8 +7623,6 @@ async fn prepare_social_scrape_memory(
         Some(&capture.background_runtime),
         &provider,
         &operation,
-        0,
-        0,
         None,
     )
     .await)
@@ -7628,31 +7654,6 @@ async fn get_ai_hardware_profile(
         arch: std::env::consts::ARCH.to_string(),
         web_gpu_available,
     })
-}
-
-#[tauri::command]
-fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
-    let Ok(data_dir) = app.path().app_data_dir() else {
-        return vec![];
-    };
-    let dir = data_dir.join("library-backups");
-
-    let mut entries: Vec<String> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            if name.starts_with("sqlite-") && name.ends_with(".sqlite") {
-                Some(name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    entries.sort_unstable_by(|a, b| b.cmp(a)); // newest first
-    entries
 }
 
 #[tauri::command]
@@ -7837,6 +7838,18 @@ fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     std::fs::create_dir_all(&data_dir).ok();
     prepare_startup_recovery_retry(&data_dir);
+
+    match library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(&app) {
+        Ok(true) => info!("[library-core] selected normalized SQLite authority during retry"),
+        Ok(false) => {}
+        Err(error) => {
+            record_startup_library_core_failure(&app, &data_dir, &error);
+            return Err(
+                "Freed could not safely open this Library. Download diagnostics and keep the existing Library files unchanged."
+                    .to_owned(),
+            );
+        }
+    }
 
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         scrub_webview_before_destroy(&window);
@@ -8928,7 +8941,7 @@ async fn fb_scrape_feed(
         Some("authenticated feed rendered"),
     );
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
     emit_social_scrape_plan(
         &app,
@@ -9673,7 +9686,7 @@ async fn ig_scrape_feed(
     .await?;
     let scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
-    let scrape_start_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_start_stats = collect_runtime_memory_stats(&app);
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
@@ -9788,7 +9801,7 @@ async fn ig_scrape_feed(
         );
     }
 
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
     emit_social_scrape_plan(
         &app,
@@ -10481,7 +10494,7 @@ async fn li_scrape_feed(
 
     prepare_background_scraper_window(&wv, window_mode)?;
     println!("[LI] window prepared, proceeding with extraction");
-    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan_stats = collect_runtime_memory_stats(&app);
 
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
@@ -12610,8 +12623,6 @@ fn schedule_main_window_recovery_verification(
         tokio::time::sleep(MAIN_RENDERER_RECOVERY_VERIFY_AFTER).await;
         let after = collect_runtime_memory_stats_with_options(
             &app_for_verify,
-            0,
-            0,
             RuntimeMemoryStatsOptions {
                 include_storage_sizes: false,
                 precise_webkit_attribution: true,
@@ -12692,43 +12703,6 @@ fn recover_main_window(
     )
 }
 
-#[tauri::command]
-fn release_main_renderer_memory(app: tauri::AppHandle) -> Result<(), String> {
-    if MAP_RENDERER_RELEASE_PENDING.swap(true, Ordering::AcqRel) {
-        return Ok(());
-    }
-
-    append_runtime_health(
-        &app,
-        serde_json::json!({
-            "event": "map_renderer_memory_release_requested",
-        }),
-    );
-
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let outcome = recover_main_window(
-            &app,
-            WindowDestroyedReason::MapRendererRelease,
-            "geographic map renderer memory release",
-        );
-        MAP_RENDERER_RELEASE_PENDING.store(false, Ordering::Release);
-
-        if let Err(error) = outcome {
-            warn!("[map] failed to release native renderer memory: {}", error);
-            append_runtime_health(
-                &app,
-                serde_json::json!({
-                    "event": "map_renderer_memory_release_failed",
-                    "error": error,
-                }),
-            );
-        }
-    });
-
-    Ok(())
-}
-
 fn recover_main_window_hidden(
     app: &tauri::AppHandle,
     reason_enum: WindowDestroyedReason,
@@ -12750,8 +12724,6 @@ fn recover_main_window_with_presentation(
 ) -> Result<(), String> {
     let before_recovery_stats = collect_runtime_memory_stats_with_options(
         app,
-        0,
-        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: false,
             precise_webkit_attribution: true,
@@ -12879,17 +12851,23 @@ fn handle_primary_menu_action(app: &tauri::AppHandle, id: &str) -> bool {
     }
 }
 
+fn build_primary_show_item<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+) -> tauri::Result<MenuItem<R>> {
+    MenuItem::with_id(
+        manager,
+        PRIMARY_MENU_ITEM_SHOW,
+        "Show Freed",
+        true,
+        None::<&str>,
+    )
+}
+
 fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
     manager: &M,
 ) -> tauri::Result<(MenuItem<R>, MenuItem<R>)> {
     Ok((
-        MenuItem::with_id(
-            manager,
-            PRIMARY_MENU_ITEM_SHOW,
-            "Show Freed",
-            true,
-            None::<&str>,
-        )?,
+        build_primary_show_item(manager)?,
         MenuItem::with_id(
             manager,
             PRIMARY_MENU_ITEM_QUIT,
@@ -12920,7 +12898,9 @@ fn handle_macos_reopen(app: &tauri::AppHandle, has_visible_windows: bool) {
 
 #[cfg(target_os = "macos")]
 fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
-    let (show_item, quit_item) = build_primary_action_items(manager)?;
+    let show_item = build_primary_show_item(manager)?;
+    // The native Quit item owns the standard Command-Q accelerator on macOS.
+    let quit_item = PredefinedMenuItem::quit(manager, Some("Quit Freed"))?;
     let app_menu = Submenu::with_items(
         manager,
         manager.app_handle().package_info().name.clone(),
@@ -12998,8 +12978,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
-        .manage(ProviderScheduleWakeState::default())
-        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
+        .manage(ProviderScheduleWakeState::default());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -13022,16 +13001,20 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
-            let dev_sync_result_data_dir = data_dir.clone();
-            app.listen("dev-sync-trigger-native-result", move |event| {
-                handle_dev_sync_trigger_result_event(&dev_sync_result_data_dir, event.payload());
-            });
-            start_dev_sync_trigger_watcher(app_handle.clone(), data_dir.clone());
-
+            let mut startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
+            match library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready(
+                &app_handle,
+            ) {
+                Ok(true) => info!("[library-core] selected normalized SQLite authority"),
+                Ok(false) => {}
+                Err(error) => {
+                    record_startup_library_core_failure(&app_handle, &data_dir, &error);
+                    startup_recovery_state = load_startup_recovery_state(&data_dir);
+                }
+            }
             #[cfg(target_os = "macos")]
             clear_saved_window_state(&app_handle);
 
-            let startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
             if startup_requires_recovery(&startup_recovery_state) {
                 warn!(
                     "[recovery] opening native recovery window after {} failed early startup attempt(s)",
@@ -13040,6 +13023,14 @@ pub fn run() {
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
                 let _ = start_main_window_quietly(&app_handle)?;
+                let dev_sync_result_data_dir = data_dir.clone();
+                app.listen("dev-sync-trigger-native-result", move |event| {
+                    handle_dev_sync_trigger_result_event(
+                        &dev_sync_result_data_dir,
+                        event.payload(),
+                    );
+                });
+                start_dev_sync_trigger_watcher(app_handle.clone(), data_dir.clone());
             }
 
             // Build system tray
@@ -13324,7 +13315,7 @@ pub fn run() {
                 let refreshed_memory_sample = should_refresh_memory_sample.then(|| {
                     RendererMemorySample::from_stats(
                         now,
-                        collect_runtime_memory_stats(&app_for_renderer_listener, 0, 0),
+                        collect_runtime_memory_stats(&app_for_renderer_listener),
                     )
                 });
                 let memory_sample_refreshed = refreshed_memory_sample.is_some();
@@ -13421,7 +13412,7 @@ pub fn run() {
                     tokio::time::sleep(RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL).await;
 
                     let now = std::time::Instant::now();
-                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor, 0, 0);
+                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor);
                     let memory_health_fields = {
                         let mut sample = renderer_memory_sample_for_memory_monitor.lock().unwrap();
                         *sample = Some(RendererMemorySample::from_stats(now, stats.clone()));
@@ -13783,7 +13774,7 @@ pub fn run() {
                         let mut should_recycle_background_scrapers = false;
 
                         if should_log_throttle {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             info!(
                                 "[main-window] renderer heartbeat hidden-timer throttled age_ms={} threshold_ms={} visible={} focused={} effective_visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={}",
                                 age.as_millis(),
@@ -13840,7 +13831,7 @@ pub fn run() {
                         }
 
                         if should_log_stale {
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let webkit = stats
                                 .webkit_largest_process_id
                                 .zip(stats.webkit_largest_resident_bytes)
@@ -13976,7 +13967,7 @@ pub fn run() {
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
                             background_runtime_for_watchdog
                                 .note_renderer_recovery_attempt(recovery_reason);
-                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog);
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
                             let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
@@ -14171,7 +14162,6 @@ pub fn run() {
             download_local_ai_model_file,
             cancel_local_ai_model_download,
             get_runtime_memory_stats,
-            release_main_renderer_memory,
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_runtime_health_history,
@@ -14182,55 +14172,61 @@ pub fn run() {
             replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
-            library_core_journal_runtime::open_library_core_journal,
-            library_core_journal_runtime::library_core_journal_status,
-            library_core_desktop_runtime::sqlite_library_status,
-            library_core_desktop_runtime::begin_sqlite_library_import,
-            library_core_desktop_runtime::append_sqlite_library_import,
-            library_core_desktop_runtime::finalize_sqlite_library_import,
-            library_core_desktop_runtime::recover_sqlite_library_follower_overlay,
-            library_core_desktop_runtime::read_sqlite_library_shell,
-            library_core_desktop_runtime::read_sqlite_library_counts,
-            library_core_desktop_runtime::read_sqlite_library_facet_summary,
-            library_core_desktop_runtime::read_sqlite_library_sync_descriptor,
-            library_core_desktop_runtime::prepare_sqlite_library_follower_actor_request,
-            library_core_desktop_runtime::install_sqlite_library_follower_actor_enrollment,
-            library_core_desktop_runtime::sign_sqlite_library_follower_operation,
-            library_core_desktop_runtime::enqueue_sqlite_library_follower_intent,
-            library_core_desktop_runtime::sqlite_library_follower_intent_context,
-            library_core_desktop_runtime::sqlite_library_follower_runtime_status,
-            library_core_desktop_runtime::read_sqlite_library_follower_intent_outbox_candidate,
-            library_core_desktop_runtime::record_sqlite_library_follower_intent_publication,
-            library_core_desktop_runtime::read_sqlite_library_follower_result_import_cursor,
-            library_core_desktop_runtime::append_sqlite_library_follower_result_segment,
-            library_core_desktop_runtime::bootstrap_sqlite_library_authority,
-            library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
-            library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
-            library_core_desktop_runtime::accept_pwa_intent_transaction,
-            library_core_desktop_runtime::read_pwa_intent_result_outbox,
-            library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
-            library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
-            library_core_desktop_runtime::read_sqlite_library_sync_page,
-            library_core_desktop_runtime::replace_sqlite_library_shell,
-            library_core_desktop_runtime::upsert_sqlite_library_items,
-            library_core_desktop_runtime::mutate_sqlite_library_items,
+            library_core_desktop_runtime::query_normalized_library,
+            library_core_desktop_runtime::mutate_normalized_device_graph_layout,
+            library_core_desktop_runtime::mutate_normalized_content_policy,
+            library_core_desktop_runtime::mutate_normalized_device_contacts,
+            library_core_desktop_runtime::query_normalized_device_contact_status,
+            library_core_desktop_runtime::query_normalized_device_contact_match_page,
+            library_core_desktop_runtime::query_normalized_device_contact_suggestion_page,
+            library_core_desktop_runtime::query_normalized_device_contact_unmatched_page,
+            library_core_desktop_runtime::ensure_fresh_normalized_desktop_library,
+            library_core_desktop_runtime::begin_normalized_library_checkpoint_export,
+            library_core_desktop_runtime::describe_normalized_library_checkpoint,
+            library_core_desktop_runtime::describe_normalized_library_cloud_identity,
+            library_core_desktop_runtime::read_normalized_library_checkpoint_page,
+            library_core_desktop_runtime::begin_normalized_library_checkpoint_import,
+            library_core_desktop_runtime::append_normalized_library_checkpoint_import_page,
+            library_core_desktop_runtime::activate_normalized_library_checkpoint_import,
+            library_core_desktop_runtime::normalized_library_follower_runtime_status,
+            library_core_desktop_runtime::normalized_library_follower_transport_context,
+            library_core_desktop_runtime::page_normalized_library_follower_transport,
+            library_core_desktop_runtime::normalized_library_follower_mutation_context,
+            library_core_desktop_runtime::prepare_normalized_library_follower_actor_request,
+            library_core_desktop_runtime::install_normalized_library_follower_actor_enrollment,
+            library_core_desktop_runtime::countersign_normalized_library_follower_actor_request,
+            library_core_desktop_runtime::sign_normalized_library_follower_operation,
+            library_core_desktop_runtime::enqueue_normalized_library_follower_intent,
+            library_core_desktop_runtime::read_normalized_library_follower_intent_page,
+            library_core_desktop_runtime::record_normalized_library_follower_intent_publication,
+            library_core_desktop_runtime::record_normalized_library_follower_intent_transport_publication,
+            library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
+            library_core_desktop_runtime::normalized_library_primary_follower_actor_transport_state,
+            library_core_desktop_runtime::read_normalized_library_follower_result_page,
+            library_core_desktop_runtime::import_normalized_library_follower_result_page,
+            library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
+            library_core_desktop_runtime::reassign_normalized_library_writer_epoch,
+            library_core_desktop_runtime::normalized_library_primary_mutation_context,
+            library_core_desktop_runtime::sign_normalized_library_operations,
+            library_core_desktop_runtime::commit_normalized_library_transaction,
+            library_core_desktop_runtime::begin_normalized_scope_action,
+            library_core_desktop_runtime::freeze_normalized_rss_feed_scope,
+            library_core_desktop_runtime::append_normalized_scope_action,
+            library_core_desktop_runtime::finalize_normalized_scope_action,
+            library_core_desktop_runtime::page_normalized_scope_action,
+            library_core_desktop_runtime::close_normalized_scope_action,
             library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
             library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
-            library_core_desktop_runtime::read_sqlite_library_items,
-            library_core_desktop_runtime::query_sqlite_library_items,
-            library_core_desktop_runtime::search_sqlite_library_items,
-            library_core_desktop_runtime::create_sqlite_library_backup,
-            library_core_desktop_runtime::list_sqlite_library_backups,
-            library_core_desktop_runtime::read_sqlite_library_backup_chunk,
-            library_core_desktop_runtime::restore_sqlite_library_backup,
-            library_core_desktop_runtime::clear_sqlite_library_backups,
-            library_core_desktop_runtime::clear_sqlite_library,
+            library_core_desktop_runtime::create_normalized_local_snapshot,
+            library_core_desktop_runtime::list_normalized_local_snapshots,
+            library_core_desktop_runtime::restore_normalized_local_snapshot,
+            library_core_desktop_runtime::clear_normalized_local_snapshots,
+            library_core_desktop_runtime::reset_normalized_library,
             clear_factory_reset_runtime_artifacts,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
             close_x_login_window,
-            list_snapshots,
             get_recent_logs,
             start_oauth_server,
             pick_contact,
@@ -15021,8 +15017,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         }
     }
 
@@ -15290,6 +15284,7 @@ mod tests {
         assert!(is_supported_dev_sync_provider("instagram"));
         assert!(is_supported_dev_sync_provider("linkedin"));
         assert!(is_supported_dev_sync_provider("youtube"));
+        assert!(is_supported_dev_sync_provider("gdrive"));
         assert!(!is_supported_dev_sync_provider("medium"));
     }
 
@@ -15656,8 +15651,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: 601,
             memory_critical_bytes: 602,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let sample = RendererMemorySample::from_stats(now - Duration::from_secs(2), stats);
         let fields = renderer_memory_health_fields(Some(&sample), now, true);
@@ -15831,6 +15824,31 @@ mod tests {
     }
 
     #[test]
+    fn library_core_cutover_refusal_is_preserved_without_reopening_library_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let oversized_message = format!("{}é", "x".repeat(STARTUP_FAILURE_MESSAGE_MAX_BYTES));
+        let error = library_core_desktop_runtime::NormalizedDesktopCutoverError::new(
+            library_core_desktop_runtime::NormalizedDesktopCutoverStage::CandidatePrepare,
+            oversized_message,
+        );
+
+        mark_startup_library_core_failure(temp.path(), &error);
+
+        let state = load_startup_recovery_state(temp.path());
+        assert!(startup_requires_recovery(&state));
+        assert_eq!(state.consecutive_failed_boots, 1);
+        let failure = state.last_failure.expect("typed failure must be retained");
+        assert_eq!(failure.stage, StartupFailureStage::NormalizedSqliteCutover);
+        assert_eq!(failure.detail_stage, "candidate_prepare");
+        assert_eq!(
+            failure.code,
+            "library_core_cutover_candidate_prepare_refused"
+        );
+        assert_eq!(failure.message.len(), STARTUP_FAILURE_MESSAGE_MAX_BYTES);
+        assert!(failure.message.is_char_boundary(failure.message.len()));
+    }
+
+    #[test]
     fn startup_recovery_retry_rearms_pending_boot_without_preserving_failure_count() {
         let temp = tempfile::tempdir().unwrap();
         save_startup_recovery_state(
@@ -15840,6 +15858,13 @@ mod tests {
                 pending_boot_started_at_ms: None,
                 last_failed_boot_at_ms: Some(123),
                 last_successful_boot_at_ms: Some(100),
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "historical Library source refused".to_owned(),
+                    occurred_at_ms: 123,
+                }),
             },
         );
 
@@ -15849,6 +15874,13 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_some());
         assert_eq!(state.last_failed_boot_at_ms, Some(123));
+        assert_eq!(
+            state
+                .last_failure
+                .as_ref()
+                .map(|failure| failure.code.as_str()),
+            Some("library_core_cutover_refused")
+        );
     }
 
     #[test]
@@ -15862,6 +15894,13 @@ mod tests {
                 pending_boot_started_at_ms: None,
                 last_failed_boot_at_ms: Some(123),
                 last_successful_boot_at_ms: Some(100),
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "historical Library source refused".to_owned(),
+                    occurred_at_ms: 123,
+                }),
             },
         );
         std::fs::write(runtime_health_path(data_dir.path()), "old\nnew\n").unwrap();
@@ -15889,6 +15928,18 @@ mod tests {
         assert_eq!(json["version"], "26.6.901");
         assert_eq!(json["platform"], "macos");
         assert_eq!(json["startupRecovery"]["consecutive_failed_boots"], 1);
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["code"],
+            "library_core_cutover_refused"
+        );
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["stage"],
+            "normalized_sqlite_cutover"
+        );
+        assert_eq!(
+            json["startupRecovery"]["last_failure"]["detail_stage"],
+            "historical_source_state"
+        );
         assert!(json["runtimeHealth"].as_str().unwrap().contains("new"));
         assert!(json["runtimeDiagnostics"]
             .as_str()
@@ -16467,8 +16518,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16512,8 +16561,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(scrape_memory_may_proceed(&stats));
@@ -16599,8 +16646,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16639,8 +16684,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
 
         assert!(!scrape_memory_may_proceed(&stats));
@@ -16685,8 +16728,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let budget = scrape_memory_start_budget_bytes(&stats);
 
@@ -16745,8 +16786,6 @@ mod tests {
             sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
-            relay_doc_bytes: 0,
-            relay_client_count: 0,
         };
         let story_budget_bytes = optional_story_memory_budget_bytes(&make_stats(0, 0));
         let stats = make_stats(
@@ -17032,6 +17071,7 @@ mod tests {
                 pending_boot_started_at_ms: Some(123),
                 last_failed_boot_at_ms: None,
                 last_successful_boot_at_ms: None,
+                last_failure: None,
             },
         );
 
@@ -17053,6 +17093,13 @@ mod tests {
                 pending_boot_started_at_ms: Some(456),
                 last_failed_boot_at_ms: Some(789),
                 last_successful_boot_at_ms: None,
+                last_failure: Some(StartupFailureDetail {
+                    stage: StartupFailureStage::NormalizedSqliteCutover,
+                    detail_stage: "historical_source_state".to_owned(),
+                    code: "library_core_cutover_refused".to_owned(),
+                    message: "source refused".to_owned(),
+                    occurred_at_ms: 789,
+                }),
             },
         );
 
@@ -17062,6 +17109,7 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+        assert!(state.last_failure.is_none());
     }
 
     #[test]

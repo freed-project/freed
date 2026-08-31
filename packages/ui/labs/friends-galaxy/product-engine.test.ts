@@ -19,7 +19,10 @@ import { FRIENDS_GALAXY_THEME_PALETTES } from "../../src/lib/friends-galaxy-them
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { IdentityGraphAtlas } from "../../src/lib/identity-graph-atlas.js";
 import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
-import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
+import {
+  createFriendsGalaxyProductSqliteQuery,
+  productNormalizedSourceInput,
+} from "./product-sqlite-source-fixture.js";
 
 class ControlledProductWorker implements FriendsGalaxyProductWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
@@ -142,21 +145,6 @@ class ProductRendererBackend implements FriendsGalaxyRendererBackend {
   }
 }
 
-function sourceRequest(sourceRevision = 1, personCount = 12, accountCount = 48) {
-  return {
-    kind: "source" as const,
-    sourceRevision,
-    source: createFriendsGalaxyProductSource(personCount, accountCount),
-    viewport: {
-      width: 390,
-      height: 844,
-      selectedAccountId: "product-account-2",
-    },
-    backgroundStarCount: 1_000,
-    backgroundSeed: `product-engine-${sourceRevision.toLocaleString()}`,
-  };
-}
-
 function presentationRequest(sourceRevision = 1, presentationRevision = 1) {
   return {
     kind: "presentation" as const,
@@ -206,6 +194,45 @@ async function flushActivation(): Promise<void> {
   await Promise.resolve();
 }
 
+async function admitSource(
+  engine: FriendsGalaxyProductEngine,
+  worker: ControlledProductWorker,
+  service: FriendsGalaxyProductWorkerService,
+  sourceRevision = 1,
+  personCount = 12,
+  accountCount = 48,
+): Promise<number> {
+  const options = {
+    accountCount,
+    backgroundSeed: `product-engine-${sourceRevision.toLocaleString()}`,
+    personCount,
+    sourceRevision,
+    viewport: {
+      height: 844,
+      selectedAccountId: "product-account-2",
+      width: 390,
+    },
+  };
+  const startIndex = worker.messages.length;
+  const requestId = engine.requestNormalizedSource(
+    productNormalizedSourceInput(options),
+    createFriendsGalaxyProductSqliteQuery(options),
+  );
+  if (requestId === null) throw new Error("Expected normalized source request.");
+  let messageIndex = startIndex;
+  for (;;) {
+    if (messageIndex >= worker.messages.length) await flushActivation();
+    const request = worker.messages[messageIndex];
+    if (!request) throw new Error("Expected normalized source worker message.");
+    worker.emit(service.handle(request));
+    messageIndex += 1;
+    await flushActivation();
+    if (request.kind === "normalized-source-commit") break;
+  }
+  await flushActivation();
+  return messageIndex;
+}
+
 describe("Friends Galaxy product engine", () => {
   it("connects the real worker scene, bounded metadata, and replayed renderer state", async () => {
     const worker = new ControlledProductWorker();
@@ -239,9 +266,7 @@ describe("Friends Galaxy product engine", () => {
     });
     engine.setSettledView("middle", { x: 195, y: 422, scale: 0.52 });
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    const messageIndex = await admitSource(engine, worker, service);
 
     expect(engine.activeRendererId).toBe("raw-webgpu");
     expect(sourceRevisions).toEqual([1]);
@@ -262,7 +287,7 @@ describe("Friends Galaxy product engine", () => {
 
     engine.setCameraMotion(false);
     engine.requestSettledPresentation(presentationRequest());
-    worker.emit(response(service, worker, 1));
+    worker.emit(response(service, worker, messageIndex));
     expect(presentationRevisions).toEqual([1]);
     expect(backends[0]?.presentationAtlas?.nodes.slice(0, 2).map((node) => node.id))
       .toEqual(["account:product-account-2", "person:product-person-2"]);
@@ -288,9 +313,7 @@ describe("Friends Galaxy product engine", () => {
       onWorkerFailure: (failure) => failures.push(failure.phase),
     });
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    await admitSource(engine, worker, service);
     worker.onerror?.({ message: "worker stopped" } as ErrorEvent);
 
     expect(failures).toEqual(["runtime"]);
@@ -326,11 +349,9 @@ describe("Friends Galaxy product engine", () => {
         activityRevisions.push(result.activityRevision),
     });
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
-    expect(engine.requestActivity(activityRequest())).toBe(2);
-    worker.emit(response(service, worker, 1));
+    const messageIndex = await admitSource(engine, worker, service);
+    expect(engine.requestActivity(activityRequest())).not.toBeNull();
+    worker.emit(response(service, worker, messageIndex));
 
     expect(activityRevisions).toEqual([1]);
     expect(backends[0]?.events).toContain("activity:1");
@@ -357,9 +378,7 @@ describe("Friends Galaxy product engine", () => {
       },
     });
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    const messageIndex = await admitSource(engine, worker, service);
     engine.setInteraction({
       selectedNodeId: "person:product-person-2",
       hoveredNodeId: null,
@@ -369,7 +388,7 @@ describe("Friends Galaxy product engine", () => {
       hoveredNodeId: "account:product-account-2",
     });
 
-    expect(worker.messages).toHaveLength(1);
+    expect(worker.messages).toHaveLength(messageIndex);
     expect(engine.interactionState).toEqual({
       selectedNodeId: "person:product-person-2",
       hoveredNodeId: "account:product-account-2",
@@ -378,7 +397,7 @@ describe("Friends Galaxy product engine", () => {
     expect(backends[1]?.events).toContain(
       "interaction:person:product-person-2:account:product-account-2",
     );
-    expect(worker.messages).toHaveLength(1);
+    expect(worker.messages).toHaveLength(messageIndex);
   });
 
   it("admits bounded presentation metadata while the camera is moving", async () => {
@@ -399,15 +418,13 @@ describe("Friends Galaxy product engine", () => {
     });
 
     engine.resize(390, 844, 1);
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    const messageIndex = await admitSource(engine, worker, service);
     const settledEventCount = backend.events.filter((event) =>
       event.startsWith("settled:")
     ).length;
     engine.requestSettledPresentation(presentationRequest());
     engine.setCameraMotion(true);
-    worker.emit(response(service, worker, 1));
+    worker.emit(response(service, worker, messageIndex));
 
     expect(presentationRevisions).toEqual([1]);
     expect(backend.presentationAtlas).not.toBeNull();
@@ -432,18 +449,16 @@ describe("Friends Galaxy product engine", () => {
     });
 
     engine.resize(390, 844, 1);
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    const messageIndex = await admitSource(engine, worker, service);
     engine.setCameraMotion(true);
     engine.panCameraBy(18, -12);
-    expect(engine.requestCameraPresentation(1)).toBe(2);
+    expect(engine.requestCameraPresentation(1)).not.toBeNull();
     const settledEventCount = backend.events.filter((event) =>
       event.startsWith("settled:")
     ).length;
 
     engine.setCameraMotion(false);
-    worker.emit(response(service, worker, 1));
+    worker.emit(response(service, worker, messageIndex));
 
     expect(backend.presentationAtlas).not.toBeNull();
     expect(backend.events.filter((event) => event.startsWith("settled:"))).toHaveLength(
@@ -471,12 +486,9 @@ describe("Friends Galaxy product engine", () => {
       onSourceSceneReady: (result) => sourceRevisions.push(result.sourceRevision),
     });
 
-    engine.requestSource(sourceRequest(1, 12, 48));
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    await admitSource(engine, worker, service, 1, 12, 48);
     engine.setCameraMotion(true);
-    engine.requestSource(sourceRequest(2, 9, 27));
-    worker.emit(response(service, worker, 1));
+    await admitSource(engine, worker, service, 2, 9, 27);
 
     expect(sourceRevisions).toEqual([1]);
     expect(engine.activeSourceRevision).toBe(1);
@@ -507,9 +519,7 @@ describe("Friends Galaxy product engine", () => {
     engine.setViewportInsets({ top: 0, right: 0, bottom: 0, left: 356 });
     expect(engine.fitAll()).toBe(false);
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    const messageIndex = await admitSource(engine, worker, service);
     expect(engine.cameraFrame).not.toBeNull();
     expect(engine.fitAll()).toBe(true);
     const fitted = engine.cameraTransform;
@@ -537,9 +547,9 @@ describe("Friends Galaxy product engine", () => {
 
     expect(engine.requestCameraPresentation(4, {
       selectedPersonId: "product-person-2",
-    })).toBe(2);
-    expect(worker.messages).toHaveLength(2);
-    const request = worker.messages[1];
+    })).not.toBeNull();
+    expect(worker.messages).toHaveLength(messageIndex + 1);
+    const request = worker.messages[messageIndex];
     expect(request?.kind).toBe("presentation");
     if (request?.kind !== "presentation") {
       throw new Error("Expected a presentation request.");
@@ -551,7 +561,7 @@ describe("Friends Galaxy product engine", () => {
   });
 
   it("invalidates an initializing source scene when a newer revision arrives", async () => {
-    const workers: ControlledProductWorker[] = [];
+    const worker = new ControlledProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     let releaseFirst: () => void = () => {};
     const firstGate = new Promise<void>((resolve) => {
@@ -560,11 +570,7 @@ describe("Friends Galaxy product engine", () => {
     const backends: ProductRendererBackend[] = [];
     const engine = new FriendsGalaxyProductEngine({
       palette: FRIENDS_GALAXY_THEME_PALETTES.midas,
-      createWorker: () => {
-        const worker = new ControlledProductWorker();
-        workers.push(worker);
-        return worker;
-      },
+      createWorker: () => worker,
       createSurface: () => ({}) as HTMLCanvasElement,
       mountSurface: () => undefined,
       showSurface: () => undefined,
@@ -579,11 +585,9 @@ describe("Friends Galaxy product engine", () => {
       },
     });
 
-    engine.requestSource(sourceRequest(1, 4, 12));
-    workers[0]!.emit(response(service, workers[0]!, 0));
+    await admitSource(engine, worker, service, 1, 4, 12);
     await Promise.resolve();
-    engine.requestSource(sourceRequest(2, 9, 27));
-    workers[0]!.emit(response(service, workers[0]!, 1));
+    await admitSource(engine, worker, service, 2, 9, 27);
     await flushActivation();
 
     expect(engine.activeSourceRevision).toBe(2);
@@ -592,8 +596,7 @@ describe("Friends Galaxy product engine", () => {
     releaseFirst();
     await flushActivation();
     expect(backends[0]?.disposed).toBe(true);
-    expect(workers).toHaveLength(1);
-    expect(workers[0]?.terminated).toBe(false);
+    expect(worker.terminated).toBe(false);
   });
 
   it("disposes its worker and active renderer exactly once", async () => {
@@ -610,15 +613,20 @@ describe("Friends Galaxy product engine", () => {
       createBackend: async () => backend,
     });
 
-    engine.requestSource(sourceRequest());
-    worker.emit(response(service, worker, 0));
-    await flushActivation();
+    await admitSource(engine, worker, service);
     engine.dispose();
     engine.dispose();
 
     expect(worker.terminated).toBe(true);
     expect(backend.events.filter((event) => event === "dispose")).toHaveLength(1);
-    expect(() => engine.requestSource(sourceRequest(2))).toThrow(
+    expect(() => engine.requestNormalizedSource(
+      productNormalizedSourceInput({ accountCount: 27, personCount: 9, sourceRevision: 2 }),
+      createFriendsGalaxyProductSqliteQuery({
+        accountCount: 27,
+        personCount: 9,
+        sourceRevision: 2,
+      }),
+    )).toThrow(
       "Friends Galaxy product engine is disposed.",
     );
   });

@@ -2,122 +2,16 @@
 
 import type {
   Account,
-  ContentSignalBackfillSummary,
   FeedItem,
-  Friend,
   Person,
-  ReachOutLog,
   RssFeed,
-  SampleDataClearSummary,
   UserPreferences,
-  DesktopClientRegistration,
 } from "@freed/shared";
-import type { FeedItemRow } from "@freed/shared/projection";
-import type {
-  LibraryCoreFeedBrowseFilterInputV1,
-  LibraryCoreFeedBrowseFilterV1,
-} from "@freed/shared/library-core";
-import type { StorageRevision } from "@freed/sync/types";
-
-export type DocumentHistoryRelation =
-  | "equal"
-  | "local-ahead"
-  | "incoming-ahead"
-  | "diverged";
-
-// ---------------------------------------------------------------------------
-// Hydrated state - identical to PWA's DocState (imported for type safety)
-// ---------------------------------------------------------------------------
-
-export interface DocState {
-  items: FeedItem[];
-  searchCorpusVersion: number;
-  feeds: Record<string, RssFeed>;
-  persons: Record<string, Person>;
-  accounts: Record<string, Account>;
-  friends: Record<string, Friend>;
-  preferences: UserPreferences;
-  desktopClientIds: string[];
-  feedUnreadCounts: Record<string, number>;
-  feedTotalCounts: Record<string, number>;
-  totalUnreadCount: number;
-  unreadCountByPlatform: Record<string, number>;
-  totalItemCount: number;
-  itemCountByPlatform: Record<string, number>;
-  totalArchivableCount: number;
-  archivableCountByPlatform: Record<string, number>;
-  archivableFeedCounts: Record<string, number>;
-  mapFriendLocationCount: number;
-  mapAllContentLocationCount: number;
-  /** Total feed-item records in the CRDT, including hidden and archived items. */
-  docItemCount: number;
-}
-
-export interface FeedItemPatch {
-  item: FeedItem;
-  /** Exact pre-mutation value used to update shell counts without retaining the corpus. */
-  previousItem?: FeedItem | null;
-}
-
-export interface RssFeedPatch {
-  feeds: Record<string, RssFeed>;
-  removedUrls: string[];
-}
 
 export type RssFeedRefreshUpdate = Pick<RssFeed, "url"> &
   Partial<Pick<RssFeed, "lastFetched" | "title" | "siteUrl">>;
 
-export interface LibraryCoreExternalSnapshotV1 {
-  schemaVersion: 1;
-  storageRevision: StorageRevision;
-  byteLength: number;
-}
-
-export interface LibraryCoreFeedBrowseGenerationBindingV1 {
-  readonly generationId: string;
-  readonly sourceDocumentId: string;
-  readonly sourceHeadsDigest: string;
-  readonly sourceHeadCount: number;
-  readonly transitionSequence: number;
-  readonly projectionRevision: number;
-  readonly filterJson: string;
-  readonly rankingClockMs: number;
-  readonly recommendationOrderSchemaVersion: 1;
-  readonly totalRows: number;
-}
-
-export interface LibraryCoreFeedBrowseProjectedRowV1 {
-  readonly priority: number;
-  readonly publishedAt: number;
-  readonly sourceSequence: number;
-  readonly globalId: string;
-  readonly cardJson: string;
-}
-
-export interface LibraryCoreFeedBrowseProjectionBatchV1 {
-  readonly sessionId: string;
-  readonly binding: LibraryCoreFeedBrowseGenerationBindingV1;
-  readonly batchIndex: number;
-  readonly rows: readonly LibraryCoreFeedBrowseProjectedRowV1[];
-  readonly projectedRows: number;
-  readonly done: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Main thread → worker
-// ---------------------------------------------------------------------------
-
-export type WorkerRequest =
-  // Lifecycle
-  | {
-      reqId: number;
-      type: "INIT";
-      desktopClientRegistration?: DesktopClientRegistration;
-      rendererItemHydrationEnabled?: boolean;
-    }
-  | { reqId: number; type: "QUIESCE" }
-  | { reqId: number; type: "CLEAR_LOCAL" }
-  // Mutations shared with PWA
+export type LibraryMutationRequest =
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
@@ -197,36 +91,6 @@ export type WorkerRequest =
       type: "UPDATE_PREFERENCES";
       updates: Partial<UserPreferences>;
     }
-  | { reqId: number; type: "ADD_PERSON"; person: Person }
-  | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
-  | {
-      reqId: number;
-      type: "UPDATE_PERSON";
-      personId: string;
-      updates: Partial<Person>;
-    }
-  | {
-      reqId: number;
-      type: "UPSERT_CONNECTION_PERSONS";
-      candidates: Array<{ person: Person; accountIds: string[] }>;
-    }
-  | { reqId: number; type: "REMOVE_PERSON"; personId: string }
-  | {
-      reqId: number;
-      type: "LOG_REACH_OUT";
-      personId: string;
-      entry: ReachOutLog;
-    }
-  | { reqId: number; type: "ADD_ACCOUNT"; account: Account }
-  | { reqId: number; type: "ADD_ACCOUNTS"; accounts: Account[] }
-  | {
-      reqId: number;
-      type: "UPDATE_ACCOUNT";
-      accountId: string;
-      updates: Partial<Account>;
-    }
-  | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
-  // Desktop-specific mutations
   | {
       reqId: number;
       type: "BATCH_REFRESH_FEEDS";
@@ -234,304 +98,34 @@ export type WorkerRequest =
       items: FeedItem[];
     }
   | { reqId: number; type: "BATCH_IMPORT_ITEMS"; items: FeedItem[] }
-  | { reqId: number; type: "HEAL_UNTITLED_FEEDS" }
-  | { reqId: number; type: "DEDUPLICATE_ITEMS" }
-  | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
-  | { reqId: number; type: "GET_ALL_ITEM_IDS" }
-  | { reqId: number; type: "GET_DOC_BINARY" }
-  | { reqId: number; type: "GET_COMMITTED_DOC" }
-  | { reqId: number; type: "GET_HEADS" }
-  | { reqId: number; type: "GET_LIBRARY_CORE_PROJECTION_SOURCE" }
-  | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
-  | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
-  | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
-  | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
-  | {
-      reqId: number;
-      type: "BEGIN_LIBRARY_CORE_PROJECTION";
-      sessionId: string;
-    }
-  | {
-      reqId: number;
-      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH";
-      sessionId: string;
-      batchIndex: number;
-    }
-  | {
-      reqId: number;
-      type: "CANCEL_LIBRARY_CORE_PROJECTION";
-      sessionId: string;
-    }
-  | {
-      reqId: number;
-      type: "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION";
-      sessionId: string;
-      filter?: LibraryCoreFeedBrowseFilterInputV1;
-      rankingClockMs: number;
-    }
-  | {
-      reqId: number;
-      type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH";
-      sessionId: string;
-      batchIndex: number;
-    }
-  | {
-      reqId: number;
-      type: "CANCEL_LIBRARY_CORE_FEED_BROWSE_PROJECTION";
-      sessionId: string;
-    }
-  | {
-      reqId: number;
-      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT";
-      sessionId: string;
-    }
-  | {
-      reqId: number;
-      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK";
-      sessionId: string;
-      offset: number;
-    }
-  | {
-      reqId: number;
-      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT";
-      sessionId: string;
-    }
-  | {
-      reqId: number;
-      type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT";
-      sessionId: string;
-    }
-  /**
-   * Acquire or release the temporary full-corpus compatibility projection.
-   * The default Desktop shell receives no item array.
-   */
-  | {
-      reqId: number;
-      type: "SET_RENDERER_ITEM_HYDRATION";
-      enabled: boolean;
-    }
-  ;
+  | { reqId: number; type: "HEAL_UNTITLED_FEEDS" };
 
-export type DocChangeEvent =
+export type LibraryMutationEvent =
   | {
       source: "state_update";
-      mutation?: WorkerRequest["type"];
+      mutation?: LibraryMutationRequest["type"];
       changedItemIds: null;
       changedItems?: undefined;
       requiresFullScan: true;
     }
   | {
       source: "preferences_patch";
-      mutation?: WorkerRequest["type"];
+      mutation?: LibraryMutationRequest["type"];
       changedItemIds: null;
       changedItems: [];
       requiresFullScan: false;
     }
   | {
       source: "item_patch";
-      mutation?: WorkerRequest["type"];
+      mutation?: LibraryMutationRequest["type"];
       changedItemIds: string[];
       changedItems: FeedItem[];
       requiresFullScan: false;
     }
   | {
       source: "feeds_patch";
-      mutation?: WorkerRequest["type"];
+      mutation?: LibraryMutationRequest["type"];
       changedItemIds: null;
       changedItems: [];
       requiresFullScan: false;
     };
-
-// ---------------------------------------------------------------------------
-// Worker → main thread
-// ---------------------------------------------------------------------------
-
-export type WorkerErrorCode =
-  | "AUTOMERGE_PERSISTENCE_FAILED"
-  | "CORRUPT_DOCUMENT"
-  | "DOCUMENT_LOAD_FAILED"
-  | "STALE_DOCUMENT_REVISION";
-
-export interface CommittedDocSnapshot {
-  binary: Uint8Array;
-  heads: string[];
-  revision: StorageRevision;
-  itemCount: number;
-  friendCount: number;
-}
-
-export interface LibraryCoreProjectionSourceV1 {
-  readonly schemaVersion: 1;
-  readonly documentId: string;
-  readonly headsDigest: string;
-  readonly headCount: number;
-  readonly storageRevision: StorageRevision;
-}
-
-export interface LibraryCoreProjectionBatchV1 {
-  readonly sessionId: string;
-  readonly source: LibraryCoreProjectionSourceV1;
-  readonly batchIndex: number;
-  readonly rows: FeedItemRow[];
-  readonly rowBytes: number;
-  readonly projectedRows: number;
-  readonly totalRows: number;
-  readonly done: boolean;
-}
-
-export type WorkerResponse =
-  /** Simple acknowledgement for mutations that return void */
-  | { reqId: number; type: "ACK"; error?: string; errorCode?: WorkerErrorCode }
-  /** Broadcast on every doc mutation - main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
-  /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
-  | {
-      type: "PREFERENCES_PATCH";
-      updates: Partial<UserPreferences>;
-      mutation?: WorkerRequest["type"];
-    }
-  /** Small mutation update that avoids cloning and hydrating the full document. */
-  | {
-      type: "ITEM_PATCH";
-      patches: FeedItemPatch[];
-      changedItemIds: string[];
-      addedItemIds?: string[];
-      removedItemIds?: string[];
-      mutation?: WorkerRequest["type"];
-      orderedItemIds?: string[];
-      preservePriorityOrder?: boolean;
-      searchCorpusVersion?: number;
-      docItemCount?: number;
-    }
-  /** RSS feed metadata mutation that avoids hydrating every feed item. */
-  | {
-      type: "FEEDS_PATCH";
-      patch: RssFeedPatch;
-      mutation?: WorkerRequest["type"];
-    }
-  /** Debug panel event forwarding */
-  | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
-  /** Doc size snapshot for the debug panel */
-  | {
-      type: "DEBUG_SNAPSHOT";
-      documentId: string;
-      itemCount: number;
-      feedCount: number;
-      binarySize: number;
-    }
-  /** Sent once when the worker module finishes loading */
-  | { type: "READY" }
-  /** On-demand full item-id snapshot for import dedup pre-scan. */
-  | { reqId: number; type: "ALL_ITEM_IDS"; ids: string[] }
-  /** On-demand full document binary for relay, snapshots, and cloud uploads. */
-  | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
-  /** One defensive view of the exact durable document and its revision. */
-  | ({ reqId: number; type: "COMMITTED_DOC" } & CommittedDocSnapshot)
-  /**
-   * Current Automerge heads (or heads at last save when the doc is idle-
-   * unloaded). Never forces a document load; null before the first INIT.
-   */
-  | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
-  /** Exact durable source identity without retaining or returning the corpus. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_PROJECTION_SOURCE";
-      source: LibraryCoreProjectionSourceV1;
-    }
-  /** Automerge history containment of an incoming document relative to local. */
-  | {
-      reqId: number;
-      type: "DOC_RELATIONSHIP";
-      relation: DocumentHistoryRelation;
-    }
-  /** Canonical URLs for every saved YouTube item in the complete document. */
-  | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
-  /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
-  | { type: "INIT_STATS"; durationMs: number; docBytes: number }
-  /** On-demand preserved article text for the active reader item. */
-  | {
-      reqId: number;
-      type: "ITEM_PRESERVED_TEXT";
-      globalId: string;
-      text: string | null;
-    }
-  /** On-demand compatibility HTML retained from older synced documents. */
-  | {
-      reqId: number;
-      type: "ITEM_LEGACY_HTML";
-      globalId: string;
-      html: string | null;
-    }
-  /** Exact durable source bound to one bounded projection session. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_PROJECTION_STARTED";
-      sessionId: string;
-      source: LibraryCoreProjectionSourceV1;
-      totalRows: number;
-      nextBatchIndex: number;
-      projectedRows: number;
-      maximumBatchRows: number;
-      maximumBatchBytes: number;
-    }
-  /** One replayable bounded projection batch from the pinned source. */
-  | ({
-      reqId: number;
-      type: "LIBRARY_CORE_PROJECTION_BATCH";
-    } & LibraryCoreProjectionBatchV1)
-  /** Exact normalized browse binding for one bounded worker projection. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED";
-      sessionId: string;
-      binding: LibraryCoreFeedBrowseGenerationBindingV1;
-      filter: LibraryCoreFeedBrowseFilterV1;
-      nextBatchIndex: number;
-      projectedRows: number;
-      maximumBatchRows: number;
-    }
-  /** One replayable 128-row browse page from the pinned source. */
-  | ({
-      reqId: number;
-      type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH";
-    } & LibraryCoreFeedBrowseProjectionBatchV1)
-  /** One undecoded durable snapshot held for bounded external export. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED";
-      sessionId: string;
-      source: LibraryCoreExternalSnapshotV1;
-      maximumChunkBytes: number;
-    }
-  /** One copied bounded chunk. Its buffer is transferred to the main thread. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK";
-      sessionId: string;
-      source: LibraryCoreExternalSnapshotV1;
-      offset: number;
-      nextOffset: number;
-      bytes: Uint8Array;
-      done: boolean;
-    }
-  /** The IndexedDB revision still matches the exported source exactly. */
-  | {
-      reqId: number;
-      type: "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED";
-      sessionId: string;
-      source: LibraryCoreExternalSnapshotV1;
-    }
-  /** One-batch content signal backfill summary. */
-  | {
-      reqId: number;
-      type: "CONTENT_SIGNAL_BACKFILL_RESULT";
-      summary: ContentSignalBackfillSummary;
-    }
-  /** Clear generated sample data result. */
-  | {
-      reqId: number;
-      type: "SAMPLE_DATA_CLEAR_RESULT";
-      summary: SampleDataClearSummary;
-    }
-  /** Progress reporting for BATCH_IMPORT_ITEMS. */
-  | { type: "IMPORT_PROGRESS"; chunkIndex: number; totalChunks: number };

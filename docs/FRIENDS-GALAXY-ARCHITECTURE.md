@@ -280,8 +280,8 @@ The cutover should preserve existing test IDs where they still describe the prod
 | Canonical graph content | `smoke.spec.ts`: confirmed friends, provisional people, and channels render together | Keep Person plus Account identity systems, Friends and All Content modes, and provider sectors |
 | Explicit relationship changes | `smoke.spec.ts`: suggestion promotion, linked-account promotion, and relationship slider | Keep Followed, Friends, and Fam actions explicit. Rename internal drop terminology during cutover without restoring node drag |
 | Suggestions | `smoke.spec.ts`: ranked suggestion promote and dismiss | Keep local ranking, explanation, confirmation, and non-destructive dismissal |
-| Context linking | `smoke.spec.ts`: channel context-menu link survives reload | Keep account context menu, searchable person picker, canonical document mutation, and reload proof |
-| Device-local pinning | `smoke.spec.ts`: person context-menu pin survives reload without Automerge fields | Keep context-menu-only pinning and the device layout store. Pan must never create pins |
+| Context linking | `smoke.spec.ts`: channel context-menu link survives reload | Keep account context menu, searchable person picker, typed SQLite mutation, and reload proof |
+| Device-local pinning | `smoke.spec.ts`: person context-menu pin survives reload without synchronized fields | Keep context-menu-only pinning and the device layout store. Pan must never create pins |
 | Labels during movement | `smoke.spec.ts`: zoom labels remain visible, the layout counter advances, the roster stays density-capped, and stress pan causes no semantic scene rebuild | Keep the bounded label texture resident, then reproject and collision-admit the current roster on every changed camera frame |
 | Touch camera | `smoke.spec.ts`: two-touch midpoint pinch and pinch-to-pan continuation | Route native touch, Safari gesture events, wheel, and pointer pan through one locked-camera transform |
 | Reader handoff | `reader-hydration.spec.ts`: author link opens channel details in Friends | Preserve `focusNode(id)` and canonical account selection across lazy engine startup |
@@ -420,7 +420,7 @@ The product cutover removes those three hazards. `FriendGraph.tsx` no longer imp
 
 The exact activity-summary index now lives under shared UI source at `packages/ui/src/lib/friends-galaxy-activity-index.ts`, with its sparse scene encoder beside it at `packages/ui/src/lib/friends-galaxy-activity-patches.ts`. The detached laboratory imports both modules directly. The index deliberately retains state proportional to social and RSS source count rather than feed-item count. Each source bucket holds only total and location counts, the latest three sample candidates, and the latest three distinct avatar candidates. Snapshot records use null prototypes and clone their bounded arrays so hostile source keys and external mutation cannot alter retained state. Scene bindings reject invalid 32-bit indices and prevent one semantic node from inheriting conflicting activity sources.
 
-Normal additions, updates that do not replace a leading candidate, and removals outside the bounded candidates produce key-level summary patches without a library scan. If a destructive mutation removes a leading sample or avatar candidate, the index invalidates only that source. The owning document worker performs one resolver pass over its current authoritative document and rebuilds only the invalidated source buckets. No rebuild, sort, or item traversal occurs on the React thread.
+Normal additions, updates that do not replace a leading candidate, and removals outside the bounded candidates produce key-level summary patches without a Library scan. If a destructive mutation removes a leading sample or avatar candidate, the index invalidates only that source. Generated SQLite queries rebuild only the invalidated source bucket under one source fence. No rebuild, sort, or item traversal occurs on the React thread.
 
 The deterministic stress test represents 250,000 feed items across 25,000 source summaries. A subsequent addition changes one summary patch, reports zero rebuilt sources, and leaves item payloads out of the graph fixture. This is structural correctness evidence, not a timing benchmark.
 
@@ -431,12 +431,12 @@ The detached laboratory also includes an activity-to-scene patch encoder. It bin
 ### Production activity protocol
 
 1. Reuse the shared UI contribution, summary, delta, index, and scene-patch modules in Freed Desktop and PWA. Do not fork or translate their source-key and typed-array contracts.
-2. Let each Automerge worker own the index. Initial hydration builds it while the worker already traverses the authoritative feed-item document. Full document replacement, merge, reset, and schema recovery rebuild it in the worker.
-3. At incremental mutation boundaries, derive previous and next contributions from the immutable document before and after `A.change()`. Attach source-key summary patches and a monotonic summary revision to the existing item-patch response.
-4. Keep one derived activity bridge outside React. It applies key patches without cloning the complete 25,000-key snapshot and exposes a revision for subscribers. `FriendsView` subscribes to that revision and compact summary snapshot, never to the complete `items` array for graph or overview entry.
-5. Build friend overview rows from persons, account indexes, and summaries. Avatar candidates, captured counts, recent activity, and location flags come from summaries rather than retained item arrays.
-6. Add an on-demand worker query for the selected person or account timeline. Only the detail rail receives those full items. Selection changes cancel stale requests, and closing details releases the item array.
-7. Precompute the bounded friend-candidate suggestion list in the document worker from content signals and contact overlap. Friends consumes the resulting top suggestions instead of rescoring every item on mount.
-8. Give the graph atlas worker one initial compact summary snapshot and later source-key patches. Its source-to-scene encoder turns activity-only changes into sorted node-index typed patches for brightness, size, location, and avatar metadata without rebuilding stable galaxy coordinates or resending the complete semantic scene. Unknown source keys request a structural atlas refresh rather than being silently dropped.
+2. Build graph roots from bounded `persons_graph_v1`, `accounts_graph_v1`, and `rss_feeds_graph_v1` SQLite pages under one canonical and device-layout fence.
+3. Consume the local invalidation feed after typed mutations. Reload only affected identities or source buckets through exact bounded queries.
+4. Keep one compact activity bridge outside React. It applies source-key patches and exposes a revision without retaining a Library corpus.
+5. Build friend overview rows from normalized Person and Account queries. Avatar candidates, captured counts, recent activity, and location flags come from bounded SQLite projections.
+6. Query selected Person and Account timelines on demand. Selection changes cancel stale requests, and closing details releases the visible page.
+7. Read the bounded friend-candidate review page from SQLite. Friends never rescans content signals or contact overlap in React.
+8. Give the graph atlas worker compact graph pages and later source-key patches. Unknown source keys request a bounded structural refresh rather than being silently dropped.
 
 This protocol removes the remaining `FriendsView` mount scans: feed-item record materialization, graph summary construction, source-item indexing, overview item grouping, candidate rescoring, and selected-account filtering. Account-to-person indexes also move off the React render path. Existing `Person` plus `Account` records and every explicit identity workflow remain unchanged.
