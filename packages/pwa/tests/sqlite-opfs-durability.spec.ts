@@ -426,6 +426,45 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
   }
 });
 
+test("iPhone WebKit completes interrupted sample population after restart", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-interrupted-sample-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    let opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    await expect(
+      opened.page.getByText("Adding items: 30%", { exact: true }),
+    ).toBeVisible({ timeout: 90_000 });
+    const interrupted = await readFacetSummary(opened.page);
+    expect(interrupted).toMatchObject({
+      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+      sampleItemCount: 0,
+      samplePersonCount: 0,
+    });
+
+    await context.close();
+    context = null;
+    opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    await expectShowcaseSampleData(opened.page, {
+      rssFeedCount: 0,
+      sampleAccountCount: 0,
+      sampleFeedCount: 0,
+      sampleItemCount: 0,
+      samplePersonCount: 0,
+      totalCount: 0,
+    });
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
 test("iPhone WebKit rejects a corrupted accepted OPFS SQLite generation", async () => {
   test.setTimeout(180_000);
   const profileRoot = await mkdtemp(
