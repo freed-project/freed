@@ -37,6 +37,24 @@ export type SampleDataImportProgressListener = (
   progress: SampleDataImportProgress,
 ) => void;
 
+export type SampleDataClearPhase =
+  | "preparing"
+  | "accounts"
+  | "people"
+  | "feeds"
+  | "items"
+  | "settling"
+  | "complete";
+
+export interface SampleDataClearProgress {
+  readonly percent: number;
+  readonly phase: SampleDataClearPhase;
+}
+
+export type SampleDataClearProgressListener = (
+  progress: SampleDataClearProgress,
+) => void;
+
 export type SocialContentFilter = "all" | "posts" | "stories";
 
 /**
@@ -182,7 +200,9 @@ export interface BaseAppState {
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
   /** Permanently remove generated sample data that carries the internal fingerprint. */
-  clearSampleData: () => Promise<SampleDataClearSummary>;
+  clearSampleData: (
+    onProgress?: SampleDataClearProgressListener,
+  ) => Promise<SampleDataClearSummary>;
   /** Add a generated sample library and report durable import progress. */
   addSampleLibraryData: (
     data: SampleLibraryData,

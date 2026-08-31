@@ -329,7 +329,7 @@ interface AppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
-  clearSampleData: () => Promise<SampleDataClearSummary>;
+  clearSampleData: BaseAppState["clearSampleData"];
   addSampleLibraryData: BaseAppState["addSampleLibraryData"];
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
@@ -1012,8 +1012,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  clearSampleData: async () => {
-    return clearSampleLibraryData();
+  clearSampleData: async (onProgress) => {
+    onProgress?.({ percent: 0, phase: "preparing" });
+    const summary = await clearSampleLibraryData();
+    onProgress?.({ percent: 100, phase: "complete" });
+    return summary;
   },
 
   addSampleLibraryData: async (data: SampleLibraryData, onProgress) => {

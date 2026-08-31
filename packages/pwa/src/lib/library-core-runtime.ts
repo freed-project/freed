@@ -8,6 +8,7 @@ import {
   type ReachOutLog,
   type RssFeed,
   type SampleDataClearSummary,
+  type SampleDataClearProgressListener,
   type UserPreferences,
 } from "@freed/shared";
 import {
@@ -765,9 +766,38 @@ export async function enqueuePwaLibraryCoreRssFeedTitleAssignment(
 }
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */
-export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSummary> {
+export async function clearPwaLibraryCoreSampleData(
+  onProgress?: SampleDataClearProgressListener,
+): Promise<SampleDataClearSummary> {
+  onProgress?.({ percent: 0, phase: "preparing" });
   const { feedUrls, itemIds, personIds, realLinkedAccounts, sampleAccountIds } =
     await collectLibraryCoreSampleRemovalPlanV1(NORMALIZED_READER_RUNTIME);
+
+  const totalUnits =
+    realLinkedAccounts.length +
+    sampleAccountIds.length +
+    personIds.length +
+    feedUrls.length +
+    itemIds.length;
+  let completedUnits = 0;
+  let lastProgressKey = "preparing:0";
+  const advance = (
+    phase: Exclude<
+      Parameters<SampleDataClearProgressListener>[0]["phase"],
+      "preparing" | "settling" | "complete"
+    >,
+    count: number,
+  ) => {
+    completedUnits += count;
+    const percent = Math.min(
+      90,
+      Math.floor((completedUnits / Math.max(totalUnits, 1)) * 10) * 10,
+    );
+    const key = `${phase}:${percent}`;
+    if (key === lastProgressKey) return;
+    lastProgressKey = key;
+    onProgress?.({ percent, phase });
+  };
 
   const updatedAt = Date.now();
   await enqueuePwaLibraryCoreAccountUpserts(
@@ -778,60 +808,58 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
         updatedAt,
       };
     }),
+    (count) => advance("accounts", count),
   );
   for (
     let offset = 0;
     offset < sampleAccountIds.length;
     offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreAccountRemoves(
-      sampleAccountIds.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
-      ),
-      updatedAt,
+    const batch = sampleAccountIds.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreAccountRemoves(batch, updatedAt);
+    advance("accounts", batch.length);
   }
   for (
     let offset = 0;
     offset < personIds.length;
     offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCorePersonRemoves(
-      personIds.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
-      ),
-      updatedAt,
+    const batch = personIds.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
     );
+    await commitPwaLibraryCorePersonRemoves(batch, updatedAt);
+    advance("people", batch.length);
   }
   for (
     let offset = 0;
     offset < feedUrls.length;
     offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreRssFeedRemoves(
-      feedUrls.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
-      ),
-      false,
-      updatedAt,
+    const batch = feedUrls.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreRssFeedRemoves(batch, false, updatedAt);
+    advance("feeds", batch.length);
   }
   for (
     let offset = 0;
     offset < itemIds.length;
     offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreFeedItemRemoves(
-      itemIds.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
-      ),
-      updatedAt,
+    const batch = itemIds.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreFeedItemRemoves(batch, updatedAt);
+    advance("items", batch.length);
   }
+
+  onProgress?.({ percent: 90, phase: "settling" });
 
   return {
     feeds: feedUrls.length,

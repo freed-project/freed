@@ -33,6 +33,7 @@ import { useDebugStore } from "../lib/debug-store.js";
 import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
+  clearSampleLibraryDataWithProgressToast,
   formatSampleDataSummary,
   populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
@@ -920,20 +921,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleClearSampleData = useCallback(async () => {
     setClearingSampleData(true);
-    toast.info("Clearing sample data...");
     try {
-      const summary = await clearSampleData();
+      await clearSampleLibraryDataWithProgressToast({ clearSampleData });
       setSeedDone(false);
       setShowSampleClearConfirm(false);
-      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : typeof error === "string" && error.length > 0
-            ? error
-            : "Failed to clear sample data",
-      );
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setClearingSampleData(false);
     }
