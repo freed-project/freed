@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { getWebsiteHostForChannel, type ReleaseChannel } from "@freed/shared";
+import {
+  getWebsiteHostForChannel,
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
@@ -95,6 +102,7 @@ import {
   replacePwaLibraryCoreFriend,
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
+  settlePwaLibraryCoreLocalSampleState,
   upsertPwaLibraryCorePerson,
   upsertPwaLibraryCoreAccount,
 } from "./lib/library-core-runtime";
@@ -104,7 +112,10 @@ import {
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
 } from "./lib/library-core-sqlite-runtime";
-import { populateSampleLibraryDataWithProgressToast } from "@freed/ui/lib/sample-library-seed";
+import {
+  clearSampleLibraryDataWithProgressToast,
+  populateSampleLibraryDataWithProgressToast,
+} from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -287,16 +298,30 @@ function App() {
     if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
     void (async () => {
       await ensurePwaLibraryCoreLocalSampleState();
+      await settlePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
+      const sampleIsComplete =
+        facets.sampleAccountCount >=
+          SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
+        facets.sampleFeedCount >= SAMPLE_SHOWCASE_FEED_COUNT &&
+        facets.sampleItemCount >= SAMPLE_SHOWCASE_ITEM_COUNT &&
+        facets.samplePersonCount >= SAMPLE_SHOWCASE_FRIEND_COUNT;
+      if (sampleIsComplete) return;
       const sampleTotal =
         facets.sampleAccountCount +
         facets.sampleFeedCount +
         facets.sampleItemCount +
         facets.samplePersonCount;
-      if (sampleTotal > 0) return;
-      await populateSampleLibraryDataWithProgressToast(useAppStore.getState());
+      const actions = useAppStore.getState();
+      if (sampleTotal > 0) {
+        await clearSampleLibraryDataWithProgressToast(actions);
+      }
+      await populateSampleLibraryDataWithProgressToast(actions);
     })().catch((error) => {
-      console.error("[sample-data] failed to seed local preview data:", error);
+      console.error(
+        "[sample-data] failed to seed local preview data:",
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      );
     });
   }, [isInitialized]);
 
