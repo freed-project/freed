@@ -664,7 +664,9 @@ export function Sidebar({
     syncRssNow,
     syncSourceNow,
     getSourceStatus,
+    interactionMode,
   } = usePlatform();
+  const readOnly = interactionMode === "read-only";
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
@@ -1395,7 +1397,9 @@ export function Sidebar({
     );
   };
   const renderSourceMenu = (source: SourceNavigationItem) =>
-    renderRowMenu(sourceKey(source), source.label, canShowSourceMenu(source));
+    readOnly
+      ? null
+      : renderRowMenu(sourceKey(source), source.label, canShowSourceMenu(source));
   const renderFeedMenu = (feed: RssFeed, menuOpen: boolean) => (
     <SidebarNavMenuButton
       countsVisible={rowCountsVisible}
@@ -1733,7 +1737,7 @@ export function Sidebar({
                                           )}
                                           label={feed.title}
                                           labelClass={sidebarFeedLabelClass}
-                                          menu={renderFeedMenu(feed, menuOpen)}
+                                          menu={readOnly ? null : renderFeedMenu(feed, menuOpen)}
                                           menuOpen={menuOpen}
                                           onClick={() => handleFeedClick(feed.url)}
                                           primaryClassName={isMobileDevice ? "text-sm" : ""}
@@ -1999,7 +2003,7 @@ export function Sidebar({
       <SettingsDialog open={showSettings} onClose={closeSettings} />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
-      {openMenuFeedUrl && menuAnchorRect && pagedFeedsByUrl.has(openMenuFeedUrl) && (
+      {!readOnly && openMenuFeedUrl && menuAnchorRect && pagedFeedsByUrl.has(openMenuFeedUrl) && (
         <FeedContextMenu
           feed={pagedFeedsByUrl.get(openMenuFeedUrl)!}
           anchorRect={menuAnchorRect}
@@ -2027,7 +2031,7 @@ export function Sidebar({
         />
       )}
 
-      {selectedMenuSource && sourceMenuAnchorRect && (
+      {!readOnly && selectedMenuSource && sourceMenuAnchorRect && (
         <SourceContextMenu
           source={selectedMenuSource}
           anchorRect={sourceMenuAnchorRect}

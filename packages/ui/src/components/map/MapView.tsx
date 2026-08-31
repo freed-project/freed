@@ -6,7 +6,7 @@ import {
   resolveMapMode,
   type LocationTimeRange,
 } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useResolvedLocationCandidates } from "../../hooks/useResolvedLocations.js";
 import { useLibraryMapCandidates } from "../../hooks/useLibrarySurfaceItems.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
@@ -141,6 +141,7 @@ function labelPositionStyle(
 }
 
 export function MapView({ viewportInsets }: MapViewProps) {
+  const { geographicMapMode = "online" } = usePlatform();
   const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
   const selectedPersonId = useAppStore((state) => state.selectedPersonId);
   const setSelectedPerson = useAppStore((state) => state.setSelectedPerson);
@@ -155,7 +156,9 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const locationCandidates = useLibraryMapCandidates(searchCorpusVersion);
-  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates);
+  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates, {
+    resolveNamedLocations: geographicMapMode !== "local-showcase",
+  });
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
   const timeBounds = useMemo(
     () => (rawTimeBounds ? snapTimeBoundsToDays(rawTimeBounds) : null),

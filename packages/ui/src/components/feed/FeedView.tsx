@@ -388,6 +388,7 @@ export function FeedView() {
     queryLibraryCore,
     upsertLibraryAccount,
   } = platform;
+  const readOnly = platform.interactionMode === "read-only";
   const canAddFeeds = !!addRssFeed;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
@@ -621,6 +622,7 @@ export function FeedView() {
   );
   const markBoundedItemsAsRead = useCallback(
     async (ids: string[]) => {
+      if (readOnly) return;
       if (ids.length > 0) {
         const readIds = new Set(ids);
         const readAt = Date.now();
@@ -635,7 +637,7 @@ export function FeedView() {
       }
       await markItemsAsRead(ids);
     },
-    [markItemsAsRead, patchBoundedItems],
+    [markItemsAsRead, patchBoundedItems, readOnly],
   );
 
   // Search is a separate bounded SQLite window. Ordinary browsing comes from
@@ -828,17 +830,19 @@ export function FeedView() {
   const openItem = useCallback(
     (item: FeedItem) => {
       const selectItem = () => {
-        const readAt = Date.now();
-        patchBoundedItems((candidate) =>
-          candidate.globalId === item.globalId && !candidate.userState.readAt
-            ? {
-                ...candidate,
-                userState: { ...candidate.userState, readAt },
-              }
-            : candidate,
-        );
+        if (!readOnly) {
+          const readAt = Date.now();
+          patchBoundedItems((candidate) =>
+            candidate.globalId === item.globalId && !candidate.userState.readAt
+              ? {
+                  ...candidate,
+                  userState: { ...candidate.userState, readAt },
+                }
+              : candidate,
+          );
+        }
         setSelectedItem(item.globalId);
-        markAsRead(item.globalId);
+        if (!readOnly) markAsRead(item.globalId);
       };
 
       if (showDualColumn && !selectedItemId) {
@@ -856,6 +860,7 @@ export function FeedView() {
     [
       markAsRead,
       patchBoundedItems,
+      readOnly,
       runFeedLayoutTransition,
       selectedItemId,
       setSelectedItem,
@@ -1202,11 +1207,11 @@ export function FeedView() {
         onFocusChange={handleFocusChange}
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
         hasFeedsSubscribed={libraryFacets.rssFeedCount > 0}
-        onItemSave={handleItemSave}
+        onItemSave={readOnly ? undefined : handleItemSave}
         onItemArchive={
-          activeFilter.archivedOnly ? undefined : handleItemArchive
+          readOnly || activeFilter.archivedOnly ? undefined : handleItemArchive
         }
-        onItemLike={toggleLiked ? handleItemLike : undefined}
+        onItemLike={!readOnly && toggleLiked ? handleItemLike : undefined}
         onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
         loading={

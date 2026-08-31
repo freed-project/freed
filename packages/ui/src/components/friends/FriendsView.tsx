@@ -678,7 +678,9 @@ export function FriendsView({
     removeLibraryPerson,
     replaceLibraryFriend,
     upsertLibraryPerson,
+    interactionMode,
   } = usePlatform();
+  const readOnly = interactionMode === "read-only";
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
   const friendCount = libraryFacets.friendPersonCount;
@@ -1392,13 +1394,13 @@ export function FriendsView({
                 {pendingMatchCount.toLocaleString()} contact review
               </span>
             ) : null}
-            <button
+            {!readOnly ? <button
               type="button"
               onClick={() => setEditorState({ kind: "new" })}
               className="btn-primary rounded-lg px-3 py-1.5 text-xs"
             >
               Add friend
-            </button>
+            </button> : null}
           </div>
         </div>
 
@@ -1642,7 +1644,7 @@ export function FriendsView({
           </div>
         </div>
 
-        {selectedPerson && (
+        {selectedPerson && !readOnly && (
           <button
             type="button"
             onClick={() =>
@@ -1655,7 +1657,7 @@ export function FriendsView({
         )}
       </div>
 
-      {selectedPerson ? (
+      {selectedPerson && !readOnly ? (
         <RelationshipTierControl
           value={relationshipTierLevelForPerson(selectedPerson)}
           onChange={(level) =>
@@ -1664,7 +1666,7 @@ export function FriendsView({
         />
       ) : null}
 
-      {selectedPersonFriendSuggestion ? (
+      {selectedPersonFriendSuggestion && !readOnly ? (
         <FriendSuggestionEvidence
           suggestion={selectedPersonFriendSuggestion}
           onPromoteToFriend={() => void handlePromoteSelectedPerson(3)}
@@ -1673,7 +1675,7 @@ export function FriendsView({
         />
       ) : null}
 
-      {selectedPerson && selectedPersonSuggestions.length > 0 ? (
+      {selectedPerson && !readOnly && selectedPersonSuggestions.length > 0 ? (
         <div className="theme-dialog-divider border-b px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1749,6 +1751,7 @@ export function FriendsView({
             onOpenMap={() => {
               handleOpenMapForPerson(selectedPerson.id);
             }}
+            readOnly={readOnly}
           />
         </div>
       ) : null}
@@ -1778,6 +1781,7 @@ export function FriendsView({
         onOpenPerson={(personId) => {
           setSelectedPerson(personId);
         }}
+        readOnly={readOnly}
       />
     );
   };
@@ -1801,12 +1805,12 @@ export function FriendsView({
                 : "Link more channels or switch to All content to explore captured accounts."}
             </p>
           </div>
-          <button
+          {!readOnly ? <button
             className="btn-primary rounded-lg px-4 py-2 text-sm"
             onClick={() => setEditorState({ kind: "new" })}
           >
             Add your first friend
-          </button>
+          </button> : null}
         </div>
       );
     }
@@ -2011,7 +2015,7 @@ export function FriendsView({
             </div>
           </div>
           <div className="mt-4 flex items-center justify-end gap-2">
-            <button
+            {!readOnly ? <button
               type="button"
               onClick={() =>
                 setEditorState({ kind: "edit", personId: selectedPerson.id })
@@ -2019,7 +2023,7 @@ export function FriendsView({
               className={BUTTON_CHROME}
             >
               Edit
-            </button>
+            </button> : null}
             <button
               type="button"
               onClick={() => onFriendsSidebarOpenChange(true)}
@@ -2216,7 +2220,7 @@ export function FriendsView({
         {showCollapsedSelectionCard ? renderCollapsedSelectionCard() : null}
       </div>
 
-      {editorState ? (
+      {editorState && !readOnly ? (
         <FriendEditor
           existing={
             editorState.kind === "edit"

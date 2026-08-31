@@ -23,6 +23,7 @@ const appState = {
 
 vi.mock("../../context/PlatformContext.js", () => ({
   useAppStore: <T,>(selector: (state: BaseAppState) => T) => selector(appState),
+  usePlatform: () => ({ geographicMapMode: "online" }),
 }));
 
 vi.mock("../../hooks/useLibrarySurfaceItems.js", () => ({
