@@ -823,6 +823,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       (backgroundLayer ?? viewport).appendChild(canvasHost);
       canvasHostRef.current = canvasHost;
 
+      const completeRecovery = (surface: HTMLCanvasElement) => {
+        setGraphStatus("");
+        setGraphError(null);
+        delete (
+          window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }
+        ).__FREED_GRAPH_DRAW_ERROR__;
+        if (recoveringRef.current) {
+          const rendererLabel =
+            surface.dataset.rendererId === "raw-webgpu"
+              ? "WebGPU"
+              : "WebGL2 compatibility graphics";
+          setAnnouncement(friendsGalaxyRecoveryAnnouncement(rendererLabel));
+          recoveringRef.current = false;
+        }
+        controllerRef.current?.wake();
+        publishDiagnosticsRef.current();
+      };
+
       const engine = new FriendsGalaxyProductEngine({
         palette: friendsGalaxyRendererPaletteForTheme(themeId),
         rendererId: "raw-webgpu",
@@ -862,21 +880,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
             diagnosticsRef.current.firstVisibleMs =
               completedAt - mountedAtRef.current;
           }
-          delete (
-            window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }
-          ).__FREED_GRAPH_DRAW_ERROR__;
-          if (recoveringRef.current) {
-            const rendererLabel =
-              surface.dataset.rendererId === "raw-webgpu"
-                ? "WebGPU"
-                : "WebGL2 compatibility graphics";
-            setAnnouncement(friendsGalaxyRecoveryAnnouncement(rendererLabel));
-            recoveringRef.current = false;
-          }
-          controllerRef.current?.wake();
-          publishDiagnosticsRef.current();
+          completeRecovery(surface);
         },
         removeSurface: (surface) => surface.remove(),
+        onActivated: ({ retained, surface }) => {
+          if (retained) completeRecovery(surface);
+        },
         onLoading: ({ recovery }) => {
           if (!graphReadyRef.current) {
             setGraphStatus(
