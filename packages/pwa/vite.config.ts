@@ -7,6 +7,11 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import {
+  PWA_OPTIONAL_SURFACE_ASSET_GLOB_IGNORES,
+  PWA_OPTIONAL_SURFACE_CACHE_NAME,
+  PWA_OPTIONAL_SURFACE_URL_PATTERN,
+} from "../../scripts/lib/pwa-optional-assets.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -86,6 +91,16 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
+            urlPattern: PWA_OPTIONAL_SURFACE_URL_PATTERN,
+            handler: "CacheFirst",
+            options: {
+              cacheName: PWA_OPTIONAL_SURFACE_CACHE_NAME,
+              expiration: {
+                maxEntries: 40,
+              },
+            },
+          },
+          {
             // API routes must bypass the service worker entirely — Workbox's
             // NetworkFirst strategy doesn't handle POST requests correctly and
             // will silently hang the fetch (no network request, no error).
@@ -145,7 +160,8 @@ export default defineConfig({
             },
           },
         ],
-        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
+        globIgnores: [...PWA_OPTIONAL_SURFACE_ASSET_GLOB_IGNORES],
         clientsClaim: true,
         skipWaiting: true,
         cleanupOutdatedCaches: true,
