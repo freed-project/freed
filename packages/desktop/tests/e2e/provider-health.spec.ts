@@ -1739,38 +1739,26 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   expect(Math.abs(sidebarIndicatorSizes!.settingsHeight - sidebarIndicatorSizes!.sourceHeight)).toBeLessThanOrEqual(1);
 });
 
-test("provider sync button shows a spinner while that provider is active", async ({ app, page }) => {
+test("toolbar activity status stays mounted across idle, syncing, and completed states", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
   await app.goto();
   await app.waitForReady();
 
   await page.evaluate(async ({ activityStorePath }) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        providerSyncCounts: Record<string, number>;
-      };
-      setState: (partial: Record<string, unknown>) => void;
-    };
-    const current = store.getState().providerSyncCounts;
-    store.setState({
-      xAuth: {
-        isAuthenticated: true,
-        cookies: { ct0: "ct0", authToken: "token" },
-      },
-      fbAuth: {
-        isAuthenticated: true,
-      },
-      providerSyncCounts: {
-        ...current,
-        x: 1,
-      },
-    });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.useBackgroundActivityStore.getState().clearBackgroundActivity();
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-    window.__freed.debug?.()?.addEvent("change", "[X] sync started");
-    window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
-    window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
+  const activityTrigger = page.getByTestId("background-activity-trigger");
+  const activityStatus = page.getByTestId("background-activity-status");
+  await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: No recent activity");
+  await expect(activityStatus).toHaveAttribute("title", "No recent activity");
+  const idleBounds = await activityTrigger.boundingBox();
+  expect(idleBounds).not.toBeNull();
+
+  await page.evaluate(async ({ activityStorePath }) => {
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "channel:x",
@@ -1791,8 +1779,13 @@ test("provider sync button shows a spinner while that provider is active", async
     }
   }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-  const activityTrigger = page.getByTestId("background-activity-trigger");
   await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: Syncing");
+  await expect(activityStatus).toHaveAttribute("title", "Syncing");
+  const syncingBounds = await activityTrigger.boundingBox();
+  expect(syncingBounds).not.toBeNull();
+  expect(syncingBounds!.x).toBe(idleBounds!.x);
+  expect(syncingBounds!.width).toBe(idleBounds!.width);
   await activityTrigger.click();
   const activityPopover = page.getByTestId("background-activity-popover");
   await expect(activityPopover).toBeVisible();
@@ -1831,9 +1824,43 @@ test("provider sync button shows a spinner while that provider is active", async
   await expect(activityPopover).toBeVisible();
   await expect(activityPopover).toContainText("0 active");
   await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: Last activity succeeded");
+  await expect(activityStatus).toHaveAttribute("title", "Last activity succeeded");
+  const completedBounds = await activityTrigger.boundingBox();
+  expect(completedBounds).not.toBeNull();
+  expect(completedBounds!.x).toBe(idleBounds!.x);
+  expect(completedBounds!.width).toBe(idleBounds!.width);
   await page.keyboard.press("Escape");
   await expect(activityPopover).toHaveCount(0);
-  await expect(activityTrigger).toHaveCount(0);
+  await expect(activityTrigger).toBeVisible();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState().providerSyncCounts;
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      fbAuth: {
+        isAuthenticated: true,
+      },
+      providerSyncCounts: {
+        ...current,
+        x: 1,
+      },
+    });
+
+    window.__freed.debug?.()?.addEvent("change", "[X] sync started");
+    window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
+    window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
+  });
 
   await openSettingsSection(page, "X");
   const sidebar = getDesktopSidebar(page);

@@ -24,12 +24,14 @@ import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
+import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
   CloseIcon,
   FilterIcon,
   MenuIcon,
+  RefreshIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -422,10 +424,19 @@ export function Header({
       ? "Item unavailable"
       : "Loading item...";
   const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
+  const latestBackgroundActivityLevel = useBackgroundActivityStore((s) => s.log[0]?.level);
   const backgroundActivityActive = activeBackgroundActivityCount > 0;
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
-  const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
+  const backgroundActivityStatus = backgroundActivityActive
+    ? { label: "Syncing", tone: "healthy" as const }
+    : latestBackgroundActivityLevel === "error"
+      ? { label: "Last activity failed", tone: "critical" as const }
+      : latestBackgroundActivityLevel === "warning"
+        ? { label: "Last activity needs attention", tone: "warning" as const }
+        : latestBackgroundActivityLevel === "success"
+          ? { label: "Last activity succeeded", tone: "healthy" as const }
+          : { label: "No recent activity", tone: "idle" as const };
 
   const scopeLabel = useMemo(() => {
     const staticLabel = getStaticFilterLabel(activeFilter);
@@ -508,8 +519,7 @@ export function Header({
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
     ? showInlineReaderBookmark ? 11 : 8.5
     : showInlineReaderBookmark ? 6.5 : 3.5;
-  const collapsedReaderActionWidthRem =
-    collapsedReaderBaseActionWidthRem + (showBackgroundActivityControl ? 2.75 : 0);
+  const collapsedReaderActionWidthRem = collapsedReaderBaseActionWidthRem + 2.75;
   const collapsedReaderTitleStyle = readerActive && isBelowLargeToolbar
     ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
     : undefined;
@@ -1672,36 +1682,46 @@ export function Header({
             style={collapsedReaderActionStyle}
           >
             <ToolbarAnimatedSlot
-              visible={showBackgroundActivityControl}
+              visible={true}
               width={TOOLBAR_ICON_BUTTON_SIZE}
             >
-              {showBackgroundActivityControl ? (
-                <Tooltip label="Background activity">
-                  <button
-                    ref={activityButtonRef}
-                    type="button"
-                    onClick={handleToggleBackgroundActivity}
-                    {...getToolbarControlProps()}
-                    data-testid="background-activity-trigger"
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                      activityPopoverOpen
-                        ? "theme-toolbar-button-active"
-                        : isMobileDevice
-                          ? "theme-toolbar-button-ghost"
-                          : "theme-toolbar-button-neutral"
-                    } text-[var(--theme-accent-secondary)]`}
-                    aria-haspopup="dialog"
-                    aria-expanded={activityPopoverOpen}
-                    aria-label="Show background activity"
-                  >
+              <Tooltip label={`Background activity: ${backgroundActivityStatus.label}`}>
+                <button
+                  ref={activityButtonRef}
+                  type="button"
+                  onClick={handleToggleBackgroundActivity}
+                  {...getToolbarControlProps()}
+                  data-testid="background-activity-trigger"
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                    activityPopoverOpen
+                      ? "theme-toolbar-button-active"
+                      : isMobileDevice
+                        ? "theme-toolbar-button-ghost"
+                        : "theme-toolbar-button-neutral"
+                  }`}
+                  aria-haspopup="dialog"
+                  aria-expanded={activityPopoverOpen}
+                  aria-label={`Background activity: ${backgroundActivityStatus.label}`}
+                >
+                  {backgroundActivityStatus.tone === "idle" ? (
                     <span
-                      className={`h-3.5 w-3.5 rounded-full border border-current border-t-transparent ${
-                        backgroundActivityActive ? "animate-spin" : ""
-                      }`}
+                      className="inline-flex h-4 w-4 items-center justify-center"
+                      data-testid="background-activity-status"
+                      aria-label={backgroundActivityStatus.label}
+                      title={backgroundActivityStatus.label}
+                    >
+                      <RefreshIcon />
+                    </span>
+                  ) : (
+                    <ProviderStatusIndicator
+                      tone={backgroundActivityStatus.tone}
+                      syncing={backgroundActivityActive}
+                      label={backgroundActivityStatus.label}
+                      testId="background-activity-status"
                     />
-                  </button>
-                </Tooltip>
-              ) : null}
+                  )}
+                </button>
+              </Tooltip>
             </ToolbarAnimatedSlot>
 
             {readerActive && !selectedItem ? (
