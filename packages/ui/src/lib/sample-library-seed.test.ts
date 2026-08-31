@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearSampleLibraryDataWithProgressToast,
+  formatSampleDataClearProgress,
   formatSampleDataImportProgress,
   populateSampleLibraryDataWithProgressToast,
   refreshSampleLibraryData,
@@ -52,6 +54,12 @@ describe("sample Library seeding", () => {
     ).toBe("Adding social identities: 70%");
   });
 
+  it("formats a locale-aware clear progress label", () => {
+    expect(
+      formatSampleDataClearProgress({ percent: 80, phase: "items" }),
+    ).toBe("Removing items: 80%");
+  });
+
   it("updates one persistent toast through successful completion", async () => {
     const addSampleLibraryData = vi.fn(async (_data, listener) => {
       listener?.({ percent: 50, phase: "people" });
@@ -68,6 +76,34 @@ describe("sample Library seeding", () => {
     expect(useToastStore.getState().toasts[0]).toMatchObject({
       message:
         "Sample data added: 100%. 15 feeds, 1,701 items, 250 friends, and 1,500 social identities.",
+      type: "success",
+    });
+  });
+
+  it("updates one persistent toast while sample data is cleared", async () => {
+    const onProgress = vi.fn();
+    const clearSampleData = vi.fn(async (listener) => {
+      listener?.({ percent: 40, phase: "accounts" });
+      listener?.({ percent: 90, phase: "settling" });
+      listener?.({ percent: 100, phase: "complete" });
+      return { accounts: 3, feeds: 2, items: 4, persons: 1, total: 10 };
+    });
+
+    await expect(
+      clearSampleLibraryDataWithProgressToast({ clearSampleData, onProgress }),
+    ).resolves.toEqual({
+      accounts: 3,
+      feeds: 2,
+      items: 4,
+      persons: 1,
+      total: 10,
+    });
+
+    expect(onProgress).toHaveBeenCalledTimes(3);
+    expect(useToastStore.getState().toasts).toHaveLength(1);
+    expect(useToastStore.getState().toasts[0]).toMatchObject({
+      message:
+        "Sample data cleared: 100%. 2 feeds, 4 items, 1 person, and 3 accounts.",
       type: "success",
     });
   });

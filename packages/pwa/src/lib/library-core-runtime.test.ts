@@ -900,13 +900,23 @@ describe("PWA Library Core bounded scanner", () => {
       }
     });
 
-    await expect(clearPwaLibraryCoreSampleData()).resolves.toEqual({
+    const onProgress = vi.fn();
+    await expect(clearPwaLibraryCoreSampleData(onProgress)).resolves.toEqual({
       accounts: 1,
       feeds: 1,
       items: 1,
       persons: 1,
       total: 4,
     });
+    expect(onProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      { percent: 0, phase: "preparing" },
+      { percent: 20, phase: "accounts" },
+      { percent: 40, phase: "accounts" },
+      { percent: 60, phase: "people" },
+      { percent: 80, phase: "feeds" },
+      { percent: 90, phase: "items" },
+      { percent: 90, phase: "settling" },
+    ]);
     const detachedAccount = mocks.commitAccountUpserts.mock.calls[0]?.[0]?.[0];
     expect(detachedAccount).toEqual(
       expect.objectContaining({ id: "account-real" }),
