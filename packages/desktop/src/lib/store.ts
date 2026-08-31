@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
+  BaseAppState,
   FeedItem,
   FilterOptions,
   RemoveFeedOptions,
