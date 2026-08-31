@@ -103,7 +103,7 @@ import {
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
 } from "./lib/library-core-sqlite-runtime";
-import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
+import { populateSampleLibraryDataWithProgressToast } from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -256,7 +256,7 @@ function App() {
         facets.sampleItemCount +
         facets.samplePersonCount;
       if (sampleTotal > 0) return;
-      await refreshSampleLibraryData(useAppStore.getState());
+      await populateSampleLibraryDataWithProgressToast(useAppStore.getState());
     })().catch((error) => {
       console.error("[sample-data] failed to seed local preview data:", error);
     });

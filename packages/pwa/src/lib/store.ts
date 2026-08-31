@@ -13,6 +13,7 @@ import {
 import type {
   BaseAppState,
   RemoveFeedOptions,
+  SampleDataImportProgressListener,
   SampleLibraryData,
 } from "@freed/shared";
 import {
@@ -45,6 +46,7 @@ import {
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedTitleAssignment,
   enqueuePwaLibraryCoreRssFeedUpsert,
+  enqueuePwaLibraryCoreRssFeedUpserts,
   removeAllPwaLibraryCoreRssFeeds,
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpserts,
@@ -612,39 +614,101 @@ export const useAppStore = create<AppState>((set, get) => ({
     return summary;
   },
 
-  addSampleLibraryData: async (data: SampleLibraryData) => {
-    await ensurePwaLibraryCoreLocalSampleState();
-    for (const feed of data.feeds) {
-      await enqueuePwaLibraryCoreRssFeedUpsert(feed);
-    }
-    await settlePwaLibraryCoreLocalSampleState();
-    await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
-    await settlePwaLibraryCoreLocalSampleState();
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets(
-      data.items.map((item) => ({
+  addSampleLibraryData: async (
+    data: SampleLibraryData,
+    onProgress?: SampleDataImportProgressListener,
+  ) => {
+    const annotations = data.items
+      .filter(
+        (item) =>
+          item.userState.tags.length > 0 ||
+          (item.userState.highlights?.length ?? 0) > 0,
+      )
+      .map((item) => ({
         entityId: item.globalId,
         highlights: item.userState.highlights ?? [],
         tags: item.userState.tags,
-      })),
-    );
+      }));
+    const analyses = data.items
+      .filter(
+        (item) =>
+          item.contentSignals !== undefined || item.eventCandidate !== undefined,
+      )
+      .map((item) => ({
+        contentSignals: item.contentSignals,
+        entityId: item.globalId,
+        eventCandidate: item.eventCandidate,
+      }));
+    const settlementCount =
+      4 + Number(annotations.length > 0) + Number(analyses.length > 0);
+    const totalUnits =
+      data.feeds.length +
+      data.items.length +
+      annotations.length +
+      analyses.length +
+      data.persons.length +
+      data.accounts.length +
+      settlementCount;
+    let completedUnits = 0;
+    let lastProgressKey = "";
+    const reportProgress = (
+      phase: Parameters<SampleDataImportProgressListener>[0]["phase"],
+    ) => {
+      if (!onProgress) return;
+      const percent =
+        completedUnits >= totalUnits
+          ? 100
+          : Math.floor((completedUnits / Math.max(totalUnits, 1)) * 10) * 10;
+      const key = `${phase}:${percent}`;
+      if (key === lastProgressKey) return;
+      lastProgressKey = key;
+      onProgress({ percent, phase });
+    };
+    const advance = (
+      phase: Parameters<SampleDataImportProgressListener>[0]["phase"],
+      count: number,
+    ) => {
+      completedUnits += count;
+      reportProgress(phase);
+    };
+
+    reportProgress("preparing");
+    await ensurePwaLibraryCoreLocalSampleState();
+    await enqueuePwaLibraryCoreRssFeedUpserts(data.feeds, (count) => {
+      advance("feeds", count);
+    });
     await settlePwaLibraryCoreLocalSampleState();
-    await enqueuePwaLibraryCoreFeedItemAnalysisSets(
-      data.items
-        .filter(
-          (item) =>
-            item.contentSignals !== undefined || item.eventCandidate !== undefined,
-        )
-        .map((item) => ({
-          contentSignals: item.contentSignals,
-          entityId: item.globalId,
-          eventCandidate: item.eventCandidate,
-        })),
-    );
+    advance("feeds", 1);
+    await enqueuePwaLibraryCoreFeedItemCaptures(data.items, (count) => {
+      advance("items", count);
+    });
     await settlePwaLibraryCoreLocalSampleState();
-    await enqueuePwaLibraryCorePersonUpserts(data.persons);
+    advance("items", 1);
+    if (annotations.length > 0) {
+      await enqueuePwaLibraryCoreFeedItemAnnotationSets(annotations, (count) => {
+        advance("annotations", count);
+      });
+      await settlePwaLibraryCoreLocalSampleState();
+      advance("annotations", 1);
+    }
+    if (analyses.length > 0) {
+      await enqueuePwaLibraryCoreFeedItemAnalysisSets(analyses, (count) => {
+        advance("analysis", count);
+      });
+      await settlePwaLibraryCoreLocalSampleState();
+      advance("analysis", 1);
+    }
+    await enqueuePwaLibraryCorePersonUpserts(data.persons, (count) => {
+      advance("people", count);
+    });
     await settlePwaLibraryCoreLocalSampleState();
-    await enqueuePwaLibraryCoreAccountUpserts(data.accounts);
+    advance("people", 1);
+    await enqueuePwaLibraryCoreAccountUpserts(data.accounts, (count) => {
+      advance("accounts", count);
+    });
+    reportProgress("finalizing");
     await settlePwaLibraryCoreLocalSampleState();
+    advance("finalizing", 1);
     invalidateLibraryWindows(get, set);
   },
 

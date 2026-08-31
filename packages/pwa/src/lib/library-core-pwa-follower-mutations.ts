@@ -67,6 +67,8 @@ export const PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT =
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_analysis_replace.maximumMembers;
 export const PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT =
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+export const PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT =
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_upsert.maximumMembers;
 export const PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT = Math.min(
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers,
@@ -489,22 +491,44 @@ export async function commitPwaLibraryCoreRssFeedUpsert(
   feed: RssFeed,
   createdAtMs: number,
 ): Promise<void> {
-  if (!feed.url) throw new TypeError("RSS feed URL is required");
+  await commitPwaLibraryCoreRssFeedUpserts([feed], createdAtMs);
+}
+
+export async function commitPwaLibraryCoreRssFeedUpserts(
+  feeds: readonly RssFeed[],
+  createdAtMs: number,
+): Promise<void> {
+  if (
+    feeds.length === 0 ||
+    feeds.length > PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT
+  ) {
+    throw new RangeError("PWA RSS feed transaction is too large");
+  }
+  const identities = new Set<string>();
+  for (const feed of feeds) {
+    if (!feed.url) throw new TypeError("RSS feed URL is required");
+    if (identities.has(feed.url)) {
+      throw new TypeError("RSS feed transaction contains a duplicate URL");
+    }
+    identities.add(feed.url);
+  }
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-rss-upsert");
-  const member = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
-    transactionMemberInput(
-      context,
-      transactionId,
-      0,
-      1,
-      feed.url,
-      createdAtMs,
-      { feed: feed as unknown as LibraryCoreCanonicalValue },
+  const members = feeds.map((feed, index) =>
+    RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        index,
+        feeds.length,
+        feed.url,
+        createdAtMs,
+        { feed: feed as unknown as LibraryCoreCanonicalValue },
+      ),
+      { digest },
     ),
-    { digest },
   );
-  await commitFollowerTransaction(context, [member]);
+  await commitFollowerTransaction(context, members);
 }
 
 export async function commitPwaLibraryCoreRssFeedTitleAssignment(

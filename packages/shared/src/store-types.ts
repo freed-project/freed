@@ -18,6 +18,25 @@ export interface RemoveFeedOptions {
   includeItems?: boolean;
 }
 
+export type SampleDataImportPhase =
+  | "preparing"
+  | "feeds"
+  | "items"
+  | "annotations"
+  | "analysis"
+  | "people"
+  | "accounts"
+  | "finalizing";
+
+export interface SampleDataImportProgress {
+  readonly percent: number;
+  readonly phase: SampleDataImportPhase;
+}
+
+export type SampleDataImportProgressListener = (
+  progress: SampleDataImportProgress,
+) => void;
+
 export type SocialContentFilter = "all" | "posts" | "stories";
 
 /**
@@ -164,8 +183,11 @@ export interface BaseAppState {
   removeItem: (id: string) => Promise<void>;
   /** Permanently remove generated sample data that carries the internal fingerprint. */
   clearSampleData: () => Promise<SampleDataClearSummary>;
-  /** Add a generated sample library in one persistence operation. */
-  addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
+  /** Add a generated sample library and report durable import progress. */
+  addSampleLibraryData: (
+    data: SampleLibraryData,
+    onProgress?: SampleDataImportProgressListener,
+  ) => Promise<void>;
   /**
    * Record a typed like intent in SQLite. The Primary outbox processor drains
    * it to the source platform, while follower clients submit a signed intent.

@@ -41,6 +41,7 @@ import {
   commitPwaLibraryCoreRssFeedRemoves,
   commitPwaLibraryCoreRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert,
+  commitPwaLibraryCoreRssFeedUpserts,
   commitPwaLibraryCoreUserStateAssignments,
 } from "./library-core-pwa-follower-mutations";
 
@@ -398,6 +399,42 @@ describe("PWA SQLite follower mutations", () => {
       "person_remove_and_accounts",
       "account_upsert",
       "account_remove",
+    ]);
+  });
+
+  it("commits multiple RSS feeds as one homogeneous transaction", async () => {
+    await commitPwaLibraryCoreRssFeedUpserts(
+      [
+        {
+          url: "https://example.test/one",
+          title: "One",
+          enabled: true,
+          trackUnread: true,
+        },
+        {
+          url: "https://example.test/two",
+          title: "Two",
+          enabled: true,
+          trackUnread: true,
+        },
+      ],
+      7_000,
+    );
+
+    expect(mocks.commitFollowerIntent).toHaveBeenCalledOnce();
+    expect(decodeCommit(mocks.commitFollowerIntent.mock.calls[0]![0])).toMatchObject([
+      {
+        entity_id: "https://example.test/one",
+        operation_type: "rss_feed_upsert",
+        transaction_member_count: 2,
+        transaction_member_index: 0,
+      },
+      {
+        entity_id: "https://example.test/two",
+        operation_type: "rss_feed_upsert",
+        transaction_member_count: 2,
+        transaction_member_index: 1,
+      },
     ]);
   });
 

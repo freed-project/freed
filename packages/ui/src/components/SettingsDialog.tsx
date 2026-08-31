@@ -34,7 +34,7 @@ import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
   formatSampleDataSummary,
-  refreshSampleLibraryData,
+  populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
@@ -888,20 +888,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const handleSeedSampleData = useCallback(async () => {
     if (hasSampleData) return;
     setSeeding(true);
-    toast.info("Populating sample data...");
     try {
-      await refreshSampleLibraryData({
+      await populateSampleLibraryDataWithProgressToast({
         initialize,
         isInitialized,
         addSampleLibraryData,
         seedSocialConnections,
       });
       setSeedDone(true);
-      toast.success(
-        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setSeeding(false);
     }
@@ -1884,25 +1880,27 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               >
                 <div>
                   <p className="theme-feedback-text-warning text-sm">
-                    {hasSampleData
-                      ? "Sample data populated"
-                      : seeding
-                        ? "Populating..."
+                    {seeding
+                      ? "Populating sample data..."
+                      : hasSampleData
+                        ? "Sample data populated"
                         : "Populate sample data"}
                   </p>
                   <p className="theme-feedback-text-warning-muted mt-0.5 text-xs">
-                    {hasSampleData
-                      ? "Clear the current sample library before populating it again"
-                      : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
+                    {seeding
+                      ? "Durable Library writes are in progress"
+                      : hasSampleData
+                        ? "Clear the current sample library before populating it again"
+                        : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>
-                {seedDone ? (
-                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : seeding ? (
+                {seeding ? (
                   <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : seedDone ? (
+                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
                   <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1910,7 +1908,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </svg>
                 )}
               </button>
-              {hasSampleData && (
+              {hasSampleData && !seeding && (
                 <button
                   onClick={() => setShowSampleClearConfirm(true)}
                   disabled={clearingSampleData}

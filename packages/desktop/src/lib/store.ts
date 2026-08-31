@@ -329,7 +329,7 @@ interface AppState {
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   clearSampleData: () => Promise<SampleDataClearSummary>;
-  addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
+  addSampleLibraryData: BaseAppState["addSampleLibraryData"];
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
@@ -1015,13 +1015,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     return clearSampleLibraryData();
   },
 
-  addSampleLibraryData: async (data: SampleLibraryData) => {
+  addSampleLibraryData: async (data: SampleLibraryData, onProgress) => {
+    onProgress?.({ percent: 0, phase: "preparing" });
     await addSampleLibraryData({
       feeds: data.feeds,
       items: data.items,
       persons: data.persons,
       accounts: data.accounts,
     });
+    onProgress?.({ percent: 100, phase: "finalizing" });
   },
 
   // Feed actions
