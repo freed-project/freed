@@ -303,8 +303,9 @@
         filters, outreach state, location presence, and the selected ordering
         inside browser SQLite. The same generated SQL and closed request run in
         native Rust. Each response returns at most 64 compact Person rows under
-        512 KiB, carries an exact filtered total, and binds its opaque offset
-        cursor to the complete request and SQLite source generation. The
+        512 KiB, carries an exact filtered total, and binds its stable
+        Person-identity keyset cursor to the complete request and SQLite source
+        generation. Missing anchors and retired offset cursors fail closed. The
         Friends overview retains only its visible page in React. Its closed row
         model now generates the PWA SQLite coercer, strict wire parser,
         TypeScript row type, and native Rust field descriptor from one contract
@@ -630,6 +631,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.112 | Remove the PWA store's mixed synchronized and installation-local preference bridge. Current mutations accept only the generated synchronized preference shape, device choices stay in their explicit local stores, historical fields enter only one-time opaque import readers, and feature plus dev CI install WebKit whenever the OPFS durability contract runs | High       | ✓ Complete                                                                                       |
 | 6.113 | Give an unconnected PWA a durable local sample authority that settles signed sample operations without Drive publication. Preserve exact prepared results across interruption, serialize recovery against settlement, rebuild a matching sample Library that uses the retired WebKit key format, block repeat population, clear only marked sample records through bounded signed removal batches, refresh current SQLite query revisions, and prove reload, clear, rebuild, and OPFS durability in one persistent iPhone-class WebKit profile | High       | ✓ Complete                                                                                       |
 | 6.114 | Keep optional Map and Friends code out of feed startup and service-worker installation. Load both product surfaces on demand, cache their hashed assets after first use for offline return visits, keep core SQLite WebAssembly in the app-shell precache, fail the production build if optional chunks re-enter precache, lose runtime-cache coverage, or strand offline Library startup, and give each WebKit OPFS durability run a fresh test origin so abandoned test storage cannot impersonate another Library | High       | ✓ Complete                                                                                       |
+| 6.115 | Replace Friends directory offset pagination with a source-fenced Person-identity keyset shared by native SQLite and PWA OPFS SQLite. Preserve exact ordering across all four sort modes, fail closed on retired or missing cursor anchors, and keep every page bounded without discarding skipped rows | High       | ✓ Complete                                                                                       |
 
 ---
 

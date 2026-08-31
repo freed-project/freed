@@ -17,6 +17,7 @@ import {
   coerceLibraryCoreGeneratedSqliteQueryRow,
   parseLibraryCoreGeneratedSqliteQueryRow,
 } from "./sqlite-contract.generated.js";
+import { encodeLibraryCoreFeedPageCursorV1 } from "./feed-page-contracts.js";
 
 const source = {
   generationId: "a".repeat(64) as never,
@@ -106,12 +107,12 @@ describe("Friends directory contract", () => {
     ).toBeNull();
   });
 
-  it("binds an offset cursor to the exact query and source", () => {
+  it("binds a keyset cursor to the exact query and source", () => {
     const bindingDigest = libraryCoreFriendsDirectoryBindingDigestV1(request());
     const encoded = encodeLibraryCoreFriendsDirectoryCursorV1({
       bindingDigest,
       generationId: source.generationId,
-      offset: 32,
+      personId: "person-ada" as never,
       projectionRevision: 7,
       transitionSequence: 7,
     });
@@ -120,7 +121,7 @@ describe("Friends directory contract", () => {
       value: {
         bindingDigest,
         generationId: source.generationId,
-        offset: 32,
+        personId: "person-ada",
         projectionRevision: 7,
         transitionSequence: 7,
       },
@@ -135,9 +136,19 @@ describe("Friends directory contract", () => {
         request({ cursor: encoded, search: "Grace" }),
       ).ok,
     ).toBe(false);
+    const retiredOffsetCursor = encodeLibraryCoreFeedPageCursorV1({
+      generationId: source.generationId,
+      globalId: bindingDigest as never,
+      projectionRevision: 7,
+      sortAt: 32,
+      transitionSequence: 7,
+    });
+    expect(
+      decodeLibraryCoreFriendsDirectoryCursorV1(retiredOffsetCursor).ok,
+    ).toBe(false);
   });
 
-  it("accepts one bounded closed page and exact continuation offset", () => {
+  it("accepts one bounded closed page and exact continuation identity", () => {
     const parsedRequest = parseLibraryCoreFriendsDirectoryPageRequestV1(
       request({ limit: 1 }),
     );
@@ -151,7 +162,7 @@ describe("Friends directory contract", () => {
         nextCursor: encodeLibraryCoreFriendsDirectoryCursorV1({
           bindingDigest,
           generationId: source.generationId,
-          offset: 1,
+          personId: "person-ada" as never,
           projectionRevision: 7,
           transitionSequence: 7,
         }),

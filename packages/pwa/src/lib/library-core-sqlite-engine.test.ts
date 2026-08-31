@@ -61,6 +61,9 @@ import {
   constructLibraryCoreActorCapabilityRequestV2,
   constructLibraryCoreActorRetirementCertificateV1,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+  decodeLibraryCoreFriendsDirectoryCursorV1,
+  encodeLibraryCoreFriendsDirectoryCursorV1,
+  type LibraryCoreFriendsDirectoryPageResponseV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -3958,6 +3961,109 @@ describe("PWA Library Core SQLite engine", () => {
         source: hydration.source,
       }),
     ).toThrow(/source is stale/);
+  });
+
+  it("keeps Friends keyset pages exact across every sort and rejects missing anchors", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES
+        ('person-1', 'Alex', 'friend', 5, 10, 100),
+        ('person-2', 'alex', 'friend', 5, 20, 100),
+        ('person-3', 'Blake', 'friend', 4, 30, 100),
+        ('person-4', 'Casey', 'friend', 4, 40, 100);
+      INSERT INTO library_person_reach_outs (person_id, reach_out_id, logged_at)
+      VALUES
+        ('person-1', 'reach-1', 500),
+        ('person-2', 'reach-2', 500),
+        ('person-3', 'reach-3', 300);
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, hidden, saved, archived,
+         updated_at)
+      VALUES
+        ('item-1', 'x', 'post', 900, 900, 'author-1', 'author-1', 'Author 1', 0, 0, 0, 900),
+        ('item-2', 'x', 'post', 900, 900, 'author-2', 'author-2', 'Author 2', 0, 0, 0, 900),
+        ('item-3', 'x', 'post', 700, 700, 'author-3', 'author-3', 'Author 3', 0, 0, 0, 700);
+      INSERT INTO library_person_feed_items (person_id, global_id, published_at)
+      VALUES
+        ('person-1', 'item-1', 900),
+        ('person-2', 'item-2', 900),
+        ('person-3', 'item-3', 700);
+    `);
+    expect(
+      LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.friends_directory_page_v1.sql,
+    ).not.toContain(" OFFSET ");
+    expect(
+      LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.friends_directory_page_v1.sql,
+    ).toContain("cursor_row");
+
+    const baseRequest = {
+      cancellationId: operationId("cancel-friends-keyset"),
+      cursor: null,
+      filters: [],
+      limit: 64,
+      nowMs: 1_800_000_000_000,
+      queryId: "friends_directory_page_v1" as const,
+      readerSessionId: operationId("reader-friends-keyset"),
+      schemaVersion: 1 as const,
+      search: "",
+    };
+    for (const sort of [
+      "name",
+      "care_level",
+      "last_contact",
+      "recent_activity",
+    ] as const) {
+      const expected = engine
+        .query({ ...baseRequest, sort })
+        .rows.map((row) => row.id);
+      const actual: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: LibraryCoreFriendsDirectoryPageResponseV1 = engine.query({
+          ...baseRequest,
+          cursor,
+          limit: 1,
+          sort,
+        });
+        actual.push(...page.rows.map((row) => row.id));
+        cursor = page.nextCursor;
+      } while (cursor !== null);
+      expect(actual).toEqual(expected);
+      expect(new Set(actual).size).toBe(actual.length);
+    }
+
+    const first = engine.query({ ...baseRequest, limit: 1, sort: "name" });
+    const decoded = decodeLibraryCoreFriendsDirectoryCursorV1(
+      first.nextCursor!,
+    );
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    const missingAnchor = encodeLibraryCoreFriendsDirectoryCursorV1({
+      ...decoded.value,
+      personId: "missing-person" as never,
+    });
+    expect(() =>
+      engine.query({
+        ...baseRequest,
+        cursor: missingAnchor,
+        limit: 1,
+        sort: "name",
+      }),
+    ).toThrow("cursor row is missing");
   });
 
   it("pages normalized feed rows through the bounded named query", () => {
