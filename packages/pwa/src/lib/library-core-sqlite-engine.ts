@@ -462,6 +462,18 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   );
 }
 
+function rollbackPreservingOriginalError(
+  database: Database,
+  error: unknown,
+): never {
+  try {
+    database.exec("ROLLBACK;");
+  } catch {
+    // SQLITE_FULL can end the transaction before the explicit rollback runs.
+  }
+  throw error;
+}
+
 function nullableText(
   value: SqlValue | undefined,
   label: string,
@@ -1160,8 +1172,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return result;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -1312,8 +1323,7 @@ export class PwaLibraryCoreSqliteEngine {
       });
       this.#database.exec("COMMIT;");
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
     return this.#checkpointStageStatus(page.stageId);
   }
@@ -1823,8 +1833,7 @@ export class PwaLibraryCoreSqliteEngine {
         stageId,
       });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -1991,8 +2000,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return result.value;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -2937,8 +2945,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return receipt;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -3052,8 +3059,7 @@ export class PwaLibraryCoreSqliteEngine {
       if (!receipt.ok) throw new TypeError(receipt.error);
       return receipt.value;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -3536,8 +3542,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return receipt.value;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -3589,8 +3594,7 @@ export class PwaLibraryCoreSqliteEngine {
       }
       this.#database.exec("COMMIT;");
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -3742,8 +3746,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return receipt.value;
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -3900,8 +3903,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#reconcileLocalContentState(changed);
       this.#database.exec("COMMIT;");
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -4324,8 +4326,7 @@ export class PwaLibraryCoreSqliteEngine {
       });
       this.#database.exec("COMMIT;");
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
     return Object.freeze({
       actorChainGenesis: verified.actor_chain_genesis,
@@ -4877,8 +4878,7 @@ export class PwaLibraryCoreSqliteEngine {
         transactionId: verified.transaction_body.transaction_id,
       });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -5072,8 +5072,7 @@ export class PwaLibraryCoreSqliteEngine {
         transactionId: publication.transactionId,
       });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -5326,8 +5325,7 @@ export class PwaLibraryCoreSqliteEngine {
         storedSegmentDigest: reference.descriptor.contentDigest,
       });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -6135,8 +6133,7 @@ export class PwaLibraryCoreSqliteEngine {
       }
       this.#database.exec("COMMIT;");
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
 
     let appliedTransactionCount = 0;
@@ -6666,8 +6663,7 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec("COMMIT;");
         appliedTransactionCount += 1;
       } catch (error) {
-        this.#database.exec("ROLLBACK;");
-        throw error;
+        rollbackPreservingOriginalError(this.#database, error);
       }
     }
 
@@ -7085,8 +7081,7 @@ export class PwaLibraryCoreSqliteEngine {
         });
       }
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
     for (const verified of verifiedResults) {
       await this.#applyAcceptedFollowerResultThroughOperationImport(
@@ -7587,8 +7582,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return Object.freeze({ memberCount, stageId, state: "ready" });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
@@ -7634,8 +7628,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("COMMIT;");
       return Object.freeze({ memberCount, stageId, state: "staging" });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 
