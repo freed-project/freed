@@ -6,8 +6,8 @@
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
 > intent codecs, normalized checkpoint records, and conformance vectors as the
 > native core. IndexedDB is not a Library database or fallback. A narrow
-> IndexedDB keystore may remain only for nonextractable browser keys when
-> WebKit offers no suitable alternative.
+> IndexedDB keystore may retain nonextractable real actor keys and the
+> synthetic local sample authority key material needed for WebKit restarts.
 
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
@@ -628,6 +628,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.110 | Construct normalized FeedItem capture payloads through the shared pure capture projector used by Freed Desktop. The PWA cannot submit Primary-owned analysis, device-authored highlights, or capture tags through a root upsert, and the projection remains identical across both SQLite hosts | Medium     | ✓ Complete                                                                                       |
 | 6.111 | Run a persistent iPhone-class WebKit profile against the real OPFS SAH pool. Commit and read back a typed device-local SQLite transaction across two document and dedicated-worker terminations, prove exact revision-stable replay, and route the five-second data-integrity proof from PWA SQLite and shared Library contract changes without claiming physical iPhone acceptance | High       | ✓ Complete                                                                                       |
 | 6.112 | Remove the PWA store's mixed synchronized and installation-local preference bridge. Current mutations accept only the generated synchronized preference shape, device choices stay in their explicit local stores, historical fields enter only one-time opaque import readers, and feature plus dev CI install WebKit whenever the OPFS durability contract runs | High       | ✓ Complete                                                                                       |
+| 6.113 | Give an unconnected PWA a durable local sample authority that settles signed sample operations without Drive publication. Preserve exact prepared results across interruption, serialize recovery against settlement, rebuild a matching sample Library that uses the retired WebKit key format, block repeat population, clear only marked sample records, refresh current SQLite query revisions, and prove reload, clear, rebuild, and OPFS durability in one persistent iPhone-class WebKit profile | High       | ✓ Complete                                                                                       |
 
 ---
 
@@ -671,6 +672,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
 - [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude Primary-derived ranking fields. Accepted signed priority assignments replay separately into OPFS SQLite.
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
+- [x] An unconnected PWA can populate one durable local sample Library without Drive traffic, retain it across WebKit restarts, recover an interrupted accepted result, prevent repeat population, clear only internally marked sample records, and rebuild the sample Library from the rendered mobile workflow
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.
 - [x] Runtime state hydrates bounded visible OPFS SQLite feed windows, synchronized preferences, exact trigger-maintained navigation aggregates, the selected checkpoint receipt, and query-on-open Feed, Person, and Account catalogs without a shell. Sample-data maintenance also resolves through typed SQLite contracts.

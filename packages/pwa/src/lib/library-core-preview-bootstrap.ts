@@ -5,6 +5,7 @@ import {
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreSignatureInput,
   isLibraryCoreCanonicalRecord,
+  isLibraryCoreLowercaseHex64,
   LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES,
   LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS,
   libraryCoreFollowerResultBodyV1,
@@ -29,10 +30,20 @@ import {
   readPwaFollowerTransportContext,
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
+import {
+  commitPwaLibraryCoreLocalSampleResult,
+  createPwaLibraryCoreLocalSampleAuthority,
+  deletePwaLibraryCoreLocalSampleAuthority,
+  markPwaLibraryCoreLocalSampleAuthorityReady,
+  preparePwaLibraryCoreLocalSampleResult,
+  PwaLibraryCoreLegacyLocalSampleAuthorityError,
+  readPwaLibraryCoreLocalSampleAuthority,
+  signPwaLibraryCoreLocalSampleAuthority,
+  type PwaLibraryCoreLocalSampleAuthority,
+} from "./library-core-browser-key-vault";
 
-let bootstrapTask: Promise<void> | null = null;
-let authorityKeyId: LibraryCoreLowercaseHex64 | null = null;
-let authorityPrivateKey: CryptoKey | null = null;
+let localSampleTask: Promise<void> = Promise.resolve();
+let localSampleAuthority: PwaLibraryCoreLocalSampleAuthority | null = null;
 let previewActorId: LibraryCoreLowercaseHex64 | null = null;
 let previewEpochId: LibraryCoreLowercaseHex64 | null = null;
 let previewLibraryId: LibraryCoreLowercaseHex64 | null = null;
@@ -41,25 +52,18 @@ let previewNextResultSequence = 1;
 let previewPreviousResultDigest: LibraryCoreLowercaseHex64 | null = null;
 let previewSourceRevision = 0;
 
+function runLocalSampleTask(task: () => Promise<void>): Promise<void> {
+  const current = localSampleTask.then(task, task);
+  localSampleTask = current.catch(() => undefined);
+  return current;
+}
+
 function randomHex64(): LibraryCoreLowercaseHex64 {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
     "",
   ) as LibraryCoreLowercaseHex64;
-}
-
-function lowerHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
 }
 
 function digest(
@@ -76,29 +80,76 @@ function digest(
 
 async function createPreviewLibrary(): Promise<void> {
   const selected = await readPwaNormalizedCheckpointReceipt();
-  if (selected.receipt && authorityPrivateKey !== null) return;
-  if (selected.receipt) {
+  let authority: PwaLibraryCoreLocalSampleAuthority | null;
+  try {
+    authority = await readPwaLibraryCoreLocalSampleAuthority();
+  } catch (error) {
+    if (
+      !(error instanceof PwaLibraryCoreLegacyLocalSampleAuthorityError) ||
+      (selected.receipt !== null &&
+        selected.receipt.libraryId !== error.libraryId)
+    ) {
+      throw error;
+    }
     await resetPwaNormalizedLibrary();
+    await deletePwaLibraryCoreLocalSampleAuthority();
+    authority = null;
+  }
+  if (selected.receipt) {
+    if (!authority || authority.libraryId !== selected.receipt.libraryId) {
+      throw new Error(
+        "Sample data is available only in an unconnected local Library",
+      );
+    }
+    if (authority.status === "ready") {
+      if (authority.preparedResult) {
+        const receipt = await applyPwaFollowerResult({
+          canonicalResultBytes: authority.preparedResult.canonicalResultBytes,
+        });
+        if (!isLibraryCoreLowercaseHex64(receipt.resultDigest)) {
+          throw new Error("PWA local sample result digest is invalid");
+        }
+        authority = await commitPwaLibraryCoreLocalSampleResult(
+          authority.libraryId,
+          receipt.resultDigest,
+        );
+      }
+      localSampleAuthority = authority;
+      previewActorId = authority.actorId;
+      previewEpochId = authority.epochId;
+      previewLibraryId = authority.libraryId;
+      previewNextActorCounter = authority.nextActorCounter;
+      previewNextResultSequence = authority.nextResultSequence;
+      previewPreviousResultDigest = authority.previousResultDigest;
+      previewSourceRevision = authority.sourceRevision;
+      const context = await readPwaFollowerTransportContext();
+      if (
+        context.actorId !== previewActorId ||
+        context.libraryId !== previewLibraryId ||
+        context.storageEpochId !== previewEpochId
+      ) {
+        throw new Error("PWA local sample authority does not match SQLite");
+      }
+      return;
+    }
+    await resetPwaNormalizedLibrary();
+    await deletePwaLibraryCoreLocalSampleAuthority();
+    authority = null;
+  } else if (authority) {
+    await resetPwaNormalizedLibrary();
+    await deletePwaLibraryCoreLocalSampleAuthority();
+    authority = null;
   }
 
-  const createdAt = Date.now();
-  const libraryId = randomHex64();
-  const epochId = randomHex64();
+  authority = await createPwaLibraryCoreLocalSampleAuthority();
+  const createdAt = authority.createdAt;
+  const libraryId = authority.libraryId;
+  const epochId = authority.epochId;
   const writerActorId = randomHex64();
   const writerChainGenesis = randomHex64();
   const writerCapabilityId = randomHex64();
-  const authorityKeys = (await crypto.subtle.generateKey(
-    { name: "Ed25519" },
-    false,
-    ["sign", "verify"],
-  )) as CryptoKeyPair;
-  const authorityPublicKey = lowerHex(
-    await crypto.subtle.exportKey("raw", authorityKeys.publicKey),
-  );
-  const nextAuthorityKeyId = digest("authority-key", {
-    authority_public_key: authorityPublicKey,
-    signature_algorithm: "ed25519",
-  });
+  const authorityPublicKey = authority.authorityPublicKey;
+  const nextAuthorityKeyId = authority.authorityKeyId;
   const records = [
     createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "00_checkpoint_header",
@@ -217,16 +268,11 @@ async function createPreviewLibrary(): Promise<void> {
   ) {
     throw new Error("PWA preview actor enrollment request is invalid");
   }
-  const authoritySignature = lowerHex(
-    await crypto.subtle.sign(
-      { name: "Ed25519" },
-      authorityKeys.privateKey,
-      exactArrayBuffer(
-        encodeLibraryCoreSignatureInput("actor-capability-authority", {
-          certificate_digest: enrollment.receipt.enrollmentRequestDigest,
-        }),
-      ),
-    ),
+  const authoritySignature = await signPwaLibraryCoreLocalSampleAuthority(
+    authority,
+    encodeLibraryCoreSignatureInput("actor-capability-authority", {
+      certificate_digest: enrollment.receipt.enrollmentRequestDigest,
+    }),
   ) as LibraryCoreEd25519SignatureHex;
   const certificate = Object.freeze({
     ...(request as Readonly<Record<string, LibraryCoreCanonicalValue>>),
@@ -238,9 +284,12 @@ async function createPreviewLibrary(): Promise<void> {
     }),
     enrolledAt: Date.now(),
   });
-  authorityKeyId = nextAuthorityKeyId;
-  authorityPrivateKey = authorityKeys.privateKey;
-  previewActorId = enrollment.receipt.actorId;
+  authority = await markPwaLibraryCoreLocalSampleAuthorityReady(
+    libraryId,
+    enrollment.receipt.actorId,
+  );
+  localSampleAuthority = authority;
+  previewActorId = authority.actorId;
   previewEpochId = epochId;
   previewLibraryId = libraryId;
   previewNextActorCounter = 1;
@@ -251,17 +300,13 @@ async function createPreviewLibrary(): Promise<void> {
 
 /** Create one isolated, final-protocol SQLite Library for local previews. */
 export async function ensurePwaLibraryCorePreviewState(): Promise<void> {
-  bootstrapTask ??= createPreviewLibrary().finally(() => {
-    bootstrapTask = null;
-  });
-  await bootstrapTask;
+  await runLocalSampleTask(createPreviewLibrary);
 }
 
 /** Resolve local preview intents through the exact signed follower result path. */
-export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
+async function settlePwaLibraryCorePreviewIntentsExclusive(): Promise<void> {
   if (
-    authorityKeyId === null ||
-    authorityPrivateKey === null ||
+    localSampleAuthority === null ||
     previewActorId === null ||
     previewEpochId === null ||
     previewLibraryId === null
@@ -346,7 +391,7 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
       const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
         actor_id: previewActorId,
         authoritative_source_revision: previewSourceRevision + 1,
-        authority_key_id: authorityKeyId,
+        authority_key_id: localSampleAuthority.authorityKeyId,
         canonical_operation_ids: operationIds,
         epoch: 1,
         epoch_id: previewEpochId,
@@ -373,16 +418,11 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
         "follower-result-body",
         libraryCoreFollowerResultBodyV1(unsigned),
       );
-      const signature = lowerHex(
-        await crypto.subtle.sign(
-          { name: "Ed25519" },
-          authorityPrivateKey,
-          exactArrayBuffer(
-            encodeLibraryCoreSignatureInput("follower-result-envelope", {
-              result_body_digest: resultBodyDigest,
-            }),
-          ),
-        ),
+      const signature = await signPwaLibraryCoreLocalSampleAuthority(
+        localSampleAuthority,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: resultBodyDigest,
+        }),
       );
       const canonicalResultBytes = encodeLibraryCoreCanonicalValue(
         {
@@ -392,11 +432,26 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
         } as unknown as LibraryCoreCanonicalValue,
         { maximumBytes: 131_072 },
       );
-      await applyPwaFollowerResult({ canonicalResultBytes });
+      const nextActorCounter = Number(members.at(-1)!.actor_sequence) + 1;
+      await preparePwaLibraryCoreLocalSampleResult(previewLibraryId, {
+        canonicalResultBytes,
+        nextActorCounter,
+        nextResultSequence: previewNextResultSequence + 1,
+        previousResultDigest: resultBodyDigest,
+        sourceRevision: previewSourceRevision + 1,
+      });
+      const applied = await applyPwaFollowerResult({ canonicalResultBytes });
+      if (!isLibraryCoreLowercaseHex64(applied.resultDigest)) {
+        throw new Error("PWA local sample result digest is invalid");
+      }
+      localSampleAuthority = await commitPwaLibraryCoreLocalSampleResult(
+        previewLibraryId,
+        applied.resultDigest,
+      );
       previewPreviousResultDigest = resultBodyDigest;
       previewNextResultSequence += 1;
       previewSourceRevision += 1;
-      previewNextActorCounter = Number(members.at(-1)!.actor_sequence) + 1;
+      previewNextActorCounter = nextActorCounter;
       bufferedBytes -= transaction.reduce(
         (total, envelope) => total + envelope.bytes.byteLength,
         0,
@@ -410,4 +465,9 @@ export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
       return;
     }
   }
+}
+
+/** Resolve local preview intents without racing sample authority recovery. */
+export async function settlePwaLibraryCorePreviewIntents(): Promise<void> {
+  await runLocalSampleTask(settlePwaLibraryCorePreviewIntentsExclusive);
 }

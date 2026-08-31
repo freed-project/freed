@@ -9,9 +9,23 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import {
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+} from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
 
 interface BrowserLibraryCore {
+  facetSummary(): Promise<{
+    rssFeedCount: number;
+    sampleAccountCount: number;
+    sampleFeedCount: number;
+    sampleItemCount: number;
+    samplePersonCount: number;
+    totalCount: number;
+  }>;
   mutateDeviceContactSync(mutation: unknown): Promise<{
     changed: boolean;
     revision: number;
@@ -25,6 +39,44 @@ interface BrowserLibraryCore {
     syncStatus: string;
     updatedAt: number;
   }>;
+}
+
+async function readFacetSummary(page: Page) {
+  return page.evaluate(async () => {
+    const library = (window as unknown as Record<string, unknown>)
+      .__FREED_LIBRARY_CORE__ as BrowserLibraryCore;
+    return library.facetSummary();
+  });
+}
+
+async function expectShowcaseSampleData(
+  page: Page,
+  baseline: Awaited<ReturnType<typeof readFacetSummary>>,
+): Promise<void> {
+  await expect
+    .poll(() => readFacetSummary(page), { timeout: 90_000 })
+    .toMatchObject({
+      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+      sampleAccountCount: SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+      sampleItemCount: SAMPLE_SHOWCASE_ITEM_COUNT,
+      samplePersonCount: SAMPLE_SHOWCASE_FRIEND_COUNT,
+      totalCount: baseline.totalCount + SAMPLE_SHOWCASE_ITEM_COUNT,
+    });
+}
+
+async function openDangerZone(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  await expect(
+    page.getByRole("heading", { name: "Freed Settings" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Danger Zone" }).click();
+  await expect(page.getByTestId("settings-mobile-section-title")).toHaveText(
+    "Freed SettingsDanger Zone",
+  );
 }
 
 async function acceptLegalGate(page: Page): Promise<void> {
@@ -127,10 +179,7 @@ async function readContactSyncStatus(page: Page) {
   });
 }
 
-test("WebKit reopens the same durable OPFS SQLite Library after document termination", async () => {
-  const profileRoot = await mkdtemp(
-    join(tmpdir(), "freed-pwa-opfs-webkit-"),
-  );
+async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
   let context: BrowserContext | null = null;
 
   try {
@@ -212,6 +261,82 @@ test("WebKit reopens the same durable OPFS SQLite Library after document termina
       changed: false,
       revision: clearedRevision,
     });
+  } finally {
+    await context?.close();
+  }
+}
+
+test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
+  test.setTimeout(240_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-sample-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    let opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    const page = opened.page;
+    await expectShowcaseSampleData(page, {
+      ...(await readFacetSummary(page)),
+      rssFeedCount: 0,
+      totalCount: 0,
+    });
+    const populated = await readFacetSummary(page);
+    const baseline = {
+      ...populated,
+      rssFeedCount: populated.rssFeedCount - SAMPLE_SHOWCASE_FEED_COUNT,
+      totalCount: populated.totalCount - SAMPLE_SHOWCASE_ITEM_COUNT,
+    };
+    await openDangerZone(page);
+    await expect(
+      page.getByRole("button", { name: /Sample data populated/ }),
+    ).toBeDisabled();
+
+    await context.close();
+    context = null;
+    opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    const reopened = opened.page;
+    await expectShowcaseSampleData(reopened, baseline);
+    await openDangerZone(reopened);
+    await expect(
+      reopened.getByRole("button", { name: /Sample data populated/ }),
+    ).toBeDisabled();
+
+    await reopened
+      .getByRole("button", { name: /Clear sample data/ })
+      .first()
+      .click();
+    await reopened
+      .locator(".theme-elevated-overlay")
+      .getByRole("button", { name: "Clear sample data" })
+      .click();
+    await expect
+      .poll(() => readFacetSummary(reopened), { timeout: 90_000 })
+      .toMatchObject({
+        rssFeedCount: baseline.rssFeedCount,
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
+        sampleItemCount: 0,
+        samplePersonCount: 0,
+        totalCount: baseline.totalCount,
+      });
+
+    const repopulate = reopened.getByRole("button", {
+      name: /Populate sample data Adds/,
+    });
+    await expect(repopulate).toBeEnabled();
+    await repopulate.click();
+    await expectShowcaseSampleData(reopened, baseline);
+    await expect(
+      reopened.getByRole("button", {
+        name: /Sample data populated/,
+      }),
+    ).toBeDisabled();
+    await context.close();
+    context = null;
+    await verifyDurableOpfsLibrary(profileRoot);
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });

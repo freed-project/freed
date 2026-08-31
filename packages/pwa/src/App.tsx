@@ -234,12 +234,21 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted) return;
-    initialize();
+    if (!IS_FEATURE_PREVIEW) {
+      initialize();
+      return;
+    }
+    void ensurePwaLibraryCoreLocalSampleState()
+      .then(() => initialize())
+      .catch((error) => {
+        console.error("[sample-data] failed to initialize local preview data:", error);
+      });
   }, [initialize, legalAccepted]);
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW) return;
     void (async () => {
+      await ensurePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
       const sampleTotal =
         facets.sampleAccountCount +
@@ -247,7 +256,6 @@ function App() {
         facets.sampleItemCount +
         facets.samplePersonCount;
       if (sampleTotal > 0) return;
-      await ensurePwaLibraryCoreLocalSampleState();
       await refreshSampleLibraryData(useAppStore.getState());
     })().catch((error) => {
       console.error("[sample-data] failed to seed local preview data:", error);

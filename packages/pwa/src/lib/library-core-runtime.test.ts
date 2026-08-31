@@ -518,7 +518,7 @@ describe("PWA Library Core bounded scanner", () => {
       return {
         queryId: "library_facet_summary_v1",
         schemaVersion: 1,
-        source: SELECTED_SOURCE,
+        source: QUERY_SOURCE,
         summary: facetSummary(),
       };
     });

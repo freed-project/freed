@@ -223,22 +223,24 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
   const selected = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (!selected) return null;
-  const [preferences, facetSummary] = await Promise.all([
+  const [preferences, facetResponse] = await Promise.all([
     readLibraryCoreNormalizedPreferencesV1(NORMALIZED_READER_RUNTIME),
-    readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME),
+    queryPwaNormalizedLibrary({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+    }),
   ]);
   const current = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (
     current === null ||
-    current.checkpointDigest !== selected.checkpointDigest ||
-    current.sourceRevision !== selected.sourceRevision
+    current.checkpointDigest !== selected.checkpointDigest
   ) {
     throw new Error("Selected PWA Library changed while reading its window");
   }
   return libraryCoreRuntimeStateFromFacetSummaryV1(
     preferences,
-    facetSummary,
-    selected.sourceRevision,
+    facetResponse.summary,
+    facetResponse.source.projectionRevision,
   );
 }
 
@@ -343,13 +345,16 @@ export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntim
 
 /** Establish the isolated signed Library used by local sample-data previews. */
 export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
-  if (
-    import.meta.env.DEV ||
-    import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1"
-  ) {
-    const preview = await import("./library-core-preview-bootstrap");
-    await preview.ensurePwaLibraryCorePreviewState();
-  }
+  const preview = await import("./library-core-preview-bootstrap");
+  await preview.ensurePwaLibraryCorePreviewState();
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Settle local sample mutations without publishing a cloud intent. */
+export async function settlePwaLibraryCoreLocalSampleState(): Promise<void> {
+  const preview = await import("./library-core-preview-bootstrap");
+  await preview.settlePwaLibraryCorePreviewIntents();
   const state = await readSelectedState();
   if (state) publishState(state);
 }

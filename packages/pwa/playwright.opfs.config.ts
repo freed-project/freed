@@ -21,7 +21,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${pwaOpfsE2ePort.toLocaleString("en-US", {
+    command: `VITE_FREED_FEATURE_PREVIEW=1 npm run dev -- --force --host 127.0.0.1 --port ${pwaOpfsE2ePort.toLocaleString("en-US", {
       useGrouping: false,
     })}`,
     reuseExistingServer: false,

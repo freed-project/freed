@@ -54,6 +54,7 @@ import {
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   enqueuePwaLibraryCoreUserStateToggle,
   ensurePwaLibraryCoreLocalSampleState,
+  settlePwaLibraryCoreLocalSampleState,
   initializePwaLibraryCoreState,
   readPwaLibraryCoreItemDetail,
   subscribePwaLibraryCoreState,
@@ -593,7 +594,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearSampleData: async () => {
+    await ensurePwaLibraryCoreLocalSampleState();
     const summary = await clearPwaLibraryCoreSampleData();
+    await settlePwaLibraryCoreLocalSampleState();
     invalidateLibraryWindows(get, set);
     return summary;
   },
@@ -603,7 +606,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     for (const feed of data.feeds) {
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }
+    await settlePwaLibraryCoreLocalSampleState();
     await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
+    await settlePwaLibraryCoreLocalSampleState();
     await enqueuePwaLibraryCoreFeedItemAnnotationSets(
       data.items.map((item) => ({
         entityId: item.globalId,
@@ -611,6 +616,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         tags: item.userState.tags,
       })),
     );
+    await settlePwaLibraryCoreLocalSampleState();
     await enqueuePwaLibraryCoreFeedItemAnalysisSets(
       data.items
         .filter(
@@ -623,8 +629,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           eventCandidate: item.eventCandidate,
         })),
     );
+    await settlePwaLibraryCoreLocalSampleState();
     await enqueuePwaLibraryCorePersonUpserts(data.persons);
+    await settlePwaLibraryCoreLocalSampleState();
     await enqueuePwaLibraryCoreAccountUpserts(data.accounts);
+    await settlePwaLibraryCoreLocalSampleState();
     invalidateLibraryWindows(get, set);
   },
 
