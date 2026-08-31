@@ -34,7 +34,6 @@ import type {
   LibraryCoreRssFeedPageRowV1,
 } from "@freed/shared/library-core";
 import {
-  decodeLibraryCoreFriendsDirectoryCursorV1,
   encodeLibraryCoreFriendsDirectoryCursorV1,
   libraryCoreFriendsDirectoryBindingDigestV1,
 } from "@freed/shared/library-core";
@@ -1855,18 +1854,14 @@ describe("Library row query hooks", () => {
           projectionRevision: 1,
           transitionSequence: 1,
         };
-        const cursor = request.cursor
-          ? decodeLibraryCoreFriendsDirectoryCursorV1(request.cursor)
-          : null;
-        const offset = cursor?.ok ? cursor.value.offset : 0;
         return friendsDirectoryResponse(
-          offset === 0 ? firstRows : secondRows,
-          offset === 0
+          request.cursor === null ? firstRows : secondRows,
+          request.cursor === null
             ? encodeLibraryCoreFriendsDirectoryCursorV1({
                 bindingDigest:
                   libraryCoreFriendsDirectoryBindingDigestV1(request),
                 generationId: source.generationId,
-                offset: 64,
+                personId: firstRows.at(-1)!.id as never,
                 projectionRevision: 1,
                 transitionSequence: 1,
               })

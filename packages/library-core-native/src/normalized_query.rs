@@ -1434,6 +1434,12 @@ struct SearchPageCursorV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FriendsDirectoryCursorV2 {
+    page: FeedPageCursorV1,
+    binding_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FeedBrowseCursorV2 {
     filter_digest: String,
     generation_id: String,
@@ -1651,6 +1657,33 @@ fn decode_search_cursor(value: &str) -> Result<SearchPageCursorV1, NormalizedSql
     Ok(SearchPageCursorV1 {
         page: decode_cursor(parts[1])?,
         search_digest: parts[2].to_owned(),
+    })
+}
+
+fn encode_friends_directory_cursor(
+    page: &FeedPageCursorV1,
+    binding_digest: &str,
+) -> Result<String, NormalizedSqliteError> {
+    if !valid_lower_hex_64(binding_digest) || page.sort_at != 0 {
+        return Err(invalid("normalized Friends directory cursor is invalid"));
+    }
+    Ok(format!("2.{}.{}", encode_cursor(page)?, binding_digest))
+}
+
+fn decode_friends_directory_cursor(
+    value: &str,
+) -> Result<FriendsDirectoryCursorV2, NormalizedSqliteError> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 3 || parts[0] != "2" || !valid_lower_hex_64(parts[2]) {
+        return Err(invalid("normalized Friends directory cursor is invalid"));
+    }
+    let page = decode_cursor(parts[1])?;
+    if page.sort_at != 0 {
+        return Err(invalid("normalized Friends directory cursor is invalid"));
+    }
+    Ok(FriendsDirectoryCursorV2 {
+        page,
+        binding_digest: parts[2].to_owned(),
     })
 }
 
@@ -4165,16 +4198,22 @@ fn query_friends_directory_page(
         ))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_friends_directory_cursor)
+        .transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
-        cursor.global_id != binding_digest
-            || cursor.generation_id != generation_id
-            || cursor.transition_sequence != source_revision
-            || cursor.projection_revision != source_revision
+        cursor.binding_digest != binding_digest
+            || cursor.page.generation_id != generation_id
+            || cursor.page.transition_sequence != source_revision
+            || cursor.page.projection_revision != source_revision
     }) {
         return Err(invalid("normalized Friends directory page cursor is stale"));
     }
-    let offset = cursor.as_ref().map_or(0, |cursor| cursor.sort_at);
+    let cursor_person_id = cursor
+        .as_ref()
+        .map_or("", |cursor| cursor.page.global_id.as_str());
     let need_outreach = i64::from(request.filters.iter().any(|value| value == "need_outreach"));
     let no_contact = i64::from(request.filters.iter().any(|value| value == "no_contact"));
     let close_friends = i64::from(request.filters.iter().any(|value| value == "close_friends"));
@@ -4220,13 +4259,23 @@ fn query_friends_directory_page(
             request.now_ms,
             recent_cutoff,
             request.sort,
-            offset,
+            cursor_person_id,
             i64::try_from(request.limit + 1).expect("bounded Friends directory limit"),
         ],
-        |row| decode_generated_query_row(row, "friends_directory_page_v1"),
+        |row| {
+            decode_generated_query_row::<NormalizedFriendsDirectoryRowV1>(
+                row,
+                "friends_directory_page_v1",
+            )
+        },
     )?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
+    if cursor.is_some() && rows.is_empty() {
+        return Err(invalid(
+            "normalized Friends directory cursor row is missing",
+        ));
+    }
     if rows.len() > program.maximum_scan_rows {
         return Err(invalid(
             "normalized Friends directory page exceeded its row bound",
@@ -4241,13 +4290,16 @@ fn query_friends_directory_page(
                     "normalized Friends directory cursor row is missing",
                 ));
             }
-            Some(encode_cursor(&FeedPageCursorV1 {
-                generation_id: generation_id.clone(),
-                transition_sequence: source_revision,
-                projection_revision: source_revision,
-                sort_at: offset + i64::try_from(rows.len()).expect("bounded Friends page"),
-                global_id: binding_digest.clone(),
-            })?)
+            Some(encode_friends_directory_cursor(
+                &FeedPageCursorV1 {
+                    generation_id: generation_id.clone(),
+                    transition_sequence: source_revision,
+                    projection_revision: source_revision,
+                    sort_at: 0,
+                    global_id: rows.last().expect("nonempty Friends page").id.clone(),
+                },
+                &binding_digest,
+            )?)
         } else {
             None
         };
@@ -9162,6 +9214,10 @@ mod tests {
         assert_eq!(first_directory.total_count, 2);
         assert_eq!(first_directory.rows[0].id, "person-1");
         assert!(first_directory.rows[0].needs_outreach);
+        let first_cursor = first_directory
+            .next_cursor
+            .clone()
+            .expect("first Friends cursor");
         let NormalizedQueryResponseV1::FriendsDirectoryPage(second_directory) =
             query_normalized_v1(
                 &mut connection,
@@ -9177,6 +9233,57 @@ mod tests {
             panic!("Friends directory response");
         };
         assert_eq!(second_directory.rows[0].id, "person-2");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "friends_directory_page_v1")
+            .expect("Friends directory program");
+        assert!(!program.sql.contains(" OFFSET "));
+        assert!(program.sql.contains("cursor_row"));
+        for sort in ["name", "care_level", "last_contact", "recent_activity"] {
+            let mut cursor = None;
+            let mut person_ids = Vec::new();
+            loop {
+                let NormalizedQueryResponseV1::FriendsDirectoryPage(page) = query_normalized_v1(
+                    &mut connection,
+                    NormalizedQueryRequestV1::FriendsDirectoryPage(
+                        NormalizedFriendsDirectoryPageRequestV1 {
+                            cursor,
+                            sort: sort.to_owned(),
+                            ..directory_request.clone()
+                        },
+                    ),
+                )
+                .expect("keyset Friends directory page") else {
+                    panic!("Friends directory response");
+                };
+                person_ids.extend(page.rows.into_iter().map(|row| row.id));
+                cursor = page.next_cursor;
+                if cursor.is_none() {
+                    break;
+                }
+            }
+            assert_eq!(person_ids, vec!["person-1", "person-2"]);
+        }
+        let decoded =
+            decode_friends_directory_cursor(&first_cursor).expect("decode first Friends cursor");
+        let missing_cursor = encode_friends_directory_cursor(
+            &FeedPageCursorV1 {
+                global_id: "missing-person".to_owned(),
+                ..decoded.page
+            },
+            &decoded.binding_digest,
+        )
+        .expect("missing Friends cursor");
+        assert!(query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FriendsDirectoryPage(
+                NormalizedFriendsDirectoryPageRequestV1 {
+                    cursor: Some(missing_cursor),
+                    ..directory_request.clone()
+                },
+            ),
+        )
+        .is_err());
         let NormalizedQueryResponseV1::FriendsDirectoryPage(no_contact) = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::FriendsDirectoryPage(

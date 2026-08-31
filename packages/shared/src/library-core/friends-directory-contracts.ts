@@ -1,12 +1,14 @@
 import {
   decodeLibraryCoreFeedPageCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
+  LIBRARY_CORE_FEED_PAGE_MAXIMUM_CURSOR_BYTES,
   parseLibraryCoreFeedPageSourceV1,
   type LibraryCoreFeedPageParseResult,
   type LibraryCoreFeedPageSourceV1,
 } from "./feed-page-contracts.js";
 import {
   isLibraryCoreNonnegativeSafeInteger,
+  isLibraryCoreEntityId,
   isLibraryCoreLowercaseHex64,
   isLibraryCoreOperationInstanceId,
   type LibraryCoreEntityId,
@@ -26,6 +28,8 @@ export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_LIMIT = 64;
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES =
   512 * 1_024;
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES = 1_024;
+export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_CURSOR_BYTES =
+  LIBRARY_CORE_FEED_PAGE_MAXIMUM_CURSOR_BYTES + 67;
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_RECENT_WINDOW_MS =
   7 * 24 * 60 * 60 * 1_000;
 export const LIBRARY_CORE_PERSON_PICKER_QUERY_ID =
@@ -285,7 +289,7 @@ export const LIBRARY_CORE_FRIENDS_DIRECTORY_REQUEST_SCHEMA = Object.freeze({
   schemaVersion: LIBRARY_CORE_FRIENDS_DIRECTORY_SCHEMA_VERSION,
   queryId: LIBRARY_CORE_FRIENDS_DIRECTORY_QUERY_ID,
   canonicalKeys: REQUEST_KEYS,
-  cursorCodec: "library_core_friends_directory_cursor_v1",
+  cursorCodec: "library_core_friends_directory_cursor_v2",
   defaultLimit: LIBRARY_CORE_FRIENDS_DIRECTORY_DEFAULT_LIMIT,
   maximumLimit: LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_LIMIT,
   maximumSearchBytes: LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES,
@@ -325,7 +329,7 @@ export const LIBRARY_CORE_FRIENDS_DIRECTORY_NESTED_BOUNDS = Object.freeze({
 export interface LibraryCoreFriendsDirectoryCursorV1 {
   readonly bindingDigest: LibraryCoreLowercaseHex64;
   readonly generationId: LibraryCoreLowercaseHex64;
-  readonly offset: number;
+  readonly personId: LibraryCoreEntityId;
   readonly projectionRevision: number;
   readonly transitionSequence: number;
 }
@@ -411,30 +415,49 @@ export function libraryCoreFriendsDirectoryBindingDigestV1(
 export function encodeLibraryCoreFriendsDirectoryCursorV1(
   cursor: LibraryCoreFriendsDirectoryCursorV1,
 ): string {
-  return encodeLibraryCoreFeedPageCursorV1({
+  if (!isLibraryCoreLowercaseHex64(cursor.bindingDigest)) {
+    throw new TypeError(
+      "invalid Library Core Friends directory binding digest",
+    );
+  }
+  const pageCursor = encodeLibraryCoreFeedPageCursorV1({
     generationId: cursor.generationId,
     transitionSequence: cursor.transitionSequence,
     projectionRevision: cursor.projectionRevision,
-    sortAt: cursor.offset,
-    globalId: cursor.bindingDigest as unknown as LibraryCoreEntityId,
+    sortAt: 0,
+    globalId: cursor.personId,
   });
+  return `2.${pageCursor}.${cursor.bindingDigest}`;
 }
 
 export function decodeLibraryCoreFriendsDirectoryCursorV1(
   value: string,
 ): LibraryCoreFeedPageParseResult<LibraryCoreFriendsDirectoryCursorV1> {
-  const decoded = decodeLibraryCoreFeedPageCursorV1(value);
+  if (value.length > LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_CURSOR_BYTES) {
+    return { ok: false, error: "Friends directory cursor is invalid" };
+  }
+  const parts = value.split(".");
+  if (
+    parts.length !== 3 ||
+    parts[0] !== "2" ||
+    !isLibraryCoreLowercaseHex64(parts[2])
+  ) {
+    return { ok: false, error: "Friends directory cursor is invalid" };
+  }
+  const decoded = decodeLibraryCoreFeedPageCursorV1(parts[1]);
   if (!decoded.ok) return decoded;
-  if (!isLibraryCoreLowercaseHex64(decoded.value.globalId)) {
+  if (
+    decoded.value.sortAt !== 0 ||
+    !isLibraryCoreEntityId(decoded.value.globalId)
+  ) {
     return { ok: false, error: "Friends directory cursor is invalid" };
   }
   return {
     ok: true,
     value: Object.freeze({
-      bindingDigest: decoded.value
-        .globalId as unknown as LibraryCoreLowercaseHex64,
+      bindingDigest: parts[2] as LibraryCoreLowercaseHex64,
       generationId: decoded.value.generationId,
-      offset: decoded.value.sortAt,
+      personId: decoded.value.globalId,
       projectionRevision: decoded.value.projectionRevision,
       transitionSequence: decoded.value.transitionSequence,
     }),
@@ -527,12 +550,7 @@ export function parseLibraryCoreFriendsDirectoryPageResponseV1(
   }
   if (record.nextCursor !== null) {
     const cursor = decodeLibraryCoreFriendsDirectoryCursorV1(record.nextCursor);
-    const requestCursor =
-      request.cursor === null
-        ? null
-        : decodeLibraryCoreFriendsDirectoryCursorV1(request.cursor);
-    const expectedOffset =
-      (requestCursor?.ok ? requestCursor.value.offset : 0) + rows.length;
+    const expectedPersonId = rows.at(-1)?.id;
     if (
       !cursor.ok ||
       cursor.value.bindingDigest !==
@@ -540,7 +558,8 @@ export function parseLibraryCoreFriendsDirectoryPageResponseV1(
       cursor.value.generationId !== source.value.generationId ||
       cursor.value.projectionRevision !== source.value.projectionRevision ||
       cursor.value.transitionSequence !== source.value.transitionSequence ||
-      cursor.value.offset !== expectedOffset
+      expectedPersonId === undefined ||
+      cursor.value.personId !== expectedPersonId
     ) {
       return { ok: false, error: "Friends directory next cursor is invalid" };
     }

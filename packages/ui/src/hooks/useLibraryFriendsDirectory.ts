@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_LIMIT,
-  decodeLibraryCoreFriendsDirectoryCursorV1,
-  encodeLibraryCoreFriendsDirectoryCursorV1,
-  libraryCoreFriendsDirectoryBindingDigestV1,
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFriendsDirectoryFilterV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
@@ -21,6 +18,7 @@ interface DirectoryState {
   readonly loadingPage: boolean;
   readonly nextCursor: string | null;
   readonly pageCursor: string | null;
+  readonly previousPageStarts: readonly (string | null)[];
   readonly rows: readonly LibraryCoreFriendsDirectoryRowV1[];
   readonly source: LibraryCoreFeedPageSourceV1 | null;
   readonly status: "loading" | "ready" | "failed";
@@ -102,6 +100,7 @@ export function useLibraryFriendsDirectory({
         loadingPage: false,
         nextCursor: null,
         pageCursor: null,
+        previousPageStarts: [],
         rows: [],
         source: null,
         status: "loading",
@@ -116,6 +115,7 @@ export function useLibraryFriendsDirectory({
             loadingPage: false,
             nextCursor: response.nextCursor,
             pageCursor: null,
+            previousPageStarts: [],
             rows: response.rows,
             source: response.source,
             status: "ready",
@@ -130,6 +130,7 @@ export function useLibraryFriendsDirectory({
             loadingPage: false,
             nextCursor: null,
             pageCursor: null,
+            previousPageStarts: [],
             rows: [],
             source: null,
             status: "failed",
@@ -144,7 +145,7 @@ export function useLibraryFriendsDirectory({
   }, [attemptKey, limit, queryLibraryCore, search, sort, sortedFilters]);
 
   const readPage = useCallback(
-    (cursor: string | null) => {
+    (cursor: string | null, previousPageStarts: readonly (string | null)[]) => {
       if (
         !queryLibraryCore ||
         !state ||
@@ -174,6 +175,7 @@ export function useLibraryFriendsDirectory({
               loadingPage: false,
               nextCursor: response.nextCursor,
               pageCursor: cursor,
+              previousPageStarts,
               rows: response.rows,
               source: response.source,
               totalCount: response.totalCount,
@@ -192,38 +194,31 @@ export function useLibraryFriendsDirectory({
   );
 
   const current = state?.attemptKey === attemptKey ? state : null;
-  const currentCursor = current?.pageCursor
-    ? decodeLibraryCoreFriendsDirectoryCursorV1(current.pageCursor)
-    : null;
-  const currentOffset = currentCursor?.ok ? currentCursor.value.offset : 0;
-  const previousCursor = useMemo(() => {
-    if (!current?.source || currentOffset === 0) return null;
-    const previousOffset = Math.max(0, currentOffset - limit);
-    if (previousOffset === 0) return "";
-    return encodeLibraryCoreFriendsDirectoryCursorV1({
-      bindingDigest: libraryCoreFriendsDirectoryBindingDigestV1(
-        current.baseRequest,
-      ),
-      generationId: current.source.generationId,
-      offset: previousOffset,
-      projectionRevision: current.source.projectionRevision,
-      transitionSequence: current.source.transitionSequence,
-    });
-  }, [current, currentOffset, limit]);
+  const previousPageStarts = current?.previousPageStarts ?? [];
 
   return {
     hasNext: current?.nextCursor !== null && current?.nextCursor !== undefined,
-    hasPrevious: previousCursor !== null,
+    hasPrevious: previousPageStarts.length > 0,
     loading: !current || current.status === "loading",
     loadingPage: current?.loadingPage ?? false,
-    pageNumber: Math.floor(currentOffset / limit) + 1,
+    pageNumber: previousPageStarts.length + 1,
     rows: current?.rows ?? [],
     totalCount: current?.totalCount ?? 0,
     nextPage: () => {
-      if (current?.nextCursor) readPage(current.nextCursor);
+      if (current?.nextCursor) {
+        readPage(current.nextCursor, [
+          ...current.previousPageStarts,
+          current.pageCursor,
+        ]);
+      }
     },
     previousPage: () => {
-      if (previousCursor !== null) readPage(previousCursor || null);
+      if (previousPageStarts.length > 0) {
+        readPage(
+          previousPageStarts.at(-1) ?? null,
+          previousPageStarts.slice(0, -1),
+        );
+      }
     },
   };
 }

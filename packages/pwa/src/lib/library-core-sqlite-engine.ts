@@ -9000,7 +9000,7 @@ export class PwaLibraryCoreSqliteEngine {
     ) {
       throw new Error("PWA Library SQLite Friends directory cursor is stale");
     }
-    const offset = cursor?.ok ? cursor.value.offset : 0;
+    const cursorPersonId = cursor?.ok ? cursor.value.personId : "";
     const filters = new Set(request.value.filters);
     const cutoff = Math.max(
       0,
@@ -9036,7 +9036,7 @@ export class PwaLibraryCoreSqliteEngine {
       bind: [
         ...filterBindings,
         request.value.sort,
-        offset,
+        cursorPersonId,
         request.value.limit + 1,
       ],
       rowMode: "object",
@@ -9045,6 +9045,11 @@ export class PwaLibraryCoreSqliteEngine {
     if (rawRows.length > program.maximumScanRows) {
       throw new Error(
         "PWA Library SQLite Friends directory exceeded its row bound",
+      );
+    }
+    if (cursor?.ok && rawRows.length === 0) {
+      throw new Error(
+        "PWA Library SQLite Friends directory cursor row is missing",
       );
     }
     let hasMore = rawRows.length > request.value.limit;
@@ -9065,7 +9070,7 @@ export class PwaLibraryCoreSqliteEngine {
             ? encodeLibraryCoreFriendsDirectoryCursorV1({
                 bindingDigest,
                 generationId: generationId as never,
-                offset: offset + rows.length,
+                personId: rows.at(-1)!.id as never,
                 projectionRevision: sourceRevision,
                 transitionSequence: sourceRevision,
               })
