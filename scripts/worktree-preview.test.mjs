@@ -84,6 +84,23 @@ test("worktree-preview marks product previews as feature previews", () => {
   );
 });
 
+test("Vite worktree previews fail instead of moving to an untracked port", () => {
+  const script = readFileSync(path.join(repoRoot, "scripts/worktree-preview.sh"), "utf8");
+
+  assert.equal(
+    (script.match(/RUN_ARGS=.*"--strictPort"/g) ?? []).length,
+    2,
+  );
+  assert.match(
+    script,
+    /cd packages\/desktop .*npm run dev -- --port \$\{PORT\} --strictPort/,
+  );
+  assert.match(
+    script,
+    /cd packages\/pwa .*npm run dev -- --port \$\{PORT\} --strictPort/,
+  );
+});
+
 test("native worktree previews cannot reuse the production bundle identifier", () => {
   const script = readFileSync(path.join(repoRoot, "scripts/worktree-preview.sh"), "utf8");
 
