@@ -474,6 +474,12 @@ export interface PlatformConfig {
   /** Zustand store hook — both PWA and Desktop stores extend BaseAppState */
   store: AppStoreHook;
 
+  /** Removes durable editing and connection surfaces for a public showcase. */
+  interactionMode?: "full" | "read-only";
+
+  /** Uses the bundled marker canvas without network map tiles. */
+  geographicMapMode?: "online" | "local-showcase";
+
   /**
    * Controls whether feed cards eagerly render remote media previews.
    * Desktop can force reader-only mode to reduce WebKit renderer pressure.

@@ -331,7 +331,9 @@ export function Header({
     importMarkdown,
     exportMarkdown,
     openUrl,
+    interactionMode,
   } = usePlatform();
+  const readOnly = interactionMode === "read-only";
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
@@ -454,11 +456,12 @@ export function Header({
     activeView === "friends" ||
     activeView === "map" ||
     (activeView === "feed" && !readerActive);
-  const showFeedBulkActions = activeView === "feed";
+  const showFeedBulkActions = activeView === "feed" && !readOnly;
   const showFeedSignalFilter = activeView === "feed" && !readerActive;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
   const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
-  const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
+  const showArchivedDeleteAction =
+    !readOnly && showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
   const showSocialContentControls =
     activeView === "feed" &&
     !readerActive &&
@@ -501,7 +504,7 @@ export function Header({
     showSavedSortControl ||
     showFeedSignalFilter;
   const showInlineReaderBookmark =
-    !!selectedItem && !isBelowReaderBookmarkToolbar;
+    !readOnly && !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
     ? showInlineReaderBookmark ? 11 : 8.5
     : showInlineReaderBookmark ? 6.5 : 3.5;
@@ -942,7 +945,7 @@ export function Header({
         ),
       });
 
-      if (!showInlineReaderBookmark) {
+      if (!readOnly && !showInlineReaderBookmark) {
         actions.push({
           id: "bookmark-reader",
           label: selectedItem.userState.saved ? "Remove bookmark" : "Bookmark",
@@ -962,13 +965,15 @@ export function Header({
         });
       }
 
-      actions.push({
-        id: "archive-reader",
-        label: selectedItem.userState.archived ? "Unarchive" : "Archive",
-        onClick: handleToggleReaderArchived,
-        active: selectedItem.userState.archived,
-        icon: <ArchiveIcon className="h-5 w-5" />,
-      });
+      if (!readOnly) {
+        actions.push({
+          id: "archive-reader",
+          label: selectedItem.userState.archived ? "Unarchive" : "Archive",
+          onClick: handleToggleReaderArchived,
+          active: selectedItem.userState.archived,
+          icon: <ArchiveIcon className="h-5 w-5" />,
+        });
+      }
     }
 
     if (!readerActive && isBelowLargeToolbar) {
@@ -1038,6 +1043,7 @@ export function Header({
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
     readerActive,
+    readOnly,
     savedArchivedCount,
     selectedItem,
     showInlineReaderBookmark,
@@ -1788,8 +1794,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width={TOOLBAR_ICON_BUTTON_SIZE} className="hidden lg:flex">
-                  {!isBelowLargeToolbar ? (
+                <ToolbarAnimatedSlot visible={!readOnly && !isBelowLargeToolbar} width={TOOLBAR_ICON_BUTTON_SIZE} className="hidden lg:flex">
+                  {!readOnly && !isBelowLargeToolbar ? (
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}

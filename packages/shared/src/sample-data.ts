@@ -719,7 +719,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const { batchId, seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
   const rand = mulberry32(seed);
-  const now = Date.now();
+  const now = resolvedOptions.generatedAt;
   const items: FeedItem[] = [];
   const sampleFriendDefs = buildSamplePersonDefs(resolvedOptions);
   const sampleUnlinkedAccounts = buildSampleUnlinkedAccounts(resolvedOptions);

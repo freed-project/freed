@@ -280,7 +280,7 @@ test("dev tag validation inherits the exact successful dev integration receipt",
 test("draft release assets and publication use the exact release ID", () => {
   const updaterJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  updater-manifest:"),
-    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+    releaseWorkflow.indexOf("\n  showcase-assets:"),
   );
   const publishJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  publish:"),
@@ -307,10 +307,28 @@ test("draft release assets and publication use the exact release ID", () => {
   );
   assert.match(
     publishJob,
-    /needs:\s*\[updater-manifest, create-release\]/,
+    /needs:\s*\[updater-manifest, showcase-assets, create-release\]/,
     "publish must directly depend on create-release before reading its output",
   );
+  assert.match(
+    publishJob,
+    /needs\.showcase-assets\.result == 'success' \|\| needs\.showcase-assets\.result == 'skipped'/,
+    "production showcase failure must block publication without blocking dev releases",
+  );
   assert.doesNotMatch(publishJob, /gh release edit/);
+});
+
+test("production releases publish an exact-tag local-only PWA showcase", () => {
+  const showcaseJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  showcase-assets:"),
+    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+  );
+
+  assert.match(showcaseJob, /release_channel == 'production'/);
+  assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
+  assert.match(showcaseJob, /capture-release-showcase\.mjs/);
+  assert.match(showcaseJob, /freed-showcase\.gif/);
+  assert.match(showcaseJob, /gh release upload "\$TAG"/);
 });
 
 test("release failure triage binds GitHub CLI to the triggering repository", () => {

@@ -212,6 +212,7 @@ interface FriendDetailPanelProps {
   onShowNewestTimeline: () => void;
   onLogReachOut: (entry: ReachOutLog) => void;
   onOpenMap: () => void;
+  readOnly?: boolean;
 }
 
 export function FriendDetailPanel({
@@ -230,6 +231,7 @@ export function FriendDetailPanel({
   onShowNewestTimeline,
   onLogReachOut,
   onOpenMap,
+  readOnly = false,
 }: FriendDetailPanelProps) {
   const [showReachOut, setShowReachOut] = useState(false);
   const items = [...feedItems];
@@ -340,11 +342,12 @@ export function FriendDetailPanel({
           friend={friend}
           feedItems={locationItems}
           onOpenMap={onOpenMap}
+          resolveNamedLocations={!readOnly}
         />
       </div>
 
       {/* Reach out button / popover */}
-      <div className="theme-dialog-divider shrink-0 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_90%,transparent)] px-4 py-3 backdrop-blur-md">
+      {!readOnly ? <div className="theme-dialog-divider shrink-0 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_90%,transparent)] px-4 py-3 backdrop-blur-md">
         {showReachOut ? (
           <ReachOutPopover
             onLog={handleLogReachOut}
@@ -359,7 +362,7 @@ export function FriendDetailPanel({
             Mark as reached out
           </button>
         )}
-      </div>
+      </div> : null}
 
       {/* Timeline */}
       <div className="flex-1 overflow-y-auto">
