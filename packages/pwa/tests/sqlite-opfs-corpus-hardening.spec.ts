@@ -4,10 +4,14 @@ import {
   chromium,
   expect,
   test,
+  webkit,
   type BrowserContext,
   type Page,
 } from "@playwright/test";
-import { pwaCorpusHardeningBaseUrl } from "./corpus-hardening-e2e-settings";
+import {
+  pwaCorpusHardeningBaseUrl,
+  pwaCorpusHardeningBrowser,
+} from "./corpus-hardening-e2e-settings";
 
 /**
  * Nightly tier. This catches PWA OPFS regressions that only appear once the
@@ -298,10 +302,11 @@ async function writeReport(
     reportPath,
     `${JSON.stringify(
       {
-        browser: context.browser()?.version() ?? "unknown",
+        browserEngine: pwaCorpusHardeningBrowser,
+        browserVersion: context.browser()?.version() ?? "unknown",
         generatedAt: new Date().toISOString(),
         milestones: reports,
-        schemaVersion: 1,
+        schemaVersion: 2,
         target,
       },
       null,
@@ -315,7 +320,7 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
   test.setTimeout(3_600_000);
   const profileRoot = resolve(
     process.cwd(),
-    "test-results/pwa-library-corpus-profile",
+    `test-results/pwa-library-corpus-${pwaCorpusHardeningBrowser}-profile`,
   );
   let context: BrowserContext | null = null;
   const reports: MilestoneReport[] = [];
@@ -324,11 +329,17 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
 
   try {
     await rm(profileRoot, { force: true, recursive: true });
-    context = await chromium.launchPersistentContext(profileRoot, {
-      args: ["--enable-precise-memory-info"],
-      baseURL: pwaCorpusHardeningBaseUrl,
-      headless: true,
-    });
+    context =
+      pwaCorpusHardeningBrowser === "webkit"
+        ? await webkit.launchPersistentContext(profileRoot, {
+            baseURL: pwaCorpusHardeningBaseUrl,
+            headless: true,
+          })
+        : await chromium.launchPersistentContext(profileRoot, {
+            args: ["--enable-precise-memory-info"],
+            baseURL: pwaCorpusHardeningBaseUrl,
+            headless: true,
+          });
     const page = context.pages()[0] ?? (await context.newPage());
     page.on("console", (message) => {
       if (message.type() === "info") console.info(message.text());

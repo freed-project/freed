@@ -33,6 +33,27 @@ Both checkpoints stayed inside the Library Core contract's warm bounded page,
 facet, and search timing budgets. Feed and search response sizes remained fixed
 as the fixture grew by four times.
 
+## WebKit 25,000-item milestone
+
+The browser-selectable harness also completed the 25,000-item contract
+milestone against WebKit 26.5 on a fresh isolated profile and origin. The run
+took 3.3 minutes.
+
+| Measurement         | 25,000 items |
+| ------------------- | -----------: |
+| Feed page rows      |           64 |
+| Feed page time      |      5.18 ms |
+| Facet time          |      6.78 ms |
+| Search rows         |           32 |
+| Search rows scanned |           32 |
+| Search time         |     23.00 ms |
+| OPFS usage          |  413,360,340 bytes |
+
+WebKit kept the same bounded response and scan sizes as Chromium. Its feed,
+facet, and search timings remained inside the contract budgets. The nightly
+lane now runs this WebKit milestone alongside the 100,000-item Chromium
+envelope.
+
 ## Evidence limits
 
 Chromium exposed `performance.memory`, not
@@ -41,6 +62,10 @@ snapshots after each checkpoint. They are not whole-process or dedicated-worker
 peak memory. The checked-in nightly harness now also samples the page heap after
 every bounded capture transaction and reports the largest observed value.
 
-Native scale, whole-process peak memory, WebKit scale, quota exhaustion, and the
-complete crash and corruption matrix remain open under issue #1446. This report
-does not claim those proofs.
+WebKit exposed neither supported browser memory API, so its measurement remains
+`unsupported` with null byte values. This is an evidence gap, not a zero-memory
+result.
+
+Native scale, whole-process peak memory, WebKit scale above 25,000 items, quota
+exhaustion, and the complete crash and corruption matrix remain open under
+issue #1446. This report does not claim those proofs.
