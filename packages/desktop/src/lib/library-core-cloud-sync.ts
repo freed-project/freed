@@ -358,6 +358,20 @@ function parseControl(
   return parseLibraryCoreControlPointerV1(value);
 }
 
+function controlPointersEqual(
+  left: LibraryCoreControlPointerV1,
+  right: LibraryCoreControlPointerV1,
+): boolean {
+  const leftBytes = encodeLibraryCoreCanonicalValue(
+    left as unknown as LibraryCoreCanonicalValue,
+  );
+  const rightBytes = encodeLibraryCoreCanonicalValue(
+    right as unknown as LibraryCoreCanonicalValue,
+  );
+  if (leftBytes.byteLength !== rightBytes.byteLength) return false;
+  return leftBytes.every((byte, index) => byte === rightBytes[index]);
+}
+
 async function persistVerifiedWriterAdmission(input: {
   readonly localWriterId: string;
   readonly pointer: LibraryCoreControlPointerV1;
@@ -1138,9 +1152,18 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       "Normalized SQLite checkpoint authority conflicts with cloud state",
     );
   }
-  if (
-    state.lastPublishedRevision === normalizedCheckpoint.sourceRevision
-  ) {
+  if (state.lastPublishedRevision === normalizedCheckpoint.sourceRevision) {
+    const receipt = checkpointReceiptForState(state);
+    if (
+      receipt === null ||
+      pointer === null ||
+      controlRead.revision !== receipt.controlRevision ||
+      !controlPointersEqual(pointer, receipt.controlPointer)
+    ) {
+      throw new Error(
+        "Stored Library Core publication receipt does not match Drive control",
+      );
+    }
     return { status: "current", revision: normalizedCheckpoint.sourceRevision };
   }
   const generation = pointer === null ? 0 : pointer.generation + 1;

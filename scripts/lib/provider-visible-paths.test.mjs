@@ -431,6 +431,18 @@ test("background media and Google sync network surfaces are provider-visible", (
     true,
   );
   assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/library-core-cloud-sync.ts",
+    ),
+    true,
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/library-core-cloud-sync.ts",
+    ),
+    ["other"],
+  );
+  assert.equal(
     isProviderVisiblePath("packages/library-service/src/supervisor.ts"),
     true,
   );

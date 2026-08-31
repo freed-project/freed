@@ -30,7 +30,7 @@ pub const DEVICE_CONTACT_MUTATION_DIGEST_DOMAIN: &str =
     "freed.library-core.v1/digest-records/device-contact-mutation\0";
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = 131072;
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = 2097152;
-pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
+pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 4096;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const NATIVE_COMMAND_MAXIMUM_FRAME_BYTES: usize = 4194304;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;

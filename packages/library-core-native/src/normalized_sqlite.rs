@@ -479,6 +479,19 @@ fn serialized_page_bytes(
         })
 }
 
+// The response limit includes the JSON envelope and the final cursor as well as
+// record bytes. A cursor can contain 4,096 UTF-8 bytes and JSON may expand each
+// byte to a six-byte escape. Reserving 32 KiB keeps the incremental page builder
+// below the exact response ceiling without serializing the growing record array
+// after every row.
+const CHECKPOINT_RESPONSE_ENVELOPE_MAXIMUM_BYTES: usize = 32 * 1024;
+
+fn checkpoint_response_upper_bound(record_count: usize, canonical_record_bytes: usize) -> usize {
+    canonical_record_bytes
+        .saturating_add(record_count.saturating_sub(1))
+        .saturating_add(CHECKPOINT_RESPONSE_ENVELOPE_MAXIMUM_BYTES)
+}
+
 fn checkpoint_frontier_digest_v2(
     connection: &Connection,
     authority_epoch: &str,
@@ -658,6 +671,20 @@ impl NormalizedCheckpointExportSessionV2 {
                 "normalized checkpoint changed before export",
             ));
         }
+        // The generated export view is a UNION across every normalized table.
+        // Reopening it for each bounded page makes SQLite rescan and resort a
+        // receipt-heavy Library hundreds or thousands of times. Materialize the
+        // exact pinned view once in this connection's temporary schema, where
+        // the order index serves every later page. The temporary object shadows
+        // the main-schema view only for this export session and disappears with
+        // the connection.
+        connection.execute_batch(
+            "CREATE TEMP TABLE library_checkpoint_export AS
+               SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+               FROM main.library_checkpoint_export;
+             CREATE UNIQUE INDEX temp.library_checkpoint_export_order
+               ON library_checkpoint_export(registry_key, primary_key_json);",
+        )?;
         Ok(Self {
             connection,
             snapshot,
@@ -774,18 +801,24 @@ pub fn export_normalized_checkpoint_page_v2(
         }
         encode_fractional_payload(&registry_key, &mut payload)?;
         let record = checked_record(&registry_key, primary_key, payload)?;
-        let canonical_bytes = encode_canonical_value(
-            &serde_json::to_value(&record).map_err(|error| {
+        // Compact JSON and canonical JSON differ only in object-key order for
+        // these already-normalized values, so their encoded byte lengths are
+        // identical. Measure the record once here. Sorting every object solely
+        // to learn its length made large receipt-heavy exports CPU-bound.
+        let canonical_bytes = serde_json::to_vec(&record)
+            .map_err(|error| {
                 NormalizedSqliteError::Transport(format!(
                     "checkpoint record encoding failed: {error}"
                 ))
-            })?,
-            crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
-        )
-        .map_err(|_| {
-            NormalizedSqliteError::Transport("checkpoint record exceeds its bound".into())
-        })?
-        .len();
+            })?
+            .len();
+        if canonical_bytes
+            > crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
+        {
+            return Err(NormalizedSqliteError::Transport(
+                "checkpoint record exceeds its bound".into(),
+            ));
+        }
         let cursor = NormalizedCheckpointCursorV2 {
             registry_key,
             primary_key_json,
@@ -795,7 +828,9 @@ pub fn export_normalized_checkpoint_page_v2(
         page.next_cursor = Some(cursor);
         page.canonical_record_bytes += canonical_bytes;
         page.done = false;
-        if serialized_page_bytes(&page)? > request.maximum_response_bytes {
+        if checkpoint_response_upper_bound(page.records.len(), page.canonical_record_bytes)
+            > request.maximum_response_bytes
+        {
             page.records.pop();
             page.next_cursor = previous_cursor;
             page.canonical_record_bytes -= canonical_bytes;

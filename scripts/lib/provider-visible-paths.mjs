@@ -216,6 +216,7 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/desktop/src/components/CloudProviderCard.tsx", ["other"]],
   ["packages/desktop/src/components/CloudSyncNudge.tsx", ["other"]],
   ["packages/desktop/src/components/DesktopFeedsSettingsSection.tsx", ["other"]],
+  ["packages/desktop/src/lib/library-core-cloud-sync.ts", ["other"]],
   ["packages/desktop/src/components/FacebookFeedEmptyState.tsx", ["facebook"]],
   [
     "packages/desktop/src/components/FacebookSettingsSection.tsx",

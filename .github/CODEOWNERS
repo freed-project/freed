@@ -46,6 +46,7 @@
 /packages/desktop/src/lib/google-contacts.ts @AubreyF
 /packages/desktop/src/lib/instagram-*.ts @AubreyF
 /packages/desktop/src/lib/legal-consent.ts @AubreyF
+/packages/desktop/src/lib/library-core-cloud-sync.ts @AubreyF
 /packages/desktop/src/lib/li-*.ts @AubreyF
 /packages/desktop/src/lib/local-ai-models.ts @AubreyF
 /packages/desktop/src/lib/memory-monitor.ts @AubreyF

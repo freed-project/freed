@@ -990,7 +990,7 @@ describe("Library Core SQLite worker protocol", () => {
         {
           page: {
             after: null,
-            maximumRecords: 128,
+            maximumRecords: 4_096,
             maximumResponseBytes: 1_048_576,
           },
           snapshot: {
@@ -1015,7 +1015,7 @@ describe("Library Core SQLite worker protocol", () => {
         ...exportPage,
         export: {
           ...exportPage.export,
-          page: { ...exportPage.export.page, maximumRecords: 129 },
+          page: { ...exportPage.export.page, maximumRecords: 4_097 },
         },
       }),
     ).toThrow(/bounds are invalid/);

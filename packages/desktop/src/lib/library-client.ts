@@ -605,6 +605,7 @@ export async function backfillLibraryPriorities(
   weights: WeightPreferences,
   passStartedAt: number,
   batchSize = 64,
+  publishRuntimeUpdate = true,
 ): Promise<LibraryPriorityBackfillSummary> {
   if (
     !Number.isSafeInteger(passStartedAt) ||
@@ -632,7 +633,7 @@ export async function backfillLibraryPriorities(
         })),
         passStartedAt,
       );
-      await reloadSqliteLibraryState();
+      if (publishRuntimeUpdate) await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
       passStartedAt,
