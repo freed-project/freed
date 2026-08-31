@@ -1,0 +1,141 @@
+{
+  "tag": "v26.8.3102-dev",
+  "version": "26.8.3102-dev",
+  "channel": "dev",
+  "dayKey": "26.8.31",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-31T22:06:44.666Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3101-dev",
+    "previousPublishedDayTag": "v26.8.3006-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "5924b55b9d785d1f1c62737f8012007837731238",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3101-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "bd9ddb312a6eaea9044e368096eb523ac3771a9a",
+        "toInclusiveProductCommitSha": "5924b55b9d785d1f1c62737f8012007837731238"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:251a9d31983ffc1700ccdfd1870a2b586b08d508dba50def936dc2e365d3ede7",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3100-dev",
+      "v26.8.3101-dev",
+      "v26.8.3102-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3100-dev",
+      "v26.8.3101-dev",
+      "v26.8.3102-dev"
+    ],
+    "prNumbers": [
+      1673,
+      1677,
+      1678,
+      1679,
+      1680,
+      1681,
+      1682,
+      1683,
+      1684,
+      1685,
+      1686,
+      1687,
+      1688,
+      1690,
+      1692,
+      1694,
+      1695,
+      1696,
+      1697,
+      1698,
+      1699,
+      1702,
+      1703
+    ],
+    "commitSubjects": [
+      "fix: pin checkpoint before Drive export (#1702)",
+      "fix: reject unrelated Playwright servers (#1703)",
+      "fix: show sample Library clear progress (#1698)",
+      "docs: codify release economy (#1700)",
+      "feat: add anonymous release demo experience (#1697)",
+      "chore: refresh v26.8.3101-dev identity (#1699)",
+      "fix: admit Google Drive installed sync trigger (#1696)",
+      "fix: keep PWA previews on the reported port (#1695)",
+      "release: v26.8.3101-dev (#1693)",
+      "perf: show sample Library import progress (#1694)",
+      "fix: recover orphaned PWA preview checkpoints (#1692)",
+      "fix: reject corrupted PWA media ranges (#1690)",
+      "chore: add WebKit PWA corpus hardening (#1688)",
+      "fix: publish accurate map location counts (#1687)",
+      "chore: prepare v26.8.3100-dev (#1686)",
+      "fix: make feed performance probes honest (#1685)",
+      "fix: preserve PWA SQLite quota failures (#1684)",
+      "perf: add PWA OPFS corpus hardening (#1683)",
+      "fix: clear retained Friends recovery errors (#1682)",
+      "perf: replace Friends offset pagination with keysets (#1681)",
+      "fix: bootstrap clean Vercel deployments (#1680)",
+      "fix: package PWA deployment guards (#1679)",
+      "perf: reduce PWA install bundle (#1678)",
+      "fix: recover Google Drive sync authentication (#1677)",
+      "test: repair PWA browser fixture preferences (#1676)",
+      "fix: restore PWA sample library context (#1673)"
+    ]
+  },
+  "release": {
+    "deck": "Atomic Google Drive checkpoints and resilient PWA sample data",
+    "features": [
+      "Open Map and Friends on demand while keeping return visits available offline",
+      "Keep PWA feeds and search bounded across 100,000 locally stored items",
+      "Page large Friends directories with stable SQLite keyset cursors"
+    ],
+    "fixes": [
+      "Add an anonymous release demo experience",
+      "Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload",
+      "Refresh a rejected Google Drive access token and retry the exact failed Library request once",
+      "Show live progress while a sample Library is being populated",
+      "Show progress while clearing sample data",
+      "Recover an interrupted local sample Library without touching a connected Library",
+      "Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite",
+      "Reject corrupted PWA media ranges before they become available offline",
+      "Publish accurate location counts in Map",
+      "Preserve the original storage-full error and retry safely after PWA SQLite quota failures",
+      "Restore durable sample Library context across reloads and WebKit process exits",
+      "Expose normal manual Google Drive sync to the installed verification trigger",
+      "Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2",
+      "Keep PWA browser fixtures from writing synchronized device preferences",
+      "Make feed performance checks report inconclusive evidence instead of synthetic success",
+      "Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page",
+      "Make clean PWA preview deployments include their required guards and project binding",
+      "Keep PWA previews on the requested local port"
+    ],
+    "followUps": [
+      "Physical iPhone PWA acceptance",
+      "Run installed build verification in an isolated profile",
+      "Extend large-library proof to WebKit and whole-process memory",
+      "Verify the first signed Google Drive publication against the real local Library"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3102-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n- Page large Friends directories with stable SQLite keyset cursors\n\n### Fixes\n\n- Add an anonymous release demo experience\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Refresh a rejected Google Drive access token and retry the exact failed Library request once\n- Show live progress while a sample Library is being populated\n- Show progress while clearing sample data\n- Recover an interrupted local sample Library without touching a connected Library\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Reject corrupted PWA media ranges before they become available offline\n- Publish accurate location counts in Map\n- Preserve the original storage-full error and retry safely after PWA SQLite quota failures\n- Restore durable sample Library context across reloads and WebKit process exits\n- Expose normal manual Google Drive sync to the installed verification trigger\n- Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Make feed performance checks report inconclusive evidence instead of synthetic success\n- Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page\n- Make clean PWA preview deployments include their required guards and project binding\n- Keep PWA previews on the requested local port\n\n### Follow-ups\n\n- Physical iPhone PWA acceptance\n- Run installed build verification in an isolated profile\n- Extend large-library proof to WebKit and whole-process memory\n- Verify the first signed Google Drive publication against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
