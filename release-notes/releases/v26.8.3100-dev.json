@@ -1,0 +1,81 @@
+{
+  "tag": "v26.8.3100-dev",
+  "version": "26.8.3100-dev",
+  "channel": "dev",
+  "dayKey": "26.8.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-31T13:58:55.020Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3006-dev",
+    "previousPublishedDayTag": "v26.8.3006-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "588249d423749ad08509cad671c7708a54d46166",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3006-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "6706387f38c14fb22dfe73469af58e8bf18bb7d1",
+        "toInclusiveProductCommitSha": "588249d423749ad08509cad671c7708a54d46166"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:437a73401f07b2f99814507286655942b2c2cff5ac230151f96af89420a6cbfd",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3100-dev"
+    ],
+    "prNumbers": [
+      1673,
+      1677,
+      1678,
+      1679,
+      1680,
+      1681,
+      1682,
+      1683,
+      1684,
+      1685
+    ],
+    "commitSubjects": [
+      "fix: make feed performance probes honest (#1685)",
+      "fix: preserve PWA SQLite quota failures (#1684)",
+      "perf: add PWA OPFS corpus hardening (#1683)",
+      "fix: clear retained Friends recovery errors (#1682)",
+      "perf: replace Friends offset pagination with keysets (#1681)",
+      "fix: bootstrap clean Vercel deployments (#1680)",
+      "fix: package PWA deployment guards (#1679)",
+      "perf: reduce PWA install bundle (#1678)",
+      "fix: recover Google Drive sync authentication (#1677)",
+      "test: repair PWA browser fixture preferences (#1676)",
+      "fix: restore PWA sample library context (#1673)"
+    ]
+  },
+  "release": {
+    "deck": "PWA sample library context restored",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3100-dev\n\nPWA sample library context restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
