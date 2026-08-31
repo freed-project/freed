@@ -8,6 +8,7 @@ import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
+import { DemoWelcomeBanner } from "./components/DemoWelcomeBanner";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -116,13 +117,16 @@ import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
+import { installFreedDemoCheckpoint } from "./lib/demo-checkpoint";
+import { isFreedDemoMode } from "./lib/demo-mode";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
+const IS_DEMO = isFreedDemoMode(window.location.hostname);
 const LOCAL_PREVIEW_LABEL =
   import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
-  if (window.location.pathname === "/oauth-callback") {
+  if (!IS_DEMO && window.location.pathname === "/oauth-callback") {
     return <OAuthCallback />;
   }
 
@@ -220,8 +224,8 @@ function App() {
   // Tracked for a proper pass.
   /* eslint-disable react-hooks/set-state-in-effect -- bounded gate bootstrap described above */
   useEffect(() => {
-    if (IS_FEATURE_PREVIEW) {
-      acceptPwaBundle();
+    if (IS_DEMO || IS_FEATURE_PREVIEW) {
+      if (!IS_DEMO) acceptPwaBundle();
       setLegalAccepted(true);
       setLegalResolved(true);
       return;
@@ -234,6 +238,23 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted) return;
+    if (IS_DEMO) {
+      performance.mark("freed-demo-checkpoint:start");
+      void installFreedDemoCheckpoint()
+        .then(() => {
+          performance.mark("freed-demo-checkpoint:end");
+          performance.measure(
+            "freed-demo-checkpoint",
+            "freed-demo-checkpoint:start",
+            "freed-demo-checkpoint:end",
+          );
+          return initialize();
+        })
+        .catch((error) => {
+          console.error("[demo] failed to activate showcase checkpoint:", error);
+        });
+      return;
+    }
     if (!IS_FEATURE_PREVIEW) {
       initialize();
       return;
@@ -246,7 +267,7 @@ function App() {
   }, [initialize, legalAccepted]);
 
   useEffect(() => {
-    if (!isInitialized || !IS_FEATURE_PREVIEW) return;
+    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
     void (async () => {
       await ensurePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
@@ -263,7 +284,7 @@ function App() {
   }, [isInitialized]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized) return;
+    if (!legalAccepted || !isInitialized || IS_DEMO) return;
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
@@ -286,7 +307,7 @@ function App() {
   }, [isInitialized, legalAccepted, setSyncConnected]);
 
   useEffect(() => {
-    if (!legalAccepted) return;
+    if (!legalAccepted || IS_DEMO) return;
     const stopPolling = initPwaUpdater();
     const unsubscribe = onUpdateAvailable(() => setShowUpdateBanner(true));
     return () => {
@@ -301,7 +322,7 @@ function App() {
   // and tracked together.
   /* eslint-disable react-hooks/set-state-in-effect -- deferred external-state bootstrap described above */
   useEffect(() => {
-    if (!legalResolved) return;
+    if (!legalResolved || IS_DEMO) return;
 
     setInstallNotice(getInitialInstallNotice());
 
@@ -430,33 +451,35 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
+      interactionMode: IS_DEMO ? "read-only" : "full",
+      geographicMapMode: IS_DEMO ? "local-showcase" : "online",
       feedMediaPreviews: "inline",
       SourceIndicator: null,
       HeaderSyncIndicator: null,
-      FeedsSettingsContent: PwaFeedsSettings,
-      SettingsExtraSections: PwaSyncSettings,
-      LegalSettingsContent: PwaLegalSettingsSection,
+      FeedsSettingsContent: IS_DEMO ? null : PwaFeedsSettings,
+      SettingsExtraSections: IS_DEMO ? null : PwaSyncSettings,
+      LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
-      XSettingsContent: PwaXSettings,
-      FacebookSettingsContent: PwaFacebookSettings,
-      InstagramSettingsContent: PwaInstagramSettings,
-      LinkedInSettingsContent: PwaLinkedInSettings,
+      XSettingsContent: IS_DEMO ? null : PwaXSettings,
+      FacebookSettingsContent: IS_DEMO ? null : PwaFacebookSettings,
+      InstagramSettingsContent: IS_DEMO ? null : PwaInstagramSettings,
+      LinkedInSettingsContent: IS_DEMO ? null : PwaLinkedInSettings,
       SubstackSettingsContent: null,
       MediumSettingsContent: null,
-      YouTubeSettingsContent: PwaYouTubeSettings,
-      GoogleContactsSettingsContent: PwaGoogleContactsSettings,
-      checkForUpdates,
-      applyUpdate: applyPwaUpdate,
+      YouTubeSettingsContent: IS_DEMO ? null : PwaYouTubeSettings,
+      GoogleContactsSettingsContent: IS_DEMO ? null : PwaGoogleContactsSettings,
+      checkForUpdates: IS_DEMO ? undefined : checkForUpdates,
+      applyUpdate: IS_DEMO ? undefined : applyPwaUpdate,
       releaseChannel,
-      setReleaseChannel,
-      factoryReset: handleFactoryReset,
+      setReleaseChannel: IS_DEMO ? undefined : setReleaseChannel,
+      factoryReset: IS_DEMO ? undefined : handleFactoryReset,
       activeCloudProviderLabel: () =>
         getCloudProvider() === "gdrive" ? "Google Drive" : null,
       // PWA save URL: fetches and caches article content when possible, then
       // falls back to a desktop-healed stub for sites that refuse extraction.
-      saveUrl: async (url, options) => {
-        return saveUrlInPwa(url, options);
-      },
+      saveUrl: IS_DEMO
+        ? undefined
+        : async (url, options) => saveUrlInPwa(url, options),
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
         try {
@@ -467,34 +490,36 @@ function App() {
           return null;
         }
       },
-      hydrateReaderItem: hydrateReaderItemInPwa,
-      pinReaderItem: pinReaderItemInPwa,
+      hydrateReaderItem: IS_DEMO ? undefined : hydrateReaderItemInPwa,
+      pinReaderItem: IS_DEMO ? undefined : pinReaderItemInPwa,
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
-      pickContact: pickContactViaWebApi,
-      openUrl: openPwaUrl,
+      pickContact: IS_DEMO ? undefined : pickContactViaWebApi,
+      openUrl: IS_DEMO
+        ? async () => toast.info("External links are disabled in this read only demo")
+        : openPwaUrl,
       openBoundedFeedReader: openPwaLibraryCoreFeedReader,
       openBoundedFriendsFeedReader: openPwaLibraryCoreFriendsFeedReader,
       openBoundedSavedFeedReader: openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
-      executeLibraryScopeAction: executePwaLibraryCoreScopeAction,
+      executeLibraryScopeAction: IS_DEMO ? undefined : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
       readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
       readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
-      replaceLibraryFriend: replacePwaLibraryCoreFriend,
-      upsertLibraryPerson: upsertPwaLibraryCorePerson,
-      removeLibraryPerson: removePwaLibraryCorePerson,
-      assignLibraryAccountToPerson: assignPwaLibraryCoreAccountToPerson,
-      appendLibraryPersonReachOut: appendPwaLibraryCorePersonReachOut,
-      upsertLibraryAccount: upsertPwaLibraryCoreAccount,
+      replaceLibraryFriend: IS_DEMO ? undefined : replacePwaLibraryCoreFriend,
+      upsertLibraryPerson: IS_DEMO ? undefined : upsertPwaLibraryCorePerson,
+      removeLibraryPerson: IS_DEMO ? undefined : removePwaLibraryCorePerson,
+      assignLibraryAccountToPerson: IS_DEMO ? undefined : assignPwaLibraryCoreAccountToPerson,
+      appendLibraryPersonReachOut: IS_DEMO ? undefined : appendPwaLibraryCorePersonReachOut,
+      upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
-      mutateDeviceGraphLayout: mutatePwaDeviceGraphLayout,
-      mutateDeviceContacts: mutatePwaDeviceContactSync,
+      mutateDeviceGraphLayout: IS_DEMO ? undefined : mutatePwaDeviceGraphLayout,
+      mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
@@ -526,6 +551,16 @@ function App() {
           );
         }}
       />
+    );
+  }
+
+  if (IS_DEMO && !isInitialized && !error) {
+    return (
+      <div className="app-theme-shell flex h-screen items-center justify-center">
+        <p className="text-sm font-medium text-[var(--theme-text-muted)]">
+          Preparing the Freed showcase...
+        </p>
+      </div>
     );
   }
 
@@ -567,6 +602,11 @@ function App() {
     <PlatformProvider value={platform}>
       <BugReportBoundary>
         <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
+        {IS_DEMO && (
+          <DemoWelcomeBanner
+            downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
+          />
+        )}
         <AppShell>
           <FeedView />
         </AppShell>

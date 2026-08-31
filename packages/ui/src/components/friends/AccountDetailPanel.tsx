@@ -32,6 +32,7 @@ interface AccountDetailPanelProps {
   onDismissFriendSuggestion?: (suggestionId: string) => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
+  readOnly?: boolean;
 }
 
 function itemSnippet(item: FeedItem): string {
@@ -82,6 +83,7 @@ export function AccountDetailPanel({
   onDismissFriendSuggestion,
   onLinkToPerson,
   onOpenPerson,
+  readOnly = false,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const { queryLibraryCore } = usePlatform();
@@ -140,7 +142,7 @@ export function AccountDetailPanel({
             </p>
           </div>
         </div>
-        {!confirmedLinkedPerson ? (
+        {!confirmedLinkedPerson && !readOnly ? (
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
@@ -157,7 +159,7 @@ export function AccountDetailPanel({
               Promote to Fam
             </button>
           </div>
-        ) : (
+        ) : confirmedLinkedPerson ? (
           <button
             type="button"
             onClick={() => onOpenPerson(confirmedLinkedPerson.id)}
@@ -165,7 +167,7 @@ export function AccountDetailPanel({
           >
             Open identity
           </button>
-        )}
+        ) : null}
       </div>
 
       <div className="theme-dialog-divider border-b px-4 py-4">
@@ -222,7 +224,7 @@ export function AccountDetailPanel({
         </div>
       </div>
 
-      {!confirmedLinkedPerson ? (
+      {!confirmedLinkedPerson && !readOnly ? (
         <>
           {friendSuggestion ? (
             <div

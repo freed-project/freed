@@ -78,11 +78,13 @@ export function useResolvedLocationCandidates(
   options: {
     timeMode?: MapTimeMode;
     now?: number;
+    resolveNamedLocations?: boolean;
   } = {},
 ): ResolvedLocationsState {
   const [state, setState] = useState<ResolvedLocationsCacheState>(EMPTY_STATE);
   const timeMode = options.timeMode ?? "current";
   const now = options.now;
+  const resolveNamedLocations = options.resolveNamedLocations ?? true;
   const locationPlan = useMemo(() => {
     const coordinateItems: ResolvedLocationItem[] = [];
     const namedRequests: NamedLocationRequest[] = [];
@@ -101,7 +103,7 @@ export function useResolvedLocationCandidates(
         continue;
       }
 
-      if (!signal || "coordinates" in signal) continue;
+      if (!signal || "coordinates" in signal || !resolveNamedLocations) continue;
       namedRequests.push({
         accountId,
         item,
@@ -115,7 +117,7 @@ export function useResolvedLocationCandidates(
       namedGroups: groupNamedLocationRequests(namedRequests),
       namedRequestCount: namedRequests.length,
     };
-  }, [candidates]);
+  }, [candidates, resolveNamedLocations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +210,7 @@ export function useResolvedLocationCandidates(
 export function useFriendLastSeenLocation(
   friend: Person,
   feedItems: readonly FeedItem[],
+  resolveNamedLocations = true,
 ): {
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
@@ -222,6 +225,7 @@ export function useFriendLastSeenLocation(
   );
   const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(
     candidates,
+    { resolveNamedLocations },
   );
   return {
     lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id, { timeMode: "current" }),
