@@ -7,14 +7,14 @@
   "editorialNotes": [
     "Carry the complete v26.8.3100-dev story forward and lead with the safe PWA preview recovery plus Google Drive authentication repair."
   ],
-  "generatedAt": "2026-08-31T18:19:25.437Z",
+  "generatedAt": "2026-08-31T19:37:29.197Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.3100-dev",
     "previousPublishedDayTag": "v26.8.3006-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "497d05684928461d9efe9a42281cde098cdbfecd",
+    "productCommitSha": "bd9ddb312a6eaea9044e368096eb523ac3771a9a",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -23,7 +23,7 @@
         "previousPublishedTag": "v26.8.3100-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "588249d423749ad08509cad671c7708a54d46166",
-        "toInclusiveProductCommitSha": "497d05684928461d9efe9a42281cde098cdbfecd"
+        "toInclusiveProductCommitSha": "bd9ddb312a6eaea9044e368096eb523ac3771a9a"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -32,7 +32,7 @@
         "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:4d7c2db521ba065c6a7247dab856a2228bdf3ecb42d9b0022f3d8131200c46a8",
+      "inspectionDigest": "sha256:c4072174f5fdf5d8ed1b02e10dd8dfea3433e36892dd12b027d9d96677d0e90d",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -64,9 +64,16 @@
       1687,
       1688,
       1690,
-      1692
+      1692,
+      1694,
+      1695,
+      1696
     ],
     "commitSubjects": [
+      "fix: admit Google Drive installed sync trigger (#1696)",
+      "fix: keep PWA previews on the reported port (#1695)",
+      "release: v26.8.3101-dev (#1693)",
+      "perf: show sample Library import progress (#1694)",
       "fix: recover orphaned PWA preview checkpoints (#1692)",
       "fix: reject corrupted PWA media ranges (#1690)",
       "chore: add WebKit PWA corpus hardening (#1688)",
@@ -94,6 +101,7 @@
     ],
     "fixes": [
       "Recover an interrupted local sample Library without touching a connected Library",
+      "Show live progress while a sample Library is being populated",
       "Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite",
       "Reject corrupted PWA media ranges before they become available offline",
       "Publish accurate location counts in Map",
@@ -105,7 +113,8 @@
       "Keep PWA browser fixtures from writing synchronized device preferences",
       "Make feed performance checks report inconclusive evidence instead of synthetic success",
       "Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page",
-      "Make clean PWA preview deployments include their required guards and project binding"
+      "Make clean PWA preview deployments include their required guards and project binding",
+      "Keep PWA previews on the requested local port"
     ],
     "followUps": [
       "Run installed build verification in an isolated profile",
@@ -114,5 +123,5 @@
       "Verify the first Google Drive publication and exact retry against the real local Library"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3101-dev\n\nReliable PWA recovery and Google Drive authentication\n\n### Features\n\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n- Page large Friends directories with stable SQLite keyset cursors\n\n### Fixes\n\n- Recover an interrupted local sample Library without touching a connected Library\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Reject corrupted PWA media ranges before they become available offline\n- Publish accurate location counts in Map\n- Preserve the original storage-full error and retry safely after PWA SQLite quota failures\n- Restore durable sample Library context across reloads and WebKit process exits\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Expose normal manual Google Drive sync to the installed verification trigger\n- Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Make feed performance checks report inconclusive evidence instead of synthetic success\n- Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page\n- Make clean PWA preview deployments include their required guards and project binding\n\n### Follow-ups\n\n- Run installed build verification in an isolated profile\n- Complete physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Verify the first Google Drive publication and exact retry against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3101-dev\n\nReliable PWA recovery and Google Drive authentication\n\n### Features\n\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n- Page large Friends directories with stable SQLite keyset cursors\n\n### Fixes\n\n- Recover an interrupted local sample Library without touching a connected Library\n- Show live progress while a sample Library is being populated\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Reject corrupted PWA media ranges before they become available offline\n- Publish accurate location counts in Map\n- Preserve the original storage-full error and retry safely after PWA SQLite quota failures\n- Restore durable sample Library context across reloads and WebKit process exits\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Expose normal manual Google Drive sync to the installed verification trigger\n- Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Make feed performance checks report inconclusive evidence instead of synthetic success\n- Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page\n- Make clean PWA preview deployments include their required guards and project binding\n- Keep PWA previews on the requested local port\n\n### Follow-ups\n\n- Run installed build verification in an isolated profile\n- Complete physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Verify the first Google Drive publication and exact retry against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
