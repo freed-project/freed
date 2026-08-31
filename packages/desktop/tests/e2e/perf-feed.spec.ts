@@ -56,7 +56,14 @@ async function measureFps(
   page: Page,
   label: string,
   fn: () => Promise<void>,
-): Promise<{ p50Ms: number; p95Ms: number; p99Ms: number; droppedFrames: number; fps: number }> {
+): Promise<{
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  droppedFrames: number | null;
+  fps: number | null;
+  sampleCount: number;
+}> {
   // Arm the rAF loop
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
@@ -83,7 +90,16 @@ async function measureFps(
     const w = window as Record<string, unknown>;
     (w.__PERF_RAF_STOP__ as () => void)();
     const deltas = (w.__PERF_RAF_DELTAS__ as number[]).slice();
-    if (deltas.length < 2) return { p50Ms: 0, p95Ms: 0, p99Ms: 0, droppedFrames: 0, fps: 0 };
+    if (deltas.length < 2) {
+      return {
+        p50Ms: null,
+        p95Ms: null,
+        p99Ms: null,
+        droppedFrames: null,
+        fps: null,
+        sampleCount: deltas.length,
+      };
+    }
 
     const sorted = [...deltas].sort((a, b) => a - b);
     function pct(p: number) {
@@ -98,15 +114,79 @@ async function measureFps(
       p99Ms: Math.round(pct(99) * 10) / 10,
       droppedFrames: deltas.filter((d) => d > 32).length,
       fps: Math.round(1000 / avg),
+      sampleCount: deltas.length,
     };
   });
 
+  if (result.p95Ms === null) {
+    console.log(
+      `[PERF] ${label}: inconclusive, collected ${result.sampleCount.toLocaleString()} rAF samples`,
+    );
+    return result;
+  }
   console.log(`[PERF] ${label} FPS: ${result.fps}`);
   console.log(`[PERF] ${label} frame p50: ${result.p50Ms} ms`);
   console.log(`[PERF] ${label} frame p95: ${result.p95Ms} ms`);
   console.log(`[PERF] ${label} frame p99: ${result.p99Ms} ms`);
   console.log(`[PERF] ${label} dropped frames (>32ms): ${result.droppedFrames}`);
   return result;
+}
+
+async function armLongTaskProbe(page: Page, probeId: string): Promise<boolean> {
+  return page.evaluate((id) => {
+    const supported = PerformanceObserver.supportedEntryTypes.includes("longtask");
+    if (!supported) return false;
+    const w = window as Record<string, unknown>;
+    const entriesKey = `__PERF_LONG_TASK_ENTRIES_${id}`;
+    const observerKey = `__PERF_LONG_TASK_OBSERVER_${id}`;
+    w[entriesKey] = [] as PerformanceEntry[];
+    const observer = new PerformanceObserver((list) => {
+      const tasks = w[entriesKey] as PerformanceEntry[];
+      tasks.push(...list.getEntries());
+    });
+    observer.observe({ type: "longtask", buffered: false });
+    w[observerKey] = observer;
+    return true;
+  }, probeId);
+}
+
+async function collectLongTaskProbe(
+  page: Page,
+  probeId: string,
+  supported: boolean,
+): Promise<{
+  supported: boolean;
+  count: number | null;
+  totalMs: number | null;
+  worstMs: number | null;
+  tasks: ReadonlyArray<{ duration: number; startTime: number }>;
+}> {
+  if (!supported) {
+    return {
+      supported: false,
+      count: null,
+      totalMs: null,
+      worstMs: null,
+      tasks: [],
+    };
+  }
+  return page.evaluate((id) => {
+    const w = window as Record<string, unknown>;
+    const entriesKey = `__PERF_LONG_TASK_ENTRIES_${id}`;
+    const observerKey = `__PERF_LONG_TASK_OBSERVER_${id}`;
+    (w[observerKey] as PerformanceObserver).disconnect();
+    const tasks = w[entriesKey] as PerformanceEntry[];
+    return {
+      supported: true,
+      count: tasks.length,
+      totalMs: tasks.reduce((sum, task) => sum + task.duration, 0),
+      worstMs: Math.max(0, ...tasks.map((task) => task.duration)),
+      tasks: tasks.map((task) => ({
+        duration: Math.round(task.duration),
+        startTime: Math.round(task.startTime),
+      })),
+    };
+  }, probeId);
 }
 
 async function injectPreservedRssItems(
@@ -421,13 +501,7 @@ test.describe("Search input (bounded native Library search)", () => {
     await searchInput.waitFor({ state: "visible" });
 
     // Observe long tasks during typing.
-    await page.evaluate(() => {
-      (window as Record<string, unknown>).__PERF_SEARCH_TASKS__ = [] as PerformanceEntry[];
-      new PerformanceObserver((list) => {
-        const tasks = (window as Record<string, unknown>).__PERF_SEARCH_TASKS__ as PerformanceEntry[];
-        tasks.push(...list.getEntries());
-      }).observe({ type: "longtask", buffered: false });
-    });
+    const searchLongTaskSupported = await armLongTaskProbe(page, "search");
 
     const elapsed = await measureBrowserMs(page, "Type 'bench' into search (5k items)", async () => {
       // Type one character at a time - each keystroke fires a state update.
@@ -436,20 +510,28 @@ test.describe("Search input (bounded native Library search)", () => {
       await page.waitForTimeout(300);
     });
 
-    const searchLongTasks = await page.evaluate(() => {
-      const tasks = (window as Record<string, unknown>).__PERF_SEARCH_TASKS__ as PerformanceEntry[];
-      return {
-        count: tasks.length,
-        totalMs: tasks.reduce((s, t) => s + t.duration, 0),
-        worstMs: Math.max(0, ...tasks.map((t) => t.duration)),
-      };
-    });
+    const searchLongTasks = await collectLongTaskProbe(
+      page,
+      "search",
+      searchLongTaskSupported,
+    );
 
     console.log(`[PERF] Search typing elapsed: ${elapsed.toLocaleString()} ms`);
-    console.log(`[PERF] Search long tasks: ${searchLongTasks.count}, worst: ${Math.round(searchLongTasks.worstMs)} ms`);
+    if (searchLongTasks.supported) {
+      console.log("[PERF] Search LongTask instrumentation: supported");
+      console.log(`[PERF] Search long tasks: ${searchLongTasks.count}, worst: ${Math.round(searchLongTasks.worstMs ?? 0)} ms`);
+    } else {
+      console.log("[PERF] Search long tasks: inconclusive, instrumentation unsupported");
+      test.info().annotations.push({
+        type: "inconclusive telemetry",
+        description: "LongTask instrumentation is unsupported for feed search",
+      });
+    }
 
     // Typing should not wait on a synchronous full-corpus index build.
-    expect(searchLongTasks.worstMs).toBeLessThan(200);
+    if (searchLongTasks.worstMs !== null) {
+      expect(searchLongTasks.worstMs).toBeLessThan(200);
+    }
 
     // Verify the bounded native contract returns results.
     await expect(page.locator(".feed-card")).not.toHaveCount(0, { timeout: 2_000 });
@@ -481,13 +563,7 @@ test.describe("Reader view open (the worst offender)", () => {
     await firstCard.waitFor({ state: "visible", timeout: 5_000 });
 
     // Arm long-task observer before the click.
-    await page.evaluate(() => {
-      (window as Record<string, unknown>).__PERF_READER_TASKS__ = [] as PerformanceEntry[];
-      new PerformanceObserver((list) => {
-        const tasks = (window as Record<string, unknown>).__PERF_READER_TASKS__ as PerformanceEntry[];
-        tasks.push(...list.getEntries());
-      }).observe({ type: "longtask", buffered: false });
-    });
+    const readerLongTaskSupported = await armLongTaskProbe(page, "reader");
 
     // Click the first card and measure time until ReaderView is mounted.
     // We detect ReaderView by looking for the close button it renders.
@@ -503,25 +579,27 @@ test.describe("Reader view open (the worst offender)", () => {
       },
     );
 
-    const readerTasks = await page.evaluate(() => {
-      const tasks = (window as Record<string, unknown>).__PERF_READER_TASKS__ as PerformanceEntry[];
-      return {
-        count: tasks.length,
-        totalMs: tasks.reduce((s, t) => s + t.duration, 0),
-        worstMs: Math.max(0, ...tasks.map((t) => t.duration)),
-        tasks: tasks.map((t) => ({
-          duration: Math.round(t.duration),
-          startTime: Math.round(t.startTime),
-        })),
-      };
-    });
+    const readerTasks = await collectLongTaskProbe(
+      page,
+      "reader",
+      readerLongTaskSupported,
+    );
 
     console.log(`[PERF] Reader view open: ${elapsed.toLocaleString()} ms`);
-    console.log(`[PERF] Long tasks during open: ${readerTasks.count}`);
-    console.log(`[PERF] Worst long task: ${Math.round(readerTasks.worstMs).toLocaleString()} ms`);
-    console.log(`[PERF] Total long-task time: ${Math.round(readerTasks.totalMs).toLocaleString()} ms`);
+    if (readerTasks.supported) {
+      console.log("[PERF] Reader LongTask instrumentation: supported");
+      console.log(`[PERF] Long tasks during open: ${readerTasks.count}`);
+      console.log(`[PERF] Worst long task: ${Math.round(readerTasks.worstMs ?? 0).toLocaleString()} ms`);
+      console.log(`[PERF] Total long-task time: ${Math.round(readerTasks.totalMs ?? 0).toLocaleString()} ms`);
+    } else {
+      console.log("[PERF] Reader long tasks: inconclusive, instrumentation unsupported");
+      test.info().annotations.push({
+        type: "inconclusive telemetry",
+        description: "LongTask instrumentation is unsupported for reader open",
+      });
+    }
 
-    if (readerTasks.count > 0) {
+    if ((readerTasks.count ?? 0) > 0) {
       console.log("[PERF] Long task breakdown:", JSON.stringify(readerTasks.tasks, null, 2));
     }
 
@@ -653,11 +731,12 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
     await app.injectRssItems(ITEM_COUNT_LARGE);
     const targetIds = await sqliteItemIds(page, 20);
 
+    let completedMutationCount = 0;
     const fps = await measureFps(
       page,
       "markAsRead × 20 storm",
       async () => {
-        await page.evaluate(async (ids) => {
+        completedMutationCount = await page.evaluate(async (ids) => {
           const w = window as Record<string, unknown>;
           const store = w.__FREED_STORE__ as {
             getState: () => { markAsRead: (id: string) => Promise<void> };
@@ -666,10 +745,19 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
           for (const id of ids) {
             await markAsRead(id);
           }
+          return ids.length;
         }, targetIds);
       },
     );
 
+    expect(completedMutationCount).toBe(targetIds.length);
+    if (fps.p95Ms === null || fps.droppedFrames === null) {
+      test.info().annotations.push({
+        type: "inconclusive telemetry",
+        description: `mark-as-read rAF probe collected ${fps.sampleCount.toLocaleString()} samples`,
+      });
+      return;
+    }
     // After the worker migration, no frame should drop below 30fps.
     // Before the fix, markAsRead blocks the main thread (~300ms), tanking FPS.
     console.log(`[PERF] fps harness markAsRead 20 storm p95: ${fps.p95Ms} ms`);
@@ -683,8 +771,19 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
-    const scrollContainer = page.locator(".minimal-scroll").first();
+    const scrollContainer = page.getByTestId("feed-list-scroll-container");
     await scrollContainer.waitFor({ state: "visible" });
+    const initialScrollState = await scrollContainer.evaluate((element) => {
+      const scrollable = element as HTMLElement;
+      return {
+        clientHeight: scrollable.clientHeight,
+        scrollHeight: scrollable.scrollHeight,
+        scrollTop: scrollable.scrollTop,
+      };
+    });
+    expect(initialScrollState.scrollHeight).toBeGreaterThan(
+      initialScrollState.clientHeight,
+    );
 
     const fps = await measureFps(
       page,
@@ -698,6 +797,17 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
       },
     );
 
+    const finalScrollTop = await scrollContainer.evaluate((element) =>
+      (element as HTMLElement).scrollTop,
+    );
+    expect(finalScrollTop).toBeGreaterThan(initialScrollState.scrollTop);
+    if (fps.p95Ms === null || fps.droppedFrames === null) {
+      test.info().annotations.push({
+        type: "inconclusive telemetry",
+        description: `feed scroll rAF probe collected ${fps.sampleCount.toLocaleString()} samples`,
+      });
+      return;
+    }
     // Keep this below obvious jank while leaving room for shared CI runners.
     console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
     expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
@@ -876,11 +986,15 @@ test.describe("React Profiler render cost", () => {
     await app.injectRssItems(ITEM_COUNT_LARGE);
     const targetIds = await sqliteItemIds(page, 5);
 
-    // Clear profile data collected during injection
-    await page.evaluate(() => {
+    // Prove the Profiler is active before treating an empty mutation window as
+    // a valid zero-render result.
+    const profilerStatus = await page.evaluate(() => {
       const w = window as Record<string, unknown>;
-      const arr = w.__FREED_REACT_PROFILE__ as unknown[];
+      const arr = w.__FREED_REACT_PROFILE__;
+      if (!Array.isArray(arr)) return { available: false, baselineCount: 0 };
+      const baselineCount = arr.length;
       if (arr) arr.length = 0;
+      return { available: true, baselineCount };
     });
 
     await page.evaluate(async (ids) => {
@@ -896,8 +1010,27 @@ test.describe("React Profiler render cost", () => {
     });
 
     const maxActual = Math.max(0, ...profile.map((e) => e.actualDuration));
+    if (!profilerStatus.available || profilerStatus.baselineCount === 0) {
+      console.log(
+        "[PERF] React Profiler: inconclusive, no baseline render phases were captured",
+      );
+      test.info().annotations.push({
+        type: "inconclusive telemetry",
+        description: "React Profiler captured no baseline render phases",
+      });
+      expect(targetIds).toHaveLength(5);
+      return;
+    }
+    console.log(
+      `[PERF] React Profiler - baseline renders captured: ${profilerStatus.baselineCount.toLocaleString()}`,
+    );
     console.log(`[PERF] React Profiler - renders captured: ${profile.length}`);
     console.log(`[PERF] React Profiler - max actualDuration: ${maxActual.toFixed(1)} ms`);
+    if (profile.length === 0) {
+      console.log(
+        "[PERF] React Profiler - mutation window captured a valid zero after baseline verification",
+      );
+    }
 
     // Log the top 5 worst renders for diagnostics
     const worst = [...profile].sort((a, b) => b.actualDuration - a.actualDuration).slice(0, 5);
