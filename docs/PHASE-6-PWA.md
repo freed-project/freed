@@ -635,6 +635,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.116 | Clear transient Friends Galaxy draw errors and recovery state when a failed WebGPU switch retains the healthy WebGL2 compatibility renderer. Preserve the mounted semantic scene, announce recovery once, and cover the retained activation sequence plus the original selection-during-atlas-load failure | High       | ✓ Complete                                                                                       |
 | 6.117 | Add a nonblocking PWA OPFS corpus hardening lane that streams deterministic provider-neutral FeedItems in bounded 128-row transactions, records browser memory and storage evidence at 25,000 and 100,000 items, and proves feed, facet, and search responses stay inside their row and scan limits. Unsupported memory measurement remains explicit instead of fabricating evidence | High       | ✓ Complete                                                                                       |
 | 6.118 | Keep the mobile Settings breadcrumb synchronized with the final rendered section when WebKit clamps a programmatic scroll target at the bottom of the scrollport. Danger Zone content can no longer remain visibly open under a stale Legal label | Medium     | ✓ Complete                                                                                       |
+| 6.119 | Preserve the original PWA SQLite failure when SQLite has already ended a transaction before cleanup, including storage-full refusal. Prove a quota-bound large operation cannot advance accepted state or leak a partial member, retains its durable transaction stage, and succeeds on exact retry after capacity returns | High       | ✓ Complete                                                                                       |
 
 ---
 
@@ -700,6 +701,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Saved reader content uses the permanent pinned cache tier by default, with local cache modes for Saved Only, Everything Opened, Recent Feed, and Manual Only
 - [x] Nightly PWA corpus hardening exercises real OPFS SQLite at 25,000 and 100,000 deterministic provider-neutral FeedItems, records browser memory and storage measurements, and proves bounded feed, facet, and search behavior without adding a pull request gate
 - [x] Mobile Settings identifies the final rendered section when the scrollport reaches its lower bound, so a clamped Danger Zone jump cannot leave the breadcrumb labeled as Legal
+- [x] PWA SQLite transaction cleanup preserves the original storage-full failure when SQLite has already ended the transaction, and deterministic quota proof preserves accepted state before exact retry
 
 ---
 

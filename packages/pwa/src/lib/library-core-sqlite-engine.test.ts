@@ -1461,6 +1461,44 @@ describe("PWA Library Core SQLite engine", () => {
       finalizedMember.envelope.transaction_id,
       finalized.transaction_digest,
     );
+    const pageCountRows = database.exec({
+      sql: "PRAGMA page_count;",
+      rowMode: "array",
+      returnValue: "resultRows",
+    }) as number[][];
+    const pageCount = pageCountRows[0]?.[0];
+    expect(pageCount).toBeGreaterThan(0);
+    expect(
+      database.exec({
+        sql: "PRAGMA freelist_count;",
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0]]);
+    database.exec(`PRAGMA max_page_count = ${pageCount};`);
+    await expect(
+      engine.importNormalizedOperationPage({
+        page: page(operationRecord, true),
+        receivedAt: 2_600,
+        snapshot: descriptor,
+      }),
+    ).rejects.toThrow(/database or disk is full/);
+    expect(
+      database.exec({
+        sql: `SELECT m.source_revision,
+                     (SELECT count(*) FROM library_feed_items),
+                     (SELECT count(*) FROM library_operations),
+                     (SELECT count(*) FROM library_operation_replication_stages
+                       WHERE source_revision = 1),
+                     (SELECT count(*) FROM library_operation_replication_stage_members
+                       WHERE source_revision = 1)
+              FROM library_meta AS m WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 0, 0, 1, 0]]);
+    database.exec("PRAGMA max_page_count = 1073741823;");
+
     database.exec(`CREATE TEMP TRIGGER fail_operation_replication_receipt
       BEFORE INSERT ON library_operation_replication_results
       BEGIN SELECT RAISE(ABORT, 'injected operation replication fault'); END;`);
