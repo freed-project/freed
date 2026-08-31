@@ -344,25 +344,35 @@ export function createLibraryServiceGoogleDrivePublicationV1(
           revision: descriptor.sourceRevision,
         });
       }
+      const exportDescriptor = exactDescriptor(
+        await native.execute("begin_checkpoint_export_v2", {}),
+      );
+      if (
+        exportDescriptor.libraryId !== descriptor.libraryId ||
+        exportDescriptor.authorityEpoch !== descriptor.authorityEpoch ||
+        exportDescriptor.writerId !== descriptor.writerId
+      ) {
+        throw new LibraryServiceFailure("authority_not_primary");
+      }
       const result = await publishLibraryCoreNormalizedCheckpointV2({
         activeTransport: "google_drive_app_data_v1",
         adapter,
-        descriptor,
+        descriptor: exportDescriptor,
         expectedControl: { revision: controlRead.revision, pointer },
         generation: pointer === null ? 0 : pointer.generation + 1,
-        records: checkpointRecords(native, descriptor),
+        records: checkpointRecords(native, exportDescriptor),
         subtle: crypto.subtle,
       });
       if (result.status === "conflict") {
         if (
           result.currentControlPointer !== null &&
           String(result.currentControlPointer.writerId) !==
-            String(descriptor.writerId)
+            String(exportDescriptor.writerId)
         ) {
           return Object.freeze({
             status: "ownership_required" as const,
             currentWriterId: result.currentControlPointer.writerId,
-            localWriterId: descriptor.writerId,
+            localWriterId: exportDescriptor.writerId,
           });
         }
         throw new LibraryServiceFailure("command_channel_failed");
@@ -370,17 +380,17 @@ export function createLibraryServiceGoogleDrivePublicationV1(
       await options.state.write(
         Object.freeze({
           schemaVersion: 1 as const,
-          libraryId: descriptor.libraryId,
-          authorityEpoch: descriptor.authorityEpoch,
-          writerId: descriptor.writerId,
+          libraryId: exportDescriptor.libraryId,
+          authorityEpoch: exportDescriptor.authorityEpoch,
+          writerId: exportDescriptor.writerId,
           controlFileId: provisioned.controlFileId,
           controlRevision: result.revision,
-          lastPublishedRevision: descriptor.sourceRevision,
+          lastPublishedRevision: exportDescriptor.sourceRevision,
         }),
       );
       return Object.freeze({
         status: "published" as const,
-        revision: descriptor.sourceRevision,
+        revision: exportDescriptor.sourceRevision,
       });
     },
   });

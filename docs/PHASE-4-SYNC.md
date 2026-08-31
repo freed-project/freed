@@ -37,7 +37,9 @@ the 2,097,152-byte cloud page bound and 1,048,576-byte native response bound, so
 receipt-heavy Libraries avoid thousands of repeated SQLite scans and Drive
 objects without weakening bounded transport. A repeat publication is current
 only when its stored receipt matches the exact Drive control revision and
-canonical pointer.
+canonical pointer. Desktop and headless publication now begin the pinned read
+transaction and obtain its descriptor in one native command, so a concurrent
+Library write cannot invalidate the checkpoint between description and export.
 
 ## Current SQLite sync work
 

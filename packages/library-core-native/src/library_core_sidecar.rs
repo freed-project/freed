@@ -533,7 +533,23 @@ fn run_command_loop(
         {
             return Err(failure("command_invalid"));
         }
-        let outcome = if command.command_id == "export_checkpoint_page_v2" {
+        let outcome = if command.command_id == "begin_checkpoint_export_v2" {
+            (|| -> Result<Value, &'static str> {
+                serde_json::from_value::<EmptyCommandPayload>(command.payload)
+                    .map_err(|_| "request_invalid")?;
+                let connection = database
+                    .open(normalized_sqlite_open_flags(false))
+                    .map_err(|_| "command_failed")?;
+                configure_normalized_sqlite_connection(&connection)
+                    .map_err(|_| "command_failed")?;
+                let export = NormalizedCheckpointExportSessionV2::begin_current(connection)
+                    .map_err(normalized_command_error)?;
+                let snapshot = export.snapshot().clone();
+                *checkpoint_export.lock().map_err(|_| "command_failed")? =
+                    Some((export, Instant::now()));
+                encode_command_result(snapshot)
+            })()
+        } else if command.command_id == "export_checkpoint_page_v2" {
             (|| -> Result<Value, &'static str> {
                 let export_request: PinnedNormalizedCheckpointExportRequestV2 =
                     serde_json::from_value(command.payload).map_err(|_| "request_invalid")?;
@@ -724,6 +740,13 @@ fn execute_native_command_v1(
             encode_command_result(
                 get_content_state_v1(connection, &command).map_err(selective_content_error)?,
             )
+        }
+        "begin_checkpoint_export_v2" => {
+            serde_json::from_value::<EmptyCommandPayload>(payload)
+                .map_err(|_| "request_invalid")?;
+            // The command loop intercepts this ID because the pinned session
+            // must outlive one generic command connection.
+            Err("request_invalid")
         }
         "countersign_follower_actor_request_v2" => {
             let command: CountersignFollowerActorRequestCommandV2 =

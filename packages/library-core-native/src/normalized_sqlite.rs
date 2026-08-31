@@ -658,14 +658,33 @@ impl NormalizedCheckpointExportSessionV2 {
         connection: Connection,
         snapshot: NormalizedCheckpointExportDescriptorV2,
     ) -> Result<Self, NormalizedSqliteError> {
+        Self::begin_inner(connection, Some(snapshot))
+    }
+
+    /// Open a pinned export and return the descriptor from that same read transaction.
+    ///
+    /// This is the atomic entry point for live publication. Describing the
+    /// checkpoint on one connection and opening the export on another leaves a
+    /// race where a concurrent writer can advance the revision between calls.
+    pub fn begin_current(connection: Connection) -> Result<Self, NormalizedSqliteError> {
+        Self::begin_inner(connection, None)
+    }
+
+    fn begin_inner(
+        connection: Connection,
+        expected_snapshot: Option<NormalizedCheckpointExportDescriptorV2>,
+    ) -> Result<Self, NormalizedSqliteError> {
         if !connection.is_autocommit() {
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized checkpoint export connection is already in a transaction",
             ));
         }
         connection.execute_batch("BEGIN DEFERRED TRANSACTION;")?;
-        let current = describe_normalized_checkpoint_export_v2(&connection)?;
-        if current != snapshot {
+        let snapshot = describe_normalized_checkpoint_export_v2(&connection)?;
+        if expected_snapshot
+            .as_ref()
+            .is_some_and(|expected| expected != &snapshot)
+        {
             connection.execute_batch("ROLLBACK;")?;
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized checkpoint changed before export",
@@ -691,6 +710,10 @@ impl NormalizedCheckpointExportSessionV2 {
             next_cursor: None,
             finished: false,
         })
+    }
+
+    pub const fn snapshot(&self) -> &NormalizedCheckpointExportDescriptorV2 {
+        &self.snapshot
     }
 
     pub fn read_page(
@@ -1477,8 +1500,9 @@ mod tests {
                 ],
             )
             .expect("actor");
-        let snapshot =
-            describe_normalized_checkpoint_export_v2(&connection).expect("checkpoint descriptor");
+        let mut export = NormalizedCheckpointExportSessionV2::begin_current(connection)
+            .expect("begin current pinned export");
+        let snapshot = export.snapshot().clone();
         assert_eq!(snapshot.library_id, library_id);
         assert_eq!(snapshot.authority_epoch, epoch_id);
         assert_eq!(snapshot.writer_id, actor_id);
@@ -1487,8 +1511,6 @@ mod tests {
             "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446"
         );
         assert_eq!(snapshot.record_count, 4);
-        let mut export = NormalizedCheckpointExportSessionV2::begin(connection, snapshot.clone())
-            .expect("begin pinned export");
         let first = export
             .read_page(&PinnedNormalizedCheckpointExportRequestV2 {
                 snapshot: snapshot.clone(),

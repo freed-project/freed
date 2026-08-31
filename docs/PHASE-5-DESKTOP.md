@@ -39,8 +39,10 @@
       transaction across every bounded page. Desktop and headless Primary hold
       the shared native export session on a separate WAL reader, so provider
       uploads observe one exact revision while foreground and background
-      Library mutations continue. Completed exports commit immediately, and
-      abandoned host sessions expire without leaving a WAL reader pinned.
+      Library mutations continue. One atomic native begin command returns the
+      descriptor from that same read transaction, with no description-to-export
+      revision race. Completed exports commit immediately, and abandoned host
+      sessions expire without leaving a WAL reader pinned.
 - [x] Generate the shared checkpoint registry, protocol limits, 23 canonical
       mutation programs, 5 device-local mutation programs, and 33 bounded query
       programs for Rust and TypeScript from one executable contract source,

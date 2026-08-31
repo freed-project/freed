@@ -2038,6 +2038,13 @@ export async function describeNormalizedLibraryCheckpoint(): Promise<LibraryCore
   );
 }
 
+/** Begin one pinned checkpoint export and return its exact read-transaction descriptor. */
+export async function beginNormalizedLibraryCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  return parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
+    await invoke<unknown>("begin_normalized_library_checkpoint_export"),
+  );
+}
+
 export async function describeNormalizedLibraryCloudIdentity(): Promise<NormalizedLibraryCloudIdentity> {
   const installationWitness = await invoke<string>(
     "get_desktop_installation_witness",

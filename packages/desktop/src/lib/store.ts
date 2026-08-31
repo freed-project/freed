@@ -14,7 +14,6 @@ import type {
   FilterOptions,
   RemoveFeedOptions,
   RssFeed,
-  SampleDataClearSummary,
   SampleLibraryData,
   SavedFeedPresentationPatch,
   SavedFeedPresentationUserStatePatch,

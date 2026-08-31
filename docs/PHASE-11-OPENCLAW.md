@@ -130,14 +130,14 @@ Drive without giving Node an authority key or the native sidecar a Drive
 token. `drive-auth` uses PKCE through the existing Freed OAuth proxy, requests
 only `drive.appdata` and `drive.file`, and stores one refresh token in an exact
 Keychain record. `serve` resolves short-lived access tokens into memory, proves
-the current cloud writer, exports one pinned SQLite read transaction through
-bounded native pages, publishes the existing immutable checkpoint protocol,
-and persists only the committed control receipt through an already-bound
-private state-file descriptor. The coordinator stops before service
-settlement. A missing token, changed Library identity, cloud writer conflict,
-malformed response, or unavailable secret backend fails closed. Linux sealed
-credential custody and complete inbound enrollment, intent, and result
-processing remain open.
+the current cloud writer, begins and describes one pinned SQLite read
+transaction atomically, exports it through bounded native pages, publishes the
+existing immutable checkpoint protocol, and persists only the committed
+control receipt through an already-bound private state-file descriptor. The
+coordinator stops before service settlement. A missing token, changed Library
+identity, cloud writer conflict, malformed response, or unavailable secret
+backend fails closed. Linux sealed credential custody and complete inbound
+enrollment, intent, and result processing remain open.
 
 The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
@@ -547,7 +547,7 @@ review before implementation.
 | 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
 | 11.5  | In Progress | macOS `drive-auth` now uses PKCE through the existing OAuth proxy, requests only Library Core Drive scopes, stores only the refresh token in Keychain, and keeps access tokens memory-only. Complete the versioned Linux sealed credential store and Windows vault adapter next.                                                                                                                                                   |
-| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. Complete the Google Drive transport adapter after its exact behavior approval.                           |
+| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. Complete the Google Drive transport adapter after its exact behavior approval.              |
 | 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Complete installed promotion and competing-Primary acceptance next.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
