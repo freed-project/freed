@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import {
   pwaCorpusHardeningBaseUrl,
+  pwaCorpusHardeningBrowser,
   pwaCorpusHardeningPort,
 } from "./tests/corpus-hardening-e2e-settings";
 
@@ -15,7 +16,7 @@ export default defineConfig({
   reporter: "line",
   use: {
     baseURL: pwaCorpusHardeningBaseUrl,
-    browserName: "chromium",
+    browserName: pwaCorpusHardeningBrowser,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
