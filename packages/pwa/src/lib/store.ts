@@ -606,10 +606,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  clearSampleData: async () => {
+  clearSampleData: async (onProgress) => {
     await ensurePwaLibraryCoreLocalSampleState();
-    const summary = await clearPwaLibraryCoreSampleData();
+    const summary = await clearPwaLibraryCoreSampleData(onProgress);
     await settlePwaLibraryCoreLocalSampleState();
+    onProgress?.({ percent: 100, phase: "complete" });
     invalidateLibraryWindows(get, set);
     return summary;
   },

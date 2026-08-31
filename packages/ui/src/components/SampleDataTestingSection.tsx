@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  clearSampleLibraryDataWithProgressToast,
   formatSampleDataSummary,
   populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
-import { toast } from "./Toast.js";
 import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 
 export function SampleDataTestingSection() {
@@ -60,19 +60,11 @@ export function SampleDataTestingSection() {
 
   const handleClearSampleData = useCallback(async () => {
     setClearing(true);
-    toast.info("Clearing sample data...");
     try {
-      const summary = await clearSampleData();
+      await clearSampleLibraryDataWithProgressToast({ clearSampleData });
       setConfirmClear(false);
-      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : typeof error === "string" && error.length > 0
-            ? error
-            : "Failed to clear sample data",
-      );
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setClearing(false);
     }
