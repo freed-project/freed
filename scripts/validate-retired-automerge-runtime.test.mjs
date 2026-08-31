@@ -175,7 +175,7 @@ test("current native core excludes the retired whole-record projector", () => {
   );
 });
 
-test("Vercel staging carries the current artifact guard without the retired patch", () => {
+test("Vercel staging carries current PWA artifact guards without the retired patch", () => {
   const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   for (const fileName of [
     "vercel-deploy-preview.sh",
@@ -187,6 +187,10 @@ test("Vercel staging carries the current artifact guard without the retired patc
     );
     assert.match(source, /retired-automerge-runtime\.mjs/);
     assert.match(source, /validate-retired-automerge-runtime\.mjs/);
+    assert.match(source, /pwa-optional-assets\.mjs/);
+    assert.match(source, /pwa-optional-assets\.d\.mts/);
+    assert.match(source, /validate-pwa-optional-assets\.mjs/);
+    assert.match(source, /packages\/library-core-native/);
     assert.doesNotMatch(source, /patch-automerge\.mjs/);
   }
 });
