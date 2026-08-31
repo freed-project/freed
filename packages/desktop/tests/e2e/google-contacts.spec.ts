@@ -250,7 +250,8 @@ test("slow Google Contacts sync appears in the global background activity popove
 
   await popover.getByRole("button", { name: "Close" }).click();
   await expect(popover).toHaveCount(0);
-  await expect(trigger).toHaveCount(0);
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-label", "Background activity: Last activity succeeded");
 });
 
 test("People API failures surface reconnect state instead of failing silently", async ({ app }) => {
