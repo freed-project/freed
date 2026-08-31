@@ -5,14 +5,14 @@
   "dayKey": "26.8.31",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-31T23:01:41.553Z",
+  "generatedAt": "2026-08-31T23:27:54.568Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.3101-dev",
     "previousPublishedDayTag": "v26.8.3006-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "5adf901825a9d9eb4e452ab33520c23800fc642a",
+    "productCommitSha": "ee4472f93b23b53d2066925fc667c81bc8b113ad",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.3101-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "bd9ddb312a6eaea9044e368096eb523ac3771a9a",
-        "toInclusiveProductCommitSha": "5adf901825a9d9eb4e452ab33520c23800fc642a"
+        "toInclusiveProductCommitSha": "ee4472f93b23b53d2066925fc667c81bc8b113ad"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -30,7 +30,7 @@
         "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:275098283004b4f55065c2a6224f9363eb9d8921c7229f431a852198f14fef62",
+      "inspectionDigest": "sha256:13a6d3408e33626e18b9e3f3bf1845b6d738dad4c1db0ffb5e488168e5285326",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -75,9 +75,12 @@
       1703,
       1704,
       1705,
-      1706
+      1706,
+      1712
     ],
     "commitSubjects": [
+      "fix: recover interrupted PWA sample population (#1712)",
+      "docs: finalize v26.8.3102-dev identity (#1713)",
       "test: stabilize reader toolbar coverage (#1711)",
       "docs: refresh v26.8.3102-dev identity (#1709)",
       "chore: prepare v26.8.3102-dev (#1706)",
@@ -119,8 +122,8 @@
       "Keep PWA feeds and search bounded across 100,000 locally stored items"
     ],
     "fixes": [
-      "Keep sync status control stable",
       "Reader, feed, and header polish",
+      "Keep sync status control stable",
       "Release build and type-safety cleanup",
       "Admit Google Drive installed sync trigger",
       "Refresh Google Drive authentication once and retry the exact failed request after a 401",
@@ -146,5 +149,5 @@
       "Verify the first Google Drive publication and exact retry against the real local Library"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3102-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Anonymous release demo experience\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n\n### Fixes\n\n- Keep sync status control stable\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Admit Google Drive installed sync trigger\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Capture and scraper reliability fixes\n- Reject corrupted PWA media ranges before they become available offline\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Show progress while importing or clearing sample data\n\n### Follow-ups\n\n- Prepare v26.8.3102-dev\n- Refresh v26.8.3101-dev identity\n- WebKit PWA corpus hardening\n- Friends offset pagination with keysets\n- Reduce PWA install bundle\n- Page large Friends directories with stable SQLite keyset cursors\n- Smaller PWA installs, stronger local storage recovery, and faster large Libraries\n- Run installed build verification in an isolated profile\n- Physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Reliable PWA recovery and Google Drive authentication\n- Verify the first Google Drive publication and exact retry against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3102-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Anonymous release demo experience\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n\n### Fixes\n\n- Reader, feed, and header polish\n- Keep sync status control stable\n- Release build and type-safety cleanup\n- Admit Google Drive installed sync trigger\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Capture and scraper reliability fixes\n- Reject corrupted PWA media ranges before they become available offline\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Show progress while importing or clearing sample data\n\n### Follow-ups\n\n- Prepare v26.8.3102-dev\n- Refresh v26.8.3101-dev identity\n- WebKit PWA corpus hardening\n- Friends offset pagination with keysets\n- Reduce PWA install bundle\n- Page large Friends directories with stable SQLite keyset cursors\n- Smaller PWA installs, stronger local storage recovery, and faster large Libraries\n- Run installed build verification in an isolated profile\n- Physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Reliable PWA recovery and Google Drive authentication\n- Verify the first Google Drive publication and exact retry against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
