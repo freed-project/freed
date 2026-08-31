@@ -127,8 +127,9 @@ canonical pointer.
 - [x] Delete Automerge cloud merge, LAN document relay, compatibility control,
       shell, ordinal identity, dual-engine rollback, and SQLite file transport
       paths after verified one-epoch cutover.
-- [x] Preserve current Google Drive endpoints, headers, retries, OAuth behavior,
-      and cadence unless separately approved.
+- [x] Preserve current Google Drive endpoints, paging, and cadence. The
+      separately approved authentication recovery adds one forced OAuth refresh
+      and one exact request retry only after a Drive 401 response.
 
 ---
 
@@ -223,7 +224,7 @@ loads an alternate Library engine or compatibility path.
 | Editable followers | Complete | Followers commit signed intents and sparse optimistic overlays locally. The Primary validates and publishes signed acceptance, rejection, and provider-result records. Canonical operation import settles overlays atomically. |
 | Selective content | Complete | Content descriptors, authenticated range maps, and content-addressed bytes support metadata-only, on-demand, partial, complete, pinned-offline, and excluded policies per device. |
 | Historical cutover | Complete in code | One read-only source admission path imports the historical Library once. It never becomes runtime authority, transport, fallback, rollback proof, or a dual-write participant. |
-| Drive behavior | Preserved | Existing endpoints, headers, OAuth behavior, retries, paging, request cadence, and provider adapter ownership remain unchanged. |
+| Drive behavior | Approved recovery | Endpoints, paging, normal request cadence, and provider adapter ownership remain unchanged. After a 401, Freed performs one single-flight OAuth refresh and retries that request exactly once with the replacement bearer token. |
 | Device acceptance | Pending | Installed-build recovery and physical iPhone suspension, quota, and offline playback acceptance remain release evidence, not alternate architecture. |
 
 ## Success Criteria
@@ -238,7 +239,8 @@ loads an alternate Library engine or compatibility path.
 - [x] One executable source generates matching Rust and TypeScript contracts.
 - [x] Historical authority code is isolated to read-only one-time source admission and loss detection.
 - [x] Release artifacts reject retired document runtimes, Library IndexedDB databases, rollback flags, and shell records.
-- [x] Google Drive transport behavior is unchanged by the Library Core cutover.
+- [x] Google Drive transport preserves the Library Core cutover contract, with
+      the separately approved bounded OAuth recovery after a 401.
 - [ ] Complete installed Freed Desktop and physical iPhone acceptance evidence.
 
 ## Dependencies
