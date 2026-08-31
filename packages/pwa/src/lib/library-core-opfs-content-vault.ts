@@ -246,6 +246,20 @@ export class PwaLibraryCoreOpfsContentVault {
     if (bytes.byteLength !== expectedBytes) {
       throw new Error("verified content range object is truncated");
     }
+    if (
+      request.rangeOffset === 0 &&
+      bytes.byteLength === proof.byteLength
+    ) {
+      const hash = createLibraryCoreMediaBlobDigestStateV1();
+      hash.update(bytes);
+      if (hash.digestLowerHex() !== proof.rangeContentDigest) {
+        this.#engine.markContentCorrupt(
+          request.contentDigest,
+          request.accessedAt,
+        );
+        throw new Error("verified content range digest is invalid");
+      }
+    }
     this.#engine.markContentAccessed(request.contentDigest, request.accessedAt);
     const response = parseLibraryCoreContentRangeReadResponseV1({
       bytes,

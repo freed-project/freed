@@ -3313,7 +3313,11 @@ export class PwaLibraryCoreSqliteEngine {
   readVerifiedContentRangeReadProof(
     contentDigest: string,
     rangeIndex: number,
-  ): Readonly<{ byteLength: number; storageKey: string }> {
+  ): Readonly<{
+    byteLength: number;
+    rangeContentDigest: string;
+    storageKey: string;
+  }> {
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       !Number.isSafeInteger(rangeIndex) ||
@@ -3322,7 +3326,8 @@ export class PwaLibraryCoreSqliteEngine {
       throw new TypeError("verified content range read identity is invalid");
     }
     const rows = this.#database.exec({
-      sql: `SELECT local.verified_byte_length, local.storage_key
+      sql: `SELECT local.verified_byte_length, local.storage_key,
+                   canonical.range_digest
             FROM library_device_content_ranges AS local
             JOIN library_content_ranges AS canonical
               ON canonical.content_digest = local.content_digest
@@ -3342,6 +3347,10 @@ export class PwaLibraryCoreSqliteEngine {
     }
     return Object.freeze({
       byteLength: safeInteger(rows[0]![0], "verified content range length"),
+      rangeContentDigest: text(
+        rows[0]![2],
+        "verified content range digest",
+      ),
       storageKey: text(rows[0]![1], "verified content range storage key"),
     });
   }

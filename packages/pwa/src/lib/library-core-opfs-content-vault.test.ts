@@ -376,7 +376,7 @@ describe("PWA Library Core OPFS content vault", () => {
     ).toEqual([0]);
   });
 
-  it("refuses complete availability when a cached range changes after publication", async () => {
+  it("refuses full reads and complete availability when cached bytes change", async () => {
     const bytes = Uint8Array.from([7, 8, 9, 10]);
     const contentDigest = installRange(bytes);
     const storage = new MemoryRangeStorage();
@@ -402,10 +402,29 @@ describe("PWA Library Core OPFS content vault", () => {
     );
     storage.objects.set(storageKey, Uint8Array.from([7, 8, 9, 11]));
     await expect(
+      vault.read({
+        accessedAt: 21,
+        contentDigest,
+        maximumBytes: bytes.byteLength,
+        rangeIndex: 0,
+        rangeOffset: 0,
+        schemaVersion: 1,
+      }),
+    ).rejects.toThrow(/range digest is invalid/);
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: {
+        completeDigestVerifiedAt: null,
+        hydrationState: "corrupt",
+      },
+      contentRevision: 2,
+    });
+    await expect(
       vault.verifyComplete({
         contentDigest,
         schemaVersion: 1,
-        verifiedAt: 21,
+        verifiedAt: 22,
       }),
     ).rejects.toThrow(/complete content digest is invalid/);
     expect(
@@ -415,7 +434,7 @@ describe("PWA Library Core OPFS content vault", () => {
         completeDigestVerifiedAt: null,
         hydrationState: "corrupt",
       },
-      contentRevision: 2,
+      contentRevision: 3,
     });
   });
 
