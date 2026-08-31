@@ -38,6 +38,7 @@ case "$TARGET" in
     STAGE_AT_ROOT="false"
     DEPENDENCY_DIRS=(
       "packages/capture-save"
+      "packages/library-core-native"
       "packages/shared"
       "packages/sync"
       "packages/ui"
@@ -55,7 +56,10 @@ cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metad
 cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
 cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.mjs"
 cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.d.mts" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.d.mts"
+cp "$ROOT_DIR/scripts/lib/pwa-optional-assets.mjs" "$TEMP_DIR/scripts/lib/pwa-optional-assets.mjs"
+cp "$ROOT_DIR/scripts/lib/pwa-optional-assets.d.mts" "$TEMP_DIR/scripts/lib/pwa-optional-assets.d.mts"
 cp "$ROOT_DIR/scripts/validate-retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/validate-retired-automerge-runtime.mjs"
+cp "$ROOT_DIR/scripts/validate-pwa-optional-assets.mjs" "$TEMP_DIR/scripts/validate-pwa-optional-assets.mjs"
 
 if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/package.json" "$TEMP_DIR/package.json"
