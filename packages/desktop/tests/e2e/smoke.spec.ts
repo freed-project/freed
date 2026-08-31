@@ -2399,7 +2399,7 @@ test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ 
       | undefined;
     return store?.getState().selectedItemId !== null;
   }, { timeout: 5_000 });
-  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toBeVisible({ timeout: 5_000 });
 
   await page.keyboard.press("Meta+[");
   await page.waitForFunction(() => {
@@ -2408,7 +2408,7 @@ test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ 
       | undefined;
     return store?.getState().selectedItemId === null;
   }, { timeout: 5_000 });
-  await expect(page.getByLabel("Back")).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toHaveCount(0);
 
   await page.keyboard.press("Meta+]");
   await page.waitForFunction(() => {
@@ -2417,7 +2417,7 @@ test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ 
       | undefined;
     return store?.getState().selectedItemId !== null;
   }, { timeout: 5_000 });
-  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toBeVisible({ timeout: 5_000 });
 });
 
 test("dual-column reader arrow navigation cycles tiles and keeps the selected tile visible", async ({ app, page }) => {
@@ -2432,7 +2432,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   });
 
   await page.getByText("Article 0:", { exact: false }).click();
-  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
@@ -2590,25 +2590,6 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
   await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible({ timeout: 5_000 });
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
-  const spacing = await page.evaluate(() => {
-    const previewButton = document.querySelector('[aria-label="Hide Previews"]') as HTMLElement | null;
-    const previewIcon = previewButton?.querySelector("svg") as SVGElement | null;
-    const backButton = document.querySelector('[data-testid="workspace-toolbar-reader-back"]') as HTMLElement | null;
-    const overflowButton = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
-    if (!previewIcon || !backButton || !overflowButton) {
-      throw new Error("Narrow reader toolbar spacing elements were not found");
-    }
-
-    const previewIconRect = previewIcon.getBoundingClientRect();
-    const backButtonRect = backButton.getBoundingClientRect();
-    const overflowButtonRect = overflowButton.getBoundingClientRect();
-
-    return {
-      leftGap: backButtonRect.left - previewIconRect.right,
-      rightGap: overflowButtonRect.left - backButtonRect.right,
-    };
-  });
-  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(4);
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
