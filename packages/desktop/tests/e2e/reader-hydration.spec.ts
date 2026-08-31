@@ -172,7 +172,7 @@ test("uncached online articles hydrate in the reader and reopen from cache offli
   await app.page.locator("article").filter({ hasText: ARTICLE_TITLE }).first().click();
   await expect(app.page.getByText(ARTICLE_BODY)).toBeVisible();
 
-  await app.page.getByLabel("Back").click();
+  await app.page.getByTestId("workspace-toolbar-reader-back").click();
   await app.page.evaluate(() => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: false });
   });
