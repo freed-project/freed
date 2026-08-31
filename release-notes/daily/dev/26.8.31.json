@@ -2,13 +2,19 @@
   "channel": "dev",
   "dayKey": "26.8.31",
   "date": "2026-08-31",
-  "preferredDeck": null,
+  "preferredDeck": "Reliable PWA recovery and Google Drive authentication",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-08-31T13:58:55.021Z"
+  "pinnedHighlights": [
+    "Physical iPhone PWA acceptance",
+    "Refresh a rejected Google Drive access token and retry the exact failed Library request once",
+    "Recover an interrupted local sample Library without touching a connected Library"
+  ],
+  "editorialNotes": [
+    "Carry the complete v26.8.3100-dev story forward and add the Drive retry plus orphaned sample Library recovery."
+  ],
+  "updatedAt": "2026-08-31T18:19:25.439Z"
 }
