@@ -149,6 +149,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
+  const setMapLocationCounts = useAppStore((state) => state.setMapLocationCounts);
   const [deviceDisplay] = useDeviceDisplayPreferences();
   const themeId = useAppliedThemeId();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
@@ -182,6 +183,11 @@ export function MapView({ viewportInsets }: MapViewProps) {
       }),
     [effectiveTimeRange, resolvedItems],
   );
+
+  useEffect(() => {
+    setMapLocationCounts(friendMarkers.length, allContentMarkers.length);
+  }, [allContentMarkers.length, friendMarkers.length, setMapLocationCounts]);
+
   const effectiveMode = resolveMapMode(
     deviceDisplay.mapMode,
     friendMarkers.length,

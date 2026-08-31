@@ -119,6 +119,8 @@ export interface BaseAppState {
   mapFriendLocationCount: number;
   /** Authors with recent mapped content. Derived off the render path. */
   mapAllContentLocationCount: number;
+  /** Publish the exact derived marker counts for shared map navigation chrome. */
+  setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
   /** Exact SQLite count for the active bounded feed query. */
   visibleFeedTotalCount: number;
 
