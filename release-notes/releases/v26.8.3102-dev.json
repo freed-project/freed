@@ -5,14 +5,14 @@
   "dayKey": "26.8.31",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-31T22:38:43.219Z",
+  "generatedAt": "2026-08-31T23:01:41.553Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.3101-dev",
     "previousPublishedDayTag": "v26.8.3006-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "622e601a997febc9a783efee61311e522ff0b441",
+    "productCommitSha": "5adf901825a9d9eb4e452ab33520c23800fc642a",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.3101-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "bd9ddb312a6eaea9044e368096eb523ac3771a9a",
-        "toInclusiveProductCommitSha": "622e601a997febc9a783efee61311e522ff0b441"
+        "toInclusiveProductCommitSha": "5adf901825a9d9eb4e452ab33520c23800fc642a"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -30,7 +30,7 @@
         "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:c9d5d8f542794e9d93e0f14d401291a825b73b1c41b33e7940b4dd97667ab7a6",
+      "inspectionDigest": "sha256:275098283004b4f55065c2a6224f9363eb9d8921c7229f431a852198f14fef62",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -78,6 +78,8 @@
       1706
     ],
     "commitSubjects": [
+      "test: stabilize reader toolbar coverage (#1711)",
+      "docs: refresh v26.8.3102-dev identity (#1709)",
       "chore: prepare v26.8.3102-dev (#1706)",
       "fix: keep sync status control stable (#1705)",
       "fix: surface PWA bootstrap storage failures (#1704)",
