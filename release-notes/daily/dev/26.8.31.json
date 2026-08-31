@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.31",
   "date": "2026-08-31",
-  "preferredDeck": "Reliable PWA recovery and Google Drive authentication",
+  "preferredDeck": "Atomic Google Drive checkpoints and resilient PWA sample data",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,11 +10,11 @@
   ],
   "pinnedHighlights": [
     "Physical iPhone PWA acceptance",
-    "Refresh a rejected Google Drive access token and retry the exact failed Library request once",
-    "Recover an interrupted local sample Library without touching a connected Library"
+    "Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload",
+    "Show progress while importing or clearing sample data"
   ],
   "editorialNotes": [
-    "Carry the complete v26.8.3100-dev story forward and add the Drive retry plus orphaned sample Library recovery."
+    "Lead with the atomic Drive checkpoint fix and PWA sample-data recovery. Keep the remaining signed Drive verification explicit."
   ],
   "updatedAt": "2026-08-31T22:06:44.670Z"
 }
