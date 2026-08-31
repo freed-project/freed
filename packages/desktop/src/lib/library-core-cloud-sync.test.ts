@@ -1238,6 +1238,46 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
+  it("proves the committed Drive receipt before treating a repeat publication as current", async () => {
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+
+    const checkpoint = (
+      mocks.nativeState as {
+        lastPublishedCheckpoint: {
+          controlPointer: unknown;
+          controlRevision: string;
+        };
+      }
+    ).lastPublishedCheckpoint;
+    const controlBytes = encodeLibraryCoreCanonicalValue(
+      checkpoint.controlPointer as never,
+    );
+    const exactControlBytes = new Uint8Array(controlBytes.byteLength);
+    exactControlBytes.set(controlBytes);
+    mocks.controlRead = {
+      revision: checkpoint.controlRevision,
+      bytes: exactControlBytes,
+    };
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "current", revision: 7 });
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when a local current marker does not match Drive control", async () => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow(
+      "Stored Library Core publication receipt does not match Drive control",
+    );
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+  });
+
   it("persists the exact receipt after a lost Drive commit response is recovered", async () => {
     mocks.publishStatus = "recovered_after_response_loss";
 
