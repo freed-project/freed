@@ -332,6 +332,7 @@ export function SearchJumpField({
     replaceLibraryFriend,
     upsertLibraryPerson,
   } = platform;
+  const readOnly = platform.interactionMode === "read-only";
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
@@ -636,10 +637,10 @@ export function SearchJumpField({
             }
           : null,
         closeReader: selectedItem ? () => setSelectedItem(null) : null,
-        toggleCurrentItemSaved: selectedItem
+        toggleCurrentItemSaved: selectedItem && !readOnly
           ? () => toggleSaved(selectedItem.globalId)
           : null,
-        toggleCurrentItemArchived: selectedItem
+        toggleCurrentItemArchived: selectedItem && !readOnly
           ? async () => {
               const wasArchived = selectedItem.userState.archived;
               await toggleArchived(selectedItem.globalId);
@@ -649,20 +650,22 @@ export function SearchJumpField({
             }
           : null,
         toggleCurrentItemLiked:
-          selectedItem && toggleLiked
+          selectedItem && toggleLiked && !readOnly
             ? () => toggleLiked(selectedItem.globalId)
             : null,
         markScopeRead:
-          activeView === "feed" && unreadScopeCount > 0 ? markScopeRead : null,
+          !readOnly && activeView === "feed" && unreadScopeCount > 0
+            ? markScopeRead
+            : null,
         archiveScopeRead:
-          activeView === "feed" && archivableScopeCount > 0
+          !readOnly && activeView === "feed" && archivableScopeCount > 0
             ? archiveScopeRead
             : null,
-        unarchiveSavedItems,
+        unarchiveSavedItems: readOnly ? null : unarchiveSavedItems,
         syncRssNow,
         syncCurrentSource: syncSourceNow,
         checkForUpdates,
-        deleteAllArchived,
+        deleteAllArchived: readOnly ? null : deleteAllArchived,
         factoryReset,
         activeCloudProviderLabel,
       }),
@@ -709,6 +712,7 @@ export function SearchJumpField({
       unreadScopeCount,
       unarchiveSavedItems,
       readLibraryPersonDetail,
+      readOnly,
       upsertLibraryPerson,
       openLibraryDialog,
     ],

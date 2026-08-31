@@ -54,11 +54,15 @@ function makeItem(
 function ResolvedLocationsHarness({
   candidates,
   onSnapshot,
+  resolveNamedLocations,
 }: {
   candidates: readonly LibraryMapLocationCandidate[];
   onSnapshot: (snapshot: ResolvedLocationsSnapshot) => void;
+  resolveNamedLocations?: boolean;
 }) {
-  const snapshot = useResolvedLocationCandidates(candidates);
+  const snapshot = useResolvedLocationCandidates(candidates, {
+    resolveNamedLocations,
+  });
 
   useEffect(() => {
     onSnapshot(snapshot);
@@ -164,5 +168,33 @@ describe("useResolvedLocationCandidates", () => {
     ]);
     expect(completeSnapshot.resolvingCount).toBe(0);
     expect(completeSnapshot.lastResolvedAt).toEqual(expect.any(Number));
+  });
+
+  it("keeps local showcase mode from sending named locations to a geocoder", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const snapshots: ResolvedLocationsSnapshot[] = [];
+
+    await act(async () => {
+      root!.render(
+        <ResolvedLocationsHarness
+          candidates={[
+            {
+              accountId: null,
+              friend: null,
+              item: makeItem("brooklyn-1", "Brooklyn, NY", 100),
+            },
+          ]}
+          onSnapshot={(snapshot) => snapshots.push(snapshot)}
+          resolveNamedLocations={false}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(geocodeMock).not.toHaveBeenCalled();
+    expect(snapshots.at(-1)?.resolvingCount).toBe(0);
+    expect(snapshots.at(-1)?.resolvedItems).toEqual([]);
   });
 });

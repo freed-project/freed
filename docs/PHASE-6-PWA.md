@@ -642,6 +642,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.118 | Keep the mobile Settings breadcrumb synchronized with the final rendered section when WebKit clamps a programmatic scroll target at the bottom of the scrollport. Danger Zone content can no longer remain visibly open under a stale Legal label | Medium     | ✓ Complete                                                                                       |
 | 6.119 | Preserve the original PWA SQLite failure when SQLite has already ended a transaction before cleanup, including storage-full refusal. Prove a quota-bound large operation cannot advance accepted state or leak a partial member, retains its durable transaction stage, and succeeds on exact retry after capacity returns | High       | ✓ Complete                                                                                       |
 | 6.120 | Report sample Library population through one persistent toast driven by completed durable batches, keep progress monotonic in 10 percent steps through final settlement, batch the 15 sample RSS feeds in one registered transaction, and skip empty annotation, analysis, and settlement work without weakening normalized SQLite authority | Medium     | ✓ Complete                                                                                       |
+| 6.121 | Add an anonymous read only showcase mode for `demo.freed.wtf` that bypasses connection gates, atomically replaces the local Library with a deterministic curated normalized checkpoint on every load, retains no actor private key, blocks provider and cloud connections, uses only bundled media and the local map fallback, opens directly into Unified Feed, and exposes a responsive welcome handoff to Freed Desktop. Capture five themed product views plus a release-specific animated GIF from the exact validated production tag and attach them to the successful GitHub release | High       | ✓ Complete                                                                                       |
 
 ---
 
@@ -650,6 +651,7 @@ never sorts, filters, or ranks a Library collection.
 Vercel project `freed-pwa` now follows the dev-first branch flow.
 
 - **Production:** [app.freed.wtf](https://app.freed.wtf)
+- **Anonymous showcase:** [demo.freed.wtf](https://demo.freed.wtf), served from the exact production PWA release
 - **Dev:** `dev-app.freed.wtf` via native Vercel deploys from `dev`
 - **Preview:** Auto-generated per pull request
 
@@ -686,6 +688,8 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude Primary-derived ranking fields. Accepted signed priority assignments replay separately into OPFS SQLite.
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
 - [x] Sample seeding reports durable batch progress in a persistent updateable toast and skips empty child-record writes and settlement passes
+- [x] The anonymous demo atomically activates its curated normalized checkpoint before mounting the app shell, restores the pristine Library on refresh, avoids the signed mutation importer, exposes no provider or cloud connection surface, makes no third-party display requests, uses bundled showcase media and a local map fallback, and opens directly into the Unified Feed
+- [x] Every successful production release captures five themed demo views and a release-specific animated GIF from the exact validated tag, then publishes the manifest and media as GitHub release assets
 - [x] An unconnected PWA can populate one durable local sample Library without Drive traffic, retain it across WebKit restarts, recover an interrupted accepted result, prevent repeat population, clear only internally marked sample records in bounded signed batches, and rebuild the sample Library from the rendered mobile workflow
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.

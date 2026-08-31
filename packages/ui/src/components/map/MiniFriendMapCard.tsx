@@ -6,6 +6,7 @@ interface MiniFriendMapCardProps {
   friend: Person;
   feedItems: readonly FeedItem[];
   onOpenMap: () => void;
+  resolveNamedLocations?: boolean;
 }
 
 function miniMapPosition(lat: number, lng: number): { left: string; top: string } {
@@ -21,10 +22,12 @@ export function MiniFriendMapCard({
   friend,
   feedItems,
   onOpenMap,
+  resolveNamedLocations = true,
 }: MiniFriendMapCardProps) {
   const { lastSeen, resolvingCount } = useFriendLastSeenLocation(
     friend,
     feedItems,
+    resolveNamedLocations,
   );
 
   if (!lastSeen && resolvingCount === 0) return null;
