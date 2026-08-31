@@ -3,7 +3,7 @@
   "version": "26.8.3100-dev",
   "channel": "dev",
   "dayKey": "26.8.31",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-31T13:58:55.020Z",
   "model": "heuristic",
@@ -72,10 +72,27 @@
     ]
   },
   "release": {
-    "deck": "PWA sample library context restored",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Smaller PWA installs, stronger local storage recovery, and faster large Libraries",
+    "features": [
+      "Open Map and Friends on demand while keeping return visits available offline",
+      "Keep PWA feeds and search bounded across 100,000 locally stored items",
+      "Page large Friends directories with stable SQLite keyset cursors"
+    ],
+    "fixes": [
+      "Preserve the original storage-full error and retry safely after PWA SQLite quota failures",
+      "Restore durable sample Library context across reloads and WebKit process exits",
+      "Refresh Google Drive authentication once and retry the exact failed request after a 401",
+      "Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2",
+      "Keep PWA browser fixtures from writing synchronized device preferences",
+      "Make feed performance checks report inconclusive evidence instead of synthetic success",
+      "Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page",
+      "Make clean PWA preview deployments include their required guards and project binding"
+    ],
+    "followUps": [
+      "Run installed build verification in an isolated profile",
+      "Complete physical iPhone PWA acceptance",
+      "Extend large-library proof to WebKit and whole-process memory"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3100-dev\n\nPWA sample library context restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3100-dev\n\nSmaller PWA installs, stronger local storage recovery, and faster large Libraries\n\n### Features\n\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n- Page large Friends directories with stable SQLite keyset cursors\n\n### Fixes\n\n- Preserve the original storage-full error and retry safely after PWA SQLite quota failures\n- Restore durable sample Library context across reloads and WebKit process exits\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Make feed performance checks report inconclusive evidence instead of synthetic success\n- Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page\n- Make clean PWA preview deployments include their required guards and project binding\n\n### Follow-ups\n\n- Run installed build verification in an isolated profile\n- Complete physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
