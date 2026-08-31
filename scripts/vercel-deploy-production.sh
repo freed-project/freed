@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/node-tooling.sh
 source "${SCRIPT_DIR}/lib/node-tooling.sh"
 use_resolved_node_path
+NODE_BIN="$(resolve_node_bin)"
 NPM_BIN="$(resolve_npm_bin)"
 NPX_BIN="$(resolve_npx_bin)"
 
@@ -66,15 +67,12 @@ if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/package-lock.json" "$TEMP_DIR/package-lock.json"
   cp "$ROOT_DIR/tsconfig.base.json" "$TEMP_DIR/tsconfig.base.json"
   cp -R "$ROOT_DIR/$APP_DIR" "$TEMP_DIR/$APP_DIR"
-  cp "$ROOT_DIR/$APP_DIR/.vercel/project.json" "$TEMP_DIR/.vercel/project.json"
 else
   cp "$ROOT_DIR/package.json" "$TEMP_DIR/package.json"
   cp "$ROOT_DIR/package-lock.json" "$TEMP_DIR/package-lock.json"
   cp "$ROOT_DIR/tsconfig.base.json" "$TEMP_DIR/tsconfig.base.json"
   mkdir -p "$TEMP_DIR/$(dirname "$APP_DIR")"
   cp -R "$ROOT_DIR/$APP_DIR" "$TEMP_DIR/$APP_DIR"
-  cp "$ROOT_DIR/$APP_DIR/.vercel/project.json" "$TEMP_DIR/.vercel/project.json"
-
   if [[ "$TARGET" == "pwa" ]]; then
     mkdir -p "$TEMP_DIR/packages/pwa"
     cat <<'EOF' >"$TEMP_DIR/vercel.json"
@@ -87,6 +85,17 @@ else
 }
 EOF
   fi
+fi
+
+VERCEL_PROJECT="$(
+  "$NODE_BIN" "$ROOT_DIR/scripts/lib/vercel-project-link.mjs" project "$TARGET"
+)"
+PROJECT_LINK_STATE="bootstrap"
+if "$NODE_BIN" "$ROOT_DIR/scripts/lib/vercel-project-link.mjs" stage \
+  "$ROOT_DIR/$APP_DIR/.vercel/project.json" \
+  "$TEMP_DIR/.vercel/project.json"
+then
+  PROJECT_LINK_STATE="linked"
 fi
 
 for dir in "${DEPENDENCY_DIRS[@]}"; do
@@ -122,7 +131,15 @@ if [[ -n "$VERCEL_TOKEN" ]]; then
 fi
 
 echo "Pulling Vercel settings for $TARGET"
-"${NPX_BIN}" vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+VERCEL_PULL_FLAGS=(--yes --environment production --cwd "$TEMP_DIR")
+if [[ "$PROJECT_LINK_STATE" == "bootstrap" ]]; then
+  echo "No local Vercel link found; selecting $VERCEL_PROJECT explicitly"
+  VERCEL_PULL_FLAGS+=(--project "$VERCEL_PROJECT")
+fi
+if ! "${NPX_BIN}" vercel pull "${VERCEL_PULL_FLAGS[@]}" "${VERCEL_FLAGS[@]}"; then
+  echo "Unable to access Vercel project $VERCEL_PROJECT in scope aubreyfs-projects. Verify Vercel authentication and project access." >&2
+  exit 1
+fi
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET production bundle with Vercel"
