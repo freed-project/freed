@@ -193,6 +193,7 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const setError = useAppStore((state) => state.setError);
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installNotice, setInstallNotice] = useState<InstallNotice | null>(
@@ -251,7 +252,15 @@ function App() {
           return initialize();
         })
         .catch((error) => {
-          console.error("[demo] failed to activate showcase checkpoint:", error);
+          console.error(
+            "[demo] failed to activate showcase checkpoint:",
+            error,
+          );
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Freed could not prepare the showcase Library",
+          );
         });
       return;
     }
@@ -262,9 +271,17 @@ function App() {
     void ensurePwaLibraryCoreLocalSampleState()
       .then(() => initialize())
       .catch((error) => {
-        console.error("[sample-data] failed to initialize local preview data:", error);
+        console.error(
+          "[sample-data] failed to initialize local preview data:",
+          error,
+        );
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Freed could not prepare the local preview Library",
+        );
       });
-  }, [initialize, legalAccepted]);
+  }, [initialize, legalAccepted, setError]);
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;

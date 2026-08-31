@@ -108,12 +108,11 @@ async function openLibrary(page: Page): Promise<void> {
   await waitForLibrary(page);
 }
 
-async function openPersistentLibrary(profileRoot: string): Promise<{
-  context: BrowserContext;
-  page: Page;
-}> {
+async function launchPersistentLibraryContext(
+  profileRoot: string,
+): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
-  const context = await webkit.launchPersistentContext(profileRoot, {
+  return webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
     viewport: iphone.viewport,
     screen: iphone.screen,
@@ -123,9 +122,93 @@ async function openPersistentLibrary(profileRoot: string): Promise<{
     baseURL: pwaOpfsE2eBaseUrl,
     headless: true,
   });
+}
+
+async function openPersistentLibrary(profileRoot: string): Promise<{
+  context: BrowserContext;
+  page: Page;
+}> {
+  const context = await launchPersistentLibraryContext(profileRoot);
   const page = context.pages()[0] ?? (await context.newPage());
   await openLibrary(page);
   return { context, page };
+}
+
+async function inspectAcceptedOpfsDatabase(
+  profileRoot: string,
+  corrupt: boolean,
+): Promise<
+  ReadonlyArray<{
+    currentByte: number;
+    fileName: string;
+    originalByte: number;
+    size: number;
+    virtualPath: string;
+  }>
+> {
+  const context = await launchPersistentLibraryContext(profileRoot);
+  try {
+    const page = context.pages()[0] ?? (await context.newPage());
+    await page.goto("/favicon.svg");
+    return await page.evaluate(async (shouldCorrupt) => {
+      const root = await navigator.storage.getDirectory();
+      const pool = await root.getDirectoryHandle(
+        "freed-library-core-sqlite-opfs-v1",
+      );
+      const opaque = await pool.getDirectoryHandle(".opaque");
+      const decoder = new TextDecoder();
+      const dataOffset = 4_096;
+      const files = [];
+      for await (const entry of opaque.values()) {
+        if (entry.kind !== "file") continue;
+        const handle = entry as FileSystemFileHandle;
+        const file = await handle.getFile();
+        if (file.size <= dataOffset) continue;
+        const metadata = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+        const terminator = metadata.indexOf(0);
+        const virtualPath = decoder.decode(
+          metadata.subarray(0, terminator < 0 ? metadata.length : terminator),
+        );
+        if (!virtualPath.startsWith("/freed-library-core-v1.sqlite3")) {
+          continue;
+        }
+        const original = new Uint8Array(
+          await file.slice(dataOffset, dataOffset + 1).arrayBuffer(),
+        );
+        if (original.byteLength !== 1) {
+          throw new Error("accepted OPFS SQLite payload is unavailable");
+        }
+        const currentByte = shouldCorrupt ? original[0]! ^ 0xff : original[0]!;
+        if (shouldCorrupt) {
+          const writable = await handle.createWritable({
+            keepExistingData: true,
+          });
+          await writable.seek(dataOffset);
+          await writable.write(Uint8Array.of(currentByte));
+          await writable.close();
+        }
+        files.push({
+          currentByte,
+          fileName: entry.name,
+          originalByte: original[0]!,
+          size: file.size,
+          virtualPath,
+        });
+      }
+      if (
+        !files.some(
+          (file) => file.virtualPath === "/freed-library-core-v1.sqlite3",
+        )
+      ) {
+        throw new Error("accepted OPFS SQLite payload file was not found");
+      }
+      return files.sort((left, right) =>
+        left.virtualPath.localeCompare(right.virtualPath),
+      );
+    }, corrupt);
+  } finally {
+    await context.close();
+  }
 }
 
 async function setContactSyncError(page: Page): Promise<{
@@ -337,6 +420,97 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     await context.close();
     context = null;
     await verifyDurableOpfsLibrary(profileRoot);
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit rejects a corrupted accepted OPFS SQLite generation", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-corrupt-sqlite-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    const opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    await expectShowcaseSampleData(opened.page, {
+      ...(await readFacetSummary(opened.page)),
+      rssFeedCount: 0,
+      totalCount: 0,
+    });
+    expect(await setContactSyncError(opened.page)).toMatchObject({
+      changed: true,
+    });
+    await context.close();
+    context = null;
+
+    const corrupted = await inspectAcceptedOpfsDatabase(profileRoot, true);
+    expect(corrupted.length).toBeGreaterThan(0);
+    expect(corrupted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          virtualPath: "/freed-library-core-v1.sqlite3",
+        }),
+      ]),
+    );
+    for (const file of corrupted) {
+      expect(file.currentByte).not.toBe(file.originalByte);
+      expect(file.size).toBeGreaterThan(4_096);
+    }
+    const corruptedReadback = await inspectAcceptedOpfsDatabase(
+      profileRoot,
+      false,
+    );
+    expect(corruptedReadback).toEqual(
+      corrupted.map((file) => ({
+        ...file,
+        originalByte: file.currentByte,
+      })),
+    );
+
+    context = await launchPersistentLibraryContext(profileRoot);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await page.waitForFunction(() => {
+      const store = (window as unknown as Record<string, unknown>)
+        .__FREED_STORE__ as
+        | { getState(): { error: string | null; isInitialized: boolean } }
+        | undefined;
+      const state = store?.getState();
+      return state?.isInitialized === true || typeof state?.error === "string";
+    });
+    const state = await page.evaluate(() => {
+      const store = (window as unknown as Record<string, unknown>)
+        .__FREED_STORE__ as
+        | { getState(): { error: string | null; isInitialized: boolean } }
+        | undefined;
+      return store?.getState();
+    });
+    expect(state).toMatchObject({
+      isInitialized: false,
+    });
+    expect(state?.error).toMatch(/PWA Library SQLite could not/);
+    await expect(
+      page.getByRole("heading", { name: "Freed hit a fatal error" }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/PWA Library SQLite could not/)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Replace local Library" }),
+    ).toBeVisible();
+    await context.close();
+    context = null;
+
+    const preserved = await inspectAcceptedOpfsDatabase(profileRoot, false);
+    expect(preserved).toEqual(
+      corrupted.map((file) => ({
+        ...file,
+        originalByte: file.currentByte,
+      })),
+    );
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
