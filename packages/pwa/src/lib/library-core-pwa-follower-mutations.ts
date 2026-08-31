@@ -71,6 +71,11 @@ export const PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT = Math.min(
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers,
 );
+export const PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT = Math.min(
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_remove.maximumMembers,
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_remove_and_accounts.maximumMembers,
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_remove.maximumMembers,
+);
 
 function digest(
   domain: LibraryCoreDigestDomain,
@@ -442,34 +447,42 @@ export async function commitPwaLibraryCoreFeedItemRemove(
   entityId: string,
   removedAtMs: number,
 ): Promise<void> {
-  if (!entityId) throw new TypeError("remove entity ID is required");
+  await commitPwaLibraryCoreFeedItemRemoves([entityId], removedAtMs);
+}
+
+export async function commitPwaLibraryCoreFeedItemRemoves(
+  entityIds: readonly string[],
+  removedAtMs: number,
+): Promise<void> {
+  const identities = [...new Set(entityIds)];
+  if (
+    identities.length < 1 ||
+    identities.length >
+      LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_remove.maximumMembers ||
+    identities.some((entityId) => !entityId)
+  ) {
+    throw new RangeError("PWA FeedItem removal transaction is invalid");
+  }
   if (!Number.isSafeInteger(removedAtMs) || removedAtMs < 0) {
     throw new TypeError("remove time must be a nonnegative integer");
   }
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-feed-item-remove");
-  const member = FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
-    {
-      actor_id: context.actor_id,
-      actor_sequence: context.next_actor_sequence,
-      causal_frontier: context.observed_frontier,
-      created_at_ms: removedAtMs,
-      entity_id: entityId,
-      epoch: context.epoch,
-      epoch_id: context.epoch_id,
-      hlc_counter: 0,
-      hlc_wall_ms: removedAtMs,
-      library_id: context.library_id,
-      operation_id: `${transactionId}:0`,
-      payload: { removed_at_ms: removedAtMs },
-      previous_actor_operation_id: context.previous_actor_operation_id,
-      transaction_id: transactionId,
-      transaction_member_count: 1,
-      transaction_member_index: 0,
-    } satisfies FeedItemRemoveTransactionMemberInputV1,
-    { digest },
+  const members = identities.map((entityId, index) =>
+    FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        index,
+        identities.length,
+        entityId,
+        removedAtMs,
+        { removed_at_ms: removedAtMs },
+      ) satisfies FeedItemRemoveTransactionMemberInputV1,
+      { digest },
+    ),
   );
-  await commitFollowerTransaction(context, [member]);
+  await commitFollowerTransaction(context, members);
 }
 
 export async function commitPwaLibraryCoreRssFeedUpsert(
@@ -690,22 +703,40 @@ export async function commitPwaLibraryCorePersonRemove(
   personId: string,
   removedAtMs: number,
 ): Promise<void> {
-  if (!personId) throw new TypeError("Person ID is required");
+  await commitPwaLibraryCorePersonRemoves([personId], removedAtMs);
+}
+
+export async function commitPwaLibraryCorePersonRemoves(
+  personIds: readonly string[],
+  removedAtMs: number,
+): Promise<void> {
+  const identities = [...new Set(personIds)];
+  if (
+    identities.length < 1 ||
+    identities.length >
+      LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_remove_and_accounts
+        .maximumMembers ||
+    identities.some((personId) => !personId)
+  ) {
+    throw new RangeError("PWA Person removal transaction is invalid");
+  }
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-person-remove");
-  const member = PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
-    transactionMemberInput(
-      context,
-      transactionId,
-      0,
-      1,
-      personId,
-      removedAtMs,
-      { removed_at_ms: removedAtMs },
+  const members = identities.map((personId, index) =>
+    PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        index,
+        identities.length,
+        personId,
+        removedAtMs,
+        { removed_at_ms: removedAtMs },
+      ),
+      { digest },
     ),
-    { digest },
   );
-  await commitFollowerTransaction(context, [member]);
+  await commitFollowerTransaction(context, members);
 }
 
 export async function commitPwaLibraryCoreAccountPersonAssignment(
@@ -775,20 +806,37 @@ export async function commitPwaLibraryCoreAccountRemove(
   accountId: string,
   removedAtMs: number,
 ): Promise<void> {
-  if (!accountId) throw new TypeError("Account ID is required");
+  await commitPwaLibraryCoreAccountRemoves([accountId], removedAtMs);
+}
+
+export async function commitPwaLibraryCoreAccountRemoves(
+  accountIds: readonly string[],
+  removedAtMs: number,
+): Promise<void> {
+  const identities = [...new Set(accountIds)];
+  if (
+    identities.length < 1 ||
+    identities.length >
+      LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_remove.maximumMembers ||
+    identities.some((accountId) => !accountId)
+  ) {
+    throw new RangeError("PWA Account removal transaction is invalid");
+  }
   const context = await readPwaFollowerMutationContext();
   const transactionId = transactionIdentity("pwa-account-remove");
-  const member = ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
-    transactionMemberInput(
-      context,
-      transactionId,
-      0,
-      1,
-      accountId,
-      removedAtMs,
-      { removed_at_ms: removedAtMs },
+  const members = identities.map((accountId, index) =>
+    ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        index,
+        identities.length,
+        accountId,
+        removedAtMs,
+        { removed_at_ms: removedAtMs },
+      ),
+      { digest },
     ),
-    { digest },
   );
-  await commitFollowerTransaction(context, [member]);
+  await commitFollowerTransaction(context, members);
 }

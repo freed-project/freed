@@ -97,14 +97,17 @@ import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-v
 import { syncPwaLibraryCoreFollowerV2 } from "./library-core-pwa-follower-sync";
 import {
   commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountRemoves,
   commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountUpserts,
   commitPwaLibraryCoreFeedItemCaptures,
   commitPwaLibraryCoreFeedItemAnalysisSets,
   commitPwaLibraryCoreFeedItemAnnotationSets,
   commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCoreFeedItemRemoves,
   commitPwaLibraryCoreFriendReplace,
   commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonRemoves,
   commitPwaLibraryCorePersonReachOutAppend,
   commitPwaLibraryCorePersonUpserts,
   commitPwaLibraryCorePreferencesPatch,
@@ -117,6 +120,7 @@ import {
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
@@ -734,17 +738,58 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
       };
     }),
   );
-  for (const accountId of sampleAccountIds) {
-    await enqueuePwaLibraryCoreAccountRemove(accountId);
+  for (
+    let offset = 0;
+    offset < sampleAccountIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreAccountRemoves(
+      sampleAccountIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
-  for (const personId of personIds) {
-    await enqueuePwaLibraryCorePersonRemove(personId);
+  for (
+    let offset = 0;
+    offset < personIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCorePersonRemoves(
+      personIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
-  for (const url of feedUrls) {
-    await enqueuePwaLibraryCoreRssFeedRemove(url, false);
+  for (
+    let offset = 0;
+    offset < feedUrls.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreRssFeedRemoves(
+      feedUrls.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      false,
+      updatedAt,
+    );
   }
-  for (const itemId of itemIds) {
-    await enqueuePwaLibraryCoreFeedItemRemove(itemId);
+  for (
+    let offset = 0;
+    offset < itemIds.length;
+    offset += PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT
+  ) {
+    await commitPwaLibraryCoreFeedItemRemoves(
+      itemIds.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
+      ),
+      updatedAt,
+    );
   }
 
   return {
