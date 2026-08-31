@@ -106,21 +106,36 @@
   "release": {
     "deck": "Atomic Google Drive checkpoints and resilient PWA sample data",
     "features": [
-      "Anonymous release demo experience",
-      "Keep PWA feeds and search bounded across 100,000 locally stored items"
+      "Open Map and Friends on demand while keeping return visits available offline",
+      "Keep PWA feeds and search bounded across 100,000 locally stored items",
+      "Page large Friends directories with stable SQLite keyset cursors"
     ],
     "fixes": [
+      "Add an anonymous release demo experience",
       "Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload",
       "Refresh a rejected Google Drive access token and retry the exact failed Library request once",
-      "Show progress while importing or clearing sample data",
+      "Show live progress while a sample Library is being populated",
+      "Show progress while clearing sample data",
       "Recover an interrupted local sample Library without touching a connected Library",
+      "Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite",
       "Reject corrupted PWA media ranges before they become available offline",
-      "Keep PWA browser fixtures from writing synchronized device preferences"
+      "Publish accurate location counts in Map",
+      "Preserve the original storage-full error and retry safely after PWA SQLite quota failures",
+      "Restore durable sample Library context across reloads and WebKit process exits",
+      "Expose normal manual Google Drive sync to the installed verification trigger",
+      "Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2",
+      "Keep PWA browser fixtures from writing synchronized device preferences",
+      "Make feed performance checks report inconclusive evidence instead of synthetic success",
+      "Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page",
+      "Make clean PWA preview deployments include their required guards and project binding",
+      "Keep PWA previews on the requested local port"
     ],
     "followUps": [
       "Physical iPhone PWA acceptance",
+      "Run installed build verification in an isolated profile",
+      "Extend large-library proof to WebKit and whole-process memory",
       "Verify the first signed Google Drive publication against the real local Library"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3102-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Anonymous release demo experience\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n\n### Fixes\n\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Refresh a rejected Google Drive access token and retry the exact failed Library request once\n- Show progress while importing or clearing sample data\n- Recover an interrupted local sample Library without touching a connected Library\n- Reject corrupted PWA media ranges before they become available offline\n- Keep PWA browser fixtures from writing synchronized device preferences\n\n### Follow-ups\n\n- Physical iPhone PWA acceptance\n- Verify the first signed Google Drive publication against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3102-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n- Page large Friends directories with stable SQLite keyset cursors\n\n### Fixes\n\n- Add an anonymous release demo experience\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Refresh a rejected Google Drive access token and retry the exact failed Library request once\n- Show live progress while a sample Library is being populated\n- Show progress while clearing sample data\n- Recover an interrupted local sample Library without touching a connected Library\n- Clear retired follower enrollment before replacing a checkpoint in browser and native SQLite\n- Reject corrupted PWA media ranges before they become available offline\n- Publish accurate location counts in Map\n- Preserve the original storage-full error and retry safely after PWA SQLite quota failures\n- Restore durable sample Library context across reloads and WebKit process exits\n- Expose normal manual Google Drive sync to the installed verification trigger\n- Clear stale Friends recovery errors after WebGPU falls back to healthy WebGL2\n- Keep PWA browser fixtures from writing synchronized device preferences\n- Make feed performance checks report inconclusive evidence instead of synthetic success\n- Keep mobile Settings breadcrumbs aligned with the final section at the bottom of the page\n- Make clean PWA preview deployments include their required guards and project binding\n- Keep PWA previews on the requested local port\n\n### Follow-ups\n\n- Physical iPhone PWA acceptance\n- Run installed build verification in an isolated profile\n- Extend large-library proof to WebKit and whole-process memory\n- Verify the first signed Google Drive publication against the real local Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
