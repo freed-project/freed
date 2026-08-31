@@ -118,6 +118,7 @@ function native(checkpoint = descriptor()): LibraryCoreNativeCommandClientV1 {
   return {
     execute: vi.fn(async (commandId: string) => {
       if (commandId === "describe_checkpoint_export_v2") return checkpoint;
+      if (commandId === "begin_checkpoint_export_v2") return checkpoint;
       if (commandId === "export_checkpoint_page_v2") {
         return {
           canonicalRecordBytes:
@@ -173,7 +174,11 @@ describe("headless Google Drive checkpoint publication", () => {
       (client.execute as ReturnType<typeof vi.fn>).mock.calls.map(
         ([commandId]) => commandId,
       ),
-    ).toEqual(["describe_checkpoint_export_v2", "export_checkpoint_page_v2"]);
+    ).toEqual([
+      "describe_checkpoint_export_v2",
+      "begin_checkpoint_export_v2",
+      "export_checkpoint_page_v2",
+    ]);
     await expect(publication.lastPublishedRevision()).resolves.toBe(7);
   });
 

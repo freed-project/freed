@@ -836,6 +836,26 @@ pub(super) fn query_normalized_device_contact_unmatched_page(
 }
 
 #[tauri::command]
+pub(super) fn begin_normalized_library_checkpoint_export(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    ensure_checkpoint_export_reaper()?;
+    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(
+        open_normalized_database(&app)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let snapshot = export.snapshot().clone();
+    let mut guard = checkpoint_export_session()
+        .lock()
+        .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
+    *guard = Some(DesktopCheckpointExportSession {
+        export,
+        last_touched: Instant::now(),
+    });
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub(super) fn describe_normalized_library_checkpoint(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
@@ -870,21 +890,18 @@ pub(super) fn read_normalized_library_checkpoint_page(
 ) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
     ensure_checkpoint_export_reaper()?;
     let starting = request.page.after.is_none();
-    let candidate = if starting {
-        Some(
-            freed_library_core::NormalizedCheckpointExportSessionV2::begin(
-                open_normalized_database(&app)?,
-                request.snapshot.clone(),
-            )
-            .map_err(|error| error.to_string())?,
-        )
-    } else {
-        None
-    };
     let mut guard = checkpoint_export_session()
         .lock()
         .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
-    if let Some(export) = candidate {
+    let already_started = guard
+        .as_ref()
+        .is_some_and(|active| active.export.snapshot() == &request.snapshot);
+    if starting && !already_started {
+        let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin(
+            open_normalized_database(&app)?,
+            request.snapshot.clone(),
+        )
+        .map_err(|error| error.to_string())?;
         *guard = Some(DesktopCheckpointExportSession {
             export,
             last_touched: Instant::now(),

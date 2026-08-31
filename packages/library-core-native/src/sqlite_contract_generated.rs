@@ -534,6 +534,7 @@ pub const OPERATION_IDS: &[&str] = &[
 pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "agent_query_v1",
     "append_checkpoint_stage_v2",
+    "begin_checkpoint_export_v2",
     "begin_checkpoint_stage_v2",
     "commit_transaction_v1",
     "content_eviction_candidates_page_v1",

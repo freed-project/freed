@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   publishedRecords: [] as unknown[],
   publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
+  beginNormalizedExport: vi.fn(),
   describeCloudIdentity: vi.fn(),
   describeNormalizedCheckpoint: vi.fn(),
   readNormalizedCheckpointPage: vi.fn(),
@@ -131,6 +132,7 @@ vi.mock("./native-json-store", () => ({
 vi.mock("./sqlite-library", () => ({
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
+  beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
   describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
@@ -372,6 +374,9 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.publishStatus = "committed";
     mocks.reassignRequest = null;
     mocks.publish.mockClear();
+    mocks.beginNormalizedExport
+      .mockReset()
+      .mockImplementation(() => mocks.describeNormalizedCheckpoint());
     mocks.describeNormalizedCheckpoint.mockReset().mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
       protocolVersion: 2,

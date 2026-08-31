@@ -49,6 +49,7 @@ import { log } from "./logger";
 import {
   activateNormalizedLibraryCheckpointImport,
   appendNormalizedLibraryCheckpointImportPage,
+  beginNormalizedLibraryCheckpointExport,
   beginNormalizedLibraryCheckpointImport,
   describeNormalizedLibraryCloudIdentity,
   describeNormalizedLibraryCheckpoint,
@@ -970,7 +971,7 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     targetWriterId: loaded.currentWriterId,
   });
   const targetStorageEpoch = reassigned.authority.epoch_id;
-  const normalizedTarget = await describeNormalizedLibraryCheckpoint();
+  const normalizedTarget = await beginNormalizedLibraryCheckpointExport();
   if (
     normalizedTarget.libraryId !== state.libraryId ||
     normalizedTarget.authorityEpoch !== targetStorageEpoch ||
@@ -1142,7 +1143,8 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     libraryId: state.libraryId,
     signal: input.signal,
   });
-  const normalizedCheckpoint = await describeNormalizedLibraryCheckpoint();
+  const normalizedCheckpoint =
+    await beginNormalizedLibraryCheckpointExport();
   if (
     normalizedCheckpoint.libraryId !== state.libraryId ||
     normalizedCheckpoint.authorityEpoch !== state.storageEpoch ||
