@@ -11,12 +11,24 @@ interface Toast {
   onAction?: () => void;
 }
 
+interface ToastOptions {
+  actionLabel?: string;
+  onAction?: () => void;
+  durationMs?: number | null;
+}
+
 interface ToastStore {
   toasts: Toast[];
   addToast: (
     message: string,
     type?: ToastType,
-    options?: { actionLabel?: string; onAction?: () => void },
+    options?: ToastOptions,
+  ) => string;
+  updateToast: (
+    id: string,
+    message: string,
+    type?: ToastType,
+    durationMs?: number | null,
   ) => void;
   removeToast: (id: string) => void;
 }
@@ -25,14 +37,34 @@ export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   addToast: (message, type = "info", options) => {
     const id = Math.random().toString(36).slice(2);
+    const { durationMs = 4000, ...toastOptions } = options ?? {};
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type, ...options }],
+      toasts: [...state.toasts, { id, message, type, ...toastOptions }],
     }));
-    setTimeout(() => {
-      set((state) => ({
-        toasts: state.toasts.filter((t) => t.id !== id),
-      }));
-    }, 4000);
+    if (durationMs !== null) {
+      setTimeout(() => {
+        set((state) => ({
+          toasts: state.toasts.filter((t) => t.id !== id),
+        }));
+      }, durationMs);
+    }
+    return id;
+  },
+  updateToast: (id, message, type, durationMs = null) => {
+    set((state) => ({
+      toasts: state.toasts.map((toast) =>
+        toast.id === id
+          ? { ...toast, message, type: type ?? toast.type }
+          : toast,
+      ),
+    }));
+    if (durationMs !== null) {
+      setTimeout(() => {
+        set((state) => ({
+          toasts: state.toasts.filter((toast) => toast.id !== id),
+        }));
+      }, durationMs);
+    }
   },
   removeToast: (id) =>
     set((state) => ({
@@ -43,16 +75,23 @@ export const useToastStore = create<ToastStore>((set) => ({
 export const toast = {
   success: (
     message: string,
-    options?: { actionLabel?: string; onAction?: () => void },
+    options?: ToastOptions,
   ) => useToastStore.getState().addToast(message, "success", options),
   error: (
     message: string,
-    options?: { actionLabel?: string; onAction?: () => void },
+    options?: ToastOptions,
   ) => useToastStore.getState().addToast(message, "error", options),
   info: (
     message: string,
-    options?: { actionLabel?: string; onAction?: () => void },
+    options?: ToastOptions,
   ) => useToastStore.getState().addToast(message, "info", options),
+  update: (
+    id: string,
+    message: string,
+    type?: ToastType,
+    durationMs?: number | null,
+  ) => useToastStore.getState().updateToast(id, message, type, durationMs),
+  dismiss: (id: string) => useToastStore.getState().removeToast(id),
 };
 
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
@@ -103,12 +142,14 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
   return (
     <div
+      aria-live={toast.type === "error" ? "assertive" : "polite"}
       className={`
         flex items-center gap-3 px-4 py-3 rounded-xl border
         ${bgColor}
         ${isExiting ? "animate-slide-out" : "animate-slide-in"}
       `}
       onClick={handleClose}
+      role={toast.type === "error" ? "alert" : "status"}
     >
       <span className={textColor}>{icon}</span>
       <span className="flex-1 text-sm text-text-primary">{toast.message}</span>

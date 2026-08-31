@@ -116,12 +116,14 @@ import {
   commitPwaLibraryCoreRssFeedRemoves,
   commitPwaLibraryCoreRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert,
+  commitPwaLibraryCoreRssFeedUpserts,
   commitPwaLibraryCoreUserStateAssignments,
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT,
   PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
 export interface PwaLibraryCoreLocalChangeV1 {
@@ -551,13 +553,16 @@ export async function enqueuePwaLibraryCoreFeedItemCapture(
 /** Commit bounded signed FeedItem captures to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemCaptures(
   items: readonly FeedItem[],
+  onCommitted?: (count: number) => void,
 ): Promise<void> {
   if (items.length === 0) return;
   let batch: FeedItem[] = [];
   let identities = new Set<string>();
   const flush = async () => {
     if (batch.length === 0) return;
+    const committedCount = batch.length;
     await commitPwaLibraryCoreFeedItemCaptures(batch, Date.now());
+    onCommitted?.(committedCount);
     batch = [];
     identities = new Set<string>();
   };
@@ -582,6 +587,7 @@ export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
     highlights: readonly Highlight[];
     tags: readonly string[];
   }>[],
+  onCommitted?: (count: number) => void,
 ): Promise<void> {
   if (assignments.length === 0) return;
   const unique = new Map<
@@ -608,10 +614,12 @@ export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
     start < rows.length;
     start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreFeedItemAnnotationSets(
-      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT),
-      Date.now(),
+    const batch = rows.slice(
+      start,
+      start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, Date.now());
+    onCommitted?.(batch.length);
   }
 }
 
@@ -622,6 +630,7 @@ export async function enqueuePwaLibraryCoreFeedItemAnalysisSets(
     entityId: string;
     eventCandidate: FeedItem["eventCandidate"];
   }>[],
+  onCommitted?: (count: number) => void,
 ): Promise<void> {
   if (assignments.length === 0) return;
   const unique = new Map<
@@ -648,10 +657,12 @@ export async function enqueuePwaLibraryCoreFeedItemAnalysisSets(
     start < rows.length;
     start += PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreFeedItemAnalysisSets(
-      rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT),
-      Date.now(),
+    const batch = rows.slice(
+      start,
+      start + PWA_LIBRARY_CORE_SQLITE_ANALYSIS_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreFeedItemAnalysisSets(batch, Date.now());
+    onCommitted?.(batch.length);
   }
 }
 
@@ -661,6 +672,36 @@ export async function enqueuePwaLibraryCoreRssFeedUpsert(
 ): Promise<void> {
   const feed = sanitizeRssFeedWrite(input) as RssFeed;
   await commitPwaLibraryCoreRssFeedUpsert(feed, Date.now());
+}
+
+/** Commit bounded signed RSS feed upserts to OPFS SQLite. */
+export async function enqueuePwaLibraryCoreRssFeedUpserts(
+  inputs: readonly RssFeed[],
+  onCommitted?: (count: number) => void,
+): Promise<void> {
+  if (inputs.length === 0) return;
+  let batch: RssFeed[] = [];
+  let identities = new Set<string>();
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const committedCount = batch.length;
+    await commitPwaLibraryCoreRssFeedUpserts(batch, Date.now());
+    onCommitted?.(committedCount);
+    batch = [];
+    identities = new Set<string>();
+  };
+  for (const input of inputs) {
+    const feed = sanitizeRssFeedWrite(input) as RssFeed;
+    if (
+      batch.length === PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT ||
+      identities.has(feed.url)
+    ) {
+      await flush();
+    }
+    batch.push(feed);
+    identities.add(feed.url);
+  }
+  await flush();
 }
 
 /** Queue one signed RSS removal, optionally removing its local feed items. */
@@ -844,6 +885,7 @@ export async function assignPwaLibraryCoreAccountToPerson(
 /** Commit bounded whole sanitized Persons to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonUpserts(
   persons: readonly Person[],
+  onCommitted?: (count: number) => void,
 ): Promise<void> {
   const synchronized = persons.map(
     (person) => sanitizePersonRootWrite(person) as Person,
@@ -853,13 +895,12 @@ export async function enqueuePwaLibraryCorePersonUpserts(
     offset < synchronized.length;
     offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCorePersonUpserts(
-      synchronized.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
-      ),
-      Date.now(),
+    const batch = synchronized.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
     );
+    await commitPwaLibraryCorePersonUpserts(batch, Date.now());
+    onCommitted?.(batch.length);
   }
 }
 
@@ -928,6 +969,7 @@ export async function upsertPwaLibraryCoreAccount(
 /** Commit bounded whole sanitized Accounts to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountUpserts(
   accounts: readonly Account[],
+  onCommitted?: (count: number) => void,
 ): Promise<void> {
   const synchronized = accounts.map(
     (account) => sanitizeAccountWrite(account) as Account,
@@ -937,13 +979,12 @@ export async function enqueuePwaLibraryCoreAccountUpserts(
     offset < synchronized.length;
     offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await commitPwaLibraryCoreAccountUpserts(
-      synchronized.slice(
-        offset,
-        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
-      ),
-      Date.now(),
+    const batch = synchronized.slice(
+      offset,
+      offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
     );
+    await commitPwaLibraryCoreAccountUpserts(batch, Date.now());
+    onCommitted?.(batch.length);
   }
 }
 

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   commitFeedItemRemove: vi.fn(),
   commitFeedItemRemoves: vi.fn(),
   commitRssFeedUpsert: vi.fn(),
+  commitRssFeedUpserts: vi.fn(),
   commitRssFeedRemove: vi.fn(),
   commitRssFeedRemoves: vi.fn(),
   commitRssFeedTitleAssignment: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT: 32,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT: 256,
   PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT: 256,
+  PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT: 256,
   commitPwaLibraryCoreAccountRemove: mocks.commitAccountRemove,
   commitPwaLibraryCoreAccountRemoves: mocks.commitAccountRemoves,
   commitPwaLibraryCoreAccountUpserts: mocks.commitAccountUpserts,
@@ -58,6 +60,7 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
   commitPwaLibraryCoreRssFeedTitleAssignment:
     mocks.commitRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert: mocks.commitRssFeedUpsert,
+  commitPwaLibraryCoreRssFeedUpserts: mocks.commitRssFeedUpserts,
   commitPwaLibraryCoreUserStateAssignments: mocks.commitUserStateAssignments,
 }));
 
@@ -115,6 +118,7 @@ import {
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedTitleAssignment,
   enqueuePwaLibraryCoreRssFeedUpsert,
+  enqueuePwaLibraryCoreRssFeedUpserts,
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpserts,
   enqueuePwaLibraryCorePersonRemove,
@@ -1137,12 +1141,16 @@ describe("PWA Library Core bounded scanner", () => {
       priority: 99,
       priorityComputedAt: 123,
     }));
+    const committedCounts: number[] = [];
 
-    await enqueuePwaLibraryCoreFeedItemCaptures(items);
+    await enqueuePwaLibraryCoreFeedItemCaptures(items, (count) => {
+      committedCounts.push(count);
+    });
 
     expect(mocks.commitFeedItemCaptures).toHaveBeenCalledTimes(5);
     expect(mocks.commitFeedItemCaptures.mock.calls[0]?.[0]).toHaveLength(32);
     expect(mocks.commitFeedItemCaptures.mock.calls[4]?.[0]).toHaveLength(1);
+    expect(committedCounts).toEqual([32, 32, 32, 32, 1]);
     expect(
       mocks.commitFeedItemCaptures.mock.calls[0]?.[0]?.[0],
     ).not.toHaveProperty("priority");
@@ -1336,6 +1344,25 @@ describe("PWA Library Core bounded scanner", () => {
     );
   });
 
+  it("batches sample RSS feeds in one signed transaction", async () => {
+    mocks.commitRssFeedUpserts.mockResolvedValue({ operationId: "op:rss:batch" });
+    const feeds = Array.from({ length: 15 }, (_, index) => ({
+      url: `https://example.test/${index.toLocaleString()}.xml`,
+      title: `Feed ${index.toLocaleString()}`,
+      enabled: true,
+      trackUnread: true,
+    }));
+    const committedCounts: number[] = [];
+
+    await enqueuePwaLibraryCoreRssFeedUpserts(feeds, (count) => {
+      committedCounts.push(count);
+    });
+
+    expect(mocks.commitRssFeedUpserts).toHaveBeenCalledOnce();
+    expect(mocks.commitRssFeedUpserts.mock.calls[0]?.[0]).toHaveLength(15);
+    expect(committedCounts).toEqual([15]);
+  });
+
   it("removes an exact frozen RSS scope in bounded signed batches", async () => {
     const urls = Array.from(
       { length: 300 },
@@ -1404,7 +1431,10 @@ describe("PWA Library Core bounded scanner", () => {
       updatedAt: 2,
     };
 
-    await enqueuePwaLibraryCorePersonUpserts([person]);
+    const committedCounts: number[] = [];
+    await enqueuePwaLibraryCorePersonUpserts([person], (count) => {
+      committedCounts.push(count);
+    });
 
     expect(mocks.commitPersonUpserts).toHaveBeenCalledOnce();
     expect(mocks.commitPersonUpserts).toHaveBeenCalledWith(
@@ -1420,6 +1450,7 @@ describe("PWA Library Core bounded scanner", () => {
       ],
       expect.any(Number),
     );
+    expect(committedCounts).toEqual([1]);
   });
 
   it("queues one atomic Person and linked-account removal", async () => {
@@ -1458,7 +1489,10 @@ describe("PWA Library Core bounded scanner", () => {
       updatedAt: 2,
     };
 
-    await enqueuePwaLibraryCoreAccountUpserts([account]);
+    const committedCounts: number[] = [];
+    await enqueuePwaLibraryCoreAccountUpserts([account], (count) => {
+      committedCounts.push(count);
+    });
     await enqueuePwaLibraryCoreAccountRemove(account.id);
 
     expect(mocks.commitAccountUpserts).toHaveBeenCalledWith(
@@ -1478,6 +1512,7 @@ describe("PWA Library Core bounded scanner", () => {
       ],
       expect.any(Number),
     );
+    expect(committedCounts).toEqual([1]);
     expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
       "account:one",
       expect.any(Number),

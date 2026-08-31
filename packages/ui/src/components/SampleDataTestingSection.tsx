@@ -1,13 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
-} from "@freed/shared";
-import {
   formatSampleDataSummary,
-  refreshSampleLibraryData,
+  populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { toast } from "./Toast.js";
@@ -44,19 +38,15 @@ export function SampleDataTestingSection() {
   const handleSeedSampleData = useCallback(async () => {
     if (hasSampleData) return;
     setSeeding(true);
-    toast.info("Populating sample data...");
     try {
-      await refreshSampleLibraryData({
+      await populateSampleLibraryDataWithProgressToast({
         initialize,
         isInitialized,
         addSampleLibraryData,
         seedSocialConnections,
       });
-      toast.success(
-        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setSeeding(false);
     }
@@ -113,14 +103,14 @@ export function SampleDataTestingSection() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l.9 2.1L8 18l-2.1.9L5 21l-.9-2.1L2 18l2.1-.9L5 15z" />
         </svg>
         <span>
-          {hasSampleData
-            ? "Sample data populated"
-            : seeding
-              ? "Populating..."
+          {seeding
+            ? "Populating sample data..."
+            : hasSampleData
+              ? "Sample data populated"
               : "Populate sample data"}
         </span>
       </button>
-      {hasSampleData && (
+      {hasSampleData && !seeding && (
         <div className="mt-4 flex w-full flex-col items-center gap-3">
           <button
             type="button"
