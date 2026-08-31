@@ -751,8 +751,8 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "The mobile reader is live at app.freed.wtf, with legal gating, URL-backed navigation, bug reporting, and production or dev update channels.",
-    status: "complete",
+      "The mobile reader is live at app.freed.wtf, with legal gating, URL-backed navigation, offline reading, bug reporting, production or dev update channels, an anonymous read only showcase with a pre-generated Library, visible sample Library maintenance progress, and fail-closed OPFS SQLite recovery.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
   },
