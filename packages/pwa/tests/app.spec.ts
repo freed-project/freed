@@ -457,7 +457,6 @@ async function seedFriendsWorkspace(
     const store = w.__FREED_STORE__ as {
       getState: () => {
         setActiveView: (view: string) => void;
-        updatePreferences: (update: unknown) => Promise<void>;
       };
     };
 
@@ -575,12 +574,6 @@ async function seedFriendsWorkspace(
         topics: [],
       },
     ]);
-
-    await store.getState().updatePreferences({
-      display: {
-        friendsSidebarWidth: 340,
-      },
-    });
 
     store.getState().setActiveView("friends");
   });
