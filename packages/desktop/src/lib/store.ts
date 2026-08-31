@@ -283,6 +283,7 @@ interface AppState {
   archivableCountByPlatform: Record<string, number>;
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
+  setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
   visibleFeedTotalCount: number;
 
   // X auth state
@@ -655,6 +656,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
+  setMapLocationCounts: (friendCount, allContentCount) => {
+    set((state) =>
+      state.mapFriendLocationCount === friendCount &&
+      state.mapAllContentLocationCount === allContentCount
+        ? state
+        : {
+            mapFriendLocationCount: friendCount,
+            mapAllContentLocationCount: allContentCount,
+          },
+    );
+  },
   visibleFeedTotalCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },

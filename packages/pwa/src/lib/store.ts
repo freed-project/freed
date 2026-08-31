@@ -270,6 +270,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
+  setMapLocationCounts: (friendCount, allContentCount) => {
+    set((state) =>
+      state.mapFriendLocationCount === friendCount &&
+      state.mapAllContentLocationCount === allContentCount
+        ? state
+        : {
+            mapFriendLocationCount: friendCount,
+            mapAllContentLocationCount: allContentCount,
+          },
+    );
+  },
   visibleFeedTotalCount: 0,
   syncConnected: false,
   isLoading: true,

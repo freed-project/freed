@@ -116,6 +116,7 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     visibleFeedTotalCount: overrides.visibleFeedTotalCount ?? 0,
     mapFriendLocationCount: overrides.mapFriendLocationCount ?? 0,
     mapAllContentLocationCount: overrides.mapAllContentLocationCount ?? 0,
+    setMapLocationCounts: overrides.setMapLocationCounts ?? (() => {}),
     isLoading: false,
     isSyncing: false,
     isInitialized: true,
