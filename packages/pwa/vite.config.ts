@@ -66,6 +66,13 @@ export default defineConfig({
     fs: {
       allow: fsAllow,
     },
+    headers:
+      process.env.FREED_PWA_CORPUS_HARDENING === "1"
+        ? {
+            "Cross-Origin-Embedder-Policy": "require-corp",
+            "Cross-Origin-Opener-Policy": "same-origin",
+          }
+        : undefined,
   },
   build: {
     target: "esnext",
