@@ -2857,7 +2857,10 @@ mod tests {
             Some(receipt.clone())
         );
 
-        let mut request = NormalizedCheckpointExportRequestV2::default();
+        let mut request = NormalizedCheckpointExportRequestV2 {
+            maximum_records: 128,
+            ..NormalizedCheckpointExportRequestV2::default()
+        };
         let mut records = Vec::new();
         let mut page_count = 0;
         loop {

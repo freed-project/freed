@@ -195,7 +195,7 @@ function assertContract(contract) {
   const limits = contract.limits;
   const expectedLimits = Object.freeze({
     checkpointPageDecodedBytes: 2_097_152,
-    checkpointPageRecords: 128,
+    checkpointPageRecords: 4096,
     checkpointRecordCanonicalBytes: 131_072,
     contentChunkBytes: 65_536,
     contentRangeAppendBytes: 262_144,

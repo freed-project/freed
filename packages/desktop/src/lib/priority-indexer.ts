@@ -3,6 +3,7 @@ import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import type { WeightPreferences } from "@freed/shared";
 import {
   backfillLibraryPriorities,
+  reloadSqliteLibraryState,
   subscribeDesktopLibraryRuntime,
 } from "./library-client";
 import {
@@ -86,15 +87,21 @@ async function processNextBatch(): Promise<void> {
     const summary = await runBackgroundJob({
       kind: "library-projection",
       source: "feed-priority",
-      blocking: false,
+      blocking: true,
       timeoutMs: 120_000,
       run: () =>
         trackResetSensitiveOperation(
-          backfillLibraryPriorities(weights, passStartedAt, BATCH_SIZE),
+          backfillLibraryPriorities(
+            weights,
+            passStartedAt,
+            BATCH_SIZE,
+            false,
+          ),
         ),
     });
     scheduled = summary.remaining > 0;
     if (!scheduled) {
+      await reloadSqliteLibraryState();
       addDebugEvent(
         "change",
         `[priority-indexer] ranked ${summary.updated.toLocaleString()} final items`,
