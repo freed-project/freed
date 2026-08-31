@@ -5854,7 +5854,13 @@ describe("PWA Library Core SQLite engine", () => {
     engine.initialize();
     database.exec(
       `INSERT INTO library_preferences (path, value_type, updated_at)
-       VALUES ('v:$.old', 'null', 1);`,
+       VALUES ('v:$.old', 'null', 1);
+       INSERT INTO library_follower_actor_request
+         (singleton_id, library_id, authority_epoch_id, actor_id,
+          actor_public_key, enrollment_request_digest,
+          canonical_enrollment_request, created_at)
+       VALUES (1, 'old-library', 'old-epoch', '${"a".repeat(64)}',
+               '${"b".repeat(64)}', '${"c".repeat(64)}', '{}', 1);`,
     );
     const records = [checkpointHeader(), ...authorityRecords()];
     stageRecords(engine, records, "replacement");
@@ -5874,6 +5880,13 @@ describe("PWA Library Core SQLite engine", () => {
     expect(
       database.exec({
         sql: "SELECT count(*) FROM library_preferences;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_follower_actor_request;",
         rowMode: 0,
         returnValue: "resultRows",
       }),

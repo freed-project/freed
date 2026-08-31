@@ -610,6 +610,7 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_transactions;
          DELETE FROM library_invalidations;
          DELETE FROM library_follower_checkpoint_receipt;
+         DELETE FROM library_follower_actor_request;
          DELETE FROM library_device_scope_action_members;
          DELETE FROM library_device_scope_actions;
          DELETE FROM library_device_person_graph_layout;
