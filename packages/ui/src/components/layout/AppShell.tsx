@@ -44,7 +44,6 @@ import { applyInterfaceZoomToDocument } from "../../lib/interface-zoom.js";
 import {
   useDeviceDisplayPreferences,
 } from "../../lib/device-display-preferences.js";
-import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
@@ -55,6 +54,9 @@ const MIN_DEBUG_WIDTH = 280;
 const MAX_DEBUG_WIDTH = 600;
 const LazyFriendsView = lazy(() =>
   import("../friends/FriendsView.js").then((module) => ({ default: module.FriendsView })),
+);
+const LazyMapView = lazy(() =>
+  import("../map/MapView.js").then((module) => ({ default: module.MapView })),
 );
 
 interface AppShellProps {
@@ -525,7 +527,9 @@ export function AppShell({ children }: AppShellProps) {
               data-testid="map-background-layer"
               style={mapViewportInsetStyle}
             >
-              <MapView viewportInsets={mapViewportInsets} />
+              <Suspense fallback={<div className="h-full w-full" data-testid="map-view-loading" />}>
+                <LazyMapView viewportInsets={mapViewportInsets} />
+              </Suspense>
             </div>
           ) : null}
           <div className="relative z-10 flex flex-none">
