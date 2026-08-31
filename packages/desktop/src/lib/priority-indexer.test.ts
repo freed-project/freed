@@ -3,12 +3,14 @@ import type { WeightPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   backfill: vi.fn(),
+  reload: vi.fn(),
   librarySubscriber: null as null | ((state: unknown, event: { source: string }) => void),
   weightSubscriber: null as null | (() => void),
 }));
 
 vi.mock("./library-client", () => ({
   backfillLibraryPriorities: mocks.backfill,
+  reloadSqliteLibraryState: mocks.reload,
   subscribeDesktopLibraryRuntime: vi.fn(
     (callback: (state: unknown, event: { source: string }) => void) => {
       mocks.librarySubscriber = callback;
@@ -51,6 +53,8 @@ describe("Primary priority indexer", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     mocks.backfill.mockReset();
+    mocks.reload.mockReset();
+    mocks.reload.mockResolvedValue({});
     mocks.librarySubscriber = null;
     mocks.weightSubscriber = null;
   });
@@ -85,14 +89,28 @@ describe("Primary priority indexer", () => {
     await vi.advanceTimersByTimeAsync(500);
     await vi.advanceTimersByTimeAsync(500);
 
-    expect(mocks.backfill).toHaveBeenNthCalledWith(1, firstWeights, 1, 64);
-    expect(mocks.backfill).toHaveBeenNthCalledWith(2, firstWeights, 1, 64);
+    expect(mocks.backfill).toHaveBeenNthCalledWith(
+      1,
+      firstWeights,
+      1,
+      64,
+      false,
+    );
+    expect(mocks.backfill).toHaveBeenNthCalledWith(
+      2,
+      firstWeights,
+      1,
+      64,
+      false,
+    );
     expect(mocks.backfill).toHaveBeenNthCalledWith(
       3,
       secondWeights,
       30_500,
       64,
+      false,
     );
+    expect(mocks.reload).toHaveBeenCalledTimes(2);
   });
 
   it("coalesces Library invalidations into one follow-up pass", async () => {
@@ -117,6 +135,8 @@ describe("Primary priority indexer", () => {
       firstWeights,
       30_500,
       64,
+      false,
     );
+    expect(mocks.reload).toHaveBeenCalledTimes(2);
   });
 });

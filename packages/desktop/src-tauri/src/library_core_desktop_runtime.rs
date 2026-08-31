@@ -8,12 +8,13 @@ use freed_library_core::{
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 #[cfg(not(unix))]
 use std::{fs, path::PathBuf};
 #[cfg(not(unix))]
 use tauri::Manager;
+use tokio::sync::Semaphore;
 
 use super::library_core_actor_key_store::{
     sign_library_core_operation_digest, sign_library_core_operation_digests, PlatformActorKeyStore,
@@ -104,6 +105,7 @@ const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 const NORMALIZED_DATABASE_FILE: &str = "library-core.sqlite";
 
 const CHECKPOINT_EXPORT_SESSION_MAX_AGE: Duration = Duration::from_secs(5 * 60);
+const NORMALIZED_QUERY_CONCURRENCY: usize = 8;
 
 struct DesktopCheckpointExportSession {
     export: freed_library_core::NormalizedCheckpointExportSessionV2,
@@ -113,6 +115,11 @@ struct DesktopCheckpointExportSession {
 fn checkpoint_export_session() -> &'static Mutex<Option<DesktopCheckpointExportSession>> {
     static SESSION: OnceLock<Mutex<Option<DesktopCheckpointExportSession>>> = OnceLock::new();
     SESSION.get_or_init(|| Mutex::new(None))
+}
+
+fn normalized_query_permits() -> &'static Arc<Semaphore> {
+    static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    PERMITS.get_or_init(|| Arc::new(Semaphore::new(NORMALIZED_QUERY_CONCURRENCY)))
 }
 
 fn ensure_checkpoint_export_reaper() -> Result<(), String> {
@@ -738,6 +745,10 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
+    let _permit = Arc::clone(normalized_query_permits())
+        .acquire_owned()
+        .await
+        .map_err(|_| "normalized Library query limiter closed".to_owned())?;
     tauri::async_runtime::spawn_blocking(query)
         .await
         .map_err(|error| format!("normalized Library query worker failed: {error}"))?
@@ -1849,6 +1860,7 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn normalized_library_queries_leave_the_command_thread() {
@@ -1860,6 +1872,30 @@ mod tests {
             .expect("run normalized query worker");
 
         assert_ne!(query_thread, command_thread);
+    }
+
+    #[test]
+    fn normalized_library_queries_have_a_bounded_worker_fanout() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let maximum = Arc::new(AtomicUsize::new(0));
+        tauri::async_runtime::block_on(async {
+            let queries = (0..(NORMALIZED_QUERY_CONCURRENCY * 3)).map(|_| {
+                let active = Arc::clone(&active);
+                let maximum = Arc::clone(&maximum);
+                run_normalized_query_off_main(move || {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    maximum.fetch_max(current, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(10));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            });
+            for result in futures_util::future::join_all(queries).await {
+                result.expect("run bounded normalized query");
+            }
+        });
+
+        assert!(maximum.load(Ordering::SeqCst) <= NORMALIZED_QUERY_CONCURRENCY);
     }
 
     #[test]

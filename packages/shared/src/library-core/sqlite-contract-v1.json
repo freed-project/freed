@@ -189,7 +189,7 @@
   "limits": {
     "checkpointRecordCanonicalBytes": 131072,
     "checkpointPageDecodedBytes": 2097152,
-    "checkpointPageRecords": 128,
+    "checkpointPageRecords": 4096,
     "nativeExportResponseBytes": 1048576,
     "nativeCommandFrameBytes": 4194304,
     "localActorActiveConnections": 32,

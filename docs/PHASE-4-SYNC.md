@@ -31,6 +31,12 @@
 > SQLite storage epoch and permits only fail-closed roll-forward recovery.
 > Installed-device acceptance remains open.
 
+Large installed Libraries now materialize one pinned temporary export index per
+checkpoint session. The generated 4,096-record ceiling remains subordinate to
+the 2,097,152-byte cloud page bound and 1,048,576-byte native response bound, so
+receipt-heavy Libraries avoid thousands of repeated SQLite scans and Drive
+objects without weakening bounded transport.
+
 ## Current SQLite sync work
 
 - [x] Define `freed_normalized_checkpoint_v2` registry identity and shared
@@ -211,7 +217,7 @@ loads an alternate Library engine or compatibility path.
 | Native authority | Complete | The extracted Rust core owns normalized SQLite, signed operation admission, authority epochs, checkpoints, snapshots, follower staging, results, invalidations, and content proofs. |
 | Desktop product routing | Complete | Product views, exports, diagnostics, maintenance, capture, and provider completion use bounded typed SQLite queries and mutations. React retains visible windows and ephemeral UI state. |
 | PWA product routing | Complete | Official SQLite WebAssembly over OPFS owns Library rows, indexes, outboxes, receipts, overlays, and bounded product queries. IndexedDB is limited to nonextractable browser keys. |
-| Checkpoint protocol | Complete | Checkpoints contain typed normalized records only. Every logical record is capped at 131,072 canonical bytes. Pages contain at most 128 records and 2,097,152 decoded bytes. One native response is capped at 1,048,576 serialized bytes. |
+| Checkpoint protocol | Complete | Checkpoints contain typed normalized records only. Every logical record is capped at 131,072 canonical bytes. Pages contain at most 4,096 records and 2,097,152 decoded bytes. One native response is capped at 1,048,576 serialized bytes. A pinned temporary export index prevents repeated scans of the generated union view. |
 | Editable followers | Complete | Followers commit signed intents and sparse optimistic overlays locally. The Primary validates and publishes signed acceptance, rejection, and provider-result records. Canonical operation import settles overlays atomically. |
 | Selective content | Complete | Content descriptors, authenticated range maps, and content-addressed bytes support metadata-only, on-demand, partial, complete, pinned-offline, and excluded policies per device. |
 | Historical cutover | Complete in code | One read-only source admission path imports the historical Library once. It never becomes runtime authority, transport, fallback, rollback proof, or a dual-write participant. |
