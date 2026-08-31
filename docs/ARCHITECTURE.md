@@ -264,10 +264,11 @@ schema, protocol, registry, query or mutation name, duration, row count, byte
 count, cursor outcome, transaction identity, and typed failure code. Telemetry
 never includes provider credentials or private content bodies.
 
-Performance gates cover 25,000-item and 100,000-item Libraries. They enforce
-bounded renderer memory, bounded worker memory, indexed query plans, fixed page
-and response budgets, bounded startup work, and recovery without corpus
-materialization.
+The performance contract targets 25,000-item and 100,000-item Libraries. A
+nonblocking PWA nightly lane now exercises real OPFS SQLite at both sizes and
+records bounded feed, facet, search, browser-memory, and storage evidence.
+Native scale, whole-process peak memory, and the complete crash and corruption
+matrix remain tracked hardening work. No scale benchmark is a pull request gate.
 
 ## Release and operations
 

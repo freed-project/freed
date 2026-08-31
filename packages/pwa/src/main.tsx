@@ -9,6 +9,7 @@ import {
 import type {
   LibraryCoreDeviceContactQueryRequestV1,
   LibraryCoreDeviceContactSyncMutationV1,
+  LibraryCoreSqliteQueryRequest,
 } from '@freed/shared/library-core'
 import './index.css'
 import App from './App.tsx'
@@ -47,6 +48,8 @@ if (import.meta.env.DEV) {
     }
     w.__FREED_STORE__ = store.useAppStore
     w.__FREED_LIBRARY_CORE__ = {
+      queryNormalized: (query: LibraryCoreSqliteQueryRequest) =>
+        sqliteCore.queryPwaNormalizedLibrary(query),
       mutateDeviceContactSync: (
         mutation: LibraryCoreDeviceContactSyncMutationV1,
       ) => sqliteCore.mutatePwaDeviceContactSync(mutation),

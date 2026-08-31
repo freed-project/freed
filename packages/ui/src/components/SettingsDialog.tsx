@@ -1073,12 +1073,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
 
     const scrollPosition = container.scrollTop + 56;
-    let anchorSection = sections[0];
-    for (const section of sections) {
-      if (section.offsetTop <= scrollPosition) {
-        anchorSection = section;
-      } else {
-        break;
+    const maximumScrollTop = Math.max(
+      0,
+      container.scrollHeight - container.clientHeight,
+    );
+    const reachedScrollEnd = maximumScrollTop - container.scrollTop <= 1;
+    let anchorSection = sections.at(reachedScrollEnd ? -1 : 0)!;
+    if (!reachedScrollEnd) {
+      for (const section of sections) {
+        if (section.offsetTop <= scrollPosition) {
+          anchorSection = section;
+        } else {
+          break;
+        }
       }
     }
 
