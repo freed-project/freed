@@ -2237,7 +2237,10 @@ fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
 }
 
 fn is_supported_dev_sync_provider(provider: &str) -> bool {
-    matches!(provider, "facebook" | "instagram" | "linkedin" | "youtube")
+    matches!(
+        provider,
+        "facebook" | "instagram" | "linkedin" | "youtube" | "gdrive"
+    )
 }
 
 fn dev_sync_trigger_request_expiration_detail(
@@ -2516,7 +2519,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     request_id,
                                     None,
                                     "ignored",
-                                    Some("Unsupported provider. Use facebook, instagram, linkedin, or youtube."),
+                                    Some("Unsupported provider. Use facebook, instagram, linkedin, youtube, or gdrive."),
                                 );
                             } else if let Some(detail) =
                                 dev_sync_trigger_lock_deferral_detail(&get_desktop_session_state())
@@ -15280,6 +15283,7 @@ mod tests {
         assert!(is_supported_dev_sync_provider("instagram"));
         assert!(is_supported_dev_sync_provider("linkedin"));
         assert!(is_supported_dev_sync_provider("youtube"));
+        assert!(is_supported_dev_sync_provider("gdrive"));
         assert!(!is_supported_dev_sync_provider("medium"));
     }
 
