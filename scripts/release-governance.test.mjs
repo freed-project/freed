@@ -277,6 +277,22 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
+test("production validation installs WebKit before running OPFS durability", () => {
+  const releaseValidationJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  validation:"),
+    releaseWorkflow.indexOf("\n  create-release:"),
+  );
+
+  assert.match(
+    mainReleaseValidationWorkflow,
+    /playwright install --with-deps chromium webkit/,
+  );
+  assert.match(
+    releaseValidationJob,
+    /playwright install --with-deps chromium webkit/,
+  );
+});
+
 test("draft release assets and publication use the exact release ID", () => {
   const updaterJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  updater-manifest:"),
