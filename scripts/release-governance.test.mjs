@@ -444,12 +444,18 @@ test("feature and dev validation route OPFS durability to macOS WebKit", () => {
 test("main PR validation inspects the actual PR head instead of the synthetic merge", () => {
   assert.match(
     ciWorkflow,
-    /--head-ref="\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
+    /PROMOTION_HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/,
   );
+  assert.match(ciWorkflow, /--head-ref="\$\{PROMOTION_HEAD_SHA\}"/);
   assert.doesNotMatch(
     ciWorkflow,
     /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/,
   );
+  assert.match(
+    ciWorkflow,
+    /trailers:key=Freed-Dev-Snapshot,valueonly/,
+  );
+  assert.match(ciWorkflow, /--snapshot-ref="\$\{snapshot_ref\}"/);
 });
 
 test("release preparation validates canonical CalVer before mutating version files", () => {
