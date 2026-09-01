@@ -277,19 +277,33 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
-test("production validation installs WebKit before running OPFS durability", () => {
+test("production validation runs OPFS durability on macOS WebKit", () => {
   const releaseValidationJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  validation:"),
+    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
+  );
+  const releaseOpfsJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
     releaseWorkflow.indexOf("\n  create-release:"),
   );
 
   assert.match(
     mainReleaseValidationWorkflow,
-    /playwright install --with-deps chromium webkit/,
+    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
   );
+  assert.match(mainReleaseValidationWorkflow, /runs-on: macos-latest/);
+  assert.match(mainReleaseValidationWorkflow, /playwright install webkit/);
+  assert.match(mainReleaseValidationWorkflow, /npm run test:e2e:opfs/);
   assert.match(
     releaseValidationJob,
-    /playwright install --with-deps chromium webkit/,
+    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
+  );
+  assert.match(releaseOpfsJob, /runs-on: macos-latest/);
+  assert.match(releaseOpfsJob, /playwright install webkit/);
+  assert.match(releaseOpfsJob, /npm run test:e2e:opfs/);
+  assert.match(
+    releaseWorkflow,
+    /needs: \[notes, validation, pwa-opfs-acceptance\]/,
   );
 });
 
