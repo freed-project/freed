@@ -155,6 +155,8 @@ function runNode(scriptPath, args) {
 
 test("the promotion control definition preserves itself", () => {
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release-promotion-shared.mjs"));
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/deploy-pwa-production-snapshot.sh"));
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release.sh"));
 });
 
 test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
@@ -385,6 +387,11 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
   commitAll(cwd, "dev advances after promotion");
   updateOriginRef(cwd, "dev");
 
+  git(cwd, ["checkout", "main"]);
+  chmodSync(path.join(cwd, "scripts/release.sh"), 0o755);
+  commitAll(cwd, "fix: backport current release controls");
+  updateOriginRef(cwd, "main");
+
   git(cwd, [
     "checkout",
     "-b",
@@ -407,7 +414,7 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
   ]);
 
   assert.equal(prepared.status, 0, prepared.stderr);
-  assert.match(prepared.stdout, /Prepared 10 product paths for promotion/);
+  assert.match(prepared.stdout, /Prepared 9 product paths for promotion/);
   assert.equal(
     git(cwd, ["show", ":packages/pwa/src/app.ts"]),
     "export const value = 'next dev snapshot';",
