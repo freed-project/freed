@@ -254,7 +254,14 @@ test("promotion forwards one provider review artifact to draft publication", asy
       "--base-ref=origin/main",
       "--head-ref=HEAD",
       `--head-branch=${fixture.branch}`,
+      `--snapshot-ref=${mustRun("git", ["rev-parse", "origin/dev"], { cwd: fixture.repo }).stdout.trim()}`,
     ],
+  );
+  assert.match(
+    mustRun("git", ["show", "-s", "--format=%B", "HEAD"], {
+      cwd: fixture.worktree,
+    }).stdout,
+    /Freed-Dev-Snapshot: [0-9a-f]{40}/,
   );
 });
 

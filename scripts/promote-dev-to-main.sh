@@ -126,13 +126,20 @@ else
       exit 1
     fi
 
-    /usr/bin/git commit -m "${TITLE}"
+    /usr/bin/git commit -m "${TITLE}" -m "Freed-Dev-Snapshot: ${SNAPSHOT_SHA}"
   )
 fi
 
 (
   cd "${WORKTREE_PATH}"
   /usr/bin/git fetch origin dev main
+  RECORDED_SNAPSHOT="$(/usr/bin/git show -s --format='%(trailers:key=Freed-Dev-Snapshot,valueonly)' HEAD)"
+  if [[ -z "${RECORDED_SNAPSHOT}" ]]; then
+    /usr/bin/git commit --amend --no-edit --trailer "Freed-Dev-Snapshot: ${SNAPSHOT_SHA}"
+  elif [[ "${RECORDED_SNAPSHOT}" != "${SNAPSHOT_SHA}" ]]; then
+    echo "Error: promotion commit records immutable dev snapshot ${RECORDED_SNAPSHOT}, not requested snapshot ${SNAPSHOT_SHA}." >&2
+    exit 1
+  fi
   MAIN_SHA="$(/usr/bin/git rev-parse origin/main)"
   HEAD_PARENT="$(/usr/bin/git rev-parse HEAD^)"
   if [[ "${HEAD_PARENT}" != "${MAIN_SHA}" ]]; then
@@ -146,7 +153,8 @@ fi
   "${NODE_BIN}" scripts/validate-main-pr.mjs \
     --base-ref=origin/main \
     --head-ref=HEAD \
-    --head-branch="${BRANCH_NAME}"
+    --head-branch="${BRANCH_NAME}" \
+    --snapshot-ref="${SNAPSHOT_SHA}"
   "${NODE_BIN}" scripts/validate-release-promotion.mjs \
     --from-ref="${SNAPSHOT_SHA}" \
     --to-ref=HEAD
@@ -162,7 +170,7 @@ fi
 - Source dev SHA: \`${SNAPSHOT_SHA}\`
 
 ## Testing
-- \`node scripts/validate-main-pr.mjs --base-ref=origin/main --head-ref=HEAD --head-branch=${BRANCH_NAME}\`
+- \`node scripts/validate-main-pr.mjs --base-ref=origin/main --head-ref=HEAD --head-branch=${BRANCH_NAME} --snapshot-ref=${SNAPSHOT_SHA}\`
 - CI
 EOF
 

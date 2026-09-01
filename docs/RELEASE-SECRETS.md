@@ -368,7 +368,9 @@ promotion, passed as `--promoted-dev-sha=<sha>`. Later commits on `dev` do not
 invalidate or expand the selected production snapshot. A production PWA-only
 snapshot uses `./scripts/deploy-pwa-production-snapshot.sh <promoted-dev-sha>`
 from exact `origin/main`; it creates no version, tag, Desktop build, release
-notes, or public release card. Dev release prep requires exact current
+notes, or public release card. The promotion commit records the selected SHA in
+its `Freed-Dev-Snapshot` trailer, and the main PR guard validates against that
+immutable commit instead of the moving `origin/dev` tip. Dev release prep requires exact current
 `origin/dev`. Both versioned release lanes return through branch protection. `release-publish.sh`
 refuses to tag unless local `HEAD` exactly equals the target remote branch, so
 it cannot tag an unmerged local release commit. It also binds the requested tag,

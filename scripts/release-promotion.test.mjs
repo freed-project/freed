@@ -399,6 +399,7 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     "--base-ref=origin/main",
     "--head-ref=HEAD",
     "--head-branch=chore/promote-dev-to-main-20260722",
+    `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
   assert.equal(validated.status, 0, validated.stderr);
 });
@@ -1080,6 +1081,7 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
   );
   commitAll(cwd, "dev change");
   updateOriginRef(cwd, "dev");
+  const snapshotSha = git(cwd, ["rev-parse", "origin/dev"]);
 
   git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-20260421", "main"]);
   git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
@@ -1089,6 +1091,10 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
     "chore: promote dev into main for production release",
   ]);
   const promotionHead = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "packages/pwa/src/later.ts", "export const later = true;\n");
+  commitAll(cwd, "later dev change");
+  updateOriginRef(cwd, "dev");
   git(cwd, ["checkout", "main"]);
   git(cwd, ["merge", "--no-ff", "--no-edit", promotionHead]);
   assert.equal(
@@ -1103,10 +1109,11 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
     "--base-ref=origin/main",
     `--head-ref=${promotionHead}`,
     "--head-branch=chore/promote-dev-to-main-20260421",
+    `--snapshot-ref=${snapshotSha}`,
   ]);
 
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /Promotion branch matches origin\/dev/);
+  assert.match(result.stdout, /Promotion branch matches selected dev snapshot/);
 });
 
 test("validate-main-pr rejects a promotion whose parent is no longer current main", (t) => {
@@ -1138,6 +1145,7 @@ test("validate-main-pr rejects a promotion whose parent is no longer current mai
     "--base-ref=origin/main",
     "--head-ref=HEAD",
     `--head-branch=${promotionBranch}`,
+    `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
 
   assert.equal(result.status, 1);
@@ -1191,10 +1199,11 @@ test("validate-main-pr rejects third-content release metadata on a promotion bra
     "--base-ref=origin/main",
     "--head-ref=HEAD",
     "--head-branch=chore/promote-dev-to-main-20260421",
+    `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Promotion PR is stale/);
+  assert.match(result.stderr, /does not match selected dev snapshot/);
   assert.match(result.stderr, /packages\/desktop\/src-tauri\/Cargo\.toml/);
 });
 
@@ -1244,10 +1253,11 @@ test("validate-main-pr rejects third-content release notes on a promotion branch
     "--base-ref=origin/main",
     "--head-ref=HEAD",
     "--head-branch=chore/promote-dev-to-main-20260421",
+    `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Promotion PR is stale/);
+  assert.match(result.stderr, /does not match selected dev snapshot/);
   assert.match(result.stderr, /release-notes\/releases\/v26\.4\.2100\.json/);
 });
 
@@ -1282,10 +1292,11 @@ test("validate-main-pr allows website build config in promotion branches", (t) =
     "--base-ref=origin/main",
     "--head-ref=HEAD",
     "--head-branch=chore/promote-dev-to-main-20260421",
+    `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
 
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /Promotion branch matches origin\/dev/);
+  assert.match(result.stdout, /Promotion branch matches selected dev snapshot/);
 });
 
 test("validate-main-pr rejects product changes on a non-promotion branch", (t) => {
