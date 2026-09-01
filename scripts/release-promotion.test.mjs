@@ -173,6 +173,11 @@ test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
     "release-notes/releases/v26.4.2100.json",
     '{\n  "approved": true\n}\n',
   );
+  writeRepoFile(
+    cwd,
+    "scripts/validate-main-pr.mjs",
+    "export const control = 'current';\n",
+  );
   commitAll(cwd, "dev change");
 
   const files = listPromotionDiffFiles({
@@ -182,6 +187,53 @@ test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
   });
 
   assert.deepEqual(files, ["packages/pwa/src/app.ts"]);
+});
+
+test("an old product snapshot preserves current promotion controls", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'selected snapshot';\n",
+  );
+  commitAll(cwd, "selected product snapshot");
+  const snapshotSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  writeRepoFile(
+    cwd,
+    "scripts/validate-main-pr.mjs",
+    "export const control = 'current';\n",
+  );
+  commitAll(cwd, "fix: current promotion control");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "scripts/validate-main-pr.mjs",
+    "export const control = 'current';\n",
+  );
+  commitAll(cwd, "fix: backport promotion control");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-snapshot", "main"]);
+  const prepared = runNode(PREPARE_RELEASE_PROMOTION, [
+    `--cwd=${cwd}`,
+    `--from-ref=${snapshotSha}`,
+    "--base-ref=origin/main",
+  ]);
+  assert.equal(prepared.status, 0, prepared.stderr);
+  assert.equal(
+    git(cwd, ["show", ":packages/pwa/src/app.ts"]),
+    "export const value = 'selected snapshot';",
+  );
+  assert.equal(
+    git(cwd, ["show", ":scripts/validate-main-pr.mjs"]),
+    "export const control = 'current';",
+  );
 });
 
 test("validate-release-promotion fails when main is stale on product files", (t) => {

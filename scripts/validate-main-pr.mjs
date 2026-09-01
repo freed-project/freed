@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROMOTION_BRANCH_PATTERN,
+  PROMOTION_CONTROL_FILES,
   RELEASE_PREP_BRANCH_PATTERN,
   classifyMainPrFiles,
   ensureRefExists,
@@ -19,6 +20,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
   /^fix\/main-governance-[a-z0-9._-]+$/;
 const GOVERNANCE_BACKPORT_FILES = new Set([
+  ...PROMOTION_CONTROL_FILES,
   ".github/CODEOWNERS",
   ".github/ISSUE_TEMPLATE/debt.yml",
   ".agents/skills/freed-build-feature/SKILL.md",
@@ -233,6 +235,20 @@ function main() {
     );
   }
   ensureRefExists(options.snapshotRef, { cwd: options.cwd });
+
+  const controlDriftFiles = filesThatDifferFromSnapshot(
+    PROMOTION_CONTROL_FILES,
+    {
+      cwd: options.cwd,
+      headRef: options.headRef,
+      snapshotRef: "origin/dev",
+    },
+  );
+  if (controlDriftFiles.length > 0) {
+    die(
+      `Promotion control files must exactly match origin/dev:\n${formatFileList(controlDriftFiles)}`,
+    );
+  }
 
   const driftFiles = listPromotionBranchDiffFiles({
     fromRef: options.snapshotRef,
