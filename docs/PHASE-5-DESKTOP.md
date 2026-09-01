@@ -773,6 +773,7 @@ export async function captureDomFeed(
 | 5.192 | Admit the complete historical schema 6 through 12 predecessor range through the fenced read-only cutover verifier. Every accepted source keeps the exact application identity and stable migration columns, unsupported versions fail closed, and the deleted historical schema-upgrade engine does not return | High       | ✓ Complete |
 | 5.193 | Admit normalized checkpoint identities up to the canonical primary-key ceiling so real long URL identities publish to Google Drive without weakening bounded frame verification | High       | ✓ Complete |
 | 5.194 | Recover Google Drive Library Core requests when Google invalidates an access token before its recorded expiry. The shared Desktop transport forces one single-flight OAuth refresh after a 401, retries that request exactly once with the fresh token, and uses the stored replacement for the remainder of the bounded sync pass. The dev-only trigger helper, native watcher, and renderer bridge all admit `gdrive`, so installed-build verification invokes the same manual Library sync path as the Settings control | High       | ✓ Complete |
+| 5.195 | Publish a signed and notarized Apple Silicon `Freed Preview` application with every dev release. The verifier uses a distinct bundle name, identifier, Library root, and keyring service, disables updater artifacts, cannot overwrite the normal Freed application, stays outside `latest.json`, and blocks dev release publication when its signing or identity checks fail | High       | ✓ Complete |
 
 ---
 

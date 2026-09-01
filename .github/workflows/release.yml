@@ -491,6 +491,130 @@ jobs:
             echo "Artifact $SRC not found, skipping alias"
           fi
 
+  isolated-dev-macos:
+    name: Build Signed Isolated macOS Verifier
+    needs: [notes, create-release]
+    if: needs.notes.outputs.release_channel == 'dev'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build workspace dependencies
+        shell: bash
+        run: |
+          (cd packages/shared && npm run build)
+          (cd packages/sync && npm run build)
+          (cd packages/capture-rss && npm run build)
+
+      - name: Validate Apple signing secrets
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required macOS signing/notarization secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+      - name: Build and release isolated verifier
+        id: isolated-build
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
+          VITE_DROPBOX_CLIENT_ID: yaqbppqya009gky
+          VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
+          VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
+          VITE_GDRIVE_FORCE_TOKEN_PROXY: "1"
+          FREED_BUILD_CHANNEL: dev
+          VITE_ENABLE_DEV_SYNC_TRIGGERS: "1"
+        with:
+          projectPath: packages/desktop
+          tauriScript: npx tauri
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: true
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          releaseAssetNamePattern: Freed_Preview_[version]_aarch64[ext]
+          args: --target aarch64-apple-darwin --bundles app --features isolated-preview-data-root --config src-tauri/tauri.preview.conf.json
+
+      - name: Verify isolated verifier identity and notarization
+        shell: bash
+        run: |
+          APP_PATH="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Freed Preview.app"
+          test -d "$APP_PATH"
+          codesign --verify --deep --strict "$APP_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")
+          if [ "$BUNDLE_ID" != "wtf.freed.desktop.sqlite-native-preview" ]; then
+            echo "Unexpected isolated verifier bundle identifier: $BUNDLE_ID"
+            exit 1
+          fi
+
   updater-manifest:
     needs: [release, notes, create-release]
     runs-on: ubuntu-latest
@@ -615,11 +739,12 @@ jobs:
 
   # After all platform builds succeed, promote the draft to a published release
   publish:
-    needs: [updater-manifest, showcase-assets, create-release]
+    needs: [updater-manifest, showcase-assets, isolated-dev-macos, create-release]
     if: >-
       always() &&
       needs.updater-manifest.result == 'success' &&
       needs.create-release.result == 'success' &&
+      (needs.isolated-dev-macos.result == 'success' || needs.isolated-dev-macos.result == 'skipped') &&
       (needs.showcase-assets.result == 'success' || needs.showcase-assets.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -749,6 +874,7 @@ jobs:
         validation,
         create-release,
         release,
+        isolated-dev-macos,
         updater-manifest,
         publish,
         publish-website,
