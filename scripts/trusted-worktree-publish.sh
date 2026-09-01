@@ -253,10 +253,12 @@ if [[ "${BASE_BRANCH}" == "main" ]]; then
   fi
   (
     builtin cd "${CANDIDATE_ROOT}"
+    PROMOTION_SNAPSHOT_REF="$(/usr/bin/git show -s --format='%(trailers:key=Freed-Dev-Snapshot,valueonly)' "${SCOPE_HEAD_SHA}")"
     "${NODE_BIN}" scripts/validate-main-pr.mjs \
       --base-ref=origin/main \
       --head-ref="${SCOPE_HEAD_SHA}" \
-      --head-branch="${CANDIDATE_BRANCH}"
+      --head-branch="${CANDIDATE_BRANCH}" \
+      --snapshot-ref="${PROMOTION_SNAPSHOT_REF}"
   )
 elif [[ -n "${SCOPE_HEAD_SHA}" ]]; then
   echo "Error: only a governed main publish may receive a pre-bound head." >&2
