@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          npx playwright install --with-deps chromium webkit
+          npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run production validation
@@ -73,6 +73,7 @@ jobs:
         env:
           CI: "true"
           GH_TOKEN: ${{ github.token }}
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
 
       - name: Upload test artifacts on failure
         if: failure()
@@ -88,4 +89,37 @@ jobs:
         with:
           name: test-results
           path: packages/desktop/test-results/
+          retention-days: 7
+
+  pwa-opfs-acceptance:
+    name: PWA OPFS durability (macOS WebKit)
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install WebKit
+        run: npx playwright install webkit
+
+      - name: Prove persistent OPFS SQLite durability
+        run: npm run test:e2e:opfs
+        working-directory: packages/pwa
+
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-pwa-opfs-test-results
+          path: packages/pwa/test-results/
           retention-days: 7

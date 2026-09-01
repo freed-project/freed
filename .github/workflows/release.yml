@@ -212,7 +212,7 @@ jobs:
       - name: Install Playwright browsers
         if: needs.notes.outputs.release_channel != 'dev'
         run: |
-          npx playwright install --with-deps chromium webkit
+          npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run channel validation
@@ -230,9 +230,48 @@ jobs:
         env:
           CI: "true"
           GITHUB_TOKEN: ${{ github.token }}
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
+
+  pwa-opfs-acceptance:
+    name: PWA OPFS durability (macOS WebKit)
+    needs: notes
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        if: needs.notes.outputs.release_channel != 'dev'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        if: needs.notes.outputs.release_channel != 'dev'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npm ci
+
+      - name: Install WebKit
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npx playwright install webkit
+
+      - name: Prove persistent OPFS SQLite durability
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npm run test:e2e:opfs
+        working-directory: packages/pwa
+
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-pwa-opfs-test-results
+          path: packages/pwa/test-results/
+          retention-days: 7
 
   create-release:
-    needs: [notes, validation]
+    needs: [notes, validation, pwa-opfs-acceptance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
