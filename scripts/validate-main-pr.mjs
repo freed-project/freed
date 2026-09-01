@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROMOTION_BRANCH_PATTERN,
+  PROMOTION_CONTROL_FILES,
   RELEASE_PREP_BRANCH_PATTERN,
   classifyMainPrFiles,
   ensureRefExists,
@@ -19,6 +20,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
   /^fix\/main-governance-[a-z0-9._-]+$/;
 const GOVERNANCE_BACKPORT_FILES = new Set([
+  ...PROMOTION_CONTROL_FILES,
   ".github/CODEOWNERS",
   ".github/ISSUE_TEMPLATE/debt.yml",
   ".agents/skills/freed-build-feature/SKILL.md",
@@ -51,21 +53,21 @@ function die(message) {
 
 function usage() {
   console.error(
-    "Usage: node scripts/validate-main-pr.mjs [--cwd=<path>] --base-ref=<ref> --head-ref=<ref> --head-branch=<branch>",
+    "Usage: node scripts/validate-main-pr.mjs [--cwd=<path>] --base-ref=<ref> --head-ref=<ref> --head-branch=<branch> [--snapshot-ref=<40-hex-sha>]",
   );
 }
 
-function filesThatDifferFromDev(files, { cwd, headRef }) {
+function filesThatDifferFromSnapshot(files, { cwd, headRef, snapshotRef }) {
   return files.filter((filePath) => {
     const result = spawnSync(
       "git",
-      ["diff", "--quiet", "origin/dev", headRef, "--", filePath],
+      ["diff", "--quiet", snapshotRef, headRef, "--", filePath],
       { cwd, encoding: "utf8" },
     );
     if (result.status === 0) return false;
     if (result.status === 1) return true;
     die(
-      `Unable to compare ${filePath} with origin/dev: ${result.stderr || result.error?.message || "git diff failed"}`,
+      `Unable to compare ${filePath} with ${snapshotRef}: ${result.stderr || result.error?.message || "git diff failed"}`,
     );
   });
 }
@@ -108,6 +110,7 @@ function parseArgs(argv) {
     baseRef: "",
     headRef: "HEAD",
     headBranch: "",
+    snapshotRef: "",
   };
 
   for (const arg of argv) {
@@ -129,6 +132,10 @@ function parseArgs(argv) {
     }
     if (arg.startsWith("--head-branch=")) {
       options.headBranch = arg.slice("--head-branch=".length);
+      continue;
+    }
+    if (arg.startsWith("--snapshot-ref=")) {
+      options.snapshotRef = arg.slice("--snapshot-ref=".length);
       continue;
     }
     die(`Unsupported argument: ${arg}`);
@@ -168,9 +175,10 @@ function main() {
         `Governance backports to main contain unsupported files:\n${formatFileList(unsupported)}`,
       );
     }
-    const driftFiles = filesThatDifferFromDev(changedFiles, {
+    const driftFiles = filesThatDifferFromSnapshot(changedFiles, {
       cwd: options.cwd,
       headRef: options.headRef,
+      snapshotRef: "origin/dev",
     });
     if (driftFiles.length > 0) {
       die(
@@ -221,15 +229,36 @@ function main() {
     );
   }
 
+  if (!/^[0-9a-f]{40}$/.test(options.snapshotRef)) {
+    die(
+      "Promotion PR validation requires --snapshot-ref with the immutable 40-character dev commit selected when the promotion was created.",
+    );
+  }
+  ensureRefExists(options.snapshotRef, { cwd: options.cwd });
+
+  const controlDriftFiles = filesThatDifferFromSnapshot(
+    PROMOTION_CONTROL_FILES,
+    {
+      cwd: options.cwd,
+      headRef: options.headRef,
+      snapshotRef: "origin/dev",
+    },
+  );
+  if (controlDriftFiles.length > 0) {
+    die(
+      `Promotion control files must exactly match origin/dev:\n${formatFileList(controlDriftFiles)}`,
+    );
+  }
+
   const driftFiles = listPromotionBranchDiffFiles({
-    fromRef: "origin/dev",
+    fromRef: options.snapshotRef,
     toRef: options.headRef,
     cwd: options.cwd,
   });
 
   if (driftFiles.length > 0) {
     die(
-      `Promotion PR is stale. ${options.headRef} does not match origin/dev on product-owned paths:\n${formatFileList(driftFiles)}`,
+      `Promotion PR does not match selected dev snapshot ${options.snapshotRef} on product-owned paths:\n${formatFileList(driftFiles)}`,
     );
   }
 
@@ -239,7 +268,9 @@ function main() {
     headRef: options.headRef,
   });
 
-  console.log("Main PR guard passed. Promotion branch matches origin/dev.");
+  console.log(
+    `Main PR guard passed. Promotion branch matches selected dev snapshot ${options.snapshotRef}.`,
+  );
 }
 
 main();

@@ -363,8 +363,17 @@ After it merges, tag the exact updated `origin/dev` commit with
 `./scripts/release-publish.sh <version>-dev`.
 
 Production release prep requires an exact current `origin/main` base after any
-required product promotion. Dev release prep requires exact current
-`origin/dev`. Both return through branch protection. `release-publish.sh`
+required product promotion and the immutable source dev SHA recorded by that
+promotion, passed as `--promoted-dev-sha=<sha>`. Later commits on `dev` do not
+invalidate or expand the selected production snapshot. A production PWA-only
+snapshot uses `./scripts/deploy-pwa-production-snapshot.sh <promoted-dev-sha>`
+from exact `origin/main`; it creates no version, tag, Desktop build, release
+notes, or public release card. The promotion commit records the selected SHA in
+its `Freed-Dev-Snapshot` trailer, and the main PR guard validates against that
+immutable commit instead of the moving `origin/dev` tip. The small promotion
+control file set stays current with `dev`, so release governance can be repaired
+without pulling newer product work into an already selected snapshot. Dev release prep requires exact current
+`origin/dev`. Both versioned release lanes return through branch protection. `release-publish.sh`
 refuses to tag unless local `HEAD` exactly equals the target remote branch, so
 it cannot tag an unmerged local release commit. It also binds the requested tag,
 channel, Desktop, PWA, Tauri, and Cargo versions to the reviewed release
