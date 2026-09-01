@@ -44,6 +44,7 @@ import {
   commitPwaLibraryCoreRssFeedUpserts,
   commitPwaLibraryCoreUserStateAssignments,
 } from "./library-core-pwa-follower-mutations";
+import { PwaLibraryCoreSqliteWorkerUnavailableError } from "./library-core-sqlite-client";
 
 const HEX = {
   actor: "11".repeat(32),
@@ -128,7 +129,11 @@ describe("PWA SQLite follower mutations", () => {
 
   it("retries exact canonical bytes once after a lost SQLite response", async () => {
     mocks.commitFollowerIntent
-      .mockRejectedValueOnce(new Error("SQLite worker request timed out"))
+      .mockRejectedValueOnce(
+        new PwaLibraryCoreSqliteWorkerUnavailableError(
+          "PWA Library SQLite worker stopped unexpectedly",
+        ),
+      )
       .mockImplementationOnce(
         async (commit: LibraryCoreFollowerIntentCommitV1) => receiptFor(commit),
       );

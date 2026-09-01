@@ -147,6 +147,21 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const WORKER_ERROR_MAXIMUM_UTF8_BYTES = 4_096;
 const textEncoder = new TextEncoder();
 
+export class PwaLibraryCoreSqliteWorkerUnavailableError extends Error {
+  readonly code = "pwa_sqlite_worker_unavailable" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "PwaLibraryCoreSqliteWorkerUnavailableError";
+  }
+}
+
+export function isPwaLibraryCoreSqliteWorkerUnavailableError(
+  error: unknown,
+): error is PwaLibraryCoreSqliteWorkerUnavailableError {
+  return error instanceof PwaLibraryCoreSqliteWorkerUnavailableError;
+}
+
 type ParseResult<T> =
   Readonly<{ ok: true; value: T }> | Readonly<{ error: string; ok: false }>;
 
@@ -202,11 +217,17 @@ interface PendingRequest<T = unknown> {
 }
 
 export class PwaLibraryCoreSqliteClient {
+  readonly #onUnavailable:
+    | ((client: PwaLibraryCoreSqliteClient) => void)
+    | undefined;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #worker: Worker;
   #closed = false;
 
-  constructor() {
+  constructor(
+    onUnavailable?: (client: PwaLibraryCoreSqliteClient) => void,
+  ) {
+    this.#onUnavailable = onUnavailable;
     const memoryE2eRequested =
       (
         globalThis as typeof globalThis & {
@@ -229,8 +250,17 @@ export class PwaLibraryCoreSqliteClient {
       this.#receive(event.data);
     });
     this.#worker.addEventListener("error", () => {
-      this.#failAll(
-        new Error("PWA Library SQLite worker stopped unexpectedly"),
+      this.#retireUnavailable(
+        new PwaLibraryCoreSqliteWorkerUnavailableError(
+          "PWA Library SQLite worker stopped unexpectedly",
+        ),
+      );
+    });
+    this.#worker.addEventListener("messageerror", () => {
+      this.#retireUnavailable(
+        new PwaLibraryCoreSqliteWorkerUnavailableError(
+          "PWA Library SQLite worker response could not be received",
+        ),
       );
     });
   }
@@ -798,8 +828,11 @@ export class PwaLibraryCoreSqliteClient {
     const request = createRequest(requestId);
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.#pending.delete(requestId);
-        reject(new Error("PWA Library SQLite request timed out"));
+        this.#retireUnavailable(
+          new PwaLibraryCoreSqliteWorkerUnavailableError(
+            "PWA Library SQLite request timed out",
+          ),
+        );
       }, REQUEST_TIMEOUT_MS);
       this.#pending.set(requestId, {
         field,
@@ -808,7 +841,15 @@ export class PwaLibraryCoreSqliteClient {
         resolve: resolve as PendingRequest["resolve"],
         timeout,
       });
-      this.#worker.postMessage(request);
+      try {
+        this.#worker.postMessage(request);
+      } catch {
+        this.#retireUnavailable(
+          new PwaLibraryCoreSqliteWorkerUnavailableError(
+            "PWA Library SQLite worker is unavailable",
+          ),
+        );
+      }
     });
   }
 
@@ -868,5 +909,15 @@ export class PwaLibraryCoreSqliteClient {
       pending.reject(error);
     }
     this.#pending.clear();
+  }
+
+  #retireUnavailable(
+    error: PwaLibraryCoreSqliteWorkerUnavailableError,
+  ): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#worker.terminate();
+    this.#failAll(error);
+    this.#onUnavailable?.(this);
   }
 }

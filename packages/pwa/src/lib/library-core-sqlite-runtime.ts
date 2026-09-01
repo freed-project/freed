@@ -42,38 +42,66 @@ import type {
   LibraryCoreContentPolicyMutationReceiptV1,
   LibraryCoreContentPolicyMutationV1,
 } from "@freed/shared/library-core";
-import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
+import {
+  isPwaLibraryCoreSqliteWorkerUnavailableError,
+  PwaLibraryCoreSqliteClient,
+} from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
 
-let client: PwaLibraryCoreSqliteClient | null = null;
-let openTask: Promise<void> | null = null;
+interface ClientGeneration {
+  readonly client: PwaLibraryCoreSqliteClient;
+  readonly openTask: Promise<void>;
+}
+
+let clientGeneration: ClientGeneration | null = null;
+
+function clearClientGeneration(active: PwaLibraryCoreSqliteClient): void {
+  if (clientGeneration?.client === active) clientGeneration = null;
+}
+
+function createClientGeneration(): ClientGeneration {
+  const active = new PwaLibraryCoreSqliteClient(clearClientGeneration);
+  const generation = Object.freeze({
+    client: active,
+    openTask: active
+      .open()
+      .then(() => undefined)
+      .catch((error) => {
+        active.dispose(
+          error instanceof Error
+            ? error
+            : new Error("PWA Library SQLite failed to open"),
+        );
+        clearClientGeneration(active);
+        throw error;
+      }),
+  });
+  clientGeneration = generation;
+  return generation;
+}
 
 async function openClient(): Promise<PwaLibraryCoreSqliteClient> {
-  const active = client ?? new PwaLibraryCoreSqliteClient();
-  client = active;
-  openTask ??= active
-    .open()
-    .then(() => undefined)
-    .catch((error) => {
-      active.dispose(
-        error instanceof Error
-          ? error
-          : new Error("PWA Library SQLite failed to open"),
-      );
-      if (client === active) client = null;
-      openTask = null;
-      throw error;
-    });
-  await openTask;
-  return active;
+  const generation = clientGeneration ?? createClientGeneration();
+  await generation.openTask;
+  return generation.client;
+}
+
+async function runReplaySafeRead<T>(
+  read: (active: PwaLibraryCoreSqliteClient) => Promise<T>,
+): Promise<T> {
+  try {
+    return await read(await openClient());
+  } catch (error) {
+    if (!isPwaLibraryCoreSqliteWorkerUnavailableError(error)) throw error;
+    return read(await openClient());
+  }
 }
 
 export const queryPwaNormalizedLibrary: LibraryCoreNormalizedQueryExecutor =
   async <T extends LibraryCoreSqliteQueryRequest>(
     request: T,
   ): Promise<LibraryCoreSqliteQueryResponseFor<T>> => {
-    const active = await openClient();
-    return active.query(request);
+    return runReplaySafeRead((active) => active.query(request));
   };
 
 export async function mutatePwaDeviceGraphLayout(
@@ -93,10 +121,12 @@ export async function mutatePwaDeviceContactSync(
 export async function queryPwaDeviceContacts<
   T extends LibraryCoreDeviceContactQueryRequestV1,
 >(query: T): Promise<LibraryCoreDeviceContactQueryResponseFor<T>> {
-  const active = await openClient();
-  return active.queryDeviceContacts(query) as Promise<
-    LibraryCoreDeviceContactQueryResponseFor<T>
-  >;
+  return runReplaySafeRead(
+    (active) =>
+      active.queryDeviceContacts(query) as Promise<
+        LibraryCoreDeviceContactQueryResponseFor<T>
+      >,
+  );
 }
 
 export async function mutatePwaContentPolicy(
@@ -136,8 +166,9 @@ export async function pagePwaScopeActionStage(
   stageId: string,
   afterOrdinal: number,
 ): Promise<LibraryCoreScopeActionStagePageV1> {
-  const active = await openClient();
-  return active.pageScopeAction(stageId, afterOrdinal);
+  return runReplaySafeRead((active) =>
+    active.pageScopeAction(stageId, afterOrdinal),
+  );
 }
 
 export async function closePwaScopeActionStage(stageId: string): Promise<void> {
@@ -146,20 +177,17 @@ export async function closePwaScopeActionStage(stageId: string): Promise<void> {
 }
 
 export async function readPwaFollowerMutationContext(): Promise<LibraryCoreFollowerMutationContextV1> {
-  const active = await openClient();
-  return active.followerMutationContext();
+  return runReplaySafeRead((active) => active.followerMutationContext());
 }
 
 export async function readPwaFollowerTransportContext(): Promise<LibraryCoreFollowerTransportContextV2> {
-  const active = await openClient();
-  return active.followerTransportContext();
+  return runReplaySafeRead((active) => active.followerTransportContext());
 }
 
 export async function pagePwaFollowerTransport(
   page: LibraryCoreFollowerTransportPageRequestV2,
 ): Promise<LibraryCoreFollowerTransportPageResponseV2> {
-  const active = await openClient();
-  return active.pageFollowerTransport(page);
+  return runReplaySafeRead((active) => active.pageFollowerTransport(page));
 }
 
 export async function commitPwaFollowerIntent(
@@ -177,20 +205,23 @@ export async function applyPwaFollowerResult(
 }
 
 export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
-  const active = await openClient();
-  return active.readNormalizedCheckpointReceipt();
+  return runReplaySafeRead((active) =>
+    active.readNormalizedCheckpointReceipt(),
+  );
 }
 
 export async function describePwaNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
-  const active = await openClient();
-  return active.describeNormalizedCheckpointExport();
+  return runReplaySafeRead((active) =>
+    active.describeNormalizedCheckpointExport(),
+  );
 }
 
 export async function readPwaNormalizedCheckpointExportPage(
   request: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
 ): Promise<LibraryCoreNormalizedCheckpointExportPageV2> {
-  const active = await openClient();
-  return active.readNormalizedCheckpointExportPage(request);
+  return runReplaySafeRead((active) =>
+    active.readNormalizedCheckpointExportPage(request),
+  );
 }
 
 export async function beginPwaNormalizedCheckpointStage(
@@ -236,8 +267,9 @@ export async function importPwaNormalizedOperationPage(
 }
 
 export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {
-  const active = await openClient();
-  return active.followerActorEnrollmentContext();
+  return runReplaySafeRead((active) =>
+    active.followerActorEnrollmentContext(),
+  );
 }
 
 export async function storePwaFollowerActorRequest(
@@ -255,9 +287,8 @@ export async function installPwaFollowerActorEnrollment(
 }
 
 async function closePwaNormalizedLibrary(): Promise<void> {
-  const active = client;
-  client = null;
-  openTask = null;
+  const active = clientGeneration?.client ?? null;
+  clientGeneration = null;
   if (!active) return;
   try {
     await active.close();
