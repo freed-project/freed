@@ -230,9 +230,48 @@ jobs:
         env:
           CI: "true"
           GITHUB_TOKEN: ${{ github.token }}
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
+
+  pwa-opfs-acceptance:
+    name: PWA OPFS durability (macOS WebKit)
+    needs: notes
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        if: needs.notes.outputs.release_channel != 'dev'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        if: needs.notes.outputs.release_channel != 'dev'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npm ci
+
+      - name: Install WebKit
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npx playwright install webkit
+
+      - name: Prove persistent OPFS SQLite durability
+        if: needs.notes.outputs.release_channel != 'dev'
+        run: npm run test:e2e:opfs
+        working-directory: packages/pwa
+
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-pwa-opfs-test-results
+          path: packages/pwa/test-results/
+          retention-days: 7
 
   create-release:
-    needs: [notes, validation]
+    needs: [notes, validation, pwa-opfs-acceptance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -509,9 +548,79 @@ jobs:
             "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=latest.json" \
             >/dev/null
 
+  showcase-assets:
+    name: Capture PWA Showcase
+    needs: [notes, validation, create-release]
+    if: needs.notes.outputs.release_channel == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact production release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies and browser
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Build exact release PWA
+        working-directory: packages/pwa
+        env:
+          VITE_FREED_DEMO: "1"
+          VITE_FREED_PWA_SQLITE_MEMORY_E2E: "1"
+        run: npm run build
+
+      - name: Start exact release PWA
+        working-directory: packages/pwa
+        run: npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/freed-showcase-preview.log 2>&1 &
+
+      - name: Wait for showcase PWA
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/freed-showcase-preview.log
+          exit 1
+
+      - name: Capture release showcase
+        env:
+          FREED_SHOWCASE_URL: http://127.0.0.1:4173/?freed-demo=1
+          FREED_SHOWCASE_OUTPUT: release-showcase
+          FREED_SHOWCASE_SQLITE_MEMORY: "1"
+        run: |
+          node scripts/capture-release-showcase.mjs
+          ffmpeg -hide_banner -loglevel error \
+            -f concat -safe 0 -i release-showcase/gif-order.txt \
+            -vf "fps=12,scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=160[p];[s1][p]paletteuse=dither=bayer" \
+            -loop 0 release-showcase/freed-showcase.gif
+
+      - name: Upload immutable and stable showcase assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" release-showcase/*.{png,gif,json} --clobber
+
   # After all platform builds succeed, promote the draft to a published release
   publish:
-    needs: [updater-manifest, create-release]
+    needs: [updater-manifest, showcase-assets, create-release]
+    if: >-
+      always() &&
+      needs.updater-manifest.result == 'success' &&
+      needs.create-release.result == 'success' &&
+      (needs.showcase-assets.result == 'success' || needs.showcase-assets.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -644,6 +753,7 @@ jobs:
         publish,
         publish-website,
         publish-pwa,
+        showcase-assets,
       ]
     if: failure()
     runs-on: ubuntu-latest

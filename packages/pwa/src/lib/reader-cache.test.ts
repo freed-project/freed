@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 import { pinReaderItemInPwa } from "./reader-cache";
 
+const mocks = vi.hoisted(() => ({
+  pinLibraryContent: vi.fn(async () => undefined),
+}));
+
+vi.mock("./library-core-runtime", () => ({
+  pinPwaLibraryCoreItemContent: mocks.pinLibraryContent,
+}));
+
 function makePost(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
     globalId: "x:pwa-pin",
@@ -24,6 +32,7 @@ function makePost(overrides: Partial<FeedItem> = {}): FeedItem {
 
 describe("PWA reader cache", () => {
   afterEach(() => {
+    mocks.pinLibraryContent.mockClear();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
@@ -41,6 +50,7 @@ describe("PWA reader cache", () => {
 
     await pinReaderItemInPwa(makePost());
 
+    expect(mocks.pinLibraryContent).toHaveBeenCalledWith("x:pwa-pin");
     expect(open).toHaveBeenCalledWith("freed-articles-pinned-v1");
     expect(pinnedStore.has("/pinned-content/x:pwa-pin")).toBe(true);
     await expect(pinnedStore.get("/content/x:pwa-pin")?.text()).resolves.toContain("Long post body");

@@ -199,6 +199,10 @@ describe("useBoundedFeedItems", () => {
     mount();
     const firstClose = vi.fn(async () => undefined);
     const secondClose = vi.fn(async () => undefined);
+    let resolveSecondPage: ((items: readonly FeedItem[]) => void) | null = null;
+    const secondPage = new Promise<readonly FeedItem[]>((resolve) => {
+      resolveSecondPage = resolve;
+    });
     const openReader = vi
       .fn<NonNullable<PlatformConfig["openBoundedFeedReader"]>>()
       .mockResolvedValueOnce({
@@ -208,7 +212,7 @@ describe("useBoundedFeedItems", () => {
       })
       .mockResolvedValueOnce({
         totalCount: 1,
-        readNext: vi.fn(async () => [item("second")]),
+        readNext: vi.fn(() => secondPage),
         close: secondClose,
       });
     let current: ReturnType<typeof useBoundedFeedItems> | null = null;
@@ -229,6 +233,12 @@ describe("useBoundedFeedItems", () => {
       root!.render(
         <Harness openReader={openReader} sourceVersion={2} onReady={onReady} />,
       );
+    });
+    expect(current?.feed.status).toBe("loading");
+    expect(current?.feed.items[0]?.globalId).toBe("first");
+    await act(async () => {
+      resolveSecondPage?.([item("second")]);
+      await secondPage;
     });
     await vi.waitFor(() => {
       expect(current?.feed.items[0]?.globalId).toBe("second");
@@ -360,7 +370,8 @@ describe("useBoundedFeedItems", () => {
       async (cursor: string | null, direction: "next" | "previous") => {
         let index: number;
         if (cursor === null) {
-          if (direction !== "next") throw new Error("previous requires a cursor");
+          if (direction !== "next")
+            throw new Error("previous requires a cursor");
           index = 0;
         } else {
           const [edge, at] = cursor.split(":");
@@ -376,9 +387,12 @@ describe("useBoundedFeedItems", () => {
         const items = pages[index] ?? [];
         return {
           items,
-          previousCursor: index > 0 && items.length > 0 ? `start:${index}` : null,
+          previousCursor:
+            index > 0 && items.length > 0 ? `start:${index}` : null,
           nextCursor:
-            index < pages.length - 1 && items.length > 0 ? `end:${index}` : null,
+            index < pages.length - 1 && items.length > 0
+              ? `end:${index}`
+              : null,
         };
       },
     );

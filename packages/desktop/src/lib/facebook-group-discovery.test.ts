@@ -38,9 +38,9 @@ describe("device-local Facebook group discovery", () => {
   });
 
   it("migrates legacy groups once, including an explicit empty migration", () => {
-    expect(migrateLegacyFacebookGroupDiscovery({ one: group("one") })).toBe(true);
+    expect(migrateLegacyFacebookGroupDiscovery({ knownGroups: { one: group("one") } })).toBe(true);
     expect(getFacebookGroupDiscovery()).toEqual({ one: group("one") });
-    expect(migrateLegacyFacebookGroupDiscovery({ two: group("two") })).toBe(false);
+    expect(migrateLegacyFacebookGroupDiscovery({ knownGroups: { two: group("two") } })).toBe(false);
 
     window.localStorage.clear();
     resetFacebookGroupDiscoveryForTests();
@@ -53,9 +53,9 @@ describe("device-local Facebook group discovery", () => {
   });
 
   it("updates and repairs local discovery without exposing group data in telemetry", () => {
-    migrateLegacyFacebookGroupDiscovery({
+    migrateLegacyFacebookGroupDiscovery({ knownGroups: {
       one: group("one", "one"),
-    });
+    } });
     mockRecordUpdate.mockClear();
 
     const result = updateFacebookGroupDiscovery(
@@ -85,10 +85,10 @@ describe("device-local Facebook group discovery", () => {
   });
 
   it("supports updates and removal while keeping the store bounded", () => {
-    migrateLegacyFacebookGroupDiscovery({
+    migrateLegacyFacebookGroupDiscovery({ knownGroups: {
       one: group("one"),
       two: group("two"),
-    });
+    } });
 
     expect(updateFacebookGroupDiscovery([group("two", "Renamed")], "feed_items").persisted).toBe(true);
     expect(getFacebookGroupDiscovery()).toEqual({
@@ -112,7 +112,7 @@ describe("device-local Facebook group discovery", () => {
 
     expect(updateFacebookGroupDiscovery([group("one")], "group_scrape").persisted).toBe(false);
     expect(removeFacebookGroupDiscovery("future")).toEqual({ existed: false, persisted: false });
-    expect(migrateLegacyFacebookGroupDiscovery({ one: group("one") })).toBe(false);
+    expect(migrateLegacyFacebookGroupDiscovery({ knownGroups: { one: group("one") } })).toBe(false);
     expect(window.localStorage.getItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY)).toBe(future);
   });
 

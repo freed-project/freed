@@ -41,11 +41,11 @@ describe("device-local RSS runtime state", () => {
       consecutiveFailures: 2,
       lastFetchError: "offline",
     });
-    expect(feed.nextFetchAfter).toBeUndefined();
+    expect((feed as unknown as Record<string, unknown>).nextFetchAfter).toBeUndefined();
   });
 
   it("migrates a legacy retry window once so an upgrade cannot pull early", () => {
-    const feed: RssFeed = {
+    const feed = {
       url: "https://example.com/legacy-feed",
       title: "Legacy",
       enabled: true,
@@ -54,9 +54,7 @@ describe("device-local RSS runtime state", () => {
       nextFetchAfter: 8_000,
       consecutiveFailures: 4,
       lastFetchError: "legacy failure",
-      etag: "legacy-etag",
-      lastModified: "yesterday",
-    };
+    } as unknown as RssFeed;
 
     expect(withRssRuntimeState(feed)).toEqual({
       url: "https://example.com/legacy-feed",
@@ -68,9 +66,6 @@ describe("device-local RSS runtime state", () => {
       consecutiveFailures: 4,
       lastFetchError: "legacy failure",
     });
-    expect(withRssRuntimeState(feed).etag).toBeUndefined();
-    expect(withRssRuntimeState(feed).lastModified).toBeUndefined();
-
     setRssRuntimeState(feed.url, {
       lastFetchAttemptedAt: 11_000,
       nextFetchAfter: 12_000,
@@ -83,12 +78,10 @@ describe("device-local RSS runtime state", () => {
       consecutiveFailures: 1,
       lastFetchError: "local failure",
     });
-    expect(withRssRuntimeState(feed).etag).toBeUndefined();
-    expect(withRssRuntimeState(feed).lastModified).toBeUndefined();
   });
 
   it("keeps an existing local record ahead of stale synchronized retry state", () => {
-    const feed: RssFeed = {
+    const feed = {
       url: "https://example.com/local-wins",
       title: "Local wins",
       enabled: true,
@@ -97,7 +90,7 @@ describe("device-local RSS runtime state", () => {
       nextFetchAfter: 80_000,
       consecutiveFailures: 4,
       lastFetchError: "stale synchronized failure",
-    };
+    } as unknown as RssFeed;
     setRssRuntimeState(feed.url, {
       lastFetchAttemptedAt: 11_000,
       nextFetchAfter: 12_000,

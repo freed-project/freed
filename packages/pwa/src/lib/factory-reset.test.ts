@@ -19,7 +19,7 @@ function operations(
     clearLocalSettings: [],
     clearLocalData: [],
     clearProviderDataAndConnections: async () => undefined,
-    clearDocument: async () => undefined,
+    clearLibrary: async () => undefined,
     phaseTimeoutMs: 50,
     ...overrides,
   };
@@ -65,8 +65,8 @@ describe("shared factory reset phase bounds", () => {
       override: { clearProviderDataAndConnections: never },
     },
     {
-      label: "clear document",
-      override: { clearDocument: never },
+      label: "clear Library",
+      override: { clearLibrary: never },
     },
   ] satisfies Array<{
     label: string;
@@ -90,11 +90,11 @@ describe("shared factory reset phase bounds", () => {
       }),
     );
     const clearLocalData = vi.fn(async () => undefined);
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
 
     const reset = runFactoryResetOperations(operations({
       clearLocalData: [clearLocalData],
-      clearDocument,
+      clearLibrary,
     }));
     await Promise.resolve();
     expect(clearLocalData).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe("shared factory reset phase bounds", () => {
     await reset;
 
     expect(clearLocalData).toHaveBeenCalledOnce();
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 
   it("bounds tracked device-local work before the outer phase deadline", async () => {

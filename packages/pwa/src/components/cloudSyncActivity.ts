@@ -5,8 +5,6 @@ import type {
   CloudSyncStage,
 } from "@freed/ui/lib/debug-store";
 
-type ProviderName = "Google Drive" | "Dropbox";
-
 type CloudSyncActivity = {
   stage: Exclude<CloudSyncStage, "idle">;
   startedAt: number;
@@ -46,18 +44,18 @@ function stageShortLabel(stage: Exclude<CloudSyncStage, "idle">): string {
   }
 }
 
-function stageDetailLabel(stage: Exclude<CloudSyncStage, "idle">, providerName: ProviderName): string {
+function stageDetailLabel(stage: Exclude<CloudSyncStage, "idle">): string {
   switch (stage) {
     case "auth":
-      return `Refreshing ${providerName} access`;
+      return "Refreshing Google Drive access";
     case "download":
-      return `Checking ${providerName} for remote changes`;
+      return "Checking Google Drive for remote changes";
     case "merge":
-      return `Merging ${providerName} data into this library`;
+      return "Applying Google Drive records to this Library";
     case "poll":
-      return `Watching ${providerName} for changes`;
+      return "Watching Google Drive for changes";
     case "upload":
-      return `Uploading local changes to ${providerName}`;
+      return "Uploading local changes to Google Drive";
   }
 }
 
@@ -80,7 +78,6 @@ function getActivityStartedAt(
 
 function getCloudSyncActivity(
   state: CloudProviderDebugState | null | undefined,
-  providerName: ProviderName,
   now: number,
 ): CloudSyncActivity | null {
   if (!state?.stage || !ACTIVE_STAGES.has(state.stage) || state.stage === "idle" || state.status === "error") {
@@ -97,13 +94,12 @@ function getCloudSyncActivity(
     elapsedMs,
     elapsedLabel: formatCloudSyncElapsed(elapsedMs),
     shortLabel: stageShortLabel(state.stage),
-    detailLabel: stageDetailLabel(state.stage, providerName),
+    detailLabel: stageDetailLabel(state.stage),
   };
 }
 
 export function useCloudSyncActivity(
   state: CloudProviderDebugState | null | undefined,
-  providerName: ProviderName,
 ): CloudSyncActivity | null {
   const [now, setNow] = useState(() => Date.now());
   const isActive = !!state?.stage && ACTIVE_STAGES.has(state.stage) && state.stage !== "idle" && state.status !== "error";
@@ -118,5 +114,5 @@ export function useCloudSyncActivity(
     };
   }, [isActive, state?.stage, state?.lastAttemptAt, state?.lastActivityAt]);
 
-  return useMemo(() => getCloudSyncActivity(state, providerName, now), [now, providerName, state]);
+  return useMemo(() => getCloudSyncActivity(state, now), [now, state]);
 }

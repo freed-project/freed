@@ -68,6 +68,12 @@ function runChecked(executable, args, purpose, runner = spawnSync) {
   }
 }
 
+function trustedSystemGroup(platform = process.platform) {
+  if (platform === "darwin") return "wheel";
+  if (platform === "linux") return "root";
+  throw new Error(`Unsupported automation host platform: ${platform}`);
+}
+
 export function executeCommand(
   command,
   {
@@ -127,7 +133,7 @@ export function executeCommand(
         "-o",
         "root",
         "-g",
-        "wheel",
+        trustedSystemGroup(),
         "-m",
         "0755",
         profileRoot,
@@ -142,7 +148,7 @@ export function executeCommand(
         "-o",
         "root",
         "-g",
-        "wheel",
+        trustedSystemGroup(),
         "-m",
         "0444",
         stagedPath,

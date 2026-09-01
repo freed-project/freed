@@ -33,7 +33,7 @@ describe("cloud IPC body encoding", () => {
     }
   });
 
-  it("round-trips a realistic Automerge-sized payload", () => {
+  it("round-trips a multi-megabyte binary payload", () => {
     // Not 38 MB in a unit test, but large enough that a chunking bug surfaces.
     const size = 2 * 1024 * 1024;
     const bytes = new Uint8Array(size);

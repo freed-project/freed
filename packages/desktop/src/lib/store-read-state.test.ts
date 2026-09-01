@@ -1,50 +1,43 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  mockDocMarkItemsAsRead,
+  mockMarkLibraryItemsAsRead,
   mockRecordRuntimeError,
   mockRecordBugReportEvent,
 } = vi.hoisted(() => ({
-  mockDocMarkItemsAsRead: vi.fn(),
+  mockMarkLibraryItemsAsRead: vi.fn(),
   mockRecordRuntimeError: vi.fn(),
   mockRecordBugReportEvent: vi.fn(),
 }));
 
 vi.mock("./library-client", () => ({
-  initDoc: vi.fn(),
+  initializeDesktopLibraryRuntime: vi.fn(),
   quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
-  subscribe: vi.fn(() => () => {}),
-  getDocState: vi.fn(() => null),
-  docAddFeedItems: vi.fn(),
-  docAddSampleLibraryData: vi.fn(),
-  docAddRssFeed: vi.fn(),
-  docRemoveRssFeed: vi.fn(),
-  docRemoveAllFeeds: vi.fn(),
-  docUpdateRssFeed: vi.fn(),
-  docUpdateFeedItem: vi.fn(),
-  docMarkAsRead: vi.fn(),
-  docMarkItemsAsRead: mockDocMarkItemsAsRead,
-  docMarkAllAsRead: vi.fn(),
-  docToggleSaved: vi.fn(),
-  docRemoveFeedItem: vi.fn(),
-  docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
-  docToggleArchived: vi.fn(),
-  docArchiveAllReadUnsaved: vi.fn(),
-  docDeleteAllArchived: vi.fn(),
-  docPruneArchivedItems: vi.fn(),
-  docUpdatePreferences: vi.fn(),
-  docBackfillContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
-  docDeduplicateFeedItems: vi.fn(),
-  docHealUntitledFeedTitles: vi.fn(),
-  docAddFriend: vi.fn(),
-  docAddFriends: vi.fn(),
-  docUpdateFriend: vi.fn(),
-  docRemoveFriend: vi.fn(),
-  docUpsertConnectionPersons: vi.fn(),
-  docLogReachOut: vi.fn(),
-  docToggleLiked: vi.fn(),
-  docConfirmLikedSynced: vi.fn(),
-  docConfirmSeenSynced: vi.fn(),
+  subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
+  getDesktopLibraryRuntimeState: vi.fn(() => null),
+  addLibraryFeedItems: vi.fn(),
+  addSampleLibraryData: vi.fn(),
+  addLibraryRssFeed: vi.fn(),
+  removeLibraryRssFeed: vi.fn(),
+  removeAllLibraryFeeds: vi.fn(),
+  updateLibraryRssFeed: vi.fn(),
+  updateLibraryFeedItem: vi.fn(),
+  markLibraryItemAsRead: vi.fn(),
+  markLibraryItemsAsRead: mockMarkLibraryItemsAsRead,
+  markAllLibraryItemsAsRead: vi.fn(),
+  toggleLibraryItemSaved: vi.fn(),
+  removeLibraryFeedItem: vi.fn(),
+  clearSampleLibraryData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
+  toggleLibraryItemArchived: vi.fn(),
+  archiveAllReadUnsavedLibraryItems: vi.fn(),
+  deleteAllArchivedLibraryItems: vi.fn(),
+  pruneArchivedLibraryItems: vi.fn(),
+  updateLibraryPreferences: vi.fn(),
+  backfillLibraryContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
+  healUntitledLibraryFeedTitles: vi.fn(),
+  toggleLibraryItemLiked: vi.fn(),
+  confirmLibraryItemLikedSynced: vi.fn(),
+  confirmLibraryItemSeenSynced: vi.fn(),
 }));
 
 vi.mock("@freed/ui/lib/bug-report", async () => {
@@ -71,8 +64,8 @@ describe("store read-state batching", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
-    mockDocMarkItemsAsRead.mockReset();
-    mockDocMarkItemsAsRead.mockResolvedValue(undefined);
+    mockMarkLibraryItemsAsRead.mockReset();
+    mockMarkLibraryItemsAsRead.mockResolvedValue(undefined);
     mockRecordRuntimeError.mockReset();
     mockRecordBugReportEvent.mockReset();
   });
@@ -88,13 +81,13 @@ describe("store read-state batching", () => {
     const second = useAppStore.getState().markAsRead("item-b");
     const third = useAppStore.getState().markItemsAsRead(["item-b", "item-c"]);
 
-    expect(mockDocMarkItemsAsRead).not.toHaveBeenCalled();
+    expect(mockMarkLibraryItemsAsRead).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
     await Promise.all([first, second, third]);
 
-    expect(mockDocMarkItemsAsRead).toHaveBeenCalledTimes(1);
-    expect(mockDocMarkItemsAsRead).toHaveBeenCalledWith([
+    expect(mockMarkLibraryItemsAsRead).toHaveBeenCalledTimes(1);
+    expect(mockMarkLibraryItemsAsRead).toHaveBeenCalledWith([
       "item-a",
       "item-b",
       "item-c",
@@ -107,17 +100,17 @@ describe("store read-state batching", () => {
     const markAsReadPromise = useAppStore.getState().markAsRead("item-a");
 
     await expect(markAsReadPromise).resolves.toBeUndefined();
-    expect(mockDocMarkItemsAsRead).not.toHaveBeenCalled();
+    expect(mockMarkLibraryItemsAsRead).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
 
-    expect(mockDocMarkItemsAsRead).toHaveBeenCalledWith(["item-a"]);
+    expect(mockMarkLibraryItemsAsRead).toHaveBeenCalledWith(["item-a"]);
   });
 
   it("records non-fatal diagnostics when a batched read update rejects", async () => {
     const useAppStore = await loadStore();
-    const error = new Error("[automerge-worker] request TIMEOUT op=MARK_AS_READ reqId=305 pending=93");
-    mockDocMarkItemsAsRead.mockRejectedValueOnce(error);
+    const error = new Error("[library-core] request TIMEOUT op=MARK_AS_READ reqId=305 pending=93");
+    mockMarkLibraryItemsAsRead.mockRejectedValueOnce(error);
 
     const markAsReadPromise = useAppStore.getState().markAsRead("item-a");
     await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
@@ -217,7 +210,7 @@ describe("store read-state batching", () => {
     await quiesceDesktopStoreForFactoryReset();
     await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
 
-    expect(mockDocMarkItemsAsRead).not.toHaveBeenCalled();
+    expect(mockMarkLibraryItemsAsRead).not.toHaveBeenCalled();
   });
 
   it("clears provider sync activity when the provider task throws", async () => {

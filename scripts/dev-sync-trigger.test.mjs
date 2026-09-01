@@ -42,6 +42,10 @@ test("accepts YouTube as an installed-build sync target", () => {
   assert.equal(allowedProviders.has("youtube"), true);
 });
 
+test("accepts Google Drive as an installed-build sync target", () => {
+  assert.equal(allowedProviders.has("gdrive"), true);
+});
+
 test("stops instead of queueing a second provider run after post-completion renderer rebuild", () => {
   const decision = getDeferredRetryDecision({
     provider: "instagram",

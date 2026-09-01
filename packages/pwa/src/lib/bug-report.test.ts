@@ -13,7 +13,7 @@ describe("pwa bug reporting", () => {
   beforeEach(() => {
     window.localStorage.clear();
     resetBugReportState();
-    useDebugStore.setState({ events: [], visible: false, docSnapshot: null, cloudProviders: null, perfSnapshot: null, perfResetGeneration: 0 });
+    useDebugStore.setState({ events: [], visible: false, librarySnapshot: null, cloudProviders: null, perfSnapshot: null, perfResetGeneration: 0 });
     useAppStore.setState({
       items: [],
       feeds: {},

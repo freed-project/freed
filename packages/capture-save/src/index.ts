@@ -23,7 +23,7 @@ import type { SaveOptions } from "./types.js";
  *
  * @param url - URL to save
  * @param options - Save options (tags, metadataOnly)
- * @returns FeedItem ready to be added to the Automerge document
+ * @returns FeedItem ready for the typed SQLite capture mutation
  */
 export async function saveUrl(
   url: string,

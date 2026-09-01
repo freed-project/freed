@@ -48,7 +48,7 @@ function health(
 
 function sourceState(overrides: Partial<SourceStatusInput> = {}): SourceStatusInput {
   return {
-    feeds: {},
+    enabledRssFeedCount: 0,
     providerSyncCounts: {},
     itemCountByPlatform: {},
     ...overrides,

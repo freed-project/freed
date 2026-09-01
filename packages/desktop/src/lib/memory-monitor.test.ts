@@ -74,8 +74,6 @@ describe("memory monitor", () => {
         webkitTotalResidentBytes: 5 * gib,
         memoryHighBytes: 3 * gib,
         memoryCriticalBytes: 4 * gib,
-        relayDocBytes: 0,
-        relayClientCount: 0,
       },
       recycledScraperWindows: false,
       cacheTrimmed: false,

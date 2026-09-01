@@ -10,15 +10,18 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import { LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID } from "./sqlite-contract.generated.js";
+import { LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES } from "./wire-frame.js";
 
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_CHECKPOINT_DATASET_SCHEMA_IDS = [
   "library_core_feed_card_projection_v1",
   "library_core_logical_checkpoint_v1",
+  LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
 ] as const;
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT = 8_192;
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT = 1_048_576;
-export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT = 128;
+export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT = 4_096;
 
 export type LibraryCoreCheckpointDatasetSchemaId =
   (typeof LIBRARY_CORE_CHECKPOINT_DATASET_SCHEMA_IDS)[number];
@@ -96,8 +99,9 @@ function boundedIdentity(value: unknown, label: string): string {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    value.length > 512 ||
-    textEncoder.encode(value).byteLength > 512
+    value.length > LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES ||
+    textEncoder.encode(value).byteLength >
+      LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES
   ) {
     throw new TypeError(`${label} must be bounded nonempty text`);
   }

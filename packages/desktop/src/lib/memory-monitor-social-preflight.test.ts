@@ -90,8 +90,6 @@ function blockedPreparation() {
     sampleDurationMs: 1,
     memoryHighBytes: 2 * 1024 * 1024 * 1024,
     memoryCriticalBytes: 4 * 1024 * 1024 * 1024,
-    relayDocBytes: 0,
-    relayClientCount: 0,
   };
   return {
     before: after,
@@ -185,15 +183,15 @@ describe("social scrape memory preflight scheduling", () => {
       expect.objectContaining({
         event: "renderer_memory_attribution",
         reason: "startup",
-        shellBaselineMainRendererResidentBytes:
+        preLibraryBaselineMainRendererResidentBytes:
           after.webkitProcesses[0].residentBytes,
-        shellBaselineMainRendererProcessId: after.webkitProcesses[0].processId,
-        shellBaselineMainRendererStartedAtUnixSeconds:
+        preLibraryBaselineMainRendererProcessId: after.webkitProcesses[0].processId,
+        preLibraryBaselineMainRendererStartedAtUnixSeconds:
           after.webkitProcesses[0].startedAtUnixSeconds,
-        shellBaselineMainRendererStartedAtUnixMicros:
+        preLibraryBaselineMainRendererStartedAtUnixMicros:
           after.webkitProcesses[0].startedAtUnixMicros,
-        mainRendererResidentOverShellBaselineBytes: 0,
-        shellBaselineComparisonStatus: "same_process",
+        mainRendererResidentOverPreLibraryBaselineBytes: 0,
+        preLibraryBaselineComparisonStatus: "same_process",
         webkitTotalResidentBytes: after.webkitTotalResidentBytes,
       }),
     );

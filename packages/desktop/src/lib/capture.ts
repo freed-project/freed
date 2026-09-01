@@ -25,7 +25,7 @@ import { captureLiFeed } from "./li-capture";
 import { captureSubstackFeed } from "./substack-capture";
 import { captureMediumFeed } from "./medium-capture";
 import { captureYouTube } from "./youtube-capture";
-import { docBatchRefreshFeeds } from "./library-client";
+import { refreshLibraryFeeds } from "./library-client";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
@@ -44,6 +44,7 @@ import {
   setRssRuntimeState,
   withRssRuntimeState,
   withRssRuntimeStates,
+  type RuntimeRssFeed,
 } from "./rss-runtime-state";
 import {
   assertFactoryResetEpoch,
@@ -58,6 +59,11 @@ import {
   sqliteLibraryCloudWriterAdmissionStatus,
 } from "./sqlite-library";
 import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
+import {
+  readLibraryCoreRssFeedV1,
+  scanLibraryCoreRssFeedsV1,
+} from "@freed/shared/library-core";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 
 export type SocialProviderRefreshStatus =
   "success" | "empty" | "deferred" | "error" | "ignored";
@@ -262,7 +268,7 @@ const socialDebugLabels: Record<RetriableSocialProvider, string> = {
   youtube: "YT",
 };
 
-function nextFailedFeedRetryMs(feed: RssFeed): number {
+function nextFailedFeedRetryMs(feed: RuntimeRssFeed): number {
   const failureCount = Math.max(0, feed.consecutiveFailures ?? 0);
   return Math.min(
     RSS_FAILURE_RETRY_MAX_MS,
@@ -623,7 +629,7 @@ async function refreshEnabledRssFeeds(
       const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
-      const rssBefore = store.docItemCount ?? store.items.length;
+      const rssBefore = store.totalItemCount;
       let rssSeen = 0;
 
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
@@ -721,10 +727,10 @@ async function refreshEnabledRssFeeds(
 
       if (feedUpdates.length > 0 || allNewItems.length > 0) {
         await preserveRssEssayBodies(allNewItems);
-        await docBatchRefreshFeeds(feedUpdates, allNewItems);
+        await refreshLibraryFeeds(feedUpdates, allNewItems);
       }
       const rssAfterState = useAppStore.getState();
-      const rssAfter = rssAfterState.docItemCount ?? rssAfterState.items.length;
+      const rssAfter = rssAfterState.totalItemCount;
       const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
       await recordProviderHealthEvent({
         provider: "rss",
@@ -773,6 +779,23 @@ async function refreshEnabledRssFeeds(
   }
 }
 
+async function readEnabledRssFeeds(): Promise<RssFeed[]> {
+  const feeds: RssFeed[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (page) => {
+      for (const feed of page) {
+        if (feed.enabled) feeds.push(feed);
+      }
+      return "continue";
+    },
+  );
+  return feeds;
+}
+
 export async function refreshRssFeeds(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
@@ -786,9 +809,7 @@ export async function refreshRssFeeds(
   }
   if (!(await activeLibraryWriterMayContactProviders())) return;
   const store = useAppStore.getState();
-  const enabledFeeds = withRssRuntimeStates(
-    Object.values(store.feeds).filter((f) => f.enabled),
-  );
+  const enabledFeeds = withRssRuntimeStates(await readEnabledRssFeeds());
   const feeds = selectRssFeedsForRefresh(enabledFeeds, {
     ...options,
     respectRetryWindow: false,
@@ -819,9 +840,7 @@ export async function refreshScheduledRssFeeds(
   }
   if (!(await activeLibraryWriterMayContactProviders())) return;
   const store = useAppStore.getState();
-  const enabledFeeds = withRssRuntimeStates(
-    Object.values(store.feeds).filter((f) => f.enabled),
-  );
+  const enabledFeeds = withRssRuntimeStates(await readEnabledRssFeeds());
   const feeds = selectRssFeedsForRefresh(enabledFeeds, {
     ...options,
     respectRetryWindow: true,
@@ -867,7 +886,7 @@ export async function importOPMLFeeds(
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<ImportProgress> {
   const store = useAppStore.getState();
-  const existingUrls = new Set(Object.values(store.feeds).map((f) => f.url));
+  const existingUrls = new Set<string>();
 
   const progress: ImportProgress = {
     total: feeds.length,
@@ -879,6 +898,13 @@ export async function importOPMLFeeds(
   };
 
   for (const feed of feeds) {
+    if (!existingUrls.has(feed.url)) {
+      const existing = await readLibraryCoreRssFeedV1(
+        queryNormalizedLibrary,
+        feed.url,
+      );
+      if (existing !== null) existingUrls.add(feed.url);
+    }
     // Skip feeds already subscribed
     if (existingUrls.has(feed.url)) {
       progress.skipped++;
@@ -925,9 +951,18 @@ export async function importOPMLFeeds(
 /**
  * Export all current feed subscriptions as an OPML file download.
  */
-export function exportFeedsAsOPML(): void {
-  const store = useAppStore.getState();
-  const feeds = Object.values(store.feeds);
+export async function exportFeedsAsOPML(): Promise<void> {
+  const feeds: RssFeed[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (page) => {
+      feeds.push(...page);
+      return "continue";
+    },
+  );
 
   if (feeds.length === 0) return;
 

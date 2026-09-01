@@ -17,7 +17,7 @@
         "observed_frontier": []
       },
       "certificate": {
-        "authority_signature": "e2cdcd5dd1e6088d1325bb8f968ecfa63523d3a29bfb6dff8b8feaa4cfaf9b452d309ff788af31a54a72da85da2e1bc3089ea32a16699cc72c69293d67b52e05",
+        "authority_signature": "4879a5740c86b1da8e31ea5947f83ed9cf6a7acfbc6f67d200732e5fecd26136d299afcbfbc1bb53804b8bdd295a2737a99704a423fcf390bebd3e8f7d009d00",
         "certificate_body": {
           "actor_capability_body": {
             "actor_class": "agent",
@@ -27,6 +27,7 @@
               "feed_item_read_assignment",
               "feed_item_saved_assignment"
             ],
+            "allowed_query_ids": ["search_page_v1"],
             "authority_key_id": "42891b54c7996d4e0beb059ca2a091987225f156b4ce11c9a88885c0971deac2",
             "epoch": 1,
             "epoch_id": "2222222222222222222222222222222222222222222222222222222222222222",
@@ -40,7 +41,7 @@
             },
             "signature_algorithm": "ed25519"
           },
-          "actor_capability_body_digest": "0691c429d25bed2cdf6326a3fb88f39837f48b528688d04d0f1f15f8b5bf7493",
+          "actor_capability_body_digest": "09927b705982dc42f9ac87702663c7349fbda371e34e7c28c91a1c632dd3fbd4",
           "actor_enrollment_body": {
             "actor_id": "3ac4987ecad7c43db42793afff0bf117cbedfddb68ee2e56f4815b943bedd500",
             "actor_incarnation_nonce": "4444444444444444444444444444444444444444444444444444444444444444",
@@ -61,9 +62,9 @@
           "actor_proof": "0996c6573662119f43f1d79156db3988ddaf0b6bb608ae4b30b6b8dc0a99a9045d0cd944fa14fdbca58c1dff6b2837dceb5e3f70e709a9c42054619db6e5370f",
           "enrollment_body_digest": "1d5bae5379d948b4c45d4ab8997be043b4c4bcb486073ad1e6b92702def87c77"
         },
-        "certificate_digest": "b580f367b434b672a40206ac7fdc2e3c7b10fa8238c9f8065dcb7ab782a46524"
+        "certificate_digest": "01de7010a449d2c45ad0287d322383a637f698f7902c8696b99906d14b4b5ed8"
       },
-      "actor_chain_genesis": "f507b1787ddbcfb28316873569e62058886af6c45c3cbcf4367fd66a20c73ab9"
+      "actor_chain_genesis": "f777a5cf367494b05b268ab985f0706f3cd16883a4627aa5f6512a528f5640d8"
     }
   ]
 }

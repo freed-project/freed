@@ -33,9 +33,6 @@
 /packages/desktop/src/hooks/usePostLoginAutoSync.ts @AubreyF
 /packages/desktop/src/hooks/useProviderRiskGate.tsx @AubreyF
 /packages/desktop/src/lib/ai-summarizer.ts @AubreyF
-/packages/desktop/src/lib/automerge-types.ts @AubreyF
-/packages/desktop/src/lib/automerge.ts @AubreyF
-/packages/desktop/src/lib/automerge.worker.ts @AubreyF
 /packages/desktop/src/lib/background-runtime-coordinator.ts @AubreyF
 /packages/desktop/src/lib/bug-report.ts @AubreyF
 /packages/desktop/src/lib/capture.ts @AubreyF
@@ -49,6 +46,7 @@
 /packages/desktop/src/lib/google-contacts.ts @AubreyF
 /packages/desktop/src/lib/instagram-*.ts @AubreyF
 /packages/desktop/src/lib/legal-consent.ts @AubreyF
+/packages/desktop/src/lib/library-core-cloud-sync.ts @AubreyF
 /packages/desktop/src/lib/li-*.ts @AubreyF
 /packages/desktop/src/lib/local-ai-models.ts @AubreyF
 /packages/desktop/src/lib/memory-monitor.ts @AubreyF
@@ -80,6 +78,7 @@
 /packages/desktop/src/lib/authenticated-essay-*.ts @AubreyF
 /packages/desktop/src/lib/substack-*.ts @AubreyF
 /packages/desktop/src/lib/medium-*.ts @AubreyF
+/packages/library-service/src/ @AubreyF
 /packages/sync/ @AubreyF
 /packages/capture-facebook/ @AubreyF
 /packages/capture-instagram/ @AubreyF
@@ -96,9 +95,6 @@
 /packages/pwa/src/components/OAuthCallback.tsx @AubreyF
 /packages/pwa/src/components/PwaSyncSettings.tsx @AubreyF
 /packages/pwa/src/components/SyncConnectDialog.tsx @AubreyF
-/packages/pwa/src/lib/automerge-types.ts @AubreyF
-/packages/pwa/src/lib/automerge.ts @AubreyF
-/packages/pwa/src/lib/automerge.worker.ts @AubreyF
 /packages/pwa/src/lib/cloud-oauth.ts @AubreyF
 /packages/pwa/src/lib/bug-report.ts @AubreyF
 /packages/pwa/src/lib/contacts.ts @AubreyF
@@ -128,7 +124,6 @@
 /packages/ui/src/hooks/useContactSync.ts @AubreyF
 /packages/ui/src/lib/device-ai-preferences.ts @AubreyF
 /packages/ui/src/lib/factory-reset.ts @AubreyF
-/packages/sync/src/storage/indexeddb.ts @AubreyF
 
 # Stability automation, validation, provider gates, and release tooling.
 /scripts/ @AubreyF

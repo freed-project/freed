@@ -180,6 +180,31 @@ describe("ReaderView cache-first hydration", () => {
     await act(async () => root.unmount());
   });
 
+  it("does not mistake a compact feed preview for preserved reader text", async () => {
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
+    const hydrateReaderItem = vi.fn(async () => ({
+      html: "<article><p>Full live article body.</p></article>",
+      status: "hydrated" as const,
+    }));
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+      getLocalPreservedText: vi.fn(async () => null),
+      hydrateReaderItem,
+    } as unknown as PlatformConfig;
+
+    const { container, root } = await renderReaderView(platform);
+    await flushReaderEffects();
+
+    expect(container.textContent).toContain("Full live article body.");
+    expect(hydrateReaderItem).toHaveBeenCalledOnce();
+
+    await act(async () => root.unmount());
+  });
+
   it("uses the article title and lead image once when cached content includes them", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const platform = {

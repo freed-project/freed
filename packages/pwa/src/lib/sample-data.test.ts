@@ -10,25 +10,42 @@ import {
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT,
-  friendForAuthor,
   generateSampleLibraryData,
   hasSampleDataFingerprint,
-  personFromLegacyFriend,
 } from "@freed/shared";
+
+function linkedSampleAuthorKeys(
+  persons: readonly { id: string }[],
+  accounts: readonly {
+    externalId: string;
+    personId?: string;
+    provider: string;
+  }[],
+): Set<string> {
+  const personIds = new Set(persons.map((person) => person.id));
+  return new Set(
+    accounts
+      .filter(
+        (account) =>
+          account.personId !== undefined && personIds.has(account.personId),
+      )
+      .map((account) => `${account.provider}:${account.externalId}`),
+  );
+}
 
 describe("sample data batches", () => {
   it("appends unique friend, feed, and item ids across batches", () => {
     const batchA = generateSampleLibraryData({ batchId: "batch-a", seed: 1 });
     const batchB = generateSampleLibraryData({ batchId: "batch-b", seed: 2 });
 
-    expect(batchA.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
-    expect(batchB.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batchA.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batchB.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
     expect(batchA.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
     expect(batchB.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
 
-    const friendIds = new Set([
-      ...batchA.friends.map((friend) => friend.id),
-      ...batchB.friends.map((friend) => friend.id),
+    const personIds = new Set([
+      ...batchA.persons.map((person) => person.id),
+      ...batchB.persons.map((person) => person.id),
     ]);
     const itemIds = new Set([
       ...batchA.items.map((item) => item.globalId),
@@ -39,17 +56,20 @@ describe("sample data batches", () => {
       ...batchB.feeds.map((feed) => feed.url),
     ]);
 
-    expect(friendIds.size).toBe(SAMPLE_SHOWCASE_FRIEND_COUNT * 2);
+    expect(personIds.size).toBe(SAMPLE_SHOWCASE_FRIEND_COUNT * 2);
     expect(itemIds.size).toBe(SAMPLE_SHOWCASE_ITEM_COUNT * 2);
     expect(feedUrls.size).toBe(SAMPLE_SHOWCASE_FEED_COUNT * 2);
   });
 
-  it("keeps friend source links aligned with the generated social posts", () => {
+  it("keeps Person and Account links aligned with generated social posts", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-c", seed: 3 });
-    const friendMap = Object.fromEntries(batch.friends.map((friend) => [friend.id, friend]));
+    const linkedAuthorKeys = linkedSampleAuthorKeys(
+      batch.persons,
+      batch.accounts,
+    );
 
     const linkedItems = batch.items.filter((item) =>
-      friendForAuthor(friendMap, item.platform, item.author.id)
+      linkedAuthorKeys.has(`${item.platform}:${item.author.id}`),
     );
 
     expect(linkedItems.length).toBeGreaterThan(0);
@@ -61,14 +81,10 @@ describe("sample data batches", () => {
       generatedAt: 123,
       seed: 5,
     });
-    const people = batch.friends.map(personFromLegacyFriend);
-    const accounts = batch.accounts;
-
     expect(batch.feeds.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.items.every(hasSampleDataFingerprint)).toBe(true);
-    expect(batch.friends.every(hasSampleDataFingerprint)).toBe(true);
-    expect(people.every(hasSampleDataFingerprint)).toBe(true);
-    expect(accounts.every(hasSampleDataFingerprint)).toBe(true);
+    expect(batch.persons.every(hasSampleDataFingerprint)).toBe(true);
+    expect(batch.accounts.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.items[0]?.sampleDataFingerprint).toEqual({
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
@@ -80,23 +96,26 @@ describe("sample data batches", () => {
   it("normalizes negative seeds when generating sample friends", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-negative", seed: -1 });
 
-    expect(batch.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
-    expect(batch.friends.every((friend) => friend.id.includes("sample-friend-"))).toBe(true);
+    expect(batch.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batch.persons.every((person) => person.id.includes("sample-friend-"))).toBe(true);
   });
 
   it("includes LinkedIn posts that are linked to sample friends", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-linkedin", seed: 9 });
-    const friendMap = Object.fromEntries(batch.friends.map((friend) => [friend.id, friend]));
+    const linkedAuthorKeys = linkedSampleAuthorKeys(
+      batch.persons,
+      batch.accounts,
+    );
 
     const linkedInItems = batch.items.filter((item) => item.platform === "linkedin");
     const linkedFriendItems = linkedInItems.filter((item) =>
-      friendForAuthor(friendMap, item.platform, item.author.id)
+      linkedAuthorKeys.has(`${item.platform}:${item.author.id}`),
     );
 
     expect(linkedInItems.length).toBeGreaterThan(10);
     expect(linkedFriendItems.length).toBeGreaterThan(0);
-    expect(batch.friends.some((friend) =>
-      friend.sources.some((source) => source.platform === "linkedin")
+    expect(batch.accounts.some((account) =>
+      account.personId && account.provider === "linkedin"
     )).toBe(true);
   });
 
@@ -125,13 +144,10 @@ describe("sample data batches", () => {
       seed: 11,
       scale: "stress",
     });
-    const linkedIdentityCount = batch.friends.reduce(
-      (total, friend) => total + friend.sources.length,
-      0,
-    );
+    const linkedIdentityCount = batch.accounts.filter((account) => account.personId).length;
     const unlinkedIdentityCount = batch.accounts.filter((account) => !account.personId).length;
 
-    expect(batch.friends).toHaveLength(SAMPLE_STRESS_FRIEND_COUNT);
+    expect(batch.persons).toHaveLength(SAMPLE_STRESS_FRIEND_COUNT);
     expect(linkedIdentityCount).toBe(SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT);
     expect(unlinkedIdentityCount).toBe(SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT);
     expect(batch.accounts).toHaveLength(SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT);
@@ -139,10 +155,7 @@ describe("sample data batches", () => {
 
   it("documents the showcase social identity count across linked and unlinked accounts", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-showcase", seed: 13 });
-    const linkedIdentityCount = batch.friends.reduce(
-      (total, friend) => total + friend.sources.length,
-      0,
-    );
+    const linkedIdentityCount = batch.accounts.filter((account) => account.personId).length;
     const unlinkedAccounts = batch.accounts.filter((account) => !account.personId);
 
     expect(linkedIdentityCount).toBe(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT);

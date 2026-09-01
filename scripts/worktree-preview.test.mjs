@@ -56,6 +56,28 @@ test("findFreePort skips a port that is only occupied on IPv6", async (t) => {
   assert.notEqual(candidate, address.port);
 });
 
+test("Desktop Playwright skips unrelated listeners and never reuses a server", async (t) => {
+  const server = net.createServer((_socket) => {
+    // The listener deliberately is not a Freed Vite server.
+  });
+  t.after(async () => {
+    await close(server);
+  });
+
+  await listen(server, 0, "127.0.0.1");
+  const address = server.address();
+  assert.ok(address && typeof address === "object" && "port" in address);
+
+  const candidate = await findFreePort(address.port, 5);
+  assert.notEqual(candidate, address.port);
+
+  const config = readFileSync(path.join(repoRoot, "packages/desktop/playwright.config.ts"), "utf8");
+  assert.match(config, /await findFreePort\(DEFAULT_PORT \+ worktreePortOffset\)/);
+  assert.match(config, /process\.env\.PLAYWRIGHT_PORT = String\(defaultPort\)/);
+  assert.match(config, /reuseExistingServer: false/);
+  assert.doesNotMatch(config, /reuseExistingServer: !process\.env\.CI/);
+});
+
 test("worktree-preview help prints usage", () => {
   const result = spawnSync("bash", ["scripts/worktree-preview.sh", "--help"], {
     cwd: repoRoot,
@@ -81,6 +103,23 @@ test("worktree-preview marks product previews as feature previews", () => {
   assert.match(
     script,
     /cd packages\/pwa && PATH=.*VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=/,
+  );
+});
+
+test("Vite worktree previews fail instead of moving to an untracked port", () => {
+  const script = readFileSync(path.join(repoRoot, "scripts/worktree-preview.sh"), "utf8");
+
+  assert.equal(
+    (script.match(/RUN_ARGS=.*"--strictPort"/g) ?? []).length,
+    2,
+  );
+  assert.match(
+    script,
+    /cd packages\/desktop .*npm run dev -- --port \$\{PORT\} --strictPort/,
+  );
+  assert.match(
+    script,
+    /cd packages\/pwa .*npm run dev -- --port \$\{PORT\} --strictPort/,
   );
 });
 

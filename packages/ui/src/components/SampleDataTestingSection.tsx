@@ -1,17 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import {
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
-} from "@freed/shared";
-import {
+  clearSampleLibraryDataWithProgressToast,
   formatSampleDataSummary,
-  refreshSampleLibraryData,
-  summarizeSampleData,
+  populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
-import { toast } from "./Toast.js";
 import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 
 export function SampleDataTestingSection() {
@@ -19,49 +12,47 @@ export function SampleDataTestingSection() {
   const isInitialized = useAppStore((s) => s.isInitialized);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const { seedSocialConnections } = usePlatform();
 
   const [seeding, setSeeding] = useState(false);
-  const [seedDone, setSeedDone] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const sampleDataSummary = useMemo(
-    () =>
-      summarizeSampleData(
-        { items, feeds, persons, accounts },
-        libraryFacets.sampleItemCount,
-      ),
-    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
+    () => ({
+      accounts: libraryFacets.sampleAccountCount,
+      feeds: libraryFacets.sampleFeedCount,
+      items: libraryFacets.sampleItemCount,
+      persons: libraryFacets.samplePersonCount,
+      total:
+        libraryFacets.sampleAccountCount +
+        libraryFacets.sampleFeedCount +
+        libraryFacets.sampleItemCount +
+        libraryFacets.samplePersonCount,
+    }),
+    [libraryFacets],
   );
   const hasSampleData = sampleDataSummary.total > 0;
 
   const handleSeedSampleData = useCallback(async () => {
+    if (hasSampleData) return;
     setSeeding(true);
-    toast.info("Populating sample data...");
     try {
-      await refreshSampleLibraryData({
+      await populateSampleLibraryDataWithProgressToast({
         initialize,
         isInitialized,
         addSampleLibraryData,
         seedSocialConnections,
       });
-      setSeedDone(true);
-      toast.success(
-        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setSeeding(false);
     }
   }, [
     addSampleLibraryData,
+    hasSampleData,
     initialize,
     isInitialized,
     seedSocialConnections,
@@ -69,14 +60,11 @@ export function SampleDataTestingSection() {
 
   const handleClearSampleData = useCallback(async () => {
     setClearing(true);
-    toast.info("Clearing sample data...");
     try {
-      const summary = await clearSampleData();
-      setSeedDone(false);
+      await clearSampleLibraryDataWithProgressToast({ clearSampleData });
       setConfirmClear(false);
-      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to clear sample data");
+    } catch {
+      // The progress toast owns the user-visible failure state.
     } finally {
       setClearing(false);
     }
@@ -91,7 +79,7 @@ export function SampleDataTestingSection() {
       <button
         type="button"
         onClick={handleSeedSampleData}
-        disabled={seeding}
+        disabled={seeding || hasSampleData}
         className="theme-accent-button mt-7 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       >
         <svg
@@ -107,10 +95,14 @@ export function SampleDataTestingSection() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l.9 2.1L8 18l-2.1.9L5 21l-.9-2.1L2 18l2.1-.9L5 15z" />
         </svg>
         <span>
-          {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
+          {seeding
+            ? "Populating sample data..."
+            : hasSampleData
+              ? "Sample data populated"
+              : "Populate sample data"}
         </span>
       </button>
-      {hasSampleData && (
+      {hasSampleData && !seeding && (
         <div className="mt-4 flex w-full flex-col items-center gap-3">
           <button
             type="button"

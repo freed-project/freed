@@ -21,7 +21,7 @@ fn decode_lowercase_hex<const N: usize>(
         return Err(invalid);
     }
     let mut output = [0_u8; N];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let high = (pair[0] as char).to_digit(16).expect("validated hex");
         let low = (pair[1] as char).to_digit(16).expect("validated hex");
         output[index] = ((high << 4) | low) as u8;
@@ -73,7 +73,9 @@ mod tests {
     fn decode_message_hex(value: &str) -> Vec<u8> {
         value
             .as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 let high = (pair[0] as char).to_digit(16).expect("fixture hex");
                 let low = (pair[1] as char).to_digit(16).expect("fixture hex");

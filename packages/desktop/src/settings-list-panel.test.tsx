@@ -148,6 +148,39 @@ describe("SettingsListPanel", () => {
 
     expect(container.textContent).toContain("No matches here.");
   });
+
+  it("leaves filtering and paging to a bounded external reader", async () => {
+    const onQueryChange = vi.fn();
+    await act(async () => {
+      root.render(
+        <SettingsListPanel
+          items={[{ id: "visible", label: "Visible SQLite row" }]}
+          searchPlaceholder="Filter feeds"
+          ariaLabel="Filter feeds"
+          emptyLabel="No feeds."
+          externalCountLabel="Page 3"
+          externalQuery="remote filter"
+          onExternalQueryChange={onQueryChange}
+          footer={<button type="button">Next SQLite page</button>}
+          searchDataTestId="external-filter"
+          itemKey={(item) => item.id}
+          getSearchText={(item) => item.label}
+          renderItem={(item) => <div>{item.label}</div>}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("Visible SQLite row");
+    expect(container.textContent).toContain("Page 3");
+    expect(container.textContent).toContain("Next SQLite page");
+    const input = container.querySelector<HTMLInputElement>(
+      "[data-testid='external-filter']",
+    );
+    await act(async () => {
+      setInputValue(input!, "new filter");
+    });
+    expect(onQueryChange).toHaveBeenCalledWith("new filter");
+  });
 });
 
 describe("settings list scroll enforcement", () => {

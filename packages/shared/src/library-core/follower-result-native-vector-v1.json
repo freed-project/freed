@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "authority_public_key": "66cd608b928b88e50e0efeaa33faf1c43cefe07294b0b87e9fe0aba6a3cf7633",
+  "canonical_result": {
+    "actor_id": "3333333333333333333333333333333333333333333333333333333333333333",
+    "authoritative_source_revision": 1,
+    "authority_key_id": "aaf0c82b2245672170a83c9347d98671e0174dd87ef5bd3dfa9e41b1a4a858e4",
+    "canonical_operation_ids": [
+      "tx:read:native-verified:member:0",
+      "tx:read:native-verified:member:1"
+    ],
+    "epoch": 1,
+    "epoch_id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "format": "freed_follower_result_v1",
+    "intent_epoch": 1,
+    "intent_epoch_id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "library_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "original_result_digest": null,
+    "previous_result_digest": null,
+    "receipt_ids": [
+      "70b19300f90144531387d3578997d3cbb599bfdbca73a90dd9f9b527efaa460b",
+      "af7c9ed7ecce50f8e8117d33b8e1f899d98de2b0b2cbd6538c6912afe9cfb726"
+    ],
+    "rejection_reason": null,
+    "replacement_fields": [
+      {
+        "boolean_value": null,
+        "entity_id": "rss:item:1",
+        "entity_type": "FeedItem",
+        "field_path": "read_at",
+        "integer_value": 900,
+        "real_value": null,
+        "text_value": null,
+        "value_type": "integer"
+      },
+      {
+        "boolean_value": null,
+        "entity_id": "rss:item:2",
+        "entity_type": "FeedItem",
+        "field_path": "read_at",
+        "integer_value": 901,
+        "real_value": null,
+        "text_value": null,
+        "value_type": "integer"
+      }
+    ],
+    "resolved_at_ms": 2000,
+    "result_body_digest": "3f54f5c4ca3cb7cf148ab3d40e1e0bfff850e368a4e9572e3bef314531a42503",
+    "result_sequence": 1,
+    "schema_version": 1,
+    "signature": "f6293d22aa40274bb4a3a9a27597c52c8fce6bad74b2528de747497e1f854e0eef11219c0c97192e5611ffaf0df6d4647005c7e9ef9ab664fb73a075fc2f2201",
+    "signature_algorithm": "ed25519",
+    "status": "accepted",
+    "transaction_digest": "da9c7a32c315337749235d857e823e4904edd2838bfea6528177f98851dda538",
+    "transaction_id": "tx:read:native-verified"
+  }
+}

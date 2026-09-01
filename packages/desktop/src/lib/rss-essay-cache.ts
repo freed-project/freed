@@ -66,9 +66,9 @@ function existingEssayIdsByUrl(
 }
 
 /**
- * Preserve complete essay text supplied by user-added provider RSS feeds before
- * the Automerge worker compacts synced item text. Existing legacy RSS IDs get
- * the same local body so identity migration cannot orphan the cached article.
+ * Preserve complete essay text supplied by user-added provider RSS feeds in the
+ * device-local reader cache. Existing historical RSS IDs receive the same local
+ * body so identity migration cannot orphan the cached article.
  */
 export async function cacheRssEssayBodies(
   items: readonly FeedItem[],

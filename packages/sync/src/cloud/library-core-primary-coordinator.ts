@@ -1,12 +1,9 @@
-import type { GoogleDriveFetch } from "./library-core-google-drive-adapter.js";
-
 const DEFAULT_LOCAL_REVISION_POLL_MS = 15_000;
 const DEFAULT_INBOUND_ACTOR_POLL_MS = 60_000;
 const MAX_DIAGNOSTIC_DETAIL_BYTES = 160;
 
 export interface LibraryCorePrimaryAuthorityPortV1 {
-  assertPrimary(): void;
-  isPrimary(): boolean;
+  assertPrimary(): void | Promise<void>;
 }
 
 export interface LibraryCorePrimaryDurableStateV1 {
@@ -19,11 +16,6 @@ export interface LibraryCorePrimaryDurableStatePortV1 {
   read(): Promise<LibraryCorePrimaryDurableStateV1 | null>;
 }
 
-export interface LibraryCorePrimaryCredentialPortV1 {
-  readonly initialAccessToken: string;
-  resolveAccessToken(): Promise<string>;
-}
-
 export interface LibraryCorePrimaryClockPortV1 {
   nowMs(): number;
 }
@@ -31,10 +23,6 @@ export interface LibraryCorePrimaryClockPortV1 {
 export interface LibraryCorePrimarySchedulerPortV1<TimerHandle> {
   schedule(callback: () => void | Promise<void>, delayMs: number): TimerHandle;
   cancel(handle: TimerHandle): void;
-}
-
-export interface LibraryCorePrimaryFetchPortV1 {
-  readonly googleFetch?: GoogleDriveFetch;
 }
 
 export type LibraryCorePrimaryCoordinatorDiagnosticV1 =
@@ -57,8 +45,7 @@ export type LibraryCorePrimaryCoordinatorDiagnosticV1 =
       readonly kind: "failed";
       readonly atMs: number;
       readonly errorClass:
-        | "initial_publication_failed"
-        | "scheduled_poll_failed";
+        "initial_publication_failed" | "scheduled_poll_failed";
       readonly safeDetail: string;
     }
   | {
@@ -79,8 +66,7 @@ export interface LibraryCorePrimaryPublicationPortV1<
   Result extends LibraryCorePrimaryPublicationResultV1,
 > {
   publish(input: {
-    readonly accessToken: string;
-    readonly googleFetch?: GoogleDriveFetch;
+    readonly reason: "initial" | "local_revision" | "inbound_refresh";
     readonly signal: AbortSignal;
   }): Promise<Result>;
 }
@@ -91,10 +77,8 @@ export interface LibraryCorePrimaryCoordinatorOptionsV1<
 > {
   readonly authority: LibraryCorePrimaryAuthorityPortV1;
   readonly durableState: LibraryCorePrimaryDurableStatePortV1;
-  readonly credentials: LibraryCorePrimaryCredentialPortV1;
   readonly clock: LibraryCorePrimaryClockPortV1;
   readonly scheduler: LibraryCorePrimarySchedulerPortV1<TimerHandle>;
-  readonly fetch: LibraryCorePrimaryFetchPortV1;
   readonly diagnostics: LibraryCorePrimaryDiagnosticsPortV1;
   readonly publication: LibraryCorePrimaryPublicationPortV1<Result>;
   readonly localRevisionPollMs?: number;
@@ -210,9 +194,7 @@ export function createLibraryCorePrimaryCoordinatorV1<
     diagnose({ kind: "stopped", atMs: diagnosticAtMs(), reason });
   };
   const diagnoseFailure = (
-    errorClass:
-      | "initial_publication_failed"
-      | "scheduled_poll_failed",
+    errorClass: "initial_publication_failed" | "scheduled_poll_failed",
   ): void => {
     diagnose({
       kind: "failed",
@@ -226,13 +208,11 @@ export function createLibraryCorePrimaryCoordinatorV1<
     });
   };
   const publish = async (
-    accessToken: string,
     reason: "initial" | "local_revision" | "inbound_refresh",
   ): Promise<Result> => {
     diagnose({ kind: "publication_started", atMs: now(), reason });
     const result = await options.publication.publish({
-      accessToken,
-      googleFetch: options.fetch.googleFetch,
+      reason,
       signal: abortController.signal,
     });
     diagnose({
@@ -252,16 +232,17 @@ export function createLibraryCorePrimaryCoordinatorV1<
   };
   const poll = async (): Promise<void> => {
     if (lifecycle !== "running" || abortController.signal.aborted) return;
-    if (!options.authority.isPrimary()) {
-      stop("authority_changed");
-      return;
-    }
     try {
       const durableState = requireDurableState(
         await options.durableState.read(),
       );
+      if (lifecycle !== "running" || abortController.signal.aborted) return;
       const polledAt = now();
-      if (durableState?.active !== true) return;
+      if (durableState === null) return;
+      if (!durableState.active) {
+        stop("authority_changed");
+        return;
+      }
       const localRevisionChanged =
         durableState.lastPublishedRevision !== durableState.localRevision;
       const inboundRefreshDue =
@@ -269,7 +250,6 @@ export function createLibraryCorePrimaryCoordinatorV1<
       if (!localRevisionChanged && !inboundRefreshDue) return;
       lastInboundActorPollAt = polledAt;
       const result = await publish(
-        await options.credentials.resolveAccessToken(),
         localRevisionChanged ? "local_revision" : "inbound_refresh",
       );
       if (result.status === "ownership_required") {
@@ -292,15 +272,17 @@ export function createLibraryCorePrimaryCoordinatorV1<
       if (lifecycle !== "idle") {
         throw new Error("Library Core Primary coordinator already started");
       }
-      options.authority.assertPrimary();
+      await options.authority.assertPrimary();
+      if (lifecycle !== "idle" || abortController.signal.aborted) {
+        throw new Error(
+          "Library Core Primary coordinator stopped during authority assertion",
+        );
+      }
       lifecycle = "running";
       diagnose({ kind: "started", atMs: now() });
       let initial: Result;
       try {
-        initial = await publish(
-          options.credentials.initialAccessToken,
-          "initial",
-        );
+        initial = await publish("initial");
       } catch (error) {
         diagnoseFailure("initial_publication_failed");
         throw error;

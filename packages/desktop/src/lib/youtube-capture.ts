@@ -10,7 +10,7 @@ import type { Account, FeedItem } from "@freed/shared";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { docReconcileYouTubeCapture } from "./library-client";
+import { reconcileYouTubeLibraryCapture } from "./library-client";
 import { safeUnlisten } from "./safe-unlisten";
 import { storeYouTubeAuthState } from "./youtube-auth";
 import { clearYouTubePlaylistState } from "./youtube-playlist";
@@ -542,24 +542,23 @@ export function captureYouTube(
     }
 
     const before = useAppStore.getState();
-    const existingAccountIds = new Set(Object.keys(before.accounts));
-    const existingItemIds = new Set(before.items.map((item) => item.globalId));
-    result.diag.accountsAdded = result.accounts.filter(
-      (account) => !existingAccountIds.has(account.id),
-    ).length;
-    const beforeItemCount = typeof before.docItemCount === "number"
-      ? before.docItemCount
-      : null;
+    const beforeAccountCount = before.socialAccountCount ?? 0;
+    const beforeItemCount = before.totalItemCount;
 
-    await docReconcileYouTubeCapture(result.accounts, result.items, {
+    await reconcileYouTubeLibraryCapture(result.accounts, result.items, {
       rosterComplete: result.diag.rosterComplete,
       capturedAt: result.capturedAt,
     });
     assertFactoryResetEpoch(resetEpoch);
-    const afterItemCount = useAppStore.getState().docItemCount;
-    result.diag.itemsAdded = beforeItemCount !== null && typeof afterItemCount === "number"
-      ? Math.max(0, afterItemCount - beforeItemCount)
-      : result.items.filter((item) => !existingItemIds.has(item.globalId)).length;
+    const after = useAppStore.getState();
+    result.diag.accountsAdded = Math.max(
+      0,
+      (after.socialAccountCount ?? beforeAccountCount) - beforeAccountCount,
+    );
+    result.diag.itemsAdded = Math.max(
+      0,
+      after.totalItemCount - beforeItemCount,
+    );
 
     const auth = {
       ...useAppStore.getState().ytAuth,

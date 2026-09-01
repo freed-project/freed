@@ -1,0 +1,4 @@
+export const PWA_OPTIONAL_SURFACE_CACHE_NAME: string;
+export const PWA_OPTIONAL_SURFACE_ASSET_GLOB_IGNORES: readonly string[];
+export const PWA_OPTIONAL_SURFACE_URL_PATTERN: RegExp;
+export const PWA_OPTIONAL_SURFACE_FILENAME_PATTERN: RegExp;

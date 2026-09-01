@@ -110,6 +110,17 @@ export function isLibraryCoreOperationInstanceId(
   return typeof value === "string" && OPERATION_INSTANCE_ID.test(value);
 }
 
+export function createLibraryCoreOperationInstanceId(
+  prefix: string,
+  entropy: string,
+): LibraryCoreOperationInstanceId {
+  const value = `${prefix}:${entropy}`;
+  if (!isLibraryCoreOperationInstanceId(value)) {
+    throw new TypeError("Library Core operation identity is invalid");
+  }
+  return value;
+}
+
 export function isLibraryCoreNonnegativeSafeInteger(
   value: unknown,
 ): value is number {

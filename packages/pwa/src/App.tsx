@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { getWebsiteHostForChannel, type ReleaseChannel } from "@freed/shared";
+import {
+  getWebsiteHostForChannel,
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
@@ -8,6 +15,7 @@ import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
+import { DemoWelcomeBanner } from "./components/DemoWelcomeBanner";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -15,9 +23,7 @@ import {
 } from "@freed/ui/context";
 import { quiescePwaStartupMigrations, useAppStore } from "./lib/store";
 import {
-  disconnect,
   onStatusChange,
-  clearStoredRelayUrlForFactoryReset,
   startCloudSync,
   stopCloudSync,
   getCloudProvider,
@@ -56,13 +62,10 @@ import {
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
 import { saveUrlInPwa } from "./lib/save-url";
-import {
-  cacheArticleHtml,
-  getCachedArticleHtml,
-} from "@freed/ui/lib/article-cache";
+import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
-import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
 import {
@@ -76,24 +79,42 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
+  appendPwaLibraryCorePersonReachOut,
+  assignPwaLibraryCoreAccountToPerson,
   ensurePwaLibraryCoreLocalSampleState,
+  executePwaLibraryCoreScopeAction,
   openPwaLibraryCoreFeedReader,
   openPwaLibraryCoreFriendsFeedReader,
   openPwaLibraryCoreSavedFeedReader,
   readPwaLibraryCoreFacetSummary,
+  readPwaLibraryCoreAccountDetail,
   readPwaLibraryCoreFeedSignalCounts,
   readPwaLibraryCoreFriendsGraph,
+  readPwaLibraryCoreFriendDetail,
   readPwaLibraryCoreFriendsLocationItem,
   readPwaLibraryCoreItemDetail,
+  readPwaLibraryCoreMapCandidates,
   readPwaLibraryCorePersonTimeline,
+  readPwaLibraryCorePersonDetail,
   readPwaLibraryCoreSavedAnalytics,
-  readPwaLibraryCoreSurfaceItems,
+  readPwaLibraryCoreStoryWallCandidates,
+  removePwaLibraryCorePerson,
+  replacePwaLibraryCoreFriend,
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
+  settlePwaLibraryCoreLocalSampleState,
+  upsertPwaLibraryCorePerson,
+  upsertPwaLibraryCoreAccount,
 } from "./lib/library-core-runtime";
 import {
-  refreshSampleLibraryData,
-  summarizeSampleData,
+  mutatePwaDeviceGraphLayout,
+  mutatePwaDeviceContactSync,
+  queryPwaDeviceContacts,
+  queryPwaNormalizedLibrary,
+} from "./lib/library-core-sqlite-runtime";
+import {
+  clearSampleLibraryDataWithProgressToast,
+  populateSampleLibraryDataWithProgressToast,
 } from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
@@ -107,13 +128,16 @@ import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
+import { installFreedDemoCheckpoint } from "./lib/demo-checkpoint";
+import { isFreedDemoMode } from "./lib/demo-mode";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
+const IS_DEMO = isFreedDemoMode(window.location.hostname);
 const LOCAL_PREVIEW_LABEL =
   import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
-  if (window.location.pathname === "/oauth-callback") {
+  if (!IS_DEMO && window.location.pathname === "/oauth-callback") {
     return <OAuthCallback />;
   }
 
@@ -180,6 +204,7 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const setError = useAppStore((state) => state.setError);
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installNotice, setInstallNotice] = useState<InstallNotice | null>(
@@ -211,8 +236,8 @@ function App() {
   // Tracked for a proper pass.
   /* eslint-disable react-hooks/set-state-in-effect -- bounded gate bootstrap described above */
   useEffect(() => {
-    if (IS_FEATURE_PREVIEW) {
-      acceptPwaBundle();
+    if (IS_DEMO || IS_FEATURE_PREVIEW) {
+      if (!IS_DEMO) acceptPwaBundle();
       setLegalAccepted(true);
       setLegalResolved(true);
       return;
@@ -225,35 +250,83 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted) return;
-    initialize();
-  }, [initialize, legalAccepted]);
+    if (IS_DEMO) {
+      performance.mark("freed-demo-checkpoint:start");
+      void installFreedDemoCheckpoint()
+        .then(() => {
+          performance.mark("freed-demo-checkpoint:end");
+          performance.measure(
+            "freed-demo-checkpoint",
+            "freed-demo-checkpoint:start",
+            "freed-demo-checkpoint:end",
+          );
+          return initialize();
+        })
+        .catch((error) => {
+          console.error(
+            "[demo] failed to activate showcase checkpoint:",
+            error,
+          );
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Freed could not prepare the showcase Library",
+          );
+        });
+      return;
+    }
+    if (!IS_FEATURE_PREVIEW) {
+      initialize();
+      return;
+    }
+    void ensurePwaLibraryCoreLocalSampleState()
+      .then(() => initialize())
+      .catch((error) => {
+        console.error(
+          "[sample-data] failed to initialize local preview data:",
+          error,
+        );
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Freed could not prepare the local preview Library",
+        );
+      });
+  }, [initialize, legalAccepted, setError]);
 
   useEffect(() => {
-    if (!isInitialized || !IS_FEATURE_PREVIEW) return;
-    const state = useAppStore.getState();
-    const sampleSummary = summarizeSampleData(state);
-    const hasTimeWindowMapSamples = state.items.some(
-      (item) =>
-        item.globalId.includes("sample-location-window:") &&
-        item.location?.coordinates &&
-        item.timeRange,
-    );
-    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
-
+    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
     void (async () => {
       await ensurePwaLibraryCoreLocalSampleState();
-      if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
-        await state.clearSampleData();
+      await settlePwaLibraryCoreLocalSampleState();
+      const facets = await readPwaLibraryCoreFacetSummary();
+      const sampleIsComplete =
+        facets.sampleAccountCount >=
+          SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
+        facets.sampleFeedCount >= SAMPLE_SHOWCASE_FEED_COUNT &&
+        facets.sampleItemCount >= SAMPLE_SHOWCASE_ITEM_COUNT &&
+        facets.samplePersonCount >= SAMPLE_SHOWCASE_FRIEND_COUNT;
+      if (sampleIsComplete) return;
+      const sampleTotal =
+        facets.sampleAccountCount +
+        facets.sampleFeedCount +
+        facets.sampleItemCount +
+        facets.samplePersonCount;
+      const actions = useAppStore.getState();
+      if (sampleTotal > 0) {
+        await clearSampleLibraryDataWithProgressToast(actions);
       }
-
-      await refreshSampleLibraryData(useAppStore.getState());
+      await populateSampleLibraryDataWithProgressToast(actions);
     })().catch((error) => {
-      console.error("[sample-data] failed to seed local preview data:", error);
+      console.error(
+        "[sample-data] failed to seed local preview data:",
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      );
     });
   }, [isInitialized]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized) return;
+    if (!legalAccepted || !isInitialized || IS_DEMO) return;
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
@@ -271,13 +344,12 @@ function App() {
 
     return () => {
       unsubscribe();
-      disconnect();
       stopCloudSync();
     };
   }, [isInitialized, legalAccepted, setSyncConnected]);
 
   useEffect(() => {
-    if (!legalAccepted) return;
+    if (!legalAccepted || IS_DEMO) return;
     const stopPolling = initPwaUpdater();
     const unsubscribe = onUpdateAvailable(() => setShowUpdateBanner(true));
     return () => {
@@ -292,7 +364,7 @@ function App() {
   // and tracked together.
   /* eslint-disable react-hooks/set-state-in-effect -- deferred external-state bootstrap described above */
   useEffect(() => {
-    if (!legalResolved) return;
+    if (!legalResolved || IS_DEMO) return;
 
     setInstallNotice(getInitialInstallNotice());
 
@@ -336,14 +408,13 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         await runCoordinatedPwaFactoryReset(async () => {
-          disconnect();
           stopCloudSync();
           await runFactoryResetOperations({
             quiesceLocalWriters: [quiescePwaStartupMigrations],
             clearDeviceStores: () => [
               clearDeviceDisplayPreferences(),
               clearDeviceAIPreferences(),
-              clearDeviceGraphLayout(),
+              clearLegacyDeviceGraphLayoutImport(),
             ],
             clearLocalSettings: [
               resetFeedCardDensity,
@@ -354,9 +425,8 @@ function App() {
             clearProviderDataAndConnections: async () => {
               stopCloudSync();
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
-              clearStoredRelayUrlForFactoryReset();
             },
-            clearDocument: async () => {},
+            clearLibrary: async () => {},
           });
           clearFactoryResetCloudCleanupBarrier();
         });
@@ -376,6 +446,24 @@ function App() {
             : cloudCleanupPaused
               ? "Factory reset stopped before cleanup finished. Freed will reload with cloud sync paused so you can retry safely."
               : "Factory reset stopped because Freed could not finish local cleanup. Reloading Freed so you can retry safely.",
+        );
+      },
+    });
+  }, []);
+  const handleLocalLibraryRecovery = useCallback(async () => {
+    await runFactoryResetWithRecovery({
+      reset: async () => {
+        beginFactoryResetBoundary();
+        stopCloudSync();
+        await runCoordinatedPwaFactoryReset(async () => {});
+      },
+      reload: () => {
+        preparePwaFactoryResetReload();
+        location.reload();
+      },
+      onFailure: () => {
+        toast.error(
+          "Freed could not replace this device's local Library. Reloading so you can retry safely.",
         );
       },
     });
@@ -405,75 +493,80 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
+      interactionMode: IS_DEMO ? "read-only" : "full",
+      geographicMapMode: IS_DEMO ? "local-showcase" : "online",
       feedMediaPreviews: "inline",
       SourceIndicator: null,
       HeaderSyncIndicator: null,
-      FeedsSettingsContent: PwaFeedsSettings,
-      SettingsExtraSections: PwaSyncSettings,
-      LegalSettingsContent: PwaLegalSettingsSection,
+      FeedsSettingsContent: IS_DEMO ? null : PwaFeedsSettings,
+      SettingsExtraSections: IS_DEMO ? null : PwaSyncSettings,
+      LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
-      XSettingsContent: PwaXSettings,
-      FacebookSettingsContent: PwaFacebookSettings,
-      InstagramSettingsContent: PwaInstagramSettings,
-      LinkedInSettingsContent: PwaLinkedInSettings,
+      XSettingsContent: IS_DEMO ? null : PwaXSettings,
+      FacebookSettingsContent: IS_DEMO ? null : PwaFacebookSettings,
+      InstagramSettingsContent: IS_DEMO ? null : PwaInstagramSettings,
+      LinkedInSettingsContent: IS_DEMO ? null : PwaLinkedInSettings,
       SubstackSettingsContent: null,
       MediumSettingsContent: null,
-      YouTubeSettingsContent: PwaYouTubeSettings,
-      GoogleContactsSettingsContent: PwaGoogleContactsSettings,
-      checkForUpdates,
-      applyUpdate: applyPwaUpdate,
+      YouTubeSettingsContent: IS_DEMO ? null : PwaYouTubeSettings,
+      GoogleContactsSettingsContent: IS_DEMO ? null : PwaGoogleContactsSettings,
+      checkForUpdates: IS_DEMO ? undefined : checkForUpdates,
+      applyUpdate: IS_DEMO ? undefined : applyPwaUpdate,
       releaseChannel,
-      setReleaseChannel,
-      factoryReset: handleFactoryReset,
-      activeCloudProviderLabel: () => {
-        const p = getCloudProvider();
-        if (p === "gdrive") return "Google Drive";
-        if (p === "dropbox") return "Dropbox";
-        return null;
-      },
+      setReleaseChannel: IS_DEMO ? undefined : setReleaseChannel,
+      factoryReset: IS_DEMO ? undefined : handleFactoryReset,
+      activeCloudProviderLabel: () =>
+        getCloudProvider() === "gdrive" ? "Google Drive" : null,
       // PWA save URL: fetches and caches article content when possible, then
       // falls back to a desktop-healed stub for sites that refuse extraction.
-      saveUrl: async (url, options) => {
-        return saveUrlInPwa(url, options);
-      },
+      saveUrl: IS_DEMO
+        ? undefined
+        : async (url, options) => saveUrlInPwa(url, options),
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
         try {
           const cached = await getCachedArticleHtml(globalId);
           if (cached) return cached;
-          const item = await readPwaLibraryCoreItemDetail(globalId);
-          const html = item?.preservedContent?.html ?? null;
-          if (!html) return null;
-          const articleUrl =
-            item?.content.linkPreview?.url ??
-            item?.sourceUrl ??
-            `/reader-item/${encodeURIComponent(globalId)}`;
-          await cacheArticleHtml(articleUrl, globalId, html, {
-            pinned: item?.userState.saved ?? false,
-          }).catch(() => {});
-          return html;
+          return null;
         } catch {
           return null;
         }
       },
-      hydrateReaderItem: hydrateReaderItemInPwa,
-      pinReaderItem: pinReaderItemInPwa,
+      hydrateReaderItem: IS_DEMO ? undefined : hydrateReaderItemInPwa,
+      pinReaderItem: IS_DEMO ? undefined : pinReaderItemInPwa,
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
-      pickContact: pickContactViaWebApi,
-      openUrl: openPwaUrl,
+      pickContact: IS_DEMO ? undefined : pickContactViaWebApi,
+      openUrl: IS_DEMO
+        ? async () => toast.info("External links are disabled in this read only demo")
+        : openPwaUrl,
       openBoundedFeedReader: openPwaLibraryCoreFeedReader,
       openBoundedFriendsFeedReader: openPwaLibraryCoreFriendsFeedReader,
       openBoundedSavedFeedReader: openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
+      executeLibraryScopeAction: IS_DEMO ? undefined : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
+      readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
+      readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
+      replaceLibraryFriend: IS_DEMO ? undefined : replacePwaLibraryCoreFriend,
+      upsertLibraryPerson: IS_DEMO ? undefined : upsertPwaLibraryCorePerson,
+      removeLibraryPerson: IS_DEMO ? undefined : removePwaLibraryCorePerson,
+      assignLibraryAccountToPerson: IS_DEMO ? undefined : assignPwaLibraryCoreAccountToPerson,
+      appendLibraryPersonReachOut: IS_DEMO ? undefined : appendPwaLibraryCorePersonReachOut,
+      upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
+      readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
+      queryLibraryCore: queryPwaNormalizedLibrary,
+      mutateDeviceGraphLayout: IS_DEMO ? undefined : mutatePwaDeviceGraphLayout,
+      mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
+      queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
-      readLibrarySurfaceItems: readPwaLibraryCoreSurfaceItems,
+      readLibraryStoryWallCandidates: readPwaLibraryCoreStoryWallCandidates,
+      readLibraryMapCandidates: readPwaLibraryCoreMapCandidates,
       readLibraryItemDetail: readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
@@ -503,6 +596,16 @@ function App() {
     );
   }
 
+  if (IS_DEMO && !isInitialized && !error) {
+    return (
+      <div className="app-theme-shell flex h-screen items-center justify-center">
+        <p className="text-sm font-medium text-[var(--theme-text-muted)]">
+          Preparing the Freed showcase...
+        </p>
+      </div>
+    );
+  }
+
   if (error && !isInitialized) {
     return (
       <PlatformProvider value={platform}>
@@ -510,6 +613,13 @@ function App() {
           error={{ message: error }}
           productName="Freed"
           onRetry={() => window.location.reload()}
+          onSecondaryAction={handleLocalLibraryRecovery}
+          secondaryActionLabel="Replace local Library"
+          secondaryActionConfirmation={{
+            title: "Replace this device's local Library?",
+            body: "This removes queued edits and offline content stored only on this device. It does not delete Google Drive data or another device's Library. Freed will reload and restore from Google Drive when available.",
+            confirmLabel: "Replace local Library",
+          }}
         />
       </PlatformProvider>
     );
@@ -534,6 +644,11 @@ function App() {
     <PlatformProvider value={platform}>
       <BugReportBoundary>
         <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
+        {IS_DEMO && (
+          <DemoWelcomeBanner
+            downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
+          />
+        )}
         <AppShell>
           <FeedView />
         </AppShell>

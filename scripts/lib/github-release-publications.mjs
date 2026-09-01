@@ -174,6 +174,7 @@ export function readGithubReleasePublications({
           "--fail",
           "--silent",
           "--show-error",
+          "--compressed",
           "--proto",
           "=https",
           "--tlsv1.2",

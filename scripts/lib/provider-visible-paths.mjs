@@ -196,6 +196,14 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/capture-rss/src/discovery.ts", ["other"]],
   ["packages/capture-save/src/extract.ts", ["other"]],
+  ["packages/library-service/src/cli-runtime.ts", ["other"]],
+  ["packages/library-service/src/config.ts", ["other"]],
+  ["packages/library-service/src/google-drive-publication.ts", ["other"]],
+  ["packages/library-service/src/node-google-drive-auth.ts", ["other"]],
+  ["packages/library-service/src/node-google-drive-token.ts", ["other"]],
+  ["packages/library-service/src/node-ports.ts", ["other"]],
+  ["packages/library-service/src/primary-cloud-runtime.ts", ["other"]],
+  ["packages/library-service/src/supervisor.ts", ["other"]],
   ["packages/desktop/src-tauri/src/webkit-mask.js", ALL_SOCIAL_PROVIDER_SCOPES],
   [
     "packages/desktop/src-tauri/src/lib.rs",
@@ -208,6 +216,7 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/desktop/src/components/CloudProviderCard.tsx", ["other"]],
   ["packages/desktop/src/components/CloudSyncNudge.tsx", ["other"]],
   ["packages/desktop/src/components/DesktopFeedsSettingsSection.tsx", ["other"]],
+  ["packages/desktop/src/lib/library-core-cloud-sync.ts", ["other"]],
   ["packages/desktop/src/components/FacebookFeedEmptyState.tsx", ["facebook"]],
   [
     "packages/desktop/src/components/FacebookSettingsSection.tsx",
@@ -261,22 +270,9 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     ALL_PROVIDER_SCOPES,
   ],
   [
-    "packages/desktop/src/lib/automerge-types.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
-    "packages/desktop/src/lib/automerge.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
-    "packages/desktop/src/lib/automerge.worker.ts",
-    ALL_PROVIDER_SCOPES,
-  ],
-  [
     "packages/desktop/src/lib/capture.ts",
     ALL_PROVIDER_SCOPES,
   ],
-  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
   ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
   [
     "packages/desktop/src/lib/dev-sync-triggers.ts",
@@ -391,9 +387,6 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ],
   ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
   ["packages/pwa/src/App.tsx", ["other"]],
-  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
   ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
   ["packages/pwa/src/lib/reader-cache.ts", ["other"]],
   ["packages/pwa/src/lib/store.ts", ["other"]],

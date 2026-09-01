@@ -1,0 +1,121 @@
+{
+  "tag": "v26.8.2902-dev",
+  "version": "26.8.2902-dev",
+  "channel": "dev",
+  "dayKey": "26.8.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T00:24:32.144Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.2901-dev",
+    "previousPublishedDayTag": "v26.8.2002-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "57486577813719373272b3581309487e8b8194cd",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.2901-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "a03c92fa96bf2dcab0cb97396eaf5b487b31a99f",
+        "toInclusiveProductCommitSha": "57486577813719373272b3581309487e8b8194cd"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:0c5afcdd54f7eb5cae02e1a02e48765809d98ab2d0c97012a1de5c8b9e690cef",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev"
+    ],
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1635,
+      1638,
+      1640,
+      1641,
+      1642
+    ],
+    "commitSubjects": [
+      "fix: admit supported Library predecessors (#1642)",
+      "chore: prepare v26.8.2901-dev (#1641)",
+      "fix: run Library Core on Windows (#1640)",
+      "fix: align claim freshness with trusted launcher (#1638)",
+      "chore: prepare v26.8.2900-dev (#1635)",
+      "feat: replace library authority with SQLite (#1616)",
+      "fix: forward Go compiler to Linux actor build (#1631)",
+      "feat: support trusted automation launchers on Linux (#1512)",
+      "fix: add event history witness repair (#1629)",
+      "chore(deps-dev): align Vite 8 build tooling (#1619)",
+      "chore(deps): bump serde_with in /packages/desktop/src-tauri (#1617)",
+      "chore(deps-dev): bump vite from 7.3.6 to 8.2.1 (#1187)",
+      "chore(deps-dev): bump globals from 16.5.0 to 17.11.0 (#1189)",
+      "chore(deps): bump react-router and react-router-dom (#1362)",
+      "chore(deps-dev): bump postcss from 8.5.23 to 8.5.24 (#1439)",
+      "chore(deps): bump the cargo-updates group across 1 directory with 2 updates (#1514)",
+      "chore(deps-dev): bump js-yaml from 4.3.0 to 4.3.1 (#1366)",
+      "chore(deps-dev): bump fast-uri from 3.1.4 to 3.1.5 (#1357)",
+      "chore(deps): bump undici from 7.28.0 to 7.29.0 (#1356)"
+    ]
+  },
+  "release": {
+    "deck": "The SQLite release now upgrades real-world Libraries without reopening the retired engines",
+    "features": [
+      "Run every Library view from bounded SQLite queries",
+      "Store and sync normalized Library records without the historical engines",
+      "Support trusted automation launchers on Linux"
+    ],
+    "fixes": [
+      "Accept historical schemas 6 through 12 at cutover",
+      "Run Library Core on Windows",
+      "Align claim freshness with trusted launcher",
+      "Forward Go compiler to Linux actor build",
+      "Add event history witness repair"
+    ],
+    "followUps": [
+      "Align Vite 8 build tooling",
+      "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri",
+      "Bump vite from 7.3.6 to 8.2.1",
+      "Bump globals from 16.5.0 to 17.11.0",
+      "Bump react-router and react-router-dom",
+      "Bump postcss from 8.5.23 to 8.5.24",
+      "Bump the cargo-updates group across 1 directory with 2 updates",
+      "Bump js-yaml from 4.3.0 to 4.3.1",
+      "Bump fast-uri from 3.1.4 to 3.1.5",
+      "Bump undici from 7.28.0 to 7.29.0"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2902-dev\n\nThe SQLite release now upgrades real-world Libraries without reopening the retired engines\n\n### Features\n\n- Run every Library view from bounded SQLite queries\n- Store and sync normalized Library records without the historical engines\n- Support trusted automation launchers on Linux\n\n### Fixes\n\n- Accept historical schemas 6 through 12 at cutover\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n\n### Follow-ups\n\n- Align Vite 8 build tooling\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump vite from 7.3.6 to 8.2.1\n- Bump globals from 16.5.0 to 17.11.0\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

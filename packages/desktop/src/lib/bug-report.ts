@@ -22,8 +22,7 @@ import {
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { useAppStore } from "./store";
-import { readLibraryCoreFacetSummary } from "./library-core-item-detail-runtime";
-import { isSqliteLibraryActive } from "./sqlite-library";
+import type { NormalizedLocalSnapshotSummary } from "./sqlite-library";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
@@ -62,7 +61,10 @@ async function getRuntimeHealthHistory(days: number): Promise<string[]> {
 
 async function getSnapshotNames(): Promise<string[]> {
   try {
-    return await invoke<string[]>("list_snapshots");
+    const snapshots = await invoke<NormalizedLocalSnapshotSummary[]>(
+      "list_normalized_local_snapshots",
+    );
+    return snapshots.map((snapshot) => snapshot.snapshotId);
   } catch {
     return [];
   }
@@ -110,8 +112,14 @@ function sanitizeLogLines(lines: string[], tier: ReportPrivacyTier): string[] {
 async function createStateSummary() {
   const state = useAppStore.getState();
   const cloudProviders = useDebugStore.getState().cloudProviders;
-  const summary = summarizeStateForReport({
+  return summarizeStateForReport({
     state,
+    library: {
+      totalArchived: state.archivedItemCount,
+      totalFeeds: state.rssFeedCount,
+      totalFriends: state.friendPersonCount,
+      totalItems: state.totalItemCount,
+    },
     platformAuth: {
       x: state.xAuth.isAuthenticated,
       facebook: state.fbAuth.isAuthenticated,
@@ -128,13 +136,6 @@ async function createStateSummary() {
         }
       : undefined,
   });
-  if (!isSqliteLibraryActive()) return summary;
-  const facets = await readLibraryCoreFacetSummary();
-  return {
-    ...summary,
-    totalArchived: facets.archivedCount,
-    totalItems: facets.totalCount,
-  };
 }
 
 function addJson(zip: JSZip, path: string, data: unknown) {

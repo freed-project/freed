@@ -523,12 +523,14 @@ export function ReaderView({
       // Layer 2: synced reader text. Desktop keeps full text in the worker and
       // sends compact snippets through list state to keep large libraries light.
       if (!hasReaderContent && (item.preservedContent?.text || getLocalPreservedText)) {
-        let localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
+        let localPreservedText = item.preservedContent?.text ?? null;
         if (getLocalPreservedText) {
           try {
-            localPreservedText = (await getLocalPreservedText(item.globalId)) ?? localPreservedText;
+            localPreservedText =
+              (await getLocalPreservedText(item.globalId)) ??
+              localPreservedText;
           } catch {
-            localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
+            localPreservedText = item.preservedContent?.text ?? null;
           }
         }
         if (!cancelled && localPreservedText) {

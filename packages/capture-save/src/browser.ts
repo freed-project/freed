@@ -69,9 +69,8 @@ export function extractMetadataBrowser(html: string, url: string): UrlMetadata {
 /**
  * Extract article content from raw HTML using Mozilla Readability + DOMParser.
  *
- * Returns both `html` (for the device-local content cache) and `text` (for
- * Automerge sync). The caller decides which layers each goes to -- never put
- * `html` into Automerge directly.
+ * Returns both `html` for the device-local content cache and bounded `text` for
+ * the synchronized SQLite record. Full HTML never enters Library metadata.
  */
 export function extractContentBrowser(html: string, url: string): ExtractedContent {
   // DOMParser preserves the base URL for relative links via the <base> element.

@@ -1,20 +1,23 @@
 /**
  * Browser-safe Library Core cloud surface.
  *
- * This entry point intentionally excludes the retired mutable Automerge file
- * adapters and their dynamic merge runtime. PWA production code must import
- * cloud primitives here so Rollup can prove that no CRDT worker or WASM asset
- * remains reachable.
+ * PWA production code imports only normalized immutable cloud primitives from
+ * this entry point. Rollup can therefore prove that no alternate Library
+ * authority or whole-document runtime remains reachable.
  */
 export type { CloudProvider } from "./types.js";
 export * from "./library-core-checkpoint-import.js";
 export * from "./library-core-checkpoint-publication.js";
 export * from "./library-core-google-drive-adapter.js";
+export * from "./library-core-google-drive-normalized-follower-transport.js";
 export * from "./library-core-immutable-publication.js";
 export * from "./library-core-intent-publication.js";
 export * from "./library-core-intent-segments.js";
-export * from "./library-core-operation-segments.js";
-export * from "./library-core-portable-checkpoint.js";
+export * from "./library-core-normalized-checkpoint.js";
+export * from "./library-core-normalized-intent-segments.js";
+export * from "./library-core-normalized-follower-sync.js";
+export * from "./library-core-normalized-result-segments.js";
+export * from "./library-core-normalized-segment-publication.js";
 export * from "./library-core-primary-coordinator.js";
 export * from "./library-core-result-publication.js";
 export * from "./library-core-result-segments.js";
