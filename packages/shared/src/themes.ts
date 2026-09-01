@@ -416,7 +416,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     name: "Starship",
     tagline: "Bright command deck",
     description:
-      "The original AubOS command interface in its daylight palette.",
+      "Cool silver surfaces, deep indigo controls, and crisp condensed type tuned for daylight.",
     previewGradient:
       "radial-gradient(circle at 71% 22%, #faffff 0 7%, rgb(139 234 255 / 0.34) 8% 13%, transparent 14%), radial-gradient(ellipse 82% 58% at 50% 112%, #77f1ff 0%, #3a8ee8 30%, #3644b8 68%, #211c72 100%), linear-gradient(180deg, #fbffff 0%, #e9f8ff 35%, #c9e6ff 68%, #aabcf6 100%)",
     previewDisplayFont: '"Barlow Condensed", "Arial Narrow", sans-serif',
