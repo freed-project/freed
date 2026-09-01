@@ -18,10 +18,16 @@ import type {
 import {
   SAMPLE_CORPUS_MEDIA,
   SAMPLE_CORPUS_VERSION,
+  sampleCorpusAuthoredText,
+  sampleCorpusAttribution,
+  sampleCorpusDisplayTitle,
+  sampleCorpusIdentityBio,
+  sampleCorpusIdentityName,
   sampleCorpusMedia,
   sampleCorpusMediaUrl,
   sampleCorpusPlace,
-  sampleCorpusUnsplashUrl,
+  sampleCorpusSourceUrl,
+  type SampleCorpusPlatform,
 } from "./sample-corpus.js";
 
 const HOUR = 3_600_000;
@@ -30,27 +36,28 @@ const DAY = 24 * HOUR;
 // ── Feed definitions ────────────────────────────────────────────────────────
 
 interface FeedDef {
+  channel: "medium" | "substack" | "youtube";
   slug: string;
   title: string;
   siteUrl: string;
 }
 
 const FEED_DEFS: FeedDef[] = [
-  { slug: "earth-observatory", title: "Earth Observatory", siteUrl: "https://sample.freed.wtf/earth-observatory" },
-  { slug: "deep-blue-journal", title: "Deep Blue Journal", siteUrl: "https://sample.freed.wtf/deep-blue" },
-  { slug: "night-sky-notes", title: "Night Sky Notes", siteUrl: "https://sample.freed.wtf/night-sky" },
-  { slug: "living-forest", title: "The Living Forest", siteUrl: "https://sample.freed.wtf/living-forest" },
-  { slug: "weather-window", title: "Weather Window", siteUrl: "https://sample.freed.wtf/weather" },
-  { slug: "patient-geology", title: "Patient Geology", siteUrl: "https://sample.freed.wtf/geology" },
-  { slug: "migration-watch", title: "Migration Watch", siteUrl: "https://sample.freed.wtf/migration" },
-  { slug: "small-hours-sky", title: "Small Hours Sky", siteUrl: "https://sample.freed.wtf/small-hours" },
-  { slug: "field-margins", title: "Field Margins", siteUrl: "https://sample.freed.wtf/field-margins" },
-  { slug: "wild-water", title: "Wild Water", siteUrl: "https://sample.freed.wtf/wild-water" },
-  { slug: "ice-and-time", title: "Ice and Time", siteUrl: "https://sample.freed.wtf/ice-and-time" },
-  { slug: "creature-feature", title: "Creature Feature", siteUrl: "https://sample.freed.wtf/creatures" },
-  { slug: "desert-fieldbook", title: "Desert Fieldbook", siteUrl: "https://sample.freed.wtf/desert" },
-  { slug: "conservation-works", title: "Conservation Works", siteUrl: "https://sample.freed.wtf/conservation" },
-  { slug: "cosmic-scale", title: "Cosmic Scale", siteUrl: "https://sample.freed.wtf/cosmic-scale" },
+  { channel: "substack", slug: "mantis-has-notes", title: "The Mantis Has Notes, Substack", siteUrl: "https://sample.freed.wtf/substack/mantis" },
+  { channel: "substack", slug: "longform-from-the-abyss", title: "Longform from the Abyss, Substack", siteUrl: "https://sample.freed.wtf/substack/abyss" },
+  { channel: "substack", slug: "deep-time-dispatch", title: "Deep Time Dispatch, Substack", siteUrl: "https://sample.freed.wtf/substack/deep-time" },
+  { channel: "substack", slug: "letters-from-a-minor-galaxy", title: "Letters from a Minor Galaxy, Substack", siteUrl: "https://sample.freed.wtf/substack/galaxy" },
+  { channel: "substack", slug: "opinionated-tidepool", title: "The Opinionated Tidepool, Substack", siteUrl: "https://sample.freed.wtf/substack/tidepool" },
+  { channel: "medium", slug: "wildly-overqualified", title: "Wildly Overqualified, Medium", siteUrl: "https://sample.freed.wtf/medium/overqualified" },
+  { channel: "medium", slug: "patient-planet", title: "The Patient Planet, Medium", siteUrl: "https://sample.freed.wtf/medium/planet" },
+  { channel: "medium", slug: "field-notes-with-boundaries", title: "Field Notes with Boundaries, Medium", siteUrl: "https://sample.freed.wtf/medium/boundaries" },
+  { channel: "medium", slug: "astonishment-edited", title: "Astonishment, Edited, Medium", siteUrl: "https://sample.freed.wtf/medium/astonishment" },
+  { channel: "medium", slug: "natural-causes", title: "Natural Causes, Medium", siteUrl: "https://sample.freed.wtf/medium/natural-causes" },
+  { channel: "youtube", slug: "mantis-cam", title: "Mantis Cam, YouTube", siteUrl: "https://sample.freed.wtf/youtube/mantis" },
+  { channel: "youtube", slug: "deep-sea-main-character", title: "Deep Sea Main Character, YouTube", siteUrl: "https://sample.freed.wtf/youtube/deep-sea" },
+  { channel: "youtube", slug: "rock-drama", title: "Rock Drama, YouTube", siteUrl: "https://sample.freed.wtf/youtube/rock-drama" },
+  { channel: "youtube", slug: "galaxy-live-technically", title: "Galaxy Live, Technically, YouTube", siteUrl: "https://sample.freed.wtf/youtube/galaxy" },
+  { channel: "youtube", slug: "unreasonable-creatures", title: "Unreasonable Creatures, YouTube", siteUrl: "https://sample.freed.wtf/youtube/creatures" },
 ];
 
 // ── Topic + headline pools ──────────────────────────────────────────────────
@@ -232,6 +239,21 @@ const INSTAGRAM_POSTS: string[] = [
   "Golden hour arrived. The giraffe was already dressed for it.",
 ];
 
+const INSTAGRAM_REPEAT_REFLECTIONS: string[] = [
+  "No filter. Creation had already made several decisions.",
+  "We stood quietly for a minute, an unusually successful group project.",
+  "The scale is difficult to explain and rude to reduce to a rectangle.",
+  "The weather provided the lighting department and declined further notes.",
+  "A reminder that grandeur does not require a launch strategy.",
+  "The horizon remained gloriously indifferent to our calendar.",
+  "Nothing here asked to become content. We behaved ourselves as best we could.",
+  "The planet continues to outperform the mood board.",
+  "Silence, distance, and an unreasonable quantity of light.",
+  "The view was free. The humility arrived somewhat later.",
+  "Proof that the world can be dramatic without issuing a press release.",
+  "We brought cameras. The landscape brought everything else.",
+];
+
 const INSTAGRAM_AUTHORS = [
   { id: "sample-ig-1", handle: "@earth.after.light", displayName: "Earth After Light" },
   { id: "sample-ig-2", handle: "@smallhours.sky", displayName: "Small Hours Sky" },
@@ -305,9 +327,12 @@ export interface SampleDataOptions {
   batchId?: string;
   generatedAt?: number;
   seed?: number;
+  presentationSeed?: number;
+  previousTopItemId?: string;
   scale?: "showcase" | "stress";
   friendCount?: number;
   identitiesPerFriend?: number;
+  unlinkedIdentityRatio?: number;
 }
 
 export const SAMPLE_SHOWCASE_FEED_COUNT = 15;
@@ -340,50 +365,19 @@ export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 3;
+export const SAMPLE_DATA_GENERATOR_VERSION = 9;
 export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
   batchId: string;
   generatedAt: number;
   seed: number;
+  presentationSeed: number | undefined;
+  previousTopItemId: string | undefined;
   friendCount: number;
   identitiesPerFriend: number;
+  unlinkedIdentityRatio: number;
 }
-
-const SAMPLE_FRIEND_PERSONAS: Array<{
-  slug: string;
-  name: string;
-  careLevel: Person["careLevel"];
-  bio: string;
-  notes?: string;
-}> = [
-  { slug: "ada", name: "Ada Lovelace", careLevel: 5, bio: "Builds patient instruments for observing complicated living systems.", notes: "Met through the open science community." },
-  { slug: "maya", name: "Maya Chen", careLevel: 4, bio: "Films weather, migration, and the brief diplomatic career of morning light." },
-  { slug: "jules", name: "Jules Rivera", careLevel: 3, bio: "Runs a field acoustics lab and knows which forest noises require immediate concern." },
-  { slug: "nina", name: "Nina Patel", careLevel: 4, bio: "Illustrates natural systems with a brutal eye for labels and an affection for beetles." },
-  { slug: "omar", name: "Omar Hassan", careLevel: 5, bio: "Carries one backpack, two lenses, and enough field notes to alarm customs." },
-  { slug: "lena", name: "Lena Brooks", careLevel: 3, bio: "Restores wetlands and maintains that mud is merely enthusiastic soil." },
-  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half climate modeler, half mountain weather oracle." },
-  { slug: "ivy", name: "Ivy Nguyen", careLevel: 4, bio: "Tracks migratory birds and posts precisely when the flock ignores the forecast." },
-  { slug: "sofia", name: "Sofia Alvarez", careLevel: 3, bio: "Studies desert ecology and defends messy field notebooks as a scientific instrument." },
-  { slug: "devon", name: "Devon Reed", careLevel: 2, bio: "Writes observatory logs like tiny poems and always carries a red flashlight." },
-  { slug: "ezra", name: "Ezra Kim", careLevel: 4, bio: "Wildlife photographer with a suspicious number of weatherproof cases." },
-  { slug: "rhea", name: "Rhea Banerjee", careLevel: 5, bio: "Organizes community science nights and knows where the owls are pretending not to be." },
-  { slug: "felix", name: "Felix Turner", careLevel: 3, bio: "Posts from riverbanks, ridgelines, and the occasional research vessel." },
-  { slug: "talia", name: "Talia Morgan", careLevel: 4, bio: "Produces documentary expeditions with a calendar full of weather related amendments." },
-  { slug: "kai", name: "Kai Okafor", careLevel: 3, bio: "Maps every survey, annotates every contour, forgets no tributary." },
-  { slug: "mira", name: "Mira Kostov", careLevel: 2, bio: "Landscape photographer who can find composition in a basalt outcrop." },
-  { slug: "leo", name: "Leo Park", careLevel: 4, bio: "Moves between tide pools and microscopes at an irresponsible speed." },
-  { slug: "piper", name: "Piper Shah", careLevel: 2, bio: "Collects star charts, analog cameras, and overcomplicated packing systems." },
-  { slug: "arden", name: "Arden Flores", careLevel: 3, bio: "Curates small expeditions and writes long captions about clouds." },
-  { slug: "bianca", name: "Bianca Rossi", careLevel: 5, bio: "Can turn bad visibility, wet equipment, and no sleep into a clean survey." },
-  { slug: "samir", name: "Samir Dutta", careLevel: 3, bio: "Field researcher with a camera roll full of tracks, strata, and clouds." },
-  { slug: "hazel", name: "Hazel Cooper", careLevel: 4, bio: "Knows every local footpath and somehow also every hidden nesting box." },
-  { slug: "terry", name: "Terry Lin", careLevel: 2, bio: "Logistics brain, soft voice, excellent topographic maps." },
-  { slug: "cleo", name: "Cleo March", careLevel: 3, bio: "Lives between ferry surveys, dark skies, and improbable marine sightings." },
-  { slug: "wes", name: "Wes Calder", careLevel: 4, bio: "Builds remote camera rigs, runs late, records excellent wolves anyway." },
-];
 
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
 
@@ -417,12 +411,16 @@ function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDa
     (scale === "stress" ? SAMPLE_STRESS_FRIEND_COUNT : SAMPLE_SHOWCASE_FRIEND_COUNT);
   const identitiesPerFriend = options?.identitiesPerFriend ??
     (scale === "stress" ? SAMPLE_STRESS_IDENTITIES_PER_FRIEND : SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND);
+  const unlinkedIdentityRatio = Math.max(0, Math.min(1, options?.unlinkedIdentityRatio ?? 0.2));
   return {
     batchId,
     generatedAt: options?.generatedAt ?? Date.now(),
     seed: options?.seed ?? hashSeed(batchId),
+    presentationSeed: options?.presentationSeed,
+    previousTopItemId: options?.previousTopItemId,
     friendCount,
     identitiesPerFriend,
+    unlinkedIdentityRatio,
   };
 }
 
@@ -451,92 +449,109 @@ function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
+function shuffleArray<T>(values: readonly T[], rand: () => number): T[] {
+  const shuffled = [...values];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(rand() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+  }
+  return shuffled;
+}
+
+function shiftTimestamp(value: number | undefined, delta: number): number | undefined {
+  return value === undefined ? undefined : value + delta;
+}
+
+function shiftSampleItemTimeline(item: FeedItem, publishedAt: number): FeedItem {
+  const delta = publishedAt - item.publishedAt;
+  if (delta === 0) return item;
+  return {
+    ...item,
+    publishedAt,
+    capturedAt: item.capturedAt + delta,
+    priorityComputedAt: shiftTimestamp(item.priorityComputedAt, delta),
+    preservedContent: item.preservedContent
+      ? {
+          ...item.preservedContent,
+          preservedAt: item.preservedContent.preservedAt + delta,
+          publishedAt: shiftTimestamp(item.preservedContent.publishedAt, delta),
+        }
+      : undefined,
+    userState: {
+      ...item.userState,
+      archivedAt: shiftTimestamp(item.userState.archivedAt, delta),
+      likedAt: shiftTimestamp(item.userState.likedAt, delta),
+      likedSyncedAt: shiftTimestamp(item.userState.likedSyncedAt, delta),
+      readAt: shiftTimestamp(item.userState.readAt, delta),
+      savedAt: shiftTimestamp(item.userState.savedAt, delta),
+      seenSyncedAt: shiftTimestamp(item.userState.seenSyncedAt, delta),
+    },
+  };
+}
+
+function visibleTimelineOrder(left: FeedItem, right: FeedItem): number {
+  return right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId);
+}
+
+function randomizeSampleItemTimeline(
+  items: readonly FeedItem[],
+  presentationSeed: number,
+  previousTopItemId: string | undefined,
+): FeedItem[] {
+  const rand = mulberry32(presentationSeed);
+  const assignedTimes = new Map<string, number>();
+  const buckets = [
+    items.filter((item) => item.contentType === "story"),
+    items.filter((item) => item.contentType !== "story"),
+  ];
+
+  for (const bucket of buckets) {
+    const timestamps = shuffleArray(bucket.map((item) => item.publishedAt), rand);
+    bucket.forEach((item, index) => assignedTimes.set(item.globalId, timestamps[index]!));
+  }
+
+  let randomized = items.map((item) => {
+    const publishedAt = assignedTimes.get(item.globalId);
+    return publishedAt === undefined ? item : shiftSampleItemTimeline(item, publishedAt);
+  });
+  const visible = randomized
+    .filter((item) =>
+      item.contentType !== "story" &&
+      !item.userState.archived &&
+      !item.userState.hidden
+    )
+    .sort(visibleTimelineOrder);
+  if (visible.length > 1 && visible[0]?.globalId === previousTopItemId) {
+    const replacement = visible[1 + positiveModulo(presentationSeed, visible.length - 1)]!;
+    const previousTop = visible[0];
+    const previousTopTime = previousTop.publishedAt;
+    const replacementTime = replacement.publishedAt;
+    randomized = randomized.map((item) => {
+      if (item.globalId === previousTop.globalId) {
+        return shiftSampleItemTimeline(item, replacementTime);
+      }
+      if (item.globalId === replacement.globalId) {
+        return shiftSampleItemTimeline(item, previousTopTime);
+      }
+      return item;
+    });
+  }
+  return randomized;
+}
+
 function namespaceId(batchId: string, value: string): string {
   return `${batchId}:${value}`;
 }
 
-const GENERATED_FIRST_NAMES = [
-  "Ari", "Blair", "Camille", "Drew", "Elliot", "Finley", "Greer", "Hollis",
-  "Indra", "Joss", "Keira", "Luca", "Marin", "Noor", "Orion", "Paz",
-  "Quinn", "Remy", "Sage", "Tobin", "Uma", "Vale", "Wren", "Xavi",
-  "Yael", "Zadie",
-];
-
-const GENERATED_LAST_NAMES = [
-  "Adler", "Bennett", "Caro", "Davenport", "Ellis", "Frost", "Ghosh",
-  "Hayes", "Ibarra", "Jain", "Keller", "Lopez", "Mori", "Novak",
-  "Okoye", "Price", "Rossi", "Sato", "Tan", "Uriarte", "Vega",
-  "Wolfe", "Xu", "Young", "Zaman",
-];
-
 const SOURCE_PROVIDERS = ["instagram", "x", "facebook", "linkedin", "rss"] as const;
 type SampleSourceProvider = typeof SOURCE_PROVIDERS[number];
 type SampleUnlinkedAccount = Account & { provider: SampleSourceProvider };
-const UNLINKED_IDENTITY_NAMES = [
-  "Deep Field Society",
-  "Field Notes Weekly",
-  "Neighborhood Naturalists",
-  "Open Skies Lab",
-  "Public Lands Studio",
-  "Small Worlds Collective",
-  "Signal and Starlight",
-  "The Long View",
-  "Migration Map Club",
-  "Wild Systems Archive",
-] as const;
-
-const GENERATED_PERSONA_BIOS = [
-  "Field naturalist who notices weather before notifications and keeps excellent notes about both.",
-  "Amateur astronomer, patient photographer, and uncompromising critic of badly labeled constellations.",
-  "Ocean observer with a gift for finding wildlife and losing lens caps.",
-  "Geology enthusiast who considers a six-hour walk reasonable if the rocks are sufficiently old.",
-  "Conservation volunteer documenting small miracles and large administrative absurdities.",
-  "Storm watcher who understands three cloud atlases and none of the group chat.",
-  "Botanist cataloging alpine flowers with patience normally reserved for saints and sediment.",
-  "Marine acoustics researcher who listens to whales and keeps meetings mercifully brief.",
-  "Park ranger, night-sky guide, and practiced negotiator with raccoons.",
-  "Glaciologist recording slow motion upheaval in weatherproof handwriting.",
-  "Bird bander who wakes before dawn and considers this a personality rather than a scheduling error.",
-  "Volcanology student whose field plans remain professionally respectful of lava.",
-] as const;
-
-function generatedPersona(index: number): {
-  slug: string;
-  name: string;
-  careLevel: Person["careLevel"];
-  bio: string;
-  notes?: string;
-} {
-  const normalizedIndex = positiveModulo(index, SAMPLE_FRIEND_PERSONAS.length);
-  const existing = SAMPLE_FRIEND_PERSONAS[normalizedIndex]!;
-  if (index >= 0 && index < SAMPLE_FRIEND_PERSONAS.length) {
-    return existing;
-  }
-
-  const generatedIndex = Math.abs(index);
-  const first = GENERATED_FIRST_NAMES[positiveModulo(generatedIndex, GENERATED_FIRST_NAMES.length)]!;
-  const last = GENERATED_LAST_NAMES[
-    positiveModulo(Math.floor(generatedIndex / GENERATED_FIRST_NAMES.length), GENERATED_LAST_NAMES.length)
-  ]!;
-  const variant = Math.floor(generatedIndex / (GENERATED_FIRST_NAMES.length * GENERATED_LAST_NAMES.length));
-  const name = `${first} ${last}${variant > 0 ? ` ${variant + 1}` : ""}`;
-  return {
-    slug: `${first}-${last}-${generatedIndex}`.toLowerCase(),
-    name,
-    careLevel: (positiveModulo(generatedIndex, 5) + 1) as Person["careLevel"],
-    bio: GENERATED_PERSONA_BIOS[positiveModulo(generatedIndex, GENERATED_PERSONA_BIOS.length)]!,
-  };
-}
 
 function sourceHandle(name: string, provider: SampleSourceProvider, index: number): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
   if (provider === "linkedin") return `${slug}-${index}`;
   if (provider === "rss") return `${slug}.notes`;
-  return `@${slug}.${index}`;
-}
-
-function sampleAvatarUrl(index: number): string {
-  return sampleCorpusMediaUrl(sampleCorpusMedia(index), { width: 256, height: 256 });
+  return `${slug}.${index}`;
 }
 
 function samplePostMedia(index: number, portrait = false): {
@@ -554,42 +569,184 @@ function samplePostMedia(index: number, portrait = false): {
   };
 }
 
+function sampleInstagramCaption(
+  asset: ReturnType<typeof sampleCorpusMedia>,
+  index: number,
+): string {
+  const corpusCycle = Math.floor(index / SAMPLE_CORPUS_MEDIA.length);
+  const reflectionIndex = positiveModulo(
+    index + corpusCycle,
+    INSTAGRAM_REPEAT_REFLECTIONS.length,
+  );
+  return `${asset.fieldNote} ${INSTAGRAM_REPEAT_REFLECTIONS[reflectionIndex]}`;
+}
+
+function sampleInstagramPost(index: number): ReturnType<typeof samplePostMedia> & { text: string } {
+  const media = samplePostMedia(index);
+  return {
+    ...media,
+    text: sampleInstagramCaption(media.asset, index),
+  };
+}
+
+function sampleNarrativePlatform(item: FeedItem): SampleCorpusPlatform {
+  if (item.platform !== "rss") return item.platform as SampleCorpusPlatform;
+  const feedTitle = item.rssSource?.feedTitle?.toLowerCase() ?? "";
+  if (feedTitle.includes("substack")) return "substack";
+  if (feedTitle.includes("medium")) return "medium";
+  if (feedTitle.includes("youtube")) return "youtube";
+  return "rss";
+}
+
+function sampleSourceProvider(platform: FeedItem["platform"]): SampleSourceProvider {
+  return SOURCE_PROVIDERS.includes(platform as SampleSourceProvider)
+    ? platform as SampleSourceProvider
+    : "rss";
+}
+
+function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
+  const usedText = new Set<string>();
+  const usedNames = new Set<string>();
+  const locatedAssets = SAMPLE_CORPUS_MEDIA.filter((asset) => asset.coordinates);
+  const locatedItemIds = new Set(
+    items
+      .filter((item, index) => item.location !== undefined || index < 96)
+      .map((item) => item.globalId),
+  );
+  const locatedItemCount = locatedItemIds.size;
+  const reservedLocatedAssetIds = new Set(
+    locatedAssets.slice(0, locatedItemCount).map((asset) => asset.id),
+  );
+  const remainingAssets = SAMPLE_CORPUS_MEDIA.filter((asset) => !reservedLocatedAssetIds.has(asset.id));
+  const assetsByItemId = new Map<string, ReturnType<typeof sampleCorpusMedia>>();
+  let locatedIndex = 0;
+  let unlocatedIndex = 0;
+  for (const item of items) {
+    if (locatedItemIds.has(item.globalId) && locatedIndex < locatedAssets.length) {
+      assetsByItemId.set(item.globalId, locatedAssets[locatedIndex++]!);
+    } else {
+      assetsByItemId.set(item.globalId, remainingAssets[unlocatedIndex++]!);
+    }
+  }
+
+  return items.map((item, index) => {
+    const asset = assetsByItemId.get(item.globalId) ?? sampleCorpusMedia(index);
+    const platform = sampleNarrativePlatform(item);
+    let variant = 0;
+    let text = sampleCorpusAuthoredText(asset, platform, index, variant);
+    while (usedText.has(text)) {
+      variant += 1;
+      text = sampleCorpusAuthoredText(asset, platform, index, variant);
+    }
+    usedText.add(text);
+    let displayName = sampleCorpusIdentityName(asset, index);
+    while (usedNames.has(displayName)) displayName = `${displayName} the Observant`;
+    usedNames.add(displayName);
+
+    const portrait = item.contentType === "story";
+    const displayTitle = sampleCorpusDisplayTitle(asset, index);
+    const mediaUrl = sampleCorpusMediaUrl(asset, portrait
+      ? { width: 900, height: 1600 }
+      : { width: 1600, height: 1000 });
+    const linkPreview = {
+      ...item.content.linkPreview,
+      url: sampleCorpusSourceUrl(asset),
+      title: displayTitle,
+      description: sampleCorpusAttribution(asset),
+    };
+    const preservedContent = item.preservedContent
+      ? { ...item.preservedContent, text }
+      : undefined;
+
+    return {
+      ...item,
+      sourceUrl: sampleCorpusSourceUrl(asset),
+      author: {
+        ...item.author,
+        displayName,
+        handle: sourceHandle(displayName, sampleSourceProvider(item.platform), index),
+        avatarUrl: sampleCorpusMediaUrl(asset, { width: 256, height: 256 }),
+      },
+      content: {
+        ...item.content,
+        text,
+        mediaUrls: [mediaUrl],
+        mediaTypes: ["image"],
+        linkPreview,
+      },
+      ...(locatedItemIds.has(item.globalId) && asset.coordinates
+        ? {
+            location: {
+              ...(item.location ?? { source: "text_extraction" as const }),
+              name: displayTitle,
+              coordinates: asset.coordinates,
+            },
+          }
+        : {}),
+      ...(preservedContent ? { preservedContent } : {}),
+    };
+  });
+}
+
 function buildSamplePersonDefs(options?: SampleDataOptions): SamplePersonDef[] {
   const { batchId, seed, friendCount, identitiesPerFriend } = resolveSampleDataOptions(options);
 
   return Array.from({ length: friendCount }, (_, rawIndex) => {
     const index = positiveModulo(rawIndex + seed, friendCount);
-    const persona = generatedPersona(index);
-    const avatarUrl = sampleAvatarUrl(index);
+    const identityAsset = sampleCorpusMedia(index);
+    const identityName = sampleCorpusIdentityName(identityAsset, rawIndex);
+    const identitySlug = `${identityName}-${rawIndex}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const avatarUrl = sampleCorpusMediaUrl(identityAsset, { width: 256, height: 256 });
     const sources = Array.from({ length: identitiesPerFriend }, (_, sourceIndex) => {
       const provider = SOURCE_PROVIDERS[(index + sourceIndex) % SOURCE_PROVIDERS.length]!;
       const providerSlug = provider === "rss" ? "rss" : provider;
-      const externalId = `${persona.slug}-${providerSlug}-${sourceIndex}`;
-      const handle = sourceHandle(persona.name, provider, sourceIndex);
+      const externalId = `${identitySlug}-${providerSlug}-${sourceIndex}`;
+      const handle = sourceHandle(identityName, provider, sourceIndex);
       return {
         platform: provider,
         authorId: namespaceId(batchId, externalId),
         handle,
-        displayName: provider === "rss" ? `${persona.name} Notes` : persona.name,
+        displayName: provider === "rss" ? `${identityName} Field Notes` : identityName,
         avatarUrl,
       };
     });
 
     return {
-      id: namespaceId(batchId, `sample-friend-${persona.slug}`),
-      name: persona.name,
-      careLevel: persona.careLevel,
-      bio: persona.bio,
+      id: namespaceId(batchId, `sample-friend-${identitySlug}`),
+      name: identityName,
+      careLevel: sampleCareLevel(rawIndex, friendCount),
+      bio: sampleCorpusIdentityBio(identityAsset),
       avatarUrl,
-      ...(persona.notes ? { notes: persona.notes } : {}),
+      ...(rawIndex < sampleInnerCircleCount(friendCount)
+        ? { notes: "Inner circle. The person you call when the tide turns, the cave narrows, or the mantis looks judgmental." }
+        : {}),
       sources,
     };
   });
 }
 
+function sampleInnerCircleCount(friendCount: number): number {
+  return Math.min(friendCount, Math.max(5, Math.min(10, Math.round(friendCount * 0.05))));
+}
+
+function sampleCareLevel(index: number, friendCount: number): Person["careLevel"] {
+  const innerCircleCount = sampleInnerCircleCount(friendCount);
+  const closeCircleEnd = Math.max(innerCircleCount, Math.round(friendCount * 0.18));
+  const trustedCircleEnd = Math.max(closeCircleEnd, Math.round(friendCount * 0.52));
+  if (index < innerCircleCount) return 5;
+  if (index < closeCircleEnd) return 4;
+  if (index < trustedCircleEnd) return 3;
+  return index % 4 === 0 ? 1 : 2;
+}
+
 function unlinkedIdentityCount(options: ResolvedSampleDataOptions): number {
   const linkedIdentityCount = options.friendCount * options.identitiesPerFriend;
-  return linkedIdentityCount > 0 ? Math.max(1, Math.round(linkedIdentityCount * 0.2)) : 0;
+  return linkedIdentityCount > 0
+    ? Math.max(1, Math.round(linkedIdentityCount * options.unlinkedIdentityRatio))
+    : 0;
 }
 
 function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): SampleUnlinkedAccount[] {
@@ -598,9 +755,8 @@ function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): Sample
 
   return Array.from({ length: count }, (_, index) => {
     const provider = SOURCE_PROVIDERS[positiveModulo(options.seed + index, SOURCE_PROVIDERS.length)]!;
-    const baseName = UNLINKED_IDENTITY_NAMES[positiveModulo(options.seed + index, UNLINKED_IDENTITY_NAMES.length)]!;
-    const cycle = Math.floor(index / UNLINKED_IDENTITY_NAMES.length);
-    const displayName = cycle > 0 ? `${baseName} ${cycle + 1}` : baseName;
+    const identityAsset = sampleCorpusMedia(options.friendCount + index);
+    const displayName = sampleCorpusIdentityName(identityAsset, options.friendCount + index);
     const externalId = namespaceId(options.batchId, `sample-unlinked-${provider}-${index}`);
     const handle = sourceHandle(displayName, provider, index);
     const seenAt = options.generatedAt - index * DAY;
@@ -611,8 +767,8 @@ function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): Sample
       provider,
       externalId,
       handle,
-      displayName: provider === "rss" ? `${displayName} Notes` : displayName,
-      avatarUrl: sampleAvatarUrl(options.friendCount * options.identitiesPerFriend + index),
+      displayName: provider === "rss" ? `${displayName} Field Notes` : displayName,
+      avatarUrl: sampleCorpusMediaUrl(identityAsset, { width: 256, height: 256 }),
       sampleDataFingerprint: fingerprint,
       firstSeenAt: seenAt,
       lastSeenAt: seenAt,
@@ -767,6 +923,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     id: namespaceId(batchId, author.id),
   }));
   const locatedCorpusMedia = SAMPLE_CORPUS_MEDIA.filter((asset) => asset.placeId);
+  let instagramPostIndex = 0;
   const locationWindows = rotateArray(
     [
       {
@@ -836,7 +993,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         contentType: "article",
         capturedAt: publishedAt + 60_000,
         publishedAt,
-        ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+        ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
         author: {
           id: namespaceId(batchId, `sample-${feed.slug}`),
           handle: feed.slug,
@@ -882,7 +1039,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "article",
       capturedAt: publishedAt + 30_000,
       publishedAt,
-      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+      ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
       author: {
         id: namespaceId(batchId, `sample-saved-author-${si}`),
         handle: domain,
@@ -933,7 +1090,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+      ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
       author,
       content: {
         text: media?.asset.fieldNote ?? X_POSTS[xi % X_POSTS.length],
@@ -984,7 +1141,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+      ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
       author,
       content: {
         text: media?.asset.fieldNote ?? FACEBOOK_POSTS[fi % FACEBOOK_POSTS.length],
@@ -1026,7 +1183,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const isArchived = !isSaved && r < 0.1;
 
     const author = instagramAuthors[ii % instagramAuthors.length];
-    const media = samplePostMedia(ii * 5);
+    const media = sampleInstagramPost(instagramPostIndex++);
     const mediaPlace = sampleCorpusPlace(media.asset.placeId);
     items.push({
       globalId: namespaceId(batchId, `sample-instagram:${ii}`),
@@ -1034,10 +1191,10 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
+      sourceUrl: sampleCorpusSourceUrl(media.asset),
       author,
       content: {
-        text: media.asset.fieldNote,
+        text: media.text,
         mediaUrls: media.mediaUrls,
         mediaTypes: media.mediaTypes,
       },
@@ -1084,7 +1241,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+      ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
       author,
       content: {
         text: media?.asset.fieldNote ?? LINKEDIN_POSTS[li % LINKEDIN_POSTS.length],
@@ -1131,7 +1288,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "story",
       capturedAt: publishedAt + 2_000,
       publishedAt,
-      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
+      sourceUrl: sampleCorpusSourceUrl(media.asset),
       author,
       content: {
         text: media.asset.fieldNote,
@@ -1171,7 +1328,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "story",
       capturedAt: publishedAt + 2_000,
       publishedAt,
-      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
+      sourceUrl: sampleCorpusSourceUrl(media.asset),
       author,
       content: {
         text: media.asset.fieldNote,
@@ -1219,7 +1376,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: source.platform === "rss" ? "article" : "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
+      sourceUrl: sampleCorpusSourceUrl(media.asset),
       author: {
         id: source.authorId,
         handle: source.handle ?? source.authorId,
@@ -1227,7 +1384,9 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         avatarUrl: source.avatarUrl,
       },
       content: {
-        text: media.asset.fieldNote,
+        text: source.platform === "instagram"
+          ? `${sampleInstagramCaption(media.asset, instagramPostIndex++)} Field note from ${mediaPlace.name}.`
+          : media.asset.fieldNote,
         mediaUrls: media.mediaUrls,
         mediaTypes: media.mediaTypes,
       },
@@ -1272,8 +1431,11 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
       const publishedAt = Math.round(now - age);
       const contentType = source.platform === "rss" ? "article" : "post";
-      const media = graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null;
-      const text = media?.asset.fieldNote ?? (
+      const instagramPost = source.platform === "instagram"
+        ? sampleInstagramPost(instagramPostIndex++)
+        : null;
+      const media = instagramPost ?? (graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null);
+      const text = instagramPost?.text ?? media?.asset.fieldNote ?? (
         source.platform === "linkedin"
           ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
           : source.platform === "instagram"
@@ -1284,18 +1446,13 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
                 ? rssHeadlines[graphItemIndex % rssHeadlines.length]
                 : X_POSTS[graphItemIndex % X_POSTS.length]
       );
-      const locationAsset = locatedCorpusMedia[graphItemIndex % locatedCorpusMedia.length];
-      const locationPlace = graphItemIndex % 7 === 0
-        ? sampleCorpusPlace(media?.asset.placeId ?? locationAsset?.placeId)
-        : undefined;
-
       items.push({
         globalId: namespaceId(batchId, `sample-graph:${source.platform}:${graphItemIndex}`),
         platform: source.platform,
         contentType,
         capturedAt: publishedAt + 5_000,
         publishedAt,
-        ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+        ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
         author: {
           id: source.authorId,
           handle: source.handle ?? source.authorId,
@@ -1313,15 +1470,6 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
                 feedUrl: `${SAMPLE_FEED_URL_PREFIX}${batchId}/people/${source.authorId}`,
                 feedTitle: source.displayName ?? source.handle ?? friend.name,
                 siteUrl: "https://sample.freed.wtf",
-              },
-            }
-          : {}),
-        ...(locationPlace
-          ? {
-              location: {
-                name: locationPlace.name,
-                coordinates: locationPlace.coordinates,
-                source: "text_extraction" as const,
               },
             }
           : {}),
@@ -1348,8 +1496,11 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const contentType = account.provider === "rss" ? "article" : "post";
-    const media = graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null;
-    const text = media?.asset.fieldNote ?? (
+    const instagramPost = account.provider === "instagram"
+      ? sampleInstagramPost(instagramPostIndex++)
+      : null;
+    const media = instagramPost ?? (graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null);
+    const text = instagramPost?.text ?? media?.asset.fieldNote ?? (
       account.provider === "linkedin"
         ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
         : account.provider === "instagram"
@@ -1367,7 +1518,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType,
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
+      ...(media ? { sourceUrl: sampleCorpusSourceUrl(media.asset) } : {}),
       author: {
         id: account.externalId,
         handle: account.handle ?? account.externalId,
@@ -1406,10 +1557,17 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     graphItemIndex += 1;
   }
 
-  return items.map((item) => ({
+  const authoredItems = authorEntireSampleCorpus(items).map((item) => ({
     ...item,
     sampleDataFingerprint: fingerprint,
   }));
+  return resolvedOptions.presentationSeed === undefined
+    ? authoredItems
+    : randomizeSampleItemTimeline(
+        authoredItems,
+        resolvedOptions.presentationSeed,
+        resolvedOptions.previousTopItemId,
+      );
 }
 
 /** Pick 1-3 topics deterministically for a given item index. */

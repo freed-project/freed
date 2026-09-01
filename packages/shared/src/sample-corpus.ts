@@ -1,491 +1,389 @@
+import generatedCorpus from "./sample-corpus.generated.json" with { type: "json" };
+
+// Editorial contract: docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md
+
+export type SampleCorpusCategory = "astronomy" | "geology" | "insect" | "microfauna" | "undersea";
+export type SampleCorpusPlatform =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "medium"
+  | "rss"
+  | "saved"
+  | "substack"
+  | "x"
+  | "youtube";
+
 export interface SampleCorpusPlace {
   id: string;
   name: string;
-  coordinates: {
-    lat: number;
-    lng: number;
-  };
+  coordinates: { lat: number; lng: number };
 }
 
 export interface SampleCorpusMediaAsset {
   id: string;
-  unsplashId: string;
+  subject: string;
+  category: SampleCorpusCategory;
+  identityNameBase: string;
+  detail: string;
+  imageUrl: string;
+  sourceUrl: string;
+  creator: string;
+  license: string;
+  width: number;
+  height: number;
+  sha1: string;
+  coordinates?: { lat: number; lng: number };
   baseUrl: string;
-  photographer: string;
   alt: string;
-  category: "desert" | "forest" | "ocean" | "space" | "wildlife" | "mountain" | "weather";
   fieldNote: string;
   placeId?: string;
 }
 
-export const SAMPLE_CORPUS_PLACES: readonly SampleCorpusPlace[] = [
-  { id: "death-valley", name: "Death Valley National Park", coordinates: { lat: 36.5054, lng: -117.0794 } },
-  { id: "sossusvlei", name: "Sossusvlei, Namibia", coordinates: { lat: -24.7284, lng: 15.3418 } },
-  { id: "lynn-canyon", name: "Lynn Canyon, British Columbia", coordinates: { lat: 49.342, lng: -123.018 } },
-  { id: "tasmania", name: "Tasmania, Australia", coordinates: { lat: -42.0409, lng: 146.8087 } },
-  { id: "bondi", name: "Bondi Beach, Australia", coordinates: { lat: -33.8915, lng: 151.2767 } },
-  { id: "black-sand", name: "Black Sand Beach, Iceland", coordinates: { lat: 63.4043, lng: -19.0446 } },
-  { id: "lewa", name: "Lewa Wildlife Conservancy, Kenya", coordinates: { lat: 0.1975, lng: 37.4483 } },
-  { id: "serengeti", name: "Serengeti National Park, Tanzania", coordinates: { lat: -2.3333, lng: 34.8333 } },
-  { id: "baffin", name: "Baffin Island, Nunavut", coordinates: { lat: 69.0, lng: -72.0 } },
-  { id: "moraine-lake", name: "Moraine Lake, Alberta", coordinates: { lat: 51.3217, lng: -116.186 } },
-  { id: "silver-lake", name: "Silver Lake, California", coordinates: { lat: 37.7769, lng: -119.1258 } },
-  { id: "colorado-springs", name: "Colorado Springs, Colorado", coordinates: { lat: 38.8339, lng: -104.8214 } },
+type GeneratedAsset = Omit<SampleCorpusMediaAsset, "alt" | "baseUrl" | "fieldNote" | "placeId">;
+
+const SUBJECT_PREMISES: Readonly<Record<string, string>> = {
+  "praying mantis": "The bee calls it an ambush, but I prefer a conversation with an unexpectedly firm conclusion",
+  "orchid mantis": "One flower objected when I copied its outfit, so I ate the complaint department",
+  "jewel beetle": "I arrived wearing structural color and watched every gemstone reconsider its career",
+  "beetle macro": "My armor has survived birds, weather, and one photographer who thought personal space was optional",
+  "butterfly macro": "I completed a total bodily reconstruction and still get introduced as delicate",
+  "moth macro": "The moon left the porch light on for me, and I will not be taking questions about navigation",
+  dragonfly: "Four wings let me reverse in midair, mostly so I can return and judge the same pond twice",
+  damselfly: "I fold my wings politely because the dragonflies have already made hovering unbearably theatrical",
+  "bee macro": "I pollinated thirty flowers before breakfast and somehow the honey still gets top billing",
+  "ant macro": "I carried fifty times my weight uphill while the mammals held a meeting about productivity",
+  "grasshopper macro": "I yelled into the field with my hind legs, then the light hit my femurs and suddenly everyone called it art",
+  katydid: "The leaf claims I copied its veins, but my legal team says resemblance is not admission",
+  "firefly insect": "I make cold light inside my abdomen because sunsets have become complacent",
+  "stick insect": "I have spent all morning impersonating a twig and the tree has yet to acknowledge my range",
+  "leaf insect": "Apparently I am blocking the path, which is rich coming from a species that paved half the valley",
+  "lacewing insect": "My wings look like cathedral windows because aphid control deserves architecture",
+  "weevil macro": "The snout is specialized equipment, not a punchline, although I admit it enters rooms first",
+  "ladybird beetle macro": "Seven spots, two elytra, and zero tolerance for your aphid methodology",
+  "caterpillar macro": "I am currently a stomach with legs, but the rebrand has already entered production",
+  "nematode microscopy": "One drop of water contains my whole jurisdiction, and your zoning appeal has been denied",
+  "tardigrade microscopy": "I survived vacuum, radiation, freezing, and the committee that drafted our mission statement",
+  "rotifer microscopy": "My crown of cilia looks festive because filtration should never feel like paperwork",
+  "radiolarian microscopy": "I built a glass skeleton at microscopic scale and still made symmetry look expensive",
+  "diatom microscopy": "I live in a silica jewel box and quietly manufacture enough oxygen to improve everybody's afternoon",
+  "foraminifera microscopy": "I added another chamber to my shell because deep time rewards sensible extensions",
+  "nudibranch underwater": "I ate a stinging animal, stole its weapons, and matched the outfit to my new personality",
+  "jellyfish underwater": "I have no brain, bones, or heart, yet the current keeps inviting me to important functions",
+  "octopus underwater": "Eight arms make multitasking possible and privacy an entirely theoretical concept",
+  "cuttlefish underwater": "I changed color, texture, and apparent mood before the predator finished its opening remark",
+  "squid underwater": "My jet propulsion is excellent, although the ink department remains too eager to publish",
+  "seahorse underwater": "I delegated pregnancy to the father and the reef has been discussing our innovation ever since",
+  "coral reef underwater": "I built a city from tiny mouths and limestone, then filled every vacancy with color",
+  "manta ray underwater": "I flew through water without flapping, which has made the birds defensive",
+  "whale shark underwater": "I became the largest fish and kept a diet so polite that plankton still underestimate the situation",
+  "sea turtle underwater": "I crossed an ocean using magnetism and returned to the beach without once asking for directions",
+  "sea anemone underwater": "I look like a flower because lunch approaches more confidently when the furniture seems harmless",
+  "starfish underwater": "I misplaced an arm and grew another, so the incident has been reclassified as routine maintenance",
+  "nautilus underwater": "I have been adding chambers to the same elegant spiral since before mammals found their confidence",
+  "comb jelly underwater": "I diffract rainbows through rows of cilia because bioluminescence alone felt insufficiently formal",
+  "sea slug underwater": "I carry stolen chloroplasts, borrowed toxins, and absolutely no interest in modest coloration",
+  "moray eel underwater": "I open and close my mouth to breathe, but the reef prefers to call it a threat display",
+  "leafy seadragon underwater": "I dressed as drifting seaweed and became the most overdressed object in the kelp forest",
+  "frogfish underwater": "I walk on fins and carry a fishing rod on my forehead, which makes subtlety a complicated allegation",
+  "deep sea fish": "I brought my own lantern into the abyss because daylight has a terrible attendance record",
+  "feather star underwater": "I spread eighty feathery arms into the current and let dinner make the first move",
+  "basalt columns geology": "I cooled into hexagons without a ruler and geometry has been insufferable about it ever since",
+  "volcanic lava geology": "I arrived as liquid stone, ignored every boundary, and left the landscape with permanent feedback",
+  "volcano crater geology": "I removed my own summit in one decisive meeting and now host a lake where the agenda used to be",
+  "geyser geology": "I keep boiling water under pressure until punctuality becomes spectacular",
+  "crystal cave geology": "I grew chandeliers in total darkness because an audience would only have interfered",
+  "ice cave geology": "I carved blue rooms beneath a glacier and scheduled the entire exhibition to melt",
+  "karst geology": "I dissolved the ground from underneath and let the landscape discover negative space",
+  "hoodoo geology": "I balanced a boulder on a narrow column for ten thousand years and still hear concerns about stability",
+  "slot canyon geology": "One river found my smallest weakness and spent ages turning it into magnificent interior design",
+  "mineral crystal geology": "I arranged atoms into ceremony while the surrounding rock remained aggressively informal",
+  "geode geology": "I kept the crystals on the inside because revelation benefits from competent pacing",
+  "glacier crevasse geology": "I opened one blue fracture in the ice and immediately acquired a reputation for drama",
+  "salt flat geology": "I evaporated an ancient lake and left a mirror large enough to embarrass the sky",
+  "sandstone erosion geology": "The wind asked for one soft edge, and I have been negotiating the revision ever since",
+  "tectonic fault geology": "I store continental disagreement underground until everyone has forgotten the original issue",
+  "fumarole geology": "I exhale sulfur through volcanic ground because subtle warnings were not being respected",
+  "travertine terrace geology": "I deposited mineral lace one hot spring at a time and called the staircase complete several centuries later",
+  "petrified wood geology": "I replaced every cell with stone and retained more personality than the surrounding sediment",
+  "sea stack geology": "The headland left me standing alone, which the ocean describes as an ongoing negotiation",
+  "limestone cave geology": "I let weakly acidic water decorate the ceiling, then waited a hundred thousand years for the reveal",
+  "glacier icefall geology": "I move downhill by breaking magnificently, a management style that has not translated well to mammals",
+  "volcanic caldera geology": "Forty million years on hair and makeup, and the cloud arrives late expecting equal billing",
+  "sand dunes geology": "I migrate grain by grain and still manage to erase every footprint before the next review",
+  "river canyon geology": "I let a river repeat itself until the continent finally understood the point",
+  "fjord geology": "I invited the sea into a valley carved by ice and the mountains have never stopped posing",
+  "hot spring geology": "I heat groundwater with buried magma and color the margins with microbes who refuse neutral palettes",
+  "obsidian geology": "I cooled too quickly for crystals and became volcanic glass with an understandably sharp disposition",
+  "amethyst crystal geology": "I trapped iron inside quartz, added radiation, and somehow emerged dressed for royalty",
+  "badlands geology": "I removed the vegetation and let every sedimentary grievance become visible",
+  "mesa geology": "I kept one hard cap of stone while the rest of the plateau resigned around me",
+  "waterfall gorge geology": "I dropped a river over resistant rock and let the mist handle public relations",
+  "lava tube cave geology": "I drained the fire from my tunnel and left a cathedral where molten rock once commuted",
+  "nebula NASA": "I made these colors from gas, dust, and a complete refusal to remain background scenery",
+  "galaxy NASA": "I keep several billion stars nearby because minimalism has limits",
+  "supernova remnant NASA": "I exploded once and have spent millennia making the aftermath look composed",
+  "planet NASA": "I cleared my orbit, rounded myself with gravity, and still get compared with my siblings at every gathering",
+  "moon NASA": "I locked one face toward my planet and let everyone invent motives for the other side",
+  "aurora night sky": "I let charged particles strike the upper atmosphere and persuaded the night to wear curtains",
+  "solar eclipse": "I placed one small moon over one enormous star and watched perspective become a public event",
+  "comet NASA": "I warmed near the Sun, grew a tail millions of kilometers long, and refused to call ahead",
+  "star cluster NASA": "I formed thousands of siblings from one cloud and kept the family portrait gravitationally bound",
+  "galaxy cluster astronomy": "I gathered whole galaxies with invisible mass and still left room between every introduction",
+  "globular cluster astronomy": "I packed ancient stars into a sphere so dense that solitude became an outer-halo privilege",
+  "cosmic dust nebula": "I blocked the starlight until gravity turned my darkest material into new suns",
+  "stellar nursery nebula": "I collapse cold clouds into stars and endure everyone calling the process adorable",
+  "Jupiter storm astronomy": "I have been rotating an anticyclone for centuries and still receive unsolicited weather advice",
+  "Saturn rings astronomy": "I arranged ice into rings thin enough to vanish edge-on and broad enough to monopolize every portrait",
+  "star trails night sky": "I let the planet rotate beneath fixed stars and accepted credit for the choreography",
+  "zodiacal light night sky": "I scattered sunlight through interplanetary dust and made the dawn look privately illuminated",
+  "solar prominence NASA": "I lifted plasma above the Sun on magnetic arches and declined the suggestion to keep a lower profile",
+  "Jupiter NASA": "I became twice as massive as every other planet combined and still kept the fastest day",
+  "Saturn NASA": "I acquired rings visible from another world and have heard enough about being photogenic",
+  "Mars landscape NASA": "I oxidized an entire planet red and left river valleys as evidence for a wetter alibi",
+  "Earth from space NASA": "I removed the borders from view and watched every argument become appropriately small",
+  "Hubble nebula": "I posed in ionized gas for a telescope above the atmosphere and made scale everybody's problem",
+  "Hubble galaxy": "I sent ancient starlight into an orbiting mirror and arrived with every spiral arm accounted for",
+  "James Webb nebula": "I let infrared vision through the dust and discovered that secrecy had been wildly overstated",
+  "James Webb galaxy": "I crossed most of cosmic history and still reached the detector looking younger than expected",
+  "emission nebula astronomy": "I let hot stars ionize my gas until the whole cloud began signing in color",
+  "planetary nebula astronomy": "I shed my outer layers near the end of a star's life and turned departure into architecture",
+  "spiral galaxy astronomy": "I rotate billions of stars through spiral arms that are patterns, not permanent seating",
+  "barred spiral galaxy astronomy": "I built a stellar bar through my center because ordinary spirals lacked executive structure",
+  "lunar crater NASA": "I kept the impact scar because airless worlds have no weather department to soften criticism",
+  "lunar eclipse": "I passed through my planet's shadow and borrowed every sunset at once",
+  "Milky Way night sky": "I wrapped the night in our galaxy's disk and let one small planet mistake it for a cloud",
+  "meteor shower night sky": "I drove Earth through a comet's debris and let the atmosphere edit every grain into light",
+  "sunspot NASA": "I cooled one magnetic patch by thousands of degrees and still outshone nearly everything you know",
+  "planetary rings NASA": "I spread shattered ice and rock around a planet until orbital debris achieved formalwear",
+  "Venus NASA": "I rotate backward beneath sulfuric clouds and keep the hottest surface in the neighborhood",
+  "Mercury NASA": "I orbit closest to the Sun, freeze at night, and consider moderation an outer-planet affectation",
+  "Uranus NASA": "I rotate on my side with faint rings and refuse to treat ninety-eight degrees as a phase",
+  "Neptune NASA": "I keep the fastest winds in the system at a distance that discourages complaints",
+};
+
+const FALLBACK_PREMISES: Readonly<Record<SampleCorpusCategory, string>> = {
+  insect: "I arrived with six legs, excellent camouflage, and no obligation to explain the arrangement",
+  microfauna: "I built a complete life below the threshold of unaided vision and still made room for opinions",
+  undersea: "I grew this shape under pressure and let the current decide whether anyone was ready",
+  geology: "I spent deep time becoming this view and will not be rushed through the introduction",
+  astronomy: "I sent ancient light across the dark and arrived before the observer finished feeling important",
+};
+
+const CATEGORY_RIVALS: Readonly<Record<SampleCorpusCategory, readonly string[]>> = {
+  insect: [
+    "a leaf with territorial ambitions", "the aphid delegation", "a bee demanding equal billing",
+    "one deeply confident gardener", "a spider acting as fact-checker", "the flower's publicity team",
+    "a bird with no credentials", "the meadow's chaotic leadership", "an underqualified caterpillar",
+    "a fern with inherited influence", "the moth from the neighboring stem", "a dragonfly demanding a solo",
+  ],
+  microfauna: [
+    "a bacterium with strong opinions", "the drop's surface tension", "a rotifer acting as fact-checker",
+    "one deeply confident amoeba", "the tardigrade delegation", "a diatom demanding equal billing",
+    "the microscope light's publicity team", "an underqualified ciliate", "the pond film's chaotic leadership",
+    "a nematode from the neighboring droplet", "the algae's revision notes", "one protozoan demanding a solo",
+  ],
+  undersea: [
+    "the tide's revision notes", "a gull with no credentials", "three plankton with strong opinions",
+    "the committee from the neighboring reef", "a moray acting as fact-checker", "the current's chaotic leadership",
+    "an underqualified sea urchin", "a crab demanding equal billing", "the kelp's publicity team",
+    "one deeply confident octopus", "a shark from the next trench", "the horizon's fragile ego",
+  ],
+  geology: [
+    "a river that never stops repeating itself", "the cloud that arrived late", "the wind's unsolicited advice",
+    "an underqualified pebble", "erosion's legal department", "one deeply confident tectonic plate",
+    "the glacier's revision notes", "the sea demanding equal billing", "a boulder acting as fact-checker",
+    "the weather's chaotic leadership", "a volcano from the neighboring range", "the horizon's fragile ego",
+  ],
+  astronomy: [
+    "gravity's legal department", "the moon's publicity team", "one star demanding a solo",
+    "a comet with no forwarding address", "an underqualified asteroid", "the Sun's lighting demands",
+    "a dust cloud acting as fact-checker", "the neighboring galaxy's revision notes", "one deeply confident planet",
+    "a black hole declining comment", "the horizon's fragile ego", "a telescope demanding equal billing",
+  ],
+};
+
+const OCCASIONS = [
+  "before breakfast", "during the migration", "at the edge of the storm", "under the full moon",
+  "while the valley was still quiet", "just as the current changed", "during an otherwise routine metamorphosis",
+  "after several million patient years", "between one tide and the next", "as the light crossed the ridge",
+  "while the reef pretended not to stare", "before the atmosphere became argumentative",
+  "during the brief reign of perfect light", "after the ice released its oldest complaint",
+  "while the meadow conducted its morning gossip", "as the shadow reached the crater",
+  "before the stars surrendered to dawn", "during a completely avoidable display of majesty",
 ] as const;
 
-export const SAMPLE_CORPUS_MEDIA: readonly SampleCorpusMediaAsset[] = [
-  {
-    id: "death-valley-folds",
-    unsplashId: "MzJjabZWBRo",
-    baseUrl: "https://images.unsplash.com/photo-1517767037021-c64e8b6c48cb",
-    photographer: "Kai Vu",
-    alt: "Layered sand dunes beneath a pale blue sky",
-    category: "desert",
-    placeId: "death-valley",
-    fieldNote: "The dunes spent the night moving six inches east and still accomplished more than most planning committees.",
-  },
-  {
-    id: "death-valley-ridge",
-    unsplashId: "0ZryeOcmx5o",
-    baseUrl: "https://images.unsplash.com/photo-1656870679469-156e3c955489",
-    photographer: "Brian Wangenheim",
-    alt: "Warm sand dunes folding into shadow",
-    category: "desert",
-    placeId: "death-valley",
-    fieldNote: "Wind erased every footprint before lunch. The desert has excellent data-retention policies.",
-  },
-  {
-    id: "dubai-horizon",
-    unsplashId: "eLJ7ilJ_FRA",
-    baseUrl: "https://images.unsplash.com/photo-1678729984335-bfaff3572cbe",
-    photographer: "Benjamin DeYoung",
-    alt: "A broad golden dune beneath a clear blue horizon",
-    category: "desert",
-    fieldNote: "Nothing here is in a hurry except the light, which has a hard stop at sunset.",
-  },
-  {
-    id: "sahara-lines",
-    unsplashId: "T4WBBTa2bHc",
-    baseUrl: "https://images.unsplash.com/photo-1683138158840-b9988d9fe42e",
-    photographer: "Marco D'Abramo",
-    alt: "Fine wind-carved lines across a Sahara dune",
-    category: "desert",
-    fieldNote: "The Sahara released another flawless interface today. Zero buttons. Astonishing adoption.",
-  },
-  {
-    id: "death-valley-light",
-    unsplashId: "NiPTXfxkumc",
-    baseUrl: "https://images.unsplash.com/photo-1600718211907-62d4c3f13aed",
-    photographer: "Nick Rickert",
-    alt: "Sunlit desert ridges fading into the distance",
-    category: "desert",
-    placeId: "death-valley",
-    fieldNote: "Temperature update: the rocks have withdrawn their support for touching them.",
-  },
-  {
-    id: "oman-monochrome",
-    unsplashId: "aRGeZa4BeZQ",
-    baseUrl: "https://images.unsplash.com/photo-1591201233759-60736c1b05e6",
-    photographer: "ruedi häberli",
-    alt: "Monochrome desert ridges receding into haze",
-    category: "desert",
-    fieldNote: "A landscape reduced to light, shadow, and the dawning suspicion that we packed too much.",
-  },
-  {
-    id: "sahara-aerial",
-    unsplashId: "pdzQ1cAdftk",
-    baseUrl: "https://images.unsplash.com/photo-1543259406-78111f6bb1c4",
-    photographer: "Wolfgang Hasselmann",
-    alt: "Aerial view of sculpted Sahara dunes",
-    category: "desert",
-    fieldNote: "From above, the dunes resemble a topographic map drawn by someone with no respect for roads.",
-  },
-  {
-    id: "white-sands",
-    unsplashId: "PhiT_BhJmvM",
-    baseUrl: "https://images.unsplash.com/photo-1765498067720-6ff6847f8f85",
-    photographer: "Royce Fonseca",
-    alt: "Soft white dunes beneath a pale sky",
-    category: "desert",
-    fieldNote: "White Sands at dawn, when even geology briefly appears to believe in minimalism.",
-  },
-  {
-    id: "lynn-canyon-falls",
-    unsplashId: "HC_NsvLvKAw",
-    baseUrl: "https://images.unsplash.com/photo-1664849275192-503e4c864380",
-    photographer: "Brayden Prato",
-    alt: "A waterfall descending through a mossy green forest",
-    category: "forest",
-    placeId: "lynn-canyon",
-    fieldNote: "The waterfall has been running continuously without a status page. Operations is furious.",
-  },
-  {
-    id: "tasmanian-falls",
-    unsplashId: "AcnTc22Q3yk",
-    baseUrl: "https://images.unsplash.com/photo-1656802039231-94575a93b255",
-    photographer: "Donovan Simpkin",
-    alt: "A narrow waterfall inside a Tasmanian rainforest",
-    category: "forest",
-    placeId: "tasmania",
-    fieldNote: "Tasmania grew an entire cathedral while nobody was looking. Ferns handled the architecture.",
-  },
-  {
-    id: "forest-cascade",
-    unsplashId: "aEXwRPt0mIA",
-    baseUrl: "https://images.unsplash.com/photo-1598212635910-5a023d41c461",
-    photographer: "Matteo Betto",
-    alt: "A bright cascade surrounded by dense forest",
-    category: "forest",
-    fieldNote: "Water found the shortest path downhill and then made it unnecessarily beautiful.",
-  },
-  {
-    id: "luang-prabang-falls",
-    unsplashId: "dhbcpyJo4m8",
-    baseUrl: "https://images.unsplash.com/photo-1593315921963-463bb27d91b9",
-    photographer: "note thanun",
-    alt: "Emerald waterfalls flowing through tropical forest",
-    category: "forest",
-    fieldNote: "The pool is this color naturally. Marketing has been asked to leave the premises.",
-  },
-  {
-    id: "catawba-falls",
-    unsplashId: "tePtZeHXOus",
-    baseUrl: "https://images.unsplash.com/photo-1531698451051-18c97580aeb2",
-    photographer: "Nicole King",
-    alt: "Waterfalls threading between green trees",
-    category: "forest",
-    fieldNote: "Every exposed rock has been upholstered in moss. The forest remains committed to softness.",
-  },
-  {
-    id: "silver-falls",
-    unsplashId: "rLvHNNUdcDo",
-    baseUrl: "https://images.unsplash.com/photo-1636257763258-a78982bd7ead",
-    photographer: "Dan Meyers",
-    alt: "A tall waterfall framed by an autumn forest",
-    category: "forest",
-    fieldNote: "Low water, high drama. The waterfall understands seasonal programming.",
-  },
-  {
-    id: "quinault-rainforest",
-    unsplashId: "yPKSufaXya8",
-    baseUrl: "https://images.unsplash.com/photo-1742669004759-0744a37623c9",
-    photographer: "Peter Robbins",
-    alt: "A cascade crossing moss-covered rock in a rainforest",
-    category: "forest",
-    fieldNote: "Annual rainfall remains excessive, magnificent, and unwilling to accept feedback.",
-  },
-  {
-    id: "vermont-falls",
-    unsplashId: "tTGLTHz5dbc",
-    baseUrl: "https://images.unsplash.com/photo-1667400909492-f4ed6d183369",
-    photographer: "Ronan Furuta",
-    alt: "A forest waterfall surrounded by autumn leaves",
-    category: "forest",
-    fieldNote: "Vermont has begun its annual attempt to make every other color palette look unserious.",
-  },
-  {
-    id: "miami-deep-blue",
-    unsplashId: "SGRKqRz77Sg",
-    baseUrl: "https://images.unsplash.com/photo-1521245488535-7d14e2e27b0f",
-    photographer: "Guzmán Barquín",
-    alt: "Aerial view of deep blue ocean waves",
-    category: "ocean",
-    fieldNote: "The Atlantic submitted its revised blue. It is, regrettably, perfect.",
-  },
-  {
-    id: "bondi-sunrise",
-    unsplashId: "0QfKOLzyOlQ",
-    baseUrl: "https://images.unsplash.com/photo-1598782201500-aba4136c1379",
-    photographer: "Laura Barry",
-    alt: "Aerial waves reaching Bondi Beach at sunrise",
-    category: "ocean",
-    placeId: "bondi",
-    fieldNote: "Bondi before breakfast. The ocean has already completed several thousand repetitions.",
-  },
-  {
-    id: "florida-seafoam",
-    unsplashId: "wmG0H8VSXLQ",
-    baseUrl: "https://images.unsplash.com/photo-1630460209363-f247267a828c",
-    photographer: "Clayton Malquist",
-    alt: "Purple and green ocean water curling into foam",
-    category: "ocean",
-    fieldNote: "The shoreline redrew itself again. Version control has become ceremonial.",
-  },
-  {
-    id: "grey-ocean",
-    unsplashId: "JoExVeViDZM",
-    baseUrl: "https://images.unsplash.com/photo-1588586278060-f44a6b7d4f56",
-    photographer: "Angus Gray",
-    alt: "Silver ocean waves viewed from above",
-    category: "ocean",
-    fieldNote: "Today the sea declined color and concentrated entirely on texture.",
-  },
-  {
-    id: "zeebrugge-tide",
-    unsplashId: "jRPxlHqc_no",
-    baseUrl: "https://images.unsplash.com/photo-1617701473939-a925b03f7e84",
-    photographer: "Jonas Leupe",
-    alt: "Aerial view of tide lines along a wide shore",
-    category: "ocean",
-    fieldNote: "The tide arrived precisely on schedule and refused all meeting invitations.",
-  },
-  {
-    id: "yallingup-rocks",
-    unsplashId: "YAKiohnJWek",
-    baseUrl: "https://images.unsplash.com/photo-1605605999979-42a49c4ae1e8",
-    photographer: "Mikolaj Felinski",
-    alt: "Ocean waves breaking around dark coastal rocks",
-    category: "ocean",
-    fieldNote: "Rock versus ocean, year nine million. Neither side appears interested in mediation.",
-  },
-  {
-    id: "iceland-black-beach",
-    unsplashId: "oUTmhg97gzY",
-    baseUrl: "https://images.unsplash.com/photo-1615390265246-72d3198a48b7",
-    photographer: "Ása Steinarsdóttir",
-    alt: "White waves crossing a black Icelandic beach",
-    category: "ocean",
-    placeId: "black-sand",
-    fieldNote: "Iceland put the beach in dark mode and somehow improved the contrast ratio.",
-  },
-  {
-    id: "nusa-penida-water",
-    unsplashId: "CWbSS7qfEQc",
-    baseUrl: "https://images.unsplash.com/photo-1590757879641-d23ccb04d98d",
-    photographer: "Ryan Farid",
-    alt: "Turquoise water breaking against the coast of Nusa Penida",
-    category: "ocean",
-    fieldNote: "The reef has deployed turquoise without consulting the design system.",
-  },
-  {
-    id: "wizard-nebula",
-    unsplashId: "jjLriBJqsno",
-    baseUrl: "https://images.unsplash.com/photo-1761851399330-ad05101ded44",
-    photographer: "Scott Lord",
-    alt: "The Wizard Nebula glowing among dense stars",
-    category: "space",
-    fieldNote: "The Wizard Nebula is seventy light-years wide, proving subtlety was never a universal requirement.",
-  },
-  {
-    id: "nature-fireworks",
-    unsplashId: "eNoeWZkO7Zc",
-    baseUrl: "https://images.unsplash.com/photo-1516331138075-f3adc1e149cd",
-    photographer: "Alexander Andrews",
-    alt: "A violet nebula shining against deep space",
-    category: "space",
-    fieldNote: "A stellar nursery containing several thousand newborn suns and no discernible bedtime policy.",
-  },
-  {
-    id: "milky-way-field",
-    unsplashId: "1IBvC4HWuAc",
-    baseUrl: "https://images.unsplash.com/photo-1763793931094-69376e20a3bd",
-    photographer: "Samuel Quek",
-    alt: "The Milky Way crowded with stars and nebulae",
-    category: "space",
-    fieldNote: "The Milky Way contains at least one hundred billion stars and still found room for our emails.",
-  },
-  {
-    id: "bubble-nebula",
-    unsplashId: "rTZW4f02zY8",
-    baseUrl: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564",
-    photographer: "NASA",
-    alt: "Blue and violet gas surrounding the Bubble Nebula",
-    category: "space",
-    fieldNote: "A seven-light-year bubble blown by a star. The scale of cosmic showing off remains difficult to overstate.",
-  },
-  {
-    id: "cosmic-clouds",
-    unsplashId: "hw0fSU82dWc",
-    baseUrl: "https://images.unsplash.com/photo-1767188789455-90e503ee3a4b",
-    photographer: "Marek Pavlík",
-    alt: "Colorful clouds of gas and stars in deep space",
-    category: "space",
-    fieldNote: "Interstellar dust, but make it cathedral lighting.",
-  },
-  {
-    id: "blue-nebula",
-    unsplashId: "BbYtd1lQiCE",
-    baseUrl: "https://images.unsplash.com/photo-1770067139926-aec4f8eb9aa2",
-    photographer: "Mathieu Coquerille",
-    alt: "A dark blue nebula filled with bright stars",
-    category: "space",
-    fieldNote: "The universe has once again used blue more effectively than our entire species.",
-  },
-  {
-    id: "orion-running-man",
-    unsplashId: "W_g46NO0xzM",
-    baseUrl: "https://images.unsplash.com/photo-1743710426934-89887ca897d8",
-    photographer: "Scott Lord",
-    alt: "Orion and the Running Man nebulae glowing red and violet",
-    category: "space",
-    fieldNote: "Orion is forming new stars while we debate whether the meeting needed an agenda.",
-  },
-  {
-    id: "deep-space-c63",
-    unsplashId: "bd4138UBIp8",
-    baseUrl: "https://images.unsplash.com/photo-1762590322961-7a982c39e000",
-    photographer: "thibault henry",
-    alt: "A colorful nebula surrounded by a dense star field",
-    category: "space",
-    fieldNote: "C63, seen here refusing to be described as merely a cloud.",
-  },
-  {
-    id: "forest-elephant",
-    unsplashId: "9r31y3vI4HA",
-    baseUrl: "https://images.unsplash.com/photo-1697613688115-bf49ecc5a56c",
-    photographer: "Kyle Mills",
-    alt: "An elephant standing quietly among forest vegetation",
-    category: "wildlife",
-    fieldNote: "The elephant entered without sound, which feels like an unreasonable feature for an animal this size.",
-  },
-  {
-    id: "lewa-elephant",
-    unsplashId: "nyvR6wbU1ho",
-    baseUrl: "https://images.unsplash.com/photo-1535941339077-2dd1c7963098",
-    photographer: "David Clode",
-    alt: "A solitary elephant crossing golden grass at dawn",
-    category: "wildlife",
-    placeId: "lewa",
-    fieldNote: "Dawn at Lewa. The elephant declined to hurry and was immediately promoted to management.",
-  },
-  {
-    id: "elephant-family",
-    unsplashId: "WPjbl0vZMrk",
-    baseUrl: "https://images.unsplash.com/photo-1771341387722-01f4881541b0",
-    photographer: "Marc Eggert",
-    alt: "An elephant mother and calf sheltered by green forest",
-    category: "wildlife",
-    fieldNote: "The calf remains under close supervision after attempting to investigate absolutely everything.",
-  },
-  {
-    id: "senegal-giraffe",
-    unsplashId: "n66xjjQRLe8",
-    baseUrl: "https://images.unsplash.com/photo-1777919344387-4d1bce4ebdba",
-    photographer: "Francesca Fabian",
-    alt: "A giraffe rising above a dry savanna woodland",
-    category: "wildlife",
-    fieldNote: "The giraffe has reviewed the canopy and would like everyone to know the leaves are excellent up here.",
-  },
-  {
-    id: "chobe-giraffe",
-    unsplashId: "gMW7Tspz2s4",
-    baseUrl: "https://images.unsplash.com/photo-1759214636214-3f01d07dbe7b",
-    photographer: "Ed Wingate",
-    alt: "A giraffe standing in golden evening light",
-    category: "wildlife",
-    fieldNote: "Golden hour arrived. The giraffe was already dressed for it.",
-  },
-  {
-    id: "open-ocean-whale",
-    unsplashId: "atoq20n6FQI",
-    baseUrl: "https://images.unsplash.com/photo-1761209620907-6cacb3426c61",
-    photographer: "Hannah Reding",
-    alt: "A whale exhaling across a bright open ocean",
-    category: "wildlife",
-    fieldNote: "A whale surfaced, took one breath, and improved the entire horizon.",
-  },
-  {
-    id: "alaska-polar-bear",
-    unsplashId: "CHqbiMhQ_wE",
-    baseUrl: "https://images.unsplash.com/flagged/photo-1591475791029-f9efe6297456",
-    photographer: "Hans-Jurgen Mager",
-    alt: "A young polar bear walking across snow",
-    category: "wildlife",
-    placeId: "baffin",
-    fieldNote: "The bear inspected the snowfield and found our presence aesthetically unnecessary.",
-  },
-  {
-    id: "polar-bear-shore",
-    unsplashId: "CuGwp9Bdtl4",
-    baseUrl: "https://images.unsplash.com/photo-1710256441308-b28104d3e0ec",
-    photographer: "Francesco Ungaro",
-    alt: "A polar bear walking along a broad shoreline",
-    category: "wildlife",
-    fieldNote: "A polar bear on the shore, carrying no equipment and still better prepared than we are.",
-  },
-  {
-    id: "moraine-lake",
-    unsplashId: "DXQUIS4Tl9w",
-    baseUrl: "https://images.unsplash.com/photo-1694125398686-fdbce8ca1054",
-    photographer: "Ali Kazal",
-    alt: "Moraine Lake surrounded by evergreen forest and mountains",
-    category: "mountain",
-    placeId: "moraine-lake",
-    fieldNote: "Moraine Lake continues to look computationally expensive.",
-  },
-  {
-    id: "chicago-lightning",
-    unsplashId: "4ZM2GxzT6lI",
-    baseUrl: "https://images.unsplash.com/photo-1783700111001-3e0452cd2052",
-    photographer: "Ryan Heuer",
-    alt: "Lightning descending from a dark summer storm",
-    category: "weather",
-    fieldNote: "The storm delivered one trillion watts without a charger, invoice, or venture round.",
-  },
-  {
-    id: "colorado-lightning",
-    unsplashId: "nbqlWhOVu6k",
-    baseUrl: "https://images.unsplash.com/photo-1492011221367-f47e3ccd77a0",
-    photographer: "David Moum",
-    alt: "White lightning branching through purple storm clouds",
-    category: "weather",
-    placeId: "colorado-springs",
-    fieldNote: "Colorado put on a light show with no concern for the venue's electrical limits.",
-  },
-  {
-    id: "silver-lake-morning",
-    unsplashId: "jAAk__SlP8U",
-    baseUrl: "https://images.unsplash.com/photo-1624239364354-93ae3e590f66",
-    photographer: "Simon Hurry",
-    alt: "A calm mountain lake beneath a clear morning sky",
-    category: "mountain",
-    placeId: "silver-lake",
-    fieldNote: "Silver Lake before the wind arrives and begins editing the reflections.",
-  },
-  {
-    id: "peyto-lake-light",
-    unsplashId: "Svnrlh3lXZ0",
-    baseUrl: "https://images.unsplash.com/photo-1660162129606-c12ece87e967",
-    photographer: "Mario Häfliger",
-    alt: "Sun rays crossing a blue mountain lake and snowy peaks",
-    category: "mountain",
-    fieldNote: "The last sunlight reached the lake and briefly made every camera setting seem correct.",
-  },
-  {
-    id: "trentino-dawn",
-    unsplashId: "6tcvf72JOmg",
-    baseUrl: "https://images.unsplash.com/photo-1783352404326-e2cfa1f88552",
-    photographer: "Filippo Molinari",
-    alt: "A tranquil alpine lake at dawn beneath distant peaks",
-    category: "mountain",
-    fieldNote: "The lake achieved perfect stillness. We immediately ruined it by discussing aperture.",
-  },
-  {
-    id: "night-storm",
-    unsplashId: "rjXQHinrMuI",
-    baseUrl: "https://images.unsplash.com/photo-1786655012659-2516429015e0",
-    photographer: "Dmytro Koplyk",
-    alt: "Lightning illuminating dense clouds above dark water",
-    category: "weather",
-    fieldNote: "The atmosphere has escalated the disagreement.",
-  },
-  {
-    id: "storm-bolt",
-    unsplashId: "3sgw31LmGWQ",
-    baseUrl: "https://images.unsplash.com/photo-1767273875341-34b29eec7d68",
-    photographer: "Kyle Hinkson",
-    alt: "A lightning bolt cutting through a black storm sky",
-    category: "weather",
-    fieldNote: "One bolt, several million volts, no visible onboarding flow.",
-  },
+const VERDICTS = [
+  "I stand by the result", "I regret only the weak attendance", "I have declined all corrections",
+  "I consider the matter beautifully settled", "I would absolutely do it again",
+  "I accept applause in stunned silence", "I blame deep time and excellent lighting",
+  "I have entered the outcome into the permanent record",
 ] as const;
 
-export const SAMPLE_CORPUS_VERSION = 1;
+const IDENTITY_EPITHETS = [
+  "Fern Chapel", "Moonlit Reef", "Basalt Choir", "Velvet Current", "Amber Meadow",
+  "Quiet Crater", "Coral Garden", "Salt Horizon", "Moss Council", "Twilight Pool",
+  "Silver Dune", "Starlit Ridge", "Hidden Kelp", "Crystal Hollow", "Orchid Thicket",
+  "Deep Blue", "Glacier Gate", "Warm Tide", "Canyon Echo", "Wildflower Court",
+  "Tidal Lantern", "Ancient Stone", "Meteor Meadow", "Rainforest Balcony", "Lunar Valley",
+  "Emerald Grotto", "Comet Tail", "Golden Savanna", "Night Bloom", "Whale Road",
+  "Mantis Grove", "Jelly Sea", "Geode Hall", "Nebula Field", "Dragonfly Bend",
+  "Octopus Garden", "Volcano Rim", "Star Cluster", "Beetle Wood", "Aurora Vale",
+] as const;
+
+function titleCase(value: string): string {
+  return value.replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function displaySubject(asset: Pick<SampleCorpusMediaAsset, "subject">): string {
+  return asset.subject
+    .replace(/\b(?:macro|microscopy|underwater|NASA|astronomy|geology|night sky)\b/gi, "")
+    .replace(/^(firefly|lacewing) insect$/i, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function premiseFor(asset: Pick<SampleCorpusMediaAsset, "subject" | "category">): string {
+  return SUBJECT_PREMISES[asset.subject] ?? FALLBACK_PREMISES[asset.category];
+}
+
+function narrativeParts(
+  category: SampleCorpusCategory,
+  index: number,
+  variant: number,
+): { rival: string; occasion: string; verdict: string } {
+  const sequence = index + variant * 1_701;
+  const rivals = CATEGORY_RIVALS[category];
+  return {
+    rival: rivals[sequence % rivals.length]!,
+    occasion: OCCASIONS[Math.floor(sequence / rivals.length) % OCCASIONS.length]!,
+    verdict: VERDICTS[Math.floor(sequence / (rivals.length * OCCASIONS.length)) % VERDICTS.length]!,
+  };
+}
+
+function renderNarrative(
+  asset: Pick<SampleCorpusMediaAsset, "subject" | "category">,
+  platform: SampleCorpusPlatform,
+  index: number,
+  variant: number,
+): string {
+  const premise = premiseFor(asset);
+  const { rival, occasion, verdict } = narrativeParts(asset.category, index, variant);
+  const frame = (index + variant) % 4;
+
+  switch (platform) {
+    case "instagram": {
+      const frames = [
+        `${premise}; naturally, ${rival} expected equal billing ${occasion}, but I kept my good side and let effortless beauty close the argument; ${verdict}.`,
+        `${premise}; ${occasion}, I allowed ${rival} into the frame for scale, then watched the light discover who the portrait was actually about; ${verdict}.`,
+        `${premise}; no filter survived ${occasion}, so I gave ${rival} one rehearsal and made the horizon find a more flattering angle; ${verdict}.`,
+        `${premise}; ${rival} suggested modesty ${occasion}, but I had already committed to magnificent and the colors refused a downgrade; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "facebook": {
+      const frames = [
+        `${premise}; apparently ${rival} objects ${occasion}, but I will not accept corrections from anyone who missed the obvious point; walk around, Martin; ${verdict}.`,
+        `${premise}; ${occasion}, ${rival} called this unnecessary, which is exactly the sort of opinion that keeps the valley from inviting people back; ${verdict}.`,
+        `${premise}; I am told ${rival} disagrees ${occasion}, but we tried being reasonable last season and the herons became unbearable; ${verdict}.`,
+        `${premise}; ${rival} may appeal the decision ${occasion}, provided the complaint is written on a leaf and delivered upstream; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "linkedin": {
+      const frames = [
+        `Thrilled to report that ${premise.toLowerCase()}; ${occasion}, I converted ${rival} into visible leadership, cross-functional learning, and an organic growth strategy; ${verdict}.`,
+        `${premise}; pleased to share that ${occasion} I leveraged ${rival} into a high-impact resilience narrative with no additional headcount; ${verdict}.`,
+        `${premise}; my key learning ${occasion} was to let ${rival} take minutes while I retained strategic ownership of the spectacle; ${verdict}.`,
+        `${premise}; after mentoring ${rival} ${occasion}, I delivered measurable wonder at scale and accepted a promotion from remarkable to inevitable; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "x": {
+      const frames = [
+        `Observed: ${premise}; ${occasion}; I logged ${rival} as the uncontrolled variable; null hypothesis rejected.`,
+        `${premise}; n=1 ${occasion}, control=${rival}; I obtained a frankly devastating effect size.`,
+        `Field note: ${premise}; ${occasion}, I measured ${rival} twice and found ordinary Tuesday statistically untenable.`,
+        `Result: ${premise}; I excluded ${rival} ${occasion} for contaminating the sample with opinions.`,
+      ];
+      return frames[frame]!;
+    }
+    case "substack": {
+      const frames = [
+        `${premise}; ${occasion}, ${rival} called it excessive, so I wrote the full transcript, added one scandalous diagram, and placed the firmest conclusion below the subscription line; ${verdict}.`,
+        `${premise}; my deeply reported dispute with ${rival} began ${occasion} and now includes four thousand words, two anonymous plankton, and a correction the moon refuses to print; ${verdict}.`,
+        `${premise}; ${occasion}, I followed ${rival} through the evidence, the counterargument, and one footnote so merciless that the tide requested counsel; ${verdict}.`,
+        `${premise}; paid readers may examine what ${rival} did ${occasion}, why the canyon declined comment, and the foreleg diagram my solicitor begged me to omit; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "medium": {
+      const frames = [
+        `${premise}; ${occasion}, I distilled the dispute with ${rival} into five lessons, made patience number three, and immediately regretted how tidy the mystery looked; ${verdict}.`,
+        `${premise}; what ${rival} taught me ${occasion} about boundaries, adaptation, and the hidden cost of pretending every revelation needs a numbered list; ${verdict}.`,
+        `${premise}; I spent ${occasion} testing one common assumption with ${rival} and emerged with a simple framework that the mountain considers defamatory; ${verdict}.`,
+        `${premise}; the beginner's guide I needed before ${rival} arrived ${occasion} has seven principles, one useful diagram, and considerably less certainty than the headline promised; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "youtube": {
+      const frames = [
+        `${premise}; in today's episode, ${occasion}, I give ${rival} three survival tips, one unnecessary close-up, and no final-cut privileges; ${verdict}.`,
+        `${premise}; stay to the end as I follow ${rival} ${occasion}, explain the impossible anatomy, and let creation spend the entire effects budget; ${verdict}.`,
+        `${premise}; ${occasion}, I invited ${rival} behind the scenes, answered the question everyone keeps asking, and discovered the reef has no front of house; ${verdict}.`,
+        `${premise}; this week I attempt a calm introduction ${occasion} before ${rival} seizes the episode and the wide shot becomes nonnegotiable; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "saved": {
+      const frames = [
+        `${premise}; I saved the longer account of ${rival} ${occasion} for an afternoon spacious enough to hold both the evidence and the astonishment; ${verdict}.`,
+        `${premise}; ${occasion}, I filed ${rival} under things worth revisiting when attention has recovered from the week; ${verdict}.`,
+        `${premise}; I kept the patient explanation of ${rival} ${occasion} because significance does not become less urgent when it happens slowly; ${verdict}.`,
+        `${premise}; saved after ${occasion}, when ${rival} accidentally proved that curiosity remains a practical virtue; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+    case "rss": {
+      const frames = [
+        `${premise}; this field report follows my dispute with ${rival} ${occasion}, where measurement remained useful right up to the point that wonder became unavoidable; ${verdict}.`,
+        `${premise}; ${occasion}, I recorded what ${rival} missed about the patient forces beneath the visible spectacle; ${verdict}.`,
+        `${premise}; my notes from ${occasion} begin with ${rival}, continue through the natural history, and end with a considerably larger set of questions; ${verdict}.`,
+        `${premise}; I followed ${rival} ${occasion} into the longer story beneath the surface, where rigor and astonishment finally stopped quarreling; ${verdict}.`,
+      ];
+      return frames[frame]!;
+    }
+  }
+}
+
+export function sampleCorpusDisplayTitle(asset: Pick<SampleCorpusMediaAsset, "subject">, index: number): string {
+  const first = IDENTITY_EPITHETS[index % IDENTITY_EPITHETS.length]!;
+  const second = IDENTITY_EPITHETS[Math.floor(index / IDENTITY_EPITHETS.length) % IDENTITY_EPITHETS.length]!;
+  const setting = first === second ? first : `${first} and ${second}`;
+  return `${titleCase(displaySubject(asset))}: ${setting}`;
+}
+
+export const SAMPLE_CORPUS_MEDIA: readonly SampleCorpusMediaAsset[] = generatedCorpus.map((raw, index) => {
+  const asset = raw as GeneratedAsset;
+  return {
+    ...asset,
+    baseUrl: asset.imageUrl,
+    alt: `Photograph of ${displaySubject(asset)} in its natural setting.`,
+    fieldNote: renderNarrative(asset, "rss", index, 0),
+    ...(asset.coordinates ? { placeId: asset.id } : {}),
+  };
+});
+
+export const SAMPLE_CORPUS_PLACES: readonly SampleCorpusPlace[] = SAMPLE_CORPUS_MEDIA
+  .filter((asset): asset is SampleCorpusMediaAsset & { coordinates: { lat: number; lng: number } } =>
+    asset.coordinates !== undefined
+  )
+  .map((asset) => ({ id: asset.id, name: asset.detail, coordinates: asset.coordinates }));
+
+export const SAMPLE_CORPUS_VERSION = 6;
 
 export function sampleCorpusPlace(placeId: string | undefined): SampleCorpusPlace | undefined {
-  return placeId
-    ? SAMPLE_CORPUS_PLACES.find((candidate) => candidate.id === placeId)
-    : undefined;
+  return placeId ? SAMPLE_CORPUS_PLACES.find((candidate) => candidate.id === placeId) : undefined;
 }
 
 export function sampleCorpusMedia(index: number): SampleCorpusMediaAsset {
@@ -493,22 +391,36 @@ export function sampleCorpusMedia(index: number): SampleCorpusMediaAsset {
   return SAMPLE_CORPUS_MEDIA[normalized]!;
 }
 
-export function sampleCorpusMediaUrl(
-  asset: SampleCorpusMediaAsset,
-  options: { width?: number; height?: number } = {},
-): string {
-  const width = options.width ?? 1_440;
-  const height = options.height;
-  const params = new URLSearchParams({
-    auto: "format",
-    fit: "crop",
-    q: "82",
-    w: width.toString(),
-  });
-  if (height) params.set("h", height.toString());
-  return `${asset.baseUrl}?${params.toString()}`;
+export function sampleCorpusMediaUrl(asset: SampleCorpusMediaAsset, _size?: { width?: number; height?: number }): string {
+  return asset.imageUrl;
 }
 
-export function sampleCorpusUnsplashUrl(asset: SampleCorpusMediaAsset): string {
-  return `https://unsplash.com/photos/${asset.unsplashId}?utm_source=freed&utm_medium=referral`;
+export function sampleCorpusSourceUrl(asset: SampleCorpusMediaAsset): string {
+  return asset.sourceUrl;
+}
+
+export function sampleCorpusAttribution(asset: SampleCorpusMediaAsset): string {
+  return `Photograph by ${asset.creator}, ${asset.license}, via Wikimedia Commons.`;
+}
+
+export function sampleCorpusIdentityName(asset: SampleCorpusMediaAsset, index: number): string {
+  const first = IDENTITY_EPITHETS[index % IDENTITY_EPITHETS.length]!;
+  const second = IDENTITY_EPITHETS[Math.floor(index / IDENTITY_EPITHETS.length) % IDENTITY_EPITHETS.length]!;
+  return first === second
+    ? `${asset.identityNameBase} of ${first}`
+    : `${asset.identityNameBase} of ${first} and ${second}`;
+}
+
+export function sampleCorpusIdentityBio(asset: SampleCorpusMediaAsset): string {
+  const subject = displaySubject(asset);
+  return `Keeps watch over ${subject}, asks impertinent questions, and never interrupts creation doing something astonishing.`;
+}
+
+export function sampleCorpusAuthoredText(
+  asset: SampleCorpusMediaAsset,
+  platform: SampleCorpusPlatform,
+  index: number,
+  variant = 0,
+): string {
+  return renderNarrative(asset, platform, index, variant);
 }

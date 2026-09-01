@@ -20,14 +20,60 @@ import {
 } from "./library-core-sqlite-runtime";
 
 const DEMO_CREATED_AT = Date.UTC(2026, 7, 31, 12);
-const DEMO_BATCH_ID = "freed-demo-showcase-v2";
-const DEMO_LIBRARY_ID = "freed-demo-library-v2";
+const DEMO_BATCH_ID = "freed-demo-showcase-v7";
+const DEMO_LIBRARY_ID = "freed-demo-library-v7";
 const DEMO_EPOCH_ID = "1".repeat(64);
 const DEMO_WRITER_ID = "2".repeat(64);
 const DEMO_CAPABILITY_ID = "3".repeat(64);
 const DEMO_PUBLIC_KEY = "4".repeat(64);
 const DEMO_CHAIN_DIGEST = "5".repeat(64);
 const DEMO_PAGE_RECORDS = 512;
+const DEMO_LAST_TOP_ITEM_KEY = "freed.demo.last-top-item.v1";
+
+interface FreedDemoCheckpointOptions {
+  generatedAt?: number;
+  presentationSeed?: number;
+  previousTopItemId?: string | null;
+}
+
+function demoPresentationSeed(): number {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return values[0]!;
+}
+
+function readPreviousDemoTopItemId(): string | null {
+  try {
+    return sessionStorage.getItem(DEMO_LAST_TOP_ITEM_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writePreviousDemoTopItemId(globalId: string): void {
+  try {
+    sessionStorage.setItem(DEMO_LAST_TOP_ITEM_KEY, globalId);
+  } catch {
+    // A fresh randomized seed still provides variety when storage is unavailable.
+  }
+}
+
+function demoTopItemId(
+  records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+): string | null {
+  const visibleItems = records
+    .filter((candidate) =>
+      candidate.registryKey === "10_feed_item" &&
+      candidate.payload.contentType !== "story" &&
+      candidate.payload.archived === false &&
+      candidate.payload.hidden === false
+    )
+    .sort((left, right) =>
+      Number(right.payload.publishedAt) - Number(left.payload.publishedAt) ||
+      String(left.primaryKey).localeCompare(String(right.primaryKey))
+    );
+  return visibleItems[0] ? String(visibleItems[0].primaryKey) : null;
+}
 
 function record(
   registryKey: LibraryCoreCheckpointRegistryKey,
@@ -220,13 +266,18 @@ function accountRecords(account: Account) {
   return records;
 }
 
-export function createFreedDemoCheckpointRecords(): readonly LibraryCoreNormalizedCheckpointRecordV2[] {
+export function createFreedDemoCheckpointRecords(
+  options: FreedDemoCheckpointOptions = {},
+): readonly LibraryCoreNormalizedCheckpointRecordV2[] {
   const sample = generateSampleLibraryData({
     batchId: DEMO_BATCH_ID,
     friendCount: 80,
-    generatedAt: DEMO_CREATED_AT,
+    generatedAt: options.generatedAt ?? Date.now(),
     identitiesPerFriend: 2,
+    presentationSeed: options.presentationSeed ?? demoPresentationSeed(),
+    previousTopItemId: options.previousTopItemId ?? undefined,
     seed: 20260831,
+    unlinkedIdentityRatio: 1,
   });
   return [
     record("00_checkpoint_header", "checkpoint", {
@@ -322,7 +373,9 @@ async function activateDemoCheckpoint(
 }
 
 async function installFreedDemoCheckpointOnce(): Promise<void> {
-  const records = createFreedDemoCheckpointRecords();
+  const records = createFreedDemoCheckpointRecords({
+    previousTopItemId: readPreviousDemoTopItemId(),
+  });
   await activateDemoCheckpoint(records);
   const firstSummary = await queryPwaNormalizedLibrary({
     queryId: "library_facet_summary_v1",
@@ -334,6 +387,8 @@ async function installFreedDemoCheckpointOnce(): Promise<void> {
   if (firstSummary.summary.totalCount !== expectedItems) {
     await activateDemoCheckpoint(records);
   }
+  const topItemId = demoTopItemId(records);
+  if (topItemId) writePreviousDemoTopItemId(topItemId);
 }
 
 export function installFreedDemoCheckpoint(): Promise<void> {

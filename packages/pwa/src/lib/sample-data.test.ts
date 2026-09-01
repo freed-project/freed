@@ -7,7 +7,7 @@ import {
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_CORPUS_MEDIA,
-  SAMPLE_CORPUS_PLACES,
+  sampleCorpusDisplayTitle,
   SAMPLE_STRESS_FRIEND_COUNT,
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
@@ -91,7 +91,7 @@ describe("sample data batches", () => {
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
       generatedAt: 123,
-      generatorVersion: 3,
+      generatorVersion: 9,
     });
   });
 
@@ -153,6 +153,9 @@ describe("sample data batches", () => {
     expect(linkedIdentityCount).toBe(SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT);
     expect(unlinkedIdentityCount).toBe(SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT);
     expect(batch.accounts).toHaveLength(SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT);
+    expect(batch.items.every((item) => item.content.mediaUrls.length === 1)).toBe(true);
+    expect(new Set(batch.items.map((item) => item.content.text ?? "")).size).toBe(batch.items.length);
+    expect(batch.items.every((item) => /\b(?:I|my|me)\b/i.test(item.content.text ?? ""))).toBe(true);
   });
 
   it("documents the showcase social identity count across linked and unlinked accounts", () => {
@@ -171,29 +174,125 @@ describe("sample data batches", () => {
     ))).toBe(true);
   });
 
-  it("uses the shared curated corpus across every social platform", () => {
+  it("custom authors the entire shared corpus with unique matching imagery", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-corpus", seed: 17 });
     const imageItems = batch.items.filter((item) => item.content.mediaUrls.length > 0);
 
-    expect(imageItems.length).toBeGreaterThan(100);
+    expect(imageItems).toHaveLength(batch.items.length);
+    expect(new Set(batch.items.map((item) => item.content.text ?? "")).size).toBe(batch.items.length);
+    const authoredSentences = batch.items.flatMap((item) =>
+      (item.content.text ?? "").split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
+    );
+    expect(new Set(authoredSentences).size).toBe(authoredSentences.length);
     expect(imageItems.every((item) => item.content.mediaUrls.every((url) =>
-      new URL(url).hostname === "images.unsplash.com"
+      new URL(url).hostname === "thumb.wikimedia.org"
     ))).toBe(true);
     expect(new Set(imageItems.map((item) => item.platform))).toEqual(
       new Set(["facebook", "instagram", "linkedin", "rss", "saved", "x"]),
     );
-    expect(batch.items.filter((item) => item.location?.coordinates).length).toBeGreaterThan(30);
+    expect(new Set(imageItems.map((item) => item.content.mediaUrls[0])).size).toBe(batch.items.length);
+    expect(new Set(batch.items.map((item) => item.author.displayName)).size).toBe(batch.items.length);
+    expect(new Set(batch.items.map((item) => item.content.linkPreview?.title)).size).toBe(batch.items.length);
+    const bannedTechnologyLanguage = /\b(?:algorithm|computer|database|dashboard|design system|digital|email|group chat|hardware|internet|notification|roadmap|server|software|status page|version control|webinar)\b/i;
+    expect(batch.items.filter((item) => bannedTechnologyLanguage.test(item.content.text ?? ""))).toEqual([]);
+    expect(batch.items.some((item) => item.platform === "instagram" && /equal billing|effortless beauty|good side/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "facebook" && /will not accept corrections|walk around, Martin/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "linkedin" && /thrilled to report|visible leadership|growth strategy/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "x" && /observed|null hypothesis|uncontrolled variable/i.test(item.content.text ?? ""))).toBe(true);
+    const publicationItems = batch.items.filter((item) => item.platform === "rss");
+    for (const publication of ["Substack", "Medium", "YouTube"] as const) {
+      const channelItems = publicationItems.filter((item) => item.rssSource?.feedTitle.includes(publication));
+      expect(channelItems).toHaveLength(40);
+      expect(new Set(channelItems.map((item) => item.content.text ?? "")).size).toBe(channelItems.length);
+    }
+    expect(batch.items.filter((item) => item.platform === "x").every((item) =>
+      (item.content.text ?? "").length <= 280
+    )).toBe(true);
+    const locatedItems = batch.items.filter((item) => item.location?.coordinates);
+    expect(locatedItems.length).toBeGreaterThanOrEqual(96);
+    expect(locatedItems.every((item) => item.content.mediaUrls.length > 0)).toBe(true);
 
-    const placesById = new Map(SAMPLE_CORPUS_PLACES.map((place) => [place.id, place]));
-    for (const item of imageItems) {
+    for (const [index, item] of imageItems.entries()) {
       const asset = SAMPLE_CORPUS_MEDIA.find((candidate) =>
         item.content.mediaUrls.some((url) => url.startsWith(candidate.baseUrl))
       );
       expect(asset, item.globalId).toBeDefined();
-      expect(item.content.text, item.globalId).toBe(asset?.fieldNote);
+      expect(item.content.linkPreview?.title, item.globalId).toBe(sampleCorpusDisplayTitle(asset!, index));
+      expect(item.content.text, item.globalId).not.toContain(sampleCorpusDisplayTitle(asset!, index));
       if (item.location && asset?.placeId) {
-        expect(item.location.name, item.globalId).toBe(placesById.get(asset.placeId)?.name);
+        expect(item.location.name, item.globalId).toBe(sampleCorpusDisplayTitle(asset, index));
       }
     }
+  });
+
+  it("gives every Instagram post an image and distinct copy", () => {
+    const batch = generateSampleLibraryData({ batchId: "batch-instagram", seed: 19 });
+    const instagramPosts = batch.items.filter((item) =>
+      item.platform === "instagram" && item.contentType === "post"
+    );
+
+    expect(instagramPosts.length).toBeGreaterThan(250);
+    expect(instagramPosts.every((item) =>
+      item.content.mediaTypes.includes("image") && item.content.mediaUrls.length > 0
+    )).toBe(true);
+    const authorsByCaption = new Map<string, Set<string>>();
+    for (const item of instagramPosts) {
+      const caption = item.content.text ?? "";
+      const authors = authorsByCaption.get(caption) ?? new Set<string>();
+      authors.add(item.author.id);
+      authorsByCaption.set(caption, authors);
+    }
+    const duplicatedAcrossAuthors = [...authorsByCaption.entries()]
+      .filter(([, authors]) => authors.size > 1)
+      .map(([caption, authors]) => ({ caption, authors: [...authors] }));
+    expect(duplicatedAcrossAuthors).toEqual([]);
+  });
+
+  it("randomizes presentation timing without rewriting authored content", () => {
+    const baseOptions = {
+      batchId: "batch-presentation",
+      generatedAt: Date.UTC(2026, 8, 1, 12),
+      seed: 23,
+    } as const;
+    const first = generateSampleLibraryData({
+      ...baseOptions,
+      presentationSeed: 91,
+    });
+    const firstTop = [...first.items]
+      .filter((item) =>
+        item.contentType !== "story" &&
+        !item.userState.archived &&
+        !item.userState.hidden
+      )
+      .sort((left, right) =>
+        right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId)
+      )[0]!;
+    const next = generateSampleLibraryData({
+      ...baseOptions,
+      presentationSeed: 91,
+      previousTopItemId: firstTop.globalId,
+    });
+    const nextTop = [...next.items]
+      .filter((item) =>
+        item.contentType !== "story" &&
+        !item.userState.archived &&
+        !item.userState.hidden
+      )
+      .sort((left, right) =>
+        right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId)
+      )[0]!;
+    const firstById = new Map(first.items.map((item) => [item.globalId, item]));
+
+    expect(nextTop.globalId).not.toBe(firstTop.globalId);
+    expect(next.items.every((item) => {
+      const original = firstById.get(item.globalId);
+      if (!original) return false;
+      return original.content.text === item.content.text &&
+        original.content.mediaUrls[0] === item.content.mediaUrls[0] &&
+        original.author.displayName === item.author.displayName;
+    })).toBe(true);
+    expect(next.items.filter((item) => item.timeRange).map((item) => item.timeRange)).toEqual(
+      first.items.filter((item) => item.timeRange).map((item) => item.timeRange),
+    );
   });
 });
