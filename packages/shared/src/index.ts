@@ -41,6 +41,7 @@ export * from "./location";
 
 // Re-export sample data generators (browser-safe, no deps)
 export * from "./sample-data";
+export * from "./sample-corpus";
 
 // Re-export shared theme metadata (browser-safe, no deps)
 export * from "./themes";

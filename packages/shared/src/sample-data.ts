@@ -15,6 +15,14 @@ import type {
   RssFeed,
   SampleDataFingerprint,
 } from "./types.js";
+import {
+  SAMPLE_CORPUS_MEDIA,
+  SAMPLE_CORPUS_VERSION,
+  sampleCorpusMedia,
+  sampleCorpusMediaUrl,
+  sampleCorpusPlace,
+  sampleCorpusUnsplashUrl,
+} from "./sample-corpus.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -28,29 +36,29 @@ interface FeedDef {
 }
 
 const FEED_DEFS: FeedDef[] = [
-  { slug: "hacker-news", title: "Hacker News", siteUrl: "https://news.ycombinator.com" },
-  { slug: "ars-technica", title: "Ars Technica", siteUrl: "https://arstechnica.com" },
-  { slug: "the-verge", title: "The Verge", siteUrl: "https://theverge.com" },
-  { slug: "techcrunch", title: "TechCrunch", siteUrl: "https://techcrunch.com" },
-  { slug: "wired", title: "Wired", siteUrl: "https://wired.com" },
-  { slug: "daring-fireball", title: "Daring Fireball", siteUrl: "https://daringfireball.net" },
-  { slug: "kottke", title: "Kottke.org", siteUrl: "https://kottke.org" },
-  { slug: "the-marginalian", title: "The Marginalian", siteUrl: "https://themarginalian.org" },
-  { slug: "lwn", title: "LWN.net", siteUrl: "https://lwn.net" },
-  { slug: "xkcd", title: "xkcd", siteUrl: "https://xkcd.com" },
-  { slug: "stratechery", title: "Stratechery", siteUrl: "https://stratechery.com" },
-  { slug: "ben-evans", title: "Ben Evans", siteUrl: "https://www.ben-evans.com" },
-  { slug: "404-media", title: "404 Media", siteUrl: "https://www.404media.co" },
-  { slug: "platformer", title: "Platformer", siteUrl: "https://www.platformer.news" },
-  { slug: "rest-of-world", title: "Rest of World", siteUrl: "https://restofworld.org" },
+  { slug: "earth-observatory", title: "Earth Observatory", siteUrl: "https://sample.freed.wtf/earth-observatory" },
+  { slug: "deep-blue-journal", title: "Deep Blue Journal", siteUrl: "https://sample.freed.wtf/deep-blue" },
+  { slug: "night-sky-notes", title: "Night Sky Notes", siteUrl: "https://sample.freed.wtf/night-sky" },
+  { slug: "living-forest", title: "The Living Forest", siteUrl: "https://sample.freed.wtf/living-forest" },
+  { slug: "weather-window", title: "Weather Window", siteUrl: "https://sample.freed.wtf/weather" },
+  { slug: "patient-geology", title: "Patient Geology", siteUrl: "https://sample.freed.wtf/geology" },
+  { slug: "migration-watch", title: "Migration Watch", siteUrl: "https://sample.freed.wtf/migration" },
+  { slug: "small-hours-sky", title: "Small Hours Sky", siteUrl: "https://sample.freed.wtf/small-hours" },
+  { slug: "field-margins", title: "Field Margins", siteUrl: "https://sample.freed.wtf/field-margins" },
+  { slug: "wild-water", title: "Wild Water", siteUrl: "https://sample.freed.wtf/wild-water" },
+  { slug: "ice-and-time", title: "Ice and Time", siteUrl: "https://sample.freed.wtf/ice-and-time" },
+  { slug: "creature-feature", title: "Creature Feature", siteUrl: "https://sample.freed.wtf/creatures" },
+  { slug: "desert-fieldbook", title: "Desert Fieldbook", siteUrl: "https://sample.freed.wtf/desert" },
+  { slug: "conservation-works", title: "Conservation Works", siteUrl: "https://sample.freed.wtf/conservation" },
+  { slug: "cosmic-scale", title: "Cosmic Scale", siteUrl: "https://sample.freed.wtf/cosmic-scale" },
 ];
 
 // ── Topic + headline pools ──────────────────────────────────────────────────
 
 const TOPICS = [
-  "technology", "science", "programming", "design", "security",
-  "ai", "open-source", "privacy", "web", "culture",
-  "hardware", "networking", "databases", "mobile", "devops",
+  "astronomy", "oceans", "forests", "wildlife", "geology",
+  "weather", "conservation", "ecology", "climate", "photography",
+  "field-notes", "earth-science", "space", "mountains", "deserts",
 ];
 
 const RSS_HEADLINES: string[] = [
@@ -137,112 +145,112 @@ const RSS_HEADLINES: string[] = [
 ];
 
 const SAVED_HEADLINES: string[] = [
-  "How to build a reading habit that sticks",
-  "The best ergonomic keyboard setups for programmers",
-  "A beginner's guide to indoor climbing",
-  "Understanding your credit score in plain English",
-  "The 20 best science fiction novels of the last decade",
-  "How to set up a home espresso station on a budget",
-  "Trail running gear guide for your first ultramarathon",
-  "Learning to cook Thai food from a Bangkok street vendor",
-  "A visual guide to knot tying for camping",
-  "How to negotiate a raise without making it awkward",
-  "The best free resources for learning music theory",
-  "Minimalist packing for a two-week trip",
-  "Understanding wine labels: a no-nonsense primer",
-  "A complete guide to maintaining a bicycle at home",
-  "How journaling changed my relationship with anxiety",
-  "The surprisingly rich history of board game design",
-  "Practical tips for reducing screen time without FOMO",
+  "A field guide to reading clouds before the forecast arrives",
+  "Why old forests store more than carbon",
+  "The hidden architecture of a coral reef",
+  "How migrating birds navigate a planet without road signs",
+  "A practical guide to the winter constellations",
+  "What desert varnish reveals about deep time",
+  "The patient physics of glaciers",
+  "How whale songs travel through an entire ocean basin",
+  "A visual introduction to storm structure",
+  "Why bioluminescence evolved so many times",
+  "The improbable engineering of a feather",
   "How to read a topographic map",
-  "Building a small workshop in a one-car garage",
-  "Choosing the right houseplants for low-light apartments",
+  "A natural history of moss",
+  "What happens inside a stellar nursery",
+  "The ecological importance of inconvenient predators",
+  "How dunes remember the wind",
+  "A complete guide to tide pools after dark",
+  "Why rivers refuse to stay where maps put them",
+  "The great seasonal machinery of monsoons",
+  "Learning the night sky without turning it into homework",
 ];
 
 const SAVED_DOMAINS = [
-  "medium.com", "longreads.com", "nautil.us", "aeon.co", "lithub.com",
-  "outsideonline.com", "seriouseats.com", "wirecutter.com", "putnam.blog",
-  "thekitchn.com", "runnersworld.com", "gearjunkie.com", "theverge.com",
-  "notion.so", "every.to", "worksinprogress.co", "restofworld.org",
-  "atlasobscura.com", "makersguide.io", "indoorgardens.net",
+  "deepfield.sample.freed.wtf", "wildwater.sample.freed.wtf",
+  "patientgeology.sample.freed.wtf", "nightwatch.sample.freed.wtf",
+  "livingforest.sample.freed.wtf", "weatherdesk.sample.freed.wtf",
+  "migration.sample.freed.wtf", "reefnotes.sample.freed.wtf",
+  "icearchive.sample.freed.wtf", "fieldmanual.sample.freed.wtf",
 ];
 
 // ── Social post pools ────────────────────────────────────────────────────────
 
 const X_POSTS: string[] = [
-  "Hot take: the best documentation is the kind that fits in a tweet. Prove me wrong.",
-  "Spent the morning reading CRDT papers. My brain is now a conflict-free replicated data type.",
-  "The best debugging tool is still a good night's sleep. Change my mind.",
-  "Local-first software isn't just a pattern. It's a philosophy about who owns your data.",
-  "Reminder that `git blame` is a feature, not a slur.",
-  "Every abstraction is a lie we agree to believe for long enough to ship.",
-  "The real LLM alignment problem is getting it to stop explaining what a hash map is.",
-  "Compilers are just very confident editors with zero social skills.",
-  "New blog post: why I rewrote my side project in six languages and learned nothing.",
-  "Unpopular opinion: the README is the product. Everything else is implementation detail.",
+  "Saturn continues to have absolutely unreasonable visual branding.",
+  "The volcano remains unconcerned about our revised itinerary.",
+  "A raven stole the lens cap. Peer review has become hostile.",
+  "The Milky Way contains at least one hundred billion stars and still found room for our emails.",
+  "Wind erased every footprint before lunch. The desert has excellent data-retention policies.",
+  "Rock versus ocean, year nine million. Neither side appears interested in mediation.",
+  "The atmosphere has escalated the disagreement.",
+  "A whale surfaced, took one breath, and improved the entire horizon.",
+  "Water found the shortest path downhill and then made it unnecessarily beautiful.",
+  "Orion is forming new stars while we debate whether the meeting needed an agenda.",
 ];
 
 const X_AUTHORS = [
-  { id: "sample-x-1", handle: "@devposts", displayName: "Dev Posts" },
-  { id: "sample-x-2", handle: "@nullpointer", displayName: "Null Pointer" },
-  { id: "sample-x-3", handle: "@bytewatcher", displayName: "Byte Watcher" },
-  { id: "sample-x-4", handle: "@tessellated", displayName: "Tess Ellated" },
-  { id: "sample-x-5", handle: "@orbitmanual", displayName: "Orbit Manual" },
+  { id: "sample-x-1", handle: "@orbitmanual", displayName: "Orbit Manual" },
+  { id: "sample-x-2", handle: "@weatherwindow", displayName: "Weather Window" },
+  { id: "sample-x-3", handle: "@fieldmargins", displayName: "Field Margins" },
+  { id: "sample-x-4", handle: "@deepbluehours", displayName: "Deep Blue Hours" },
+  { id: "sample-x-5", handle: "@patientgeology", displayName: "Patient Geology" },
 ];
 
 const FACEBOOK_POSTS: string[] = [
-  "Just shipped a feature I've been sitting on for three weeks. Feels good. Grabbed a coffee to celebrate.",
-  "Does anyone else get unreasonably excited when a PR comes back with zero comments?",
-  "Reminder: your coworkers are not trying to frustrate you. They just have different context than you do.",
-  "Took a long walk today. Came back with the solution to a bug I've been fighting for two days.",
-  "Hot desk tip: find the chair with the best lumbar support and defend it with your life.",
-  "Running retrospectives is basically group therapy for people who refuse to go to therapy.",
-  "Anyone else have a folder called 'temp' that's been around since 2019?",
-  "Finished the book. Would recommend. No spoilers but: the architecture holds.",
-  "Our standup ran exactly 12 minutes today. A personal record.",
-  "The sprint ended. No one died. Ship it.",
+  "We hiked six hours for this cloud. No notes.",
+  "The calf attempted to investigate every tree, rock, camera, and adult. A productive morning.",
+  "Low water at Silver Falls today, but the moss has compensated with theatrical commitment.",
+  "A giraffe reviewed the canopy and reports that the leaves are excellent up there.",
+  "Storm rolled through after dinner. The dog objected formally and at length.",
+  "The tide erased our elaborate sand diagram before anyone could assign action items.",
+  "Three owls outside the cabin. Apparently we are the evening entertainment.",
+  "The lake achieved perfect stillness. We immediately ruined it by discussing aperture.",
+  "A fox crossed the trail and looked embarrassed for us.",
+  "No signal for two days. The mountains somehow continued operating.",
 ];
 
 const FACEBOOK_AUTHORS = [
-  { id: "sample-fb-1", handle: "Engineering Thoughts", displayName: "Engineering Thoughts" },
-  { id: "sample-fb-2", handle: "The Dev Desk", displayName: "The Dev Desk" },
-  { id: "sample-fb-3", handle: "Ship It Culture", displayName: "Ship It Culture" },
-  { id: "sample-fb-4", handle: "Night Shift Notes", displayName: "Night Shift Notes" },
-  { id: "sample-fb-5", handle: "Field Notes Lab", displayName: "Field Notes Lab" },
+  { id: "sample-fb-1", handle: "Weekend Field Notes", displayName: "Weekend Field Notes" },
+  { id: "sample-fb-2", handle: "Cabin Weather Club", displayName: "Cabin Weather Club" },
+  { id: "sample-fb-3", handle: "Neighborhood Naturalists", displayName: "Neighborhood Naturalists" },
+  { id: "sample-fb-4", handle: "Migration Watch", displayName: "Migration Watch" },
+  { id: "sample-fb-5", handle: "River Friends", displayName: "River Friends" },
 ];
 
 const INSTAGRAM_POSTS: string[] = [
-  "Morning light, cold brew, and a diff that's finally green ☀️",
-  "The office at 7am hits different. Nobody here yet. Just me and the compiler.",
-  "Mechanical keyboard + good headphones = flow state in 3 minutes flat.",
-  "Whiteboard session went long but the diagram finally makes sense.",
-  "Setup tour coming soon. Spoiler: it's mostly cables.",
-  "Found a two-line fix for a week-old bug. Framing this diff.",
-  "First deploy of the week. Clean. Fast. Going back to bed.",
-  "Documenting is an act of kindness for your future self.",
-  "Pair programming session: we argued for 40 minutes and then agreed I was right.",
-  "New desk plant. It will outlive this codebase.",
+  "Morning light across the dunes. The wind did all the art direction.",
+  "The forest built a cathedral and forgot to install a gift shop.",
+  "Black sand, white water, and Iceland showing off again.",
+  "Tonight's weather: electrically opinionated.",
+  "The reef deployed turquoise without consulting the design system.",
+  "Moraine Lake continues to look computationally expensive.",
+  "Interstellar dust, but make it cathedral lighting.",
+  "Dawn at Lewa. Nobody hurried, especially the elephant.",
+  "A seven-light-year bubble blown by a star. Subtlety remains optional.",
+  "Golden hour arrived. The giraffe was already dressed for it.",
 ];
 
 const INSTAGRAM_AUTHORS = [
-  { id: "sample-ig-1", handle: "@freed.desk", displayName: "Freed Desk" },
-  { id: "sample-ig-2", handle: "@circuit.garden", displayName: "Circuit Garden" },
-  { id: "sample-ig-3", handle: "@midnight.sprint", displayName: "Midnight Sprint" },
-  { id: "sample-ig-4", handle: "@between.trains", displayName: "Between Trains" },
-  { id: "sample-ig-5", handle: "@analog.workspace", displayName: "Analog Workspace" },
+  { id: "sample-ig-1", handle: "@earth.after.light", displayName: "Earth After Light" },
+  { id: "sample-ig-2", handle: "@smallhours.sky", displayName: "Small Hours Sky" },
+  { id: "sample-ig-3", handle: "@wildwater.archive", displayName: "Wild Water Archive" },
+  { id: "sample-ig-4", handle: "@patient.mountains", displayName: "Patient Mountains" },
+  { id: "sample-ig-5", handle: "@field.notes.only", displayName: "Field Notes Only" },
 ];
 
 const LINKEDIN_POSTS: string[] = [
-  "Wrapped a customer research sprint with three clear product bets. The boring answer was the right answer.",
-  "A calm ops week is still a win. Stability is a feature, not an absence of ambition.",
-  "Hiring note: the best collaborators leave documents better than they found them.",
-  "Spent today turning a heroic workaround into a repeatable process. Much less cinematic, much more useful.",
-  "Presented the roadmap without twenty backup slides. Miraculously, everyone survived.",
-  "Quietly proud of the release notes this week. Clear writing saves real support time.",
-  "Visited a client team on-site and learned more in one hallway conversation than in six dashboards.",
-  "Product lesson of the month: if users export it every week, they probably want it on the main screen.",
-  "Closed the loop on a pilot program today. Small, steady adoption beats loud vanity metrics.",
-  "Teams move faster when status updates sound like people talking to each other instead of investor karaoke.",
+  "Field lesson: the best monitoring system remains looking at the river long enough to notice it changed.",
+  "Conservation succeeds through patient local work, reliable measurements, and considerably fewer heroic keynote slides.",
+  "The observatory ran all night without a growth strategy. It produced excellent results anyway.",
+  "A healthy forest is an infrastructure project with a several-century planning horizon.",
+  "The expedition plan survived first contact with weather for almost eleven minutes.",
+  "We completed the migration survey. The birds declined to align their route with our reporting calendar.",
+  "Good field notes separate what happened from what everyone hoped would happen. Organizations could try this.",
+  "The reef restoration team celebrated a small increase in coral cover. Small, measured wins are still wins.",
+  "If your climate dashboard cannot be understood by the people living beside the river, redesign the dashboard.",
+  "The mountain remains a persuasive argument for humility, risk management, and better socks.",
 ];
 
 const LINKEDIN_AUTHORS = [
@@ -256,57 +264,27 @@ const LINKEDIN_AUTHORS = [
 // ── Story pools ──────────────────────────────────────────────────────────────
 
 const IG_STORY_AUTHORS = [
-  { id: "sample-ig-sa-1", handle: "@maya.films", displayName: "Maya Films" },
-  { id: "sample-ig-sa-2", handle: "@lunchbreak.eats", displayName: "Lunchbreak Eats" },
-  { id: "sample-ig-sa-3", handle: "@the.alpine.life", displayName: "The Alpine Life" },
-  { id: "sample-ig-sa-4", handle: "@neon.workshop", displayName: "Neon Workshop" },
-  { id: "sample-ig-sa-5", handle: "@skyline.daily", displayName: "Skyline Daily" },
-  { id: "sample-ig-sa-6", handle: "@quiet.kitchen", displayName: "Quiet Kitchen" },
-  { id: "sample-ig-sa-7", handle: "@trailhead.co", displayName: "Trailhead Co" },
-  { id: "sample-ig-sa-8", handle: "@desksetup.wtf", displayName: "Desk Setup WTF" },
+  { id: "sample-ig-sa-1", handle: "@afterlight.earth", displayName: "Afterlight Earth" },
+  { id: "sample-ig-sa-2", handle: "@deep.field", displayName: "Deep Field" },
+  { id: "sample-ig-sa-3", handle: "@the.alpine.hour", displayName: "The Alpine Hour" },
+  { id: "sample-ig-sa-4", handle: "@weather.room", displayName: "Weather Room" },
+  { id: "sample-ig-sa-5", handle: "@sky.archive", displayName: "Sky Archive" },
+  { id: "sample-ig-sa-6", handle: "@quiet.tide", displayName: "Quiet Tide" },
+  { id: "sample-ig-sa-7", handle: "@trail.camera", displayName: "Trail Camera" },
+  { id: "sample-ig-sa-8", handle: "@smallhours.space", displayName: "Small Hours Space" },
 ];
 
 const FB_STORY_AUTHORS = [
-  { id: "sample-fb-sa-1", handle: "City Cycling Co.", displayName: "City Cycling Co." },
-  { id: "sample-fb-sa-2", handle: "Weekend Escapes", displayName: "Weekend Escapes" },
-  { id: "sample-fb-sa-3", handle: "Foodie Finds", displayName: "Foodie Finds" },
-  { id: "sample-fb-sa-4", handle: "Maker Collective", displayName: "Maker Collective" },
-  { id: "sample-fb-sa-5", handle: "Morning Commute", displayName: "Morning Commute" },
-  { id: "sample-fb-sa-6", handle: "Backyard Builds", displayName: "Backyard Builds" },
-  { id: "sample-fb-sa-7", handle: "The Late Shift", displayName: "The Late Shift" },
+  { id: "sample-fb-sa-1", handle: "River Weather Club", displayName: "River Weather Club" },
+  { id: "sample-fb-sa-2", handle: "Weekend Naturalists", displayName: "Weekend Naturalists" },
+  { id: "sample-fb-sa-3", handle: "Coast Watch", displayName: "Coast Watch" },
+  { id: "sample-fb-sa-4", handle: "Backyard Astronomy", displayName: "Backyard Astronomy" },
+  { id: "sample-fb-sa-5", handle: "Morning Migration", displayName: "Morning Migration" },
+  { id: "sample-fb-sa-6", handle: "Forest Neighbors", displayName: "Forest Neighbors" },
+  { id: "sample-fb-sa-7", handle: "The Night Watch", displayName: "The Night Watch" },
 ];
 
-// Short captions for stories — most are null (photo-only), a few have text.
-const IG_STORY_CAPTIONS: (string | null)[] = [
-  null,
-  "golden hour 🌅",
-  null,
-  "today's vibe",
-  null,
-  null,
-  "3am energy",
-  null,
-];
-
-const FB_STORY_CAPTIONS: (string | null)[] = [
-  null,
-  "good morning 👋",
-  null,
-  null,
-  "finally out here",
-  null,
-  null,
-];
-
-// Optional location stickers — index matches the story index, null = no location.
-const IG_STORY_LOCATIONS: (string | null)[] = [
-  null, null, "Yosemite National Park", null, "Tokyo, Japan", null, null, "Brooklyn, NY",
-];
-
-const FB_STORY_LOCATIONS: (string | null)[] = [
-  "Portland, OR", null, null, null, "Joshua Tree", null, null,
-];
-
+// Short captions for stories. Most are null so the photograph can carry the moment.
 interface SamplePersonDef {
   id: string;
   name: string;
@@ -362,7 +340,8 @@ export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 2;
+export const SAMPLE_DATA_GENERATOR_VERSION = 3;
+export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
   batchId: string;
@@ -379,31 +358,31 @@ const SAMPLE_FRIEND_PERSONAS: Array<{
   bio: string;
   notes?: string;
 }> = [
-  { slug: "ada", name: "Ada Lovelace", careLevel: 5, bio: "Builds humane developer tools and posts from cafes with suspiciously good natural light.", notes: "Met through the local-first software crowd." },
-  { slug: "maya", name: "Maya Chen", careLevel: 4, bio: "Shoots film, hikes often, and treats location stickers like a sacred art form." },
-  { slug: "jules", name: "Jules Rivera", careLevel: 3, bio: "Runs a hardware lab, lives in airports, and still answers texts faster than email." },
-  { slug: "nina", name: "Nina Patel", careLevel: 4, bio: "Designer with a brutal eye for spacing and a soft spot for weird museums." },
-  { slug: "omar", name: "Omar Hassan", careLevel: 5, bio: "Travels with one backpack, three chargers, and too many field notes." },
-  { slug: "lena", name: "Lena Brooks", careLevel: 3, bio: "Makes espresso, prototypes interfaces, and disappears into bookstores." },
-  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half data viz nerd, half mountain weather oracle." },
-  { slug: "ivy", name: "Ivy Nguyen", careLevel: 4, bio: "Keeps a flawless train itinerary and posts exactly when the light is good." },
-  { slug: "sofia", name: "Sofia Alvarez", careLevel: 3, bio: "City walker, recipe hoarder, and defender of messy sketchbooks." },
-  { slug: "devon", name: "Devon Reed", careLevel: 2, bio: "Writes release notes like tiny poems and always has a charging cable." },
-  { slug: "ezra", name: "Ezra Kim", careLevel: 4, bio: "Hardware photographer with a suspicious number of Pelican cases." },
-  { slug: "rhea", name: "Rhea Banerjee", careLevel: 5, bio: "Builds community events and knows where to find the quiet table." },
-  { slug: "felix", name: "Felix Turner", careLevel: 3, bio: "Posts from bike lanes, coffee counters, and late-night train platforms." },
-  { slug: "talia", name: "Talia Morgan", careLevel: 4, bio: "Creative producer with a calendar full of impossible logistics." },
-  { slug: "kai", name: "Kai Okafor", careLevel: 3, bio: "Maps every trip, annotates everything, forgets nothing." },
-  { slug: "mira", name: "Mira Kostov", careLevel: 2, bio: "Architectural photographer who can find composition in a parking garage." },
-  { slug: "leo", name: "Leo Park", careLevel: 4, bio: "Moves between prototyping sessions and ramen shops at irresponsible speed." },
-  { slug: "piper", name: "Piper Shah", careLevel: 2, bio: "Collects studio playlists, analog cameras, and overcomplicated packing systems." },
-  { slug: "arden", name: "Arden Flores", careLevel: 3, bio: "Curates tiny adventures and writes long captions about weather." },
-  { slug: "bianca", name: "Bianca Rossi", careLevel: 5, bio: "Can turn a rough venue, a bad projector, and no sleep into a flawless event." },
-  { slug: "samir", name: "Samir Dutta", careLevel: 3, bio: "Field researcher with a camera roll full of signage and clouds." },
-  { slug: "hazel", name: "Hazel Cooper", careLevel: 4, bio: "Knows every corner bakery and somehow also every hidden coworking loft." },
-  { slug: "terry", name: "Terry Lin", careLevel: 2, bio: "Logistics brain, soft voice, excellent maps." },
-  { slug: "cleo", name: "Cleo March", careLevel: 3, bio: "Lives between demo days, ferry terminals, and improbably good sandwiches." },
-  { slug: "wes", name: "Wes Calder", careLevel: 4, bio: "Builds outdoor rigs, runs late, posts great photos anyway." },
+  { slug: "ada", name: "Ada Lovelace", careLevel: 5, bio: "Builds patient instruments for observing complicated living systems.", notes: "Met through the open science community." },
+  { slug: "maya", name: "Maya Chen", careLevel: 4, bio: "Films weather, migration, and the brief diplomatic career of morning light." },
+  { slug: "jules", name: "Jules Rivera", careLevel: 3, bio: "Runs a field acoustics lab and knows which forest noises require immediate concern." },
+  { slug: "nina", name: "Nina Patel", careLevel: 4, bio: "Illustrates natural systems with a brutal eye for labels and an affection for beetles." },
+  { slug: "omar", name: "Omar Hassan", careLevel: 5, bio: "Carries one backpack, two lenses, and enough field notes to alarm customs." },
+  { slug: "lena", name: "Lena Brooks", careLevel: 3, bio: "Restores wetlands and maintains that mud is merely enthusiastic soil." },
+  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half climate modeler, half mountain weather oracle." },
+  { slug: "ivy", name: "Ivy Nguyen", careLevel: 4, bio: "Tracks migratory birds and posts precisely when the flock ignores the forecast." },
+  { slug: "sofia", name: "Sofia Alvarez", careLevel: 3, bio: "Studies desert ecology and defends messy field notebooks as a scientific instrument." },
+  { slug: "devon", name: "Devon Reed", careLevel: 2, bio: "Writes observatory logs like tiny poems and always carries a red flashlight." },
+  { slug: "ezra", name: "Ezra Kim", careLevel: 4, bio: "Wildlife photographer with a suspicious number of weatherproof cases." },
+  { slug: "rhea", name: "Rhea Banerjee", careLevel: 5, bio: "Organizes community science nights and knows where the owls are pretending not to be." },
+  { slug: "felix", name: "Felix Turner", careLevel: 3, bio: "Posts from riverbanks, ridgelines, and the occasional research vessel." },
+  { slug: "talia", name: "Talia Morgan", careLevel: 4, bio: "Produces documentary expeditions with a calendar full of weather related amendments." },
+  { slug: "kai", name: "Kai Okafor", careLevel: 3, bio: "Maps every survey, annotates every contour, forgets no tributary." },
+  { slug: "mira", name: "Mira Kostov", careLevel: 2, bio: "Landscape photographer who can find composition in a basalt outcrop." },
+  { slug: "leo", name: "Leo Park", careLevel: 4, bio: "Moves between tide pools and microscopes at an irresponsible speed." },
+  { slug: "piper", name: "Piper Shah", careLevel: 2, bio: "Collects star charts, analog cameras, and overcomplicated packing systems." },
+  { slug: "arden", name: "Arden Flores", careLevel: 3, bio: "Curates small expeditions and writes long captions about clouds." },
+  { slug: "bianca", name: "Bianca Rossi", careLevel: 5, bio: "Can turn bad visibility, wet equipment, and no sleep into a clean survey." },
+  { slug: "samir", name: "Samir Dutta", careLevel: 3, bio: "Field researcher with a camera roll full of tracks, strata, and clouds." },
+  { slug: "hazel", name: "Hazel Cooper", careLevel: 4, bio: "Knows every local footpath and somehow also every hidden nesting box." },
+  { slug: "terry", name: "Terry Lin", careLevel: 2, bio: "Logistics brain, soft voice, excellent topographic maps." },
+  { slug: "cleo", name: "Cleo March", careLevel: 3, bio: "Lives between ferry surveys, dark skies, and improbable marine sightings." },
+  { slug: "wes", name: "Wes Calder", careLevel: 4, bio: "Builds remote camera rigs, runs late, records excellent wolves anyway." },
 ];
 
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
@@ -494,16 +473,31 @@ const SOURCE_PROVIDERS = ["instagram", "x", "facebook", "linkedin", "rss"] as co
 type SampleSourceProvider = typeof SOURCE_PROVIDERS[number];
 type SampleUnlinkedAccount = Account & { provider: SampleSourceProvider };
 const UNLINKED_IDENTITY_NAMES = [
-  "Local First Society",
+  "Deep Field Society",
   "Field Notes Weekly",
-  "Neighborhood Archive",
-  "Open Systems Lab",
-  "Public Interest Studio",
-  "Small Tools Collective",
-  "Signal and Noise",
+  "Neighborhood Naturalists",
+  "Open Skies Lab",
+  "Public Lands Studio",
+  "Small Worlds Collective",
+  "Signal and Starlight",
   "The Long View",
-  "Transit Map Club",
-  "Useful Machines",
+  "Migration Map Club",
+  "Wild Systems Archive",
+] as const;
+
+const GENERATED_PERSONA_BIOS = [
+  "Field naturalist who notices weather before notifications and keeps excellent notes about both.",
+  "Amateur astronomer, patient photographer, and uncompromising critic of badly labeled constellations.",
+  "Ocean observer with a gift for finding wildlife and losing lens caps.",
+  "Geology enthusiast who considers a six-hour walk reasonable if the rocks are sufficiently old.",
+  "Conservation volunteer documenting small miracles and large administrative absurdities.",
+  "Storm watcher who understands three cloud atlases and none of the group chat.",
+  "Botanist cataloging alpine flowers with patience normally reserved for saints and sediment.",
+  "Marine acoustics researcher who listens to whales and keeps meetings mercifully brief.",
+  "Park ranger, night-sky guide, and practiced negotiator with raccoons.",
+  "Glaciologist recording slow motion upheaval in weatherproof handwriting.",
+  "Bird bander who wakes before dawn and considers this a personality rather than a scheduling error.",
+  "Volcanology student whose field plans remain professionally respectful of lava.",
 ] as const;
 
 function generatedPersona(index: number): {
@@ -530,7 +524,7 @@ function generatedPersona(index: number): {
     slug: `${first}-${last}-${generatedIndex}`.toLowerCase(),
     name,
     careLevel: (positiveModulo(generatedIndex, 5) + 1) as Person["careLevel"],
-    bio: "Sample friend with linked channels, recent activity, and enough graph signal to make the workspace worth opening.",
+    bio: GENERATED_PERSONA_BIOS[positiveModulo(generatedIndex, GENERATED_PERSONA_BIOS.length)]!,
   };
 }
 
@@ -541,13 +535,32 @@ function sourceHandle(name: string, provider: SampleSourceProvider, index: numbe
   return `@${slug}.${index}`;
 }
 
+function sampleAvatarUrl(index: number): string {
+  return sampleCorpusMediaUrl(sampleCorpusMedia(index), { width: 256, height: 256 });
+}
+
+function samplePostMedia(index: number, portrait = false): {
+  asset: ReturnType<typeof sampleCorpusMedia>;
+  mediaTypes: ["image"];
+  mediaUrls: [string];
+} {
+  const asset = sampleCorpusMedia(index);
+  return {
+    asset,
+    mediaTypes: ["image"],
+    mediaUrls: [sampleCorpusMediaUrl(asset, portrait
+      ? { width: 900, height: 1_350 }
+      : { width: 1_440, height: 960 })],
+  };
+}
+
 function buildSamplePersonDefs(options?: SampleDataOptions): SamplePersonDef[] {
   const { batchId, seed, friendCount, identitiesPerFriend } = resolveSampleDataOptions(options);
 
   return Array.from({ length: friendCount }, (_, rawIndex) => {
     const index = positiveModulo(rawIndex + seed, friendCount);
     const persona = generatedPersona(index);
-    const avatarUrl = `https://picsum.photos/seed/friend-${batchId}-${persona.slug}/128/128`;
+    const avatarUrl = sampleAvatarUrl(index);
     const sources = Array.from({ length: identitiesPerFriend }, (_, sourceIndex) => {
       const provider = SOURCE_PROVIDERS[(index + sourceIndex) % SOURCE_PROVIDERS.length]!;
       const providerSlug = provider === "rss" ? "rss" : provider;
@@ -599,7 +612,7 @@ function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): Sample
       externalId,
       handle,
       displayName: provider === "rss" ? `${displayName} Notes` : displayName,
-      avatarUrl: `https://picsum.photos/seed/unlinked-${options.batchId}-${provider}-${index}/128/128`,
+      avatarUrl: sampleAvatarUrl(options.friendCount * options.identitiesPerFriend + index),
       sampleDataFingerprint: fingerprint,
       firstSeenAt: seenAt,
       lastSeenAt: seenAt,
@@ -615,7 +628,7 @@ function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): Sample
 const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
 
 /**
- * Generate 10 sample RSS feed subscriptions.
+ * Generate 15 sample RSS feed subscriptions.
  *
  * All URLs use the `sample.freed.wtf` prefix so they can never
  * collide with real feeds or trigger network fetches.
@@ -708,7 +721,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
  * 10 LinkedIn posts + 8 Instagram stories + 7 Facebook stories, six
  * location time-window items, and one item per social identity.
  *
- * Stories use contentType:"story", portrait picsum images, and are spread
+ * Stories use contentType:"story", portrait corpus images, and are spread
  * across the last 22 hours (reflecting the ephemeral nature of real stories).
  * Items are spread across the last 14 days with varied user states (read,
  * saved, archived) to exercise all UI views. All IDs are deterministic so
@@ -724,7 +737,9 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const sampleFriendDefs = buildSamplePersonDefs(resolvedOptions);
   const sampleUnlinkedAccounts = buildSampleUnlinkedAccounts(resolvedOptions);
   const feedDefs = rotateArray(FEED_DEFS, seed % FEED_DEFS.length);
-  const rssHeadlines = rotateArray(RSS_HEADLINES, seed % RSS_HEADLINES.length);
+  const corpusHeadlines = SAMPLE_CORPUS_MEDIA.map((asset) => asset.fieldNote);
+  const rssHeadlinePool = corpusHeadlines.length > 0 ? corpusHeadlines : RSS_HEADLINES;
+  const rssHeadlines = rotateArray(rssHeadlinePool, seed % rssHeadlinePool.length);
   const savedHeadlines = rotateArray(SAVED_HEADLINES, seed % SAVED_HEADLINES.length);
   const savedDomains = rotateArray(SAVED_DOMAINS, seed % SAVED_DOMAINS.length);
   const xAuthors = rotateArray(X_AUTHORS, seed % X_AUTHORS.length).map((author) => ({
@@ -751,87 +766,50 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     ...author,
     id: namespaceId(batchId, author.id),
   }));
-  const xLocations = rotateArray(
-    ["Lisbon, Portugal", "Seoul, South Korea", "Reykjavik, Iceland", "Osaka, Japan", "Valencia, Spain"],
-    seed % 5
-  );
-  const facebookLocations = rotateArray(
-    ["Austin, TX", "Berlin, Germany", "Mexico City", "Portland, OR", "Copenhagen, Denmark"],
-    seed % 5
-  );
-  const instagramLocations = rotateArray(
-    [
-      { name: "Paris", coordinates: { lat: 48.8566, lng: 2.3522 } },
-      { name: "Kyoto, Japan", coordinates: { lat: 35.0116, lng: 135.7681 } },
-      { name: "Brooklyn, NY", coordinates: { lat: 40.6782, lng: -73.9442 } },
-      { name: "Milan, Italy", coordinates: { lat: 45.4642, lng: 9.19 } },
-      { name: "Taipei, Taiwan", coordinates: { lat: 25.033, lng: 121.5654 } },
-    ],
-    seed % 5
-  );
-  const linkedInLocations = rotateArray(
-    [
-      "London, UK",
-      "Singapore",
-      "New York, NY",
-      "Toronto, Canada",
-      "Amsterdam, Netherlands",
-    ],
-    seed % 5
-  );
-  const igStoryLocations = rotateArray(IG_STORY_LOCATIONS, seed % IG_STORY_LOCATIONS.length);
-  const fbStoryLocations = rotateArray(FB_STORY_LOCATIONS, seed % FB_STORY_LOCATIONS.length);
-  const igStoryCaptions = rotateArray(IG_STORY_CAPTIONS, seed % IG_STORY_CAPTIONS.length);
-  const fbStoryCaptions = rotateArray(FB_STORY_CAPTIONS, seed % FB_STORY_CAPTIONS.length);
+  const locatedCorpusMedia = SAMPLE_CORPUS_MEDIA.filter((asset) => asset.placeId);
   const locationWindows = rotateArray(
     [
       {
         platform: "instagram" as const,
-        location: { name: "San Francisco, CA", coordinates: { lat: 37.7749, lng: -122.4194 }, source: "geo_tag" as const },
+        locationSource: "geo_tag" as const,
         startOffset: -9 * DAY,
         endOffset: -7 * DAY,
         kind: "travel" as const,
-        text: "Back from a short San Francisco studio visit. The notes are mostly about fog, transit, and where the good outlets were.",
       },
       {
         platform: "facebook" as const,
-        location: { name: "Chicago, IL", coordinates: { lat: 41.8781, lng: -87.6298 }, source: "check_in" as const },
+        locationSource: "check_in" as const,
         startOffset: -3 * DAY,
         endOffset: 2 * DAY,
         kind: "overlap" as const,
-        text: "In Chicago for a few days, coffee first, workshop later, walking shoes carrying the whole operation.",
       },
       {
         platform: "linkedin" as const,
-        location: { name: "London, UK", coordinates: { lat: 51.5072, lng: -0.1276 }, source: "text_extraction" as const },
+        locationSource: "text_extraction" as const,
         startOffset: 2 * DAY,
         endOffset: 4 * DAY,
         kind: "event" as const,
-        text: "Speaking at a small local-first systems meetup in London next week.",
       },
       {
         platform: "x" as const,
-        location: { name: "Tokyo, Japan", coordinates: { lat: 35.6762, lng: 139.6503 }, source: "text_extraction" as const },
+        locationSource: "text_extraction" as const,
         startOffset: 8 * DAY,
         endOffset: 12 * DAY,
         kind: "travel" as const,
-        text: "Tokyo trip is finally booked. The itinerary is part ramen list, part train diagram, part beautiful nonsense.",
       },
       {
         platform: "instagram" as const,
-        location: { name: "Mexico City", coordinates: { lat: 19.4326, lng: -99.1332 }, source: "geo_tag" as const },
+        locationSource: "geo_tag" as const,
         startOffset: 18 * DAY,
         endOffset: 22 * DAY,
         kind: "travel" as const,
-        text: "Holding a few days for Mexico City in the calendar. Museum mornings, long walks, and a suspiciously dense taco map.",
       },
       {
         platform: "facebook" as const,
-        location: { name: "Reykjavik, Iceland", coordinates: { lat: 64.1466, lng: -21.9426 }, source: "check_in" as const },
+        locationSource: "check_in" as const,
         startOffset: 36 * DAY,
         endOffset: 41 * DAY,
         kind: "travel" as const,
-        text: "Booked Reykjavik for later this summer. Packing list begins with layers and ends with a note that simply says more layers.",
       },
     ],
     seed % SAMPLE_LOCATION_WINDOW_ITEM_COUNT,
@@ -850,6 +828,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       // Saved items can never be archived -- the ranges don't overlap here
       // anyway (>0.85 vs <0.1), but guard explicitly to enforce the invariant.
       const isArchived = !isSaved && r < 0.1;
+      const media = idx % 3 === 0 ? samplePostMedia(idx) : null;
 
       items.push({
         globalId: namespaceId(batchId, `sample-rss:${feed.slug}:${ai}`),
@@ -857,15 +836,16 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         contentType: "article",
         capturedAt: publishedAt + 60_000,
         publishedAt,
+        ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
         author: {
           id: namespaceId(batchId, `sample-${feed.slug}`),
           handle: feed.slug,
           displayName: feed.title,
         },
         content: {
-          text: rssHeadlines[idx % rssHeadlines.length],
-          mediaUrls: [],
-          mediaTypes: [],
+          text: media?.asset.fieldNote ?? rssHeadlines[idx % rssHeadlines.length],
+          mediaUrls: media?.mediaUrls ?? [],
+          mediaTypes: media?.mediaTypes ?? [],
         },
         rssSource: {
           feedUrl,
@@ -893,6 +873,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const domain = savedDomains[si % savedDomains.length];
     const r = rand();
     const wordCount = 800 + Math.round(rand() * 3200);
+    const media = si % 2 === 0 ? samplePostMedia(16 + si) : null;
+    const articleText = media?.asset.fieldNote ?? savedHeadlines[si % savedHeadlines.length];
 
     items.push({
       globalId: namespaceId(batchId, `sample-saved:${si}`),
@@ -900,22 +882,23 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "article",
       capturedAt: publishedAt + 30_000,
       publishedAt,
+      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
       author: {
         id: namespaceId(batchId, `sample-saved-author-${si}`),
         handle: domain,
         displayName: domain.split(".")[0],
       },
       content: {
-        text: savedHeadlines[si % savedHeadlines.length],
-        mediaUrls: [],
-        mediaTypes: [],
+        text: articleText,
+        mediaUrls: media?.mediaUrls ?? [],
+        mediaTypes: media?.mediaTypes ?? [],
         linkPreview: {
           url: `https://${domain}/sample-article-${batchId}-${si}`,
-          title: savedHeadlines[si % savedHeadlines.length],
+          title: articleText,
         },
       },
       preservedContent: {
-        text: savedHeadlines[si % savedHeadlines.length],
+        text: articleText,
         wordCount,
         readingTime: Math.ceil(wordCount / 250),
         preservedAt: publishedAt + 60_000,
@@ -941,6 +924,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const author = xAuthors[xi % xAuthors.length];
     const isSaved = r > 0.85;
     const isArchived = !isSaved && r < 0.1;
+    const media = xi % 2 === 0 ? samplePostMedia(24 + xi) : null;
+    const mediaPlace = sampleCorpusPlace(media?.asset.placeId);
 
     items.push({
       globalId: namespaceId(batchId, `sample-x:${xi}`),
@@ -948,21 +933,23 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
       author,
       content: {
-        text: X_POSTS[xi % X_POSTS.length],
-        mediaUrls: [],
-        mediaTypes: [],
+        text: media?.asset.fieldNote ?? X_POSTS[xi % X_POSTS.length],
+        mediaUrls: media?.mediaUrls ?? [],
+        mediaTypes: media?.mediaTypes ?? [],
       },
       engagement: {
         likes: Math.round(rand() * 2000),
         reposts: Math.round(rand() * 400),
         comments: Math.round(rand() * 150),
       },
-      ...(xi % 2 === 0
+      ...(mediaPlace
         ? {
             location: {
-              name: xLocations[(xi / 2) % xLocations.length],
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
               source: "text_extraction",
             },
           }
@@ -988,6 +975,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const author = facebookAuthors[fi % facebookAuthors.length];
     const isSaved = r > 0.85;
     const isArchived = !isSaved && r < 0.1;
+    const media = fi % 2 === 0 ? samplePostMedia(32 + fi) : null;
+    const mediaPlace = sampleCorpusPlace(media?.asset.placeId);
 
     items.push({
       globalId: namespaceId(batchId, `sample-facebook:${fi}`),
@@ -995,20 +984,22 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
       author,
       content: {
-        text: FACEBOOK_POSTS[fi % FACEBOOK_POSTS.length],
-        mediaUrls: [],
-        mediaTypes: [],
+        text: media?.asset.fieldNote ?? FACEBOOK_POSTS[fi % FACEBOOK_POSTS.length],
+        mediaUrls: media?.mediaUrls ?? [],
+        mediaTypes: media?.mediaTypes ?? [],
       },
       engagement: {
         likes: Math.round(rand() * 800),
         comments: Math.round(rand() * 60),
       },
-      ...(fi % 2 === 0
+      ...(mediaPlace
         ? {
             location: {
-              name: facebookLocations[(fi / 2) % facebookLocations.length],
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
               source: "check_in",
             },
           }
@@ -1035,27 +1026,30 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const isArchived = !isSaved && r < 0.1;
 
     const author = instagramAuthors[ii % instagramAuthors.length];
+    const media = samplePostMedia(ii * 5);
+    const mediaPlace = sampleCorpusPlace(media.asset.placeId);
     items.push({
       globalId: namespaceId(batchId, `sample-instagram:${ii}`),
       platform: "instagram",
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
       author,
       content: {
-        text: INSTAGRAM_POSTS[ii % INSTAGRAM_POSTS.length],
-        mediaUrls: [],
-        mediaTypes: [],
+        text: media.asset.fieldNote,
+        mediaUrls: media.mediaUrls,
+        mediaTypes: media.mediaTypes,
       },
       engagement: {
         likes: Math.round(rand() * 1500),
         comments: Math.round(rand() * 80),
       },
-      ...(ii % 2 === 0
+      ...(mediaPlace
         ? {
             location: {
-              name: instagramLocations[(ii / 2) % instagramLocations.length].name,
-              coordinates: instagramLocations[(ii / 2) % instagramLocations.length].coordinates,
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
               source: "geo_tag",
             },
           }
@@ -1081,6 +1075,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const isSaved = r > 0.88;
     const isArchived = !isSaved && r < 0.08;
     const author = linkedInAuthors[li % linkedInAuthors.length];
+    const media = li % 2 === 0 ? samplePostMedia(40 + li) : null;
+    const mediaPlace = sampleCorpusPlace(media?.asset.placeId);
 
     items.push({
       globalId: namespaceId(batchId, `sample-linkedin:${li}`),
@@ -1088,20 +1084,22 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
       author,
       content: {
-        text: LINKEDIN_POSTS[li % LINKEDIN_POSTS.length],
-        mediaUrls: [],
-        mediaTypes: [],
+        text: media?.asset.fieldNote ?? LINKEDIN_POSTS[li % LINKEDIN_POSTS.length],
+        mediaUrls: media?.mediaUrls ?? [],
+        mediaTypes: media?.mediaTypes ?? [],
       },
       engagement: {
         likes: Math.round(rand() * 1_800),
         comments: Math.round(rand() * 120),
       },
-      ...(li % 2 === 0
+      ...(mediaPlace
         ? {
             location: {
-              name: linkedInLocations[(li / 2) % linkedInLocations.length],
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
               source: "text_extraction",
             },
           }
@@ -1119,14 +1117,13 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     });
   }
 
-  // 8 Instagram stories — ephemeral, spread over the last 22 hours.
-  // Portrait images use picsum.photos with deterministic seed strings.
+  // 8 Instagram stories, ephemeral and spread over the last 22 hours.
   for (let si = 0; si < 8; si++) {
     const age = (si / 8) * 22 * HOUR + rand() * HOUR;
     const publishedAt = Math.round(now - age);
     const author = igStoryAuthors[si % igStoryAuthors.length];
-    const caption = igStoryCaptions[si] ?? undefined;
-    const locationName = igStoryLocations[si] ?? undefined;
+    const media = samplePostMedia(8 + si, true);
+    const mediaPlace = sampleCorpusPlace(media.asset.placeId);
 
     items.push({
       globalId: namespaceId(batchId, `sample-ig-story:${si}`),
@@ -1134,13 +1131,22 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "story",
       capturedAt: publishedAt + 2_000,
       publishedAt,
+      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
       author,
       content: {
-        text: caption,
-        mediaUrls: [`https://picsum.photos/seed/${batchId}-ig-story-${si}/600/900`],
-        mediaTypes: ["image"],
+        text: media.asset.fieldNote,
+        mediaUrls: media.mediaUrls,
+        mediaTypes: media.mediaTypes,
       },
-      ...(locationName ? { location: { name: locationName, source: "sticker" } } : {}),
+      ...(mediaPlace
+        ? {
+            location: {
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
+              source: "sticker" as const,
+            },
+          }
+        : {}),
       userState: {
         hidden: false,
         saved: false,
@@ -1156,8 +1162,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const age = (si / 7) * 22 * HOUR + rand() * HOUR;
     const publishedAt = Math.round(now - age);
     const author = fbStoryAuthors[si % fbStoryAuthors.length];
-    const caption = fbStoryCaptions[si] ?? undefined;
-    const locationName = fbStoryLocations[si] ?? undefined;
+    const media = samplePostMedia(16 + si, true);
+    const mediaPlace = sampleCorpusPlace(media.asset.placeId);
 
     items.push({
       globalId: namespaceId(batchId, `sample-fb-story:${si}`),
@@ -1165,13 +1171,22 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: "story",
       capturedAt: publishedAt + 2_000,
       publishedAt,
+      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
       author,
       content: {
-        text: caption,
-        mediaUrls: [`https://picsum.photos/seed/${batchId}-fb-story-${si}/600/900`],
-        mediaTypes: ["image"],
+        text: media.asset.fieldNote,
+        mediaUrls: media.mediaUrls,
+        mediaTypes: media.mediaTypes,
       },
-      ...(locationName ? { location: { name: locationName, source: "check_in" } } : {}),
+      ...(mediaPlace
+        ? {
+            location: {
+              name: mediaPlace.name,
+              coordinates: mediaPlace.coordinates,
+              source: "check_in" as const,
+            },
+          }
+        : {}),
       userState: {
         hidden: false,
         saved: false,
@@ -1194,6 +1209,9 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const startsAt = Math.round(now + windowDef.startOffset);
     const endsAt = Math.round(now + windowDef.endOffset);
     const publishedAt = Math.round(Math.min(now - (wi + 1) * HOUR, startsAt - HOUR));
+    const locatedAsset = locatedCorpusMedia[wi % locatedCorpusMedia.length]!;
+    const media = samplePostMedia(SAMPLE_CORPUS_MEDIA.indexOf(locatedAsset));
+    const mediaPlace = sampleCorpusPlace(locatedAsset.placeId)!;
 
     items.push({
       globalId: namespaceId(batchId, `sample-location-window:${wi}`),
@@ -1201,6 +1219,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType: source.platform === "rss" ? "article" : "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      sourceUrl: sampleCorpusUnsplashUrl(media.asset),
       author: {
         id: source.authorId,
         handle: source.handle ?? source.authorId,
@@ -1208,11 +1227,9 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         avatarUrl: source.avatarUrl,
       },
       content: {
-        text: windowDef.text,
-        mediaUrls: windowDef.platform === "instagram"
-          ? [`https://picsum.photos/seed/${batchId}-location-window-${wi}/900/900`]
-          : [],
-        mediaTypes: windowDef.platform === "instagram" ? ["image"] : [],
+        text: media.asset.fieldNote,
+        mediaUrls: media.mediaUrls,
+        mediaTypes: media.mediaTypes,
       },
       ...(source.platform === "rss"
         ? {
@@ -1223,7 +1240,11 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
             },
           }
         : {}),
-      location: windowDef.location,
+      location: {
+        name: mediaPlace.name,
+        coordinates: mediaPlace.coordinates,
+        source: windowDef.locationSource,
+      },
       timeRange: {
         startsAt,
         endsAt,
@@ -1251,7 +1272,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
       const publishedAt = Math.round(now - age);
       const contentType = source.platform === "rss" ? "article" : "post";
-      const text =
+      const media = graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null;
+      const text = media?.asset.fieldNote ?? (
         source.platform === "linkedin"
           ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
           : source.platform === "instagram"
@@ -1259,15 +1281,13 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
             : source.platform === "facebook"
               ? FACEBOOK_POSTS[graphItemIndex % FACEBOOK_POSTS.length]
               : source.platform === "rss"
-                ? RSS_HEADLINES[graphItemIndex % RSS_HEADLINES.length]
-                : X_POSTS[graphItemIndex % X_POSTS.length];
-      const location =
-        graphItemIndex % 7 === 0
-          ? {
-              name: xLocations[graphItemIndex % xLocations.length],
-              source: "text_extraction" as const,
-            }
-          : undefined;
+                ? rssHeadlines[graphItemIndex % rssHeadlines.length]
+                : X_POSTS[graphItemIndex % X_POSTS.length]
+      );
+      const locationAsset = locatedCorpusMedia[graphItemIndex % locatedCorpusMedia.length];
+      const locationPlace = graphItemIndex % 7 === 0
+        ? sampleCorpusPlace(media?.asset.placeId ?? locationAsset?.placeId)
+        : undefined;
 
       items.push({
         globalId: namespaceId(batchId, `sample-graph:${source.platform}:${graphItemIndex}`),
@@ -1275,6 +1295,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         contentType,
         capturedAt: publishedAt + 5_000,
         publishedAt,
+        ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
         author: {
           id: source.authorId,
           handle: source.handle ?? source.authorId,
@@ -1283,8 +1304,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         },
         content: {
           text,
-          mediaUrls: [],
-          mediaTypes: [],
+          mediaUrls: media?.mediaUrls ?? [],
+          mediaTypes: media?.mediaTypes ?? [],
         },
         ...(source.platform === "rss"
           ? {
@@ -1295,7 +1316,15 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
               },
             }
           : {}),
-        ...(location ? { location } : {}),
+        ...(locationPlace
+          ? {
+              location: {
+                name: locationPlace.name,
+                coordinates: locationPlace.coordinates,
+                source: "text_extraction" as const,
+              },
+            }
+          : {}),
         engagement: source.platform === "rss"
           ? undefined
           : {
@@ -1319,7 +1348,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const contentType = account.provider === "rss" ? "article" : "post";
-    const text =
+    const media = graphItemIndex % 4 === 0 ? samplePostMedia(graphItemIndex) : null;
+    const text = media?.asset.fieldNote ?? (
       account.provider === "linkedin"
         ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
         : account.provider === "instagram"
@@ -1327,8 +1357,9 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
           : account.provider === "facebook"
             ? FACEBOOK_POSTS[graphItemIndex % FACEBOOK_POSTS.length]
             : account.provider === "rss"
-              ? RSS_HEADLINES[graphItemIndex % RSS_HEADLINES.length]
-              : X_POSTS[graphItemIndex % X_POSTS.length];
+              ? rssHeadlines[graphItemIndex % rssHeadlines.length]
+              : X_POSTS[graphItemIndex % X_POSTS.length]
+    );
 
     items.push({
       globalId: namespaceId(batchId, `sample-unlinked-graph:${account.provider}:${graphItemIndex}`),
@@ -1336,6 +1367,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       contentType,
       capturedAt: publishedAt + 5_000,
       publishedAt,
+      ...(media ? { sourceUrl: sampleCorpusUnsplashUrl(media.asset) } : {}),
       author: {
         id: account.externalId,
         handle: account.handle ?? account.externalId,
@@ -1344,8 +1376,8 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       },
       content: {
         text,
-        mediaUrls: [],
-        mediaTypes: [],
+        mediaUrls: media?.mediaUrls ?? [],
+        mediaTypes: media?.mediaTypes ?? [],
       },
       ...(account.provider === "rss"
         ? {

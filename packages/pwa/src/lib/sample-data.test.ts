@@ -6,6 +6,8 @@ import {
   SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT,
+  SAMPLE_CORPUS_MEDIA,
+  SAMPLE_CORPUS_PLACES,
   SAMPLE_STRESS_FRIEND_COUNT,
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
@@ -89,7 +91,7 @@ describe("sample data batches", () => {
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
       generatedAt: 123,
-      generatorVersion: 2,
+      generatorVersion: 3,
     });
   });
 
@@ -167,5 +169,31 @@ describe("sample data batches", () => {
     expect(unlinkedAccounts.every((account) => batch.items.some((item) =>
       item.platform === account.provider && item.author.id === account.externalId
     ))).toBe(true);
+  });
+
+  it("uses the shared curated corpus across every social platform", () => {
+    const batch = generateSampleLibraryData({ batchId: "batch-corpus", seed: 17 });
+    const imageItems = batch.items.filter((item) => item.content.mediaUrls.length > 0);
+
+    expect(imageItems.length).toBeGreaterThan(100);
+    expect(imageItems.every((item) => item.content.mediaUrls.every((url) =>
+      new URL(url).hostname === "images.unsplash.com"
+    ))).toBe(true);
+    expect(new Set(imageItems.map((item) => item.platform))).toEqual(
+      new Set(["facebook", "instagram", "linkedin", "rss", "saved", "x"]),
+    );
+    expect(batch.items.filter((item) => item.location?.coordinates).length).toBeGreaterThan(30);
+
+    const placesById = new Map(SAMPLE_CORPUS_PLACES.map((place) => [place.id, place]));
+    for (const item of imageItems) {
+      const asset = SAMPLE_CORPUS_MEDIA.find((candidate) =>
+        item.content.mediaUrls.some((url) => url.startsWith(candidate.baseUrl))
+      );
+      expect(asset, item.globalId).toBeDefined();
+      expect(item.content.text, item.globalId).toBe(asset?.fieldNote);
+      if (item.location && asset?.placeId) {
+        expect(item.location.name, item.globalId).toBe(placesById.get(asset.placeId)?.name);
+      }
+    }
   });
 });

@@ -11,11 +11,14 @@ describe("demo checkpoint", () => {
     expect(first.filter((record) => record.registryKey === "30_person")).toHaveLength(80);
   });
 
-  it("contains no remote display images or private actor credentials", () => {
+  it("uses only the curated Unsplash host for remote display images", () => {
     const serialized = JSON.stringify(createFreedDemoCheckpointRecords());
 
     expect(serialized).not.toContain("picsum.photos");
-    expect(serialized).not.toMatch(/"(?:authorAvatarUrl|avatarUrl|imageUrl|sourceUrl)":"https?:\/\/[^"]+\.(?:avif|gif|jpe?g|png|webp)/i);
+    expect(serialized).toContain("images.unsplash.com");
+    expect(serialized).not.toMatch(
+      /"(?:authorAvatarUrl|avatarUrl|imageUrl)":"https?:\/\/(?!images\.unsplash\.com)[^"]+/i,
+    );
     expect(serialized).not.toMatch(/private[_-]?key/i);
   });
 });

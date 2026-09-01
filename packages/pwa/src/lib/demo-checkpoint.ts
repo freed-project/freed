@@ -20,15 +20,14 @@ import {
 } from "./library-core-sqlite-runtime";
 
 const DEMO_CREATED_AT = Date.UTC(2026, 7, 31, 12);
-const DEMO_BATCH_ID = "freed-demo-showcase-v1";
-const DEMO_LIBRARY_ID = "freed-demo-library-v1";
+const DEMO_BATCH_ID = "freed-demo-showcase-v2";
+const DEMO_LIBRARY_ID = "freed-demo-library-v2";
 const DEMO_EPOCH_ID = "1".repeat(64);
 const DEMO_WRITER_ID = "2".repeat(64);
 const DEMO_CAPABILITY_ID = "3".repeat(64);
 const DEMO_PUBLIC_KEY = "4".repeat(64);
 const DEMO_CHAIN_DIGEST = "5".repeat(64);
 const DEMO_PAGE_RECORDS = 512;
-const LOCAL_MEDIA_COUNT = 9;
 
 function record(
   registryKey: LibraryCoreCheckpointRegistryKey,
@@ -51,19 +50,11 @@ function sampleFields(value: FeedItem | RssFeed | Person | Account) {
   } as const;
 }
 
-function localMediaUrl(index: number): string {
-  return `/demo/media/showcase-${String(index % LOCAL_MEDIA_COUNT).padStart(2, "0")}.webp`;
+function displayImageUrl(sourceUrl: string | undefined): string | null {
+  return sourceUrl ?? null;
 }
 
-function localizeRemoteImageUrl(
-  sourceUrl: string | undefined,
-  index: number,
-): string | null {
-  if (!sourceUrl) return null;
-  return /^https?:\/\//.test(sourceUrl) ? localMediaUrl(index) : sourceUrl;
-}
-
-function feedItemRecords(item: FeedItem, index: number) {
+function feedItemRecords(item: FeedItem) {
   const content = item.content;
   const state = item.userState;
   const location = item.location;
@@ -75,7 +66,7 @@ function feedItemRecords(item: FeedItem, index: number) {
     record("10_feed_item", item.globalId, {
       archived: state.archived,
       archivedAt: state.archivedAt ?? null,
-      authorAvatarUrl: localizeRemoteImageUrl(item.author.avatarUrl, index),
+      authorAvatarUrl: displayImageUrl(item.author.avatarUrl),
       authorDisplayName: item.author.displayName,
       authorHandle: item.author.handle,
       authorId: item.author.id,
@@ -138,7 +129,7 @@ function feedItemRecords(item: FeedItem, index: number) {
       record("11_feed_item_media", [item.globalId, ordinal], {
         blobContentDigest: null,
         mediaType,
-        sourceUrl: localizeRemoteImageUrl(sourceUrl, index + ordinal),
+        sourceUrl: displayImageUrl(sourceUrl),
       }),
     );
   }
@@ -156,7 +147,7 @@ function feedRecords(feed: RssFeed) {
     record("20_rss_feed", feed.url, {
       enabled: feed.enabled,
       folder: feed.folder ?? null,
-      imageUrl: localizeRemoteImageUrl(feed.imageUrl, feed.url.length),
+      imageUrl: displayImageUrl(feed.imageUrl),
       lastFetched: feed.lastFetched ?? null,
       pollInterval: feed.pollInterval ?? null,
       ...sampleFields(feed),
@@ -171,7 +162,7 @@ function feedRecords(feed: RssFeed) {
 function personRecords(person: Person) {
   const records = [
     record("30_person", person.id, {
-      avatarUrl: localizeRemoteImageUrl(person.avatarUrl, person.id.length),
+      avatarUrl: displayImageUrl(person.avatarUrl),
       bio: person.bio ?? null,
       careLevel: person.careLevel,
       createdAt: person.createdAt,
@@ -202,7 +193,7 @@ function accountRecords(account: Account) {
   const records = [
     record("40_account", account.id, {
       address: account.address ?? null,
-      avatarUrl: localizeRemoteImageUrl(account.avatarUrl, account.id.length),
+      avatarUrl: displayImageUrl(account.avatarUrl),
       createdAt: account.createdAt,
       discoveredFrom: account.discoveredFrom,
       displayName: account.displayName ?? null,
