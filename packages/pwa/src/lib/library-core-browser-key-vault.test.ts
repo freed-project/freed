@@ -1,5 +1,5 @@
 import { IDBFactory } from "fake-indexeddb";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isLibraryCoreLowercaseHex64,
   parseLibraryCoreFollowerMutationContextV1,
@@ -67,6 +67,46 @@ describe("PWA Library Core browser key vault", () => {
     await expect(
       signPwaLibraryCoreActorProof(first, Uint8Array.of(1, 2, 3)),
     ).resolves.toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it("returns one durable actor identity to concurrent first creators", async () => {
+    const libraryId = lowercaseHex64(HEX.library);
+    const creatorCount = 8;
+    const originalGenerateKey = crypto.subtle.generateKey.bind(crypto.subtle);
+    let arrived = 0;
+    let releaseCreators = () => {};
+    const creatorsReady = new Promise<void>((resolve) => {
+      releaseCreators = resolve;
+    });
+    const generateKey = vi
+      .spyOn(crypto.subtle, "generateKey")
+      .mockImplementation(async (algorithm, extractable, keyUsages) => {
+        arrived += 1;
+        if (arrived === creatorCount) releaseCreators();
+        await creatorsReady;
+        return originalGenerateKey(algorithm, extractable, keyUsages);
+      });
+
+    try {
+      const identities = await Promise.all(
+        Array.from({ length: creatorCount }, () =>
+          getOrCreatePwaLibraryCoreActorIdentity(libraryId),
+        ),
+      );
+
+      expect(arrived).toBe(creatorCount);
+      for (const identity of identities) {
+        expect(identity).toEqual(identities[0]);
+        await expect(
+          signPwaLibraryCoreActorProof(identity, Uint8Array.of(1, 2, 3)),
+        ).resolves.toMatch(/^[0-9a-f]{128}$/);
+      }
+      await expect(
+        getOrCreatePwaLibraryCoreActorIdentity(libraryId),
+      ).resolves.toEqual(identities[0]);
+    } finally {
+      generateKey.mockRestore();
+    }
   });
 
   it("signs with the identity accepted by SQLite", async () => {
