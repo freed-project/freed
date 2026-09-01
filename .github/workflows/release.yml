@@ -212,7 +212,7 @@ jobs:
       - name: Install Playwright browsers
         if: needs.notes.outputs.release_channel != 'dev'
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
         working-directory: packages/desktop
 
       - name: Run channel validation
