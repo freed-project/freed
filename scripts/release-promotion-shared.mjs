@@ -45,6 +45,8 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/release-promotion.test.mjs",
   "scripts/release.sh",
   "scripts/validate-main-pr.mjs",
+  "scripts/trusted-worktree-publish.sh",
+  "scripts/worktree-publish.sh",
 ];
 
 export const PROMOTION_BRANCH_PATTERN =
