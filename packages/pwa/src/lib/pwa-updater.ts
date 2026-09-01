@@ -43,9 +43,9 @@ export function onUpdateAvailable(fn: UpdateListener): () => void {
  * Force the service worker to check for a new version.
  * Returns a truthy string if an update was detected, null if up-to-date.
  *
- * Uses event-based detection rather than a fixed sleep: we listen for
- * `updatefound` on the registration and then watch the installing SW's
- * `statechange` until it reaches `installed` (i.e. parked in `waiting`).
+ * A completed `registration.update()` is the authoritative no-update result.
+ * When it starts an installing worker, wait for that worker to finish instead.
+ * The deadline remains only for a browser call that never settles.
  */
 export async function checkForPwaUpdate(): Promise<string | null> {
   if (updateAvailable) return "new version";
@@ -60,35 +60,71 @@ export async function checkForPwaUpdate(): Promise<string | null> {
   }
 
   return new Promise<string | null>((resolve) => {
-    // Give the network request up to 10 seconds before giving up
-    const timer = setTimeout(() => resolve(null), 10_000);
+    let settled = false;
+    let installingWorker: ServiceWorker | null = null;
 
-    reg.addEventListener(
-      "updatefound",
-      () => {
-        const sw = reg.installing;
-        if (!sw) {
-          clearTimeout(timer);
-          resolve(null);
-          return;
-        }
-        sw.addEventListener("statechange", () => {
-          // `installed` means the SW finished installing and is now waiting
-          if (sw.state === "installed" && reg.waiting) {
-            clearTimeout(timer);
-            notifyUpdateAvailable();
-            resolve("new version");
-          }
-        });
-      },
-      { once: true },
-    );
+    const onInstallingStateChange = () => {
+      if (installingWorker?.state === "installed") {
+        finish("new version");
+      } else if (installingWorker?.state === "redundant") {
+        finish(null);
+      }
+    };
 
-    reg.update().catch(() => {
-      recordBugReportEvent("pwa:updater", "warn", "Manual update check failed");
+    const stopWatching = () => {
       clearTimeout(timer);
-      resolve(null);
-    });
+      reg.removeEventListener("updatefound", onUpdateFound);
+      installingWorker?.removeEventListener("statechange", onInstallingStateChange);
+    };
+
+    const finish = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      stopWatching();
+      if (value) notifyUpdateAvailable();
+      resolve(value);
+    };
+
+    const watchInstallingWorker = (
+      registration: ServiceWorkerRegistration = reg,
+    ): boolean => {
+      const worker = registration.installing ?? reg.installing;
+      if (!worker) return false;
+
+      if (worker !== installingWorker) {
+        installingWorker?.removeEventListener("statechange", onInstallingStateChange);
+        installingWorker = worker;
+        installingWorker.addEventListener("statechange", onInstallingStateChange);
+      }
+      onInstallingStateChange();
+      return true;
+    };
+
+    const onUpdateFound = () => {
+      watchInstallingWorker();
+    };
+
+    reg.addEventListener("updatefound", onUpdateFound);
+    const timer = setTimeout(() => finish(null), 10_000);
+
+    Promise.resolve()
+      .then(() => reg.update())
+      .then(
+        (checkedRegistration) => {
+          if (settled) return;
+          if (checkedRegistration.waiting || reg.waiting) {
+            finish("new version");
+            return;
+          }
+          if (!watchInstallingWorker(checkedRegistration)) {
+            finish(null);
+          }
+        },
+        () => {
+          recordBugReportEvent("pwa:updater", "warn", "Manual update check failed");
+          finish(null);
+        },
+      );
   });
 }
 
