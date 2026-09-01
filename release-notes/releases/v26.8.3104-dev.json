@@ -3,7 +3,7 @@
   "version": "26.8.3104-dev",
   "channel": "dev",
   "dayKey": "26.8.31",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-01T05:24:54.232Z",
   "model": "heuristic",
@@ -169,6 +169,7 @@
       "Keep PWA feeds and search bounded across 100,000 locally stored items"
     ],
     "fixes": [
+      "Recover safely if a PWA factory reset is interrupted and its stored reload data is damaged",
       "Reader, feed, and header polish",
       "Capture and scraper reliability fixes",
       "Release build and type-safety cleanup",
@@ -197,5 +198,5 @@
       "Soak the verified build before production promotion"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3104-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Anonymous release demo experience\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n\n### Fixes\n\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Release build and type-safety cleanup\n- Complete PWA update checks promptly\n- Keep sync status control stable\n- Admit Google Drive installed sync trigger\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Reject corrupted PWA media ranges before they become available offline\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Show progress while importing or clearing sample data\n\n### Follow-ups\n\n- Prepare v26.8.3102-dev\n- Refresh v26.8.3101-dev identity\n- WebKit PWA corpus hardening\n- Friends offset pagination with keysets\n- Reduce PWA install bundle\n- Page large Friends directories with stable SQLite keyset cursors\n- Smaller PWA installs, stronger local storage recovery, and faster large Libraries\n- Run installed build verification in an isolated profile\n- Physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Reliable PWA recovery and Google Drive authentication\n- Verify the first Google Drive publication and exact retry against the real local Library\n- Prove released Freed Desktop and PWA edits synchronize in both directions\n- Soak the verified build before production promotion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3104-dev\n\nAtomic Google Drive checkpoints and resilient PWA sample data\n\n### Features\n\n- Anonymous release demo experience\n- Open Map and Friends on demand while keeping return visits available offline\n- Keep PWA feeds and search bounded across 100,000 locally stored items\n\n### Fixes\n\n- Recover safely if a PWA factory reset is interrupted and its stored reload data is damaged\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Release build and type-safety cleanup\n- Complete PWA update checks promptly\n- Keep sync status control stable\n- Admit Google Drive installed sync trigger\n- Refresh Google Drive authentication once and retry the exact failed request after a 401\n- Reject corrupted PWA media ranges before they become available offline\n- Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload\n- Show progress while importing or clearing sample data\n\n### Follow-ups\n\n- Prepare v26.8.3102-dev\n- Refresh v26.8.3101-dev identity\n- WebKit PWA corpus hardening\n- Friends offset pagination with keysets\n- Reduce PWA install bundle\n- Page large Friends directories with stable SQLite keyset cursors\n- Smaller PWA installs, stronger local storage recovery, and faster large Libraries\n- Run installed build verification in an isolated profile\n- Physical iPhone PWA acceptance\n- Extend large-library proof to WebKit and whole-process memory\n- Reliable PWA recovery and Google Drive authentication\n- Verify the first Google Drive publication and exact retry against the real local Library\n- Prove released Freed Desktop and PWA edits synchronize in both directions\n- Soak the verified build before production promotion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
