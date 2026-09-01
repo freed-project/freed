@@ -36,7 +36,10 @@ import {
   initPwaUpdater,
   onUpdateAvailable,
 } from "./lib/pwa-updater";
-import { pickContactViaWebApi } from "./lib/contacts";
+import {
+  isContactPickerAvailable,
+  pickContactViaWebApi,
+} from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
 import {
@@ -534,9 +537,12 @@ function App() {
       },
       hydrateReaderItem: IS_DEMO ? undefined : hydrateReaderItemInPwa,
       pinReaderItem: IS_DEMO ? undefined : pinReaderItemInPwa,
-      // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
-      // FriendEditor falls back to manual entry when this is undefined at runtime.
-      pickContact: IS_DEMO ? undefined : pickContactViaWebApi,
+      // FriendEditor falls back to manual entry when the Contact Picker API is
+      // unavailable, while a real picker cancellation remains a cancellation.
+      pickContact:
+        !IS_DEMO && isContactPickerAvailable()
+          ? pickContactViaWebApi
+          : undefined,
       openUrl: IS_DEMO
         ? async () => toast.info("External links are disabled in this read only demo")
         : openPwaUrl,
