@@ -1,0 +1,70 @@
+{
+  "tag": "v26.9.100-dev",
+  "version": "26.9.100-dev",
+  "channel": "dev",
+  "dayKey": "26.9.1",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-01T21:59:38.282Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3104-dev",
+    "previousPublishedDayTag": "v26.8.3104-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "7f035735d6af129e3b7e8c50da88bdde6dffa298",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3104-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "a2349a4635148d5140a03491565a167ae583c699",
+        "toInclusiveProductCommitSha": "7f035735d6af129e3b7e8c50da88bdde6dffa298"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:05e74f00da485c3a4b4569b5ecf2e118fa4a671a37372ea84cfbf36510fc4ad1",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.100-dev"
+    ],
+    "prNumbers": [
+      1762,
+      1766
+    ],
+    "commitSubjects": [
+      "chore: ship signed isolated dev build (#1766)",
+      "fix: recover Safari private OPFS bootstrap (#1762)"
+    ]
+  },
+  "release": {
+    "deck": "Private PWA recovery with a safe signed verifier",
+    "features": [
+      "Install a separately named, signed Freed Preview build for isolated testing without replacing the normal Freed application or joining its updater channel"
+    ],
+    "fixes": [
+      "Recover Safari Private Browsing startup when durable OPFS SQLite is unavailable while keeping persistent sessions fail closed"
+    ],
+    "followUps": [
+      "Run installed verification and the bounded stability soak against the isolated dev build"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.100-dev\n\nPrivate PWA recovery with a safe signed verifier\n\n### Features\n\n- Install a separately named, signed Freed Preview build for isolated testing without replacing the normal Freed application or joining its updater channel\n\n### Fixes\n\n- Recover Safari Private Browsing startup when durable OPFS SQLite is unavailable while keeping persistent sessions fail closed\n\n### Follow-ups\n\n- Run installed verification and the bounded stability soak against the isolated dev build\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
