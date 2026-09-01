@@ -65,7 +65,7 @@ async function existingPromotionFixture(t) {
   await fs.copyFile(path.join(sourceRoot, ".nvmrc"), path.join(repo, ".nvmrc"));
   await fs.writeFile(
     path.join(repo, "scripts/validate-release-promotion.mjs"),
-    "process.exit(1);\n",
+    'process.exit(process.argv.includes("--to-ref=origin/main") ? 1 : 0);\n',
   );
   await fs.writeFile(
     path.join(repo, "scripts/validate-main-pr.mjs"),
