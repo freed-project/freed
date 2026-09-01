@@ -20,9 +20,21 @@ const LOCAL_SAMPLE_AUTHORITY_KEY = "active";
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    request.addEventListener("success", () => resolve(request.result), {
-      once: true,
-    });
+    request.addEventListener(
+      "success",
+      () => {
+        try {
+          resolve(request.result);
+        } catch (error) {
+          // WebKit can finish the IndexedDB request while tearing down the
+          // script realm, then throw when materializing a stored CryptoKey.
+          // Keep that lifecycle failure on the promise path so it cannot
+          // escape as an unhandled event or fabricate a replacement actor.
+          reject(error);
+        }
+      },
+      { once: true },
+    );
     request.addEventListener(
       "error",
       () => reject(request.error ?? new Error("Browser key request failed")),

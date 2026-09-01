@@ -560,6 +560,80 @@ test("iPhone WebKit reopens the accepted OPFS Library after worker loss", async 
   }
 });
 
+test("iPhone WebKit reopens and signs with the same actor key", async () => {
+  test.setTimeout(90_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-actor-key-webkit-"),
+  );
+  const libraryId = "41".repeat(32);
+  const message = Uint8Array.from([1, 2, 3, 4]);
+  let context: BrowserContext | null = null;
+
+  const openKeyVaultPage = async () => {
+    const openedContext = await launchPersistentLibraryContext(profileRoot);
+    const page = openedContext.pages()[0] ?? (await openedContext.newPage());
+    await page.goto("/favicon.svg");
+    return { context: openedContext, page };
+  };
+
+  const readIdentityAndSign = async (page: Page) =>
+    page.evaluate(
+      async ({ expectedLibraryId, signingMessage }) => {
+        const keyVault = await import(
+          "/src/lib/library-core-browser-key-vault.ts"
+        );
+        const identity =
+          await keyVault.getOrCreatePwaLibraryCoreActorIdentity(
+            expectedLibraryId,
+          );
+        const signature = await keyVault.signPwaLibraryCoreActorProof(
+          identity,
+          Uint8Array.from(signingMessage),
+        );
+        const fromHex = (value: string) =>
+          Uint8Array.from(value.match(/.{2}/g) ?? [], (byte) =>
+            Number.parseInt(byte, 16),
+          );
+        const publicKey = await crypto.subtle.importKey(
+          "raw",
+          fromHex(identity.actorPublicKey),
+          { name: "Ed25519" },
+          false,
+          ["verify"],
+        );
+        const verified = await crypto.subtle.verify(
+          { name: "Ed25519" },
+          publicKey,
+          fromHex(signature),
+          Uint8Array.from(signingMessage),
+        );
+        return { identity, verified };
+      },
+      {
+        expectedLibraryId: libraryId,
+        signingMessage: Array.from(message),
+      },
+    );
+
+  try {
+    let opened = await openKeyVaultPage();
+    context = opened.context;
+    const first = await readIdentityAndSign(opened.page);
+    expect(first.verified).toBe(true);
+    await context.close();
+    context = null;
+
+    opened = await openKeyVaultPage();
+    context = opened.context;
+    const reopened = await readIdentityAndSign(opened.page);
+    expect(reopened.identity).toEqual(first.identity);
+    expect(reopened.verified).toBe(true);
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
 test("iPhone WebKit rejects a corrupted accepted OPFS SQLite generation", async () => {
   test.setTimeout(180_000);
   const profileRoot = await mkdtemp(
