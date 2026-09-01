@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   createLibraryCoreNormalizedCheckpointDigestAccumulatorV2,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
@@ -94,6 +95,84 @@ class MemoryCheckpointAdapter
 }
 
 describe("normalized checkpoint publication", () => {
+  it("splits native-sized exports at the immutable manifest page bound", async () => {
+    const records = [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "00_checkpoint_header",
+        primaryKey: "checkpoint",
+        payload: {
+          authorityEpoch,
+          checkpointId: `${libraryId}:${authorityEpoch}:7`,
+          createdAtMs: 1_000,
+          libraryId,
+          schemaVersion: 1,
+          sourceRevision: 7,
+        },
+      }),
+      ...Array.from(
+        { length: LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT + 1 },
+        (_, index) =>
+          createLibraryCoreNormalizedCheckpointRecordV2({
+            registryKey: "13_feed_item_tag",
+            primaryKey: [
+              `item-${index.toLocaleString("en-US", {
+                minimumIntegerDigits: 5,
+                useGrouping: false,
+              })}`,
+              "favorite",
+            ],
+            payload: { tag: "favorite" },
+          }),
+      ),
+    ];
+    const pages = [];
+    for await (const page of prepareLibraryCoreNormalizedCheckpointPagesV2({
+      descriptor: {
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch,
+        writerId,
+        sourceRevision: 7,
+        causalFrontierDigest: frontierDigest,
+        recordCount: records.length,
+        itemCount: 0,
+      },
+      generation: 0,
+      records,
+      subtle,
+    })) {
+      pages.push(page);
+    }
+
+    expect(pages.map((page) => page.recordCount)).toEqual([
+      LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
+      2,
+    ]);
+
+    const adapter = new MemoryCheckpointAdapter();
+    const published = await publishLibraryCoreNormalizedCheckpointV2({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      descriptor: {
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch,
+        writerId,
+        sourceRevision: 7,
+        causalFrontierDigest: frontierDigest,
+        recordCount: records.length,
+        itemCount: 0,
+      },
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+      records,
+      subtle,
+    });
+    expect(published.status).toBe("committed");
+  });
+
   it("stores exact typed normalized records without a shell envelope", async () => {
     const longFeedItemId = `https://example.com/items/${"path-segment/".repeat(96)}`;
     const records = [
