@@ -115,33 +115,6 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
-            // Article HTML cached by the PWA reader (Layer 2 for PWA devices).
-            // CacheFirst: once cached, served offline indefinitely up to 30 days.
-            // The PWA reader writes to this cache after a successful live fetch.
-            urlPattern: ({ url }) => url.pathname.startsWith("/content/"),
-            handler: "CacheFirst",
-            options: {
-              cacheName: "freed-articles-v1",
-              expiration: {
-                maxEntries: 5_000,
-                maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-            },
-          },
-          {
-            // Saved reader HTML is pinned by user intent and has no time based
-            // expiration. Manual cache clearing can still remove it.
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith("/pinned-content/"),
-            handler: "CacheFirst",
-            options: {
-              cacheName: "freed-articles-pinned-v1",
-              expiration: {
-                maxEntries: 10_000,
-              },
-            },
-          },
-          {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
             handler: "CacheFirst",
             options: {

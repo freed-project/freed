@@ -10,6 +10,39 @@ vi.mock("./library-core-runtime", () => ({
   pinPwaLibraryCoreItemContent: mocks.pinLibraryContent,
 }));
 
+const CACHE_ORIGIN = "https://app.freed.wtf";
+
+function normalizeCacheKey(key: RequestInfo | URL): string {
+  const value =
+    typeof key === "string"
+      ? key
+      : key instanceof URL
+        ? key.href
+        : key.url;
+  return new URL(value, CACHE_ORIGIN).href;
+}
+
+function installPinnedCacheStorage(): {
+  open: ReturnType<typeof vi.fn>;
+  pinnedStore: Map<string, Response>;
+} {
+  const pinnedStore = new Map<string, Response>();
+  const cache = {
+    delete: vi.fn(async (key: RequestInfo | URL) =>
+      pinnedStore.delete(normalizeCacheKey(key))),
+    keys: vi.fn(async () =>
+      [...pinnedStore.keys()].map((key) => new Request(key))),
+    match: vi.fn(async (key: RequestInfo | URL) =>
+      pinnedStore.get(normalizeCacheKey(key))?.clone()),
+    put: vi.fn(async (key: RequestInfo | URL, response: Response) => {
+      pinnedStore.set(normalizeCacheKey(key), response.clone());
+    }),
+  };
+  const open = vi.fn(async () => cache);
+  vi.stubGlobal("caches", { open });
+  return { open, pinnedStore };
+}
+
 function makePost(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
     globalId: "x:pwa-pin",
@@ -39,33 +72,20 @@ describe("PWA reader cache", () => {
   });
 
   it("pins saved social posts into the permanent cache without a network URL", async () => {
-    const pinnedStore = new Map<string, Response>();
-    const open = vi.fn(async () => ({
-      put: vi.fn(async (key: string, response: Response) => {
-        pinnedStore.set(key, response);
-      }),
-      match: vi.fn(async (key: string) => pinnedStore.get(key)),
-    }));
-    vi.stubGlobal("caches", { open });
+    const { open, pinnedStore } = installPinnedCacheStorage();
 
     await pinReaderItemInPwa(makePost());
 
     expect(mocks.pinLibraryContent).toHaveBeenCalledWith("x:pwa-pin");
     expect(open).toHaveBeenCalledWith("freed-articles-pinned-v1");
-    expect(pinnedStore.has("/pinned-content/x:pwa-pin")).toBe(true);
-    await expect(pinnedStore.get("/content/x:pwa-pin")?.text()).resolves.toContain("Long post body");
+    expect(pinnedStore.has(`${CACHE_ORIGIN}/pinned-content/x:pwa-pin`)).toBe(true);
+    await expect(
+      pinnedStore.get(`${CACHE_ORIGIN}/content/x:pwa-pin`)?.text(),
+    ).resolves.toContain("Long post body");
   });
 
   it("pins YouTube metadata without fetching the watch page or thumbnail", async () => {
-    const pinnedStore = new Map<string, Response>();
-    vi.stubGlobal("caches", {
-      open: vi.fn(async () => ({
-        put: vi.fn(async (key: string, response: Response) => {
-          pinnedStore.set(key, response);
-        }),
-        match: vi.fn(async (key: string) => pinnedStore.get(key)),
-      })),
-    });
+    const { pinnedStore } = installPinnedCacheStorage();
     const fetchMock = vi.fn(async () => {
       throw new Error("YouTube network fetch should stay user-controlled");
     });
@@ -86,19 +106,13 @@ describe("PWA reader cache", () => {
     }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(pinnedStore.has("/pinned-content/youtube:dQw4w9WgXcQ")).toBe(true);
+    expect(
+      pinnedStore.has(`${CACHE_ORIGIN}/pinned-content/youtube:dQw4w9WgXcQ`),
+    ).toBe(true);
   });
 
   it("renders link media as a link in the pinned fallback", async () => {
-    const pinnedStore = new Map<string, Response>();
-    vi.stubGlobal("caches", {
-      open: vi.fn(async () => ({
-        put: vi.fn(async (key: string, response: Response) => {
-          pinnedStore.set(key, response);
-        }),
-        match: vi.fn(async (key: string) => pinnedStore.get(key)),
-      })),
-    });
+    const { pinnedStore } = installPinnedCacheStorage();
 
     await pinReaderItemInPwa(makePost({
       content: {
@@ -108,7 +122,7 @@ describe("PWA reader cache", () => {
       },
     }));
 
-    const html = await pinnedStore.get("/content/x:pwa-pin")?.text();
+    const html = await pinnedStore.get(`${CACHE_ORIGIN}/content/x:pwa-pin`)?.text();
     expect(html).toContain(
       '<a href="https://example.com/source?a=1&amp;b=2" target="_blank" rel="noreferrer noopener">https://example.com/source?a=1&amp;b=2</a>',
     );

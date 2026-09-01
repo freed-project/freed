@@ -17,7 +17,7 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
   }
 }
 
-test("switching to both AubOS themes applies the selected theme immediately", async ({ app, page }) => {
+test("switching between Starship and Dark Star applies the selected theme immediately", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
