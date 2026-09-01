@@ -37,11 +37,13 @@ export const PROMOTION_WEBSITE_CONFIG_FILES = ["website/next.config.ts"];
 export const PROMOTION_CONTROL_FILES = [
   ".github/workflows/ci.yml",
   "docs/RELEASE-SECRETS.md",
+  "scripts/deploy-pwa-production-snapshot.sh",
   "scripts/promote-dev-to-main.sh",
   "scripts/promote-dev-to-main.test.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
+  "scripts/release.sh",
   "scripts/validate-main-pr.mjs",
 ];
 
