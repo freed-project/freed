@@ -225,13 +225,25 @@ function readTombstone(storage: StorageLike): ResetTombstone | null {
 }
 
 function isReloadEnvelopeForTombstone(
-  envelope: ReloadEnvelope | null,
+  envelope: unknown,
   tombstone: ResetTombstone,
 ): envelope is ReloadEnvelope {
+  if (!envelope || typeof envelope !== "object") return false;
+  const candidate = envelope as Partial<ReloadEnvelope>;
+  const candidateTombstone = candidate.tombstone as
+    | Partial<ResetTombstone>
+    | undefined;
   return (
-    envelope?.version === 1 &&
-    envelope.tombstone.resetId === tombstone.resetId &&
-    envelope.tombstone.generation === tombstone.generation
+    candidate.version === 1 &&
+    candidateTombstone?.version === 1 &&
+    typeof candidateTombstone.resetId === "string" &&
+    candidateTombstone.resetId === tombstone.resetId &&
+    Number.isSafeInteger(candidateTombstone.generation) &&
+    candidateTombstone.generation === tombstone.generation &&
+    typeof candidateTombstone.startedAt === "number" &&
+    Number.isFinite(candidateTombstone.startedAt) &&
+    typeof candidate.initiatorRuntimeId === "string" &&
+    candidate.initiatorRuntimeId.length > 0
   );
 }
 
@@ -546,10 +558,9 @@ export class PwaFactoryResetCoordinator {
     const reloadEnvelope = parseJson<ReloadEnvelope>(
       this.storage.getItem(RELOAD_ENVELOPE_KEY),
     );
+    if (!isReloadEnvelopeForTombstone(reloadEnvelope, tombstone)) return;
     this.storage.removeItem(TOMBSTONE_KEY);
-    if (isReloadEnvelopeForTombstone(reloadEnvelope, tombstone)) {
-      this.storage.removeItem(RELOAD_ENVELOPE_KEY);
-    }
+    this.storage.removeItem(RELOAD_ENVELOPE_KEY);
     this.sessionStorage.removeItem(RELOAD_MARKER_KEY);
     for (let index = this.storage.length - 1; index >= 0; index -= 1) {
       const key = this.storage.key(index);

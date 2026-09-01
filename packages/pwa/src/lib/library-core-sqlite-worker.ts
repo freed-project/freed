@@ -10,10 +10,10 @@ import {
   PwaLibraryCoreOpfsContentVault,
   type PwaContentRangeStorageV1,
 } from "./library-core-opfs-content-vault";
+import { installPwaLibraryCoreOpfsSahPool } from "./library-core-sqlite-opfs-bootstrap";
 import {
   PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
   PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
-  PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
 } from "./library-core-sqlite-storage";
 
 interface WorkerScope {
@@ -104,11 +104,9 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     const database = useMemoryE2eStorage
       ? new sqlite3.oo1.DB(":memory:", "c")
       : new (
-          await sqlite3.installOpfsSAHPoolVfs({
-            directory: PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
-            initialCapacity: 6,
-            name: "freed-opfs-sahpool-v1",
-          })
+          await installPwaLibraryCoreOpfsSahPool((options) =>
+            sqlite3.installOpfsSAHPoolVfs(options),
+          )
         ).OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME);
     openingStage = "initialize the normalized schema";
     const next = new PwaLibraryCoreSqliteEngine(
