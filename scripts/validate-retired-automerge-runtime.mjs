@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertNoRetiredAutomergeArtifactDirectory,
   assertNoRetiredLibraryCorePublicExports,
+  assertNoRetiredNativeWholeRecordProjection,
 } from "./lib/retired-automerge-runtime.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -29,6 +30,7 @@ export function validateRetiredAutomergeRuntimeArtifacts({
   surface = "all",
 } = {}) {
   assertNoRetiredLibraryCorePublicExports(repoRoot);
+  assertNoRetiredNativeWholeRecordProjection(repoRoot);
   const surfaces = surface === "all" ? ["desktop", "pwa"] : [surface];
   const summaries = [];
   for (const candidate of surfaces) {
@@ -49,7 +51,7 @@ export function validateRetiredAutomergeRuntimeArtifacts({
 function printSummary(summaries) {
   for (const summary of summaries) {
     console.log(
-      `Retired Automerge runtime guard passed for ${summary.surface}: ${summary.files.toLocaleString("en-US")} files, ${summary.bytes.toLocaleString("en-US")} bytes.`,
+      `Retired Library runtime guard passed for ${summary.surface}: ${summary.files.toLocaleString("en-US")} files, ${summary.bytes.toLocaleString("en-US")} bytes.`,
     );
   }
 }

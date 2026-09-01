@@ -2,12 +2,17 @@
  * FeedsSection — settings pane for RSS feed management + OPML import/export.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
+import { readLibraryCoreRssFeedV1 } from "@freed/shared/library-core";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { SettingsListPanel } from "./SettingsListPanel.js";
+import {
+  useLibraryRssFeedPage,
+  type LibraryRssFeedPageState,
+} from "../../hooks/useLibraryRssFeedPage.js";
 
 type FeedTab = "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
@@ -34,6 +39,33 @@ function getFeedSearchText(
   extra?: string,
 ): string {
   return [feed.title, feed.url, feed.folder, extra].filter(Boolean).join(" ");
+}
+
+function FeedPageFooter({ page }: { page: LibraryRssFeedPageState }) {
+  if (!page.hasPrevious && !page.hasNext) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 pt-1">
+      <button
+        type="button"
+        onClick={page.previousPage}
+        disabled={!page.hasPrevious || page.loading}
+        className="rounded-lg px-3 py-1.5 text-xs text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Previous
+      </button>
+      <span className="text-xs tabular-nums text-[var(--theme-text-muted)]">
+        Page {page.pageNumber.toLocaleString()}
+      </span>
+      <button
+        type="button"
+        onClick={page.nextPage}
+        disabled={!page.hasNext || page.loading}
+        className="rounded-lg px-3 py-1.5 text-xs text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Next
+      </button>
+    </div>
+  );
 }
 
 // ── Shared tab bar ────────────────────────────────────────────────────────────
@@ -94,16 +126,18 @@ export function FeedsSection() {
 // ── Manage pane ───────────────────────────────────────────────────────────────
 
 function ManagePane() {
-  const feeds = useAppStore((s) => s.feeds);
   const removeFeed = useAppStore((s) => s.removeFeed);
+  const removeAllFeeds = useAppStore((s) => s.removeAllFeeds);
+  const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
   const { forgetRssFeedHealth } = usePlatform();
   const health = useDebugStore((s) => s.health);
-  const feedList = useMemo(() => Object.values(feeds), [feeds]);
   const [removing, setRemoving] = useState<string | null>(null);
   const [showRemoveAll, setShowRemoveAll] = useState(false);
   const [includeItems, setIncludeItems] = useState(false);
   const [removingAll, setRemovingAll] = useState(false);
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
+  const [feedSearch, setFeedSearch] = useState("");
+  const deferredFeedSearch = useDeferredValue(feedSearch);
 
   const failingFeedByUrl = useMemo(
     () =>
@@ -112,14 +146,44 @@ function ManagePane() {
       ),
     [health],
   );
-
-  const filteredFeedList = useMemo(() => {
-    return feedList.filter((feed) => {
-      const failingFeed = failingFeedByUrl.get(feed.url);
-      if (feedFilter === "all") return true;
-      return !!failingFeed;
-    });
-  }, [failingFeedByUrl, feedFilter, feedList]);
+  const failingFeedUrls = useMemo(
+    () => new Set(failingFeedByUrl.keys()),
+    [failingFeedByUrl],
+  );
+  const healthSearchMatchUrls = useMemo(() => {
+    const terms = deferredFeedSearch
+      .trim()
+      .toLocaleLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (terms.length === 0) return new Set<string>();
+    return new Set(
+      (health?.failingRssFeeds ?? [])
+        .filter((feed) => {
+          const status = isLikelyDeadFeed(feed.lastError)
+            ? "Likely dead"
+            : "Failing";
+          const searchable = getFeedSearchText(
+            { title: feed.feedTitle, url: feed.feedUrl },
+            `${status} ${feed.lastError ?? ""}`,
+          ).toLocaleLowerCase();
+          return terms.every((term) => searchable.includes(term));
+        })
+        .map((feed) => feed.feedUrl),
+    );
+  }, [deferredFeedSearch, health?.failingRssFeeds]);
+  const feedPage = useLibraryRssFeedPage({
+    includeUrls: feedFilter === "problem" ? failingFeedUrls : null,
+    pageSize: 50,
+    search: deferredFeedSearch,
+    searchMatchUrls: healthSearchMatchUrls,
+    sourceVersion,
+  });
+  const filteredFeedList = feedPage.feeds;
+  const shownFeedUrls = useMemo(
+    () => new Set(filteredFeedList.map((feed) => feed.url)),
+    [filteredFeedList],
+  );
 
   const handleRemove = useCallback(async (url: string) => {
     setRemoving(url);
@@ -136,10 +200,18 @@ function ManagePane() {
   const handleRemoveAll = async () => {
     setRemovingAll(true);
     try {
-      for (const feed of filteredFeedList) {
-        await removeFeed(feed.url, { includeItems });
+      if (feedFilter === "all") {
+        await removeAllFeeds(includeItems);
+      } else {
+        for (const url of shownFeedUrls) {
+          await removeFeed(url, { includeItems });
+        }
+      }
+      const healthUrlsToForget =
+        feedFilter === "all" ? failingFeedUrls : shownFeedUrls;
+      for (const url of healthUrlsToForget) {
         if (forgetRssFeedHealth) {
-          await forgetRssFeedHealth(feed.url);
+          await forgetRssFeedHealth(url);
         }
       }
     } finally {
@@ -149,19 +221,17 @@ function ManagePane() {
     }
   };
 
-  if (feedList.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-sm text-[var(--theme-text-muted)]">No feeds subscribed yet.</p>
-        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Add a feed URL to get started.</p>
-      </div>
-    );
-  }
+  const hasNoFeeds =
+    feedFilter === "all" &&
+    !feedPage.loading &&
+    !feedPage.error &&
+    filteredFeedList.length === 0 &&
+    !feedSearch;
 
   const bulkUnsubscribeLabel =
     feedFilter === "all"
-      ? `Unsubscribe from all feeds (${filteredFeedList.length.toLocaleString()})`
-      : `Unsubscribe from shown feeds (${filteredFeedList.length.toLocaleString()})`;
+      ? "Unsubscribe from all feeds"
+      : "Unsubscribe from shown feeds";
 
   const bulkUnsubscribeTitle =
     feedFilter === "all" ? "Unsubscribe from all feeds?" : "Unsubscribe from shown feeds?";
@@ -258,12 +328,21 @@ function ManagePane() {
     [failingFeedByUrl, handleRemove, removing],
   );
 
+  if (hasNoFeeds) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-sm text-[var(--theme-text-muted)]">No feeds subscribed yet.</p>
+        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Add a feed URL to get started.</p>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex gap-1 rounded-xl bg-[var(--theme-bg-muted)] p-1">
           {[
-            { id: "all" as const, label: `All (${feedList.length.toLocaleString()})` },
+            { id: "all" as const, label: "All" },
             {
               id: "problem" as const,
               label: `Needs review (${health?.failingRssFeeds.length.toLocaleString() ?? "0"})`,
@@ -285,7 +364,11 @@ function ManagePane() {
 
         <button
           onClick={() => setShowRemoveAll(true)}
-          disabled={filteredFeedList.length === 0}
+          disabled={
+            feedPage.loading ||
+            feedPage.error !== null ||
+            (feedFilter === "problem" && shownFeedUrls.size === 0)
+          }
           className="text-xs text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-40 disabled:hover:text-red-400/70"
         >
           {bulkUnsubscribeLabel}
@@ -297,11 +380,23 @@ function ManagePane() {
         title="Feeds"
         searchPlaceholder="Filter feeds"
         ariaLabel="Filter feeds"
-        emptyLabel={feedFilter === "problem" ? "No problem feeds right now." : "No feeds subscribed yet."}
+        emptyLabel={
+          feedPage.loading
+            ? "Loading feeds..."
+            : feedPage.error
+              ? "Feed list unavailable."
+              : feedFilter === "problem"
+                ? "No problem feeds right now."
+                : "No feeds subscribed yet."
+        }
         noMatchesLabel="No feeds match that filter."
         dataTestId="feeds-manage-list"
         searchDataTestId="feeds-manage-filter"
         scrollDataTestId="feeds-manage-list-scroll"
+        externalCountLabel={`Page ${feedPage.pageNumber.toLocaleString()}`}
+        externalQuery={feedSearch}
+        onExternalQueryChange={setFeedSearch}
+        footer={<FeedPageFooter page={feedPage} />}
         itemKey={getManageFeedKey}
         getSearchText={getManageFeedSearchText}
         renderItem={renderManageFeedItem}
@@ -319,7 +414,9 @@ function ManagePane() {
               <div>
                 <p className="text-sm font-semibold text-[var(--theme-text-primary)]">{bulkUnsubscribeTitle}</p>
                 <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
-                  Unsubscribes from {filteredFeedList.length.toLocaleString()} shown feed{filteredFeedList.length === 1 ? "" : "s"} on every synced device.
+                  {feedFilter === "all"
+                    ? "Unsubscribes from every feed on each synced device."
+                    : `Unsubscribes from ${shownFeedUrls.size.toLocaleString()} shown feed${shownFeedUrls.size === 1 ? "" : "s"} on each synced device.`}
                 </p>
               </div>
             </div>
@@ -372,17 +469,18 @@ function ManagePane() {
 // ── Import pane (OPML) ────────────────────────────────────────────────────────
 
 function ImportPane() {
-  const { importOPMLFeeds } = usePlatform();
+  const { importOPMLFeeds, queryLibraryCore } = usePlatform();
   const [phase, setPhase] = useState<ImportPhase>("idle");
   const [parsedFeeds, setParsedFeeds] = useState<OPMLFeedEntry[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [existingUrls, setExistingUrls] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const existingFeeds = useAppStore((s) => s.feeds);
-  const existingUrls = new Set(Object.values(existingFeeds).map((f) => f.url));
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -390,10 +488,30 @@ function ImportPane() {
       try {
         const xml = await readFileAsText(file);
         const feeds = parseOPML(xml);
+        if (!queryLibraryCore) {
+          throw new Error("SQLite RSS Feed lookup is unavailable");
+        }
+        const subscribed = new Set<string>();
+        for (let offset = 0; offset < feeds.length; offset += 16) {
+          const batch = feeds.slice(offset, offset + 16);
+          const resolved = await Promise.all(
+            batch.map(async (feed) => ({
+              feed,
+              existing: await readLibraryCoreRssFeedV1(
+                queryLibraryCore,
+                feed.url,
+              ),
+            })),
+          );
+          for (const result of resolved) {
+            if (result.existing !== null) subscribed.add(result.feed.url);
+          }
+        }
+        setExistingUrls(subscribed);
         setParsedFeeds(feeds);
         const autoSelected = new Set<number>();
         feeds.forEach((f, i) => {
-          if (!existingUrls.has(f.url)) autoSelected.add(i);
+          if (!subscribed.has(f.url)) autoSelected.add(i);
         });
         setSelected(autoSelected);
         setPhase("preview");
@@ -401,10 +519,7 @@ function ImportPane() {
         setError(err instanceof Error ? err.message : "Failed to parse OPML");
       }
     },
-    // existingUrls is computed on each render; the callback only needs to close
-    // over the current set at call time, so the array dep is intentionally omitted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [existingFeeds],
+    [queryLibraryCore],
   );
 
   const handleDrop = useCallback(
@@ -460,6 +575,7 @@ function ImportPane() {
     setSelected(new Set());
     setProgress(null);
     setError(null);
+    setExistingUrls(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -688,11 +804,32 @@ function ImportPane() {
 
 function ExportPane() {
   const { exportFeedsAsOPML } = usePlatform();
-  const feeds = useAppStore((s) => s.feeds);
-  const feedList = Object.values(feeds);
-  const folders = [...new Set(feedList.map((f) => f.folder).filter(Boolean))];
+  const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
+  const [feedSearch, setFeedSearch] = useState("");
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const deferredFeedSearch = useDeferredValue(feedSearch);
+  const feedPage = useLibraryRssFeedPage({
+    pageSize: 50,
+    search: deferredFeedSearch,
+    sourceVersion,
+  });
+  const feedList = feedPage.feeds;
 
-  if (feedList.length === 0) {
+  const handleExport = useCallback(async () => {
+    if (!exportFeedsAsOPML || exporting) return;
+    setExportError(null);
+    setExporting(true);
+    try {
+      await exportFeedsAsOPML();
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not export feed subscriptions.");
+    } finally {
+      setExporting(false);
+    }
+  }, [exportFeedsAsOPML, exporting]);
+
+  if (!feedPage.loading && !feedPage.error && feedList.length === 0 && !feedSearch) {
     return (
       <div className="text-center py-6">
         <p className="text-sm text-[var(--theme-text-muted)]">No feed subscriptions to export.</p>
@@ -706,14 +843,11 @@ function ExportPane() {
       <div className="flex items-center justify-between rounded-xl bg-[var(--theme-bg-card)] p-4">
         <div>
           <p className="text-sm text-[var(--theme-text-primary)]">
-            <span className="font-semibold">{feedList.length.toLocaleString()}</span>{" "}
-            feed{feedList.length !== 1 ? "s" : ""}
+            Export every feed subscription
           </p>
-          {folders.length > 0 && (
-            <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
-              in {folders.length.toLocaleString()} folder{folders.length !== 1 ? "s" : ""}
-            </p>
-          )}
+          <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
+            The download streams bounded SQLite pages outside React.
+          </p>
         </div>
         <svg className="h-8 w-8 text-[var(--theme-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -730,6 +864,10 @@ function ExportPane() {
         dataTestId="feeds-export-preview-list"
         searchDataTestId="feeds-export-preview-filter"
         scrollDataTestId="feeds-export-preview-list-scroll"
+        externalCountLabel={`Page ${feedPage.pageNumber.toLocaleString()}`}
+        externalQuery={feedSearch}
+        onExternalQueryChange={setFeedSearch}
+        footer={<FeedPageFooter page={feedPage} />}
         listClassName="space-y-1"
         itemKey={(feed) => feed.url}
         getSearchText={(feed) => getFeedSearchText(feed)}
@@ -749,11 +887,18 @@ function ExportPane() {
       />
 
       <button
-        onClick={() => exportFeedsAsOPML?.()}
+        onClick={() => void handleExport()}
+        disabled={exporting || feedPage.loading || feedPage.error !== null}
         className="btn-primary w-full py-3 text-sm font-medium"
       >
-        Download OPML
+        {exporting ? "Preparing OPML..." : "Download OPML"}
       </button>
+
+      {exportError && (
+        <p role="alert" className="text-center text-xs text-red-400">
+          {exportError}
+        </p>
+      )}
 
       <p className="text-center text-xs text-[var(--theme-text-muted)]">
         Compatible with Feedly, Inoreader, NetNewsWire, and other RSS readers.

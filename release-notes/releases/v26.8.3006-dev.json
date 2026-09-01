@@ -1,0 +1,139 @@
+{
+  "tag": "v26.8.3006-dev",
+  "version": "26.8.3006-dev",
+  "channel": "dev",
+  "dayKey": "26.8.30",
+  "approved": true,
+  "editorialNotes": [
+    "Lead with the installed large-Library Google Drive publication and reload-loop fixes in this successor dev build."
+  ],
+  "generatedAt": "2026-08-31T04:48:41.145Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3005-dev",
+    "previousPublishedDayTag": "v26.8.2906-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "6706387f38c14fb22dfe73469af58e8bf18bb7d1",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3005-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "ab57f79ca965996a3ff55173e96192d46620010b",
+        "toInclusiveProductCommitSha": "6706387f38c14fb22dfe73469af58e8bf18bb7d1"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:7a17307cac0c7ca1625ab9687af0d4b6847a0f59b47e170b14afb9173b0857b8",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev",
+      "v26.8.3002-dev",
+      "v26.8.3003-dev",
+      "v26.8.3004-dev",
+      "v26.8.3005-dev",
+      "v26.8.3006-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev",
+      "v26.8.3002-dev",
+      "v26.8.3003-dev",
+      "v26.8.3004-dev",
+      "v26.8.3005-dev",
+      "v26.8.3006-dev"
+    ],
+    "prNumbers": [
+      1652,
+      1653,
+      1655,
+      1657,
+      1658,
+      1659,
+      1660,
+      1661,
+      1662,
+      1663,
+      1664,
+      1665,
+      1666,
+      1667,
+      1668,
+      1669,
+      1670,
+      1671
+    ],
+    "commitSubjects": [
+      "perf: unblock large Library checkpoint publication (#1671)",
+      "docs: clarify authorization levels (#1672)",
+      "chore: prepare v26.8.3005-dev (#1670)",
+      "fix: compress GitHub release history reads (#1669)",
+      "fix: admit long checkpoint record identities (#1668)",
+      "chore: prepare v26.8.3004-dev (#1667)",
+      "fix: keep Library queries off the desktop command thread (#1666)",
+      "chore: prepare v26.8.3003-dev (#1665)",
+      "fix: preserve navigation after leaving map (#1664)",
+      "chore: prepare v26.8.3002-dev (#1663)",
+      "fix: recover Friends graph from stale cursors (#1662)",
+      "fix: prove installed primary native identity (#1661)",
+      "feat: orchestrate bounded Primary inbound passes (#1660)",
+      "feat: bind normalized Primary native transport (#1659)",
+      "feat: add normalized Primary inbound orchestration (#1658)",
+      "feat: expose headless follower enrollment authority (#1657)",
+      "chore: prepare v26.8.3001-dev",
+      "feat: bind headless Primary to Google Drive (#1655)",
+      "release: v26.8.3000-dev (#1654)",
+      "fix: stop Friend location render loops (#1653)",
+      "fix: keep checkpoint exports on one SQLite snapshot (#1652)"
+    ]
+  },
+  "release": {
+    "deck": "Faster Google Drive checkpoints and stable Library views for large SQLite libraries",
+    "features": [
+      "Orchestrate bounded Primary inbound passes",
+      "Bind normalized Primary native transport",
+      "Normalized Primary inbound orchestration"
+    ],
+    "fixes": [
+      "Finish large Library Google Drive checkpoint publication with bounded 4,096-record pages",
+      "Stop recurring view reloads by bounding concurrent SQLite reads and coalescing priority-index refreshes",
+      "Fail closed when a stored Drive publication receipt does not match the current control state",
+      "Compress GitHub release history reads",
+      "Admit long checkpoint record identities",
+      "Keep Library queries off the desktop command thread",
+      "Preserve navigation after leaving map",
+      "Recover Friends graph from stale cursors",
+      "Prove installed primary native identity",
+      "Stop Friend location render loops",
+      "Keep checkpoint exports on one SQLite snapshot",
+      "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history",
+      "Create local Library snapshots from one consistent SQLite revision",
+      "Open the full Map from a Friend's last-seen card after the location resolves"
+    ],
+    "followUps": [
+      "Verify first Google Drive publication and exact retry against the real local Library",
+      "Complete installed Freed Desktop and physical iPhone PWA acceptance",
+      "Prepare v26.8.3005-dev",
+      "Expose headless follower enrollment authority",
+      "Bind headless Primary to Google Drive",
+      "Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3006-dev\n\nFaster Google Drive checkpoints and stable Library views for large SQLite libraries\n\n### Features\n\n- Orchestrate bounded Primary inbound passes\n- Bind normalized Primary native transport\n- Normalized Primary inbound orchestration\n\n### Fixes\n\n- Finish large Library Google Drive checkpoint publication with bounded 4,096-record pages\n- Stop recurring view reloads by bounding concurrent SQLite reads and coalescing priority-index refreshes\n- Fail closed when a stored Drive publication receipt does not match the current control state\n- Compress GitHub release history reads\n- Admit long checkpoint record identities\n- Keep Library queries off the desktop command thread\n- Preserve navigation after leaving map\n- Recover Friends graph from stale cursors\n- Prove installed primary native identity\n- Stop Friend location render loops\n- Keep checkpoint exports on one SQLite snapshot\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Create local Library snapshots from one consistent SQLite revision\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Follow-ups\n\n- Verify first Google Drive publication and exact retry against the real local Library\n- Complete installed Freed Desktop and physical iPhone PWA acceptance\n- Prepare v26.8.3005-dev\n- Expose headless follower enrollment authority\n- Bind headless Primary to Google Drive\n- Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

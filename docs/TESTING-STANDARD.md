@@ -34,12 +34,12 @@ Local regression coverage does not automatically become a permanent universal re
 
 ## Execution tiers
 
-| Tier | Runs on | Contains |
-| --- | --- | --- |
-| 1. Changed-path | Every pull request | Only suites the changed paths can affect |
-| 2. Full integration | Every push to `dev` | Every suite, unscoped. This is the proof release admission inherits |
-| 3. Release delta | Tag and promotion | Version, notes, identity, build, packaging, artifacts |
-| 4. Exhaustive | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
+| Tier                | Runs on              | Contains                                                                                                       |
+| ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1. Changed-path     | Every pull request   | Only suites the changed paths can affect                                                                       |
+| 2. Full integration | Every push to `dev`  | Every suite, unscoped. This is the proof release admission inherits                                            |
+| 3. Release delta    | Tag and promotion    | Version, notes, identity, build, packaging, artifacts                                                          |
+| 4. Exhaustive       | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
 
 A test may be release-critical through an exact inherited receipt without rerunning inside the release workflow.
 
@@ -56,6 +56,8 @@ A path literal counts as a dependency edge only when it is concrete. Bare roots 
 
 The planner fails closed. Any change under `scripts/` or `automation/` that cannot be attributed selects every suite, as does any change to a global input such as `package.json`, `.nvmrc`, or the workflow itself. An empty plan is reported as a quick not-applicable success, and the gate then requires that the shard job was genuinely skipped rather than failed.
 
+Phase documents, `docs/roadmap-status.json`, and the roadmap validator have an explicit focused route. They run the manifest validator and its unit test. They do not launch general tooling shards or assert that one named phase must remain current forever.
+
 Shard budget is distributed across the selected suites by highest averages. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
 
 ## Platform routing
@@ -67,6 +69,12 @@ Three files gate every test behind a single module-level `process.platform === "
 - `scripts/trusted-publisher-host.test.mjs`
 
 `scripts/worktree-publish.test.mjs` deliberately stays in the Linux lane. It gates 7 of its 35 tests per-test, so the other 28 are real coverage. It also runs on the macOS lane, where its darwin cases execute for the first time.
+
+`scripts/automation-actor-linux.test.mjs` runs its five native launcher tests only
+on Linux. It compiles the reviewed Go source, exercises the real file descriptor
+channel and process boundary, and verifies that the production helper emits
+static tools. macOS records the suite as skipped because the Swift launcher has
+its own native lane.
 
 `run-tooling-smoke-shard.test.mjs` asserts that the sharded suites, the general suite, and the macOS lane together claim every repository test file. Nothing can fall out of the lane silently.
 
@@ -84,6 +92,8 @@ timing from a virtualized browser belong in Tier 4 unless the lane fixes the
 hardware, browser, renderer, workload, and statistical comparison rule. A
 missing or unsupported instrument is inconclusive. It must never be recorded as
 zero work.
+
+The raw Desktop browser performance suite runs in the nightly full matrix. Feature, `dev`, and production validation keep deterministic work and output budgets, but do not block on one virtual browser timing sample.
 
 ## Universal release gate
 
@@ -122,14 +132,16 @@ Never quarantine data integrity, authority, provider safety, signing, release id
 
 No test stays in a blocking lane merely because it has always been there.
 
+A test that accepts success, failure, timeout, or continued loading detects no defect and must be deleted. The same applies to debug probes, permanently skipped tests, and fixture-dependent assertions that silently skip whenever the fixture is absent. Required controls and fixtures must fail clearly when missing.
+
 ## Targets
 
-| Lane | Target |
-| --- | --- |
-| Ordinary pull request | Under about 10 minutes |
-| Complex pull request | Under 20 minutes at the 95th percentile |
-| Latest `dev` integration | Under 25 minutes |
-| Release-delta admission | Under 10 minutes |
-| Tag to published artifacts | Under about 40 minutes |
+| Lane                       | Target                                  |
+| -------------------------- | --------------------------------------- |
+| Ordinary pull request      | Under about 10 minutes                  |
+| Complex pull request       | Under 20 minutes at the 95th percentile |
+| Latest `dev` integration   | Under 25 minutes                        |
+| Release-delta admission    | Under 10 minutes                        |
+| Tag to published artifacts | Under about 40 minutes                  |
 
 No UI-only pull request runs control-plane suites.

@@ -2,11 +2,11 @@
  * Encrypted device-local key-value store for API keys
  *
  * Uses tauri-plugin-store which encrypts the JSON file with a device-specific
- * key. API keys stored here are NEVER synced via Automerge -- they stay on
+ * key. API keys never enter Library Core records or checkpoints. They stay on
  * the device where they were entered.
  *
- * Sync-safe fields (provider name, model, toggles) live in UserPreferences.ai
- * inside the Automerge doc. Only the raw API key strings live here.
+ * Synchronized provider, model, and processing preferences use typed Library
+ * Core preference operations. Only raw API key strings live here.
  */
 
 import { Store, load } from "@tauri-apps/plugin-store";

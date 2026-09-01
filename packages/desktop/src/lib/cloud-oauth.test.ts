@@ -33,8 +33,7 @@ vi.mock("./library-client", () => ({
     friendCount: 0,
   })),
   getDocBinary: vi.fn(async () => new Uint8Array()),
-  setRelayClientCount: vi.fn(),
-  subscribe: vi.fn(() => vi.fn()),
+  subscribeDesktopLibraryRuntime: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
@@ -369,6 +368,105 @@ describe("desktop Google OAuth", () => {
       grantType: "refresh_token",
       refreshToken: "refresh-token",
     });
+  });
+
+  it("refreshes once and retries one Drive request after a 401", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd !== "google_oauth_proxy_request") return null;
+      return {
+        status: 200,
+        headers: [["content-type", "application/json"]],
+        bodyB64: nativeBody(
+          JSON.stringify({
+            access_token: "fresh-access-token",
+            expires_in: 3600,
+          }),
+        ),
+      };
+    });
+    const driveFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(new Response("still ok", { status: 200 }));
+    const {
+      createGoogleDriveAuthenticatedFetch,
+      storeCloudToken,
+    } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "stale-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+
+    const authenticatedFetch = createGoogleDriveAuthenticatedFetch(driveFetch);
+    const response = await authenticatedFetch(
+      "https://www.googleapis.com/drive/v3/files",
+      { headers: { Authorization: "Bearer stale-access-token" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(driveFetch).toHaveBeenCalledTimes(2);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(
+      new Headers(driveFetch.mock.calls[1]![1]?.headers).get("Authorization"),
+    ).toBe("Bearer fresh-access-token");
+
+    await authenticatedFetch("https://www.googleapis.com/drive/v3/files", {
+      headers: { Authorization: "Bearer stale-access-token" },
+    });
+    expect(driveFetch).toHaveBeenCalledTimes(3);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(
+      new Headers(driveFetch.mock.calls[2]![1]?.headers).get("Authorization"),
+    ).toBe("Bearer fresh-access-token");
+  });
+
+  it("stops after one Drive retry when the refreshed token is also rejected", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd !== "google_oauth_proxy_request") return null;
+      return {
+        status: 200,
+        headers: [["content-type", "application/json"]],
+        bodyB64: nativeBody(
+          JSON.stringify({ access_token: "still-rejected", expires_in: 3600 }),
+        ),
+      };
+    });
+    const driveFetch = vi.fn(async () => new Response(null, { status: 401 }));
+    const {
+      createGoogleDriveAuthenticatedFetch,
+      storeCloudToken,
+    } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "stale-access-token",
+      refreshToken: "refresh-token",
+    });
+
+    const response = await createGoogleDriveAuthenticatedFetch(driveFetch)(
+      "https://www.googleapis.com/drive/v3/files",
+      { headers: { Authorization: "Bearer stale-access-token" } },
+    );
+
+    expect(response.status).toBe(401);
+    expect(driveFetch).toHaveBeenCalledTimes(2);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh or retry a non-401 Drive response", async () => {
+    const driveFetch = vi.fn(async () => new Response(null, { status: 403 }));
+    const { createGoogleDriveAuthenticatedFetch } = await import("./sync");
+
+    const response = await createGoogleDriveAuthenticatedFetch(driveFetch)(
+      "https://www.googleapis.com/drive/v3/files",
+    );
+
+    expect(response.status).toBe(403);
+    expect(driveFetch).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "google_oauth_proxy_request",
+      expect.anything(),
+    );
   });
 
   it("does not auto resume unsupported cloud providers with stored tokens", async () => {

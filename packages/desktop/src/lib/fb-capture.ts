@@ -382,7 +382,7 @@ async function updateKnownFacebookGroups(
 }
 
 export async function repairStoredFacebookGroupNamesFromItems(
-  items: readonly FeedItem[] = useAppStore.getState().items,
+  items: readonly FeedItem[],
 ): Promise<number> {
   const groups = facebookGroupsFromFeedItems(items);
   if (groups.length === 0) return 0;
@@ -1027,9 +1027,7 @@ async function captureFbFeedInternal(
       result.diag.candidateItems = filteredItems.length;
       result.diag.excludedItems = result.items.length - filteredItems.length;
       const beforeState = useAppStore.getState();
-      const before =
-        beforeState.itemCountByPlatform?.facebook ??
-        beforeState.items.filter((item) => item.platform === "facebook").length;
+      const before = beforeState.itemCountByPlatform?.facebook ?? 0;
       addDebugEvent(
         "change",
         `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${result.diag.excludedItems.toLocaleString()} excluded)`,
@@ -1039,9 +1037,7 @@ async function captureFbFeedInternal(
       assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const afterState = useAppStore.getState();
-      const after =
-        afterState.itemCountByPlatform?.facebook ??
-        afterState.items.filter((item) => item.platform === "facebook").length;
+      const after = afterState.itemCountByPlatform?.facebook ?? before;
       result.diag.itemsAdded = Math.max(0, after - before);
       result.diag.existingItems = Math.max(
         0,

@@ -6,6 +6,7 @@ import {
   shouldPinOpenedReaderItem,
   type ReaderOfflineCacheMode,
 } from "@freed/ui/lib/reader-cache-settings";
+import { pinPwaLibraryCoreItemContent } from "./library-core-runtime";
 
 function escapeHtml(value: string): string {
   return value
@@ -113,6 +114,7 @@ export async function hydrateReaderItemInPwa(
 }
 
 export async function pinReaderItemInPwa(item: FeedItem): Promise<void> {
+  await pinPwaLibraryCoreItemContent(item.globalId);
   await hydrateReaderItemInPwa(item, {
     cacheMode: getReaderOfflineCacheMode(),
     pin: true,

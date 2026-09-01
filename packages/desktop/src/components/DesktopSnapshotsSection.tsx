@@ -117,11 +117,11 @@ export function DesktopSnapshotsSection() {
       <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/5 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-white">Automatic rotating backups</p>
+            <p className="text-sm text-white">Automatic rotating snapshots</p>
             <p className="text-xs text-[#71717a] max-w-xl">
-              Freed Desktop keeps up to {(24).toLocaleString()} local snapshots of your
-              library, including your saved friend graph and synced contact matches, so you can
-              roll back after corruption or accidental loss.
+              Freed Desktop keeps up to {(24).toLocaleString()} verified snapshots of your
+              normalized library records. Device caches and Google Contacts matching data stay
+              local and are not included.
             </p>
           </div>
           <button
@@ -159,9 +159,8 @@ export function DesktopSnapshotsSection() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-[#71717a]">
-                      {snapshot.itemCount.toLocaleString()} items, {snapshot.friendCount.toLocaleString()} friends,{" "}
-                      {snapshot.contactCount.toLocaleString()} contacts,{" "}
-                      {snapshot.pendingMatchCount.toLocaleString()} pending matches, {formatByteSize(snapshot.byteSize)}
+                      {snapshot.itemCount.toLocaleString()} items, {snapshot.recordCount.toLocaleString()} normalized records,{" "}
+                      {formatByteSize(snapshot.byteSize)}
                     </p>
                     <p className="mt-1 text-[11px] font-mono text-[#52525b]">
                       Snapshot ...{snapshot.id.slice(-8)}

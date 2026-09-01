@@ -1,0 +1,18 @@
+{
+  "channel": "dev",
+  "dayKey": "26.8.30",
+  "date": "2026-08-30",
+  "preferredDeck": "Faster Google Drive checkpoints and stable Library views for large SQLite libraries",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Open the full Map from a Friend's last-seen card after the location resolves"
+  ],
+  "editorialNotes": [
+    "Lead with the installed large-Library Google Drive publication and reload-loop fixes in v26.8.3006-dev."
+  ],
+  "updatedAt": "2026-08-31T04:48:41.146Z"
+}

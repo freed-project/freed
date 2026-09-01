@@ -2,6 +2,7 @@ import {
   buildIdentityGraphAtlasModel,
   fitTransformToAtlasBounds,
   sliceIdentityGraphAtlas,
+  type BuildIdentityGraphAtlasModelInput,
   type IdentityGraphAtlasModel,
 } from "./identity-graph-atlas.js";
 import {
@@ -24,11 +25,14 @@ import {
   type FriendsGalaxyProductWorkerPresentationResponse,
   type FriendsGalaxyProductWorkerRequest,
   type FriendsGalaxyProductWorkerResponse,
-  type FriendsGalaxyProductWorkerSourceRequest,
   type FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
 import { friendsGalaxyWorkerSceneReceipt } from "./friends-galaxy-worker-scene.js";
 import { socialActivitySummaryKey } from "./identity-graph-activity-summary.js";
+import {
+  FriendsGalaxySqliteSourceAccumulator,
+  type FriendsGalaxySqliteSourceProgress,
+} from "./friends-galaxy-sqlite-source.js";
 
 export const FRIENDS_GALAXY_PRODUCT_LAYOUT_WIDTH = 1_400;
 export const FRIENDS_GALAXY_PRODUCT_LAYOUT_HEIGHT = 900;
@@ -40,6 +44,27 @@ interface CachedFriendsGalaxyProductSource {
   linkedPersonNodeIdByAccountId: Map<string, string>;
   metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
   activityEncoder: FriendsGalaxyActivityScenePatchEncoder;
+}
+
+interface StagedFriendsGalaxySqliteSource {
+  accumulator: FriendsGalaxySqliteSourceAccumulator;
+  backgroundSeed?: string;
+  backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
+  sourceRevision: number;
+  viewport: Extract<
+    FriendsGalaxyProductWorkerRequest,
+    { kind: "normalized-source-begin" }
+  >["viewport"];
+}
+
+interface FriendsGalaxyProductCompileRequest {
+  backgroundSeed?: string;
+  backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
+  requestId: number;
+  sourceRevision: number;
+  viewport: StagedFriendsGalaxySqliteSource["viewport"];
 }
 
 interface FriendsGalaxyProductSourceIndexes {
@@ -105,7 +130,7 @@ function productSourceIndexes(
 }
 
 function productActivityBindings(
-  request: FriendsGalaxyProductWorkerSourceRequest,
+  source: BuildIdentityGraphAtlasModelInput,
   rendererScene: ReturnType<typeof compileFriendsGalaxyProductRendererScene>,
 ): FriendsGalaxyActivitySceneBinding[] {
   const bindings: FriendsGalaxyActivitySceneBinding[] = [];
@@ -116,7 +141,7 @@ function productActivityBindings(
   ) {
     const nodeId = rendererScene.scene.nodeIds[nodeIndex]!;
     if (nodeId.startsWith("account:")) {
-      const account = request.source.accounts[nodeId.slice("account:".length)];
+      const account = source.accounts[nodeId.slice("account:".length)];
       if (!account?.provider || !account.externalId) continue;
       bindings.push({
         namespace: "social",
@@ -144,6 +169,7 @@ function boundedErrorMessage(error: unknown): string {
 
 export class FriendsGalaxyProductWorkerService {
   private cached: CachedFriendsGalaxyProductSource | null = null;
+  private stagedSqliteSource: StagedFriendsGalaxySqliteSource | null = null;
 
   handle(request: FriendsGalaxyProductWorkerRequest): FriendsGalaxyProductWorkerResponse {
     const startedAt = nowMs();
@@ -153,7 +179,15 @@ export class FriendsGalaxyProductWorkerService {
       }
       requestInteger("request id", request.requestId);
       requestInteger("source revision", request.sourceRevision);
-      if (request.kind === "source") return this.buildSource(request, startedAt);
+      if (request.kind === "normalized-source-begin") {
+        return this.beginNormalizedSource(request, startedAt);
+      }
+      if (request.kind === "normalized-source-page") {
+        return this.appendNormalizedSource(request, startedAt);
+      }
+      if (request.kind === "normalized-source-commit") {
+        return this.commitNormalizedSource(request, startedAt);
+      }
       if (request.kind === "presentation") return this.buildPresentation(request, startedAt);
       if (request.kind === "activity") return this.buildActivity(request, startedAt);
       throw new Error("Unknown Friends Galaxy worker request.");
@@ -165,7 +199,9 @@ export class FriendsGalaxyProductWorkerService {
         sourceRevision: Number.isSafeInteger(request?.sourceRevision)
           ? request.sourceRevision
           : 0,
-        requestKind: request?.kind === "source" ||
+        requestKind: request?.kind === "normalized-source-begin" ||
+          request?.kind === "normalized-source-page" ||
+          request?.kind === "normalized-source-commit" ||
           request?.kind === "presentation" ||
           request?.kind === "activity"
           ? request.kind
@@ -177,14 +213,15 @@ export class FriendsGalaxyProductWorkerService {
     }
   }
 
-  private buildSource(
-    request: FriendsGalaxyProductWorkerSourceRequest,
+  private compileSource(
+    source: BuildIdentityGraphAtlasModelInput,
+    request: FriendsGalaxyProductCompileRequest,
     startedAt: number,
   ): FriendsGalaxyProductWorkerSourceResponse {
     const width = viewportDimension("viewport width", request.viewport.width);
     const height = viewportDimension("viewport height", request.viewport.height);
     const model = buildIdentityGraphAtlasModel({
-      ...request.source,
+      ...source,
       width: FRIENDS_GALAXY_PRODUCT_LAYOUT_WIDTH,
       height: FRIENDS_GALAXY_PRODUCT_LAYOUT_HEIGHT,
     });
@@ -209,7 +246,7 @@ export class FriendsGalaxyProductWorkerService {
     });
     const sourceIndexes = productSourceIndexes(model);
     const activityEncoder = new FriendsGalaxyActivityScenePatchEncoder(
-      productActivityBindings(request, rendererScene),
+      productActivityBindings(source, rendererScene),
     );
     this.cached = {
       sourceRevision: request.sourceRevision,
@@ -227,6 +264,87 @@ export class FriendsGalaxyProductWorkerService {
       receipt: friendsGalaxyWorkerSceneReceipt(rendererScene),
       durationMs: Math.max(0, nowMs() - startedAt),
     };
+  }
+
+  private normalizedSourceProgress(
+    requestId: number,
+    sourceRevision: number,
+    progress: FriendsGalaxySqliteSourceProgress,
+    startedAt: number,
+  ) {
+    return {
+      ...progress,
+      kind: "normalized-source-staged" as const,
+      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+      requestId,
+      sourceRevision,
+      durationMs: Math.max(0, nowMs() - startedAt),
+    };
+  }
+
+  private beginNormalizedSource(
+    request: Extract<FriendsGalaxyProductWorkerRequest, { kind: "normalized-source-begin" }>,
+    startedAt: number,
+  ) {
+    this.stagedSqliteSource = {
+      accumulator: new FriendsGalaxySqliteSourceAccumulator({
+        height: FRIENDS_GALAXY_PRODUCT_LAYOUT_HEIGHT,
+        mode: request.mode,
+        width: FRIENDS_GALAXY_PRODUCT_LAYOUT_WIDTH,
+      }),
+      backgroundSeed: request.backgroundSeed,
+      backgroundStarCount: request.backgroundStarCount,
+      proceduralBackgroundStarCount: request.proceduralBackgroundStarCount,
+      sourceRevision: request.sourceRevision,
+      viewport: request.viewport,
+    };
+    return this.normalizedSourceProgress(
+      request.requestId,
+      request.sourceRevision,
+      {
+        acceptedRows: 0,
+        complete: false,
+        queryId: "person_graph_page_v1",
+        totalRows: 0,
+      },
+      startedAt,
+    );
+  }
+
+  private appendNormalizedSource(
+    request: Extract<FriendsGalaxyProductWorkerRequest, { kind: "normalized-source-page" }>,
+    startedAt: number,
+  ) {
+    const staged = this.stagedSqliteSource;
+    if (!staged || staged.sourceRevision !== request.sourceRevision) {
+      throw new Error("Friends Galaxy SQLite source page has no matching stage.");
+    }
+    return this.normalizedSourceProgress(
+      request.requestId,
+      request.sourceRevision,
+      staged.accumulator.append({ cursor: request.cursor, page: request.page }),
+      startedAt,
+    );
+  }
+
+  private commitNormalizedSource(
+    request: Extract<FriendsGalaxyProductWorkerRequest, { kind: "normalized-source-commit" }>,
+    startedAt: number,
+  ): FriendsGalaxyProductWorkerSourceResponse {
+    const staged = this.stagedSqliteSource;
+    if (!staged || staged.sourceRevision !== request.sourceRevision) {
+      throw new Error("Friends Galaxy SQLite source commit has no matching stage.");
+    }
+    const source = staged.accumulator.take();
+    this.stagedSqliteSource = null;
+    return this.compileSource(source, {
+      backgroundSeed: staged.backgroundSeed,
+      backgroundStarCount: staged.backgroundStarCount,
+      proceduralBackgroundStarCount: staged.proceduralBackgroundStarCount,
+      requestId: request.requestId,
+      sourceRevision: request.sourceRevision,
+      viewport: staged.viewport,
+    }, startedAt);
   }
 
   private buildPresentation(

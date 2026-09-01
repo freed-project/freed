@@ -277,10 +277,26 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
+test("production validation installs WebKit before running OPFS durability", () => {
+  const releaseValidationJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  validation:"),
+    releaseWorkflow.indexOf("\n  create-release:"),
+  );
+
+  assert.match(
+    mainReleaseValidationWorkflow,
+    /playwright install --with-deps chromium webkit/,
+  );
+  assert.match(
+    releaseValidationJob,
+    /playwright install --with-deps chromium webkit/,
+  );
+});
+
 test("draft release assets and publication use the exact release ID", () => {
   const updaterJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  updater-manifest:"),
-    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+    releaseWorkflow.indexOf("\n  showcase-assets:"),
   );
   const publishJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  publish:"),
@@ -307,10 +323,28 @@ test("draft release assets and publication use the exact release ID", () => {
   );
   assert.match(
     publishJob,
-    /needs:\s*\[updater-manifest, create-release\]/,
+    /needs:\s*\[updater-manifest, showcase-assets, create-release\]/,
     "publish must directly depend on create-release before reading its output",
   );
+  assert.match(
+    publishJob,
+    /needs\.showcase-assets\.result == 'success' \|\| needs\.showcase-assets\.result == 'skipped'/,
+    "production showcase failure must block publication without blocking dev releases",
+  );
   assert.doesNotMatch(publishJob, /gh release edit/);
+});
+
+test("production releases publish an exact-tag local-only PWA showcase", () => {
+  const showcaseJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  showcase-assets:"),
+    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+  );
+
+  assert.match(showcaseJob, /release_channel == 'production'/);
+  assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
+  assert.match(showcaseJob, /capture-release-showcase\.mjs/);
+  assert.match(showcaseJob, /freed-showcase\.gif/);
+  assert.match(showcaseJob, /gh release upload "\$TAG"/);
 });
 
 test("release failure triage binds GitHub CLI to the triggering repository", () => {
@@ -331,6 +365,28 @@ test("release failure triage binds GitHub CLI to the triggering repository", () 
 test("feature validation installs Playwright for every desktop e2e plan", () => {
   assert.match(ciWorkflow, /grep -q '\^desktop \.\*e2e'/);
   assert.doesNotMatch(ciWorkflow, /grep -q '\^desktop e2e '/);
+});
+
+test("feature and dev validation route OPFS durability to macOS WebKit", () => {
+  const featureJob = ciWorkflow.slice(
+    ciWorkflow.indexOf("\n  feature:"),
+    ciWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
+  );
+  const opfsJob = ciWorkflow.slice(
+    ciWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
+    ciWorkflow.indexOf("\n  dev:"),
+  );
+  const devJob = ciWorkflow.slice(ciWorkflow.indexOf("\n  dev:"));
+
+  assert.match(featureJob, /grep -q '\^pwa WebKit OPFS durability\$'/);
+  assert.match(featureJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
+  assert.doesNotMatch(featureJob, /browsers\+=\(webkit\)/);
+  assert.match(opfsJob, /runs-on: macos-latest/);
+  assert.match(opfsJob, /npx playwright install webkit/);
+  assert.match(opfsJob, /npm run test:e2e:opfs/);
+  assert.match(devJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
+  assert.match(devJob, /playwright install --with-deps chromium/);
+  assert.doesNotMatch(devJob, /playwright install --with-deps chromium webkit/);
 });
 
 test("main PR validation inspects the actual PR head instead of the synthetic merge", () => {

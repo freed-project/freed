@@ -43,6 +43,28 @@ export function AllIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+/** Two circular arrows for neutral sync status. */
+export function RefreshIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M20 12a8 8 0 0 0-13.66-5.66L4 8" />
+      <path d="M20 7v5h-5" />
+      <path d="M4 12a8 8 0 0 0 13.66 5.66L20 16" />
+      <path d="M4 17v-5h5" />
+    </svg>
+  );
+}
+
 /** Bookmark shape – saved items. */
 export function BookmarkIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

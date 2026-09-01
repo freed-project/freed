@@ -24,12 +24,14 @@ import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
+import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
   CloseIcon,
   FilterIcon,
   MenuIcon,
+  RefreshIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -39,6 +41,9 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
+import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
+import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
@@ -54,7 +59,7 @@ import {
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
-import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import { getStaticFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { useFeedCardDensity } from "../../lib/feed-card-density.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import {
@@ -66,11 +71,6 @@ import {
   FeedCardDensitySlider,
   InterfaceZoomSlider,
 } from "../DisplayScaleControls.js";
-import {
-  collectArchivableFeedActionIds,
-  collectUnreadFeedActionIds,
-  getFeedActionCounts,
-} from "../../lib/feed-action-scope.js";
 import {
   dragRegionStyle as dragStyle,
   getPassiveDragRegionProps,
@@ -333,7 +333,9 @@ export function Header({
     importMarkdown,
     exportMarkdown,
     openUrl,
+    interactionMode,
   } = usePlatform();
+  const readOnly = interactionMode === "read-only";
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
@@ -351,14 +353,6 @@ export function Header({
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
 
-  const items = useAppStore((s) => s.items);
-  const feeds = useAppStore((s) => s.feeds);
-  const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
-  const totalItemCount = useAppStore((s) => s.totalItemCount);
-  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
@@ -367,15 +361,17 @@ export function Header({
   const libraryItemVersion = useAppStore(
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
   );
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const visibleFeedTotalCount = useAppStore(
+    (state) => state.visibleFeedTotalCount,
+  );
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
-  const archiveItems = useAppStore((s) => s.archiveItems);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -389,38 +385,71 @@ export function Header({
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
-  const { filteredItems, isSearching, resultCount } = useSearchResults(
-    items,
+  const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
-  const selectedItem = useMemo(
-    () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
-    [items, selectedItemId],
+  const {
+    archivableScopeCount: archivableCount,
+    archiveScopeRead,
+    markScopeRead,
+    unreadScopeCount: unreadCount,
+  } = useLibraryCommandPaletteReader({
+    activeFilter,
+    activeView,
+    commandScopeItems: filteredItems,
+    enabled:
+      isLibraryInitialized &&
+      activeView === "feed" &&
+      selectedItemId === null,
+    identityMode: deviceDisplay.friendsMode,
+    inputValue: searchQuery,
+    searchQuery,
+    selectedItemId: null,
+    sourceVersion: libraryItemVersion,
+  });
+  const selectedItemDetail = useLibraryItemDetail(
+    selectedItemId,
+    libraryItemVersion,
+    selectedItemId !== null,
   );
+  const selectedItem = selectedItemDetail.item;
+  const readerActive = selectedItemId !== null;
+  const selectedItemStatusLabel = selectedItemDetail.status === "failed"
+    ? "Item temporarily unavailable"
+    : selectedItemDetail.status === "ready"
+      ? "Item unavailable"
+      : "Loading item...";
   const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
+  const latestBackgroundActivityLevel = useBackgroundActivityStore((s) => s.log[0]?.level);
   const backgroundActivityActive = activeBackgroundActivityCount > 0;
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
-  const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
+  const backgroundActivityStatus = backgroundActivityActive
+    ? { label: "Syncing", tone: "healthy" as const }
+    : latestBackgroundActivityLevel === "error"
+      ? { label: "Last activity failed", tone: "critical" as const }
+      : latestBackgroundActivityLevel === "warning"
+        ? { label: "Last activity needs attention", tone: "warning" as const }
+        : latestBackgroundActivityLevel === "success"
+          ? { label: "Last activity succeeded", tone: "healthy" as const }
+          : { label: "No recent activity", tone: "idle" as const };
 
-  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
-  const friendCount = useMemo(
-    () => Object.values(persons).filter((person) => person.relationshipStatus === "friend").length,
-    [persons],
-  );
+  const scopeLabel = useMemo(() => {
+    const staticLabel = getStaticFilterLabel(activeFilter);
+    if (staticLabel) return staticLabel;
+    if (filterScope.summary?.label) return filterScope.summary.label;
+    if (activeFilter.feedUrl) return "this feed";
+    if (activeFilter.authorId) return `...${activeFilter.authorId.slice(-8)}`;
+    return "All Sources";
+  }, [activeFilter, filterScope.summary?.label]);
+  const friendCount = libraryFacets.friendPersonCount;
   const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
-  const socialAccountCount = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "social").length,
-    [accounts],
-  );
+  const socialAccountCount = libraryFacets.socialAccountCount;
   const savedArchivedCount = libraryFacets.savedArchivedCount;
   const effectiveMapMode = resolveMapMode(
     deviceDisplay.mapMode,
@@ -437,15 +466,16 @@ export function Header({
   const showWorkspaceIdentityControls =
     activeView === "friends" ||
     activeView === "map" ||
-    (activeView === "feed" && !selectedItem);
-  const showFeedBulkActions = activeView === "feed";
-  const showFeedSignalFilter = activeView === "feed" && !selectedItem;
+    (activeView === "feed" && !readerActive);
+  const showFeedBulkActions = activeView === "feed" && !readOnly;
+  const showFeedSignalFilter = activeView === "feed" && !readerActive;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
   const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
-  const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
+  const showArchivedDeleteAction =
+    !readOnly && showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
   const showSocialContentControls =
     activeView === "feed" &&
-    !selectedItem &&
+    !readerActive &&
     !activeFilter.feedUrl &&
     !activeFilter.savedOnly &&
     !activeFilter.archivedOnly &&
@@ -454,7 +484,7 @@ export function Header({
       activeFilter.platform === "instagram");
   const socialContentFilter: SocialContentFilter = activeFilter.socialContentFilter ?? "all";
   const collapseToolbarViewControls =
-    !selectedItem &&
+    !readerActive &&
     (isMobile || isBelowLargeToolbar);
   const showInlineWorkspaceIdentityControls =
     showWorkspaceIdentityControls && !collapseToolbarViewControls;
@@ -462,12 +492,12 @@ export function Header({
     showSocialContentControls && !collapseToolbarViewControls;
   const showFeedCardDensityControl =
     activeView === "feed" &&
-    !selectedItem &&
+    !readerActive &&
     !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions &&
-    !selectedItem;
+    !readerActive;
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
     showFeedSignalFilter &&
@@ -485,23 +515,17 @@ export function Header({
     showSavedSortControl ||
     showFeedSignalFilter;
   const showInlineReaderBookmark =
-    !!selectedItem && !isBelowReaderBookmarkToolbar;
+    !readOnly && !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
     ? showInlineReaderBookmark ? 11 : 8.5
     : showInlineReaderBookmark ? 6.5 : 3.5;
-  const collapsedReaderActionWidthRem =
-    collapsedReaderBaseActionWidthRem + (showBackgroundActivityControl ? 2.75 : 0);
-  const collapsedReaderTitleStyle = selectedItem && isBelowLargeToolbar
+  const collapsedReaderActionWidthRem = collapsedReaderBaseActionWidthRem + 2.75;
+  const collapsedReaderTitleStyle = readerActive && isBelowLargeToolbar
     ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
     : undefined;
-  const collapsedReaderActionStyle = selectedItem && isBelowLargeToolbar
+  const collapsedReaderActionStyle = readerActive && isBelowLargeToolbar
     ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
     : undefined;
-
-  const {
-    unreadCount,
-    archivableCount,
-  } = useMemo(() => getFeedActionCounts(filteredItems), [filteredItems]);
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -524,7 +548,6 @@ export function Header({
 
   const fullScopeItemCount = useMemo(() => {
     if (
-      activeFilter.authorId ||
       activeFilter.savedOnly ||
       activeFilter.archivedOnly ||
       activeFilter.socialContentFilter ||
@@ -533,19 +556,15 @@ export function Header({
     ) {
       return null;
     }
-    if (activeFilter.feedUrl) {
-      return feedTotalCounts[activeFilter.feedUrl] ?? null;
+    if (activeFilter.feedUrl || activeFilter.authorId) {
+      return filterScope.summary?.itemCount ?? null;
     }
     if (activeFilter.platform) {
-      if (activeFilter.platform === "rss") {
-        return Object.values(feedTotalCounts).reduce(
-          (total, count) => total + count,
-          0,
-        );
-      }
-      return itemCountByPlatform[activeFilter.platform] ?? null;
+      return libraryFacets.platformCounts.find(
+        (entry) => entry.platform === activeFilter.platform,
+      )?.totalCount ?? 0;
     }
-    return totalItemCount;
+    return libraryFacets.totalCount;
   }, [
     activeFilter.archivedOnly,
     activeFilter.authorId,
@@ -555,9 +574,9 @@ export function Header({
     activeFilter.signals,
     activeFilter.socialContentFilter,
     activeFilter.tags,
-    feedTotalCounts,
-    itemCountByPlatform,
-    totalItemCount,
+    filterScope.summary?.itemCount,
+    libraryFacets.platformCounts,
+    libraryFacets.totalCount,
   ]);
 
   const currentListSubtitle = useMemo(() => {
@@ -580,9 +599,13 @@ export function Header({
       return `${mappedFriendCount.toLocaleString()} friends on the map`;
     }
     if (isSearching) {
+      if (searchUnavailable) return "Search is temporarily unavailable";
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
-    return formatItemCount(fullScopeItemCount ?? filteredItems.length);
+    return formatItemCount(
+      fullScopeItemCount ??
+        (isSearching ? filteredItems.length : visibleFeedTotalCount),
+    );
   }, [
     activeView,
     effectiveFriendsMode,
@@ -595,8 +618,10 @@ export function Header({
     mappedFriendCount,
     pendingMatchCount,
     resultCount,
+    searchUnavailable,
     socialAccountCount,
     scopeLabel,
+    visibleFeedTotalCount,
   ]);
 
   const currentSubtitle = useMemo(() => {
@@ -710,7 +735,6 @@ export function Header({
   // projection on the healthy Desktop path, so counting the store array here
   // reported zero for every chip.
   const feedSignalCounts = useFeedSignalCounts(
-    items,
     feedSignalCountBaseFilter,
     searchCorpusVersion,
     isLibraryInitialized,
@@ -908,12 +932,12 @@ export function Header({
   }, [unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
-    void markItemsAsRead(collectUnreadFeedActionIds(filteredItems));
-  }, [filteredItems, markItemsAsRead]);
+    void markScopeRead();
+  }, [markScopeRead]);
 
   const handleArchiveFilteredRead = useCallback(() => {
-    void archiveItems(collectArchivableFeedActionIds(filteredItems));
-  }, [archiveItems, filteredItems]);
+    void archiveScopeRead();
+  }, [archiveScopeRead]);
 
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];
@@ -931,7 +955,7 @@ export function Header({
         ),
       });
 
-      if (!showInlineReaderBookmark) {
+      if (!readOnly && !showInlineReaderBookmark) {
         actions.push({
           id: "bookmark-reader",
           label: selectedItem.userState.saved ? "Remove bookmark" : "Bookmark",
@@ -951,16 +975,18 @@ export function Header({
         });
       }
 
-      actions.push({
-        id: "archive-reader",
-        label: selectedItem.userState.archived ? "Unarchive" : "Archive",
-        onClick: handleToggleReaderArchived,
-        active: selectedItem.userState.archived,
-        icon: <ArchiveIcon className="h-5 w-5" />,
-      });
+      if (!readOnly) {
+        actions.push({
+          id: "archive-reader",
+          label: selectedItem.userState.archived ? "Unarchive" : "Archive",
+          onClick: handleToggleReaderArchived,
+          active: selectedItem.userState.archived,
+          icon: <ArchiveIcon className="h-5 w-5" />,
+        });
+      }
     }
 
-    if (!selectedItem && isBelowLargeToolbar) {
+    if (!readerActive && isBelowLargeToolbar) {
       if (showArchivedToolbar && savedArchivedCount > 0) {
         actions.push({
           id: "unarchive-saved",
@@ -986,7 +1012,7 @@ export function Header({
 
     }
 
-    if (!selectedItem && showFeedBulkActions && unreadCount > 0) {
+    if (!readerActive && showFeedBulkActions && unreadCount > 0) {
       actions.push({
         id: "mark-read",
         label: `Mark ${unreadCount.toLocaleString()} unread as read`,
@@ -999,7 +1025,7 @@ export function Header({
       });
     }
 
-    if (!selectedItem && showFeedBulkActions && archivableCount > 0) {
+    if (!readerActive && showFeedBulkActions && archivableCount > 0) {
       actions.push({
         id: "archive-read",
         label: `Archive ${archivableCount.toLocaleString()} read items`,
@@ -1026,6 +1052,8 @@ export function Header({
     handleToggleReaderArchived,
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
+    readerActive,
+    readOnly,
     savedArchivedCount,
     selectedItem,
     showInlineReaderBookmark,
@@ -1040,7 +1068,7 @@ export function Header({
 
   const showReaderLayoutToggle =
     !isMobile &&
-    !!selectedItem;
+    readerActive;
   const showDesktopReaderLayoutToggle =
     showReaderLayoutToggle && visibleDesktopSidebarMode !== "closed";
   const [layoutControlMetrics, setLayoutControlMetrics] = useState({
@@ -1320,8 +1348,8 @@ export function Header({
       const toolbarBoundaryWidthPx =
         sidebarToggleLeftPx +
         readerLayoutControlPairWidthPx -
-        (selectedItem ? readerLayoutControlVisualInsetPx : 0);
-      const toolbarSlotPaddingRightPx = selectedItem
+        (readerActive ? readerLayoutControlVisualInsetPx : 0);
+      const toolbarSlotPaddingRightPx = readerActive
         ? 0
         : TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX;
       const reservedWidthPx = Math.ceil(
@@ -1393,7 +1421,7 @@ export function Header({
     isBelowLargeToolbar,
     isMobileDevice,
     previewToggleMounted,
-    selectedItem,
+    readerActive,
     showDesktopReaderLayoutToggle,
     showReaderLayoutToggle,
     visibleDesktopSidebarMode,
@@ -1573,7 +1601,7 @@ export function Header({
               : collapsedReaderTitleStyle}
             {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
           >
-            {selectedItem ? (
+            {readerActive ? (
               <button
                 onClick={handleCloseReader}
                 {...getToolbarControlProps()}
@@ -1646,7 +1674,7 @@ export function Header({
           </div>
 
           <div
-            className={selectedItem
+            className={readerActive
               ? isBelowLargeToolbar
                 ? "theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2"
                 : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
@@ -1654,39 +1682,57 @@ export function Header({
             style={collapsedReaderActionStyle}
           >
             <ToolbarAnimatedSlot
-              visible={showBackgroundActivityControl}
+              visible={true}
               width={TOOLBAR_ICON_BUTTON_SIZE}
             >
-              {showBackgroundActivityControl ? (
-                <Tooltip label="Background activity">
-                  <button
-                    ref={activityButtonRef}
-                    type="button"
-                    onClick={handleToggleBackgroundActivity}
-                    {...getToolbarControlProps()}
-                    data-testid="background-activity-trigger"
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                      activityPopoverOpen
-                        ? "theme-toolbar-button-active"
-                        : isMobileDevice
-                          ? "theme-toolbar-button-ghost"
-                          : "theme-toolbar-button-neutral"
-                    } text-[var(--theme-accent-secondary)]`}
-                    aria-haspopup="dialog"
-                    aria-expanded={activityPopoverOpen}
-                    aria-label="Show background activity"
-                  >
+              <Tooltip label={`Background activity: ${backgroundActivityStatus.label}`}>
+                <button
+                  ref={activityButtonRef}
+                  type="button"
+                  onClick={handleToggleBackgroundActivity}
+                  {...getToolbarControlProps()}
+                  data-testid="background-activity-trigger"
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                    activityPopoverOpen
+                      ? "theme-toolbar-button-active"
+                      : isMobileDevice
+                        ? "theme-toolbar-button-ghost"
+                        : "theme-toolbar-button-neutral"
+                  }`}
+                  aria-haspopup="dialog"
+                  aria-expanded={activityPopoverOpen}
+                  aria-label={`Background activity: ${backgroundActivityStatus.label}`}
+                >
+                  {backgroundActivityStatus.tone === "idle" ? (
                     <span
-                      className={`h-3.5 w-3.5 rounded-full border border-current border-t-transparent ${
-                        backgroundActivityActive ? "animate-spin" : ""
-                      }`}
+                      className="inline-flex h-4 w-4 items-center justify-center"
+                      data-testid="background-activity-status"
+                      aria-label={backgroundActivityStatus.label}
+                      title={backgroundActivityStatus.label}
+                    >
+                      <RefreshIcon />
+                    </span>
+                  ) : (
+                    <ProviderStatusIndicator
+                      tone={backgroundActivityStatus.tone}
+                      syncing={backgroundActivityActive}
+                      label={backgroundActivityStatus.label}
+                      testId="background-activity-status"
                     />
-                  </button>
-                </Tooltip>
-              ) : null}
+                  )}
+                </button>
+              </Tooltip>
             </ToolbarAnimatedSlot>
 
-            {selectedItem ? (
+            {readerActive && !selectedItem ? (
+              <span
+                className="px-2 text-xs text-[var(--theme-text-muted)]"
+                data-testid="workspace-toolbar-reader-detail-status"
+                role="status"
+              >
+                {selectedItemStatusLabel}
+              </span>
+            ) : selectedItem ? (
               <>
                 <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
                   {!isBelowLargeToolbar ? (
@@ -1768,8 +1814,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width={TOOLBAR_ICON_BUTTON_SIZE} className="hidden lg:flex">
-                  {!isBelowLargeToolbar ? (
+                <ToolbarAnimatedSlot visible={!readOnly && !isBelowLargeToolbar} width={TOOLBAR_ICON_BUTTON_SIZE} className="hidden lg:flex">
+                  {!readOnly && !isBelowLargeToolbar ? (
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}

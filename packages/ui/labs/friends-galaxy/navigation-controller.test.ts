@@ -1,33 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
 import { FriendsGalaxyNavigationController } from "../../src/lib/friends-galaxy-navigation.js";
-import {
-  FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
-  type FriendsGalaxyProductWorkerSourceRequest,
-} from "../../src/lib/friends-galaxy-product-worker-protocol.js";
 import { FriendsGalaxyProductWorkerService } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
-import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
+import { buildFriendsGalaxyProductServiceSource } from "./product-sqlite-source-fixture.js";
 
 function rendererScene(
   sourceRevision = 1,
   personCount = 24,
   accountCount = 80,
 ): FriendsGalaxyRendererScene {
-  const request: FriendsGalaxyProductWorkerSourceRequest = {
-    kind: "source",
-    protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
-    requestId: sourceRevision,
-    sourceRevision,
-    source: createFriendsGalaxyProductSource(personCount, accountCount),
-    viewport: { width: 1_280, height: 720 },
-    backgroundStarCount: 1_000,
-    backgroundSeed: `navigation-${sourceRevision.toLocaleString()}`,
-  };
-  const response = new FriendsGalaxyProductWorkerService().handle(request);
-  if (response.kind !== "source-ready") throw new Error("Expected a source scene.");
+  const response = buildFriendsGalaxyProductServiceSource(
+    new FriendsGalaxyProductWorkerService(),
+    {
+      accountCount,
+      backgroundSeed: `navigation-${sourceRevision.toLocaleString()}`,
+      personCount,
+      sourceRevision,
+      viewport: { width: 1_280, height: 720 },
+    },
+  );
   return response.rendererScene;
 }
 

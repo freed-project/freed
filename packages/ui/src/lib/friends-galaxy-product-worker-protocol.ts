@@ -1,4 +1,4 @@
-import type { BuildIdentityGraphAtlasModelInput, IdentityGraphAtlas } from "./identity-graph-atlas.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import type { FriendsGalaxyActivitySummaryPatch } from "./friends-galaxy-activity-index.js";
 import {
   friendsGalaxyActivityScenePatchTransferables,
@@ -16,8 +16,13 @@ import {
   validateFriendsGalaxyPresentationAtlas,
 } from "./friends-galaxy-presentation-atlas.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type {
+  FriendsGalaxySqliteSourcePage,
+  FriendsGalaxySqliteSourceProgress,
+} from "./friends-galaxy-sqlite-source.js";
+import type { MapMode } from "@freed/shared";
 
-export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 2 as const;
+export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 4 as const;
 
 export interface FriendsGalaxyProductWorkerSelection {
   selectedPersonId?: string | null;
@@ -37,16 +42,6 @@ interface FriendsGalaxyProductWorkerRequestBase {
   sourceRevision: number;
 }
 
-export interface FriendsGalaxyProductWorkerSourceRequest extends
-  FriendsGalaxyProductWorkerRequestBase {
-  kind: "source";
-  source: BuildIdentityGraphAtlasModelInput;
-  viewport: Omit<FriendsGalaxyProductWorkerViewport, "transform">;
-  backgroundStarCount?: number;
-  proceduralBackgroundStarCount?: number;
-  backgroundSeed?: string;
-}
-
 export interface FriendsGalaxyProductWorkerPresentationRequest extends
   FriendsGalaxyProductWorkerRequestBase {
   kind: "presentation";
@@ -62,10 +57,34 @@ export interface FriendsGalaxyProductWorkerActivityRequest extends
   patches: FriendsGalaxyActivitySummaryPatch[];
 }
 
+export interface FriendsGalaxyProductWorkerNormalizedSourceBeginRequest extends
+  FriendsGalaxyProductWorkerRequestBase {
+  kind: "normalized-source-begin";
+  mode: MapMode;
+  viewport: Omit<FriendsGalaxyProductWorkerViewport, "transform">;
+  backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
+  backgroundSeed?: string;
+}
+
+export interface FriendsGalaxyProductWorkerNormalizedSourcePageRequest extends
+  FriendsGalaxyProductWorkerRequestBase {
+  kind: "normalized-source-page";
+  cursor: string | null;
+  page: FriendsGalaxySqliteSourcePage;
+}
+
+export interface FriendsGalaxyProductWorkerNormalizedSourceCommitRequest extends
+  FriendsGalaxyProductWorkerRequestBase {
+  kind: "normalized-source-commit";
+}
+
 export type FriendsGalaxyProductWorkerRequest =
-  | FriendsGalaxyProductWorkerSourceRequest
   | FriendsGalaxyProductWorkerPresentationRequest
-  | FriendsGalaxyProductWorkerActivityRequest;
+  | FriendsGalaxyProductWorkerActivityRequest
+  | FriendsGalaxyProductWorkerNormalizedSourceBeginRequest
+  | FriendsGalaxyProductWorkerNormalizedSourcePageRequest
+  | FriendsGalaxyProductWorkerNormalizedSourceCommitRequest;
 
 interface FriendsGalaxyProductWorkerResponseBase {
   protocolVersion: typeof FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION;
@@ -95,6 +114,12 @@ export interface FriendsGalaxyProductWorkerActivityResponse extends
   scenePatches: FriendsGalaxyActivityScenePatchBatch;
 }
 
+export interface FriendsGalaxyProductWorkerNormalizedSourceStagedResponse extends
+  FriendsGalaxyProductWorkerResponseBase,
+  FriendsGalaxySqliteSourceProgress {
+  kind: "normalized-source-staged";
+}
+
 export interface FriendsGalaxyProductWorkerErrorResponse extends
   FriendsGalaxyProductWorkerResponseBase {
   kind: "error";
@@ -106,6 +131,7 @@ export type FriendsGalaxyProductWorkerResponse =
   | FriendsGalaxyProductWorkerSourceResponse
   | FriendsGalaxyProductWorkerPresentationResponse
   | FriendsGalaxyProductWorkerActivityResponse
+  | FriendsGalaxyProductWorkerNormalizedSourceStagedResponse
   | FriendsGalaxyProductWorkerErrorResponse;
 
 function assertEnvelopeInteger(label: string, value: unknown): asserts value is number {
@@ -169,7 +195,10 @@ export function validateFriendsGalaxyProductWorkerResponse(
     }
     return;
   }
-  if (request.kind === "source" && response.kind === "source-ready") {
+  if (
+    request.kind === "normalized-source-commit" &&
+    response.kind === "source-ready"
+  ) {
     validateFriendsGalaxyWorkerScene(
       response.rendererScene,
       response.receipt,
@@ -177,6 +206,45 @@ export function validateFriendsGalaxyProductWorkerResponse(
     );
     if (response.rendererScene.presentationCandidateSource !== "atlas") {
       throw new Error("Friends Galaxy product scene must use worker presentation candidates.");
+    }
+    return;
+  }
+  if (
+    (request.kind === "normalized-source-begin" ||
+      request.kind === "normalized-source-page") &&
+    response.kind === "normalized-source-staged"
+  ) {
+    assertEnvelopeInteger("accepted source rows", response.acceptedRows);
+    assertEnvelopeInteger("total source rows", response.totalRows);
+    if (
+      typeof response.complete !== "boolean" ||
+      ![
+        "person_graph_page_v1",
+        "account_graph_page_v1",
+        "rss_feed_page_v1",
+      ].includes(response.queryId)
+    ) {
+      throw new Error("Friends Galaxy worker returned invalid source progress.");
+    }
+    if (
+      request.kind === "normalized-source-begin" &&
+      (response.acceptedRows !== 0 ||
+        response.totalRows !== 0 ||
+        response.complete ||
+        response.queryId !== "person_graph_page_v1")
+    ) {
+      throw new Error("Friends Galaxy worker returned invalid source initialization.");
+    }
+    if (
+      request.kind === "normalized-source-page" &&
+      (response.queryId !== request.page.queryId ||
+        response.acceptedRows !== request.page.rows.length ||
+        response.totalRows < response.acceptedRows ||
+        response.complete !==
+          (request.page.queryId === "rss_feed_page_v1" &&
+            request.page.nextCursor === null))
+    ) {
+      throw new Error("Friends Galaxy worker returned mismatched source progress.");
     }
     return;
   }

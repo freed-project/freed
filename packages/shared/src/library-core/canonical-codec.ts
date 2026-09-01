@@ -19,9 +19,6 @@ import CANONICAL_DOMAINS_V1 from "./canonical-domains-v1.json" with { type: "jso
  * Rust embeds that same file with `include_str!`, the way the SQL schemas are
  * shared. Both sides reject an unregistered domain, so a list that existed
  * twice could drift and make a digest computed on one side unverifiable on the
- * other. It had drifted: `operation-segment-body` and `intent-segment-body`
- * were registered here and absent from Rust.
- *
  * The tuples below still exist because TypeScript cannot derive a literal
  * union from a JSON import, and losing `LibraryCoreDigestDomain` would remove
  * compile-time domain checking from every caller. They are bound to the file at
@@ -38,6 +35,9 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "actor-capability-retirement",
   "actor-capability-body",
   "actor-capability-certificate",
+  "actor-retirement-body",
+  "actor-retirement-certificate",
+  "agent-query-body",
   "epoch-transition-certificate",
   "operation-payload",
   "operation-signing-body",
@@ -46,20 +46,15 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "actor-chain-genesis",
   "actor-chain",
   "operation-envelope",
-  "operation-segment-body",
   "intent-segment-body",
   "result-segment-body",
+  "normalized-intent-segment-body-v2",
+  "normalized-result-segment-body-v2",
+  "follower-result-body",
   "causal-frontier",
   "legacy-source-admission-key",
   "legacy-source-admission-claim",
-  "automerge-heads",
-  "legacy-epoch-bootstrap-record",
-  "legacy-library-control",
-  "legacy-epoch-bootstrap-prepared",
-  "legacy-epoch-bootstrap-receipt",
-  "legacy-library-identity",
   "native-sqlite-library-identity",
-  "native-sqlite-source-manifest",
   "installation-incarnation",
   "actor-incarnation-nonce",
 ] as const;
@@ -95,8 +90,11 @@ export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "actor-enrollment-proof",
   "actor-enrollment-authority",
   "actor-capability-authority",
+  "actor-retirement-authority",
+  "agent-query",
   "epoch-transition-certificate",
   "authority-key-possession",
+  "follower-result-envelope",
   "legacy-source-admission-claim-key",
 ] as const;
 
@@ -116,6 +114,12 @@ export type LibraryCoreCanonicalValue =
   | number
   | readonly LibraryCoreCanonicalValue[]
   | { readonly [key: string]: LibraryCoreCanonicalValue };
+
+export function isLibraryCoreCanonicalRecord(
+  value: LibraryCoreCanonicalValue,
+): value is Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 export interface LibraryCoreCanonicalEncodingOptions {
   readonly maximumBytes?: number;

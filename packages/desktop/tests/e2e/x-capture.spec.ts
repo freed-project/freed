@@ -113,10 +113,7 @@ test("X connect form accepts cookies and triggers sync", async ({
     .locator("button")
     .filter({ hasText: /settings/i })
     .first();
-  if (!(await settingsBtn.isVisible())) {
-    test.skip(true, "Settings button not visible");
-    return;
-  }
+  await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({
     timeout: 5_000,

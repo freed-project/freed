@@ -34,9 +34,12 @@ import {
   validatePublicBinding,
 } from "./automation-actors.mjs";
 import {
+  actorLauncherRecordRoot,
+  actorRuntimeRoot,
   defaultLauncherAttestor,
   parseLauncherAttestation,
 } from "./lib/automation-actor-readiness.mjs";
+import { automationHostProfileRoot } from "./lib/automation-host-identity.mjs";
 
 const testLeaseOperationId = "12345678-1234-4123-8123-123456789abc";
 const testLeaseToken = "short-lived-test-token-1234567890";
@@ -52,6 +55,33 @@ function sha256(filePath) {
 function lstatMode(filePath) {
   return lstatSync(filePath).mode & 0o777;
 }
+
+test("automation authority roots are explicit for macOS and Linux", () => {
+  assert.equal(
+    actorLauncherRecordRoot("darwin"),
+    "/Library/Application Support/Freed/automation-actor-launchers",
+  );
+  assert.equal(
+    actorRuntimeRoot("darwin"),
+    "/Library/Application Support/Freed/automation-actor-runtimes",
+  );
+  assert.equal(
+    automationHostProfileRoot("darwin"),
+    "/Library/Application Support/Freed",
+  );
+  assert.equal(
+    actorLauncherRecordRoot("linux"),
+    "/etc/freed/automation-actor-launchers",
+  );
+  assert.equal(
+    actorRuntimeRoot("linux"),
+    "/opt/freed/automation-actor-runtimes",
+  );
+  assert.equal(automationHostProfileRoot("linux"), "/etc/freed");
+  assert.throws(() => actorLauncherRecordRoot("win32"), /Unsupported/);
+  assert.throws(() => actorRuntimeRoot("win32"), /Unsupported/);
+  assert.throws(() => automationHostProfileRoot("win32"), /Unsupported/);
+});
 
 function writeExecutable(filePath, contents) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -292,6 +322,7 @@ function fixture(t) {
     launcherRoot,
     runtimeRoot,
     trustedUid: typeof process.getuid === "function" ? process.getuid() : 501,
+    trustedGroup: "wheel",
     hostBuildPath,
     runner,
     lifecycleLockStaleMs: 30_000,
@@ -523,7 +554,7 @@ test("reserved owner and publisher identities are explicitly rejected", () => {
   );
 });
 
-test("provisioning preflight requires macOS, a non-root owner, and exact clean dev", () => {
+test("provisioning preflight requires a supported host, a non-root owner, and exact clean dev", () => {
   const repository = {
     topLevel: "/repo",
     branch: "dev",
@@ -539,8 +570,16 @@ test("provisioning preflight requires macOS, a non-root owner, and exact clean d
       repoRoot: "/repo",
     }),
   );
+  assert.doesNotThrow(() =>
+    assertProvisioningReady({
+      platform: "linux",
+      uid: 501,
+      repository,
+      repoRoot: "/repo",
+    }),
+  );
   for (const value of [
-    { platform: "linux", uid: 501, repository, repoRoot: "/repo" },
+    { platform: "win32", uid: 501, repository, repoRoot: "/repo" },
     { platform: "darwin", uid: 0, repository, repoRoot: "/repo" },
     {
       platform: "darwin",
@@ -866,6 +905,86 @@ test("provision all installs one content-addressed runtime and all public bindin
     ),
     false,
   );
+});
+
+test("Linux provisioning forwards only the reviewed Go compiler to the host build", (t) => {
+  const value = fixture(t);
+  value.dependencies.platform = "linux";
+  value.dependencies.env.FREED_GO_EXECUTABLE = "/usr/bin/go";
+
+  executeCommand(
+    {
+      action: "provision",
+      actor: "freed-runtime-observer",
+      stateRoot: value.stateRoot,
+    },
+    value.dependencies,
+  );
+
+  const build = value.calls.find(
+    ({ executable, args }) =>
+      executable === "/bin/bash" && args[0] === value.hostBuildPath,
+  );
+  assert.equal(build.options.env.FREED_GO_EXECUTABLE, "/usr/bin/go");
+  assert.equal(build.options.env.FREED_OWNER_LEASE_TOKEN, undefined);
+  assert.equal(build.options.env.DEVELOPER_DIR, undefined);
+  assert.equal(build.options.env.TMPDIR, undefined);
+});
+
+test("Linux provisioning completes the full trusted actor lifecycle with root-owned material", (t) => {
+  const value = fixture(t);
+  value.dependencies.platform = "linux";
+  value.dependencies.trustedGroup = "root";
+
+  const provisioned = executeCommand(
+    { action: "provision", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+  assert.equal(provisioned.records.length, AUTOMATION_ACTOR_IDS.length);
+  assert.equal(
+    provisioned.records.every((record) => record.accepted),
+    true,
+  );
+
+  const accepted = executeCommand(
+    { action: "accept-host", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+  assert.equal(accepted.accepted, true);
+  assert.equal(accepted.records.length, AUTOMATION_ACTOR_IDS.length);
+  assert.equal(
+    accepted.records.every(
+      (record) =>
+        record.acquired &&
+        record.heartbeated &&
+        record.released &&
+        record.liveLease === false,
+    ),
+    true,
+  );
+
+  const verified = executeCommand(
+    { action: "verify", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+  assert.equal(verified.records.length, AUTOMATION_ACTOR_IDS.length);
+
+  const revoked = executeCommand(
+    { action: "revoke", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+  assert.equal(revoked.records.length, AUTOMATION_ACTOR_IDS.length);
+  assert.equal(value.liveLeases.size, 0);
+
+  const installCalls = value.calls.filter(
+    (call) =>
+      call.executable === "/usr/bin/sudo" &&
+      call.args[0] === "/usr/bin/install",
+  );
+  assert.ok(installCalls.length > 0);
+  for (const call of installCalls) {
+    assert.equal(call.args[call.args.indexOf("-g") + 1], "root");
+  }
 });
 
 test("provision migrates every installed schema one actor before replacement", (t) => {

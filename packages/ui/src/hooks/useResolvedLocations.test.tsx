@@ -4,8 +4,8 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { Account, FeedItem, Person } from "@freed/shared";
-import { useResolvedLocations } from "./useResolvedLocations";
+import type { FeedItem, LibraryMapLocationCandidate } from "@freed/shared";
+import { useResolvedLocationCandidates } from "./useResolvedLocations";
 
 const geocodeMock = vi.hoisted(() => vi.fn());
 
@@ -13,7 +13,7 @@ vi.mock("../lib/geocoding.js", () => ({
   geocode: geocodeMock,
 }));
 
-type ResolvedLocationsSnapshot = ReturnType<typeof useResolvedLocations>;
+type ResolvedLocationsSnapshot = ReturnType<typeof useResolvedLocationCandidates>;
 
 function makeItem(
   globalId: string,
@@ -52,17 +52,17 @@ function makeItem(
 }
 
 function ResolvedLocationsHarness({
-  accounts,
-  items,
+  candidates,
   onSnapshot,
-  persons,
+  resolveNamedLocations,
 }: {
-  accounts: Record<string, Account>;
-  items: FeedItem[];
+  candidates: readonly LibraryMapLocationCandidate[];
   onSnapshot: (snapshot: ResolvedLocationsSnapshot) => void;
-  persons: Record<string, Person>;
+  resolveNamedLocations?: boolean;
 }) {
-  const snapshot = useResolvedLocations(items, persons, accounts);
+  const snapshot = useResolvedLocationCandidates(candidates, {
+    resolveNamedLocations,
+  });
 
   useEffect(() => {
     onSnapshot(snapshot);
@@ -71,7 +71,7 @@ function ResolvedLocationsHarness({
   return null;
 }
 
-describe("useResolvedLocations", () => {
+describe("useResolvedLocationCandidates", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -127,9 +127,11 @@ describe("useResolvedLocations", () => {
     await act(async () => {
       root!.render(
         <ResolvedLocationsHarness
-          accounts={{}}
-          items={items}
-          persons={{}}
+          candidates={items.map((item) => ({
+            accountId: null,
+            friend: null,
+            item,
+          }))}
           onSnapshot={(snapshot) => snapshots.push(snapshot)}
         />,
       );
@@ -166,5 +168,33 @@ describe("useResolvedLocations", () => {
     ]);
     expect(completeSnapshot.resolvingCount).toBe(0);
     expect(completeSnapshot.lastResolvedAt).toEqual(expect.any(Number));
+  });
+
+  it("keeps local showcase mode from sending named locations to a geocoder", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const snapshots: ResolvedLocationsSnapshot[] = [];
+
+    await act(async () => {
+      root!.render(
+        <ResolvedLocationsHarness
+          candidates={[
+            {
+              accountId: null,
+              friend: null,
+              item: makeItem("brooklyn-1", "Brooklyn, NY", 100),
+            },
+          ]}
+          onSnapshot={(snapshot) => snapshots.push(snapshot)}
+          resolveNamedLocations={false}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(geocodeMock).not.toHaveBeenCalled();
+    expect(snapshots.at(-1)?.resolvingCount).toBe(0);
+    expect(snapshots.at(-1)?.resolvedItems).toEqual([]);
   });
 });

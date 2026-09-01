@@ -1,6 +1,7 @@
 import {
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
+  LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES,
   parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreImmutableObjectReferenceV1,
@@ -116,7 +117,11 @@ function checkedIdentity<RecordValue>(
   identify: (record: RecordValue) => string,
 ): string {
   const identity = identify(record);
-  assertBoundedNonemptyText(identity, "checkpoint record identity", 512);
+  assertBoundedNonemptyText(
+    identity,
+    "checkpoint record identity",
+    LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES,
+  );
   return identity;
 }
 

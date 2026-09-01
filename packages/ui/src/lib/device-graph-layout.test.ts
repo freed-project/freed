@@ -1,390 +1,165 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Account, Person } from "@freed/shared";
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  applyDeviceAccountGraphPositionUpdate,
-  applyDevicePersonGraphPositionUpdate,
-  applyDeviceGraphLayoutToAccount,
-  applyDeviceGraphLayoutToPerson,
-  applyDeviceGraphLayout,
-  clearDeviceGraphLayout,
+  clearLegacyDeviceGraphLayoutImport,
   DEVICE_GRAPH_LAYOUT_STORAGE_KEY,
-  getDeviceAccountGraphLayout,
-  getDeviceGraphLayout,
-  getDevicePersonGraphLayout,
-  migrateLegacyDeviceGraphLayout,
-  pruneDeviceGraphLayout,
-  resetDeviceGraphLayoutForTests,
-  restoreReplacedDeviceAccountGraphPositions,
-  setDeviceAccountGraphPosition,
-  setDevicePersonGraphPosition,
-  subscribeDeviceGraphLayout,
+  migrateLegacyDeviceGraphLayoutToSqlite,
 } from "./device-graph-layout";
-import {
-  beginFactoryResetBoundary,
-  resetFactoryResetStateForTests,
-} from "./factory-reset";
 
-function makePerson(id: string, update: Partial<Person> = {}): Person {
-  return {
-    id,
-    name: id,
-    relationshipStatus: "friend",
-    careLevel: 3,
-    createdAt: 1,
-    updatedAt: 1,
-    ...update,
-  };
+function detailResponse(kind: "person" | "account", present: boolean) {
+  return kind === "person"
+    ? {
+        linkedAccountCount: 0,
+        linkedAccounts: [],
+        person: present
+          ? {
+              avatarUrl: null,
+              bio: null,
+              careLevel: 3,
+              createdAt: 1,
+              id: "person-1",
+              name: "Person",
+              notes: null,
+              reachOutIntervalDays: null,
+              relationshipStatus: "friend",
+              reachOuts: [],
+              sampleBatchId: null,
+              sampleGeneratedAt: null,
+              sampleGeneratorVersion: null,
+              tags: [],
+              updatedAt: 1,
+            }
+          : null,
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }
+    : {
+        account: present
+          ? {
+              address: null,
+              avatarUrl: null,
+              createdAt: 1,
+              discoveredFrom: "captured_item",
+              displayName: null,
+              email: null,
+              externalId: "account-1",
+              firstSeenAt: 1,
+              followRosterActive: null,
+              followRosterRoles: [],
+              followRosterSyncedAt: null,
+              handle: null,
+              id: "account-1",
+              importedAt: null,
+              kind: "social",
+              lastSeenAt: 1,
+              personId: null,
+              phone: null,
+              profileUrl: null,
+              provider: "instagram",
+              sampleBatchId: null,
+              sampleGeneratedAt: null,
+              sampleGeneratorVersion: null,
+              updatedAt: 1,
+            }
+          : null,
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      };
 }
 
-function makeAccount(id: string, update: Partial<Account> = {}): Account {
-  return {
-    id,
-    kind: "social",
-    provider: "instagram",
-    externalId: id,
-    firstSeenAt: 1,
-    lastSeenAt: 1,
-    discoveredFrom: "captured_item",
-    createdAt: 1,
-    updatedAt: 1,
-    ...update,
-  };
-}
+describe("retired device graph layout import", () => {
+  beforeEach(() => window.localStorage.clear());
 
-describe("device graph layout", () => {
-  beforeEach(() => {
-    resetFactoryResetStateForTests();
-    window.localStorage.clear();
-    resetDeviceGraphLayoutForTests();
-  });
-
-  afterEach(() => {
-    resetFactoryResetStateForTests();
-    vi.restoreAllMocks();
-  });
-
-  it("routes legacy partial graph updates into local layout", () => {
-    expect(setDevicePersonGraphPosition("person-1", 12, 24, 100)).toBe(true);
-    expect(applyDevicePersonGraphPositionUpdate("person-1", {
-      graphX: 18,
-      graphUpdatedAt: 200,
-    })).toBe(true);
-    expect(getDevicePersonGraphLayout("person-1")).toEqual({
-      graphX: 18,
-      graphY: 24,
-      graphPinned: true,
-      graphUpdatedAt: 200,
-    });
-
-    expect(setDeviceAccountGraphPosition("account-1", 3, 4, 100)).toBe(true);
-    expect(applyDeviceAccountGraphPositionUpdate("account-1", {})).toBe(false);
-    expect(applyDeviceAccountGraphPositionUpdate("account-1", {
-      graphPinned: false,
-    })).toBe(true);
-    expect(getDeviceAccountGraphLayout("account-1")).toBeNull();
-  });
-
-  it("persists separate versioned person and account records", () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeDeviceGraphLayout(listener);
-
-    expect(setDevicePersonGraphPosition("person-1", 12.5, -4, 100)).toBe(true);
-    expect(setDeviceAccountGraphPosition("account-1", 88, 44, 200)).toBe(true);
-
-    expect(getDevicePersonGraphLayout("person-1")).toEqual({
-      graphX: 12.5,
-      graphY: -4,
-      graphPinned: true,
-      graphUpdatedAt: 100,
-    });
-    expect(getDeviceAccountGraphLayout("account-1")).toEqual({
-      graphX: 88,
-      graphY: 44,
-      graphPinned: true,
-      graphUpdatedAt: 200,
-    });
-    expect(JSON.parse(
-      window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY) ?? "null",
-    )).toMatchObject({
-      version: 1,
-      persons: { "person-1": { graphX: 12.5 } },
-      accounts: { "account-1": { graphX: 88 } },
-    });
-    expect(listener).toHaveBeenCalledTimes(2);
-
-    expect(applyDevicePersonGraphPositionUpdate("person-1", { graphPinned: false })).toBe(true);
-    expect(applyDevicePersonGraphPositionUpdate("person-1", { graphPinned: false })).toBe(true);
-    expect(applyDeviceAccountGraphPositionUpdate("account-1", { graphPinned: false })).toBe(true);
-    expect(getDeviceGraphLayout().persons).toEqual({});
-    expect(getDeviceGraphLayout().accounts).toEqual({});
-
-    clearDeviceGraphLayout();
-    expect(getDeviceGraphLayout()).toMatchObject({
-      version: 1,
-      legacyMigrationCompleted: true,
-      persons: {},
-      accounts: {},
-    });
-    unsubscribe();
-  });
-
-  it("prunes missing entities without allowing their old pins to return", () => {
-    setDevicePersonGraphPosition("person-removed", 10, 20, 100);
-    setDevicePersonGraphPosition("person-live", 30, 40, 200);
-    setDeviceAccountGraphPosition("account-removed", 50, 60, 300);
-    setDeviceAccountGraphPosition("account-live", 70, 80, 400);
-
-    expect(pruneDeviceGraphLayout(
-      { "person-live": makePerson("person-live") },
-      { "account-live": makeAccount("account-live") },
-    )).toBe(true);
-    expect(getDevicePersonGraphLayout("person-removed")).toBeNull();
-    expect(getDeviceAccountGraphLayout("account-removed")).toBeNull();
-    expect(getDevicePersonGraphLayout("person-live")?.graphX).toBe(30);
-    expect(getDeviceAccountGraphLayout("account-live")?.graphX).toBe(70);
-
-    const reintroduced = applyDeviceGraphLayout(
-      {
-        "person-live": makePerson("person-live"),
-        "person-removed": makePerson("person-removed"),
-      },
-      {
-        "account-live": makeAccount("account-live"),
-        "account-removed": makeAccount("account-removed"),
-      },
-    );
-    expect(reintroduced.persons["person-removed"]).not.toHaveProperty("graphX");
-    expect(reintroduced.accounts["account-removed"]).not.toHaveProperty("graphX");
-    expect(pruneDeviceGraphLayout(reintroduced.persons, reintroduced.accounts)).toBe(false);
-  });
-
-  it("restores only retained account pins after a successful replacement", () => {
-    setDeviceAccountGraphPosition("account-retained", 10, 20, 100);
-    setDeviceAccountGraphPosition("account-displaced", 30, 40, 200);
-    const beforeReplacement = getDeviceGraphLayout();
-
-    expect(pruneDeviceGraphLayout({}, {})).toBe(true);
-    expect(restoreReplacedDeviceAccountGraphPositions(
-      ["account-retained"],
-      beforeReplacement,
-    )).toBe(true);
-
-    expect(getDeviceAccountGraphLayout("account-retained")?.graphX).toBe(10);
-    expect(getDeviceAccountGraphLayout("account-displaced")).toBeNull();
-  });
-
-  it("rejects non-finite writes and normalizes malformed stored coordinates", () => {
-    expect(setDevicePersonGraphPosition(
-      "person-invalid",
-      Number.POSITIVE_INFINITY,
-      10,
-    )).toBe(false);
-    expect(getDevicePersonGraphLayout("person-invalid")).toBeNull();
-
-    window.localStorage.setItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY, JSON.stringify({
-      version: 1,
-      legacyMigrationCompleted: true,
-      persons: {
-        valid: {
-          graphX: 5,
-          graphY: -7,
-          graphPinned: true,
-          graphUpdatedAt: 9,
-          unexpected: "discarded",
+  it("imports valid pins through typed SQLite mutations and deletes the shell", async () => {
+    window.localStorage.setItem(
+      DEVICE_GRAPH_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        legacyMigrationCompleted: true,
+        persons: {
+          "person-1": {
+            graphPinned: true,
+            graphUpdatedAt: 100,
+            graphX: 12,
+            graphY: 24,
+          },
         },
-        invalid: { graphX: null, graphY: 4, graphPinned: true },
-      },
-      accounts: {
-        invalid: { graphX: 1, graphY: "two", graphPinned: true },
-      },
+        accounts: {
+          "account-1": {
+            graphPinned: true,
+            graphUpdatedAt: 200,
+            graphX: 3,
+            graphY: 4,
+          },
+        },
+      }),
+    );
+    const mutate = vi.fn(async (mutation) => ({
+      changed: true,
+      layoutRevision: 1,
+      mutationId: mutation.mutationId,
+      schemaVersion: 1 as const,
     }));
-    resetDeviceGraphLayoutForTests();
-
-    expect(getDeviceGraphLayout()).toEqual({
-      version: 1,
-      legacyMigrationCompleted: true,
-      persons: {
-        valid: {
-          graphX: 5,
-          graphY: -7,
-          graphPinned: true,
-          graphUpdatedAt: 9,
-        },
-      },
-      accounts: {},
-    });
-  });
-
-  it("does not overwrite a graph layout written by a newer app version", () => {
-    const futureRecord = JSON.stringify({
-      version: 2,
-      legacyMigrationCompleted: true,
-      coordinateSystem: "spherical",
-      persons: {
-        "person-future": { longitude: 12, latitude: 24 },
-      },
-    });
-    window.localStorage.setItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY, futureRecord);
-
-    expect(migrateLegacyDeviceGraphLayout({
-      "person-legacy": makePerson("person-legacy", {
-        graphX: 1,
-        graphY: 2,
-        graphPinned: true,
-      }),
-    }, {})).toBe(false);
-    expect(setDevicePersonGraphPosition("person-current-session", 3, 4, 5)).toBe(false);
-    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBe(futureRecord);
-    expect(getDevicePersonGraphLayout("person-current-session")).toBeNull();
-  });
-
-  it("does not treat a corrupt current-version graph record as migration permission", () => {
-    const corruptRecord = JSON.stringify({
-      version: 1,
-      legacyMigrationCompleted: "perhaps",
-      persons: [],
-      accounts: {},
-    });
-    window.localStorage.setItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY, corruptRecord);
-
-    expect(migrateLegacyDeviceGraphLayout({
-      "person-legacy": makePerson("person-legacy", {
-        graphX: 1,
-        graphY: 2,
-        graphPinned: true,
-      }),
-    }, {})).toBe(false);
-    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBe(corruptRecord);
-  });
-
-  it("migrates legacy Automerge positions once without replaying stale values", () => {
-    setDevicePersonGraphPosition("person-local", 100, 200, 500);
-    const persons = {
-      "person-local": makePerson("person-local", {
-        graphX: 1,
-        graphY: 2,
-        graphPinned: true,
-        graphUpdatedAt: 10,
-      }),
-      "person-legacy": makePerson("person-legacy", {
-        graphX: 3,
-        graphY: 4,
-        graphPinned: true,
-        graphUpdatedAt: 20,
-      }),
-      "person-invalid": makePerson("person-invalid", {
-        graphX: Number.NaN,
-        graphY: 5,
-        graphPinned: true,
-      }),
-    };
-    const accounts = {
-      "account-legacy": makeAccount("account-legacy", {
-        graphX: 6,
-        graphY: 7,
-        graphPinned: true,
-        graphUpdatedAt: 30,
-      }),
-    };
-
-    expect(migrateLegacyDeviceGraphLayout(persons, accounts)).toBe(true);
-    expect(getDevicePersonGraphLayout("person-local")?.graphX).toBe(100);
-    expect(getDevicePersonGraphLayout("person-legacy")?.graphX).toBe(3);
-    expect(getDevicePersonGraphLayout("person-invalid")).toBeNull();
-    expect(getDeviceAccountGraphLayout("account-legacy")?.graphX).toBe(6);
-
-    setDevicePersonGraphPosition("person-legacy", 90, 91, 900);
-    expect(migrateLegacyDeviceGraphLayout({
-      "person-legacy": makePerson("person-legacy", {
-        graphX: -10,
-        graphY: -20,
-        graphPinned: true,
-      }),
-      "person-late": makePerson("person-late", {
-        graphX: 8,
-        graphY: 9,
-        graphPinned: true,
-      }),
-    }, {})).toBe(false);
-    expect(getDevicePersonGraphLayout("person-legacy")?.graphX).toBe(90);
-    expect(getDevicePersonGraphLayout("person-late")).toBeNull();
-  });
-
-  it("overlays local positions and strips stale synced positions when no local pin exists", () => {
-    const person = makePerson("person-1", {
-      graphX: 1,
-      graphY: 2,
-      graphPinned: true,
-      graphUpdatedAt: 3,
-    });
-    const account = makeAccount("account-1", {
-      graphX: 4,
-      graphY: 5,
-      graphPinned: true,
-      graphUpdatedAt: 6,
-    });
-    setDevicePersonGraphPosition(person.id, 10, 20, 30);
-
-    const overlaidPerson = applyDeviceGraphLayoutToPerson(person);
-    const overlaidAccount = applyDeviceGraphLayoutToAccount(account);
-    expect(overlaidPerson).toMatchObject({
-      graphX: 10,
-      graphY: 20,
-      graphPinned: true,
-      graphUpdatedAt: 30,
-    });
-    expect(overlaidAccount).not.toHaveProperty("graphX");
-    expect(overlaidAccount).not.toHaveProperty("graphY");
-    expect(overlaidAccount).not.toHaveProperty("graphPinned");
-    expect(overlaidAccount).not.toHaveProperty("graphUpdatedAt");
-    expect(person.graphX).toBe(1);
-    expect(account.graphX).toBe(4);
-
-    const overlaid = applyDeviceGraphLayout(
-      { [person.id]: person },
-      { [account.id]: account },
+    const query = vi.fn(async (request: { queryId: string }) =>
+      detailResponse(
+        request.queryId === "person_detail_v1" ? "person" : "account",
+        true,
+      ),
     );
-    expect(overlaid.persons[person.id]).toEqual(overlaidPerson);
-    expect(overlaid.accounts[account.id]).toEqual(overlaidAccount);
-  });
 
-  it("keeps the last persisted graph layout when storage fails", () => {
-    expect(setDevicePersonGraphPosition("person-stable", 10, 20, 100)).toBe(true);
-    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    expect(setDevicePersonGraphPosition("person-lost", 30, 40, 200)).toBe(false);
-    expect(clearDeviceGraphLayout()).toBe(false);
-    expect(getDevicePersonGraphLayout("person-stable")?.graphX).toBe(10);
-    expect(getDevicePersonGraphLayout("person-lost")).toBeNull();
-  });
-
-  it("blocks graph writers after reset starts while allowing the reset clear", () => {
-    const person = makePerson("person-reset", {
-      graphX: 70,
-      graphY: 80,
-      graphPinned: true,
-    });
-    expect(setDevicePersonGraphPosition(person.id, 10, 20, 100)).toBe(true);
-    const beforeReset = window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY);
-    const beforeReplacement = getDeviceGraphLayout();
-
-    beginFactoryResetBoundary();
-
-    expect(setDevicePersonGraphPosition(person.id, 30, 40, 200)).toBe(false);
-    expect(applyDevicePersonGraphPositionUpdate(person.id, { graphPinned: false })).toBe(false);
-    expect(pruneDeviceGraphLayout({}, {})).toBe(false);
-    expect(restoreReplacedDeviceAccountGraphPositions(["account-reset"], beforeReplacement))
-      .toBe(false);
-    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBe(beforeReset);
-
-    expect(clearDeviceGraphLayout()).toBe(true);
-    expect(getDeviceGraphLayout()).toMatchObject({ persons: {}, accounts: {} });
-
-    window.localStorage.removeItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY);
-    resetDeviceGraphLayoutForTests();
-    expect(migrateLegacyDeviceGraphLayout({ [person.id]: person }, {})).toBe(false);
+    await expect(
+      migrateLegacyDeviceGraphLayoutToSqlite({ mutate, query: query as never }),
+    ).resolves.toBe(2);
+    expect(mutate).toHaveBeenCalledTimes(2);
     expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("drops missing entities and preserves the source when SQLite fails", async () => {
+    const seed = () =>
+      window.localStorage.setItem(
+        DEVICE_GRAPH_LAYOUT_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          persons: {
+            "person-1": {
+              graphPinned: true,
+              graphUpdatedAt: 100,
+              graphX: 12,
+              graphY: 24,
+            },
+          },
+          accounts: {},
+        }),
+      );
+    seed();
+    await expect(
+      migrateLegacyDeviceGraphLayoutToSqlite({
+        mutate: vi.fn(),
+        query: vi.fn(async () => detailResponse("person", false)) as never,
+      }),
+    ).resolves.toBe(0);
+    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBeNull();
+
+    seed();
+    await expect(
+      migrateLegacyDeviceGraphLayoutToSqlite({
+        mutate: vi.fn(async () => {
+          throw new Error("SQLite unavailable");
+        }),
+        query: vi.fn(async () => detailResponse("person", true)) as never,
+      }),
+    ).rejects.toThrow("SQLite unavailable");
+    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("factory reset removes the historical key and its recovery copies", () => {
+    window.localStorage.setItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY, "legacy");
+    window.localStorage.setItem(
+      `${DEVICE_GRAPH_LAYOUT_STORAGE_KEY}.recovery.1.0`,
+      "legacy-copy",
+    );
+    expect(clearLegacyDeviceGraphLayoutImport()).toBe(true);
+    expect(window.localStorage.length).toBe(0);
   });
 });

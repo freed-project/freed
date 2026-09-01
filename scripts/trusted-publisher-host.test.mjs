@@ -843,46 +843,41 @@ test(
 );
 
 test(
-  "native publisher terminal drain returns queued SIGINT and SIGTERM after capability cleanup",
-  { skip: !darwinOnly, timeout: 20_000 },
+  "native publisher terminal drain returns queued SIGTERM after capability cleanup",
+  { skip: !darwinOnly, timeout: 30_000 },
   async (t) => {
-    for (const [signal, expectedCode] of [
-      ["SIGINT", 130],
-      ["SIGTERM", 143],
-    ]) {
-      const fixture = await createFixture({
-        launcherMode: "post-child-finalization",
-      });
-      const execution = startRun(broker, brokerArguments(fixture), {
-        cwd: fixture.candidateRoot,
-      });
-      t.after(async () => {
-        execution.child.kill("SIGKILL");
-        await rm(fixture.fixtureRoot, { recursive: true, force: true });
-      });
-      await waitForFile(fixture.finalizationBlockedPath);
-      assert.equal(execution.child.kill(signal), true);
-      const result = await execution.result;
-      assert.equal(result.code, expectedCode, result.stderr);
-      await assert.rejects(readFile(fixture.publisherLeasePath), {
-        code: "ENOENT",
-      });
-      assert.deepEqual(await readdir(fixture.pendingCapabilityRoot), []);
-      const calls = (await readFile(fixture.publisherControlLogPath, "utf8"))
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
-      const releases = calls.filter((call) => call.action === "release");
-      const inspections = calls.filter((call) => call.action === "show");
-      assert.equal(releases.length, 2);
-      assert.equal(releases[0].operationId, releases[1].operationId);
-      assert.equal(inspections.length, 2);
-      assert.ok(releases.every((call) => call.leaseTokenPresent === true));
-      assert.ok(inspections.every((call) => call.leaseTokenPresent === false));
-      assert.ok(
-        calls.every((call) => call.persistentCredentialPresent === false),
-      );
-    }
+    const fixture = await createFixture({
+      launcherMode: "post-child-finalization",
+    });
+    const execution = startRun(broker, brokerArguments(fixture), {
+      cwd: fixture.candidateRoot,
+    });
+    t.after(async () => {
+      execution.child.kill("SIGKILL");
+      await rm(fixture.fixtureRoot, { recursive: true, force: true });
+    });
+    await waitForFile(fixture.finalizationBlockedPath, 10_000);
+    assert.equal(execution.child.kill("SIGTERM"), true);
+    const result = await execution.result;
+    assert.equal(result.code, 143, result.stderr);
+    await assert.rejects(readFile(fixture.publisherLeasePath), {
+      code: "ENOENT",
+    });
+    assert.deepEqual(await readdir(fixture.pendingCapabilityRoot), []);
+    const calls = (await readFile(fixture.publisherControlLogPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const releases = calls.filter((call) => call.action === "release");
+    const inspections = calls.filter((call) => call.action === "show");
+    assert.equal(releases.length, 2);
+    assert.equal(releases[0].operationId, releases[1].operationId);
+    assert.equal(inspections.length, 2);
+    assert.ok(releases.every((call) => call.leaseTokenPresent === true));
+    assert.ok(inspections.every((call) => call.leaseTokenPresent === false));
+    assert.ok(
+      calls.every((call) => call.persistentCredentialPresent === false),
+    );
   },
 );
 

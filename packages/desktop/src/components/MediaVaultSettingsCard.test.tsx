@@ -1,28 +1,16 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FeedItem } from "@freed/shared";
-import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 
 const {
   mockArchiveLibraryCoreProviderMedia,
-  mockArchiveRecentProviderMedia,
-  mockAcquireLegacyLibraryItems,
   mockImportMetaExportFiles,
-  mockIsReaderDisabled,
-  mockLegacyRelease,
   mockScanProviderItems,
-  mockStoreState,
   mockSummary,
 } = vi.hoisted(() => ({
   mockArchiveLibraryCoreProviderMedia: vi.fn(),
-  mockArchiveRecentProviderMedia: vi.fn(),
-  mockAcquireLegacyLibraryItems: vi.fn(),
   mockImportMetaExportFiles: vi.fn(),
-  mockIsReaderDisabled: vi.fn(),
-  mockLegacyRelease: vi.fn(),
   mockScanProviderItems: vi.fn(),
-  mockStoreState: { items: [] as FeedItem[] },
   mockSummary: {
     enabled: false,
     fileCount: 0,
@@ -44,18 +32,11 @@ vi.mock("../lib/meta-export-import", () => ({
 }));
 
 vi.mock("../lib/library-core-provider-settings-runtime", () => ({
-  isLibraryCoreProviderSettingsReaderDisabled: mockIsReaderDisabled,
   scanLibraryCoreProviderItems: mockScanProviderItems,
-}));
-
-vi.mock("../lib/store", () => ({
-  useAppStore: (selector: (state: typeof mockStoreState) => unknown) =>
-    selector(mockStoreState),
 }));
 
 vi.mock("../lib/media-vault", () => ({
   archiveLibraryCoreProviderMedia: mockArchiveLibraryCoreProviderMedia,
-  archiveRecentProviderMedia: mockArchiveRecentProviderMedia,
   getMediaVaultProviderDir: vi.fn(
     async (provider: string) => `/mock/app-data/media-vault/${provider}`,
   ),
@@ -72,29 +53,6 @@ vi.mock("../lib/media-vault", () => ({
 import { useToastStore } from "@freed/ui/components/Toast";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 
-function instagramItem(): FeedItem {
-  return {
-    globalId: "instagram:post-1",
-    platform: "instagram",
-    contentType: "post",
-    capturedAt: 1_710_000_000_000,
-    publishedAt: 1_710_000_000_000,
-    author: {
-      id: "ada",
-      handle: "ada",
-      displayName: "Ada",
-    },
-    content: {
-      text: "hello",
-      mediaUrls: ["https://cdn.example.com/recent.jpg"],
-      mediaTypes: ["image"],
-    },
-    userState: { hidden: false, saved: false, archived: false, tags: [] },
-    topics: [],
-    sourceUrl: "https://www.instagram.com/p/post-1/",
-  };
-}
-
 describe("MediaVaultSettingsCard", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -105,15 +63,8 @@ describe("MediaVaultSettingsCard", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
     mockImportMetaExportFiles.mockReset();
     mockArchiveLibraryCoreProviderMedia.mockReset();
-    mockArchiveRecentProviderMedia.mockReset();
-    mockAcquireLegacyLibraryItems.mockReset();
-    mockAcquireLegacyLibraryItems.mockResolvedValue(mockLegacyRelease);
-    mockIsReaderDisabled.mockReset();
-    mockIsReaderDisabled.mockReturnValue(false);
-    mockLegacyRelease.mockReset();
     mockScanProviderItems.mockReset();
     mockScanProviderItems.mockImplementation(async () => {});
-    mockStoreState.items = [];
     Object.assign(mockSummary, {
       enabled: false,
       fileCount: 0,
@@ -142,19 +93,11 @@ describe("MediaVaultSettingsCard", () => {
   async function renderCard(authenticated = true) {
     await act(async () => {
       root.render(
-        <PlatformProvider
-          value={
-            {
-              acquireLegacyLibraryItems: mockAcquireLegacyLibraryItems,
-            } as unknown as PlatformConfig
-          }
-        >
-          <MediaVaultSettingsCard
-            provider="instagram"
-            providerLabel="Instagram"
-            authenticated={authenticated}
-          />
-        </PlatformProvider>,
+        <MediaVaultSettingsCard
+          provider="instagram"
+          providerLabel="Instagram"
+          authenticated={authenticated}
+        />,
       );
       await Promise.resolve();
     });
@@ -244,7 +187,7 @@ describe("MediaVaultSettingsCard", () => {
     );
   });
 
-  it("uses the source-fenced SQLite archiver without acquiring the legacy corpus", async () => {
+  it("uses the source-fenced SQLite archiver", async () => {
     Object.assign(mockSummary, {
       enabled: true,
       ownerHandles: ["ada"],
@@ -267,8 +210,6 @@ describe("MediaVaultSettingsCard", () => {
       "continuous",
       mockScanProviderItems,
     );
-    expect(mockArchiveRecentProviderMedia).not.toHaveBeenCalled();
-    expect(mockAcquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts[0]?.message).toContain(
       "Archived 3 Instagram media files",
     );
@@ -293,42 +234,11 @@ describe("MediaVaultSettingsCard", () => {
       await Promise.resolve();
     });
 
-    expect(mockArchiveRecentProviderMedia).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts[0]?.message).toBe(
       "Library source changed during scan.",
     );
     expect(useToastStore.getState().toasts[0]?.message).not.toContain(
       "Archived 0",
-    );
-  });
-
-  it("uses the legacy items only when the rollback key disables SQLite reads", async () => {
-    Object.assign(mockSummary, {
-      enabled: true,
-      ownerHandles: ["ada"],
-    });
-    const item = instagramItem();
-    mockStoreState.items = [item];
-    mockIsReaderDisabled.mockReturnValue(true);
-    mockArchiveRecentProviderMedia.mockResolvedValue(1);
-    await renderCard(true);
-
-    const backup = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("Back up now"),
-    );
-    expect((backup as HTMLButtonElement | undefined)?.disabled).toBe(false);
-    await act(async () => {
-      backup?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockAcquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(mockArchiveLibraryCoreProviderMedia).not.toHaveBeenCalled();
-    expect(mockArchiveRecentProviderMedia).toHaveBeenCalledWith(
-      "instagram",
-      [item],
-      "continuous",
     );
   });
 

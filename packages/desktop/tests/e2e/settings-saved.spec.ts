@@ -4,21 +4,6 @@ test("saved settings overview survives items arriving while open", async ({ app,
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          setState: (partial: Record<string, unknown>) => void;
-        }
-      | undefined;
-
-    if (!store) {
-      throw new Error("Freed store not found");
-    }
-
-    store.setState({ items: [] });
-  });
-
   const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
   const iconBtn = page.locator('[aria-label*="settings" i]').first();
   const btn = (await settingsBtn.isVisible()) ? settingsBtn : iconBtn;
@@ -36,15 +21,15 @@ test("saved settings overview survives items arriving while open", async ({ app,
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as
-      | { docAddFeedItems: (items: unknown[]) => Promise<void> }
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as
+      | { addLibraryFeedItems: (items: unknown[]) => Promise<void> }
       | undefined;
 
-    if (!automerge) {
-      throw new Error("Freed Automerge bridge not found");
+    if (!libraryCore) {
+      throw new Error("Freed Library test API not found");
     }
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addLibraryFeedItems([
       {
         globalId: "saved:e2e:arrives-while-open",
         platform: "saved",
@@ -78,18 +63,7 @@ test("saved settings overview survives items arriving while open", async ({ app,
     ]);
   });
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { items: Array<{ globalId: string }> } }
-      | undefined;
-
-    return store
-      ?.getState()
-      .items.some((item) => item.globalId === "saved:e2e:arrives-while-open");
-  });
-
-  await expect(page.getByText("Saved overview")).toBeVisible();
+  await expect(page.getByText("Saved overview")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Freed Desktop hit a fatal error")).toBeHidden();
 });
 

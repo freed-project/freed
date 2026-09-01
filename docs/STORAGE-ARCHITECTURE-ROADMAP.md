@@ -1,581 +1,476 @@
-# Storage Architecture Roadmap
+# SQLite Library Core Delivery Roadmap
 
-Status: **Approved direction. The SQLite cutover is active; live acceptance remains gated.**
+This document is the current engineering checkpoint ledger for Freed's SQLite
+Library Core. It records what exists, what is being built next, and what proof
+closes each stage. It does not redefine the architecture.
 
-The normative architecture lives in
-[LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md). This roadmap records why
-the work exists, what evidence is real, and the safest delivery order.
+The architecture lives in
+[ARCHITECTURE.md](ARCHITECTURE.md) and
+[LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md). Exact durable
+behavior lives in [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md).
 
-## Current implementation boundary
+## Current checkpoint
 
-The current cutover candidate retires the active compatibility runtime instead
-of preserving a bridge. Desktop and PWA production entry points no longer load
-an Automerge worker, package, WASM asset, mutable cloud document, LAN relay, or
-legacy snapshot. Freed Desktop reads and writes native SQLite directly, keeps
-large media outside the row store, publishes immutable Library Core objects,
-and retains 24 closed SQLite backups on their originating device. Drive never
-receives SQLite, WAL, SHM, or rollback-journal files. The PWA uses IndexedDB
-through bounded logical pages, intents, results, and search state. Exact-head
-validation, the dev release, installation, and runtime evidence remain before
-this candidate becomes the verified shipped boundary. Further corpus fault injection, media
-transport, retired-writer review, restore coverage, source cleanup, cursor
-optimization, and bundle splitting are recorded in issues #1446 through #1453
-instead of delaying the first manually testable SQLite build.
+Last updated: 2026-08-30
 
-The shared Google Drive adapter obtains mutable control, intent head, and
-result head revisions from the bounded strong Drive v2 JSON `etag` field. It
-samples that value around one Drive v3 media read and sends the exact token only
-through a Drive v2 media `PUT` with `If-Match`. A stale token returns `412` and
-triggers exact current readback. Immutable discovery, creation, media reads,
-multipart upload, and resumable upload remain on Drive v3. Freed Desktop and
-the PWA consume the same adapter without a new request or cadence change. The
-native route admits only the exact v2 file paths, methods, query fields,
-headers, strong token, and bounded body. An authenticated disposable
-appDataFolder probe confirmed a strong v2 JSON ETag, one successful update,
-stale same-token `412`, v3 byte readback, and cleanup. Installed Primary and PWA
-acceptance remains gated.
+| Workstream                     | State                                     | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Next closing proof                                                                                                                             |
+| ------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture and documentation | Complete                                  | SQLite-everywhere architecture, detailed contract, phase changes, and deletion target are documented in PR #1603                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Keep these documents synchronized with every implementation checkpoint                                                                         |
+| Executable contract source     | Complete in code                          | One JSON contract generates the exact SQLite schema, 31 checkpoint record kinds, 23 canonical mutations, 5 device-local mutations, 33 bounded queries, native command protocols, actor capabilities, protocol ceilings, SQL programs, Rust constants, TypeScript codecs, and drift checks. No host maintains a parallel semantic registry. | Preserve generated-source parity in every exact-head build |
+| Native core extraction         | Complete in code                          | `packages/library-core-native` owns SQLite authority, schema verification, typed queries, typed mutations, actor and writer verification, normalized checkpoint and follower protocols, snapshots, selective content, process leases, and bounded native commands. Freed Desktop and the headless Primary call this same core. | Complete installed Desktop and headless Primary acceptance |
+| Final normalized schema        | Active in code                            | The generated strict SQLite catalog is the only writable Library schema for fresh Desktop, headless Primary, and PWA installations. It contains normalized authority, actors, roots, children, operations, replication, invalidation, follower, search, facet, timeline, and selective-content tables with no shell or whole-record JSON authority. | Prove installed migration and physical PWA durability |
+| Mutation registry              | Complete in code                          | Twenty-one canonical mutation names map one-to-one to generated SQL programs and production callers. Five separate device-local programs cover graph layout and content policy without entering synchronized authority. Bulk scope staging, contact generations, content publication, actor administration, writer transition, checkpoint import, and recovery keep their own closed typed protocols instead of pretending to be canonical product mutations. Primary writes verify signed operations and commit rows, clocks, actor tips, receipts, replication records, and invalidations atomically. Followers store signed intents and sparse optimistic fields without changing canonical authority. | Preserve complete host routing and exact retry evidence in the final audit |
+| Query registry                 | Complete in code                          | Thirty-three generated bounded query programs execute the same named SQLite contracts in native Rust and browser WebAssembly. Every product surface uses typed windows, exact source fences, bounded byte and row limits, and opaque keyset cursors. React retains only visible rows and ephemeral state. | Complete installed Desktop and physical iPhone performance evidence |
+| Normalized synchronization     | Complete in code                          | Version 2 checkpoints, accepted transactions, signed follower intents, signed results, authenticated manifests, and selective content descriptors use stable typed identity and bounded canonical records. Desktop and headless Primary hold one shared native read transaction across each bounded checkpoint export, so concurrent WAL mutations cannot change later pages and abandoned uploads cannot pin the reader indefinitely. PWA imports and exports the same normalized protocol. | Complete installed multi-client convergence and response-loss evidence |
+| PWA SQLite                     | Complete in code                          | Official SQLite WebAssembly runs in one worker over OPFS. The PWA uses the generated schema, queries, mutations, checkpoints, follower protocols, invalidation feeds, and selective content contract. IndexedDB remains only for the nonextractable actor key vault. | Complete physical iPhone durability, quota, suspension, recovery, and offline playback proof |
+| Selective content plane        | Complete in code                          | Device-local SQLite policy selects stream, partial cache, complete cache, pinned offline, or excluded behavior. Native and PWA vaults verify bounded content-addressed ranges before availability, serve bounded playback windows, and keep media bytes outside normalized checkpoints. | Complete installed Desktop and physical iPhone content lifecycle proof |
+| Direct migration and cutover   | Complete in code                          | One read-only historical source reader builds and verifies the final normalized candidate. One signed authority transition selects SQLite without dual write. The version 2 release manifest permits abort only before the first new-epoch mutation and requires roll-forward recovery afterwards. | Complete installed source migration and crash-boundary evidence |
+| Runtime deletion               | Complete in code                          | Shell authority, whole-document transport, document workers, shadow stores, IndexedDB Library rows, renderer corpora, generic JSON mutations, fallback flags, and copied SQLite backups are absent from shipping paths. Negative artifact guards and the fenced read-only migration source remain. | Complete the final exact-head source and production-artifact audit |
+| Acceptance and release handoff | In progress                               | Deterministic contract, native, browser, corruption, crash, replay, response-loss, byte-bound, and production-build validation is green on the feature branch. | Produce an exact-head dev build, then complete installed Desktop and physical iPhone acceptance |
 
-Freed Desktop now has a direct local SQLite cutover candidate at schema v12.
-It imports the retained legacy Automerge library once, verifies the complete
-item count and database integrity, and then uses SQLite for ordinary startup,
-queries, mutations, search, export, diagnostics, sample management, and daily
-backup and restore. Normal Desktop execution does not start the Automerge
-worker, the legacy LAN relay, or the Automerge cloud loops, and no ordinary UI
-surface may request a full renderer item corpus. The old Automerge bytes remain
-only as a pre-import rollback source. Immutable Library Core checkpoint sync,
-the PWA IndexedDB reader and intent client, and the editable follower are now
-implemented candidates. Installed production acceptance still determines when
-the cutover and follower can be declared complete.
+The provider-neutral headless host now admits both signed agent queries and
+signed intent pages through generated local actor protocol 2. Native SQLite
+proves the active Library, epoch, actor, capability certificate, query grant,
+canonical digest, and Ed25519 signature before a read. The service package also
+emits deterministic digest-bound macOS LaunchAgent and Linux systemd user-unit
+definitions from one verified config. Linux readiness now rejects every named,
+masked, default, malformed, or mode-inconsistent ACL through one pinned bounded
+helper. Windows remains fail closed pending its service-account named-pipe ACL
+and inherited-handle implementation. Installed Drive coordination and live
+service installation remain separate gated work.
 
-### Native SQLite authority establishment
+The source tree no longer retains the 18 unreferenced authoritative-migration,
+shadow-schema, shadow-generation registry, and shadow-generation schema SQL
+artifacts. They had no caller, package export, build consumer, migration role,
+or test role. The generated normalized schema and the fenced read-only
+predecessor verifier are now the only Library schema boundaries. That verifier
+admits only historical schemas 6 through 12, requires the exact stable product
+columns consumed by the final migration, and never upgrades or writes its
+source.
 
-A fresh SQLite Library signs
-`freed_library_core_native_sqlite_genesis_v1`. The certificate commits one
-opaque Library ID, the authority key, `library_core_v1`, schema v12,
-`op_segments_v1`, `freed_logical_checkpoint_v1`, and an exact captured SQLite
-source manifest. Fresh establishment never fabricates an Automerge document or
-head.
+The extracted native core owns current actor capabilities, authority,
+enrollment, operation verification, mutation admission, checkpoints,
+followers, snapshots, queries, content, and storage errors in normalized
+modules. No historical journal type, outbox, overlay, anchor, result, status,
+materializer, or test fixture remains in its public or private runtime tree.
+The read-only historical schema verifier imports only the final product data
+needed for one normalized migration.
 
-An installation that already holds the retired legacy certificate keeps those
-canonical signed bytes as historical evidence. It may install exactly one
-`freed_library_core_native_sqlite_protocol_transition_v1` correction. The
-correction references the prior certificate digest and keeps the Library ID,
-epoch, authority key lineage, actor rows, cloud writer admission, follower
-anchor, Drive namespace, intents, results, and checkpoints unchanged. Exact
-replay returns the stored correction after response loss or restart. A changed
-correction, unrelated SQLite source lineage, missing persisted authority,
-multiple active local Libraries, or unavailable authority key fails closed.
-An already signed native genesis or historical correction that committed
-schema v11 remains valid after the journal migrates to schema v12. Its exact
-canonical certificate is preserved. Only schema v11 and v12 native
-certificates verify, and the active protocol receipt reports the migrated v12
-journal.
+The native crate exposes no historical store, import status, checkpoint
+reference, shell importer, whole-item staging, activation receipt, or overlay
+replay API. The private
+`HistoricalMigrationSource` can only open the fenced migration database,
+provide its connection to the one-time normalized migration, or erase its held
+files during normalized factory reset. Shared native storage failures now use
+`LibraryCoreStorageError`; the obsolete `LibraryCoreStore` type, module, error,
+result, field, and filename vocabulary is absent.
 
-Authority bootstrap reads the accepted journal state and any persisted cloud
-identity before deriving a fresh Library ID. The first local Desktop actor may
-be enrolled before a cloud control tuple exists, but that bootstrap exception
-grants no operation admission and cannot enroll a second actor. Canonical
-operations, ordinary enrollment, and provider outbox work require a present
-matching writer-admission row. No authority path reads Automerge bytes or
-synchronizes SQLite, WAL, or SHM files.
+Primary follower transport now uses normalized SQLite and protocol version 2
+end to end. Enrollment countersigning, actor-frontier reads, bounded intent
+staging, and bounded signed-result export cross typed native commands only. The
+coordinator validates the exact committed intent and result segment prefixes,
+recovers response-lost result publication from immutable records, and leaves
+Google Drive request behavior unchanged. No Desktop follower journal module,
+historical native command, renderer DTO, opener, or mock remains.
 
-Schema v12 binds each admitted actor to one explicit native operation
-capability. Existing v1 Desktop and PWA actors receive a separately frozen
-14-operation `legacy_editor` policy for their exact epoch. The policy cannot
-grow when the canonical registry gains another operation. New scraper and
-agent actors require an authority-signed v2 certificate that binds the Library,
-epoch, actor identity and key, class, sorted operation set, explicit scope,
-issuance identity, and retirement identity. Scrapers receive capture only by
-default. Missing scope denies authority. Library-wide scope must be named
-explicitly. Bounded provider or source scope is recorded but denies all
-operations until a future envelope version carries a canonical scope binding.
-The native journal checks this capability before admitting remote operations.
-It reverifies each v2 canonical enrollment and requires exact equality between
-the signed immutable fields and the capability cache. The immediate commit
-transaction reloads and rechecks the capability before writing.
-This slice prebinds retirement identity and enforces an already verified
-retired state. The authority-signed production retirement transition remains
-future work, along with verified retirement propagation in checkpoint actor
-rows. The TypeScript constructor and verifier are test-only executable
-conformance machinery, with no production issuance caller. The PWA remains a
-v1-only enrollment importer. Headless activation must implement or promote a
-consumed production API and wire both consumers before any v2 actor is
-published into production sync.
+The final normalized actor boundary accepts authority-signed version 2
+capabilities only. The executable contract generates Primary writer and
+capture-only scraper profiles. It no longer carries the historical version 1
+editor profile. Normalized SQLite constraints, checkpoint activation, and
+native mutation admission reject historical actor rows. The frozen source
+operation list remains confined to the one-time migration verifier.
 
-Gate A is a dormant census. A1 adds the package-internal closed legacy
-bootstrap record, journal, control, receipt, bounded current and historical
-reserved-root scan, and state classifier. Together they make the current
-synchronized schema, shared store surface, Desktop and PWA worker messages,
-planned operation and query vocabulary, device-local authorities, and
-bootstrap transaction boundary reviewable by the compiler. They do not
-activate Library Core, change a writer, migrate data, or claim that unresolved
-codecs, field algebra, query projections, retention limits, authenticated
-adopter pairing, or the executable bootstrap transaction are complete.
+The PWA development and feature-preview path now creates an isolated normalized
+SQLite Library from typed checkpoint records, installs the exact signed
+follower enrollment, submits final signed mutation envelopes, and applies
+authority-signed accepted results. Transactions may span bounded 128-record
+transport pages and remain capped by the generated 1,000-member and 4,194,304
+byte limits. Accepted `friend_replace` results now materialize the Person,
+Person tags, complete desired Account set, Account follow roles, detached
+social Accounts, contact replacement, and both Person and Account
+invalidations with native Rust parity. Canonical binary64 wrappers are decoded
+after signature verification before strict SQLite numeric writes.
 
-Every planned successor remains `planned_blocked`. The combined census reports
-`activationAllowed: false` until the executable contracts and one durable
-legacy bootstrap transaction exist. Registry presence is not an activation
-receipt.
+Sample Library generation now emits normalized Person and Account records at
+its source. Freed Desktop and the PWA consume those records directly. The
+deprecated Friend-to-Person and Friend-to-Account converters, test-only
+renderer graph implementation, global FeedItem scans, and corpus-backed Friend
+author fallbacks are deleted.
 
-The pure bootstrap classifier remains package-internal during step 1a. Step 1b
-adds the first production caller and may then expose the contract through the
-shared Library Core entry point. Step 1a does not ship an unused public API.
-The storage prerequisite for step 1b uses IndexedDB schema version 2. It
-preserves version 1 bytes at save revision zero, fences every save and clear
-with the loaded generation and revision, and advances in-memory committed
-Automerge heads only after that storage compare-and-swap succeeds. The
-primitive alone does not change the active worker. A failed Automerge decode
-retains the exact loaded bytes and revision for recovery. It does not re-read
-storage before a clear, and it never treats allocation exhaustion or an
-unknown load failure as proof of corruption.
+The executable contract now declares closed query row models as well as query
+SQL. Its generator emits TypeScript row types, wire validators, browser SQLite
+coercers, Rust row descriptors, and drift-checked outputs from the same field
+definitions. The Friends directory is the first end-to-end consumer. Native
+Rust and browser OPFS SQLite now enforce the same field set, nullability,
+boolean representation, integer ranges, UTF-8 byte ranges, and enum values.
+Neither runtime maintains a hand-written row transform for that query.
 
-The first dormant step 2 slice now provides the native SQLite projection
-kernel. Rust and the shared TypeScript adapter are checked against one
-versioned canonical SQL file. Native projection batches atomically upsert and
-delete rows while advancing one projection revision, and bounded keyset cursors
-fail closed if that revision changes between pages. The registered 128-row
-maximum and 2 MiB serialized response ceiling are enforced at the adapter.
-Feed rows select only compact card fields inside SQLite, cap media and tag
-collections independently, and never return full content, preserved reader
-bodies, or the unmodelled-field escape object. The package-internal
-`feed_page_v1` protocol now closes the exact request, response, compact
-projection, source identity, nested bounds, and opaque source-bound keyset
-cursor for that existing default nonhidden, nonarchived page. Its parsers
-snapshot retained values and enforce both the row and serialized-byte ceilings.
-The dark base tier pins its busy timeout, 32 MiB page cache, file-backed
-temporary work, and disabled mmap. The module is compiled into Freed Desktop
-but has no production caller and opens no user database. Dormant Desktop and
-PWA runtimes now implement the narrow default page, and the PWA can
-authenticate and materialize its row generation without activating a reader.
-The current renderer and future bounded adapters also share one canonical
-normalized product-filter predicate. Both current workers also share one exact
-recommendation-order contract that preserves priority, published-time, and
-source-enumeration tie semantics. The PWA can now materialize a separate
-query-specific browse generation whose authenticated identity binds the
-normalized filter, one ranking clock, and the order version. It streams at most
-128 projected rows at a time and lets IndexedDB enforce the exact priority,
-published-time, and source-sequence order. A closed dormant request and cursor
-now read that physical order with the same filter, clock, and order-version
-binding. Desktop now has the parallel crash-resumable SQLite generation store:
-it stores the exact source document, sorted-head digest and count, storage
-revisions, and query identity, admits only 128-row and 2 MiB pages with exact
-replay receipts, finalizes only an exact physical row count, and performs the
-full keyset order through its checked index with a private 4 MiB page cache.
-Freed Desktop now exposes that store through a dormant session-bound writer
-transport. Begin, append, finalize, and cancel return exact durable progress,
-so a lost response can resume from the stored next batch without guessing.
-Only one generation can write at a time, and factory reset first drops that
-connection before deleting the derived files. A dormant Desktop worker
-materializer now authenticates the exact Automerge frontier and storage
-revision, binds the normalized filter and ranking clock, validates every
-closed feed-card DTO, and streams replayable pages of at most 128 rows to that
-writer. Its main-thread adapter recovers exact append and finalization response
-loss without retaining a corpus-sized row or ID array. The
-selected-generation registry, native browse reader, renderer-cache eviction,
-and product caller proof remain explicit blockers. This is progress inside
-Gate B and step 4, not a claim that either gate is complete.
+The Friends Galaxy runtime now requires the bounded SQLite graph executor. It
+cannot rebuild a fallback scene from React Person or Account dictionaries.
+Worker-owned scene metadata returns stable selection IDs, labels, and admitted
+counts, while React retains only the scene buffers and visible metadata needed
+for interaction. Installation-local graph positions remain joined by the
+SQLite graph pages and never require a renderer layout catalog.
 
-The Desktop derived-shadow path now also has a dormant bounded projection
-probe. It pins one exact durable Automerge frontier and storage revision, emits
-deterministic batches capped at 1,000 rows and 4 MiB, retains only a
-250,000-entry, 16 MiB entity-ID index plus one replayable batch, and releases
-the decoded Automerge document between requests. It still calls
-`Automerge.load`, so it is a temporary compatibility path for building and
-testing the derived SQL reader while Automerge remains authoritative. It cannot
-satisfy the external-memory Gate C migration contract or authorize cutover. No
-production caller consumes the responses yet. Immutable external entity
-materialization and the default opaque feed cursor are now closed. The exact
-recommendation order is defined, but product filter and ordering execution,
-cancellation across the main-to-native boundary, renderer-cache eviction, and
-product read assignment remain blocked.
+SearchJump bulk read and archive now cross one closed platform action boundary.
+React sends only the normalized feed or search scope and receives one compact
+receipt. Desktop and PWA freeze the complete eligible set in installation-local
+SQLite before the first write. They stage at most 256 stable IDs per append,
+then page the frozen set through explicit assignment transactions of at most
+1,000 members. Staging rows never enter checkpoints or replication. React never
+receives the complete selected set.
 
-The bounded migration path now verifies the immutable Automerge source through
-fixed-memory external runs and atomically stages its actor, head, change,
-dependency, operation, element-key, successor, and payload graph in private
-SQLite. Automerge document chunks omit delete rows by design, so the stage
-reconstructs each missing successor as one target-bound delete identity instead
-of requiring a fictional operation row. It rejects an explicit delete row,
-one delete ID attached to unequal targets, a non-Lamport successor, or an
-explicit successor attached to another target. The schema enforces every
-remaining graph reference, and its receipts bind one exact source identity. A
-final bounded seal verifies contiguous per-actor change sequences and operation
-counters across stored operations and reconstructed deletes, then streams one
-canonical digest over all staged metadata, relationships, and payload bytes.
-The next immutable receipt selects every visible non-increment operation whose
-successors are all explicit increments. Increment rows do not become separate
-values or hide the counter they adjust. Explicit non-increment updates and
-omitted deletes remove their predecessors. Every concurrent visible operation
-remains instead of inventing one winner. This closes migration ingestion and
-the current-operation frontier. Counter arithmetic, object and sequence
-reconstruction, registered entity materialization, full-corpus parity,
-authenticated authority admission, and activation remain blocked.
+Selective content scheduling now crosses one closed local SQLite boundary.
+Native Rust and browser SQLite execute the same generated hydration and
+least-recently-used eviction programs. Each page returns at most 128 rows and
+binds the canonical generation plus device content revision. Cached reads
+coalesce recency writes, and cache pressure cannot remove bytes after a newer
+read. Download execution and user-owned storage transport binding remain open.
 
-The dormant migration chain now continues through complete FeedItem topology,
-bounded JSON reconstruction, and lossless native row projection. It keeps
-temporary object values in scratch SQLite and holds only one bounded document
-and row in native memory. The row stage shares the native shadow-store shape,
-admits only faithful strings, booleans, and JavaScript-safe integers into typed
-columns, and preserves every other value through explicit absence, raw,
-nested-rest, and blob-tier escapes. Its receipt binds the complete projected
-row sequence to the exact reconstructed-document receipt. Rust and TypeScript
-use the same recursive UTF-8 object-key order for projected JSON, and replay
-reprojects every document before accepting stored rows. A bounded population
-bridge now pins one verified scratch snapshot and copies those rows into the
-existing crash-resumable generation in deterministic receipt-bound pages. It
-resumes from the destination's durable row count after response loss and never
-retains the projected corpus in Rust memory. The package-internal default feed
-protocol can validate a bounded page from an immutable generation, but no
-product reader calls it. Full-corpus parity, production storage admission,
-active query adapters, and activation remain blocked.
+## Destination
 
-Physical shadow schema version 4 now closes the native staging transaction
-inside one database and adds the archived-eligible Friends timeline index.
-A fresh staging file records the exact source identity, sequential batch
-receipts, projected row count, revision, and completion state. Rows and
-receipts roll back together, an interrupted process resumes at the exact next
-batch, and bounded reads reject the database until the declared and actual row
-counts both close. Version 3 generations remain immutable and cause a fresh
-schema-keyed generation instead of an in-place rewrite.
+Freed uses SQLite everywhere:
 
-The dormant native publisher now seals a complete staging database into one
-immutable generation file. It checkpoints and removes WAL mode, verifies
-SQLite and the exact rebuild state, syncs the bytes, performs a same-directory
-durable no-replace publication, and verifies the destination read-only. Unix
-uses an exclusive hard-link publication point, so a racing destination cannot
-be overwritten. Selecting that file for a reader remains separate. The
-production storage-root handle, generation transition, stale-reader lifetime,
-rollback pointer, and cleanup policy are still blocked.
+- Freed Desktop and the headless Primary use one extracted Rust core and
+  bundled SQLite.
+- The PWA uses official SQLite WebAssembly in a worker and stores the Library
+  in OPFS.
+- Every product view uses a bounded typed SQLite query.
+- Every durable edit uses a registered mutation.
+- React stores only visible windows and ephemeral interface state.
+- Google Drive carries typed normalized protocol objects and optional content
+  blobs, never database files.
+- One active Primary admits canonical writes. Followers submit signed intents
+  and apply signed canonical results.
+- Each client chooses which large content to stream, cache, pin, or exclude.
 
-Freed Desktop now has one production-located startup bridge through that
-external decoder and publisher. Before the worker loads Automerge, it pins the
-exact IndexedDB generation and save revision, transfers fixed 1 MiB chunks into
-a crash-resumable native spool, reconstructs the source through disk-backed
-SQLite stages, and selects or replays one verified immutable derived
-generation. The durable spool identity survives renderer replacement, and
-failure releases live handles while preserving retry evidence and falling back
-to Automerge. After both sides confirm, the bridge deletes that revision's
-spool and scratch graph and retains only the selected and exact rollback
-projection generations.
+## Delivery sequence
 
-Gate D now serves the bidirectional all-content feed, item detail, exact
-Library facets,
-bounded Map and Story Wall candidates, Saved overview analytics, the four-mode
-Saved feed, the Friends-only feed, Friends
-activity, selected-person timelines, and Friend editor author candidates, export,
-background content discovery, provider
-completion accounting, RSS duplicate lookup, Google Contacts discovery, and
-account discovery from authenticated selected SQLite generations. Provider
-settings scan exact source-fenced 64-row SQLite pages for Facebook group
-repair, Facebook and Instagram media backup, and YouTube saved-video
-synchronization without retaining the `FeedItem` corpus. Media candidates are
-compact-staged locally and provider work begins only after the final source
-fence closes. SearchJump reads exact Library tags, archive totals, and complex scope
-counts from one bounded source-fenced scan, simple scope counts from compact
-aggregates, and one selected item detail. On the healthy default native path,
-palette focus and search do not lease the renderer corpus. Native failure or
-rollback uses the compatibility fallback. Its existing Automerge bulk mutation
-takes a short-lived compatibility lease only after the user runs it; native
-frozen-predicate bulk execution remains the cleanup for that action path. Header and
-sidebar counts share one source-versioned native aggregate. The default Desktop
-shell retains no item objects. Incremental Automerge patches carry one prior
-item occurrence so exact counts stay current without rebuilding the corpus.
-The Saved feed reads all four user-facing sort modes through source-fenced
-128-row SQLite pages, retains at most the current and adjacent page, and
-traverses the complete result without returning to compatibility at the old
-512-row limit. Its versioned native order uses one pinned recommendation clock
-and binary global-ID ties without retaining a corpus-sized source-order index.
-The Freed Desktop compatibility fallback uses that same clock and order. The
-PWA keeps its existing Saved ordering. Registry cleanup holds its write
-transaction while choosing retired generations and steadily retains current
-plus exact rollback. If cleanup fails after selection commits, the selection
-remains authoritative, the extra retired files remain non-authoritative, and a
-later selection retries cleanup.
-ReaderView may pin exactly one selected compact card after its feed page is
-evicted, and keeps the existing local-content and hydration path.
-The non-Saved Friends-only feed, when no search is active, uses the versioned
-`feed_browse_page_v2` request with `identityMode: "friends"` and Friends
-predicate schema version 1. It preserves
-the current Person-first Account resolution and legacy Friend-source fallback,
-then pages the filtered immutable generation through the ordinary browse order
-and bounds. Its materializer retains source positions for no more than the
-current 64-row native scan page. Ranking-weight or identity movement replaces
-the exact source-bound generation. React retains two pages plus one selected
-compact card so eviction cannot dismiss ReaderView. Version 1 and its
-all-content callers remain unchanged. A stale source, predicate mismatch,
-unavailable reader, or explicit rollback returns to the exact Automerge
-compatibility feed. The PWA remains unchanged.
-Friends search, Friends plus Saved, and other unfinished consumers share one
-reference-counted compatibility projection only while mounted, then evict it.
-Source mismatch or reader failure returns to Automerge.
-The ordinary all-content feed now traverses the complete result in both
-directions through the bidirectional `feed_browse_page_v3` request. It carries
-an explicit `next` or `previous` direction and returns both exclusive edge
-cursors bound to the exact generation and the exact first and last rows of the
-page. Backward reads mirror the forward keyset predicate through the same
-unique index, so both directions share one canonical order. React keeps two
-whole pages plus at most one pinned selected card, restores an evicted leading
-page when the user scrolls back, and holds the visible list anchored across the
-shift. The old 512-card compatibility escape hatch is retired: deep scrolling no
-longer reacquires the full renderer projection. Version 1 and version 2 wire
-shapes and their PWA, Friends, and Saved callers are unchanged. The device-local
-`freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
-reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
-Saved aggregate, `freed.libraryCore.savedFeedReaderV1.disabled=1` disables the
-Saved feed reader, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
-Friends workspace readers,
-`freed.libraryCore.friendsFeedReaderV1.disabled=1` disables the Friends-only
-feed reader,
-`freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled=1` returns the
-ordinary all-content feed to the Automerge compatibility projection,
-`freed.libraryCore.providerSettingsReaderV1.disabled=1`
-restores provider settings to the compatibility projection,
-`freed.libraryCore.friendEditorReaderV1.disabled=1` restores the Friend editor
-compatibility lease, `freed.libraryCore.searchJumpReaderV1.disabled=1`
-restores SearchJump compatibility, and
-`freed.libraryCore.rendererItemEvictionV1.disabled=1`
-restores the full renderer projection at startup. This does not satisfy Gate C or complete
-Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
-chunks. External migration admits only the exact revision and byte length, then
-reads one revision-fenced chunk per transaction. Existing v1 and v2 stores
-perform one atomic versionchange split, after which migration no longer creates
-a source-sized structured clone. Before native decode, the finalized source is
-bound to the Desktop installation and signed with a device-held Ed25519 key.
-The exact immutable local receipt is read back and verified, while macOS vault
-access disables user interaction and fails closed instead of prompting. This
-legacy source-admission receipt is domain-separated from the future elected
-migration-candidate claim and grants no writer or cloud authority. The worker
-still owns the decoded Automerge document. Windows uses its native credential
-vault. Linux remains on the Automerge rollback path until it has a proven
-noninteractive platform vault. The next active milestone is
-conversion of the remaining compatibility surfaces and worker-corpus eviction,
-followed by complete elected migration authority admission.
+Each stage lands final-model code. No stage introduces a compatibility shell,
+dual write, alternate row store, or temporary product architecture.
 
-### Process lifetime data-root exclusion
+### 1. Executable contract and generation
 
-Every native Library Core runtime now takes one operating-system-backed
-exclusive lease on its canonical data root before SQLite can open. Freed
-Desktop holds the lease in process-managed state until exit. A future headless
-service must use the same primitive for the same root. A contender fails
-closed with both process IDs when the holder PID is readable, plus the exact
-data root, lock path, executable, package, version, and refusal time. Each
-failure overwrites one bounded `process-last-refusal.json` file, so diagnostics
-remain available when a release Windows app has no console without accumulating
-one file per launch. Clean exit releases the kernel lock and truncates its
-diagnostic PID. A killed process can leave stale PID text, but the kernel
-releases the actual lock and the next process replaces that text after it
-acquires the handle. The persistent `process.lock` file is local control state,
-not cloud authority or a database transport object.
+Build one source of truth for:
 
-## What the evidence establishes
+- logical fields and locality
+- normalized tables and indexes
+- mutation names, inputs, capabilities, algebra, and effects
+- query names, inputs, outputs, ordering, indexes, and budgets
+- checkpoint record kinds and typed primary keys
+- operation, intent, result, manifest, and control objects
+- content descriptors, chunk records, and range indexes
+- physical schema and protocol compatibility
+- source migration mappings and final deletion obligations
 
-On the owner's 15,846-item production document, the current Automerge and
-WebKit design amplifies a small serialized corpus into hundreds of MiB of
-resident memory. Larger synthetic documents scale roughly linearly. Full
-document hydration, full-array derivations, binary copies, search indexes, and
-provider WebViews then compete inside one memory-constrained application.
+Generate Rust and TypeScript types, codecs, validators, registry constants, SQL
+bindings, and conformance vectors. CI fails on generated drift, unregistered
+durable state, or registered exports without real callers.
 
-The evidence supports these conclusions:
+Exit proof:
 
-- A paged row store can answer bounded library queries without materializing
-  the corpus in the renderer.
-- `WebAssembly.Memory` does not shrink, so terminating an idle legacy worker is
-  more reliable than hoping its peak allocation returns to the operating
-  system.
-- Desktop search is built from truncated text today.
-- The PWA's 2,500-item hydration cap limits the final message, not the
-  full-corpus work performed before it.
-- Facebook and Instagram captures have been blocked by memory pressure. Lower
-  library memory can allow existing scheduled attempts to complete.
+- native and browser vectors are byte-identical
+- schema and SQL catalogs match the generated manifest
+- every registered query and mutation has a consumer
+- the deletion registry identifies every retired runtime path
 
-The evidence does not yet establish a universal 200 MiB renderer floor,
-15 millisecond cold start, multi-million-item ceiling, or a precise amount of
-memory attributable to Automerge alone. Those are hypotheses until the
-process-safe attribution harness and matched fixtures measure them.
+Estimated machine time: 2 to 4 focused conversations, approximately 1 to 2
+hours.
 
-## Corrections to the earlier roadmap
+### 2. Final native database foundation
 
-The previous version contained five unsafe premises:
+Complete `packages/library-core-native` as the only native Library engine.
+Move schema opening, migrations, authority, mutation execution, query
+execution, checkpoint staging, content-vault access, normalized local
+snapshots, recovery, and process exclusion behind runtime-neutral Rust APIs.
 
-1. **Cloud convergence already exists.** Desktop and PWA cloud paths merge
-   Automerge documents. The ETag compare-and-swap prevents one manifest or blob
-   replacement from blindly overwriting another. It is not the semantic merge.
-2. **Automerge cannot be deleted before replacement sync exists.** Doing so
-   would turn two writable clients into divergent databases.
-3. **A SQL writer flip is not independently reversible.** Rollback is safe only
-   from a compatibility state proven at the same frontier.
-4. **A filtered UI projection is not migration input.** Hidden records,
-   truncated text, absent values, relationships, and source-head identity must
-   come from an immutable raw source.
-5. **A Web Worker is still a WebKit process.** The corpus leaves renderer
-   memory only when the worker no longer retains it.
+Freed Desktop becomes a Tauri host adapter. The headless Primary becomes a
+second host of the same core. Neither host forks Library behavior.
 
-The implementation order below is built around those corrections.
+Exit proof:
 
-## Engine decision
+- a headless fixture and Freed Desktop open the same database format
+- two processes cannot write one data root
+- unknown schema, registry, or protocol versions fail before write authority
+- Tauri contains no Library schema, SQL, or mutation semantics
 
-Desktop uses stock SQLite through Rust.
+Estimated machine time: 3 to 5 focused conversations, approximately 2 to 3
+hours.
 
-The PWA MVP uses IndexedDB through the same strict logical Library Core adapter
-and conformance suite as every future browser engine. It stores bounded record
-pages, tombstones, search postings, cursors, intents, and result receipts. It
-does not retain the full corpus in JavaScript memory. SQLite WASM with OPFS is a
-future measured adapter, not an MVP dependency. A later engine can rebuild from
-immutable cloud objects and activate only after verification. Product logic
-does not fork by storage engine.
+### 3. Complete mutations and normalized materialization
 
-Private-corpus Automerge decoding runs only on an elected installation that
-holds the current authenticated migration claim. It is resumable, uses the
-external-memory decoder, stays under the fixed 384, 512, or 768 MiB tier
-ceiling, and proves enough private staging capacity for source-sized runs.
-Other installations bootstrap by streaming and verifying the accepted logical
-checkpoint, blob roots, and operation segments. Every adapter proves public
-migration vectors and its own installation-qualified, fenced device-local
-source contribution. A low-memory browser does not decode the owner's full
-legacy corpus merely to prove that it can run Library Core.
+Route every retained product write through the generated mutation registry.
+This includes item state, highlights, notes, feeds, subscriptions, people,
+accounts, relationships, tags, graph state, ranking policy, capture policy,
+preferences, saved-link capture, provider capture, imports, maintenance,
+tombstones, and content metadata.
 
-Turso remains rejected for this role. The measured evaluation in
-[TURSO-EVALUATION.md](TURSO-EVALUATION.md) found unacceptable incremental FTS
-behavior, resident memory, and silent index-maintenance failure. Adoption
-depends on those probes changing, not on a version number.
+Each mutation commits canonical rows, journal occurrence, materialized effects,
+actor tip, tombstone or cascade effects, receipt, replication outbox, and
+invalidation topics in one SQLite transaction.
 
-## Delivery order
+Complete maintenance actions first freeze their target identities in a durable
+installation-local SQLite stage. RSS Feed removal and untitled-title repair
+already use this path in Freed Desktop. The freeze and its exact response-loss
+replay happen in one immediate transaction. React receives only bounded pages,
+and each page is converted into canonical mutation batches. Scope stages never
+enter checkpoints or replication.
 
-Each step is separately reviewable. "Dark" means code may ship but cannot own
-user data yet.
+Exit proof:
 
-| step | delivery | activation condition |
-| --- | --- | --- |
-| 0 | Process-safe memory attribution and matched tier fixtures | Exact build and process-generation evidence, no startup stall |
-| 1a | Close the Library Core registries and legacy epoch bootstrap contract | The dormant census is complete; every synchronized field then gains executable algebra, locality, deletion, storage, operation, and query contracts; the exact digest-addressed in-document bootstrap record, bounded complete current and historical reserved-root scan, source-descended prepared journal, local control, receipt, identity codecs, digest equations, creator and TOFU read-only adopter states, conflict rules, and value-only history-rebuild fence are closed and runtime-neutral |
-| 1b | Implement the dormant legacy epoch bootstrap transaction | IndexedDB v2 first preserves legacy bytes at revision zero and fences every save or clear with the exact loaded generation and save revision; repeatable Automerge persistence derives deltas from durable heads and publishes candidate bytes and heads only after compare-and-swap; one explicit local owner action prepares an exact journal; the adapter loads staged candidate bytes by digest, proves their bound heads and record occurrence, then one compare-and-swap commits the record-bearing Automerge document, creator control, receipt, retained journal, and next revision atomically; another installation pins only TOFU read-only control until authenticated authority-holder pairing exists; ordinary saves update the current control frontier atomically with their own operation provenance; exact retry does not re-prompt; startup absence requires empty current and historical reserved-root scans and never prepares authority; deleted roots and unequal records block without winner selection; any compatibility rebuild preserves recorded history or is fenced after bootstrap |
-| 2 | Dormant Rust SQLite core and shared operation fixtures | Crash-safe complete transaction receipts, signature and fork rejection, and identical cross-platform materialization |
-| 3 | Authenticated elected Automerge migration authority plus bounded device-local source contributions | Candidate registration is the first claim-bound mutation, and registration races state-correct candidate-absent abandonment and cleanup in one serialization domain; cloud claims use authenticated store time and expiry; local claims use null timestamps and never self-expire; every claim-bound source, candidate-registry, and cutover mutation uses a closed noncircular payload-bound grant; cloud source commits require the original runtime-owned process generation and live monotonic attempt handle; migration and rollback split corpus-sized prepared proofs from a maximum 65-fence, 2 MiB activation sidecar committed in one atomic authority bundle; rollback uses its own signed reservation and activation schema; full-field private-corpus diff, composite source identity, resumable receipts, changed-head rejection, and adapter fixture parity pass |
-| 4 | Bounded Desktop query API | Stable cursors, explicit limits, cancellation, count and search parity |
-| 5 | Desktop surfaces read verified SQL projection | No visible surface requires the full item array |
-| 6 | Short-lived legacy compatibility engine | Automerge worker terminates after bounded work; provider WebViews do not overlap it |
-| 7 | Dormant PWA Library Core adapter | Browser durability matrix, operation fixture parity, and bounded accepted-checkpoint bootstrap without private-corpus Automerge decode |
-| 8 | Immutable operation-segment cloud sync | Two-device offline and CAS-conflict convergence through signed actors and one global authority pointer |
-| 9 | Coordinated storage-epoch cutover | Desktop and PWA switch writer and protocol through one signed transition certificate; legacy clients are fenced into their retired namespace |
-| 10 | Installed-build soak and rollback window | Tier memory, sync, provider extraction, recovery, export, and import gates pass |
-| 11 | Automerge retirement | No supported writer needs it and roll-forward recovery is proven |
+- every product write maps to one registered mutation
+- retry is idempotent
+- capability and writer-epoch checks fail closed
+- legal large fields become content descriptors and bounded chunks
+- no generic JSON patch, shell mutation, or JavaScript cascade remains
 
-The first large memory win arrives at steps 5 and 6. SQL can serve bounded
-reads while the authoritative legacy worker becomes short-lived. The final
-architectural simplification arrives only after step 9.
+Estimated machine time: 5 to 8 focused conversations, approximately 3 to 5
+hours.
 
-Before step 5 completes, every full-corpus product and UI consumer must move
-behind the bounded core: classification, content fetch, provider-action
-derivation, product-facing cloud and LAN sync, search, Friends, map, counts,
-startup maintenance, duplicate analysis, snapshot, backup, and export. The
-registered short-lived legacy migration and replication bridges may remain
-through Gate D until Gate E replaces them. Moving only React while another
-WebKit product worker keeps scanning the corpus is not renderer eviction.
+### 4. Complete bounded queries
 
-## Provider boundary
+Route feed, Saved, search, item detail, Friends, map, Story Wall, analytics,
+facets, counts, settings, exports, diagnostics, and selected content through
+named SQL. Use stable keyset cursors and explicit byte and row budgets.
 
-This program does not add provider requests, navigation, scrolling, clicking,
-cookies, headers, or a faster schedule.
+Add a compact invalidation stream keyed by registered topics. Views refresh
+only the pages or aggregates affected by a committed mutation.
 
-The first slice capable of turning a memory-rejected Facebook or Instagram
-attempt into real provider contact is provider-observable. The owner approved
-this exact effect for the existing Facebook and Instagram schedule in
-`codex-task:019f4ce3-2ee3-76b2-bc0c-eb7f4958a7de`: "You are fully authorized to
-continue this optimization in ways which will increase provider pull frequency
-by fixing cases where we were previously unable to pull." The provider can see
-successful contact where memory rejection previously produced none. The
-lowest-profile alternative is to keep rejecting those attempts and leave that
-data unsynced. The decision remains in scope only while cadence, retry policy,
-requests, navigation, cookies, headers, and extraction behavior remain
-unchanged. The first active slice must cite that exact decision and write and
-validate its healthy Gate 1 artifact before publication. It does not need
-another approval for the same behavior. Dormant storage, migration, and query
-work remains provider-free. Any later change to provider cadence, retry policy,
-request shape, WebView behavior, cookies, headers, or extraction code requires
-its own provider-risk decision before implementation.
+Map and Story Wall use separate result models. `map_markers_v1` returns at most
+1,000 compact location cards. `story_wall_candidates_v1` returns at most 250
+compact media candidates with eight media references each. Both programs run
+unchanged in native Rust and browser SQLite, use the visible publication index,
+read one overflow row instead of counting the corpus, and never route through
+the historical general FeedItem surface reader.
 
-Provider extraction follows a two-phase memory boundary during migration:
+Map, Story Wall, Library facets, feed signal counts, and Saved analytics use
+only their closed typed SQLite readers. A missing or rejected query fails closed
+to an empty or unavailable view state. It never leases, scans, or reconstructs
+the renderer corpus.
 
-1. capture results enter a durable local capture journal;
-2. the provider WebView closes;
-3. the library engine wakes and materializes the journal;
-4. the library engine returns to its settled budget or terminates.
+The primary Feed surface follows the same rule. Ordinary, Friends, and Saved
+views retain only bounded SQLite page windows. Search retains only bounded
+SQLite search results. Missing or failed readers never switch back to the app
+store item corpus or repeat Saved ordering in JavaScript.
 
-No in-memory handoff may require both the full legacy corpus and the provider
-WebView to stay resident.
+Exit proof:
 
-## Integrity work that cannot be skipped
+- every view queries SQLite directly through its platform adapter
+- no query returns or scans the corpus in JavaScript
+- query plans use registered indexes at 25,000 and 100,000 items
+- renderer and worker memory stay bounded while traversing the full Library
 
-The storage cutover must also repair these existing boundaries:
+Estimated machine time: 5 to 8 focused conversations, approximately 3 to 5
+hours.
 
-- Markdown export is a sharing format, not a complete backup.
-- Import reports parsed items before all durable phases finish and is not one
-  resumable transaction.
-- Current snapshots write Automerge and contact state as separate files.
-- Current destructive deduplication is heuristic and order-sensitive.
-- Deletion lacks a durable row-level tombstone contract.
-- Several current field policies still describe PWA convergence as absent,
-  which is no longer factually correct.
+### 5. Normalized wire protocol
 
-These are part of Library Core correctness. They are not reasons to preserve
-the current full-document architecture.
+Implement `freed_normalized_checkpoint_v2` as a stream of closed typed records.
+Record identity is the stable registry key plus canonical typed primary key.
+Page order is never logical identity.
 
-## Test and evidence routing
+The transport profile uses:
 
-The following blocking-proof groups are illustrative. The closed universal
-gate registry and proof requirements in
-[LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md) are binding:
+- at most 131,072 canonical bytes per logical record, frozen after the required
+  physical measurements
+- at most 128 records per page
+- at most 2,097,152 decoded canonical bytes per page
+- at most 1,048,576 source bytes per native export response
+- content descriptors and content-addressed chunks for larger legal values
 
-- transaction crash recovery;
-- actor signature, retirement, fork detection, and deterministic repair;
-- complete transaction-member delivery without partial materialization;
-- future-clock quarantine and certified repair;
-- migration claim races, response loss, interruption, and source change;
-- exact payload-bound operation grants, grant-bound live source attempts,
-  candidate registration versus absent-state abandonment, reservation and
-  activation races, dead-claimant abandonment, state-correct absent cleanup,
-  persistent registered-candidate cleanup, and deleted-payload closure;
-- prepared migration and rollback proofs, signed rollback fences, exact
-  prepared-proof binding, 65-fence and 2 MiB finalization boundaries, one
-  atomic sidecar bundle, deadline release, and no corpus or genesis-closure
-  work while fences are active;
-- global epoch and same-epoch manifest races, compound authority-state
-  compare-and-swap, prepared-transition recovery, and legacy fencing;
-- cutover, rollback, authority recovery, and concurrent-restore receipts;
-- recovery supersession for a consumed active or abandoned migration lifecycle;
-- duplicate and response-loss replay;
-- reusable native materializer ownership and a thin Freed Desktop crate
-  adapter, pinned by
-  [`native-materializer-binding.test.ts`](../packages/shared/src/library-core/native-materializer-binding.test.ts);
-- two-device offline convergence through authenticated branch-qualified
-  manifests;
-- schema and database-plus-blob snapshot atomicity, including missing and
-  corrupt replicated blobs;
-- bidirectional Desktop and PWA encrypted backup and restore, including
-  paged-inventory bootstrap, recursive media-exclusion lineage, and busy
-  same-transition descendant registration;
-- complete reader lookup plans and authenticated hit, missing, or error probe
-  outcomes without Cache enumeration or network fallback;
-- import idempotency;
-- bounded query, full semantics beyond the legacy 2,500-item cap, and activated
-  4 GiB startup admission.
+Add append-only operation segments, signed follower intents, signed Primary
+results, authenticated manifests, content descriptors, and range indexes. Keep
+Google Drive endpoints, headers, retries, OAuth behavior, and cadence unchanged.
 
-The private corpus, 100,000-item performance, large randomized convergence
-matrix, browser compatibility sweep, and six-hour memory slope remain
-mandatory evidence in dedicated or nightly lanes. They do not belong in every
-ordinary feature or release workflow.
+Exit proof:
+
+- a legal maximum-sized item round-trips losslessly through native and browser
+  SQLite as bounded records
+- every record validates before import
+- incomplete, duplicated, reordered, oversized, or mismatched data fails before
+  activation
+- no `00_library_shell`, `shellJson`, whole FeedItem JSON, or SQLite file enters
+  the transport
+
+Estimated machine time: 4 to 7 focused conversations, approximately 3 to 5
+hours.
+
+### 6. PWA SQLite and editable follower behavior
+
+The official SQLite WebAssembly worker persists the complete Library in OPFS.
+The engine, exact schema identity, typed worker dispatch, normalized checkpoint
+activation, signed follower protocols, and bounded query adapters are
+implemented. Every PWA product view reads bounded SQLite windows through the
+same generated contracts as Freed Desktop. IndexedDB Library state and
+renderer corpus fallbacks are deleted. Recovery UI and physical iPhone
+lifecycle proof remain in progress.
+Use the generated schema, SQL, result DTOs, mutations, codecs, and vectors.
+
+Store canonical replica rows, indexes, search, intent outbox, result receipts,
+and the sparse optimistic overlay in SQLite. A narrow IndexedDB keystore may
+remain only for nonextractable keys when WebKit provides no suitable
+alternative.
+
+`search_page_v1` is implemented in both SQLite runtimes. It applies normalized
+feed and Friends predicates in SQL, resolves Account aliases from Account rows,
+scans a maximum of 256 primary-key-ordered candidates, and returns at most 32
+closed scored cards. Desktop and PWA use the same TypeScript contract, generated
+SQL, source-bound cursor, digest vector, and deterministic Rust and TypeScript
+scoring rules. The historical PWA IndexedDB search database and Desktop JSON-row
+search command are removed.
+
+`preferences_snapshot_v1` now has one shared reconstruction transform for
+native and browser query executors. It rejects oversized arrays, conflicting
+logical paths, missing containers, malformed JSON paths, and prototype-bearing
+object creation. The PWA hydrates synchronized preferences from these bounded
+SQLite nodes. Explicit archive and toggle commands also resolve their current
+item state through normalized SQLite detail before creating signed follower
+intents. Startup reads only the facet summary and preference snapshot. Views
+open their own bounded typed queries and retain only visible windows, selected
+detail rows, and ephemeral interface state. No shell read or identity catalog
+hydration participates.
+
+Exit proof:
+
+- iOS 17 physical-device tests cover persistence, suspension, worker loss,
+  quota pressure, recovery, and offline playback
+- every PWA view uses bounded SQLite queries
+- intent and result reconciliation survives restart and response loss
+- IndexedDB contains no Library rows, cursors, checkpoints, search state,
+  intents, results, or compatibility state
+
+Estimated machine time: 4 to 7 focused conversations, approximately 3 to 5
+hours.
+
+### 7. Selective content plane
+
+Separate logical metadata replication from large byte hydration. A descriptor
+identifies the content, rendition, length, digest, chunk or range structure,
+and available sources. Each client stores its own hydration and retention
+policy.
+
+Exit proof:
+
+- Freed Desktop can pre-download and verify multi-gigabyte video without
+  loading it into application memory
+- PWA can stream selected ranges, cache a subset, pin a complete rendition, or
+  exclude the asset
+- metadata checkpoints remain complete when no content bytes are local
+- garbage collection preserves every canonical, pinned, checkpointed, backed
+  up, or actively transferred object
+
+Estimated machine time: included across stages 3, 5, and 6.
+
+### 8. Direct migration, cutover, and deletion
+
+Read the source Library through a bounded external-memory migration process and
+write directly into the final SQLite schema. Record an explicit result for
+every source field and content object. Activate one SQLite-only storage epoch
+after parity, authority, checkpoint, normalized snapshot, and follower import
+proof.
+
+Rollback is allowed only before a later canonical write and only to the same
+frontier. After a later write, recovery rolls forward from immutable logical
+objects and normalized snapshots.
+
+Fresh Freed Desktop installations do not manufacture an empty historical
+Library to enter this sequence. After bounded retired-storage absence checks,
+the native core signs a fresh SQLite genesis, installs its normalized authority
+and Primary actor, and publishes the final selector during the first launch.
+Existing installations with any historical row remain on the migration path
+and cannot be mistaken for a fresh Library.
+
+Production renderer startup proceeds only after native code verifies that
+normalized SQLite is selected. A failed migration or genesis stops startup
+without creating a portable shell or reopening historical authority. Historical
+bytes remain untouched for diagnosis and an exact retry. The isolated browser
+test harness reports normalized authority before supplying its in-memory view
+fixture. It cannot create or select product storage.
+
+Delete:
+
+- Automerge runtime, worker, persistence, merge, and cloud paths
+- current-state `shellJson`, `shell_json`, `DesktopLibraryShell`, and equivalent
+  shells, while the fenced one-time migration reader may still name and read
+  the immutable historical source column long enough to decompose required
+  product fields
+- monolithic `DocState` and whole FeedItem checkpoint records
+- shadow stores, shadow readers, compatibility leases, and dual-engine flags
+- IndexedDB Library generations, rows, indexes, overlays, and cursors
+- ordinal checkpoint identity
+- whole-corpus subscriptions and renderer state
+- retired identity graph models, layout workers, and tests that build a
+  renderer-owned corpus instead of consuming bounded SQLite graph pages
+- direct Friends Galaxy whole-source worker requests and caller-side source
+  queues outside normalized SQLite page staging
+- generic patch and toggle mutation routes
+- database, WAL, SHM, and rollback-journal cloud transport
+- rollback flags that revive retired engines
+- dead migrations, repair routes, exports, tests, and vocabulary with no final
+  product requirement
+
+Freed Desktop has no native or browser-harness generic item query, whole-item
+upsert, point-read, shell replacement, or generic item mutation command.
+Follower aggregate refreshes use the normalized SQLite facet query. Browser
+tests simulate ordinary mutations through an explicit test-only normalized
+bridge that cannot exist in a product build. Like and seen provider delivery
+acknowledgements use the same signed normalized transaction boundary as every
+other Primary mutation.
+
+Exit proof:
+
+- production bundles contain no retired runtime engine or payload
+- source parity and exclusion closure cover every retained field and byte
+- the Primary publishes a normalized checkpoint for the new storage epoch
+- Freed Desktop and a physical iPhone import and query the exact checkpoint
+- deletion scans, caller scans, release inspection, and migration receipts pass
+
+Estimated machine time: 6 to 10 focused conversations, approximately 4 to 7
+hours.
+
+### 9. Acceptance and release handoff
+
+Run native and browser conformance, fault injection, performance fixtures,
+physical iPhone storage and media tests, installed Freed Desktop verification,
+and exact-head integration validation. Reconcile every affected PHASE document
+and `roadmap-status.json` with the measured result.
+
+Exit proof:
+
+- exact commit and tree are recorded
+- all required local and CI checks pass
+- installed build identity matches the candidate
+- the acceptance receipt names schema, protocol, registry, migration,
+  checkpoint, content, browser, and performance evidence
+- remaining work is either zero or recorded as a deduplicated `debt` issue
+
+Estimated machine time: 4 to 7 focused conversations, approximately 3 to 5
+hours. Physical-device access, soak windows, CI queues, release, installation,
+and activation are external elapsed time.
+
+## Total estimate
+
+The initial estimate from executable contract through release-ready candidate
+is 33 to 56 focused implementation conversations and approximately 22 to 37
+hours of machine execution. The estimate is updated from measured stage
+receipts after each checkpoint.
+
+## Operational boundaries
+
+The implementation program does not imply authority for provider traffic,
+provider-observable behavior changes, Google Drive behavior changes, release,
+installation, deployment, live-data migration, writer-epoch cutover, or
+destructive cleanup. Those operations retain their separate controls and
+evidence requirements.
+
+Product implementation updates affected PHASE documents and
+`roadmap-status.json` in the same commit as each checkpoint. The public website
+roadmap remains in its separate `www` lane.
 
 ## Completion
 
-The roadmap is complete only when:
-
-- Desktop and PWA use one replicated operation contract;
-- every visible library read is bounded;
-- one atomic epoch owns writes;
-- delete, offline conflict, replay, response loss, migration, rollback, import,
-  snapshot, and recovery have deterministic proof;
-- the installed application meets the tier budgets in the Library Core
-  contract;
-- Facebook and Instagram can run their existing schedule without library
-  memory starvation;
-- Automerge and its full-document containment machinery are removed from every
-  supported writer.
+The program is complete only when every supported client queries SQLite,
+every durable write uses a registered mutation, synchronization uses only
+normalized typed protocol objects, selective content behavior works on real
+devices, the SQLite-only epoch is active, and every retired runtime path in the
+deletion list is absent.

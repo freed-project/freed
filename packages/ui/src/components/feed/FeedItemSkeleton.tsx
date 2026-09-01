@@ -1,7 +1,7 @@
 /**
  * Shimmer placeholder that matches the FeedItem card layout.
- * Rendered while the Automerge doc is loading from IndexedDB so the
- * app chrome is visible immediately instead of showing a black spinner.
+ * Rendered while the first bounded SQLite page is loading so the app chrome is
+ * visible immediately instead of showing a black spinner.
  */
 export function FeedItemSkeleton({ fixedHeight }: { fixedHeight?: number }) {
   return (

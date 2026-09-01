@@ -95,8 +95,9 @@ export function projectSavedFeedLikePresentation(
 }
 
 /**
- * Retain one selected Saved card only while its exact reader identity and
- * selection remain current. A new generation must re-prove membership.
+ * Retain one selected card while its bounded view scope and selection remain
+ * current. Source-version refreshes keep the visible pin alive while the
+ * exact point reader re-proves membership.
  */
 export function resolveSavedFeedSelectionPin(args: {
   readonly current: SavedFeedSelectionPin | null;

@@ -14,14 +14,15 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  Account,
   BaseAppState,
-  ContactSyncState,
   ContentSignal,
   BugReportDraft,
   BugReportIssueType,
   FeedItem,
   FeedSignalMode,
   FilterOptions,
+  Friend,
   GeneratedBugReportBundle,
   PrivateVulnerabilityReportPayload,
   PrivateVulnerabilityReportResult,
@@ -30,12 +31,25 @@ import type {
   LocalAIHardwareProfile,
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
+  LibraryMapLocationCandidate,
+  Person,
+  ReachOutLog,
   ReportPrivacyTier,
   SavedContentSortMode,
   StoryWallManifest,
+  StoryWallCandidate,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreDeviceContactMutationExecutor,
+  LibraryCoreDeviceContactQueryExecutor,
+  LibraryCoreDeviceContactStatusResponseV1,
+  LibraryCoreDeviceGraphLayoutMutationExecutor,
+  LibraryCoreScopeActionReceiptV1,
+  LibraryCoreScopeActionRequestV1,
+} from "@freed/shared/library-core";
 import type {
   ImportSummary,
   ProgressFn,
@@ -129,7 +143,7 @@ export interface ScoredLibraryItem {
 }
 
 /**
- * Stream scored matches from a platform-owned persistent search projection.
+ * Stream scored matches from the platform's selected normalized SQLite source.
  *
  * The platform keeps the corpus and index outside React memory. Shared UI may
  * retain a bounded result set, but must not collect every match.
@@ -139,7 +153,12 @@ export type SearchLibraryItems = (
   searchCorpusVersion: number,
   visit: (
     matches: readonly ScoredLibraryItem[],
-  ) => LibraryItemScanDecision,
+  ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
+  options?: Readonly<{
+    filter?: FilterOptions;
+    identityMode?: "all_content" | "friends";
+    signal?: AbortSignal;
+  }>,
 ) => Promise<void>;
 
 export type ReadFeedSignalCounts = (
@@ -148,12 +167,33 @@ export type ReadFeedSignalCounts = (
 
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
+  readonly archivableCount: number;
+  readonly contactAccountCount: number;
+  readonly contactLinkedPersonCount: number;
+  readonly enabledRssFeedCount: number;
+  readonly friendPersonCount: number;
+  readonly latestContactImportedAt: number | null;
+  readonly latestRssFeedFetchedAt: number | null;
+  readonly platformCounts: readonly Readonly<{
+    archivableCount: number;
+    latestCapturedAt: number | null;
+    latestPublishedAt: number | null;
+    platform: string;
+    totalCount: number;
+    unreadCount: number;
+  }>[];
+  readonly sampleAccountCount: number;
+  readonly sampleFeedCount: number;
   readonly sampleItemCount: number;
+  readonly samplePersonCount: number;
+  readonly rssFeedCount: number;
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
+  readonly socialAccountCount: number;
   readonly tags: readonly string[];
   readonly totalCount: number;
+  readonly unreadCount: number;
 }
 
 export interface LibraryFriendsSource {
@@ -241,11 +281,19 @@ export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLo
   readonly sourceToken: string;
 }
 
-export interface LibraryPersonTimelineRequest {
-  readonly sources: readonly LibraryFriendsSource[];
-  readonly limit?: number;
-  readonly cursor?: string | null;
-}
+export type LibraryPersonTimelineRequest =
+  | Readonly<{
+      accountId: string;
+      cursor?: string | null;
+      limit?: number;
+      personId?: never;
+    }>
+  | Readonly<{
+      accountId?: never;
+      cursor?: string | null;
+      limit?: number;
+      personId: string;
+    }>;
 
 export interface LibraryPersonTimelinePage {
   readonly items: readonly FeedItem[];
@@ -276,8 +324,6 @@ export interface LibrarySavedAnalytics {
   readonly sourceCounts: readonly LibrarySavedAnalyticsCount[];
   readonly contentMix: readonly LibrarySavedAnalyticsCount[];
 }
-
-export type LibrarySurface = "map" | "story_wall";
 
 export interface ChangelogPreviewRelease {
   version: string;
@@ -428,6 +474,12 @@ export interface PlatformConfig {
   /** Zustand store hook — both PWA and Desktop stores extend BaseAppState */
   store: AppStoreHook;
 
+  /** Removes durable editing and connection surfaces for a public showcase. */
+  interactionMode?: "full" | "read-only";
+
+  /** Uses the bundled marker canvas without network map tiles. */
+  geographicMapMode?: "online" | "local-showcase";
+
   /**
    * Controls whether feed cards eagerly render remote media previews.
    * Desktop can force reader-only mode to reduce WebKit renderer pressure.
@@ -452,7 +504,7 @@ export interface PlatformConfig {
   ) => Promise<ImportProgress>;
 
   /** Download subscriptions as OPML */
-  exportFeedsAsOPML?: () => void;
+  exportFeedsAsOPML?: () => Promise<void>;
 
   // -- Platform behavior flags --
 
@@ -469,7 +521,6 @@ export interface PlatformConfig {
    * Rebuild the native main WebView after leaving the geographic map so WebKit
    * releases MapLibre's high-water GPU and tile allocations. Desktop only.
    */
-  releaseMapRendererMemory?: () => Promise<void>;
 
   // -- Layout slot components (null = not rendered) --
 
@@ -599,8 +650,8 @@ export interface PlatformConfig {
 
   /**
    * Open one source-pinned, paged feed reader backed by platform-local row
-   * storage. Shared UI falls back to its current in-memory feed when absent or
-   * when the reader rejects stale source identity.
+   * storage. Missing or stale readers fail closed without consulting app-store
+   * item state.
    */
   openBoundedFeedReader?: (
     filter: FilterOptions,
@@ -609,8 +660,8 @@ export interface PlatformConfig {
 
   /**
    * Open one source-pinned Friends-only feed reader. The platform computes
-   * membership from the exact Person, Account, and legacy Friend source bound
-   * to the selected local generation.
+   * membership from the exact Person and Account relations bound to the
+   * selected local generation.
    */
   openBoundedFriendsFeedReader?: (
     filter: FilterOptions,
@@ -634,15 +685,13 @@ export interface PlatformConfig {
   /** Search a persistent local projection without building an in-memory corpus index. */
   searchLibraryItems?: SearchLibraryItems;
 
+  /** Resolve and commit one complete filtered SQLite action outside React. */
+  executeLibraryScopeAction?: (
+    request: LibraryCoreScopeActionRequestV1,
+  ) => Promise<LibraryCoreScopeActionReceiptV1>;
+
   /** Count signal presets inside the platform row store without streaming the corpus. */
   readFeedSignalCounts?: ReadFeedSignalCounts;
-
-  /**
-   * Temporarily acquire the legacy full item projection for a surface that has
-   * not yet moved to bounded row-store reads. Releasing the final lease evicts
-   * that projection from the renderer again.
-   */
-  acquireLegacyLibraryItems?: () => Promise<() => void>;
 
   /** Exact corpus-wide counts and tags computed inside the local row store. */
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
@@ -650,10 +699,13 @@ export interface PlatformConfig {
   /** One exact source-fenced item row from platform-local Library storage. */
   readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
 
-  /** One bounded, row-store-filtered candidate set for a secondary surface. */
-  readLibrarySurfaceItems?: (
-    surface: LibrarySurface,
-  ) => Promise<readonly FeedItem[]>;
+  /** One bounded Map candidate set with author identity joined inside SQLite. */
+  readLibraryMapCandidates?: () => Promise<
+    readonly LibraryMapLocationCandidate[]
+  >;
+
+  /** One bounded Story Wall candidate set selected inside SQLite. */
+  readLibraryStoryWallCandidates?: () => Promise<readonly StoryWallCandidate[]>;
 
   /** Exact Saved overview aggregates computed inside the local row store. */
   readLibrarySavedAnalytics?: (
@@ -664,6 +716,54 @@ export interface PlatformConfig {
   readLibraryFriendsGraph?: (
     request: LibraryFriendsGraphRequest,
   ) => Promise<LibraryFriendsGraph>;
+
+  /** One exact Person selected from the current SQLite generation. */
+  readLibraryPersonDetail?: (personId: string) => Promise<Person | null>;
+
+  /** One selected Friend plus its bounded linked Account window from SQLite. */
+  readLibraryFriendDetail?: (personId: string) => Promise<Friend | null>;
+
+  /** Atomically replace one Friend and its complete bounded linked Account set. */
+  replaceLibraryFriend?: (
+    person: Person,
+    accounts: readonly Account[],
+  ) => Promise<void>;
+
+  /** Upsert one complete synchronized Person through the registered mutation. */
+  upsertLibraryPerson?: (person: Person) => Promise<void>;
+
+  /** Remove one Person and its linked Accounts through one registered mutation. */
+  removeLibraryPerson?: (personId: string) => Promise<void>;
+
+  /** Assign one Account relationship through the registered scalar mutation. */
+  assignLibraryAccountToPerson?: (
+    accountId: string,
+    personId: string | null,
+  ) => Promise<void>;
+
+  /** Upsert one complete synchronized Account through the registered mutation. */
+  upsertLibraryAccount?: (account: Account) => Promise<void>;
+
+  /** Append one bounded reach-out event without rewriting the Person root. */
+  appendLibraryPersonReachOut?: (
+    personId: string,
+    entry: ReachOutLog,
+  ) => Promise<void>;
+
+  /** One exact Account selected from the current SQLite generation. */
+  readLibraryAccountDetail?: (accountId: string) => Promise<Account | null>;
+
+  /** Execute one registered, bounded, typed query against local SQLite. */
+  queryLibraryCore?: LibraryCoreNormalizedQueryExecutor;
+
+  /** Persist one device-local graph position directly in local SQLite. */
+  mutateDeviceGraphLayout?: LibraryCoreDeviceGraphLayoutMutationExecutor;
+
+  /** Apply one closed device-local Google Contacts mutation in local SQLite. */
+  mutateDeviceContacts?: LibraryCoreDeviceContactMutationExecutor;
+
+  /** Run one bounded device-local Google Contacts query in local SQLite. */
+  queryDeviceContacts?: LibraryCoreDeviceContactQueryExecutor;
 
   /** One bounded source-keyed Friends timeline page from the local row store. */
   readLibraryPersonTimeline?: (
@@ -824,8 +924,8 @@ export interface PlatformConfig {
 }
 
 export interface ContactSyncActions {
-  syncNow: () => Promise<ContactSyncState>;
-  dismissSuggestion: (suggestionId: string) => void;
+  syncNow: () => Promise<LibraryCoreDeviceContactStatusResponseV1>;
+  dismissSuggestion: (suggestionId: string) => Promise<void>;
   openReview: () => Promise<void>;
 }
 

@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(not(feature = "isolated-preview-data-root"))]
 const FREED_DESKTOP_IDENTIFIER: &str = "wtf.freed.desktop";
+#[cfg(feature = "isolated-preview-data-root")]
+const FREED_DESKTOP_IDENTIFIER: &str = "wtf.freed.desktop.sqlite-native-preview";
 const LIBRARY_CORE_DIRECTORY: &str = "library-core";
 const DESKTOP_IDENTITY: freed_library_core::ProcessLeaseIdentity<'static> =
     freed_library_core::ProcessLeaseIdentity::new(
@@ -27,6 +30,9 @@ pub fn freed_desktop_library_core_data_root() -> std::io::Result<PathBuf> {
 
 /// Desktop-owned lease wrapper held for the complete Tauri process lifetime.
 pub struct LibraryCoreProcessLease {
+    #[cfg(unix)]
+    installed: bool,
+    #[cfg(not(unix))]
     _lease: freed_library_core::LibraryCoreProcessLease,
 }
 
@@ -34,12 +40,55 @@ impl LibraryCoreProcessLease {
     pub fn acquire(
         requested_data_root: &Path,
     ) -> Result<Self, freed_library_core::LibraryCoreProcessLeaseError> {
-        freed_library_core::LibraryCoreProcessLease::acquire(requested_data_root, DESKTOP_IDENTITY)
-            .map(|lease| Self { _lease: lease })
+        #[cfg(unix)]
+        {
+            let app_root = requested_data_root.parent().ok_or_else(|| {
+                binding_error(
+                    requested_data_root,
+                    "Freed Desktop Library Core data root has no app root",
+                )
+            })?;
+            let binding =
+                freed_library_core::LibraryCoreDesktopBinding::open(app_root, DESKTOP_IDENTITY)
+                    .map_err(|error| binding_error(app_root, &error.to_string()))?;
+            freed_library_core::install_desktop_binding(binding)
+                .map_err(|error| binding_error(app_root, &error.to_string()))?;
+            Ok(Self { installed: true })
+        }
+        #[cfg(not(unix))]
+        {
+            let app_root = requested_data_root.parent().ok_or_else(|| {
+                freed_library_core::LibraryCoreProcessLeaseError::Storage {
+                    operation: "bind",
+                    path: requested_data_root.to_path_buf(),
+                    source: std::io::Error::other(
+                        "Freed Desktop Library Core data root has no app root",
+                    ),
+                }
+            })?;
+            freed_library_core::LibraryCoreProcessLease::acquire(app_root, DESKTOP_IDENTITY)
+                .map(|lease| Self { _lease: lease })
+        }
     }
 
     pub fn owns_lock(&self) -> bool {
-        self._lease.owns_lock()
+        #[cfg(unix)]
+        {
+            self.installed
+        }
+        #[cfg(not(unix))]
+        {
+            self._lease.owns_lock()
+        }
+    }
+}
+
+#[cfg(unix)]
+fn binding_error(path: &Path, detail: &str) -> freed_library_core::LibraryCoreProcessLeaseError {
+    freed_library_core::LibraryCoreProcessLeaseError::Storage {
+        operation: "bind",
+        path: path.to_path_buf(),
+        source: std::io::Error::other(detail.to_string()),
     }
 }
 
@@ -48,6 +97,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "isolated-preview-data-root"))]
     fn desktop_data_root_matches_tauri_path_resolution() {
         use tauri::Manager;
 
@@ -62,6 +112,18 @@ mod tests {
         assert_eq!(
             freed_desktop_library_core_data_root().expect("resolve pre-Tauri data root"),
             tauri_data_root
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "isolated-preview-data-root")]
+    fn isolated_preview_uses_a_closed_nonproduction_data_root() {
+        assert_eq!(
+            freed_desktop_library_core_data_root().expect("resolve preview data root"),
+            dirs::data_dir()
+                .expect("resolve operating system data directory")
+                .join("wtf.freed.desktop.sqlite-native-preview")
+                .join(LIBRARY_CORE_DIRECTORY)
         );
     }
 }

@@ -31,25 +31,20 @@ async function seedLargeSidebarFeedList(page: Page): Promise<void> {
         ];
       }),
     );
-    const feedTotalCounts = Object.fromEntries(
-      Object.keys(feeds).map((url, index) => [url, (index % 9) + 1]),
-    );
-    const feedUnreadCounts = Object.fromEntries(
-      Object.keys(feeds).map((url, index) => [url, index % 3]),
-    );
+    const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | { feeds?: Record<string, unknown>; revision?: number }
+      | undefined;
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
+          getState: () => { searchCorpusVersion?: number };
           setState: (partial: Record<string, unknown>) => void;
         }
       | undefined;
+    if (!sqlite || !store) throw new Error("SQLite Library fixture is unavailable");
+    sqlite.feeds = feeds;
+    sqlite.revision = Math.max(0, sqlite.revision ?? 0) + 1;
     store?.setState({
-      feeds,
-      feedTotalCounts,
-      feedUnreadCounts,
-      totalItemCount: feedCount,
-      itemCountByPlatform: { rss: feedCount },
-      totalUnreadCount: Math.floor(feedCount / 3),
-      unreadCountByPlatform: { rss: Math.floor(feedCount / 3) },
+      searchCorpusVersion: Math.max(0, store.getState().searchCorpusVersion ?? 0) + 1,
     });
   }, SIDEBAR_FEED_COUNT);
 }
@@ -138,8 +133,10 @@ test("source sidebar keeps 1,600 RSS feeds searchable within frame budget", asyn
   await seedLargeSidebarFeedList(page);
 
   const sidebar = page.getByTestId("app-sidebar");
+  const expandFeeds = sidebar.getByLabel("Expand feeds");
+  await expect(expandFeeds).toBeVisible({ timeout: 20_000 });
   const mountStartedAt = Date.now();
-  await sidebar.getByLabel("Expand feeds").click();
+  await expandFeeds.click();
   await expect(sidebar.getByText("Sidebar Scale Feed 0", { exact: true })).toBeVisible({
     timeout: 20_000,
   });

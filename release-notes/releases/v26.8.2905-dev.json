@@ -1,0 +1,149 @@
+{
+  "tag": "v26.8.2905-dev",
+  "version": "26.8.2905-dev",
+  "channel": "dev",
+  "dayKey": "26.8.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T05:42:35.026Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.2903-dev",
+    "previousPublishedDayTag": "v26.8.2002-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "3a25ed8e4d6b99b423c9bae7d4732497815b481d",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.2903-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "f77d8f035f0944eacf20448811e1e82df241b989",
+        "toInclusiveProductCommitSha": "3a25ed8e4d6b99b423c9bae7d4732497815b481d"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:109fc59ee1e775b95f723c5583f62cd42af599b02a2ec9a634e4972dc2b18a4c",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev",
+      "v26.8.2903-dev",
+      "v26.8.2905-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.2901-dev",
+      "v26.8.2902-dev",
+      "v26.8.2903-dev",
+      "v26.8.2905-dev"
+    ],
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1635,
+      1638,
+      1640,
+      1641,
+      1642,
+      1643,
+      1644,
+      1645,
+      1646,
+      1647,
+      1648
+    ],
+    "commitSubjects": [
+      "chore: prepare v26.8.2904-dev (#1648)",
+      "fix: restore Command-Q quit on macOS (#1645)",
+      "fix: stabilize SQLite background mutations (#1647)",
+      "chore: prepare v26.8.2903-dev (#1646)",
+      "fix: recover legacy Library cutover (#1644)",
+      "chore: prepare v26.8.2902-dev (#1643)",
+      "fix: admit supported Library predecessors (#1642)",
+      "chore: prepare v26.8.2901-dev (#1641)",
+      "fix: run Library Core on Windows (#1640)",
+      "fix: align claim freshness with trusted launcher (#1638)",
+      "chore: prepare v26.8.2900-dev (#1635)",
+      "feat: replace library authority with SQLite (#1616)",
+      "fix: forward Go compiler to Linux actor build (#1631)",
+      "feat: support trusted automation launchers on Linux (#1512)",
+      "fix: add event history witness repair (#1629)",
+      "chore(deps-dev): align Vite 8 build tooling (#1619)",
+      "chore(deps): bump serde_with in /packages/desktop/src-tauri (#1617)",
+      "chore(deps-dev): bump vite from 7.3.6 to 8.2.1 (#1187)",
+      "chore(deps-dev): bump globals from 16.5.0 to 17.11.0 (#1189)",
+      "chore(deps): bump react-router and react-router-dom (#1362)",
+      "chore(deps-dev): bump postcss from 8.5.23 to 8.5.24 (#1439)",
+      "chore(deps): bump the cargo-updates group across 1 directory with 2 updates (#1514)",
+      "chore(deps-dev): bump js-yaml from 4.3.0 to 4.3.1 (#1366)",
+      "chore(deps-dev): bump fast-uri from 3.1.4 to 3.1.5 (#1357)",
+      "chore(deps): bump undici from 7.28.0 to 7.29.0 (#1356)"
+    ]
+  },
+  "release": {
+    "deck": "Stop recurring Library view reloads, finish sample-data clearing in bounded batches, and keep the clean-slate SQLite Library responsive",
+    "features": [
+      "Replace library authority with SQLite",
+      "Support trusted automation launchers on Linux",
+      "Run every Library view from bounded SQLite queries"
+    ],
+    "fixes": [
+      "Restore Command-Q quitting on macOS",
+      "Keep Feed, Map, and Story rows visible while background SQLite revisions load",
+      "Batch semantic-classifier operation signing through one bounded native Library Core call",
+      "Clear marked sample Accounts and People in bounded transactions, with dependent Accounts removed before People",
+      "Recover legacy Library cutover",
+      "Admit supported Library predecessors",
+      "Run Library Core on Windows",
+      "Align claim freshness with trusted launcher",
+      "Forward Go compiler to Linux actor build",
+      "Add event history witness repair",
+      "Accept historical schemas 6 through 12 at cutover",
+      "Migrate tag-only content analysis without inventing confidence scores",
+      "Treat preserved non-finite publication timestamps as missing data",
+      "Keep refused cutovers in typed recovery and stop Library sync until retry succeeds"
+    ],
+    "followUps": [
+      "Align Vite 8 build tooling",
+      "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri",
+      "Bump vite from 7.3.6 to 8.2.1",
+      "Bump globals from 16.5.0 to 17.11.0",
+      "Bump react-router and react-router-dom",
+      "Bump postcss from 8.5.23 to 8.5.24",
+      "Bump the cargo-updates group across 1 directory with 2 updates",
+      "Bump js-yaml from 4.3.0 to 4.3.1",
+      "Bump fast-uri from 3.1.4 to 3.1.5",
+      "Bump undici from 7.28.0 to 7.29.0",
+      "Store and sync normalized Library records without the historical engines",
+      "Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support",
+      "The SQLite release now upgrades real-world Libraries without reopening the retired engines"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2905-dev\n\nStop recurring Library view reloads, finish sample-data clearing in bounded batches, and keep the clean-slate SQLite Library responsive\n\n### Features\n\n- Replace library authority with SQLite\n- Support trusted automation launchers on Linux\n- Run every Library view from bounded SQLite queries\n\n### Fixes\n\n- Command-Q quitting on macOS restored\n- Keep Feed, Map, and Story rows visible while background SQLite revisions load\n- Batch semantic-classifier operation signing through one bounded native Library Core call\n- Clear marked sample Accounts and People in bounded transactions, with dependent Accounts removed before People\n- Recover legacy Library cutover\n- Admit supported Library predecessors\n- Run Library Core on Windows\n- Align claim freshness with trusted launcher\n- Forward Go compiler to Linux actor build\n- Add event history witness repair\n- Accept historical schemas 6 through 12 at cutover\n- Migrate tag-only content analysis without inventing confidence scores\n- Treat preserved non-finite publication timestamps as missing data\n- Keep refused cutovers in typed recovery and stop Library sync until retry succeeds\n\n### Follow-ups\n\n- Align Vite 8 build tooling\n- Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri\n- Bump vite from 7.3.6 to 8.2.1\n- Bump globals from 16.5.0 to 17.11.0\n- Bump react-router and react-router-dom\n- Bump postcss from 8.5.23 to 8.5.24\n- Bump the cargo-updates group across 1 directory with 2 updates\n- Bump js-yaml from 4.3.0 to 4.3.1\n- Bump fast-uri from 3.1.4 to 3.1.5\n- Bump undici from 7.28.0 to 7.29.0\n- Store and sync normalized Library records without the historical engines\n- Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support\n- The SQLite release now upgrades real-world Libraries without reopening the retired engines\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

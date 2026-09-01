@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
         working-directory: packages/desktop
 
       - name: Run production validation

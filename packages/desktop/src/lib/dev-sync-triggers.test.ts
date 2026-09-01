@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const readNativeJsonFile = vi.fn();
 const writeNativeJsonFile = vi.fn();
 const refreshSocialProvider = vi.fn();
+const syncCloudProviderNow = vi.fn();
 const loadDesktopReleaseChannelState = vi.fn();
 const getStoreState = vi.fn();
 const initializeStore = vi.fn();
@@ -27,6 +28,10 @@ vi.mock("./native-json-store", () => ({
 
 vi.mock("./capture", () => ({
   refreshSocialProvider,
+}));
+
+vi.mock("./sync", () => ({
+  syncCloudProviderNow,
 }));
 
 vi.mock("./release-channel", () => ({
@@ -72,6 +77,7 @@ describe("dev sync triggers", () => {
     readNativeJsonFile.mockReset();
     writeNativeJsonFile.mockReset();
     refreshSocialProvider.mockReset();
+    syncCloudProviderNow.mockReset();
     loadDesktopReleaseChannelState.mockReset();
     getStoreState.mockReset();
     initializeStore.mockReset();
@@ -183,6 +189,31 @@ describe("dev sync triggers", () => {
         provider: "youtube",
         status: "completed",
         detail: expect.stringContaining("Videos: 4"),
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("runs Google Drive through the bounded manual Library sync path", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    syncCloudProviderNow.mockResolvedValue(undefined);
+
+    const stop = installDevSyncTriggerBridge();
+    await window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-gdrive-1",
+      provider: "gdrive",
+    });
+    stop();
+
+    expect(syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
+    expect(refreshSocialProvider).not.toHaveBeenCalled();
+    expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-gdrive-1",
+        provider: "gdrive",
+        status: "completed",
+        detail: "Google Drive Library sync completed.",
       }),
       "dev-sync-trigger",
     );

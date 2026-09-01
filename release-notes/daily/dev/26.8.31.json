@@ -1,0 +1,20 @@
+{
+  "channel": "dev",
+  "dayKey": "26.8.31",
+  "date": "2026-08-31",
+  "preferredDeck": "Atomic Google Drive checkpoints and resilient PWA sample data",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Physical iPhone PWA acceptance",
+    "Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload",
+    "Show progress while importing or clearing sample data"
+  ],
+  "editorialNotes": [
+    "Lead with the atomic Drive checkpoint fix and PWA sample-data recovery. Keep the remaining signed Drive verification explicit."
+  ],
+  "updatedAt": "2026-08-31T23:27:54.570Z"
+}
