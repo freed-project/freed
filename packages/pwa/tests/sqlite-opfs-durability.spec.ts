@@ -134,6 +134,64 @@ async function openPersistentLibrary(profileRoot: string): Promise<{
   return { context, page };
 }
 
+async function trackLibrarySqliteWorkers(
+  context: BrowserContext,
+): Promise<void> {
+  await context.addInitScript(() => {
+    const current = window as unknown as Record<string, unknown>;
+    if (Array.isArray(current.__FREED_OPFS_TEST_SQLITE_WORKERS__)) return;
+
+    const NativeWorker = window.Worker;
+    const sqliteWorkers: Worker[] = [];
+    const TrackingWorker = function (
+      scriptURL: string | URL,
+      options?: WorkerOptions,
+    ): Worker {
+      const worker = new NativeWorker(scriptURL, options);
+      if (options?.name?.startsWith("freed-library-core-sqlite")) {
+        sqliteWorkers.push(worker);
+      }
+      return worker;
+    } as unknown as typeof Worker;
+    Object.setPrototypeOf(TrackingWorker, NativeWorker);
+    Object.defineProperty(TrackingWorker, "prototype", {
+      value: NativeWorker.prototype,
+    });
+    Object.defineProperty(window, "Worker", {
+      configurable: false,
+      value: TrackingWorker,
+      writable: false,
+    });
+    Object.defineProperty(current, "__FREED_OPFS_TEST_SQLITE_WORKERS__", {
+      configurable: false,
+      value: sqliteWorkers,
+      writable: false,
+    });
+  });
+}
+
+async function trackedLibrarySqliteWorkerCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const workers = (window as unknown as Record<string, unknown>)
+      .__FREED_OPFS_TEST_SQLITE_WORKERS__;
+    return Array.isArray(workers) ? workers.length : 0;
+  });
+}
+
+async function stopActiveLibrarySqliteWorker(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const workers = (window as unknown as Record<string, unknown>)
+      .__FREED_OPFS_TEST_SQLITE_WORKERS__ as Worker[] | undefined;
+    const active = workers?.at(-1);
+    if (!active || !workers) {
+      throw new Error("tracked PWA Library SQLite worker is unavailable");
+    }
+    active.dispatchEvent(new Event("error"));
+    active.terminate();
+    return workers.length;
+  });
+}
+
 async function inspectAcceptedOpfsDatabase(
   profileRoot: string,
   corrupt: boolean,
@@ -459,6 +517,43 @@ test("iPhone WebKit completes interrupted sample population after restart", asyn
       samplePersonCount: 0,
       totalCount: 0,
     });
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit reopens the accepted OPFS Library after worker loss", async () => {
+  test.setTimeout(90_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-worker-loss-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await trackLibrarySqliteWorkers(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await openLibrary(page);
+    await expectShowcaseSampleData(page, {
+      ...(await readFacetSummary(page)),
+      rssFeedCount: 0,
+      totalCount: 0,
+    });
+
+    const expectedSummary = await readFacetSummary(page);
+    const firstGenerationCount = await trackedLibrarySqliteWorkerCount(page);
+    expect(firstGenerationCount).toBeGreaterThan(0);
+    expect(await stopActiveLibrarySqliteWorker(page)).toBe(
+      firstGenerationCount,
+    );
+
+    const recoveredSummary = readFacetSummary(page);
+    void recoveredSummary.catch(() => undefined);
+    await expect
+      .poll(() => trackedLibrarySqliteWorkerCount(page), { timeout: 5_000 })
+      .toBe(firstGenerationCount + 1);
+    await expect(recoveredSummary).resolves.toEqual(expectedSummary);
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });

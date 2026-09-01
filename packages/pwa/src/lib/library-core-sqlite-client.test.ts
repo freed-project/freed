@@ -15,6 +15,8 @@ class FakeWorker {
     string,
     (event: MessageEvent<unknown>) => void
   >();
+  postError: Error | null = null;
+  terminateCount = 0;
 
   constructor() {
     FakeWorker.latest = this;
@@ -28,13 +30,20 @@ class FakeWorker {
   }
 
   postMessage(value: unknown): void {
+    if (this.postError) throw this.postError;
     this.posted.push(value);
   }
 
-  terminate(): void {}
+  terminate(): void {
+    this.terminateCount += 1;
+  }
 
   respond(value: unknown): void {
     this.listeners.get("message")?.({ data: value } as MessageEvent<unknown>);
+  }
+
+  emit(type: "error" | "messageerror"): void {
+    this.listeners.get(type)?.({} as MessageEvent<unknown>);
   }
 }
 
@@ -72,7 +81,84 @@ describe("PWA SQLite worker response boundary", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("terminally retires the client when its worker errors", async () => {
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const firstPending = client.status();
+    const secondPending = client.status();
+    const worker = activeWorker();
+
+    worker.emit("error");
+
+    await expect(firstPending).rejects.toMatchObject({
+      code: "pwa_sqlite_worker_unavailable",
+      message: "PWA Library SQLite worker stopped unexpectedly",
+    });
+    await expect(secondPending).rejects.toMatchObject({
+      code: "pwa_sqlite_worker_unavailable",
+      message: "PWA Library SQLite worker stopped unexpectedly",
+    });
+    expect(worker.terminateCount).toBe(1);
+    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(onUnavailable).toHaveBeenCalledWith(client);
+
+    const postedBeforeClosedRequest = worker.posted.length;
+    await expect(client.status()).rejects.toThrow(
+      "PWA Library SQLite client is closed",
+    );
+    expect(worker.posted).toHaveLength(postedBeforeClosedRequest);
+  });
+
+  it("terminally retires the client when a worker response cannot be received", async () => {
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const pending = client.status();
+    const worker = activeWorker();
+
+    worker.emit("messageerror");
+
+    await expect(pending).rejects.toMatchObject({
+      code: "pwa_sqlite_worker_unavailable",
+      message: "PWA Library SQLite worker response could not be received",
+    });
+    expect(worker.terminateCount).toBe(1);
+    expect(onUnavailable).toHaveBeenCalledOnce();
+  });
+
+  it("retires the client when posting to its worker throws", async () => {
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const worker = activeWorker();
+    worker.postError = new Error("worker port is gone");
+
+    await expect(client.status()).rejects.toMatchObject({
+      code: "pwa_sqlite_worker_unavailable",
+      message: "PWA Library SQLite worker is unavailable",
+    });
+    expect(worker.terminateCount).toBe(1);
+    expect(onUnavailable).toHaveBeenCalledOnce();
+  });
+
+  it("retires the complete client generation when a request times out", async () => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const pending = client.status();
+    const rejection = expect(pending).rejects.toMatchObject({
+      code: "pwa_sqlite_worker_unavailable",
+      message: "PWA Library SQLite request timed out",
+    });
+    const worker = activeWorker();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await rejection;
+    expect(worker.terminateCount).toBe(1);
+    expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
   it("accepts only the exact typed status for a status request", async () => {
