@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  PROMOTION_CONTROL_FILES,
   listPromotionBranchDiffFiles,
   listPromotionDiffFiles,
 } from "./release-promotion-shared.mjs";
@@ -151,6 +152,10 @@ function runNode(scriptPath, args) {
     encoding: "utf8",
   });
 }
+
+test("the promotion control definition preserves itself", () => {
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release-promotion-shared.mjs"));
+});
 
 test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
   const cwd = makeTempRepo();
