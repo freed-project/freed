@@ -1,16 +1,179 @@
 import { describe, expect, it } from "vitest";
+import { sanitizePersonRootWrite } from "../sync-write-policy.js";
 
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  FRIEND_REPLACE_PAYLOAD_SCHEMA,
+  PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
+  ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA,
+  FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA,
+  canonicalizeFeedItemAnalysisV1,
+  canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemTagsV1,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
+  it("canonicalizes annotations into one closed bounded assignment", () => {
+    const payload = {
+      assigned_at_ms: 1_783_000_000_000,
+      highlights: canonicalizeFeedItemHighlightsV1([
+        { createdAt: 2, note: "Remember", text: "Second passage" },
+        { createdAt: 1, text: "First passage" },
+      ]),
+      tags: canonicalizeFeedItemTagsV1(["zeta", "alpha", "zeta"]),
+    };
+
+    expect(payload.tags).toStrictEqual(["alpha", "zeta"]);
+    expect(FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate(payload))
+      .toMatchObject({ ok: true });
+    expect(
+      FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({
+        ...payload,
+        tags: ["zeta", "alpha"],
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(() =>
+      canonicalizeFeedItemHighlightsV1([
+        { createdAt: 1, text: "x".repeat(65_537) },
+      ]),
+    ).toThrow(/invalid or too large/);
+  });
+
+  it("canonicalizes analysis without losing tagged scores", () => {
+    const analysis = canonicalizeFeedItemAnalysisV1(
+      {
+        version: 1,
+        method: "rules",
+        inferredAt: 1_783_000_000_000,
+        scores: { event: 0.875, essay: 0.25 },
+        tags: ["event"],
+      },
+      {
+        version: 1,
+        method: "rules",
+        detectedAt: 1_783_000_000_001,
+        confidence: 0.8125,
+        title: "Meetup",
+        evidence: "Saturday at noon",
+      },
+    );
+    const payload = {
+      assigned_at_ms: 1_783_000_000_002,
+      ...analysis,
+    };
+
+    expect(analysis.content_signals?.scores).toStrictEqual([
+      { score_basis_points: 8_750, signal: "event", tagged: true },
+      { score_basis_points: 2_500, signal: "essay", tagged: false },
+    ]);
+    expect(FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate(payload))
+      .toMatchObject({ ok: true });
+    expect(() =>
+      canonicalizeFeedItemAnalysisV1(
+        {
+          version: 1,
+          method: "rules",
+          inferredAt: 1,
+          scores: {},
+          tags: ["event"],
+        },
+        undefined,
+      ),
+    ).toThrow(/tag must be unique and have a score/);
+    expect(() =>
+      canonicalizeFeedItemAnalysisV1(undefined, {
+        version: 1,
+        method: "rules",
+        detectedAt: 1,
+        confidence: Number.NaN,
+      }),
+    ).toThrow(/metadata is invalid/);
+    expect(
+      FEED_ITEM_ANALYSIS_REPLACE_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1,
+        content_signals: null,
+        event_candidate: {
+          confidence_basis_points: 5_000,
+          detected_at_ms: 1,
+          ends_at_ms: null,
+          evidence: null,
+          evidence_blob_digest: "ab".repeat(32),
+          location_name: null,
+          location_url: null,
+          method: "manual",
+          starts_at_ms: null,
+          timezone: null,
+          title: null,
+          version: 1,
+        },
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("accepts only a closed canonical priority assignment", () => {
+    expect(
+      FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        priority_basis_points: 8_125,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        priority_basis_points: 8_125,
+      },
+    });
+    for (const invalid of [
+      { assigned_at_ms: -1, priority_basis_points: 1 },
+      { assigned_at_ms: 1, priority_basis_points: -1 },
+      { assigned_at_ms: 1, priority_basis_points: 10_001 },
+      { assigned_at_ms: 1, priority_basis_points: 1.5 },
+      { assigned_at_ms: 1, priority_basis_points: 1, extra: true },
+    ]) {
+      expect(
+        FEED_ITEM_PRIORITY_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("bounds one canonical FeedItem capture below the logical wire-record ceiling", () => {
+    expect(
+      FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+        item: {
+          globalId: "saved:bounded",
+          platform: "saved",
+          contentType: "article",
+          capturedAt: 1,
+          publishedAt: 1,
+          author: { id: "author", handle: "ada", displayName: "Ada" },
+          content: { text: "x".repeat(65_536), mediaUrls: [], mediaTypes: [] },
+          topics: [],
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+        item: {
+          globalId: "saved:too-large",
+          content: { text: "x".repeat(131_072) },
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
   it("snapshots the exact feed-item read assignment payload", () => {
     const input = { read_at_ms: 1_783_000_000_000 };
     const result = FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate(input);
@@ -77,6 +240,32 @@ describe("Library Core operation payload contracts", () => {
     }
   });
 
+  it("closes provider sync receipts to one exact timestamp", () => {
+    for (const schema of [
+      FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+      FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+    ]) {
+      expect(
+        schema.validate({ synced_at_ms: 1_783_000_000_000 }),
+      ).toStrictEqual({
+        ok: true,
+        value: { synced_at_ms: 1_783_000_000_000 },
+      });
+      for (const invalid of [
+        {},
+        { synced_at_ms: -1 },
+        { synced_at_ms: 1.5 },
+        { synced_at_ms: "1" },
+        { synced_at_ms: 1, provider: "x" },
+      ]) {
+        expect(schema.validate(invalid)).toMatchObject({
+          ok: false,
+          code: "invalid",
+        });
+      }
+    }
+  });
+
   it("accepts only synchronized RSS feed fields", () => {
     const result = RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
       feed: {
@@ -116,6 +305,56 @@ describe("Library Core operation payload contracts", () => {
     }
   });
 
+  it("requires an exact RSS sample-data fingerprint", () => {
+    const feed = {
+      url: "https://example.com/feed.xml",
+      title: "Example",
+      enabled: true,
+      trackUnread: true,
+    };
+    expect(
+      RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
+        feed: {
+          ...feed,
+          sampleDataFingerprint: {
+            marker: "freed.sample-data.v1",
+            batchId: "batch",
+            generatedAt: 1,
+            generatorVersion: 1,
+          },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+
+    for (const sampleDataFingerprint of [
+      {
+        marker: "freed.sample-data.v1",
+        batchId: "batch",
+        generatedAt: -1,
+        generatorVersion: 1,
+      },
+      {
+        marker: "wrong",
+        batchId: "batch",
+        generatedAt: 1,
+        generatorVersion: 1,
+      },
+      {
+        marker: "freed.sample-data.v1",
+        batchId: "batch",
+        generatedAt: 1,
+        generatorVersion: 1,
+        extra: true,
+      },
+    ]) {
+      expect(
+        RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
+          feed: { ...feed, sampleDataFingerprint },
+        }),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
   it("requires an exact RSS removal timestamp", () => {
     expect(
       RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA.validate({
@@ -131,6 +370,65 @@ describe("Library Core operation payload contracts", () => {
         include_items: true,
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("requires a bounded timestamped RSS title assignment", () => {
+    expect(
+      RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        title: "Renamed feed",
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        title: "Renamed feed",
+      },
+    });
+    for (const invalid of [
+      { title: "Missing time" },
+      { assigned_at_ms: -1, title: "Bad time" },
+      { assigned_at_ms: 1, title: "x".repeat(4_097) },
+      { assigned_at_ms: 1, title: "Extra", extra: true },
+    ]) {
+      expect(
+        RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("requires a bounded timestamped Account person assignment", () => {
+    expect(
+      ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        person_id: "person:one",
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        person_id: "person:one",
+      },
+    });
+    expect(
+      ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_001,
+        person_id: null,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: { assigned_at_ms: 1_783_000_000_001, person_id: null },
+    });
+    for (const invalid of [
+      { assigned_at_ms: -1, person_id: null },
+      { assigned_at_ms: 1, person_id: "" },
+      { assigned_at_ms: 1, person_id: "x".repeat(4_097) },
+      { assigned_at_ms: 1, person_id: null, extra: true },
+    ]) {
+      expect(
+        ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid).ok,
+      ).toBe(false);
+    }
   });
 
   it("accepts synchronized preference patches and rejects device-local leaves", () => {
@@ -158,12 +456,42 @@ describe("Library Core operation payload contracts", () => {
     }
   });
 
+  it("bounds normalized preference nodes, paths, and text before signing", () => {
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          storyWall: { includedPlatforms: [] },
+          ulysses: { allowedPaths: { x: [] } },
+          weights: { topics: {} },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          weights: {
+            topics: Object.fromEntries(
+              Array.from({ length: 513 }, (_, index) => [`topic-${index}`, 1]),
+            ),
+          },
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          storyWall: { publishTarget: { repoName: "x".repeat(8_193) } },
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
   it("accepts a whole synchronized Person and rejects device-local graph fields", () => {
     const person = {
       id: "person:one",
       name: "One Person",
-      relationshipStatus: "friend",
-      careLevel: 3,
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
       tags: ["local"],
       createdAt: 1,
       updatedAt: 2,
@@ -176,6 +504,57 @@ describe("Library Core operation payload contracts", () => {
         person: { ...person, graphX: 12 },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
+        person: { ...person, bio: "😀".repeat(16_385) },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
+        person: {
+          ...person,
+          reachOutLog: [{ loggedAt: 3, channel: "text" }],
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    const personRoot = sanitizePersonRootWrite({
+      ...person,
+      reachOutLog: [{ loggedAt: 3, channel: "text" }],
+    });
+    expect(personRoot).not.toHaveProperty("reachOutLog");
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({ person: personRoot }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("accepts one closed reach-out event and rejects ambiguous absence", () => {
+    expect(
+      PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate({
+        channel: "in_person",
+        logged_at_ms: 1_783_000_000_000,
+        notes: null,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        channel: "in_person",
+        logged_at_ms: 1_783_000_000_000,
+        notes: null,
+      },
+    });
+    for (const invalid of [
+      { logged_at_ms: 1, notes: null },
+      { channel: undefined, logged_at_ms: 1, notes: null },
+      { channel: "chat", logged_at_ms: 1, notes: null },
+      { channel: null, logged_at_ms: -1, notes: null },
+      { channel: null, logged_at_ms: 1, notes: undefined },
+      { channel: null, logged_at_ms: 1, notes: "😀".repeat(16_385) },
+      { channel: null, logged_at_ms: 1, notes: null, extra: true },
+    ]) {
+      expect(
+        PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 
   it("accepts a synchronized Account and rejects unknown providers and graph fields", () => {
@@ -206,10 +585,63 @@ describe("Library Core operation payload contracts", () => {
           generatorVersion: 1,
         },
       },
+      { ...account, address: "😀".repeat(16_385) },
     ]) {
       expect(
         ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate({ account: invalid }),
       ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("closes one Friend replacement to a sorted bounded linked Account set", () => {
+    const person = {
+      id: "person:one",
+      name: "One Friend",
+      relationshipStatus: "friend",
+      careLevel: 5,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    const account = {
+      id: "account:one",
+      personId: person.id,
+      kind: "social",
+      provider: "instagram",
+      externalId: "one",
+      discoveredFrom: "manual_entry",
+      firstSeenAt: 1,
+      lastSeenAt: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    expect(
+      FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: [account], person }),
+    ).toMatchObject({ ok: true });
+    for (const invalid of [
+      { accounts: [account, account], person },
+      {
+        accounts: [{ ...account, personId: "person:other" }],
+        person,
+      },
+      {
+        accounts: [
+          { ...account, id: "account:z" },
+          { ...account, id: "account:a" },
+        ],
+        person,
+      },
+      {
+        accounts: Array.from({ length: 65 }, (_, index) => ({
+          ...account,
+          id: `account:${index.toString().padStart(2, "0")}`,
+        })),
+        person,
+      },
+    ]) {
+      expect(FRIEND_REPLACE_PAYLOAD_SCHEMA.validate(invalid)).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
     }
   });
 });

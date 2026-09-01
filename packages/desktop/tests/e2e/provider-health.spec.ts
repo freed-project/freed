@@ -1,4 +1,9 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import {
+  test,
+  expect,
+  resolveViteFsModulePath,
+  setDeviceDisplayPreferences,
+} from "./fixtures/app";
 
 const FEED_URL = "https://example.com/feed.xml";
 const DEBUG_STORE_PATH = resolveViteFsModulePath(
@@ -357,18 +362,18 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.evaluate(async ({ feedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
-      docAddFeedItem: (item: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+      addLibraryFeedItem: (item: unknown) => Promise<void>;
     };
 
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: feedUrl,
       title: "Example Feed",
       enabled: true,
       trackUnread: false,
     });
-    await automerge.docAddFeedItem({
+    await libraryCore.addLibraryFeedItem({
       globalId: "rss:example-feed:1",
       platform: "rss",
       contentType: "article",
@@ -401,24 +406,17 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
     return (
-      !!state?.feeds[feedUrl] &&
+      !!sqlite?.feeds[feedUrl] &&
       Object.values(sqlite?.items ?? {}).some(
         (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
       )
@@ -448,23 +446,16 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
-    const feedGone = !state?.feeds[feedUrl];
+    const feedGone = !sqlite?.feeds[feedUrl];
     const matchingItems = Object.values(sqlite?.items ?? {}).filter(
       (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
     );
@@ -1748,38 +1739,26 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   expect(Math.abs(sidebarIndicatorSizes!.settingsHeight - sidebarIndicatorSizes!.sourceHeight)).toBeLessThanOrEqual(1);
 });
 
-test("provider sync button shows a spinner while that provider is active", async ({ app, page }) => {
+test("toolbar activity status stays mounted across idle, syncing, and completed states", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
   await app.goto();
   await app.waitForReady();
 
   await page.evaluate(async ({ activityStorePath }) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        providerSyncCounts: Record<string, number>;
-      };
-      setState: (partial: Record<string, unknown>) => void;
-    };
-    const current = store.getState().providerSyncCounts;
-    store.setState({
-      xAuth: {
-        isAuthenticated: true,
-        cookies: { ct0: "ct0", authToken: "token" },
-      },
-      fbAuth: {
-        isAuthenticated: true,
-      },
-      providerSyncCounts: {
-        ...current,
-        x: 1,
-      },
-    });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.useBackgroundActivityStore.getState().clearBackgroundActivity();
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-    window.__freed.debug?.()?.addEvent("change", "[X] sync started");
-    window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
-    window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
+  const activityTrigger = page.getByTestId("background-activity-trigger");
+  const activityStatus = page.getByTestId("background-activity-status");
+  await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: No recent activity");
+  await expect(activityStatus).toHaveAttribute("title", "No recent activity");
+  const idleBounds = await activityTrigger.boundingBox();
+  expect(idleBounds).not.toBeNull();
+
+  await page.evaluate(async ({ activityStorePath }) => {
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "channel:x",
@@ -1800,8 +1779,13 @@ test("provider sync button shows a spinner while that provider is active", async
     }
   }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-  const activityTrigger = page.getByTestId("background-activity-trigger");
   await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: Syncing");
+  await expect(activityStatus).toHaveAttribute("title", "Syncing");
+  const syncingBounds = await activityTrigger.boundingBox();
+  expect(syncingBounds).not.toBeNull();
+  expect(syncingBounds!.x).toBe(idleBounds!.x);
+  expect(syncingBounds!.width).toBe(idleBounds!.width);
   await activityTrigger.click();
   const activityPopover = page.getByTestId("background-activity-popover");
   await expect(activityPopover).toBeVisible();
@@ -1840,9 +1824,43 @@ test("provider sync button shows a spinner while that provider is active", async
   await expect(activityPopover).toBeVisible();
   await expect(activityPopover).toContainText("0 active");
   await expect(activityTrigger).toBeVisible();
+  await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: Last activity succeeded");
+  await expect(activityStatus).toHaveAttribute("title", "Last activity succeeded");
+  const completedBounds = await activityTrigger.boundingBox();
+  expect(completedBounds).not.toBeNull();
+  expect(completedBounds!.x).toBe(idleBounds!.x);
+  expect(completedBounds!.width).toBe(idleBounds!.width);
   await page.keyboard.press("Escape");
   await expect(activityPopover).toHaveCount(0);
-  await expect(activityTrigger).toHaveCount(0);
+  await expect(activityTrigger).toBeVisible();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState().providerSyncCounts;
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      fbAuth: {
+        isAuthenticated: true,
+      },
+      providerSyncCounts: {
+        ...current,
+        x: 1,
+      },
+    });
+
+    window.__freed.debug?.()?.addEvent("change", "[X] sync started");
+    window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
+    window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
+  });
 
   await openSettingsSection(page, "X");
   const sidebar = getDesktopSidebar(page);
@@ -1885,16 +1903,13 @@ test("toolbar activity spinner opens job activity popover in compact sidebar mod
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, { sidebarMode: "compact" });
 
   await page.evaluate(async ({ activityStorePath }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({ display: { sidebarMode: "compact" } });
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "job:content-fetch:e2e",
@@ -1953,21 +1968,22 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
         bytesMoved: 0,
       }));
 
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
+    };
+    await libraryCore.addLibraryRssFeed({
+      url: "https://healthy.example/feed.xml",
+      title: "Healthy Feed",
+      enabled: true,
+      trackUnread: true,
+    });
+    await libraryCore.addLibraryRssFeed({
+      url: "https://broken.example/feed.xml",
+      title: "Broken Feed",
+      enabled: true,
+      trackUnread: true,
+    });
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 1,
         x: 0,
@@ -2057,20 +2073,6 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
-      feeds: {
-        "https://healthy.example/feed.xml": {
-          url: "https://healthy.example/feed.xml",
-          title: "Healthy Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-        "https://broken.example/feed.xml": {
-          url: "https://broken.example/feed.xml",
-          title: "Broken Feed",
-          enabled: true,
-          trackUnread: true,
-        },
-      },
       providerSyncCounts: {
         rss: 0,
         x: 0,
@@ -2118,18 +2120,16 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     store.setState({
       xAuth: {
         isAuthenticated: true,
@@ -2174,6 +2174,10 @@ test("source menu trigger toggles open and closed", async ({ app, page }) => {
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -2217,19 +2221,19 @@ test("source menu stays open and acknowledges sync now while syncing is already 
 
   await app.goto();
   await app.waitForReady();
+  await setDeviceDisplayPreferences(page, {
+    sidebarMode: "expanded",
+    sidebarWidth: 256,
+  });
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
         providerSyncCounts: Record<string, number>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    await store.getState().updatePreferences({
-      display: { sidebarMode: "expanded", sidebarWidth: 256 },
-    });
     const current = store.getState();
     store.setState({
       xAuth: {
@@ -2618,17 +2622,17 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
 
   await page.evaluate(async ({ failingFeedUrl, healthyFeedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addLibraryRssFeed: (feed: unknown) => Promise<void>;
     };
 
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: failingFeedUrl,
       title: "Broken Feed",
       enabled: true,
       trackUnread: false,
     });
-    await automerge.docAddRssFeed({
+    await libraryCore.addLibraryRssFeed({
       url: healthyFeedUrl,
       title: "Healthy Feed",
       enabled: true,
@@ -2639,27 +2643,31 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await page.waitForFunction(
     ([failingFeedUrl, healthyFeedUrl]) => {
       const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
+      const sqliteLibrary = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
         | {
-            getState: () => {
-              feeds: Record<string, unknown>;
-            };
+            feeds: Record<string, unknown>;
           }
         | undefined;
-      const feeds = store?.getState().feeds ?? {};
+      const feeds = sqliteLibrary?.feeds ?? {};
       return !!feeds[failingFeedUrl] && !!feeds[healthyFeedUrl];
     },
     [failingFeedUrl, healthyFeedUrl],
   );
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { rssFeedCount: number } }
+      | undefined;
+    return store?.getState().rssFeedCount === 2;
+  });
 
-  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  const settingsBtn = page.getByTestId("sidebar-settings-button");
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
-  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const settingsDialog = page.getByTestId("settings-nav-panel").locator("..");
   await settingsDialog.getByRole("button", { name: "Feeds", exact: true }).click();
   await expect(settingsDialog.getByRole("heading", { name: "Feeds" })).toBeVisible();
 
-  await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-list-scroll")).toBeVisible();
   await settingsDialog.getByTestId("feeds-manage-filter").fill("healthy");
@@ -2676,7 +2684,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(needsReviewButton).toBeVisible();
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds", exact: true }),
   ).toBeVisible();
 
   await needsReviewButton.evaluate((element) => {
@@ -2684,7 +2692,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   });
   await expect(settingsDialog.getByText("Healthy Feed")).toHaveCount(0);
   await expect(
-    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true }),
+    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds", exact: true }),
   ).toBeVisible();
   await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
   await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();

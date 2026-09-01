@@ -1,5 +1,6 @@
 import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures/app";
+import { LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT } from "@freed/shared/library-core";
 
 const MAP_AUTHOR_COUNT = 1_600;
 const MAP_ITEM_COUNT = MAP_AUTHOR_COUNT * 3;
@@ -13,8 +14,8 @@ const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
     const now = Date.now();
@@ -50,7 +51,7 @@ async function seedLargeMapWorkspace(page: Page): Promise<void> {
       };
     });
 
-    await automerge.docBatchImportItems(items);
+    await libraryCore.importLibraryItems(items);
   }, { authorCount: MAP_AUTHOR_COUNT, itemCount: MAP_ITEM_COUNT });
 }
 
@@ -130,15 +131,10 @@ async function collectLongTasksDuring<T>(
   };
 }
 
-test("Map view handles 1,600 visible location authors within frame budget", async ({ app, page }) => {
+test("Map view bounds 4,800 SQLite location rows within frame budget", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => {
-    (
-      window as Window & {
-        __FREED_E2E_SQLITE_SHELL_ONLY__?: boolean;
-        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
-      }
-    ).__FREED_E2E_SQLITE_SHELL_ONLY__ = true;
+    window.localStorage.setItem("freed-theme", "scriptorium");
     (
       window as Window & {
         __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
@@ -148,6 +144,7 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ mapMode: "all_content" });
   await seedLargeMapWorkspace(page);
   const sqliteActive = await page.waitForFunction(
     (expectedCount: number) => {
@@ -156,16 +153,16 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
         | { active?: boolean; items?: Record<string, { __deleted?: boolean }> }
         | undefined;
       const store = w.__FREED_STORE__ as
-        | { getState: () => { items: unknown[] } }
+        | { getState: () => { items?: unknown[] } }
         | undefined;
       if (sqlite?.active) {
         const sqliteItemCount = Object.values(sqlite.items ?? {})
           .filter((item) => !item.__deleted).length;
-        return sqliteItemCount >= expectedCount && (store?.getState().items.length ?? 0) === 0
+        return sqliteItemCount >= expectedCount && (store?.getState().items?.length ?? 0) === 0
           ? true
           : undefined;
       }
-      return (store?.getState().items.length ?? 0) >= expectedCount ? false : undefined;
+      return (store?.getState().items?.length ?? 0) >= expectedCount ? false : undefined;
     },
     MAP_ITEM_COUNT,
     { timeout: 30_000 },
@@ -177,20 +174,6 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
     await page.waitForTimeout(1_000);
   }
 
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        updatePreferences: (patch: { display: { mapMode: "all_content"; themeId: string } }) => Promise<void>;
-      };
-    };
-    await store.getState().updatePreferences({
-      display: {
-        mapMode: "all_content",
-        themeId: "scriptorium",
-      },
-    });
-  });
   await page.waitForTimeout(600);
   const mountStartedAt = Date.now();
   await page.getByRole("button", { name: /^Map$/ }).click();
@@ -260,7 +243,7 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   console.log(`[PERF] Map interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
 
   expect(mountElapsed).toBeLessThan(MAP_MOUNT_BUDGET_MS);
-  expect(totalMarkerCount).toBe(MAP_AUTHOR_COUNT);
+  expect(totalMarkerCount).toBe(LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT);
   expect(markerCount).toBeLessThanOrEqual(MAP_MARKER_DOM_BUDGET);
   expect(retainedMarkerCount).toBe(markerCount);
   expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);

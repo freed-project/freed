@@ -1,0 +1,868 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  openLibraryCoreNormalizedFeedReaderV1,
+  openLibraryCoreNormalizedSavedFeedReaderV1,
+  readLibraryCoreNormalizedAnalysisCandidateBatchV1,
+  readLibraryCoreNormalizedPriorityCandidateBatchV1,
+  readLibraryCoreNormalizedFeedSignalCountsV1,
+  readLibraryCoreRssFeedV1,
+  scanLibraryCoreContentFetchCandidatesV1,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
+  scanLibraryCoreAccountRowsV1,
+  scanLibraryCorePersonRowsV1,
+  scanLibraryCoreRssFeedsV1,
+  type LibraryCoreNormalizedQueryExecutor,
+} from "./normalized-feed-readers.js";
+import {
+  readLibraryCoreNormalizedAccountDetailV1,
+  readLibraryCoreNormalizedFriendDetailV1,
+  readLibraryCoreNormalizedPersonDetailV1,
+  readLibraryCoreNormalizedPreferencesV1,
+  readLibraryCoreNormalizedPersonsGraphV1,
+  readLibraryCoreNormalizedFriendsLocationItemV1,
+  searchLibraryCoreNormalizedItemsV1,
+} from "./normalized-surface-readers.js";
+import { CONTENT_SIGNAL_KEYS } from "../content-signals.js";
+
+const feedCard = (globalId: string) => ({
+  archived: false,
+  authorAvatarUrl: null,
+  authorDisplayName: "Reader",
+  authorHandle: "reader",
+  authorId: "reader-1",
+  capturedAt: 200,
+  contentSignalTags: [],
+  contentText: "Bounded row",
+  contentType: "post",
+  engagementComments: null,
+  engagementLikes: null,
+  eventConfidenceBasisPoints: null,
+  eventStartsAt: null,
+  globalId,
+  liked: false,
+  likedAt: null,
+  likedSyncedAt: null,
+  linkPreviewTitle: null,
+  locationName: null,
+  mediaTypes: [],
+  mediaUrls: [],
+  platform: "rss",
+  publishedAt: 100,
+  rankingCareLevel: null,
+  rankingEngagementReposts: null,
+  rankingEngagementViews: null,
+  readAt: null,
+  readingTimeMinutes: null,
+  saved: false,
+  sourceUrl: "https://example.com/item",
+  tags: [],
+  topics: [],
+});
+
+const backgroundCard = (globalId: string) => ({
+  ...feedCard(globalId),
+  hidden: false,
+  rssSource: null,
+  sampleDataFingerprint: null,
+});
+
+const querySource = Object.freeze({
+  generationId: "a".repeat(64),
+  projectionRevision: 1,
+  transitionSequence: 1,
+});
+
+describe("cross-platform normalized feed readers", () => {
+  it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        person: {
+          avatarUrl: null,
+          bio: "Mathematician",
+          careLevel: 5,
+          createdAt: 1,
+          id: "person-ada",
+          name: "Ada",
+          notes: null,
+          reachOutIntervalDays: 7,
+          reachOuts: [
+            {
+              channel: "email",
+              loggedAt: 9,
+              notes: "Analytical engine",
+              reachOutId: "reach-1",
+            },
+          ],
+          relationshipStatus: "friend",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          tags: ["computing"],
+          updatedAt: 10,
+        },
+      })
+      .mockResolvedValueOnce({
+        account: {
+          address: null,
+          avatarUrl: null,
+          createdAt: 1,
+          discoveredFrom: "captured_item",
+          displayName: "Ada",
+          email: null,
+          externalId: "ada",
+          firstSeenAt: 2,
+          followRosterActive: true,
+          followRosterRoles: ["following"],
+          followRosterSyncedAt: 8,
+          handle: "ada",
+          id: "account-ada",
+          importedAt: null,
+          kind: "social",
+          lastSeenAt: 9,
+          personId: "person-ada",
+          phone: null,
+          profileUrl: "https://example.test/ada",
+          provider: "x",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          updatedAt: 10,
+        },
+      })
+      .mockResolvedValueOnce({
+        linkedAccountCount: 1,
+        linkedAccounts: [
+          {
+            address: null,
+            avatarUrl: null,
+            createdAt: 1,
+            discoveredFrom: "captured_item",
+            displayName: "Ada",
+            email: null,
+            externalId: "ada",
+            firstSeenAt: 2,
+            handle: "ada",
+            id: "account-ada",
+            importedAt: null,
+            kind: "social",
+            lastSeenAt: 9,
+            phone: null,
+            profileUrl: "https://example.test/ada",
+            provider: "x",
+            updatedAt: 10,
+          },
+        ],
+        person: {
+          avatarUrl: null,
+          bio: "Mathematician",
+          careLevel: 5,
+          createdAt: 1,
+          id: "person-ada",
+          name: "Ada",
+          notes: null,
+          reachOutIntervalDays: 7,
+          reachOuts: [],
+          relationshipStatus: "friend",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          tags: ["computing"],
+          updatedAt: 10,
+        },
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const runtime = { query, randomId: () => "test" };
+
+    await expect(
+      readLibraryCoreNormalizedPersonDetailV1(runtime, "person-ada"),
+    ).resolves.toMatchObject({
+      id: "person-ada",
+      reachOutLog: [{ channel: "email", loggedAt: 9 }],
+      tags: ["computing"],
+    });
+    await expect(
+      readLibraryCoreNormalizedAccountDetailV1(runtime, "account-ada"),
+    ).resolves.toMatchObject({
+      followRosterActive: true,
+      followRosterRoles: ["following"],
+      id: "account-ada",
+      personId: "person-ada",
+    });
+    await expect(
+      readLibraryCoreNormalizedFriendDetailV1(runtime, "person-ada"),
+    ).resolves.toMatchObject({
+      id: "person-ada",
+      sources: [{ authorId: "ada", platform: "x" }],
+    });
+    expect(query).toHaveBeenNthCalledWith(1, {
+      personId: "person-ada",
+      queryId: "person_detail_v1",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(2, {
+      accountId: "account-ada",
+      queryId: "account_detail_v1",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(3, {
+      personId: "person-ada",
+      queryId: "person_detail_v1",
+      schemaVersion: 1,
+    });
+  });
+
+  it("shares exact and paged RSS Feed transforms without renderer state", async () => {
+    const row = {
+      activityCount: 3,
+      enabled: true,
+      folder: "Research",
+      imageUrl: null,
+      lastFetched: 10,
+      latestActivityAt: 20,
+      pollInterval: 30,
+      sampleBatchId: null,
+      sampleGeneratedAt: null,
+      sampleGeneratorVersion: null,
+      siteUrl: "https://example.com",
+      title: "Example",
+      trackUnread: true,
+      unreadCount: 2,
+      updatedAt: 40,
+      url: "https://example.com/feed",
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ feed: row })
+      .mockResolvedValueOnce({ nextCursor: "opaque-rss-next", rows: [row] })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [{ ...row, url: "https://example.org/feed" }],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreRssFeedV1(query, row.url),
+    ).resolves.toMatchObject({ folder: "Research", url: row.url });
+    const visited: string[][] = [];
+    await scanLibraryCoreRssFeedsV1(
+      { query, randomId: () => "test" },
+      (feeds) => {
+        visited.push(feeds.map((feed) => feed.url));
+        return "continue";
+      },
+    );
+
+    expect(visited).toEqual([
+      ["https://example.com/feed"],
+      ["https://example.org/feed"],
+    ]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      queryId: "rss_feed_detail_v1",
+      schemaVersion: 1,
+      url: row.url,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        cursor: "opaque-rss-next",
+        limit: 128,
+        queryId: "rss_feed_page_v1",
+      }),
+    );
+  });
+
+  it("streams Person and Account maintenance rows through bounded identity pages", async () => {
+    const person = {
+      avatarUrl: null,
+      careLevel: 5,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      id: "person-ada",
+      lastReachOutAt: 12,
+      name: "Ada",
+      reachOutIntervalDays: 30,
+      relationshipStatus: "friend",
+      updatedAt: 20,
+    };
+    const account = {
+      activityCount: 3,
+      avatarUrl: null,
+      discoveredFrom: "captured_item",
+      displayName: "Ada",
+      externalId: "ada",
+      firstSeenAt: 1,
+      followRosterActive: true,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      handle: "ada",
+      id: "account-ada",
+      kind: "social",
+      lastSeenAt: 19,
+      latestActivityAt: 18,
+      personId: "person-ada",
+      personName: "Ada",
+      provider: "x",
+      updatedAt: 20,
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ nextCursor: "person-next", rows: [person] })
+      .mockResolvedValueOnce({ nextCursor: null, rows: [] })
+      .mockResolvedValueOnce({ nextCursor: "account-next", rows: [account] })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const persons: string[][] = [];
+    const accounts: string[][] = [];
+
+    await scanLibraryCorePersonRowsV1(
+      { query, randomId: () => "test" },
+      (rows) => {
+        persons.push(rows.map((row) => row.id));
+        return "continue";
+      },
+    );
+    await scanLibraryCoreAccountRowsV1(
+      { query, randomId: () => "test" },
+      (rows) => {
+        accounts.push(rows.map((row) => row.id));
+        return "continue";
+      },
+    );
+
+    expect(persons).toEqual([["person-ada"], []]);
+    expect(accounts).toEqual([["account-ada"], []]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      cancellationId: "person-maintenance-cancel:test",
+      cursor: null,
+      limit: 128,
+      queryId: "person_graph_page_v1",
+      readerSessionId: "person-maintenance-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: "person-next" }),
+    );
+    expect(query).toHaveBeenNthCalledWith(3, {
+      cancellationId: "account-maintenance-cancel:test",
+      cursor: null,
+      limit: 128,
+      queryId: "account_graph_page_v1",
+      readerSessionId: "account-maintenance-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ cursor: "account-next" }),
+    );
+  });
+
+  it("streams bounded background pages through one source-fenced query contract", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nextCursor: "opaque-background-next",
+        rows: [backgroundCard("first")],
+      })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [backgroundCard("second")],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visited: string[][] = [];
+
+    await scanLibraryCoreNormalizedBackgroundItemsV1(
+      { query, randomId: () => "test" },
+      (items) => {
+        visited.push(items.map((item) => item.globalId));
+        return "continue";
+      },
+    );
+
+    expect(visited).toEqual([["first"], ["second"]]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      analysisVersion: null,
+      cancellationId: "background-page:test",
+      cursor: null,
+      limit: 64,
+      priorityComputedBeforeMs: null,
+      queryId: "background_item_page_v1",
+      readerSessionId: "background-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: "opaque-background-next",
+        readerSessionId: "background-reader:test",
+      }),
+    );
+  });
+
+  it("stops a background scan without issuing another SQLite query", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "unused-next",
+      rows: [backgroundCard("first")],
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await scanLibraryCoreNormalizedBackgroundItemsV1(
+      { query, randomId: () => "test" },
+      () => "stop",
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("reads only one bounded stale-analysis batch under one source fence", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "more-stale-analysis",
+      rows: [backgroundCard("first"), backgroundCard("second")],
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 17,
+        transitionSequence: 17,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const batch = await readLibraryCoreNormalizedAnalysisCandidateBatchV1(
+      { query, randomId: () => "test" },
+      3,
+      2,
+    );
+
+    expect(batch).toEqual({
+      items: [
+        expect.objectContaining({ globalId: "first" }),
+        expect.objectContaining({ globalId: "second" }),
+      ],
+      remaining: true,
+      sourceRevision: 17,
+    });
+    expect(query).toHaveBeenCalledWith({
+      analysisVersion: 3,
+      cancellationId: "analysis-page:test",
+      cursor: null,
+      limit: 2,
+      priorityComputedBeforeMs: null,
+      queryId: "background_item_page_v1",
+      readerSessionId: "analysis-reader:test",
+      schemaVersion: 1,
+    });
+  });
+
+  it("reads one bounded Primary ranking batch with complete ranking inputs", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "more-priority-work",
+      rows: [
+        {
+          ...backgroundCard("first"),
+          rankingCareLevel: 5,
+          rankingEngagementReposts: 7,
+          rankingEngagementViews: 99,
+          topics: ["sqlite"],
+        },
+      ],
+      source: querySource,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(
+      { query, randomId: () => "test" },
+      1_000,
+      1,
+    );
+
+    expect(batch).toEqual({
+      items: [
+        {
+          careLevel: 5,
+          item: expect.objectContaining({
+            engagement: { reposts: 7, views: 99 },
+            globalId: "first",
+            topics: ["sqlite"],
+          }),
+        },
+      ],
+      remaining: true,
+    });
+    expect(query).toHaveBeenCalledWith({
+      analysisVersion: null,
+      cancellationId: "priority-page:test",
+      cursor: null,
+      limit: 1,
+      priorityComputedBeforeMs: 1_000,
+      queryId: "background_item_page_v1",
+      readerSessionId: "priority-reader:test",
+      schemaVersion: 1,
+    });
+  });
+
+  it("streams compact content fetch candidates without reconstructing items", async () => {
+    const candidate = {
+      capturedAt: 20,
+      globalId: "rss:item-1",
+      linkUrl: "https://example.test/article",
+      publishedAt: 10,
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ nextCursor: "next", rows: [candidate] })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn();
+
+    await scanLibraryCoreContentFetchCandidatesV1(
+      { query, randomId: () => "test" },
+      visit,
+    );
+
+    expect(visit).toHaveBeenCalledOnce();
+    expect(visit).toHaveBeenCalledWith([candidate]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      cancellationId: "content-fetch-page:test",
+      cursor: null,
+      limit: 64,
+      queryId: "content_fetch_claim_v1",
+      readerSessionId: "content-fetch-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: "next",
+        readerSessionId: "content-fetch-reader:test",
+      }),
+    );
+  });
+
+  it("batches Friends aggregates through the bounded SQLite contract", async () => {
+    const sources = Array.from({ length: 129 }, (_, index) => ({
+      authorId: `author-${index}`,
+      platform: "x",
+    }));
+    const query = vi.fn(async (request: { sources: typeof sources }) => ({
+      queryId: "persons_graph_v1",
+      rss: [],
+      schemaVersion: 1,
+      social: request.sources.map((source) => ({
+        ...source,
+        avatarGlobalId: null,
+        avatarPublishedAt: null,
+        avatarUrl: null,
+        hasLocation: false,
+        itemCount: 1,
+        latestActivityAt: 100,
+        locationCandidateCount: 0,
+        locationCandidates: [],
+        recentCount: 1,
+        sampleItems: [],
+        signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({ count: 0, label })),
+      })),
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 7,
+        transitionSequence: 7,
+      },
+      totalItemCount: 129,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const graph = await readLibraryCoreNormalizedPersonsGraphV1(
+      { query, randomId: () => "test" },
+      {
+        recentWindow: { startMs: 0, endMs: 200 },
+        rssFeedUrls: [],
+        sources,
+      },
+    );
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(graph.social).toHaveLength(129);
+    expect(graph.social.at(-1)?.authorId).toBe("author-128");
+    expect(graph.sourceToken).toBe(`sqlite-v1:${"a".repeat(64)}:7:7`);
+  });
+
+  it("binds a Friends location item to the exact SQLite graph source", async () => {
+    const query = vi.fn(async () => ({
+      item: {
+        card: { ...feedCard("located"), locationName: "Babbage Square" },
+        contentBody: { blobDigest: null, storage: "inline" },
+        mediaBlobDigests: [],
+        preservedBody: { blobDigest: null, storage: "none" },
+      },
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 7,
+        transitionSequence: 7,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreNormalizedFriendsLocationItemV1(
+        { query, randomId: () => "test" },
+        {
+          effectiveAt: 100,
+          globalId: "located",
+          owner: { authorId: "reader-1", kind: "social", platform: "rss" },
+          publishedAt: 100,
+          referenceTimeMs: 200,
+          sourceToken: `sqlite-v1:${"a".repeat(64)}:7:7`,
+        },
+      ),
+    ).resolves.toMatchObject({ globalId: "located" });
+  });
+
+  it("reconstructs synchronized preferences through the normalized executor", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "o:$.display",
+          realValue: null,
+          textValue: null,
+          updatedAt: 1,
+          valueType: "null",
+        },
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "v:$.display.themeId",
+          realValue: null,
+          textValue: "neon",
+          updatedAt: 1,
+          valueType: "text",
+        },
+      ],
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreNormalizedPreferencesV1({
+        query,
+        randomId: () => "test",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        display: expect.objectContaining({ themeId: "neon" }),
+        weights: expect.any(Object),
+      }),
+    );
+    expect(query).toHaveBeenCalledWith({
+      queryId: "preferences_snapshot_v1",
+      schemaVersion: 1,
+    });
+  });
+
+  it("streams source-fenced SQLite search pages without retaining a corpus", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nextCursor: "opaque-search-next",
+        rows: [{ card: feedCard("match"), priority: 91, score: 12 }],
+        source: querySource,
+      })
+      .mockResolvedValueOnce({
+        queryId: "optimistic_fields_v1",
+        rows: [],
+        schemaVersion: 1,
+        source: querySource,
+      })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+        source: querySource,
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn(() => "continue" as const);
+
+    await searchLibraryCoreNormalizedItemsV1(
+      { query, randomId: () => "test" },
+      {
+        filter: { platform: "rss" },
+        identityMode: "friends",
+        query: "bounded",
+      },
+      visit,
+    );
+
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        cursor: null,
+        identityMode: "friends",
+        queryId: "search_page_v1",
+      }),
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ cursor: "opaque-search-next" }),
+    );
+    expect(visit).toHaveBeenCalledWith([
+      expect.objectContaining({
+        item: expect.objectContaining({ globalId: "match", priority: 91 }),
+        score: 12,
+      }),
+    ]);
+  });
+
+  it("accepts a terminal first SQLite search page", async () => {
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            nextCursor: null,
+            rows: [{ card: feedCard("terminal-match"), priority: 42, score: 7 }],
+            source: querySource,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn(() => "continue" as const);
+
+    await expect(
+      searchLibraryCoreNormalizedItemsV1(
+        { query, randomId: () => "test" },
+        { filter: {}, identityMode: "all_content", query: "terminal" },
+        visit,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(visit).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses opaque bidirectional pages without platform storage logic", async () => {
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [feedCard("first")],
+            nextCursor: "opaque-next",
+            previousCursor: null,
+            source: querySource,
+            totalCount: 2,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const reader = await openLibraryCoreNormalizedFeedReaderV1(
+      { query, randomId: () => "test" },
+      { platform: "rss" },
+      100,
+    );
+
+    expect(reader.totalCount).toBe(2);
+    await expect(reader.readPage(null, "next")).resolves.toEqual({
+      items: [expect.objectContaining({ globalId: "first" })],
+      nextCursor: "opaque-next",
+      previousCursor: null,
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identityMode: "all_content",
+        queryId: "feed_browse_page_v3",
+        rankingClockMs: 100,
+      }),
+    );
+  });
+
+  it("binds Friends to the closed SQLite identity predicate", async () => {
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [feedCard("friend")],
+            nextCursor: null,
+            previousCursor: null,
+            source: querySource,
+            totalCount: 1,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await openLibraryCoreNormalizedFeedReaderV1(
+      { query, randomId: () => "test" },
+      {},
+      100,
+      "friends",
+    );
+
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "friends",
+        queryId: "feed_browse_page_v3",
+      }),
+    );
+  });
+
+  it("preserves Saved metadata through the shared reader", async () => {
+    const query = vi.fn(async (request: { queryId: string }) =>
+      request.queryId === "optimistic_fields_v1"
+        ? {
+            queryId: "optimistic_fields_v1",
+            rows: [],
+            schemaVersion: 1,
+            source: querySource,
+          }
+        : {
+            rows: [{ ...feedCard("saved"), saved: true, savedAt: 150 }],
+            nextCursor: null,
+            previousCursor: null,
+            source: querySource,
+            totalCount: 1,
+          },
+    ) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const reader = await openLibraryCoreNormalizedSavedFeedReaderV1(
+      { query, randomId: () => "test" },
+      {},
+      "date_saved",
+    );
+
+    await expect(reader.readNext()).resolves.toEqual([
+      expect.objectContaining({
+        userState: expect.objectContaining({ saved: true, savedAt: 150 }),
+      }),
+    ]);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryId: "saved_feed_page_v2",
+        sortMode: "date_saved",
+      }),
+    );
+  });
+
+  it("derives all signal counts through the same normalized executor", async () => {
+    const query = vi.fn(async () => ({
+      totalCount: 42,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const counts = await readLibraryCoreNormalizedFeedSignalCountsV1(
+      { query, randomId: () => "test" },
+      { platform: "rss" },
+      100,
+    );
+
+    expect(counts.all).toBe(42);
+    expect(query).toHaveBeenCalledTimes(6);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 1,
+        queryId: "feed_browse_page_v3",
+      }),
+    );
+  });
+});

@@ -1,0 +1,77 @@
+{
+  "tag": "v26.8.3001-dev",
+  "version": "26.8.3001-dev",
+  "channel": "dev",
+  "dayKey": "26.8.30",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-30T12:00:41.723Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.3000-dev",
+    "previousPublishedDayTag": "v26.8.2906-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "c96716d4c4e138eb19c5c3d3034cde72485eb6ae",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.3000-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "fbc9bf841c9a0dab9d68ac9bfdffaa2c6bd44838",
+        "toInclusiveProductCommitSha": "c96716d4c4e138eb19c5c3d3034cde72485eb6ae"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:d20573806211616b07a061b25c45ed7db87bc9252f7946a9ea58a9870ec2c9c4",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.3000-dev",
+      "v26.8.3001-dev"
+    ],
+    "prNumbers": [
+      1652,
+      1653,
+      1655
+    ],
+    "commitSubjects": [
+      "feat: bind headless Primary to Google Drive (#1655)",
+      "release: v26.8.3000-dev (#1654)",
+      "fix: stop Friend location render loops (#1653)",
+      "fix: keep checkpoint exports on one SQLite snapshot (#1652)"
+    ]
+  },
+  "release": {
+    "deck": "Bring the native SQLite Library to unattended Primary environments while preserving Google Drive transport",
+    "features": [
+      "Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory"
+    ],
+    "fixes": [
+      "Keep each Google Drive Library checkpoint on one SQLite snapshot while new items and background updates continue",
+      "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history",
+      "Create local Library snapshots from one consistent SQLite revision",
+      "Stop Friend location cards from restarting geocoding on every render",
+      "Open the full Map from a Friend's last-seen card after the location resolves"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.3001-dev\n\nBring the native SQLite Library to unattended Primary environments while preserving Google Drive transport\n\n### Features\n\n- Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory\n\n### Fixes\n\n- Keep each Google Drive Library checkpoint on one SQLite snapshot while new items and background updates continue\n- Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history\n- Create local Library snapshots from one consistent SQLite revision\n- Stop Friend location cards from restarting geocoding on every render\n- Open the full Map from a Friend's last-seen card after the location resolves\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

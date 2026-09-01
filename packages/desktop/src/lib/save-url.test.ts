@@ -20,11 +20,11 @@ const stubItem: FeedItem = {
   topics: [],
 };
 
-const mockDocAddStubItem = vi.fn(async () => stubItem);
+const mockAddLibraryStubItem = vi.fn(async () => stubItem);
 const mockEnqueue = vi.fn();
 
 vi.mock("./library-client.js", () => ({
-  docAddStubItem: mockDocAddStubItem,
+  addLibraryStubItem: mockAddLibraryStubItem,
 }));
 
 vi.mock("./content-fetcher.js", () => ({
@@ -34,7 +34,7 @@ vi.mock("./content-fetcher.js", () => ({
 describe("saveUrlInDesktop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDocAddStubItem.mockResolvedValue(stubItem);
+    mockAddLibraryStubItem.mockResolvedValue(stubItem);
   });
 
   it("writes a saved stub and queues background detail fetching", async () => {
@@ -42,7 +42,7 @@ describe("saveUrlInDesktop", () => {
 
     const result = await saveUrlInDesktop(SAMPLE_URL, { tags: ["research"] });
 
-    expect(mockDocAddStubItem).toHaveBeenCalledWith(SAMPLE_URL, ["research"]);
+    expect(mockAddLibraryStubItem).toHaveBeenCalledWith(SAMPLE_URL, ["research"]);
     expect(mockEnqueue).toHaveBeenCalledWith([stubItem], {
       priority: true,
       force: true,
@@ -57,7 +57,7 @@ describe("saveUrlInDesktop", () => {
 
     await saveUrlInDesktop("https://example.com/articles/hello-world#section");
 
-    expect(mockDocAddStubItem).toHaveBeenCalledWith(
+    expect(mockAddLibraryStubItem).toHaveBeenCalledWith(
       "https://example.com/articles/hello-world#section",
       undefined,
     );
@@ -67,7 +67,7 @@ describe("saveUrlInDesktop", () => {
     const { saveUrlInDesktop } = await import("./save-url.js");
 
     await expect(saveUrlInDesktop("notaurl")).rejects.toThrow("Invalid URL");
-    expect(mockDocAddStubItem).not.toHaveBeenCalled();
+    expect(mockAddLibraryStubItem).not.toHaveBeenCalled();
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
@@ -77,12 +77,12 @@ describe("saveUrlInDesktop", () => {
     await expect(saveUrlInDesktop("ftp://example.com/article")).rejects.toThrow(
       "Only http and https URLs are supported",
     );
-    expect(mockDocAddStubItem).not.toHaveBeenCalled();
+    expect(mockAddLibraryStubItem).not.toHaveBeenCalled();
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
   it("does not enqueue details when stub persistence fails", async () => {
-    mockDocAddStubItem.mockRejectedValueOnce(new Error("Library unavailable"));
+    mockAddLibraryStubItem.mockRejectedValueOnce(new Error("Library unavailable"));
     const { saveUrlInDesktop } = await import("./save-url.js");
 
     await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("Library unavailable");

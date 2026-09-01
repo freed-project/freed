@@ -1,225 +1,160 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FeedItem } from "@freed/shared";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  LibraryCoreProviderMediaPageRequestV1,
+  LibraryCoreProviderMediaPageResponseV1,
+  LibraryCoreProviderMediaRowV1,
+} from "@freed/shared/library-core";
 
 import {
-  isLibraryCoreProviderSettingsReaderDisabled,
   readSavedLibraryCoreYouTubeVideoUrls,
   scanLibraryCoreProviderItems,
 } from "./library-core-provider-settings-runtime";
 
-const LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY =
-  "freed.libraryCore.providerSettingsReaderV1.disabled";
-type ScanLibraryCoreProviderSettingsItems = (
-  visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
-) => Promise<void>;
-
-function item(
+function row(
   index: number,
-  platform: FeedItem["platform"],
-  overrides: Partial<FeedItem> = {},
-): FeedItem {
+  platform: "facebook" | "instagram" | "youtube",
+  overrides: Partial<LibraryCoreProviderMediaRowV1> = {},
+): LibraryCoreProviderMediaRowV1 {
   return {
-    globalId: `${platform}:item-${index}`,
-    platform,
-    contentType: "post",
+    archived: false,
+    authorAvatarUrl: null,
+    authorDisplayName: `Author ${index.toLocaleString()}`,
+    authorHandle: `author-${index.toLocaleString()}`,
+    authorId: `author-${index.toLocaleString()}`,
     capturedAt: index,
+    contentSignalTags: [],
+    contentText: null,
+    contentType: "post",
+    engagementComments: null,
+    engagementLikes: null,
+    eventConfidenceBasisPoints: null,
+    eventStartsAt: null,
+    fbGroup: null,
+    globalId: `${platform}:item-${index.toLocaleString()}` as never,
+    liked: false,
+    likedAt: null,
+    likedSyncedAt: null,
+    linkPreviewTitle: null,
+    linkUrl: null,
+    locationName: null,
+    mediaTypes: [],
+    mediaUrls: [],
+    platform,
     publishedAt: index,
-    author: {
-      id: `author-${index}`,
-      handle: `author-${index}`,
-      displayName: `Author ${index}`,
-    },
-    content: { mediaUrls: [], mediaTypes: [] },
-    userState: { saved: false, hidden: false, archived: false, tags: [] },
-    topics: [],
+    readAt: null,
+    readingTimeMinutes: null,
+    saved: false,
+    sourceUrl: null,
+    tags: [],
     ...overrides,
   };
 }
 
-function pagedScan(
-  items: readonly FeedItem[],
-): ScanLibraryCoreProviderSettingsItems {
-  return async (visitPage) => {
-    for (let start = 0; start < items.length; start += 64) {
-      await visitPage(items.slice(start, start + 64));
-    }
-  };
+function pagedQuery(rows: readonly LibraryCoreProviderMediaRowV1[]) {
+  return vi.fn(
+    async (
+      request: LibraryCoreProviderMediaPageRequestV1,
+    ): Promise<LibraryCoreProviderMediaPageResponseV1> => {
+      const start = request.cursor === null ? 0 : Number(request.cursor);
+      const pageRows = rows.slice(start, start + request.limit);
+      const next = start + pageRows.length;
+      return {
+        nextCursor: next < rows.length ? String(next) : null,
+        queryId: "provider_media_page_v1",
+        rows: pageRows,
+        schemaVersion: 1,
+        source: {
+          generationId: "a".repeat(64) as never,
+          projectionRevision: 1,
+          transitionSequence: 1,
+        },
+      };
+    },
+  );
 }
 
 describe("Library Core provider settings runtime", () => {
-  beforeEach(() => {
-    localStorage.removeItem(LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY);
-  });
-
-  it("streams more than 2,500 rows through provider-filtered pages bounded at 64", async () => {
-    const corpus = Array.from({ length: 2_624 }, (_, index) =>
-      item(
-        index,
-        index % 4 === 0
-          ? "facebook"
-          : index % 4 === 1
-            ? "instagram"
-            : index % 4 === 2
-              ? "youtube"
-              : "rss",
-        index === 5
-          ? {
-              userState: {
-                saved: false,
-                hidden: true,
-                archived: false,
-                tags: [],
-              },
-            }
-          : {},
-      ),
+  it("streams provider rows through query-specific pages bounded at 64", async () => {
+    const rows = Array.from({ length: 130 }, (_, index) =>
+      row(index, "instagram"),
     );
+    const queryPage = pagedQuery(rows);
     const visitedIds: string[] = [];
     let maximumResidentRows = 0;
-
     await scanLibraryCoreProviderItems(
       "instagram",
       async (page) => {
         maximumResidentRows = Math.max(maximumResidentRows, page.length);
-        expect(page.every((entry) => entry.platform === "instagram")).toBe(
-          true,
-        );
         visitedIds.push(...page.map((entry) => entry.globalId));
-        await Promise.resolve();
       },
-      { scanItems: pagedScan(corpus) },
+      { queryPage },
     );
-
-    expect(maximumResidentRows).toBeLessThanOrEqual(64);
-    expect(visitedIds).toEqual(
-      corpus
-        .filter(
-          (entry) => entry.platform === "instagram" && !entry.userState.hidden,
-        )
-        .map((entry) => entry.globalId),
-    );
+    expect(maximumResidentRows).toBe(64);
+    expect(visitedIds).toEqual(rows.map((entry) => entry.globalId));
+    expect(queryPage).toHaveBeenCalledTimes(3);
+    expect(queryPage.mock.calls[0]?.[0]).toMatchObject({
+      provider: "instagram",
+      queryId: "provider_media_page_v1",
+      savedOnly: false,
+    });
   });
 
-  it("reports and enforces the device-local rollback before scanning", async () => {
-    localStorage.setItem(
-      LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY,
-      "1",
-    );
-    const scan = vi.fn<ScanLibraryCoreProviderSettingsItems>();
-
-    expect(isLibraryCoreProviderSettingsReaderDisabled()).toBe(true);
-    await expect(
-      scanLibraryCoreProviderItems("facebook", vi.fn(), { scanItems: scan }),
-    ).rejects.toThrow("provider settings reader is disabled");
-    await expect(
-      readSavedLibraryCoreYouTubeVideoUrls({ scanItems: scan }),
-    ).rejects.toThrow("provider settings reader is disabled");
-    expect(scan).not.toHaveBeenCalled();
-  });
-
-  it("fails closed on invalid scanner pages and propagates source and visitor failures", async () => {
-    const oversize = Array.from({ length: 65 }, (_, index) =>
-      item(index, "facebook"),
+  it("fails closed on oversized pages, cancellation, and visitor failures", async () => {
+    const oversized = pagedQuery(
+      Array.from({ length: 65 }, (_, index) => row(index, "facebook")),
     );
     await expect(
       scanLibraryCoreProviderItems("facebook", vi.fn(), {
-        scanItems: async (visitPage) => {
-          await visitPage(oversize);
-        },
+        queryPage: async (request) => ({
+          ...(await oversized({ ...request, limit: 65 })),
+          nextCursor: null,
+        }),
       }),
     ).rejects.toThrow("page exceeds 64 rows");
-
-    await expect(
-      scanLibraryCoreProviderItems("facebook", vi.fn(), {
-        scanItems: async () => {
-          throw new Error("Library Core item scan source changed during read");
-        },
-      }),
-    ).rejects.toThrow("source changed during read");
-
-    await expect(
-      scanLibraryCoreProviderItems(
-        "facebook",
-        async () => {
-          throw new Error("visitor rejected page");
-        },
-        { scanItems: pagedScan([item(1, "facebook")]) },
-      ),
-    ).rejects.toThrow("visitor rejected page");
-
     const controller = new AbortController();
+    await expect(
+      scanLibraryCoreProviderItems("facebook", () => controller.abort(), {
+        queryPage: pagedQuery([row(1, "facebook")]),
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("scan was cancelled");
     await expect(
       scanLibraryCoreProviderItems(
         "facebook",
         () => {
-          controller.abort();
+          throw new Error("visitor rejected page");
         },
-        {
-          scanItems: pagedScan([item(1, "facebook"), item(2, "facebook")]),
-          signal: controller.signal,
-        },
+        { queryPage: pagedQuery([row(1, "facebook")]) },
       ),
-    ).rejects.toThrow("scan was cancelled");
+    ).rejects.toThrow("visitor rejected page");
   });
 
-  it("preserves visible saved YouTube parsing, stable order, and cross-page dedupe semantics", async () => {
+  it("asks SQLite for saved YouTube rows and deduplicates canonical identities", async () => {
     const firstId = "ABCDEFGHIJK";
     const secondId = "LMNOPQRSTUV";
-    const thirdId = "ZYXWVUTSRQP";
-    const firstPage = [
-      item(1, "youtube", {
+    const queryPage = pagedQuery([
+      row(1, "youtube", {
+        saved: true,
         sourceUrl: `https://youtu.be/${firstId}?feature=share`,
-        content: {
-          mediaUrls: [],
-          mediaTypes: [],
-          linkPreview: {
-            url: `https://www.youtube.com/watch?v=${secondId}`,
-            title: "secondary identity",
-          },
-        },
-        userState: { saved: true, hidden: true, archived: false, tags: [] },
       }),
-      item(2, "youtube", {
-        sourceUrl: "https://www.youtube.com/watch?v=invalid",
-        content: {
-          mediaUrls: [],
-          mediaTypes: [],
-          linkPreview: {
-            url: `https://www.youtube.com/watch?v=${secondId}`,
-            title: "valid fallback",
-          },
-        },
-        userState: { saved: true, hidden: false, archived: false, tags: [] },
+      row(2, "youtube", {
+        linkUrl: `https://www.youtube.com/watch?v=${secondId}`,
+        saved: true,
       }),
-      item(3, "facebook", {
-        sourceUrl: `https://www.youtube.com/watch?v=${thirdId}`,
-        userState: { saved: true, hidden: false, archived: false, tags: [] },
-      }),
-    ];
-    const secondPage = [
-      item(4, "youtube", {
+      row(3, "youtube", {
+        saved: true,
         sourceUrl: `https://www.youtube.com/shorts/${secondId}`,
-        userState: { saved: true, hidden: false, archived: false, tags: [] },
       }),
-      item(5, "youtube", {
-        sourceUrl: "https://example.test/not-youtube",
-        userState: { saved: true, hidden: false, archived: false, tags: [] },
-      }),
-      item(6, "youtube", {
-        sourceUrl: `https://www.youtube.com/watch?v=${thirdId}`,
-        userState: { saved: false, hidden: false, archived: false, tags: [] },
-      }),
-    ];
-    const scan: ScanLibraryCoreProviderSettingsItems = async (visitPage) => {
-      await visitPage(firstPage);
-      await visitPage(secondPage);
-    };
-
-    await expect(
-      readSavedLibraryCoreYouTubeVideoUrls({ scanItems: scan }),
-    ).resolves.toEqual([
-      `https://www.youtube.com/watch?v=${secondId}`,
-      `https://www.youtube.com/watch?v=${thirdId}`,
     ]);
+    await expect(
+      readSavedLibraryCoreYouTubeVideoUrls({ queryPage }),
+    ).resolves.toEqual([
+      `https://www.youtube.com/watch?v=${firstId}`,
+      `https://www.youtube.com/watch?v=${secondId}`,
+    ]);
+    expect(queryPage.mock.calls[0]?.[0]).toMatchObject({
+      provider: "youtube",
+      savedOnly: true,
+    });
   });
 });

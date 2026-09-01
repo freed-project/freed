@@ -12,10 +12,28 @@ export const ACTOR_LAUNCHER_CHANNEL_PROTOCOL =
   "freed-actor-launcher-channel-v1";
 const ACTOR_LAUNCHER_ATTESTATION_PURPOSE =
   "automation-actor-launcher-readiness";
-export const ACTOR_LAUNCHER_RECORD_ROOT =
-  "/Library/Application Support/Freed/automation-actor-launchers";
-export const ACTOR_RUNTIME_ROOT =
-  "/Library/Application Support/Freed/automation-actor-runtimes";
+export function actorLauncherRecordRoot(platform = process.platform) {
+  if (platform === "darwin") {
+    return "/Library/Application Support/Freed/automation-actor-launchers";
+  }
+  if (platform === "linux") {
+    return "/etc/freed/automation-actor-launchers";
+  }
+  throw new Error(`Unsupported automation actor host platform: ${platform}`);
+}
+
+export function actorRuntimeRoot(platform = process.platform) {
+  if (platform === "darwin") {
+    return "/Library/Application Support/Freed/automation-actor-runtimes";
+  }
+  if (platform === "linux") {
+    return "/opt/freed/automation-actor-runtimes";
+  }
+  throw new Error(`Unsupported automation actor host platform: ${platform}`);
+}
+
+export const ACTOR_LAUNCHER_RECORD_ROOT = actorLauncherRecordRoot();
+export const ACTOR_RUNTIME_ROOT = actorRuntimeRoot();
 const ACTOR_RUNTIME_DIGEST_PROTOCOL = "freed-automation-actor-runtime-v4";
 export const LAUNCHER_ATTESTATION_TIMEOUT_MS = 15_000;
 const MAX_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;

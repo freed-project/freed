@@ -17,7 +17,7 @@
     "selectedPrefixLineCount": 255,
     "selectedPrefixBytes": 173863,
     "selectedPrefixSha256": "2da62c60de099d1994ae7315a91b9423530c66b483266f4464fce382423a0df5",
-    "selectedAutomergeLineNumbers": [123, 226, 250, 251, 252, 253, 254, 255]
+    "selectedLegacyLineNumbers": [123, 226, 250, 251, 252, 253, 254, 255]
   },
   "networkBoundary": {
     "providerTraffic": false,
@@ -25,7 +25,7 @@
     "credentialsIncluded": false,
     "fixtureKind": "sanitized-runtime-metadata"
   },
-  "automergeLoop": {
+  "legacyRuntimeLoop": {
     "appSessionId": "7896b20a-909a-43a0-9672-e9e0a8b59110",
     "firstObservedSessionEventTsMs": 1784394048175,
     "classifierFirstPostQuietSpawnTsMs": 1784394650743,

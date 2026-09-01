@@ -87,7 +87,7 @@ describe("fetchXTimeline", () => {
     }));
     const fetch = fetchXTimeline(fakeCookies, requester);
     await vi.waitFor(() => expect(requester).toHaveBeenCalledOnce());
-    const clearDocument = vi.fn(async () => undefined);
+    const clearLibrary = vi.fn(async () => undefined);
 
     const reset = runFactoryResetOperations({
       quiesceLocalWriters: [],
@@ -95,16 +95,16 @@ describe("fetchXTimeline", () => {
       clearLocalSettings: [],
       clearLocalData: [],
       clearProviderDataAndConnections: async () => undefined,
-      clearDocument,
+      clearLibrary,
     });
     await Promise.resolve();
-    expect(clearDocument).not.toHaveBeenCalled();
+    expect(clearLibrary).not.toHaveBeenCalled();
 
     resolveRequest(JSON.stringify(timelineFixture));
     await expect(fetch).rejects.toThrow("Factory reset is in progress");
     await reset;
 
-    expect(clearDocument).toHaveBeenCalledOnce();
+    expect(clearLibrary).toHaveBeenCalledOnce();
   });
 
   describe("happy path", () => {

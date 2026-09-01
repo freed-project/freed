@@ -96,8 +96,8 @@ export function GoogleContactsSection() {
     }
   };
 
-  const cachedCount = syncState.cachedContacts.length.toLocaleString();
-  const pendingCount = syncState.pendingSuggestions.length.toLocaleString();
+  const cachedCount = syncState.activeContactCount.toLocaleString();
+  const pendingCount = syncState.pendingSuggestionCount.toLocaleString();
   const createdFriendCount = syncState.createdFriendCount.toLocaleString();
 
   return (

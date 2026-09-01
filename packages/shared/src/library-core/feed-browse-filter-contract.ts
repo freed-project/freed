@@ -116,6 +116,23 @@ export function normalizeLibraryCoreFeedBrowseFilterV1(
   });
 }
 
+/** Convert one closed wire filter into the ergonomic product query input. */
+export function libraryCoreFeedBrowseFilterInputFromV1(
+  filter: LibraryCoreFeedBrowseFilterV1,
+): LibraryCoreFeedBrowseFilterInputV1 {
+  return Object.freeze({
+    archivedOnly: filter.archivedOnly,
+    authorId: filter.authorId ?? undefined,
+    feedUrl: filter.feedUrl ?? undefined,
+    platform: filter.platform ?? undefined,
+    savedOnly: filter.savedOnly,
+    showHidden: filter.showHidden,
+    signals: [...filter.signals],
+    socialContentFilter: filter.socialContentFilter,
+    tags: [...filter.tags],
+  });
+}
+
 /**
  * Snapshot one closed normalized browse filter at a worker or storage boundary.
  */

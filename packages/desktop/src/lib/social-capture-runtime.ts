@@ -4,13 +4,17 @@ import {
   formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
 } from "./background-runtime-coordinator";
-import { socialProviderCopy, type SocialProviderId } from "./social-provider-copy";
+import {
+  socialProviderCopy,
+  type SocialProviderId,
+} from "./social-provider-copy";
 
 export const SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS = 150_000;
 export const SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS = [
   "cloud-sync",
   "content-fetch",
   "content-signal-backfill",
+  "library-projection",
   "outbox",
   "rss-poll",
   "semantic-classifier",
@@ -33,7 +37,10 @@ interface DesktopSessionState {
 }
 
 export function runtimeDeferredMessage(reason: string): string {
-  return formatBackgroundRuntimeDeferredReason(reason).replaceAll("Try again", "Try syncing again");
+  return formatBackgroundRuntimeDeferredReason(reason).replaceAll(
+    "Try again",
+    "Try syncing again",
+  );
 }
 
 export function applyRuntimeDeferredDiag(
@@ -53,8 +60,9 @@ function nativeErrorMessage(error: unknown): string {
 export function isNativeSocialMemoryPressureError(error: unknown): boolean {
   const message = nativeErrorMessage(error).toLocaleLowerCase();
   return (
-    message.includes("sync paused because freed desktop memory remains high after cleanup") ||
-    message.includes("memory remains high after cleanup")
+    message.includes(
+      "sync paused because freed desktop memory remains high after cleanup",
+    ) || message.includes("memory remains high after cleanup")
   );
 }
 
@@ -75,7 +83,9 @@ export async function applyLockedSessionDeferredDiag(
   if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return false;
 
   try {
-    const state = await invoke<DesktopSessionState>("get_desktop_session_state");
+    const state = await invoke<DesktopSessionState>(
+      "get_desktop_session_state",
+    );
     if (!state?.screenLocked) return false;
     diag.errorStage = RUNTIME_DEFERRED_STAGE;
     diag.errorMessage =
@@ -102,5 +112,7 @@ export function waitForSocialScrapeEvents(): Promise<void> {
   if (SOCIAL_SCRAPE_EVENT_DRAIN_MS <= 0) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => setTimeout(resolve, SOCIAL_SCRAPE_EVENT_DRAIN_MS));
+  return new Promise((resolve) =>
+    setTimeout(resolve, SOCIAL_SCRAPE_EVENT_DRAIN_MS),
+  );
 }

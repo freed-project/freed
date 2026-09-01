@@ -6,12 +6,8 @@
  */
 
 import type {
-  Account,
   ContentSignal,
   FeedItem,
-  Friend,
-  Person,
-  ReachOutLog,
   SampleDataClearSummary,
   UserPreferences,
   RssFeed,
@@ -21,6 +17,43 @@ import type { SampleLibraryData } from "./sample-data.js";
 export interface RemoveFeedOptions {
   includeItems?: boolean;
 }
+
+export type SampleDataImportPhase =
+  | "preparing"
+  | "feeds"
+  | "items"
+  | "annotations"
+  | "analysis"
+  | "people"
+  | "accounts"
+  | "finalizing";
+
+export interface SampleDataImportProgress {
+  readonly percent: number;
+  readonly phase: SampleDataImportPhase;
+}
+
+export type SampleDataImportProgressListener = (
+  progress: SampleDataImportProgress,
+) => void;
+
+export type SampleDataClearPhase =
+  | "preparing"
+  | "accounts"
+  | "people"
+  | "feeds"
+  | "items"
+  | "settling"
+  | "complete";
+
+export interface SampleDataClearProgress {
+  readonly percent: number;
+  readonly phase: SampleDataClearPhase;
+}
+
+export type SampleDataClearProgressListener = (
+  progress: SampleDataClearProgress,
+) => void;
 
 export type SocialContentFilter = "all" | "posts" | "stories";
 
@@ -76,9 +109,10 @@ export interface FilterOptions {
  * platform's own store extension and are accessed by platform-specific widgets.
  */
 export interface BaseAppState {
-  // Data (derived from Automerge doc)
-  items: FeedItem[];
-  /** Bumps only when search-relevant corpus content changes. */
+  /**
+   * Ephemeral invalidation token for bounded SQLite readers. This is not a
+   * durable revision and never authorizes a row or mutation.
+   */
   searchCorpusVersion: number;
   /**
    * Desktop bumps this after item patches and real full-state changes so
@@ -94,19 +128,8 @@ export interface BaseAppState {
   savedFeedVersion?: number;
   /** Desktop-only resident Saved-card delta; never a second item corpus. */
   savedFeedPresentationPatch?: SavedFeedPresentationPatch | null;
-  feeds: Record<string, RssFeed>;
-  /** Canonical same-human identities — keyed by Person.id */
-  persons: Record<string, Person>;
-  /** Attached social/contact nodes — keyed by Account.id */
-  accounts: Record<string, Account>;
-  /** @deprecated Use persons. */
-  friends: Record<string, Friend>;
+  /** One bounded synchronized preferences snapshot used by visible settings. */
   preferences: UserPreferences;
-  /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
-   *  UI components (Sidebar) don't need to subscribe to the full items array. */
-  feedUnreadCounts: Record<string, number>;
-  /** Total visible item count per RSS feed URL. */
-  feedTotalCounts: Record<string, number>;
   /** Total unread count across all non-hidden, non-archived items. */
   totalUnreadCount: number;
   /** Unread count bucketed by platform (e.g. "rss", "x"). */
@@ -115,16 +138,28 @@ export interface BaseAppState {
   totalItemCount: number;
   /** Total visible item count bucketed by platform. */
   itemCountByPlatform: Record<string, number>;
+  /** Trigger-maintained count of configured RSS subscriptions. */
+  rssFeedCount: number;
+  /** Trigger-maintained count of enabled RSS subscriptions. */
+  enabledRssFeedCount: number;
+  /** Trigger-maintained count of archived FeedItems. */
+  archivedItemCount: number;
+  /** Trigger-maintained count of Friend Persons. */
+  friendPersonCount: number;
+  /** Trigger-maintained count of synchronized social Accounts. */
+  socialAccountCount: number;
   /** Count of archivable items (read, non-saved, non-archived) across all platforms. */
   totalArchivableCount: number;
   /** Archivable count bucketed by platform. */
   archivableCountByPlatform: Record<string, number>;
-  /** Archivable count bucketed by RSS feed URL. */
-  archivableFeedCounts: Record<string, number>;
   /** Friends with recent mapped content. Derived off the render path. */
   mapFriendLocationCount: number;
   /** Authors with recent mapped content. Derived off the render path. */
   mapAllContentLocationCount: number;
+  /** Publish the exact derived marker counts for shared map navigation chrome. */
+  setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
+  /** Exact SQLite count for the active bounded feed query. */
+  visibleFeedTotalCount: number;
 
   // UI state
   isLoading: boolean;
@@ -135,8 +170,8 @@ export interface BaseAppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  /** @deprecated Use selectedPersonId. */
-  selectedFriendId: string | null;
+  /** Publish only the exact count for the current bounded feed query. */
+  setVisibleFeedTotalCount: (totalCount: number) => void;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -158,19 +193,24 @@ export interface BaseAppState {
   archiveItems: (ids: string[]) => Promise<void>;
   /** Archive all read, non-saved items in the current view. */
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
-  /** Repair legacy states where saved items are also marked archived. */
+  /** Restore the invariant that saved items remain outside the archive. */
   unarchiveSavedItems: () => Promise<void>;
   /** Immediately delete ALL archived, non-saved items regardless of age. */
   deleteAllArchived: () => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
   /** Permanently remove generated sample data that carries the internal fingerprint. */
-  clearSampleData: () => Promise<SampleDataClearSummary>;
-  /** Add a generated sample library in one persistence operation. */
-  addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
+  clearSampleData: (
+    onProgress?: SampleDataClearProgressListener,
+  ) => Promise<SampleDataClearSummary>;
+  /** Add a generated sample library and report durable import progress. */
+  addSampleLibraryData: (
+    data: SampleLibraryData,
+    onProgress?: SampleDataImportProgressListener,
+  ) => Promise<void>;
   /**
-   * Record like intent in Automerge. On the desktop, the outbox processor
-   * drains this to the source platform. On the PWA, it syncs to desktop first.
+   * Record a typed like intent in SQLite. The Primary outbox processor drains
+   * it to the source platform, while follower clients submit a signed intent.
    * Optional — components should check for presence before rendering like buttons.
    */
   toggleLiked?: (id: string) => Promise<void>;
@@ -182,30 +222,6 @@ export interface BaseAppState {
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
-  // Person actions
-  addPerson: (person: Person) => Promise<void>;
-  addPersons: (persons: Person[]) => Promise<void>;
-  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
-  removePerson: (id: string) => Promise<void>;
-  /** @deprecated Use addPerson. */
-  addFriend: (friend: Friend) => Promise<void>;
-  /** @deprecated Use addPersons. */
-  addFriends: (friends: Friend[]) => Promise<void>;
-  /** @deprecated Use updatePerson. */
-  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
-  /** @deprecated Use removePerson. */
-  removeFriend: (id: string) => Promise<void>;
-  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
-  addAccount: (account: Account) => Promise<void>;
-  addAccounts: (accounts: Account[]) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  removeAccount: (id: string) => Promise<void>;
-  linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
-  createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
-  createConnectionPersonsFromCandidates: (
-    candidates: Array<{ person: Person; accountIds: string[] }>,
-  ) => Promise<number>;
-
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
 
@@ -214,8 +230,6 @@ export interface BaseAppState {
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
   setSelectedAccount: (id: string | null) => void;
-  /** @deprecated Use setSelectedPerson. */
-  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;

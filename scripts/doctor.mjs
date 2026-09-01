@@ -485,6 +485,7 @@ const PRIVATE_AUTOMATION_DIRECTORIES = [
   "control",
   "control/.guards",
   "control/actor-credentials",
+  "control/event-history-witness-repairs",
   "control/leases",
   "control/leases/.transactions",
   "control/leases/.transactions/.lease-cleanup-quarantine",

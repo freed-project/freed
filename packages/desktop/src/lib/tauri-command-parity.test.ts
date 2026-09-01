@@ -81,4 +81,21 @@ describe("Tauri command parity", () => {
         "TypeScript cannot catch this, so it would surface only at runtime in the packaged app.",
     ).toEqual([]);
   });
+
+  it("does not expose the retired competing Library journal runtime", () => {
+    const invoked = invokedCommandNames();
+    const registered = registeredCommandNames();
+    for (const command of [
+      "open_library_core_journal",
+      "library_core_journal_status",
+    ]) {
+      expect(invoked.has(command), `${command} remains callable by the renderer`).toBe(
+        false,
+      );
+      expect(
+        registered.has(command),
+        `${command} can reopen the authoritative SQLite file outside the sole Desktop runtime`,
+      ).toBe(false);
+    }
+  });
 });

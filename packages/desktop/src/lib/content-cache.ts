@@ -2,8 +2,8 @@
  * Filesystem-backed HTML content cache for desktop
  *
  * Stores full article HTML at `{appDataDir}/content/{globalId}.html` via the
- * Tauri FS plugin. This is Layer 2 of the sync architecture -- device-local,
- * never synced via Automerge.
+ * Tauri FS plugin. These device-local bytes are outside the normalized SQLite
+ * row store and synchronize only through explicit content-blob contracts.
  *
  * Keys are globalIds (e.g. "saved:abc123", "rss:xyz789"). The globalId is
  * used as-is as a filename; characters that are unsafe for filesystems are

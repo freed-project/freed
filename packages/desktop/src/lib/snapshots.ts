@@ -1,14 +1,16 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
-import { getDocState, reloadSqliteLibraryState, subscribe } from "./library-client";
 import {
-  clearSqliteLibraryBackups,
-  createSqliteLibraryBackup,
+  reloadSqliteLibraryState,
+  subscribeDesktopLibraryRuntime,
+} from "./library-client";
+import {
+  clearNormalizedLocalSnapshots,
+  createNormalizedLocalSnapshot,
   isSqliteLibraryActive,
-  listSqliteLibraryBackups,
-  restoreSqliteLibraryBackup,
+  listNormalizedLocalSnapshots,
+  restoreNormalizedLocalSnapshot,
 } from "./sqlite-library";
-import { readContactSyncState } from "./contact-sync-storage.js";
 import { isBackgroundRuntimeDeferredError, runBackgroundJob } from "./background-runtime-coordinator.js";
 import { log } from "./logger.js";
 
@@ -19,9 +21,7 @@ export interface SnapshotSummary {
   createdAt: number;
   byteSize: number;
   itemCount: number;
-  friendCount: number;
-  contactCount: number;
-  pendingMatchCount: number;
+  recordCount: number;
   reason: SnapshotReason;
 }
 
@@ -36,6 +36,10 @@ let snapshotManagerStarted = false;
 let snapshotResetInProgress = false;
 const activeSnapshotOperations = new Set<Promise<unknown>>();
 const snapshotListeners = new Set<() => void>();
+const pendingRestoreOperations = new Map<
+  string,
+  { operationId: string; restoredAtMs: number }
+>();
 
 function trackSnapshotOperation<T>(operation: () => Promise<T>): Promise<T> {
   if (snapshotResetInProgress || isFactoryResetInProgress()) {
@@ -52,17 +56,14 @@ function notifySnapshotListeners(): void {
 }
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
-  const contacts = readContactSyncState();
-  const friendCount = Object.keys(getDocState()?.friends ?? {}).length;
-  return (await listSqliteLibraryBackups()).map((backup) => ({
-    id: backup.backupId,
-    createdAt: backup.createdAtMs,
-    byteSize: backup.byteLength,
-    itemCount: backup.itemCount,
-    friendCount,
-    contactCount: contacts.cachedContacts.length,
-    pendingMatchCount: contacts.pendingSuggestions.length,
-    reason: backup.reason,
+  const snapshots = await listNormalizedLocalSnapshots();
+  return snapshots.map((snapshot) => ({
+    id: snapshot.snapshotId,
+    createdAt: snapshot.createdAtMs,
+    byteSize: snapshot.archiveByteLength,
+    itemCount: snapshot.itemCount,
+    recordCount: snapshot.recordCount,
+    reason: snapshot.reason,
   }));
 }
 
@@ -73,21 +74,18 @@ async function createSnapshotInternal(reason: SnapshotReason): Promise<SnapshotS
     snapshotTimer = null;
   }
 
-  const backup = await createSqliteLibraryBackup(reason);
-  const contacts = readContactSyncState();
+  const snapshot = await createNormalizedLocalSnapshot(reason);
   const summary: SnapshotSummary = {
-    id: backup.backupId,
-    createdAt: backup.createdAtMs,
-    byteSize: backup.byteLength,
-    itemCount: backup.itemCount,
-    friendCount: Object.keys(getDocState()?.friends ?? {}).length,
-    contactCount: contacts.cachedContacts.length,
-    pendingMatchCount: contacts.pendingSuggestions.length,
+    id: snapshot.snapshotId,
+    createdAt: snapshot.createdAtMs,
+    byteSize: snapshot.archiveByteLength,
+    itemCount: snapshot.itemCount,
+    recordCount: snapshot.recordCount,
     reason,
   };
   lastSnapshotAt = summary.createdAt;
   notifySnapshotListeners();
-  log.info(`[snapshots] saved ${reason} SQLite backup ...${summary.id.slice(-8)}`);
+  log.info(`[snapshots] saved ${reason} normalized snapshot ...${summary.id.slice(-8)}`);
   return summary;
 }
 
@@ -128,10 +126,16 @@ function scheduleAutoSnapshot(): void {
 async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
   const snapshot = (await listSnapshots()).find((entry) => entry.id === snapshotId);
   if (!snapshot) throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
-  await restoreSqliteLibraryBackup(snapshotId);
+  const operation = pendingRestoreOperations.get(snapshotId) ?? {
+    operationId: `local-snapshot-restore:${crypto.randomUUID()}`,
+    restoredAtMs: Date.now(),
+  };
+  pendingRestoreOperations.set(snapshotId, operation);
+  await restoreNormalizedLocalSnapshot(snapshotId, operation);
+  pendingRestoreOperations.delete(snapshotId);
   await reloadSqliteLibraryState();
   notifySnapshotListeners();
-  log.info(`[snapshots] restored SQLite backup ...${snapshotId.slice(-8)}`);
+  log.info(`[snapshots] restored normalized snapshot ...${snapshotId.slice(-8)}`);
   return snapshot;
 }
 
@@ -147,7 +151,8 @@ export async function clearSnapshots(): Promise<void> {
       "Snapshot operations",
       FACTORY_RESET_DRAIN_TIMEOUT_MS,
     );
-    await clearSqliteLibraryBackups();
+    await clearNormalizedLocalSnapshots();
+    pendingRestoreOperations.clear();
     lastSnapshotAt = 0;
   } finally {
     snapshotResetInProgress = false;
@@ -165,7 +170,7 @@ export async function startSnapshotManager(): Promise<void> {
   const existing = await listSnapshots();
   lastSnapshotAt = existing[0]?.createdAt ?? 0;
   if (existing.length === 0) await createSnapshot("auto");
-  snapshotUnsubscribe = subscribe(scheduleAutoSnapshot);
+  snapshotUnsubscribe = subscribeDesktopLibraryRuntime(scheduleAutoSnapshot);
   snapshotManagerStarted = true;
   scheduleAutoSnapshot();
 }

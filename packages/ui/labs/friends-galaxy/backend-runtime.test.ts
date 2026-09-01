@@ -55,12 +55,19 @@ function runtimeHarness() {
   const initialization = new Map<BackendId, Deferred<void>[]>();
   const failures = new Map<BackendId, string[]>();
   const showFailures = new Map<BackendId, string[]>();
-  const activations: Array<FriendsGalaxyBackendActivation<BackendId, FakeBackend, Surface>> = [];
+  const activations: Array<
+    FriendsGalaxyBackendActivation<BackendId, FakeBackend, Surface>
+  > = [];
   const recoveries: Array<FriendsGalaxyBackendRecovery<BackendId>> = [];
   const terminalFailures: Array<FriendsGalaxyBackendFailure<BackendId>> = [];
   const createCounts = new Map<BackendId, number>();
+  const events: string[] = [];
 
-  const runtime = new FriendsGalaxyBackendRuntime<BackendId, FakeBackend, Surface>({
+  const runtime = new FriendsGalaxyBackendRuntime<
+    BackendId,
+    FakeBackend,
+    Surface
+  >({
     compatibilityId: "compatibility",
     createSurface: () => {
       const surface = {
@@ -96,8 +103,16 @@ function runtimeHarness() {
       if (next) await next.promise;
     },
     fallbackReason: () => null,
-    onActivated: (activation) => activations.push(activation),
-    onRecovering: (recovery) => recoveries.push(recovery),
+    onActivated: (activation) => {
+      activations.push(activation);
+      events.push(
+        `activated:${activation.id}${activation.retained ? ":retained" : ""}`,
+      );
+    },
+    onRecovering: (recovery) => {
+      recoveries.push(recovery);
+      events.push(`recovering:${recovery.failedId}`);
+    },
     onFailure: (failure) => terminalFailures.push(failure),
   });
 
@@ -109,6 +124,7 @@ function runtimeHarness() {
     recoveries,
     terminalFailures,
     createCounts,
+    events,
     deferInitialization(id: BackendId) {
       const gate = deferred<void>();
       const queue = initialization.get(id) ?? [];
@@ -142,7 +158,10 @@ describe("Friends Galaxy backend runtime", () => {
     expect(harness.runtime.activeBackend).toBe(original);
     expect(original.disposed).toBe(0);
     expect(originalSurface.removed).toBe(false);
-    expect(harness.surfaces.at(-1)).toMatchObject({ mounted: true, visible: false });
+    expect(harness.surfaces.at(-1)).toMatchObject({
+      mounted: true,
+      visible: false,
+    });
 
     replacementGate.resolve();
     const activation = await switching;
@@ -198,8 +217,14 @@ describe("Friends Galaxy backend runtime", () => {
       recovery: true,
     });
     expect(harness.createdBackends[0]?.disposed).toBe(1);
-    expect(harness.surfaces[0]).toMatchObject({ visible: false, removed: true });
-    expect(harness.surfaces[1]).toMatchObject({ visible: true, removed: false });
+    expect(harness.surfaces[0]).toMatchObject({
+      visible: false,
+      removed: true,
+    });
+    expect(harness.surfaces[1]).toMatchObject({
+      visible: true,
+      removed: false,
+    });
   });
 
   it("retains an active compatibility renderer when a preferred switch fails", async () => {
@@ -220,6 +245,11 @@ describe("Friends Galaxy backend runtime", () => {
     expect(harness.runtime.activeSurface).toBe(surface);
     expect(compatibility.disposed).toBe(0);
     expect(harness.createCounts.get("compatibility")).toBe(1);
+    expect(harness.events).toEqual([
+      "activated:compatibility",
+      "recovering:raw",
+      "activated:compatibility:retained",
+    ]);
   });
 
   it("schedules only one compatibility recovery for a fatal preferred backend", async () => {
@@ -250,11 +280,13 @@ describe("Friends Galaxy backend runtime", () => {
 
     expect(harness.runtime.pollHealth()).toBeNull();
     expect(harness.runtime.terminalFailure).toBe(true);
-    expect(harness.terminalFailures).toEqual([expect.objectContaining({
-      id: "compatibility",
-      phase: "runtime",
-      reason: "Context lost",
-    })]);
+    expect(harness.terminalFailures).toEqual([
+      expect.objectContaining({
+        id: "compatibility",
+        phase: "runtime",
+        reason: "Context lost",
+      }),
+    ]);
     expect(harness.runtime.pollHealth()).toBeNull();
     expect(harness.createCounts.get("compatibility")).toBe(1);
     expect(compatibility.disposed).toBe(0);

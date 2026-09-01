@@ -92,6 +92,57 @@ export function setGoogleDriveFetch(
   googleDriveFetch = fetcher;
 }
 
+function authorizationHeaders(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  accessToken: string,
+): Headers {
+  const headers = new Headers(
+    init?.headers ?? (input instanceof Request ? input.headers : undefined),
+  );
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  return headers;
+}
+
+/**
+ * Retry one rejected Drive request after forcing an OAuth refresh.
+ *
+ * Google can revoke an access token before its recorded expiry. Keeping this
+ * recovery at the transport boundary covers control discovery, checkpoints,
+ * intents, and results without changing the normal request cadence.
+ */
+export function createGoogleDriveAuthenticatedFetch(
+  fetcher: GoogleDriveFetch,
+): GoogleDriveFetch {
+  return async (input, init) => {
+    const current = readCloudTokenBundle("gdrive")?.accessToken;
+    const authenticatedInit = current
+      ? {
+          ...init,
+          headers: authorizationHeaders(input, init, current),
+        }
+      : init;
+    const response = await fetcher(input, authenticatedInit);
+    if (response.status !== 401) return response;
+
+    const previous = readCloudTokenBundle("gdrive");
+    if (!previous?.refreshToken) return response;
+    const accessToken = await forceRefreshCloudToken("gdrive");
+    if (!accessToken) return response;
+
+    return fetcher(input, {
+      ...init,
+      headers: authorizationHeaders(input, init, accessToken),
+    });
+  };
+}
+
+function activeGoogleDriveFetch(): GoogleDriveFetch | undefined {
+  return googleDriveFetch
+    ? createGoogleDriveAuthenticatedFetch(googleDriveFetch)
+    : undefined;
+}
+
 function currentGeneration(provider: CloudProvider): number {
   return cloudGenerations.get(provider) ?? 0;
 }
@@ -496,6 +547,7 @@ export async function startCloudSync(
   });
   let result: Awaited<ReturnType<typeof startSqliteLibraryGoogleDriveSync>>;
   try {
+    const authenticatedGoogleDriveFetch = activeGoogleDriveFetch();
     const resolveAccessToken = async () => {
       if (
         controller.signal.aborted ||
@@ -512,7 +564,7 @@ export async function startCloudSync(
       role === "follower"
         ? await startSqliteLibraryGoogleDriveFollowerSync({
             accessToken: token,
-            googleFetch: googleDriveFetch,
+            googleFetch: authenticatedGoogleDriveFetch,
             onError: (error) => {
               const message =
                 error instanceof Error ? error.message : String(error);
@@ -537,7 +589,7 @@ export async function startCloudSync(
           })
         : await startSqliteLibraryGoogleDriveSync({
             accessToken: token,
-            googleFetch: googleDriveFetch,
+            googleFetch: authenticatedGoogleDriveFetch,
             resolveAccessToken,
           });
   } catch (error) {
@@ -613,16 +665,17 @@ export async function syncCloudProviderNow(
   }
   const accessToken = await getValidCloudToken(provider);
   if (!accessToken) throw new Error("Reconnect Google Drive to resume sync.");
+  const authenticatedGoogleDriveFetch = activeGoogleDriveFetch();
   const follower = readLibraryCoreDesktopRole() === "follower";
   const result = follower
     ? await syncSqliteLibraryFollowerGoogleDriveOnce({
         accessToken,
-        googleFetch: googleDriveFetch,
+        googleFetch: authenticatedGoogleDriveFetch,
         signal: cloudAborts.get(provider)?.signal,
       })
     : await publishCurrentSqliteLibraryToGoogleDrive({
         accessToken,
-        googleFetch: googleDriveFetch,
+        googleFetch: authenticatedGoogleDriveFetch,
         signal: cloudAborts.get(provider)?.signal,
       });
   if (result.status === "ownership_required") {
@@ -641,7 +694,7 @@ export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> 
     throw new Error("Reconnect Google Drive to transfer ownership.");
   const result = await makeThisSqliteLibraryDesktopWriter({
     accessToken,
-    googleFetch: googleDriveFetch,
+    googleFetch: activeGoogleDriveFetch(),
     signal: cloudAborts.get("gdrive")?.signal,
   });
   if (result.status === "bootstrap_required") {

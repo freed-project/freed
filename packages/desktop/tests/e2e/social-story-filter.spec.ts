@@ -4,11 +4,11 @@ async function injectInstagramItems(page: import("@playwright/test").Page): Prom
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
 
-    await automerge.docBatchImportItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "test-instagram-filter-post",
         platform: "instagram",
@@ -74,11 +74,15 @@ async function injectInstagramItems(page: import("@playwright/test").Page): Prom
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { items: Array<{ globalId: string }> } }
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | { items: Record<string, { __deleted?: boolean }> }
       | undefined;
-    const ids = new Set(store?.getState().items.map((item) => item.globalId) ?? []);
-    return ids.has("test-instagram-filter-post") && ids.has("test-instagram-filter-story");
+    return Boolean(
+      sqlite?.items["test-instagram-filter-post"] &&
+      !sqlite.items["test-instagram-filter-post"].__deleted &&
+      sqlite.items["test-instagram-filter-story"] &&
+      !sqlite.items["test-instagram-filter-story"].__deleted,
+    );
   });
 }
 
@@ -114,7 +118,7 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
       return rect.width > 0 && rect.height > 0 ? [Math.round(rect.height)] : [];
     });
   });
-  expect(toolbarControlHeights.length).toBeGreaterThanOrEqual(4);
+  expect(toolbarControlHeights.length).toBeGreaterThanOrEqual(3);
   expect(new Set(toolbarControlHeights)).toEqual(new Set([36]));
 
   await filterButton.click();

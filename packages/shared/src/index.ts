@@ -9,13 +9,13 @@ export * from "./types";
 
 // Re-export ranking algorithm.
 export * from "./ranking";
+export * from "./library-core/feed-browse-filter-contract";
 
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";
 export * from "./feed-signal-filters";
 export * from "./preferences";
 export * from "./sync-write-policy";
-export * from "./device-local-graph";
 export * from "./local-ai";
 
 // Re-export OPML utilities.
@@ -31,7 +31,7 @@ export * from "./navigation-state";
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
 export * from "./friend-suggestions";
-export * from "./identity-graph";
+export * from "./connection-person-draft";
 export * from "./contact-sync-state";
 export * from "./social-account-validity";
 export * from "./essay-identity";

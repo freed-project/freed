@@ -226,10 +226,17 @@ export function removeFacebookGroupDiscovery(
 }
 
 export function migrateLegacyFacebookGroupDiscovery(
-  knownGroups: Record<string, FbGroupInfo> | null | undefined,
+  value: unknown,
 ): boolean {
   if (readStored().status !== "missing") return false;
-  const next = sanitizeKnownGroups(knownGroups ?? {});
+  const historical = typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : {};
+  const knownGroups = typeof historical.knownGroups === "object"
+    && historical.knownGroups !== null
+    ? historical.knownGroups as Record<string, FbGroupInfo>
+    : {};
+  const next = sanitizeKnownGroups(knownGroups);
   if (!persist(next)) return false;
   recordUpdate("legacy_migration", {
     observedCount: Object.keys(knownGroups ?? {}).length,

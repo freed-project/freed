@@ -36,7 +36,7 @@ const mocks = vi.hoisted(() => {
     captureMediumFeed: vi.fn(),
     captureYouTube: vi.fn(),
     captureXTimeline: vi.fn(),
-    docBatchRefreshFeeds: vi.fn(),
+    refreshLibraryFeeds: vi.fn(),
     isProviderPaused: vi.fn(() => false),
     recordProviderHealthEvent: vi.fn(),
     withProviderSyncing: vi.fn(
@@ -57,7 +57,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 }));
 
 vi.mock("./library-client", () => ({
-  docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
+  refreshLibraryFeeds: mocks.refreshLibraryFeeds,
 }));
 
 vi.mock("./fb-capture", () => ({
@@ -132,7 +132,7 @@ describe("scheduled social capture retries", () => {
     mocks.captureMediumFeed.mockReset();
     mocks.captureYouTube.mockReset();
     mocks.captureXTimeline.mockReset();
-    mocks.docBatchRefreshFeeds.mockReset();
+    mocks.refreshLibraryFeeds.mockReset();
     mocks.isProviderPaused.mockReset();
     mocks.isProviderPaused.mockReturnValue(false);
     mocks.recordProviderHealthEvent.mockClear();
@@ -198,7 +198,7 @@ describe("scheduled social capture retries", () => {
     expect(mocks.captureFbFeed).not.toHaveBeenCalled();
     expect(mocks.captureXTimeline).not.toHaveBeenCalled();
     expect(mocks.captureYouTube).not.toHaveBeenCalled();
-    expect(mocks.docBatchRefreshFeeds).not.toHaveBeenCalled();
+    expect(mocks.refreshLibraryFeeds).not.toHaveBeenCalled();
   });
 
   it("returns success details when Facebook sees posts", async () => {

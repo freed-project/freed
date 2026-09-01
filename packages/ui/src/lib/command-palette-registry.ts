@@ -22,8 +22,20 @@ interface SourceDestination {
   label: string;
 }
 
-interface SocialChannelDestination {
-  account: Account;
+export type CommandSocialAccount = Pick<
+  Account,
+  | "avatarUrl"
+  | "displayName"
+  | "externalId"
+  | "handle"
+  | "id"
+  | "kind"
+  | "personId"
+  | "provider"
+>;
+
+export interface SocialChannelDestination {
+  account: CommandSocialAccount;
   person?: Person;
   personName?: string;
 }
@@ -47,9 +59,9 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFeed: (filter: FilterOptions) => void;
   navigateToFriends: () => void;
   navigateToMap: () => void;
-  navigateToSocialProfileFriends?: ((account: Account, personId: string | null) => void) | null;
-  navigateToSocialProfileMap?: ((account: Account, personId: string | null) => void | Promise<void>) | null;
-  promoteSocialProfile?: ((account: Account, level: 3 | 5) => void | Promise<void>) | null;
+  navigateToSocialProfileFriends?: ((account: CommandSocialAccount, personId: string | null) => void) | null;
+  navigateToSocialProfileMap?: ((account: CommandSocialAccount, personId: string | null) => void | Promise<void>) | null;
+  promoteSocialProfile?: ((account: CommandSocialAccount, level: 3 | 5) => void | Promise<void>) | null;
   applyFeedSearch: (query: string) => void;
   openAddFeedDialog?: (() => void) | null;
   openSavedContentDialog?: (() => void) | null;
@@ -227,7 +239,7 @@ export function buildCommandPaletteActions({
       : []),
   ];
 
-  const profileActionLabel = (account: Account, person?: Person, personName?: string): string =>
+  const profileActionLabel = (account: CommandSocialAccount, person?: Person, personName?: string): string =>
     person?.name ?? personName ?? accountTitle(account);
 
   for (const source of topSources) {

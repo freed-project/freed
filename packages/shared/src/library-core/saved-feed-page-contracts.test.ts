@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem, SavedContentSortMode } from "../types.js";
 import { normalizeLibraryCoreFeedBrowseFilterV1 } from "./feed-browse-filter-contract.js";
+import { libraryCoreFeedBrowseFilterDigestV1 } from "./feed-browse-page-contracts.js";
 import type {
   LibraryCoreEntityId,
   LibraryCoreLowercaseHex64,
@@ -8,10 +9,14 @@ import type {
 import {
   LIBRARY_CORE_SAVED_FEED_SORT_ORDER_V1,
   compareLibraryCoreSavedFeedSortKeyV1,
+  decodeLibraryCoreSavedFeedPageCursorV2,
   encodeLibraryCoreSavedFeedPageCursorV1,
+  encodeLibraryCoreSavedFeedPageCursorV2,
   libraryCoreSavedFeedSortKeyV1,
   parseLibraryCoreSavedFeedPageRequestV1,
   parseLibraryCoreSavedFeedPageResponseV1,
+  parseLibraryCoreSavedFeedPageRequestV2,
+  parseLibraryCoreSavedFeedPageResponseV2,
   projectLibraryCoreSavedFeedCardV1,
   type LibraryCoreSavedFeedPageResponseV1,
 } from "./saved-feed-page-contracts.js";
@@ -190,9 +195,7 @@ describe("saved-feed page contracts", () => {
         readingTime: 2,
       }),
     ]
-      .map((entry) =>
-        libraryCoreSavedFeedSortKeyV1(entry, "shortest_read", 1),
-      )
+      .map((entry) => libraryCoreSavedFeedSortKeyV1(entry, "shortest_read", 1))
       .sort(compareLibraryCoreSavedFeedSortKeyV1)
       .map((entry) => entry.globalId);
     expect(shortestTie).toEqual(["saved:a", "saved:z"]);
@@ -316,5 +319,104 @@ describe("saved-feed page contracts", () => {
         totalCount: 128,
       }),
     ).toMatchObject({ ok: false, error: "response exceeds its byte ceiling" });
+  });
+
+  it("binds the normalized bidirectional cursor to filter, sort, and source", () => {
+    const cursor = encodeLibraryCoreSavedFeedPageCursorV2({
+      filterDigest: libraryCoreFeedBrowseFilterDigestV1(filter),
+      generationId,
+      globalId: entityId("saved:item-1"),
+      sortGroup: 90,
+      sortMode: "recommended",
+      sortPrimary: 400,
+      sortSecondary: 0,
+      sourceRevision: 12,
+    });
+    expect(cursor).toBe(
+      "AgKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqp3kHYfzAoS1qDcM_RRUWvqkTTpe2762eFSJvJuwcxpFAAAAAAAAAAxaAAAAAAAAAZAAAAAAAAAAAAAMc2F2ZWQ6aXRlbS0x",
+    );
+    expect(decodeLibraryCoreSavedFeedPageCursorV2(cursor)).toMatchObject({
+      ok: true,
+      value: {
+        filterDigest: libraryCoreFeedBrowseFilterDigestV1(filter),
+        generationId,
+        globalId: "saved:item-1",
+        sortGroup: 90,
+        sortMode: "recommended",
+        sortPrimary: 400,
+        sortSecondary: 0,
+        sourceRevision: 12,
+      },
+    });
+    const request = {
+      cancellationId: "saved-cancel:2",
+      cursor,
+      direction: "next",
+      filter,
+      limit: 64,
+      queryId: "saved_feed_page_v2",
+      readerSessionId: "saved-reader:2",
+      schemaVersion: 2,
+      sortMode: "recommended",
+    } as const;
+    expect(parseLibraryCoreSavedFeedPageRequestV2(request).ok).toBe(true);
+    expect(
+      parseLibraryCoreSavedFeedPageRequestV2({
+        ...request,
+        sortMode: "date_saved",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: "request cursor belongs to different query inputs",
+    });
+    const card = projectLibraryCoreSavedFeedCardV1(
+      item("saved:item-1", {
+        capturedAt: 10,
+        savedAt: 20,
+        publishedAt: 400,
+        priority: 90,
+      }),
+    );
+    const response = {
+      filter,
+      nextCursor: cursor,
+      nextOrder: {
+        globalId: entityId("saved:item-1"),
+        sortGroup: 90,
+        sortPrimary: 400,
+        sortSecondary: 0,
+      },
+      previousCursor: null,
+      previousOrder: null,
+      queryId: "saved_feed_page_v2",
+      rows: [card],
+      schemaVersion: 2,
+      sortMode: "recommended",
+      source: {
+        generationId,
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+      totalCount: 1,
+    } as const;
+    expect(parseLibraryCoreSavedFeedPageResponseV2(response, request).ok).toBe(
+      true,
+    );
+    expect(
+      parseLibraryCoreSavedFeedPageResponseV2(
+        {
+          ...response,
+          source: {
+            generationId,
+            projectionRevision: 13,
+            transitionSequence: 12,
+          },
+        },
+        request,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: "response source revision is inconsistent",
+    });
   });
 });

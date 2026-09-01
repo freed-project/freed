@@ -35,7 +35,7 @@ const MODEL_ROOT_DIR = "local-ai-models";
 const STATE_FILE = "state.json";
 const MIN_STREAM_WRITE_BYTES = 1024 * 1024;
 const MIN_PROGRESS_INTERVAL_MS = 250;
-const LEGACY_LOCAL_AI_MODEL_ID: LocalAIModelId = "integrated-local-ai";
+const HISTORICAL_LOCAL_AI_MODEL_ID = "integrated-local-ai";
 type LocalAIModelStateSubscriber = () => void;
 const localAIModelStateSubscribers = new Set<LocalAIModelStateSubscriber>();
 
@@ -358,11 +358,15 @@ export function createLocalAIModelService(
   }
 
   async function migratePersisted(state: PersistedState): Promise<PersistedState> {
-    const legacy = state.models[LEGACY_LOCAL_AI_MODEL_ID];
+    const historicalModels = state.models as Record<
+      string,
+      LocalAIModelInstallState | undefined
+    >;
+    const legacy = historicalModels[HISTORICAL_LOCAL_AI_MODEL_ID];
     let changed = false;
     const next: PersistedState = {
       version: STATE_VERSION,
-      selectedModelId: state.selectedModelId === LEGACY_LOCAL_AI_MODEL_ID
+      selectedModelId: (state.selectedModelId as string | undefined) === HISTORICAL_LOCAL_AI_MODEL_ID
         ? LOCAL_AI_BALANCED_PACK_ID
         : state.selectedModelId,
       models: { ...state.models },
@@ -375,8 +379,12 @@ export function createLocalAIModelService(
       };
       changed = true;
     }
-    if (next.models[LEGACY_LOCAL_AI_MODEL_ID]) {
-      delete next.models[LEGACY_LOCAL_AI_MODEL_ID];
+    const mutableModels = next.models as Record<
+      string,
+      LocalAIModelInstallState | undefined
+    >;
+    if (mutableModels[HISTORICAL_LOCAL_AI_MODEL_ID]) {
+      delete mutableModels[HISTORICAL_LOCAL_AI_MODEL_ID];
       changed = true;
     }
     if (next.selectedModelId !== state.selectedModelId) {
@@ -385,7 +393,7 @@ export function createLocalAIModelService(
 
     if (legacy) {
       const root = await rootDir();
-      const legacyDir = joinPath(root, LEGACY_LOCAL_AI_MODEL_ID);
+      const legacyDir = joinPath(root, HISTORICAL_LOCAL_AI_MODEL_ID);
       const balancedDir = joinPath(root, LOCAL_AI_BALANCED_PACK_ID);
       if ((await deps.exists(legacyDir)) && !(await deps.exists(balancedDir))) {
         await deps.rename(legacyDir, balancedDir).catch(() => undefined);

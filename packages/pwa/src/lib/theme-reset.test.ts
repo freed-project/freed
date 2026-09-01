@@ -23,7 +23,7 @@ describe("theme factory reset", () => {
     expect(getStoredThemeId()).toBe(DEFAULT_THEME_ID);
   });
 
-  it("does not resurrect the legacy Automerge theme after a reset", async () => {
+  it("does not resurrect the retired synchronized theme after a reset", async () => {
     const { migrateLegacyThemePreference } = await import("@freed/ui/lib/theme");
     expect(migrateLegacyThemePreference("ember")).toBe(true);
 
