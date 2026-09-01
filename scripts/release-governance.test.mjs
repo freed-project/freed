@@ -26,6 +26,10 @@ const promotion = readFileSync(
   path.join(scriptsDir, "promote-dev-to-main.sh"),
   "utf8",
 );
+const pwaProductionSnapshot = readFileSync(
+  path.join(scriptsDir, "deploy-pwa-production-snapshot.sh"),
+  "utf8",
+);
 const releaseWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "release.yml"),
   "utf8",
@@ -67,7 +71,36 @@ test("release preparation uses the channel's protected branch as its exact base"
   assert.match(releasePrep, /--base \$\{EXPECTED_BRANCH\} --ready/);
   assert.match(releasePrep, /npm run validate:release/);
   assert.match(releasePrep, /npm run validate:feature/);
+  assert.match(releasePrep, /--promoted-dev-sha=<40-hex-sha>/);
+  assert.match(
+    releasePrep,
+    /--from-ref="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
+  );
+  assert.doesNotMatch(
+    releasePrep,
+    /validate-release-promotion\.mjs --from-ref=origin\/dev/,
+  );
   assert.doesNotMatch(releasePrep, /git push origin (?:dev|main)/);
+});
+
+test("PWA production snapshots bind one promoted dev SHA without generating a release", () => {
+  assert.match(pwaProductionSnapshot, /git fetch origin main/);
+  assert.match(
+    pwaProductionSnapshot,
+    /\$\{HEAD_SHA\}" != "\$\{MAIN_SHA\}"/,
+  );
+  assert.match(
+    pwaProductionSnapshot,
+    /validate-release-promotion\.mjs[\s\S]*--from-ref="\$\{SNAPSHOT_SHA\}"[\s\S]*--to-ref="\$\{MAIN_SHA\}"/,
+  );
+  assert.match(pwaProductionSnapshot, /FREED_BUILD_KIND=snapshot/);
+  assert.match(pwaProductionSnapshot, /FREED_BUILD_CHANNEL=production/);
+  assert.match(
+    pwaProductionSnapshot,
+    /vercel-deploy-production\.sh" pwa/,
+  );
+  assert.doesNotMatch(pwaProductionSnapshot, /release\.sh/);
+  assert.doesNotMatch(pwaProductionSnapshot, /release-notes/);
 });
 
 test("release publication delegates one exact tag to the trusted App publisher", () => {
@@ -131,6 +164,11 @@ test("release publication delegates one exact tag to the trusted App publisher",
   assert.match(
     releasePrep,
     /FREED_PROMOTED_DEV_COMMIT_SHA="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
+  );
+  assert.match(promotion, /--from-ref="\$\{SNAPSHOT_SHA\}"/);
+  assert.match(
+    promotion,
+    /\.\/scripts\/release\.sh --promoted-dev-sha=\$\{SNAPSHOT_SHA\}/,
   );
   assert.match(releaseWorkflow, /EXPECTED_BRANCH="main"/);
   assert.match(releaseWorkflow, /TAG" == \*-dev[\s\S]*EXPECTED_BRANCH="dev"/);

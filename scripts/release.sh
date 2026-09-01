@@ -18,10 +18,10 @@ use_resolved_node_path
 # Note: major version (YY) must be ≤255 for Windows MSI compatibility.
 #
 # Usage:
-#   ./scripts/release.sh                            # auto-compute a production release
-#   ./scripts/release.sh --channel=production       # explicit production release
+#   ./scripts/release.sh --promoted-dev-sha=<sha>   # auto-compute a production release
+#   ./scripts/release.sh --channel=production --promoted-dev-sha=<sha>
 #   ./scripts/release.sh --channel=dev              # auto-compute a dev release
-#   ./scripts/release.sh 26.3.105                   # manual production override
+#   ./scripts/release.sh 26.3.105 --promoted-dev-sha=<sha>
 #   ./scripts/release.sh 26.3.105-dev --channel=dev # manual dev override
 
 DESKTOP_DIR="packages/desktop"
@@ -32,6 +32,7 @@ DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
 CHANNEL="production"
 VERSION_INPUT=""
+PROMOTED_DEV_SHA_INPUT=""
 
 # Ensure tracked and untracked worktree state is clean.
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -44,14 +45,17 @@ for arg in "$@"; do
     --channel=production|--channel=dev)
       CHANNEL="${arg#*=}"
       ;;
+    --promoted-dev-sha=*)
+      PROMOTED_DEV_SHA_INPUT="${arg#*=}"
+      ;;
     -h|--help)
-      echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev]" >&2
+      echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev] [--promoted-dev-sha=<40-hex-sha>]" >&2
       exit 0
       ;;
     *)
       if [[ -n "$VERSION_INPUT" ]]; then
         echo "Error: too many positional arguments." >&2
-        echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev]" >&2
+        echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev] [--promoted-dev-sha=<40-hex-sha>]" >&2
         exit 1
       fi
       VERSION_INPUT="${arg#v}"
@@ -86,8 +90,22 @@ fi
 
 PROMOTED_DEV_COMMIT_SHA=""
 if [[ "$CHANNEL" == "production" ]]; then
-  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
-  PROMOTED_DEV_COMMIT_SHA="$(git rev-parse origin/dev)"
+  if [[ ! "${PROMOTED_DEV_SHA_INPUT}" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Error: production release prep requires --promoted-dev-sha=<40-hex-sha>." >&2
+    echo "Use the immutable source dev SHA recorded by the promotion PR, not the moving origin/dev branch." >&2
+    exit 1
+  fi
+  PROMOTED_DEV_COMMIT_SHA="$(git rev-parse "${PROMOTED_DEV_SHA_INPUT}^{commit}")"
+  if [[ "${PROMOTED_DEV_COMMIT_SHA}" != "${PROMOTED_DEV_SHA_INPUT}" ]]; then
+    echo "Error: --promoted-dev-sha must name one exact commit without abbreviation." >&2
+    exit 1
+  fi
+  "${NODE_BIN}" scripts/validate-release-promotion.mjs \
+    --from-ref="${PROMOTED_DEV_COMMIT_SHA}" \
+    --to-ref=HEAD
+elif [[ -n "${PROMOTED_DEV_SHA_INPUT}" ]]; then
+  echo "Error: --promoted-dev-sha is valid only for production releases." >&2
+  exit 1
 fi
 
 if [[ -n "$VERSION_INPUT" ]]; then
