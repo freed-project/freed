@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.31",
   "date": "2026-08-31",
-  "preferredDeck": "Bounded Drive checkpoints and resilient PWA storage",
+  "preferredDeck": "Atomic Google Drive checkpoints and resilient PWA sample data",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
