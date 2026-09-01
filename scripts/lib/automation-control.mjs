@@ -32495,12 +32495,14 @@ function requireCurrentLeaseOperationRecoveryMatch(
       transaction.operation !== operation ||
       transaction.operationId !== operationId
     ) {
-      // A retained general-actor token may finish durable cleanup after the
-      // original response is lost. Owner governance remains exact-plan fenced.
+      // A later trusted general-actor operation may finish durable cleanup
+      // after the original process and its short-lived token are lost. The
+      // recovery path validates exact state, audit history, receipt, and WAL
+      // lineage before removing anything. Owner governance remains exact-plan
+      // fenced.
       if (
         transaction.phase === "complete" &&
-        transaction.resultReceipt.lease.owner !== "freed-owner" &&
-        transaction.tokenDigest === tokenDigest
+        transaction.resultReceipt.lease.owner !== "freed-owner"
       ) {
         recoverLeaseTransactionUnlocked(paths, name, Date.now(), eventsGuard);
         return;

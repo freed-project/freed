@@ -13621,9 +13621,9 @@ test("a new exact-token release finishes completed acquisition cleanup after res
       }),
     (error) =>
       isAutomationControlError(error) &&
-      error.code === "lease_transaction_pending",
+      error.code === "lease_token_mismatch",
   );
-  assert.equal(existsSync(acquirePaths.active), true);
+  assert.equal(existsSync(acquirePaths.active), false);
   assert.equal(existsSync(acquirePaths.receipt), true);
 
   const released = releaseLeaseMutation({
@@ -13648,6 +13648,91 @@ test("a new exact-token release finishes completed acquisition cleanup after res
   assert.equal(
     readControlEvents(stateRoot).filter(
       (event) => event.eventId === `lease:${releaseOperationId}`,
+    ).length,
+    1,
+  );
+});
+
+test("a fresh trusted acquisition finishes completed release cleanup after process loss", () => {
+  const stateRoot = temporaryStateRoot();
+  const actor = "freed-release-verifier";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const firstCredentialToken = writeActorCredential(stateRoot, actor);
+  const firstToken = `completed-release-cleanup-${"x".repeat(40)}`;
+  const nowMs = Date.now();
+
+  acquireLeaseMutation({
+    stateRoot,
+    name,
+    owner: actor,
+    operationId: nextLeaseOperationId("completed-release-cleanup-acquire"),
+    ttlMs: 60_000,
+    nowMs,
+    token: firstToken,
+    actorCredentialToken: firstCredentialToken,
+  });
+  const releaseOperationId = nextLeaseOperationId(
+    "completed-release-cleanup-release",
+  );
+  assert.throws(
+    () =>
+      releaseLeaseMutation({
+        stateRoot,
+        name,
+        operationId: releaseOperationId,
+        token: firstToken,
+        nowMs: nowMs + 1_000,
+        checkpoint: throwAtLeaseCheckpoint("lease-receipt-written"),
+      }),
+    /lease checkpoint lease-receipt-written/,
+  );
+  const releasePaths = leaseTransactionPaths(
+    stateRoot,
+    name,
+    "release",
+    releaseOperationId,
+  );
+  assert.equal(existsSync(releasePaths.active), true);
+  assert.equal(existsSync(releasePaths.receipt), true);
+  assert.equal(
+    existsSync(
+      path.join(
+        automationControlPaths(stateRoot).leases,
+        `${name}.lease`,
+        "lease.json",
+      ),
+    ),
+    false,
+  );
+
+  const secondCredentialToken = writeActorCredential(stateRoot, actor);
+  const secondToken = `fresh-acquisition-${"y".repeat(40)}`;
+  const secondOperationId = nextLeaseOperationId(
+    "completed-release-cleanup-fresh-acquire",
+  );
+  const acquired = acquireLeaseMutation({
+    stateRoot,
+    name,
+    owner: actor,
+    operationId: secondOperationId,
+    ttlMs: 60_000,
+    nowMs: nowMs + 2_000,
+    token: secondToken,
+    actorCredentialToken: secondCredentialToken,
+  });
+
+  assert.equal(acquired.lease.token, secondToken);
+  assert.equal(existsSync(releasePaths.active), false);
+  assert.equal(existsSync(releasePaths.receipt), true);
+  assert.equal(
+    readControlEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${releaseOperationId}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    readControlEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${secondOperationId}`,
     ).length,
     1,
   );
