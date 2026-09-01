@@ -906,6 +906,45 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   });
 
+  test("shows manual contact entry when Contact Picker is unavailable", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            !("contacts" in navigator) &&
+            !("ContactsManager" in window),
+        ),
+      )
+      .toBe(true);
+
+    await page.getByTestId("source-row-friends").click();
+    await page.getByRole("button", { name: "Add friend", exact: true }).click();
+
+    const manualEntry = page.getByRole("button", {
+      name: "Enter contact info manually",
+    });
+    await expect(manualEntry).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Import from Contacts" }),
+    ).toHaveCount(0);
+
+    await manualEntry.click();
+    await page.getByPlaceholder("Phone").fill("+1 415 555 0137");
+    await page.getByPlaceholder("Email").fill("friend@example.com");
+    await page.getByPlaceholder("Address").fill("1 Market Street");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+
+    await expect(page.getByText("Phone: +1 415 555 0137")).toBeVisible();
+    await expect(page.getByText("Email: friend@example.com")).toBeVisible();
+    await expect(page.getByText("Address: 1 Market Street")).toBeVisible();
+  });
+
   test("shows empty state when no feeds", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
