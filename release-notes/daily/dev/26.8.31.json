@@ -14,7 +14,7 @@
     "Show progress while importing or clearing sample data"
   ],
   "editorialNotes": [
-    "Lead with the atomic Drive checkpoint fix and PWA sample-data recovery. Keep the remaining signed Drive verification explicit."
+    "Lead with the atomic Drive checkpoint fix and PWA sample-data recovery. Keep the remaining signed Drive and released bidirectional verification explicit."
   ],
   "updatedAt": "2026-09-01T03:24:31.301Z"
 }
