@@ -7,9 +7,11 @@ import {
 } from "@freed/ui/lib/debug-store";
 import {
   beginFactoryResetCloudCleanup,
+  captureFactoryResetWriteEpoch,
   clearFactoryResetCloudCleanupBarrier,
   clearStoredCloudProvidersForFactoryReset,
   hasFactoryResetCloudCleanupBarrier,
+  isFactoryResetWriteAllowed,
 } from "@freed/ui/lib/factory-reset";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import { syncPwaLibraryCoreFromGoogleDrive } from "./library-core-runtime";
@@ -74,6 +76,18 @@ function readCloudTokenBundle(
   return accessToken ? { accessToken } : null;
 }
 
+function isSameCloudTokenBundle(
+  current: CloudTokenBundle | null,
+  expected: CloudTokenBundle,
+): boolean {
+  return (
+    current !== null &&
+    current.accessToken === expected.accessToken &&
+    current.refreshToken === expected.refreshToken &&
+    current.expiresAt === expected.expiresAt
+  );
+}
+
 function persistCloudToken(
   provider: CloudProvider,
   token: string | CloudTokenBundle,
@@ -95,6 +109,8 @@ async function refreshGoogleToken(
 ): Promise<string | null> {
   if (!bundle.refreshToken) return bundle.accessToken;
   if (refreshPromise) return refreshPromise;
+  const refreshGeneration = cloudGeneration;
+  const factoryResetWriteEpoch = captureFactoryResetWriteEpoch();
   refreshPromise = (async () => {
     const response = await fetch("/api/oauth/google", {
       method: "POST",
@@ -114,6 +130,13 @@ async function refreshGoogleToken(
     }
     const accessToken = data.access_token as string | undefined;
     if (!accessToken) throw new Error("Google Drive returned no access token");
+    if (
+      refreshGeneration !== cloudGeneration ||
+      !isFactoryResetWriteAllowed(factoryResetWriteEpoch) ||
+      !isSameCloudTokenBundle(readCloudTokenBundle("gdrive"), bundle)
+    ) {
+      return null;
+    }
     persistCloudToken(
       "gdrive",
       {
