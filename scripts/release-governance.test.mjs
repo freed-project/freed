@@ -375,13 +375,18 @@ test("draft release assets and publication use the exact release ID", () => {
   );
   assert.match(
     publishJob,
-    /needs:\s*\[updater-manifest, showcase-assets, create-release\]/,
+    /needs:\s*\[updater-manifest, showcase-assets, isolated-dev-macos, create-release\]/,
     "publish must directly depend on create-release before reading its output",
   );
   assert.match(
     publishJob,
     /needs\.showcase-assets\.result == 'success' \|\| needs\.showcase-assets\.result == 'skipped'/,
     "production showcase failure must block publication without blocking dev releases",
+  );
+  assert.match(
+    publishJob,
+    /needs\.isolated-dev-macos\.result == 'success' \|\| needs\.isolated-dev-macos\.result == 'skipped'/,
+    "isolated verifier failure must block dev publication without blocking production releases",
   );
   assert.doesNotMatch(publishJob, /gh release edit/);
 });
