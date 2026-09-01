@@ -595,6 +595,49 @@ async function readStoredActorKey(
   }
 }
 
+async function storeActorKeyIfAbsent(
+  libraryId: LibraryCoreLowercaseHex64,
+  candidate: StoredActorKeyRecord,
+): Promise<StoredActorKeyRecord> {
+  const database = await openKeyDatabase();
+  try {
+    const transaction = database.transaction(ACTOR_KEYS_STORE, "readwrite");
+    const done = transactionDone(transaction);
+    const selected = new Promise<StoredActorKeyRecord>((resolve, reject) => {
+      const store = transaction.objectStore(ACTOR_KEYS_STORE);
+      const read = store.get(libraryId);
+      read.addEventListener(
+        "success",
+        () => {
+          try {
+            if (read.result === undefined) {
+              store.add(candidate);
+              resolve(validateStoredIdentity(candidate, libraryId));
+              return;
+            }
+            resolve(validateStoredIdentity(read.result, libraryId));
+          } catch (error) {
+            transaction.abort();
+            reject(error);
+          }
+        },
+        { once: true },
+      );
+      read.addEventListener(
+        "error",
+        () => {
+          reject(read.error ?? new Error("Browser key request failed"));
+        },
+        { once: true },
+      );
+    });
+    const [stored] = await Promise.all([selected, done]);
+    return stored;
+  } finally {
+    database.close();
+  }
+}
+
 export async function getOrCreatePwaLibraryCoreActorIdentity(
   libraryId: LibraryCoreLowercaseHex64,
 ): Promise<PwaLibraryCoreActorIdentity> {
@@ -628,16 +671,9 @@ export async function getOrCreatePwaLibraryCoreActorIdentity(
     libraryId,
     schemaVersion: 1,
   }) satisfies StoredActorKeyRecord;
-  const database = await openKeyDatabase();
-  try {
-    const transaction = database.transaction(ACTOR_KEYS_STORE, "readwrite");
-    transaction.objectStore(ACTOR_KEYS_STORE).add(created);
-    await transactionDone(transaction);
-  } finally {
-    database.close();
-  }
+  const stored = await storeActorKeyIfAbsent(libraryId, created);
   const readback = await readStoredActorKey(libraryId);
-  if (!readback || readback.actorId !== actorId) {
+  if (!readback || readback.actorId !== stored.actorId) {
     throw new Error("PWA Library actor key readback changed");
   }
   return publicIdentity(readback);
