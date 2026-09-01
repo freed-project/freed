@@ -821,7 +821,8 @@ export async function captureDomFeed(
 - [x] Visible-scope archive read actions batch filtered read items through one bounded SQLite mutation, so large Instagram cleanup does not loop through one archive toggle per post
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
-- [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
+- [x] Production promotion captures one immutable dev commit, release prep validates and records that exact snapshot, later `dev` commits do not invalidate it, and PRs targeting `main` reject direct product edits outside the promotion flow
+- [x] Production PWA snapshot deployment validates the selected promoted dev commit against exact `origin/main` and publishes it without generating a versioned Desktop release or public release card
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
 - [x] Desktop Settings > Sync shows local item count, local document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, pending upload explanations, a manual Drive `Sync now` action, and a recent activity timeline
 - [x] Desktop Settings > Sync warns when more than one Freed Desktop installation is registered with the library because parallel RSS or authenticated provider polling can duplicate request traffic. PWA clients do not trigger the warning.

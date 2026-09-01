@@ -8,6 +8,12 @@ disable-model-invocation: true
 
 Publish from the correct release lane and prove which artifact was installed afterward.
 
+This skill governs versioned Freed Desktop releases. A production PWA snapshot
+does not create a version, tag, GitHub release, release-note artifact, or public
+release card. After its immutable dev snapshot is promoted to `main`, deploy it
+from an exact clean `origin/main` checkout with
+`./scripts/deploy-pwa-production-snapshot.sh <promoted-dev-sha>`.
+
 ## Run this end to end without stopping
 
 Once invoked, carry the release all the way to a tagged, verified build. Do not
@@ -45,8 +51,8 @@ through, not a reason to hand the release back.
 
 1. Confirm `dev` or `production` release mode. Production is the default for `./scripts/release.sh`. Dev release prep requires `--channel=dev`.
 2. Record the release task ID and granted authority. If the release repays tracked debt, also record each canonical GitHub issue. Preparing notes, pushing a tag, publishing, and deploying are distinct external actions.
-3. Fetch `origin/dev` and `origin/main`, require a clean tree, and record the source git SHA.
-4. For production, run `node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=origin/main`. If it fails because main is behind approved product state, run `./scripts/promote-dev-to-main.sh <worktree-path>`, merge that reviewed PR, and fetch the new `origin/main` before release prep.
+3. Fetch `origin/dev` and `origin/main`, require a clean tree, and select one exact 40-character source dev commit SHA. That immutable SHA is the production snapshot. Later `dev` commits do not invalidate or expand it.
+4. For production, run `node scripts/validate-release-promotion.mjs --from-ref=<source-dev-sha> --to-ref=origin/main`. If it fails because main is behind the selected product snapshot, run `./scripts/promote-dev-to-main.sh <worktree-path> <branch-name> --snapshot-sha <source-dev-sha>`, merge that reviewed PR, and fetch the new `origin/main` before release prep. Never replace the selected SHA with a later live `origin/dev` tip unless the owner explicitly selects a new snapshot.
 5. If the release contains provider-visible work, confirm its artifact names the
    provider set, observable behavior, and decision state. A
    `behavior_approved` artifact must carry the owner approval reference for that
@@ -74,7 +80,7 @@ through, not a reason to hand the release back.
 
 ## Prepare and publish
 
-1. Create a fresh `chore/release-<version>` worktree with `./scripts/worktree-add.sh <worktree-path> -b chore/release-<version> origin/main --target shared` for production, or use `origin/dev` for dev. Run `./scripts/release.sh` for production or `./scripts/release.sh --channel=dev` for dev. The script accepts only numeric CalVer with the one exact `-dev` tag suffix, updates package versions, records the source product commit and fixed promoted dev snapshot in the production release artifact, generates release-note artifacts, commits the draft, and refuses a stale or incorrect base.
+1. Create a fresh `chore/release-<version>` worktree with `./scripts/worktree-add.sh <worktree-path> -b chore/release-<version> origin/main --target shared` for production, or use `origin/dev` for dev. Run `./scripts/release.sh --promoted-dev-sha=<source-dev-sha>` for production or `./scripts/release.sh --channel=dev` for dev. The script accepts only numeric CalVer with the one exact `-dev` tag suffix, updates package versions, records the source product commit and fixed promoted dev snapshot in the production release artifact, generates release-note artifacts, commits the draft, and refuses a stale or incorrect base. Production prep validates against the selected immutable SHA rather than the moving `origin/dev` branch.
    **Run the script. Do not bump versions by hand.** The tag carries `-dev`; the five version files carry plain CalVer with no suffix (v26.7.1501-dev shipped `26.7.1501` in `package.json`). Writing the tag string into the version files makes `validate-release-identity` reject the publish on all five, and hand-editing product files after the notes are generated makes it reject again for "product files changed after release notes were prepared". `release.sh` gets both right and leaves an already-approved release file untouched, so it is safe to re-run to repair a botched prep.
 2. Review `source.libraryCoreActivation` in the generated release JSON before
    approving the release. The generator selects the exact immutable

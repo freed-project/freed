@@ -207,6 +207,52 @@ test("validate-release-promotion fails when main is stale on product files", (t)
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
 });
 
+test("an immutable promoted dev snapshot stays valid after dev advances", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'approved snapshot';\n",
+  );
+  commitAll(cwd, "approved snapshot");
+  const snapshotSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'approved snapshot';\n",
+  );
+  commitAll(cwd, "promote approved snapshot");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'later development';\n",
+  );
+  commitAll(cwd, "later dev change");
+  updateOriginRef(cwd, "dev");
+
+  const fixedSnapshot = runNode(VALIDATE_RELEASE_PROMOTION, [
+    `--cwd=${cwd}`,
+    `--from-ref=${snapshotSha}`,
+    "--to-ref=main",
+  ]);
+  assert.equal(fixedSnapshot.status, 0, fixedSnapshot.stderr);
+
+  const movingTip = runNode(VALIDATE_RELEASE_PROMOTION, [
+    `--cwd=${cwd}`,
+    "--from-ref=origin/dev",
+    "--to-ref=main",
+  ]);
+  assert.equal(movingTip.status, 1);
+  assert.match(movingTip.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
 test("prepare-release-promotion copies the dev product snapshot across squashed history", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));

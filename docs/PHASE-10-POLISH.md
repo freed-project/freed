@@ -455,7 +455,7 @@ Reward security researchers for responsible disclosure.
 | ----- | ---------------------------------------- | ---------- |
 | 10.19 | Discord server setup                     | Low        |
 | 10.20 | Bug bounty program                       | Medium     |
-| 10.21 | Release automation                       | Medium     | ✓ Complete (reviewed release prep, in-band current-task owner approval, protected branch promotion, dedicated release App provisioning, root-owned native tag publication, split tag rulesets, and fail-closed release identity checks) |
+| 10.21 | Release automation                       | Medium     | ✓ Complete (reviewed release prep, immutable dev snapshot promotion that permits ongoing development, release-card-free production PWA snapshot deployment, in-band current-task owner approval, protected branch promotion, dedicated release App provisioning, root-owned native tag publication, split tag rulesets, and fail-closed release identity checks) |
 | 10.22 | Documentation site                       | Medium     |
 | 10.28 | Primary automation host and task custody | Medium     | ✓ Complete (reviewed opaque host assignment, root-owned enrollment, nightly primary-host gate, one custodian heartbeat contract, and conservative external no-op archival)                                                              |
 | 10.29 | Task-scoped factory execution claims     | Medium     | ✓ Complete (single-manifest claims, exact retry receipts, conflict fencing, heartbeat custody, checkpoint-backed epoch transfer, exact release, and runtime-neutral draft-only pilot authority)                                         |
