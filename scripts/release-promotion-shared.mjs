@@ -40,6 +40,7 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/promote-dev-to-main.sh",
   "scripts/promote-dev-to-main.test.mjs",
   "scripts/release-governance.test.mjs",
+  "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
   "scripts/validate-main-pr.mjs",
 ];
