@@ -1,6 +1,7 @@
 import {
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
   LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES,
   parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
@@ -18,7 +19,8 @@ import type {
 } from "./library-core-immutable-publication.js";
 import { decodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
-export const LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT = 128;
+export const LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT =
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT = 2_097_152;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT = 131_072;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_LIMIT = 8_192;

@@ -2,6 +2,7 @@ import {
   createLibraryCoreImmutableObjectKey,
   createLibraryCoreNormalizedCheckpointDigestAccumulatorV2,
   encodeLibraryCoreCanonicalValue,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
@@ -44,6 +45,10 @@ import type {
 import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
 const NORMALIZED_CHECKPOINT_PAGE_LIMIT = 8_192;
+const NORMALIZED_CHECKPOINT_PUBLICATION_PAGE_MAXIMUM_RECORDS = Math.min(
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+);
 
 export interface LibraryCoreNormalizedCheckpointImportWriterV2 {
   prepareImport?(
@@ -281,7 +286,8 @@ export async function* prepareLibraryCoreNormalizedCheckpointPagesV2(
           LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
         maximumRecordBytes:
           LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
-        maximumRecords: LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+        maximumRecords:
+          NORMALIZED_CHECKPOINT_PUBLICATION_PAGE_MAXIMUM_RECORDS,
         recordIdentity(value) {
           return libraryCoreNormalizedCheckpointRecordIdentityV2(
             parseLibraryCoreNormalizedCheckpointRecordV2(value),
@@ -342,7 +348,8 @@ export async function* prepareLibraryCoreNormalizedCheckpointPagesV2(
       encodedRecordByteLength(record);
     if (
       pageRecords.length > 0 &&
-      (pageRecords.length === LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS ||
+      (pageRecords.length ===
+        NORMALIZED_CHECKPOINT_PUBLICATION_PAGE_MAXIMUM_RECORDS ||
         decodedPageBytes + frameBytes >
           LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES)
     ) {
