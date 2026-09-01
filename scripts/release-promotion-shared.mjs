@@ -34,6 +34,19 @@ export const FORBIDDEN_MAIN_PR_PREFIXES = ["website/"];
 
 export const PROMOTION_WEBSITE_CONFIG_FILES = ["website/next.config.ts"];
 
+export const PROMOTION_CONTROL_FILES = [
+  ".github/workflows/ci.yml",
+  "docs/RELEASE-SECRETS.md",
+  "scripts/deploy-pwa-production-snapshot.sh",
+  "scripts/promote-dev-to-main.sh",
+  "scripts/promote-dev-to-main.test.mjs",
+  "scripts/release-governance.test.mjs",
+  "scripts/release-promotion-shared.mjs",
+  "scripts/release-promotion.test.mjs",
+  "scripts/release.sh",
+  "scripts/validate-main-pr.mjs",
+];
+
 export const PROMOTION_BRANCH_PATTERN =
   /^chore\/promote-dev-to-main(?:-[a-z0-9._-]+)?$/;
 export const RELEASE_PREP_BRANCH_PATTERN = /^chore\/release-[a-z0-9._-]+$/;
@@ -103,6 +116,10 @@ export function isPromotionScopeFile(filePath) {
   );
 }
 
+export function isPromotionControlFile(filePath) {
+  return PROMOTION_CONTROL_FILES.includes(filePath);
+}
+
 export function listChangedFiles({
   fromRef,
   toRef,
@@ -136,6 +153,7 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
 
   return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles]).filter(
     (filePath) => {
+      if (isPromotionControlFile(filePath)) return false;
       if (isReleaseOnlyFile(filePath)) return false;
       if (filePath !== CARGO_LOCK_PATH) return true;
       return !isCargoLockReleaseOnlyChange({ fromRef, toRef, cwd });
@@ -167,7 +185,7 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     ...promotionScopeFiles,
     ...websiteConfigFiles,
     ...releaseNoteFiles,
-  ]);
+  ]).filter((filePath) => !isPromotionControlFile(filePath));
 }
 
 export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
@@ -197,7 +215,7 @@ export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
     ...promotionScopeFiles,
     ...websiteConfigFiles,
     ...releaseNoteFiles,
-  ]);
+  ]).filter((filePath) => !isPromotionControlFile(filePath));
 }
 
 export function listComparisonFiles({ baseRef, headRef, cwd }) {

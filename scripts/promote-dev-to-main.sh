@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: ./scripts/promote-dev-to-main.sh <worktree-path> [<branch-name>] [--provider-risk-review-artifact <path> | --provider-risk-approval-file <path>]" >&2
+  echo "Usage: ./scripts/promote-dev-to-main.sh <worktree-path> [<branch-name>] [--snapshot-sha <40-hex-sha>] [--provider-risk-review-artifact <path> | --provider-risk-approval-file <path>]" >&2
   exit 1
 fi
 
@@ -12,6 +12,7 @@ shift
 BRANCH_NAME=""
 PROVIDER_RISK_APPROVAL_FILE=""
 PROVIDER_RISK_REVIEW_ARTIFACT=""
+SNAPSHOT_SHA_INPUT=""
 if [[ $# -gt 0 && "$1" != --* ]]; then
   BRANCH_NAME="$1"
   shift
@@ -19,6 +20,11 @@ fi
 BRANCH_NAME="${BRANCH_NAME:-chore/promote-dev-to-main-$(date +%Y%m%d-%H%M%S)}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --snapshot-sha)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --snapshot-sha requires a 40-character commit SHA." >&2; exit 1; }
+      SNAPSHOT_SHA_INPUT="$2"
+      shift 2
+      ;;
     --provider-risk-review-artifact)
       [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-review-artifact requires a path." >&2; exit 1; }
       PROVIDER_RISK_REVIEW_ARTIFACT="$2"
@@ -66,8 +72,22 @@ fi
 
 /usr/bin/git fetch origin dev main
 
-if "${NODE_BIN}" "${SCRIPT_DIR}/validate-release-promotion.mjs" --from-ref=origin/dev --to-ref=origin/main >/dev/null 2>&1; then
-  echo "origin/main already matches origin/dev on product-owned paths."
+if [[ -z "${SNAPSHOT_SHA_INPUT}" ]]; then
+  SNAPSHOT_SHA_INPUT="$(/usr/bin/git rev-parse origin/dev)"
+fi
+if [[ ! "${SNAPSHOT_SHA_INPUT}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Error: --snapshot-sha must be one full 40-character commit SHA." >&2
+  exit 1
+fi
+SNAPSHOT_SHA="$(/usr/bin/git rev-parse "${SNAPSHOT_SHA_INPUT}^{commit}")"
+if [[ "${SNAPSHOT_SHA}" != "${SNAPSHOT_SHA_INPUT}" ]]; then
+  echo "Error: --snapshot-sha must name one exact commit without abbreviation." >&2
+  exit 1
+fi
+
+if "${NODE_BIN}" "${SCRIPT_DIR}/validate-release-promotion.mjs" --from-ref="${SNAPSHOT_SHA}" --to-ref=origin/main >/dev/null 2>&1; then
+  echo "origin/main already matches immutable dev snapshot ${SNAPSHOT_SHA} on product-owned paths."
+  echo "Prepare production with: ./scripts/release.sh --promoted-dev-sha=${SNAPSHOT_SHA}"
   exit 0
 fi
 
@@ -98,7 +118,7 @@ else
     /usr/bin/git fetch origin dev main
     "${NODE_BIN}" "${SCRIPT_DIR}/prepare-release-promotion.mjs" \
       --cwd="${WORKTREE_PATH}" \
-      --from-ref=origin/dev \
+      --from-ref="${SNAPSHOT_SHA}" \
       --base-ref=origin/main
 
     if /usr/bin/git diff --cached --quiet; then
@@ -106,13 +126,20 @@ else
       exit 1
     fi
 
-    /usr/bin/git commit -m "${TITLE}"
+    /usr/bin/git commit -m "${TITLE}" -m "Freed-Dev-Snapshot: ${SNAPSHOT_SHA}"
   )
 fi
 
 (
   cd "${WORKTREE_PATH}"
   /usr/bin/git fetch origin dev main
+  RECORDED_SNAPSHOT="$(/usr/bin/git show -s --format='%(trailers:key=Freed-Dev-Snapshot,valueonly)' HEAD)"
+  if [[ -z "${RECORDED_SNAPSHOT}" ]]; then
+    /usr/bin/git commit --amend --no-edit --trailer "Freed-Dev-Snapshot: ${SNAPSHOT_SHA}"
+  elif [[ "${RECORDED_SNAPSHOT}" != "${SNAPSHOT_SHA}" ]]; then
+    echo "Error: promotion commit records immutable dev snapshot ${RECORDED_SNAPSHOT}, not requested snapshot ${SNAPSHOT_SHA}." >&2
+    exit 1
+  fi
   MAIN_SHA="$(/usr/bin/git rev-parse origin/main)"
   HEAD_PARENT="$(/usr/bin/git rev-parse HEAD^)"
   if [[ "${HEAD_PARENT}" != "${MAIN_SHA}" ]]; then
@@ -126,22 +153,24 @@ fi
   "${NODE_BIN}" scripts/validate-main-pr.mjs \
     --base-ref=origin/main \
     --head-ref=HEAD \
-    --head-branch="${BRANCH_NAME}"
+    --head-branch="${BRANCH_NAME}" \
+    --snapshot-ref="${SNAPSHOT_SHA}"
+  "${NODE_BIN}" scripts/validate-release-promotion.mjs \
+    --from-ref="${SNAPSHOT_SHA}" \
+    --to-ref=HEAD
 
   BODY_FILE="$(mktemp)"
   trap 'rm -f "${BODY_FILE}"' EXIT
-  DEV_SHA="$(/usr/bin/git rev-parse origin/dev)"
-
   cat > "${BODY_FILE}" <<EOF
 (AI Generated).
 
 ## Summary
-- Promote the current \`origin/dev\` product snapshot into \`main\` before a production release.
+- Promote one immutable dev product snapshot into \`main\` before a production release.
 - Base main SHA: \`${MAIN_SHA}\`
-- Source dev SHA: \`${DEV_SHA}\`
+- Source dev SHA: \`${SNAPSHOT_SHA}\`
 
 ## Testing
-- \`node scripts/validate-main-pr.mjs --base-ref=origin/main --head-ref=HEAD --head-branch=${BRANCH_NAME}\`
+- \`node scripts/validate-main-pr.mjs --base-ref=origin/main --head-ref=HEAD --head-branch=${BRANCH_NAME} --snapshot-ref=${SNAPSHOT_SHA}\`
 - CI
 EOF
 
@@ -161,3 +190,4 @@ EOF
 
 echo "Promotion PR created from ${BRANCH_NAME}."
 echo "After it merges, refresh origin/main. Create the production release-prep branch from that exact commit."
+echo "Prepare production with: ./scripts/release.sh --promoted-dev-sha=${SNAPSHOT_SHA}"

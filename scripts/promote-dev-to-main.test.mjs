@@ -65,7 +65,7 @@ async function existingPromotionFixture(t) {
   await fs.copyFile(path.join(sourceRoot, ".nvmrc"), path.join(repo, ".nvmrc"));
   await fs.writeFile(
     path.join(repo, "scripts/validate-release-promotion.mjs"),
-    "process.exit(1);\n",
+    'process.exit(process.argv.includes("--to-ref=origin/main") ? 1 : 0);\n',
   );
   await fs.writeFile(
     path.join(repo, "scripts/validate-main-pr.mjs"),
@@ -254,7 +254,14 @@ test("promotion forwards one provider review artifact to draft publication", asy
       "--base-ref=origin/main",
       "--head-ref=HEAD",
       `--head-branch=${fixture.branch}`,
+      `--snapshot-ref=${mustRun("git", ["rev-parse", "origin/dev"], { cwd: fixture.repo }).stdout.trim()}`,
     ],
+  );
+  assert.match(
+    mustRun("git", ["show", "-s", "--format=%B", "HEAD"], {
+      cwd: fixture.worktree,
+    }).stdout,
+    /Freed-Dev-Snapshot: [0-9a-f]{40}/,
   );
 });
 
