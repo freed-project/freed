@@ -1112,11 +1112,13 @@ if [[ "${BASE_BRANCH}" == "main" ]]; then
     echo "Error: governed main head changed after broker validation." >&2
     exit 1
   fi
+  PROMOTION_SNAPSHOT_REF="$("${GIT_BIN}" show -s --format='%(trailers:key=Freed-Dev-Snapshot,valueonly)' "${PUBLISH_HEAD}")"
   "${NODE_BIN}" "${SCRIPT_DIR}/validate-main-pr.mjs" \
     --cwd="$("${GIT_BIN}" rev-parse --show-toplevel)" \
     --base-ref=origin/main \
     --head-ref="${PUBLISH_HEAD}" \
-    --head-branch="${BRANCH_NAME}"
+    --head-branch="${BRANCH_NAME}" \
+    --snapshot-ref="${PROMOTION_SNAPSHOT_REF}"
 elif ${TRUSTED_PUBLISH_MODE} && [[ -n "${SCOPE_HEAD_SHA}" ]]; then
   echo "Error: only governed main capabilities may pre-bind a publish head." >&2
   exit 1

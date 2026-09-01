@@ -157,6 +157,8 @@ test("the promotion control definition preserves itself", () => {
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release-promotion-shared.mjs"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/deploy-pwa-production-snapshot.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release.sh"));
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/worktree-publish.sh"));
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/trusted-worktree-publish.sh"));
 });
 
 test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
