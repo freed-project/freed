@@ -286,6 +286,34 @@ function validateLocalSampleAuthority(
   });
 }
 
+function decodeStoredLocalSampleAuthority(
+  value: unknown,
+): StoredLocalSampleAuthorityRecord {
+  try {
+    return validateLocalSampleAuthority(value);
+  } catch (error) {
+    const legacy = value as Record<string, unknown>;
+    if (
+      legacy.key === LOCAL_SAMPLE_AUTHORITY_KEY &&
+      legacy.schemaVersion === 1 &&
+      isLibraryCoreLowercaseHex64(legacy.libraryId) &&
+      isLibraryCoreLowercaseHex64(legacy.epochId) &&
+      isLibraryCoreLowercaseHex64(legacy.authorityKeyId) &&
+      isLibraryCoreEd25519PublicKeyHex(legacy.authorityPublicKey) &&
+      legacy.authorityPrivateKey instanceof CryptoKey &&
+      legacy.authorityPrivateKey.type === "private" &&
+      !legacy.authorityPrivateKey.extractable &&
+      legacy.authorityPrivateKey.usages.includes("sign") &&
+      legacy.authorityPrivateKey.algorithm.name === "Ed25519"
+    ) {
+      throw new PwaLibraryCoreLegacyLocalSampleAuthorityError(
+        legacy.libraryId,
+      );
+    }
+    throw error;
+  }
+}
+
 function publicLocalSampleAuthority(
   stored: StoredLocalSampleAuthorityRecord,
 ): PwaLibraryCoreLocalSampleAuthority {
@@ -319,47 +347,54 @@ async function readStoredLocalSampleAuthority(): Promise<StoredLocalSampleAuthor
     );
     await done;
     if (stored === undefined) return null;
-    try {
-      return validateLocalSampleAuthority(stored);
-    } catch (error) {
-      const legacy = stored as Record<string, unknown>;
-      if (
-        legacy.key === LOCAL_SAMPLE_AUTHORITY_KEY &&
-        legacy.schemaVersion === 1 &&
-        isLibraryCoreLowercaseHex64(legacy.libraryId) &&
-        isLibraryCoreLowercaseHex64(legacy.epochId) &&
-        isLibraryCoreLowercaseHex64(legacy.authorityKeyId) &&
-        isLibraryCoreEd25519PublicKeyHex(legacy.authorityPublicKey) &&
-        legacy.authorityPrivateKey instanceof CryptoKey &&
-        legacy.authorityPrivateKey.type === "private" &&
-        !legacy.authorityPrivateKey.extractable &&
-        legacy.authorityPrivateKey.usages.includes("sign") &&
-        legacy.authorityPrivateKey.algorithm.name === "Ed25519"
-      ) {
-        throw new PwaLibraryCoreLegacyLocalSampleAuthorityError(
-          legacy.libraryId,
-        );
-      }
-      throw error;
-    }
+    return decodeStoredLocalSampleAuthority(stored);
   } finally {
     database.close();
   }
 }
 
-async function writeStoredLocalSampleAuthority(
-  stored: StoredLocalSampleAuthorityRecord,
-): Promise<void> {
+async function storeLocalSampleAuthorityIfAbsent(
+  candidate: StoredLocalSampleAuthorityRecord,
+): Promise<StoredLocalSampleAuthorityRecord> {
   const database = await openKeyDatabase();
   try {
     const transaction = database.transaction(
       LOCAL_SAMPLE_AUTHORITY_STORE,
       "readwrite",
     );
-    transaction
-      .objectStore(LOCAL_SAMPLE_AUTHORITY_STORE)
-      .put(validateLocalSampleAuthority(stored));
-    await transactionDone(transaction);
+    const done = transactionDone(transaction);
+    const selected = new Promise<StoredLocalSampleAuthorityRecord>(
+      (resolve, reject) => {
+        const store = transaction.objectStore(LOCAL_SAMPLE_AUTHORITY_STORE);
+        const read = store.get(LOCAL_SAMPLE_AUTHORITY_KEY);
+        read.addEventListener(
+          "success",
+          () => {
+            try {
+              if (read.result === undefined) {
+                store.add(candidate);
+                resolve(validateLocalSampleAuthority(candidate));
+                return;
+              }
+              resolve(decodeStoredLocalSampleAuthority(read.result));
+            } catch (error) {
+              transaction.abort();
+              reject(error);
+            }
+          },
+          { once: true },
+        );
+        read.addEventListener(
+          "error",
+          () => {
+            reject(read.error ?? new Error("Browser key request failed"));
+          },
+          { once: true },
+        );
+      },
+    );
+    const [stored] = await Promise.all([selected, done]);
+    return stored;
   } finally {
     database.close();
   }
@@ -431,9 +466,13 @@ export async function createPwaLibraryCoreLocalSampleAuthority(): Promise<PwaLib
     sourceRevision: 0,
     status: "preparing",
   }) satisfies StoredLocalSampleAuthorityRecord;
-  await writeStoredLocalSampleAuthority(created);
+  const stored = await storeLocalSampleAuthorityIfAbsent(created);
   const readback = await readStoredLocalSampleAuthority();
-  if (!readback || readback.libraryId !== created.libraryId) {
+  if (
+    !readback ||
+    readback.libraryId !== stored.libraryId ||
+    readback.authorityKeyId !== stored.authorityKeyId
+  ) {
     throw new Error("PWA local sample authority readback changed");
   }
   return publicLocalSampleAuthority(readback);
