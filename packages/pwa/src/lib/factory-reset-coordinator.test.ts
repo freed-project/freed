@@ -235,6 +235,76 @@ describe("PWA cross-tab factory reset", () => {
     reloadedRuntime.dispose();
   });
 
+  it("recovers a malformed reload envelope without opening the reset boundary", async () => {
+    const storage = new TestStorage();
+    const session = new TestStorage();
+    const bus = new TestBus();
+    const reload = vi.fn();
+    const tombstone = {
+      version: 1 as const,
+      resetId: "reset-malformed-envelope",
+      generation: 1,
+      startedAt: 1,
+    };
+    storage.setItem("freed_pwa_installation_generation", "1");
+    storage.setItem(
+      "freed_pwa_factory_reset_tombstone",
+      JSON.stringify(tombstone),
+    );
+    storage.setItem(
+      "freed_pwa_factory_reset_reload_envelope",
+      JSON.stringify({ version: 1 }),
+    );
+    session.setItem(
+      "freed_pwa_factory_reset_reload",
+      JSON.stringify({
+        resetId: tombstone.resetId,
+        generation: tombstone.generation,
+      }),
+    );
+
+    let recoveryRuntime!: ReturnType<typeof createPwaFactoryResetCoordinator>;
+    expect(() => {
+      recoveryRuntime = createPwaFactoryResetCoordinator({
+        storage,
+        sessionStorage: session,
+        transport: bus.createTransport(),
+        lockManager: immediateLockManager,
+        reload,
+        randomId: () => "malformed-envelope-recovery",
+      });
+    }).not.toThrow();
+
+    expect(isFactoryResetInProgress()).toBe(true);
+    expect(
+      storage.getItem("freed_pwa_runtime_malformed-envelope-recovery"),
+    ).toBeNull();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(
+      JSON.parse(storage.getItem("freed_pwa_factory_reset_reload_envelope")!),
+    ).toEqual({
+      version: 1,
+      tombstone,
+      initiatorRuntimeId: "malformed-envelope-recovery",
+    });
+    expect(session.getItem("freed_pwa_factory_reset_reload")).not.toBeNull();
+    recoveryRuntime.dispose();
+
+    const reloadedRuntime = createPwaFactoryResetCoordinator({
+      storage,
+      sessionStorage: session,
+      transport: bus.createTransport(),
+      lockManager: immediateLockManager,
+      randomId: () => "malformed-envelope-reloaded",
+    });
+
+    expect(storage.getItem("freed_pwa_factory_reset_tombstone")).toBeNull();
+    expect(
+      storage.getItem("freed_pwa_factory_reset_reload_envelope"),
+    ).toBeNull();
+    reloadedRuntime.dispose();
+  });
+
   it("waits for the active reset lock before recovering a missing envelope", async () => {
     const storage = new TestStorage();
     const session = new TestStorage();
