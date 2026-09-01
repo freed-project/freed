@@ -55,6 +55,7 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import { signPwaLibraryCoreFollowerOperation } from "./library-core-browser-key-vault";
+import { isPwaLibraryCoreSqliteWorkerUnavailableError } from "./library-core-sqlite-client";
 import {
   commitPwaFollowerIntent,
   readPwaFollowerMutationContext,
@@ -125,7 +126,7 @@ async function commitFollowerTransaction(
   try {
     receipt = await commitPwaFollowerIntent(commit);
   } catch (error) {
-    if (!String(error).includes("request timed out")) throw error;
+    if (!isPwaLibraryCoreSqliteWorkerUnavailableError(error)) throw error;
     receipt = await commitPwaFollowerIntent(commit);
   }
   if (
