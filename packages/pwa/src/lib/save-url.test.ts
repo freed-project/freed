@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockEnqueueCapture = vi.fn(async () => undefined);
+const mockEnqueueAnnotations = vi.fn(async () => undefined);
+const mockEnqueueRemove = vi.fn(async () => undefined);
 
 vi.mock("@freed/capture-save/normalize", () => ({
   buildSavedFeedItem: (metadata: { url: string }, _content: null, options: { tags?: string[] }) => ({
@@ -16,6 +18,8 @@ vi.mock("@freed/capture-save/normalize", () => ({
 
 vi.mock("./library-core-runtime", () => ({
   enqueuePwaLibraryCoreFeedItemCapture: mockEnqueueCapture,
+  enqueuePwaLibraryCoreFeedItemAnnotationSets: mockEnqueueAnnotations,
+  enqueuePwaLibraryCoreFeedItemRemove: mockEnqueueRemove,
 }));
 
 describe("saveUrlInPwa", () => {
@@ -28,6 +32,7 @@ describe("saveUrlInPwa", () => {
     const { saveUrlInPwa } = await import("./save-url");
 
     await expect(saveUrlInPwa("https://example.com/article", {
+      notes: "Follow up",
       tags: ["research"],
     })).resolves.toEqual({ globalId: "saved:abc123" });
     expect(mockEnqueueCapture).toHaveBeenCalledWith(
@@ -37,6 +42,13 @@ describe("saveUrlInPwa", () => {
         userState: expect.objectContaining({ tags: ["research"] }),
       }),
     );
+    expect(mockEnqueueAnnotations).toHaveBeenCalledWith([
+      expect.objectContaining({
+        entityId: "saved:abc123",
+        highlights: [expect.objectContaining({ note: "Follow up" })],
+        tags: ["research"],
+      }),
+    ]);
     expect(fetch).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

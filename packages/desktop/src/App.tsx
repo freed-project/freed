@@ -155,7 +155,11 @@ import {
 } from "@freed/ui/lib/factory-reset";
 import { getDesktopFactoryResetFailureRecovery } from "./lib/factory-reset-recovery";
 import { resetThemePreference } from "@freed/ui/lib/theme";
-import { saveUrlInDesktop } from "./lib/save-url";
+import {
+  previewSaveUrlInDesktop,
+  saveUrlInDesktop,
+  updateSavedContentInDesktop,
+} from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
@@ -1474,6 +1478,8 @@ function App() {
       saveUrl: async (url, options) => {
         return saveUrlInDesktop(url, options);
       },
+      previewSaveUrl: previewSaveUrlInDesktop,
+      updateSavedContent: updateSavedContentInDesktop,
       importMarkdown: importMarkdownFiles,
       exportMarkdown: () => exportLibrary(scanLibraryCoreItemsForDesktop),
       retryCloudProvider,

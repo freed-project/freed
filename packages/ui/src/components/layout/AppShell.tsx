@@ -123,7 +123,9 @@ export function AppShell({ children }: AppShellProps) {
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
   const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
   const savedContentInitialUrl = useCommandSurfaceStore((s) => s.savedContentInitialUrl);
+  const savedContentEditItem = useCommandSurfaceStore((s) => s.savedContentEditItem);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
+  const openSavedContentEditor = useCommandSurfaceStore((s) => s.openSavedContentEditor);
   const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
   const [savedContentError, setSavedContentError] = useState("");
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
@@ -175,14 +177,20 @@ export function AppShell({ children }: AppShellProps) {
       setSavedContentError(detail?.errorMessage ?? "Freed could not save details for this URL.");
       openSavedContentDialog(detail?.initialUrl);
     };
+    const handleEditSavedContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ item?: import("@freed/shared").FeedItem }>).detail;
+      if (detail?.item) openSavedContentEditor(detail.item);
+    };
 
     window.addEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
     window.addEventListener("freed:save-content-details-error", handleSaveDetailsError);
+    window.addEventListener("freed:edit-saved-content", handleEditSavedContent);
     return () => {
       window.removeEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
       window.removeEventListener("freed:save-content-details-error", handleSaveDetailsError);
+      window.removeEventListener("freed:edit-saved-content", handleEditSavedContent);
     };
-  }, [openSavedContentDialog]);
+  }, [openSavedContentDialog, openSavedContentEditor]);
 
   const handleCloseSavedContentDialog = useCallback(() => {
     setSavedContentError("");
@@ -597,6 +605,7 @@ export function AppShell({ children }: AppShellProps) {
         <SavedContentDialog
           open={savedContentOpen}
           initialUrl={savedContentInitialUrl}
+          editItem={savedContentEditItem}
           initialError={savedContentError}
           onClose={handleCloseSavedContentDialog}
         />

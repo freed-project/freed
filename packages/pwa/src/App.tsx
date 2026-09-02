@@ -64,7 +64,11 @@ import {
   buildPwaReleaseChannelUrl,
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
-import { saveUrlInPwa } from "./lib/save-url";
+import {
+  previewSaveUrlInPwa,
+  saveUrlInPwa,
+  updateSavedContentInPwa,
+} from "./lib/save-url";
 import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -525,6 +529,8 @@ function App() {
       saveUrl: IS_DEMO
         ? undefined
         : async (url, options) => saveUrlInPwa(url, options),
+      previewSaveUrl: IS_DEMO ? undefined : previewSaveUrlInPwa,
+      updateSavedContent: IS_DEMO ? undefined : updateSavedContentInPwa,
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
         try {
