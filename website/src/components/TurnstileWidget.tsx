@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 
-const TURNSTILE_UNAVAILABLE_TOKEN = "turnstile-unavailable";
-
 declare global {
   interface Window {
     turnstile?: {
@@ -14,6 +12,7 @@ declare global {
           sitekey: string;
           theme?: "light" | "dark" | "auto";
           size?: "normal" | "compact" | "flexible";
+          action?: string;
           callback?: (token: string) => void;
           "expired-callback"?: () => void;
           "error-callback"?: () => void;
@@ -32,6 +31,7 @@ interface TurnstileWidgetProps {
   resetKey: number;
   onTokenChange: (token: string) => void;
   disabled?: boolean;
+  action?: string;
 }
 
 export default function TurnstileWidget({
@@ -39,6 +39,7 @@ export default function TurnstileWidget({
   resetKey,
   onTokenChange,
   disabled = false,
+  action,
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -67,7 +68,7 @@ export default function TurnstileWidget({
 
   const markFailed = useCallback(() => {
     clearVerificationTimer();
-    emitTokenChange(TURNSTILE_UNAVAILABLE_TOKEN);
+    emitTokenChange("");
     setVerificationState("failed");
   }, [clearVerificationTimer, emitTokenChange]);
 
@@ -92,7 +93,12 @@ export default function TurnstileWidget({
   }, []);
 
   useEffect(() => {
-    if (!siteKey || !scriptReady || !containerRef.current || widgetIdRef.current) {
+    if (
+      !siteKey ||
+      !scriptReady ||
+      !containerRef.current ||
+      widgetIdRef.current
+    ) {
       return;
     }
 
@@ -106,6 +112,7 @@ export default function TurnstileWidget({
       sitekey: siteKey,
       theme: "auto",
       size: "flexible",
+      action,
       callback: (token) => {
         clearVerificationTimer();
         setVerificationState("verified");
@@ -135,6 +142,7 @@ export default function TurnstileWidget({
     retryKey,
     scriptReady,
     siteKey,
+    action,
   ]);
 
   useEffect(() => {
@@ -164,7 +172,7 @@ export default function TurnstileWidget({
       <div ref={containerRef} className="min-h-[68px]" />
       {verificationState === "failed" ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-relaxed text-[rgb(var(--theme-feedback-danger-rgb))]">
-          <span>Human check is taking too long. Try again, or submit below.</span>
+          <span>Human check is taking too long.</span>
           <button
             type="button"
             onClick={rerenderWidget}

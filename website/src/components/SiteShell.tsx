@@ -7,13 +7,11 @@ import Footer from "@/components/Footer";
 import NewsletterModal from "@/components/NewsletterModal";
 import BackgroundGradients from "@/components/BackgroundGradients";
 
-export default function SiteShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isQrGallery = pathname === "/qr";
+  const isNewsletterEmbed = pathname === "/newsletter/embed";
+  const isStandaloneSurface = isQrGallery || isNewsletterEmbed;
 
   useEffect(() => {
     try {
@@ -29,22 +27,22 @@ export default function SiteShell({
 
   return (
     <>
-      {!isQrGallery && <Navigation />}
+      {!isStandaloneSurface && <Navigation />}
 
       <div className="theme-shell flex flex-col overflow-hidden relative">
         <BackgroundGradients />
 
         <main
           id="main-content"
-          className={`relative z-10 flex-grow ${isQrGallery ? "min-h-screen" : ""}`}
+          className={`relative z-10 flex-grow ${isStandaloneSurface ? "min-h-screen" : ""}`}
         >
           {children}
         </main>
 
-        {!isQrGallery && <Footer />}
+        {!isStandaloneSurface && <Footer />}
       </div>
 
-      {!isQrGallery && <NewsletterModal />}
+      {!isStandaloneSurface && <NewsletterModal />}
     </>
   );
 }

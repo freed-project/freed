@@ -13,6 +13,7 @@
     "start": "next start",
     "generate-feed": "npx tsx scripts/generate-feed.ts",
     "lint": "eslint .",
+    "test:newsletter": "npx tsx src/app/api/subscribe/newsletter-security.test.ts",
     "test:e2e": "node ../node_modules/playwright/cli.js test -c playwright.config.ts"
   },
   "dependencies": {
