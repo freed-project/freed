@@ -1,7 +1,6 @@
 ---
 name: freed-stability-controller
 description: Reconcile Freed stability observations, tasks, approvals, releases, soaks, and outcomes into one governed lifecycle. Use when coordinating the continuous background agents, deduplicating repeated findings, selecting the next stability action, advancing task state, or deciding that no fresh actionable work exists. This skill coordinates authority and handoffs but does not implement product code.
-disable-model-invocation: true
 ---
 
 # Stability Controller

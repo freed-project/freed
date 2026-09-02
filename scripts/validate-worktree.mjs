@@ -322,23 +322,32 @@ export function collectChangedFiles({ mode, changedFiles }) {
 }
 
 export function isWebsiteSurface(filePath) {
-  return filePath.startsWith("website/");
+  return (
+    filePath.startsWith("website/") && !isAgentInstructionFilePath(filePath)
+  );
 }
 
 export function isSharedSurface(filePath) {
   return (
-    filePath.startsWith("packages/shared/") ||
-    filePath.startsWith("packages/sync/") ||
-    filePath.startsWith("packages/ui/")
+    !isAgentInstructionFilePath(filePath) &&
+    (filePath.startsWith("packages/shared/") ||
+      filePath.startsWith("packages/sync/") ||
+      filePath.startsWith("packages/ui/"))
   );
 }
 
 export function isDesktopSurface(filePath) {
-  return filePath.startsWith("packages/desktop/");
+  return (
+    filePath.startsWith("packages/desktop/") &&
+    !isAgentInstructionFilePath(filePath)
+  );
 }
 
 export function isPwaSurface(filePath) {
-  return filePath.startsWith("packages/pwa/");
+  return (
+    filePath.startsWith("packages/pwa/") &&
+    !isAgentInstructionFilePath(filePath)
+  );
 }
 
 export function isPwaOpfsDurabilityPath(filePath) {
@@ -453,6 +462,20 @@ export function isSkillValidationPath(filePath) {
     filePath.startsWith(".agents/skills/") ||
     filePath === "scripts/validate-skills.mjs" ||
     filePath === "scripts/validate-skills.test.mjs"
+  );
+}
+
+function isAgentInstructionFilePath(filePath) {
+  return /(?:^|\/)AGENTS(?:\.override)?\.md$/.test(filePath);
+}
+
+export function isAgentInstructionValidationPath(filePath) {
+  return (
+    isAgentInstructionFilePath(filePath) ||
+    filePath === "docs/AGENT-INSTRUCTIONS.md" ||
+    filePath === ".github/CODEOWNERS" ||
+    filePath === "scripts/validate-agent-instructions.mjs" ||
+    filePath === "scripts/validate-agent-instructions.test.mjs"
   );
 }
 
@@ -612,9 +635,7 @@ function socialProviderFocusedE2eCommand() {
 }
 
 function pwaTestCommands() {
-  return [
-    npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-  ];
+  return [npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa")];
 }
 
 function pwaOpfsDurabilityCommand() {
@@ -885,6 +906,11 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root build", ["run", "build"]),
       npmCommand("root typecheck", ["run", "typecheck"]),
       npmCommand("root lint", ["run", "lint"]),
+      npmCommand("agent instruction validation", [
+        "run",
+        "validate:agent-instructions",
+      ]),
+      npmCommand("skill validation", ["run", "validate:skills"]),
       npmCommand("website tests", ["run", "test"], "website"),
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
       npmCommand(
@@ -893,9 +919,7 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/library-service",
       ),
       ...pwaTestCommands(),
-      ...(shouldRunPwaOpfsDurability()
-        ? [pwaOpfsDurabilityCommand()]
-        : []),
+      ...(shouldRunPwaOpfsDurability() ? [pwaOpfsDurabilityCommand()] : []),
       npmCommand(
         "desktop unit tests",
         ["run", "test:unit"],
@@ -1040,35 +1064,41 @@ export function buildValidationPlan(mode, changedFiles) {
   }
 
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
-  const sharedPackageChanged = changedFiles.some((filePath) =>
+  const productFiles = changedFiles.filter(
+    (filePath) => !isAgentInstructionFilePath(filePath),
+  );
+  const sharedPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/shared/"),
   );
-  const syncPackageChanged = changedFiles.some((filePath) =>
+  const syncPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/sync/"),
   );
-  const libraryServicePackageChanged = changedFiles.some((filePath) =>
+  const libraryServicePackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/library-service/"),
   );
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
-  const libraryCoreNativeSurfaceChanged = changedFiles.some((filePath) =>
+  const libraryCoreNativeSurfaceChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/library-core-native/"),
   );
   const desktopNativeSurfaceChanged =
     libraryCoreNativeSurfaceChanged ||
-    changedFiles.some(isDesktopNativeSurface);
+    productFiles.some(isDesktopNativeSurface);
   const pwaSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
-  const pwaOpfsDurabilityChanged = changedFiles.some(isPwaOpfsDurabilityPath);
+  const pwaOpfsDurabilityChanged = productFiles.some(isPwaOpfsDurabilityPath);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
-  const releaseToolingChanged = changedFiles.some(
+  const releaseToolingChanged = productFiles.some(
     (filePath) =>
       filePath.startsWith("release-notes/") ||
       RELEASE_TOOLING_PATHS.has(filePath),
   );
-  const libraryCoreReleaseActivationChanged = changedFiles.some(
+  const libraryCoreReleaseActivationChanged = productFiles.some(
     isLibraryCoreReleaseActivationPath,
+  );
+  const agentInstructionValidationChanged = changedFiles.some(
+    isAgentInstructionValidationPath,
   );
   const skillValidationChanged = changedFiles.some(isSkillValidationPath);
   const releaseAdmissionChanged = changedFiles.some(isReleaseAdmissionPath);
@@ -1091,16 +1121,16 @@ export function buildValidationPlan(mode, changedFiles) {
   const stabilityStatusChanged = changedFiles.some(isStabilityStatusPath);
   const roadmapStatusChanged = changedFiles.some(isRoadmapStatusPath);
   const captureWorkspaces = unique(
-    changedFiles.map(captureWorkspaceForFile).filter(Boolean),
+    productFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
   const socialProviderOnlyChanged =
-    changedFiles.length > 0 &&
-    changedFiles.every(isSocialProviderFocusedSurface);
-  const providerVisibleChanged = changedFiles.some(isProviderVisiblePath);
-  const socialProviderVisibleChanged = changedFiles.some((filePath) =>
+    productFiles.length > 0 &&
+    productFiles.every(isSocialProviderFocusedSurface);
+  const providerVisibleChanged = productFiles.some(isProviderVisiblePath);
+  const socialProviderVisibleChanged = productFiles.some((filePath) =>
     providerIdsForPath(filePath).some((provider) => provider !== "other"),
   );
-  const desktopRustSurfaceChanged = changedFiles.some(
+  const desktopRustSurfaceChanged = productFiles.some(
     (filePath) =>
       filePath.startsWith("packages/desktop/src-tauri/") &&
       filePath.endsWith(".rs"),
@@ -1142,7 +1172,7 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
     );
-    return plan;
+    if (!agentInstructionValidationChanged) return plan;
   }
 
   if (providerVisibleChanged && socialProviderVisibleChanged) {
@@ -1280,6 +1310,23 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "lib", "github-release-publications.test.mjs"),
         path.join("scripts", "lib", "library-core-release-activation.test.mjs"),
         path.join("scripts", "validate-release-identity.test.mjs"),
+      ]),
+    );
+  }
+
+  if (agentInstructionValidationChanged) {
+    addCommand(
+      plan,
+      nodeCommand("agent instruction validation tests", [
+        "--test",
+        path.join("scripts", "validate-agent-instructions.test.mjs"),
+      ]),
+    );
+    addCommand(
+      plan,
+      npmCommand("agent instruction validation", [
+        "run",
+        "validate:agent-instructions",
       ]),
     );
   }

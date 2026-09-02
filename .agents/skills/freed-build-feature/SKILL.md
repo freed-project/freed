@@ -1,7 +1,6 @@
 ---
 name: freed-build-feature
 description: Build governed Freed product work in a worktree based on origin/dev, verify the runnable slice, and publish a correctly staged pull request to dev. Use for Desktop, PWA, shared packages, sync, capture, release tooling, product behavior, and product documentation. Also use for stability tasks that require a stable task identity, a measurable counter, native validation, or an installed-build verification handoff. Do not use for public website work targeting www.
-disable-model-invocation: true
 ---
 
 # Build Feature

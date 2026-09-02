@@ -1,7 +1,6 @@
 ---
 name: freed-provider-risk-review
 description: Prepare and verify the owner behavior gate for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing. Also use to classify a provider-visible path change that has no provider-observable behavior change. Preparing a review never grants live provider traffic.
-disable-model-invocation: true
 ---
 
 # Provider Risk Review

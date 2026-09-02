@@ -1,7 +1,6 @@
 ---
 name: freed-evidence-capture
 description: Preserve attributable, read-only evidence from a live Freed failure or baseline before changing the system. Use for freezes, crashes, sync stalls, memory growth, provider lifecycle failures, data-loss suspicions, and any rare or stateful incident where logs, process state, build identity, or local data could disappear after restart or repair.
-disable-model-invocation: true
 ---
 
 # Evidence Capture

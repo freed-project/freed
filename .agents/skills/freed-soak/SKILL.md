@@ -1,7 +1,6 @@
 ---
 name: freed-soak
 description: Run and judge an installed-build soak of Freed Desktop from terminal evidence. Use for release observation, overnight stability windows, or post-change verification. Require the canonical release-verifier lease, the exclusive collector session lock, event-derived build identity, immutable time bounds, source-health checks, comparable process generations, and explicit inconclusive results when identity or coverage is insufficient.
-disable-model-invocation: true
 ---
 
 # Soak

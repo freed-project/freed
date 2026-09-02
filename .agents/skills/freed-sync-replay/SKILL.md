@@ -1,7 +1,6 @@
 ---
 name: freed-sync-replay
 description: Reproduce Freed sync and provider-lifecycle failures with deterministic offline fixtures and fault injection. Use for Automerge worker, cloud merge, relay, scheduler, capture journal, timeout, retry, crash, wake, duplicate delivery, or corruption scenarios that should be tested without live provider traffic. Stop before any real provider navigation, request, cookie access, or cadence change.
-disable-model-invocation: true
 ---
 
 # Sync Replay

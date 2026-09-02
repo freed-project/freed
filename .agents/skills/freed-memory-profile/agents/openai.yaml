@@ -2,3 +2,6 @@ interface:
   display_name: "Freed Memory Profile"
   short_description: "Profile memory by comparable process generation"
   default_prompt: "Use $freed-memory-profile to measure this memory scenario across comparable process generations."
+
+policy:
+  allow_implicit_invocation: true
