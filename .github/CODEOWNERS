@@ -1,6 +1,8 @@
 # Critical control plane and release surfaces require explicit owner review.
 /.github/ @AubreyF
 /AGENTS.md @AubreyF
+**/AGENTS.md @AubreyF
+**/AGENTS.override.md @AubreyF
 /.agents/skills/ @AubreyF
 /package.json @AubreyF
 /package-lock.json @AubreyF
