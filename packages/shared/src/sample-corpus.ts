@@ -170,6 +170,185 @@ const FALLBACK_PREMISES: Readonly<Record<SampleCorpusCategory, string>> = {
   astronomy: "I sent ancient light across the dark and arrived before the observer finished feeling important",
 };
 
+const SUBJECT_PREMISE_VARIANTS: Readonly<Record<string, readonly string[]>> = {
+  "frogfish underwater": [
+    "I walked across the reef on my fins and watched swimming lose its monopoly on fish behavior",
+    "The lure above my eyes has caught three lunches and one rumor that I lack subtlety",
+    "I dressed as a sponge, remained perfectly still, and let dinner misunderstand the furniture",
+    "My mouth expands faster than the reef can finish saying this seems suspicious",
+    "I brought a fishing rod on my forehead because chasing lunch sounded needlessly athletic",
+    "The coral called me lumpy until the lump swallowed a fish in six milliseconds",
+    "I have fins for walking, camouflage for loitering, and a lure for handling introductions",
+    "Nobody noticed me beside the sponge, which was gratifying right up to the applause",
+    "I changed color for the reef and kept the expression of someone waiting for room service",
+    "My prey saw a harmless scrap of bait; I saw punctuality finally receiving its reward",
+    "The current tried to reveal me, but I had already committed to looking like questionable coral",
+    "I can swallow prey nearly my own size and still get described as the funny little one",
+    "Walking on fins was merely eccentric until I added the forehead tackle",
+    "The reef supplied camouflage, I supplied patience, and lunch supplied the tragic misunderstanding",
+    "I waved my lure once and the neighborhood converted curiosity into a cautionary tale",
+    "My skin copied the reef so convincingly that even the algae began asking for identification",
+    "I declined to swim, took six deliberate steps, and arrived before the hurried fish noticed dinner had changed sides",
+    "The sponge beside me has spent all morning denying we coordinated outfits",
+    "I opened my mouth, expanded the entire front of my head, and made scale a temporary opinion",
+    "The smaller fish called my lure adorable, which concluded the research portion of our meeting",
+    "I have perfected the posture of a damp pebble with confidential intentions",
+    "The reef mistook patience for inactivity and has requested that the record be corrected",
+    "I grew filaments, blotches, and one extremely persuasive imitation of not being hungry",
+    "My pectoral fins became feet because the seabed deserved a more unsettling pedestrian",
+    "I waited beside the coral until coincidence became ambush and ambush became lunch",
+    "The bait on my forehead performs one dance; I handle the reviews personally",
+    "I can cross the reef without swimming and dine without pursuing, which feels like competent planning",
+    "The clownfish laughed at my stride until my mouth became the largest fact in the room",
+    "I spent the afternoon impersonating geology and the evening disproving a shrimp's assumptions",
+    "Camouflage hid my body, patience hid my appetite, and the lure made both arrangements somebody else's problem",
+  ],
+};
+
+const TITLE_TENSIONS: Readonly<Record<SampleCorpusCategory, readonly string[]>> = {
+  insect: [
+    "six-legged diplomacy", "the flower's formal complaint", "camouflage with witnesses",
+    "an unreasonable amount of wing", "pollination politics", "the meadow's succession crisis",
+    "one immaculate ambush", "structural color and poor restraint", "the leaf's identity problem",
+    "metamorphosis without permission", "antennae in the minutes", "the aphid situation",
+  ],
+  microfauna: [
+    "life below the visible threshold", "the droplet's jurisdiction", "silica in formalwear",
+    "eight legs and no apology", "the pond film inquiry", "cilia with an agenda",
+    "microscopic grandeur", "the surface tension dispute", "one cellular misunderstanding",
+    "the algae testimony", "a very small constitutional crisis", "the rotifer's objection",
+  ],
+  undersea: [
+    "reef etiquette", "camouflage beneath cross-examination", "the current's revision notes",
+    "an ambush with excellent posture", "bioluminescence after dark", "the tide's missing paperwork",
+    "tentacles in the minutes", "pressure and other social obligations", "the kelp forest incident",
+    "one spectacular misunderstanding", "lunch approaching the furniture", "the abyssal dress code",
+  ],
+  geology: [
+    "deep time taking this personally", "erosion's appeal", "the continent's unresolved grievance",
+    "magma without supervision", "a river repeating itself", "the glacier's final revision",
+    "geometry under pressure", "the mountain's missing summit", "sedimentary allegations",
+    "the wind's unauthorized redesign", "one patient catastrophe", "the ocean's boundary dispute",
+  ],
+  astronomy: [
+    "gravity's conflict of interest", "several billion supporting stars", "the dust cloud's alibi",
+    "light arriving extremely late", "an orbit with opinions", "the moon's publicity problem",
+    "plasma declining restraint", "the galaxy next door", "one statistically excessive horizon",
+    "the comet's forwarding address", "dark matter in the minutes", "the universe refusing a close-up",
+  ],
+};
+
+type TitleForm = (character: string, subject: string, scene: string, tension: string) => string;
+
+const TITLE_FORMS: Readonly<Record<SampleCorpusPlatform, readonly TitleForm[]>> = {
+  instagram: [
+    (character, subject) => `${character}: Certified ${subject} Thirst Trap`,
+    (character) => `${character} Woke Up Like This`,
+    (character, _subject, _scene, tension) => `${character}, but Make It ${titleCase(tension)}`,
+    (character) => `${character} Chose Violence and Better Lighting`,
+    (character) => `${character} Found the Good Side Again`,
+    (character, subject) => `${character} Soft Launches One ${subject}`,
+    (character) => `${character} Serving Unnecessary Majesty`,
+    (character, _subject, scene) => `${character} Makes ${scene} Look Expensive`,
+    (character) => `${character}, Respectfully, Is the Moment`,
+    (character) => `${character} Refuses to Crop the Ego`,
+    (character) => `${character} Posts a Casual Act of Creation`,
+    (character, subject) => `${character}: This ${subject} Angle Is Illegal`,
+  ],
+  facebook: [
+    (character, subject) => `${character}: Apparently ${subject} Is Controversial Now`,
+    (character, _subject, _scene, tension) => `${character} Said What It Said About ${titleCase(tension)}`,
+    (character, subject) => `${character}: Unpopular Opinion, the ${subject} Was Right`,
+    (character) => `${character} Would Like Everyone to Calm Down Incorrectly`,
+    (character) => `${character} Has Receipts and No Patience`,
+    (character) => `${character}: Not to Start Anything, But Here We Are`,
+    (character, _subject, scene) => `${character} Is Banned from the ${scene} Picnic`,
+    (character) => `${character} Invites Corrections, Then Rejects Them`,
+    (character, subject) => `${character}: The ${subject} Discourse Has Escalated`,
+    (character) => `${character} Chooses This Hill, Reef, or Crater`,
+    (character) => `${character} Has Left the Neighborhood Meeting`,
+    (character) => `${character}: Walk Around, Martin`,
+  ],
+  linkedin: [
+    (character) => `${character} Scales Wonder`,
+    (character) => `Gravity Promoted ${character}`,
+    (character) => `${character} Leads`,
+    (character) => `${character} Owns It`,
+    (character) => `${character} Goes Galactic`,
+    (character) => `${character} Plays the Long Game`,
+    (character) => `${character} Delivers Majesty`,
+    (character) => `${character} Gets the Big Role`,
+    (character) => `${character} Grows Organically`,
+    (character) => `${character} Thinks Bigger`,
+    (character) => `${character} Takes the Lead`,
+    (character) => `${character} Beats Expectations`,
+  ],
+  x: [
+    (character, subject) => `${character}: New ${subject} Data Just Dropped`,
+    (character) => `${character}: Huge If Gravitational`,
+    (character) => `${character} Requests Peer Review, Cowards`,
+    (character, _subject, _scene, tension) => `${character}: Breaking, ${titleCase(tension)}`,
+    (character) => `${character} Has Entered the Control Group`,
+    (character) => `${character}: Citation Extremely Needed`,
+    (character) => `${character} Ratioed by Observable Reality`,
+    (character) => `${character}: Skill Issue, Says Gravity`,
+    (character) => `${character} Posts Through the Methodology`,
+    (character) => `${character}: The Null Hypothesis Is Cooked`,
+    (character) => `${character} Brings Main Sequence Energy`,
+    (character) => `${character}: Source, the Entire Ocean`,
+  ],
+  substack: [
+    (character) => `${character} Has Receipts`,
+    (character, subject) => `The ${character} ${subject} Files`,
+    (character) => `${character} Puts the Reef on the Record`,
+    (character) => `${character}: The Footnotes Are Hostile`,
+    (character, _subject, _scene, tension) => `${character} Investigates ${titleCase(tension)}`,
+    (character) => `${character} Names Names Below the Paywall`,
+    (character) => `${character}: Counsel Opposed This Diagram`,
+    (character) => `${character} Declines a Short Version`,
+  ],
+  medium: [
+    (character, subject) => `What ${character} Learned from One ${subject}`,
+    (character, _subject, _scene, tension) => `${character}'s Guide to ${titleCase(tension)}`,
+    (character) => `${character}: Seven Lessons, One Mystery`,
+    (character) => `The ${character} Framework Nobody Requested`,
+    (character) => `${character} Tried to Simplify Deep Time`,
+    (character) => `${character}: Rethinking the Obvious`,
+    (character) => `How ${character} Made Wonder Actionable`,
+    (character) => `${character} Regrets the Numbered List`,
+  ],
+  youtube: [
+    (character, subject) => `${character}: This ${subject} Should Not Be Possible`,
+    (character) => `${character} Waits for the Ambush`,
+    (character) => `${character}: Creation Used the Whole Budget`,
+    (character) => `${character} Attempts One Calm Introduction`,
+    (character) => `${character}: The Wide Shot Wins`,
+    (character) => `${character} Goes Behind the Reef`,
+    (character) => `${character}: Watch the Lure`,
+    (character) => `${character} Loses Control of the Episode`,
+  ],
+  rss: [
+    (character, _subject, _scene, tension) => `${character}: Notes on ${titleCase(tension)}`,
+    (character) => `${character} Reports from the Field`,
+    (character, subject) => `The ${character} ${subject} Dispatch`,
+    (character) => `${character}: Wonder, Carefully Measured`,
+    (character) => `${character} Follows the Longer Story`,
+    (character) => `${character}: What the Surface Missed`,
+    (character) => `${character} Records an Unreasonable Morning`,
+    (character) => `${character}: Evidence of Majesty`,
+  ],
+  saved: [
+    (character) => `Save This for ${character}`,
+    (character) => `${character}: Worth Another Look`,
+    (character) => `Read ${character} Before the Tide Changes`,
+    (character) => `${character}: Keep the Longer Version`,
+    (character) => `Return to ${character} When Attention Recovers`,
+    (character) => `${character}: Filed Under Astonishing`,
+    (character) => `The ${character} Story Worth Keeping`,
+    (character) => `${character}: Curiosity Wins Again`,
+  ],
+};
+
 const CATEGORY_RIVALS: Readonly<Record<SampleCorpusCategory, readonly string[]>> = {
   insect: [
     "a leaf with territorial ambitions", "the aphid delegation", "a bee demanding equal billing",
@@ -232,7 +411,25 @@ const IDENTITY_EPITHETS = [
 ] as const;
 
 function titleCase(value: string): string {
-  return value.replace(/\b\w/g, (character) => character.toUpperCase());
+  const minorWords = new Set(["a", "an", "and", "at", "for", "from", "in", "of", "on", "the", "to", "with"]);
+  return value.split(/\s+/).map((word, index) => {
+    const lower = word.toLowerCase();
+    if (index > 0 && minorWords.has(lower)) return lower;
+    return lower.replace(/^\w/, (character) => character.toUpperCase());
+  }).join(" ");
+}
+
+function editorialScene(index: number): string {
+  const first = IDENTITY_EPITHETS[index % IDENTITY_EPITHETS.length]!;
+  const second = IDENTITY_EPITHETS[
+    Math.floor(index / IDENTITY_EPITHETS.length) % IDENTITY_EPITHETS.length
+  ]!;
+  const scene = first === second ? first : `${first} and ${second}`;
+  if (index < IDENTITY_EPITHETS.length ** 2) return scene;
+  const third = IDENTITY_EPITHETS[
+    Math.floor(index / (IDENTITY_EPITHETS.length ** 2)) % IDENTITY_EPITHETS.length
+  ]!;
+  return `${scene} beneath ${third}`;
 }
 
 function displaySubject(asset: Pick<SampleCorpusMediaAsset, "subject">): string {
@@ -247,6 +444,39 @@ function premiseFor(asset: Pick<SampleCorpusMediaAsset, "subject" | "category">)
   return SUBJECT_PREMISES[asset.subject] ?? FALLBACK_PREMISES[asset.category];
 }
 
+function embedPremise(premise: string): string {
+  if (/^I(?:\b|'m|'ve|'d|'ll)/.test(premise)) return premise;
+  return premise.replace(/^./, (character) => character.toLowerCase());
+}
+
+function ensureFirstPerson(narrative: string, scene: string): string {
+  if (/\b(?:I|my|me)\b/i.test(narrative)) return narrative;
+  return `${narrative} I watched it happen at ${scene}, which seems relevant.`;
+}
+
+function subjectOrdinal(asset: Pick<SampleCorpusMediaAsset, "id" | "subject">): number {
+  let ordinal = 0;
+  for (const candidate of generatedCorpus as readonly GeneratedAsset[]) {
+    if (candidate.subject !== asset.subject) continue;
+    if (candidate.id === asset.id) return ordinal;
+    ordinal += 1;
+  }
+  return 0;
+}
+
+function individualizedPremise(
+  asset: Pick<SampleCorpusMediaAsset, "id" | "subject" | "category">,
+  _index: number,
+  variant: number,
+): string {
+  const subjectVariants = SUBJECT_PREMISE_VARIANTS[asset.subject];
+  if (subjectVariants?.length) {
+    const premiseIndex = subjectOrdinal(asset) + variant;
+    return subjectVariants[premiseIndex % subjectVariants.length]!;
+  }
+  return premiseFor(asset);
+}
+
 function narrativeParts(
   category: SampleCorpusCategory,
   index: number,
@@ -256,111 +486,167 @@ function narrativeParts(
   const rivals = CATEGORY_RIVALS[category];
   return {
     rival: rivals[sequence % rivals.length]!,
-    occasion: OCCASIONS[Math.floor(sequence / rivals.length) % OCCASIONS.length]!,
-    verdict: VERDICTS[Math.floor(sequence / (rivals.length * OCCASIONS.length)) % VERDICTS.length]!,
+    occasion: OCCASIONS[(sequence * 5 + Math.floor(sequence / rivals.length)) % OCCASIONS.length]!,
+    verdict: VERDICTS[(sequence * 7 + Math.floor(sequence / OCCASIONS.length)) % VERDICTS.length]!,
   };
 }
 
 function renderNarrative(
-  asset: Pick<SampleCorpusMediaAsset, "subject" | "category">,
+  asset: Pick<SampleCorpusMediaAsset, "id" | "subject" | "category">,
   platform: SampleCorpusPlatform,
   index: number,
   variant: number,
 ): string {
-  const premise = premiseFor(asset);
+  const premise = platform === "x"
+    ? premiseFor(asset)
+    : individualizedPremise(asset, index, variant);
+  const embeddedPremise = embedPremise(premise);
   const { rival, occasion, verdict } = narrativeParts(asset.category, index, variant);
-  const frame = (index + variant) % 4;
+  const scene = editorialScene(index + variant * generatedCorpus.length);
+  const frame = index + variant;
 
   switch (platform) {
     case "instagram": {
       const frames = [
-        `${premise}; naturally, ${rival} expected equal billing ${occasion}, but I kept my good side and let effortless beauty close the argument; ${verdict}.`,
-        `${premise}; ${occasion}, I allowed ${rival} into the frame for scale, then watched the light discover who the portrait was actually about; ${verdict}.`,
-        `${premise}; no filter survived ${occasion}, so I gave ${rival} one rehearsal and made the horizon find a more flattering angle; ${verdict}.`,
-        `${premise}; ${rival} suggested modesty ${occasion}, but I had already committed to magnificent and the colors refused a downgrade; ${verdict}.`,
+        `At ${scene}, ${premise}. When ${rival} called it a thirst trap at ${scene}, I thanked them for finally noticing the plot.`,
+        `${premise}; the light at ${scene} understood the assignment, I understood my angles, and ${rival} is still pretending this was candid.`,
+        `Not me arriving at ${scene} ${occasion} while ${rival} discovers that supporting characters also serve a purpose; ${verdict}.`,
+        `The soft launch at ${scene} lasted six minutes. Then, at ${scene}, ${embeddedPremise}, and subtlety was asked to leave the frame.`,
+        `POV, you came to ${scene} for the scenery and I made the scenery look like set dressing; ${embeddedPremise}.`,
+        `Main-character behavior at ${scene}? ${rival} accused me, I checked the photograph, found no lie, and let ${embeddedPremise}.`,
+        `A completely casual moment at ${scene}, if casual now means ${embeddedPremise}; I do not make the rules, I merely photograph magnificently under them.`,
+        `The rumor from ${scene} says I chose violence. False, according to every witness at ${scene}. I chose excellent light ${occasion}, and ${rival} chose to stand where comparison was possible at ${scene}.`,
+        `I gave ${scene} one chance to keep up; ${embeddedPremise}, the horizon lost the thirst-trap allegations, and frankly we all grew from it.`,
+        `No notes from ${scene}; ${rival} tried one, but ${embeddedPremise} and the note quietly became fan mail.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "facebook": {
       const frames = [
-        `${premise}; apparently ${rival} objects ${occasion}, but I will not accept corrections from anyone who missed the obvious point; walk around, Martin; ${verdict}.`,
-        `${premise}; ${occasion}, ${rival} called this unnecessary, which is exactly the sort of opinion that keeps the valley from inviting people back; ${verdict}.`,
-        `${premise}; I am told ${rival} disagrees ${occasion}, but we tried being reasonable last season and the herons became unbearable; ${verdict}.`,
-        `${premise}; ${rival} may appeal the decision ${occasion}, provided the complaint is written on a leaf and delivered upstream; ${verdict}.`,
+        `Apparently ${rival} has concerns about what happened at ${scene}. My response from ${scene} is that ${embeddedPremise}, and I will not be taking corrections from spectators.`,
+        `${premise}; somebody at ${scene} called this excessive ${occasion}, which is how the neighborhood meeting lost speaking privileges.`,
+        `Must ${scene} become a wetlands tribunal? At ${scene}, let me be clear, ${embeddedPremise}. Walk around ${scene}, Martin.`,
+        `${rival} may appeal my decision at ${scene}; the form is written on a leaf, the deadline was last tide, and ${verdict}.`,
+        `Unpopular opinion from ${scene}, magnificence is not rude merely because ${rival} arrived underprepared; ${embeddedPremise}.`,
+        `I tried being reasonable at ${scene} ${occasion}; then ${rival} explained my own habitat to me, so now everyone gets the full lecture.`,
+        `The facts at ${scene} do not care about ${rival}'s feelings; ${embeddedPremise}, and yes, comments are limited to people who brought snacks.`,
+        `Fine, I will say it; ${embeddedPremise}, while ${rival} has contributed nothing but volume to ${scene}.`,
+        `This could have stayed private at ${scene}. Then ${rival} brought three cousins to ${scene} and called it consensus, while ${embeddedPremise}.`,
+        `For everyone suddenly conducting their own research at ${scene}, ${embeddedPremise}; the herons have receipts and very little patience.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "linkedin": {
       const frames = [
-        `Thrilled to report that ${premise.toLowerCase()}; ${occasion}, I converted ${rival} into visible leadership, cross-functional learning, and an organic growth strategy; ${verdict}.`,
-        `${premise}; pleased to share that ${occasion} I leveraged ${rival} into a high-impact resilience narrative with no additional headcount; ${verdict}.`,
-        `${premise}; my key learning ${occasion} was to let ${rival} take minutes while I retained strategic ownership of the spectacle; ${verdict}.`,
-        `${premise}; after mentoring ${rival} ${occasion}, I delivered measurable wonder at scale and accepted a promotion from remarkable to inevitable; ${verdict}.`,
+        `A major milestone from ${scene} deserves recognition. I can now confirm that ${embeddedPremise}, creating measurable wonder with no additional headcount at ${scene}.`,
+        `${premise}; at ${scene}, I reframed ${rival} as a cross-functional learning opportunity and accepted full credit for the outcome.`,
+        `Career update from ${scene}, I have been promoted from remarkable to inevitable; my key competency remains letting gravity do the work.`,
+        `How did I scale impact at ${scene}? Nobody asked, so I prepared seven slides explaining that ${embeddedPremise}; stakeholder humility at ${scene} remains strong.`,
+        `After mentoring ${rival} ${occasion}, I delivered ${scene} ahead of geological schedule; grateful, humbled, visibly enormous.`,
+        `My leadership philosophy at ${scene} is simple; let ${rival} take minutes, retain strategic ownership of the spectacle, then call erosion organic growth.`,
+        `Proud to announce that ${scene} exceeded every reef expectation; ${embeddedPremise}, proving once again that resilience photographs well.`,
+        `A lesson for emerging leaders from ${scene}; ${embeddedPremise}, and never let the river circulate the minutes before your promotion lands.`,
+        `At ${scene}, I turned ${rival}'s objection into a high-impact deliverable. The deliverable was majesty at ${scene}; the impact was visible from orbit.`,
+        `Big news from ${scene}, synergy is now gravitational; ${embeddedPremise}, and I remain open to congratulatory introductions.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "x": {
       const frames = [
-        `Observed: ${premise}; ${occasion}; I logged ${rival} as the uncontrolled variable; null hypothesis rejected.`,
-        `${premise}; n=1 ${occasion}, control=${rival}; I obtained a frankly devastating effect size.`,
-        `Field note: ${premise}; ${occasion}, I measured ${rival} twice and found ordinary Tuesday statistically untenable.`,
-        `Result: ${premise}; I excluded ${rival} ${occasion} for contaminating the sample with opinions.`,
+        `${premise}; at ${scene}, I logged ${rival} as noise and rejected the null.`,
+        `${premise}; n=1 at ${scene}, control=${rival}, effect=large.`,
+        `At ${scene}, I measured ${rival} twice; ${embeddedPremise}; ordinary Tuesday fails.`,
+        `${premise}; peer review at ${scene} was ${rival} saying "wow."`,
+        `At ${scene}, gravity called skill issue; ${embeddedPremise}; I await replication.`,
+        `${scene} has one outlier, ${rival}; ${embeddedPremise}; huge if gravitational.`,
+        `New result at ${scene}; ${embeddedPremise}; my source is the entire ocean.`,
+        `At ${scene}, ${rival} asked for a citation; I pointed at creation.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "substack": {
       const frames = [
-        `${premise}; ${occasion}, ${rival} called it excessive, so I wrote the full transcript, added one scandalous diagram, and placed the firmest conclusion below the subscription line; ${verdict}.`,
-        `${premise}; my deeply reported dispute with ${rival} began ${occasion} and now includes four thousand words, two anonymous plankton, and a correction the moon refuses to print; ${verdict}.`,
-        `${premise}; ${occasion}, I followed ${rival} through the evidence, the counterargument, and one footnote so merciless that the tide requested counsel; ${verdict}.`,
-        `${premise}; paid readers may examine what ${rival} did ${occasion}, why the canyon declined comment, and the foreleg diagram my solicitor begged me to omit; ${verdict}.`,
+        `${premise}; my dispute with ${rival} at ${scene} now spans four thousand words, two anonymous plankton, and a correction the moon refuses to print.`,
+        `I went to ${scene} for answers and found ${rival} hiding inside a footnote. At ${scene}, ${embeddedPremise}, which is where the investigation became personal.`,
+        `What did the official story at ${scene} omit? One scandalous diagram showing that ${embeddedPremise}; my solicitor at ${scene} has stopped returning leaves.`,
+        `${rival} called my account of ${scene} excessive; I added three witnesses, the complete tidal record, and the inconvenient fact that ${embeddedPremise}.`,
+        `Paid readers may examine what happened at ${scene}; everyone else should know that ${embeddedPremise} and the canyon has declined comment.`,
+        `I promised a short dispatch from ${scene}. Then ${rival} lied about the tide at ${scene}, ${embeddedPremise}, and brevity became ethically impossible.`,
+        `The footnote from ${scene} has escaped containment; ${embeddedPremise}, exactly as ${rival} hoped nobody would notice.`,
+        `My sources at ${scene} include the reef, the weather, and one unusually candid pebble; all agree that ${embeddedPremise}.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "medium": {
       const frames = [
-        `${premise}; ${occasion}, I distilled the dispute with ${rival} into five lessons, made patience number three, and immediately regretted how tidy the mystery looked; ${verdict}.`,
-        `${premise}; what ${rival} taught me ${occasion} about boundaries, adaptation, and the hidden cost of pretending every revelation needs a numbered list; ${verdict}.`,
-        `${premise}; I spent ${occasion} testing one common assumption with ${rival} and emerged with a simple framework that the mountain considers defamatory; ${verdict}.`,
-        `${premise}; the beginner's guide I needed before ${rival} arrived ${occasion} has seven principles, one useful diagram, and considerably less certainty than the headline promised; ${verdict}.`,
+        `At ${scene}, ${embeddedPremise}. I distilled ${scene} into five lessons and immediately regretted making the mystery look tidy.`,
+        `What ${rival} taught me at ${scene} was mostly about boundaries; ${embeddedPremise}, and not every revelation needs a numbered list.`,
+        `I tested one common assumption at ${scene} ${occasion}; ${embeddedPremise}, producing a framework the mountain considers defamatory.`,
+        `The beginner's guide to ${scene} promised seven principles; ${embeddedPremise}, and certainty quietly left after principle two.`,
+        `${premise}; I tried turning ${scene} into an actionable takeaway, but ${rival} kept reintroducing awe into the framework.`,
+        `Three things changed my mind at ${scene}. The third was the moment ${embeddedPremise}; the first two were ${rival} and the light at ${scene}.`,
+        `I arrived at ${scene} with a useful theory; ${embeddedPremise}, and the theory is now taking some personal time.`,
+        `Nobody tells you that understanding ${scene} makes it stranger. When ${embeddedPremise}, my clean conclusion at ${scene} was ruined beautifully.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "youtube": {
       const frames = [
-        `${premise}; in today's episode, ${occasion}, I give ${rival} three survival tips, one unnecessary close-up, and no final-cut privileges; ${verdict}.`,
-        `${premise}; stay to the end as I follow ${rival} ${occasion}, explain the impossible anatomy, and let creation spend the entire effects budget; ${verdict}.`,
-        `${premise}; ${occasion}, I invited ${rival} behind the scenes, answered the question everyone keeps asking, and discovered the reef has no front of house; ${verdict}.`,
-        `${premise}; this week I attempt a calm introduction ${occasion} before ${rival} seizes the episode and the wide shot becomes nonnegotiable; ${verdict}.`,
+        `I gave ${rival} three survival tips at ${scene}. Then ${embeddedPremise}, and creation spent the entire effects budget on the close-up at ${scene}.`,
+        `The plan at ${scene} was one calm introduction; ${embeddedPremise}, ${rival} seized the episode, and the wide shot became nonnegotiable.`,
+        `Wait for the moment at ${scene} when ${embeddedPremise}. I have watched ${scene} six times, and the reef still denies hiring a stunt team.`,
+        `Behind the scenes at ${scene}, ${rival} asked for a second take; I reminded everyone that ${embeddedPremise} and kept rolling.`,
+        `Nobody warned the camera about ${scene}. Once ${embeddedPremise}, I knew one unnecessary close-up at ${scene} would become the entire episode.`,
+        `I tried explaining the impossible anatomy at ${scene}; ${rival} wandered through frame, ${embeddedPremise}, and the explanation improved by surrendering.`,
+        `The cold open at ${scene} has no business being this dramatic; ${embeddedPremise}, and even ${rival} stayed for the reveal.`,
+        `One lens, no rehearsal, and ${scene} ${occasion}; ${embeddedPremise}, which is why the ending needs no narration.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "saved": {
       const frames = [
-        `${premise}; I saved the longer account of ${rival} ${occasion} for an afternoon spacious enough to hold both the evidence and the astonishment; ${verdict}.`,
-        `${premise}; ${occasion}, I filed ${rival} under things worth revisiting when attention has recovered from the week; ${verdict}.`,
-        `${premise}; I kept the patient explanation of ${rival} ${occasion} because significance does not become less urgent when it happens slowly; ${verdict}.`,
-        `${premise}; saved after ${occasion}, when ${rival} accidentally proved that curiosity remains a practical virtue; ${verdict}.`,
+        `I kept the longer account from ${scene} because ${embeddedPremise}. Some astonishment at ${scene} deserves an afternoon instead of an interruption.`,
+        `${premise}; I filed the evidence from ${scene} under things worth revisiting when attention has recovered from the week.`,
+        `The patient explanation at ${scene} can wait, the wonder cannot; ${embeddedPremise}, and ${rival} accidentally proved curiosity practical.`,
+        `I saved what happened at ${scene} ${occasion}; ${embeddedPremise}, a fact that improves when given room to breathe.`,
+        `${rival} nearly buried the best part of ${scene}; ${embeddedPremise}, so I kept the whole account for later.`,
+        `Return to ${scene} when the week stops shouting. I did, and found that ${embeddedPremise}; the slower story at ${scene} is the one that stays.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
     case "rss": {
       const frames = [
-        `${premise}; this field report follows my dispute with ${rival} ${occasion}, where measurement remained useful right up to the point that wonder became unavoidable; ${verdict}.`,
-        `${premise}; ${occasion}, I recorded what ${rival} missed about the patient forces beneath the visible spectacle; ${verdict}.`,
-        `${premise}; my notes from ${occasion} begin with ${rival}, continue through the natural history, and end with a considerably larger set of questions; ${verdict}.`,
-        `${premise}; I followed ${rival} ${occasion} into the longer story beneath the surface, where rigor and astonishment finally stopped quarreling; ${verdict}.`,
+        `My notes from ${scene} begin with ${rival} and end here; ${embeddedPremise}, while measurement gives way to astonishment.`,
+        `${premise}; at ${scene}, I recorded what ${rival} missed about the patient forces beneath the spectacle.`,
+        `I followed ${rival} into the longer story at ${scene}; ${embeddedPremise}, and rigor finally stopped quarreling with wonder.`,
+        `The morning report from ${scene} looked routine. Then ${embeddedPremise}, so I added three measurements and a larger set of questions from ${scene}.`,
+        `${rival} supplied the weather at ${scene}; I supplied the record, in which ${embeddedPremise} and the visible event becomes the smallest part.`,
+        `Nothing hurried at ${scene} ${occasion}; ${embeddedPremise}, and I stayed long enough for the scale of it to become impolite.`,
       ];
-      return frames[frame]!;
+      return ensureFirstPerson(frames[frame % frames.length]!, scene);
     }
   }
 }
 
-export function sampleCorpusDisplayTitle(asset: Pick<SampleCorpusMediaAsset, "subject">, index: number): string {
-  const first = IDENTITY_EPITHETS[index % IDENTITY_EPITHETS.length]!;
-  const second = IDENTITY_EPITHETS[Math.floor(index / IDENTITY_EPITHETS.length) % IDENTITY_EPITHETS.length]!;
-  const setting = first === second ? first : `${first} and ${second}`;
-  return `${titleCase(displaySubject(asset))}: ${setting}`;
+export function sampleCorpusDisplayTitle(
+  asset: Pick<SampleCorpusMediaAsset, "subject" | "category" | "identityNameBase">,
+  platform: SampleCorpusPlatform,
+  index: number,
+  variant = 0,
+): string {
+  const sequence = index + variant * (SAMPLE_CORPUS_MEDIA.length + 1);
+  const scene = editorialScene(sequence);
+  const shortScene = scene.split(/ and | beneath /)[0]!;
+  const forms = TITLE_FORMS[platform];
+  const tensions = TITLE_TENSIONS[asset.category];
+  const tension = tensions[
+    (sequence + Math.floor(sequence / forms.length)) % tensions.length
+  ]!;
+  const form = forms[sequence % forms.length]!;
+  const title = form(asset.identityNameBase, titleCase(displaySubject(asset)), scene, tension);
+  return title.includes(scene)
+    ? title
+    : form(`${asset.identityNameBase} of ${shortScene}`, titleCase(displaySubject(asset)), scene, tension);
 }
 
 export const SAMPLE_CORPUS_MEDIA: readonly SampleCorpusMediaAsset[] = generatedCorpus.map((raw, index) => {
@@ -380,7 +666,7 @@ export const SAMPLE_CORPUS_PLACES: readonly SampleCorpusPlace[] = SAMPLE_CORPUS_
   )
   .map((asset) => ({ id: asset.id, name: asset.detail, coordinates: asset.coordinates }));
 
-export const SAMPLE_CORPUS_VERSION = 6;
+export const SAMPLE_CORPUS_VERSION = 8;
 
 export function sampleCorpusPlace(placeId: string | undefined): SampleCorpusPlace | undefined {
   return placeId ? SAMPLE_CORPUS_PLACES.find((candidate) => candidate.id === placeId) : undefined;

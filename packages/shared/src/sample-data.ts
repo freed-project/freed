@@ -365,7 +365,7 @@ export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 9;
+export const SAMPLE_DATA_GENERATOR_VERSION = 11;
 export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
@@ -607,6 +607,7 @@ function sampleSourceProvider(platform: FeedItem["platform"]): SampleSourceProvi
 function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
   const usedText = new Set<string>();
   const usedNames = new Set<string>();
+  const usedTitles = new Set<string>();
   const locatedAssets = SAMPLE_CORPUS_MEDIA.filter((asset) => asset.coordinates);
   const locatedItemIds = new Set(
     items
@@ -644,7 +645,13 @@ function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
     usedNames.add(displayName);
 
     const portrait = item.contentType === "story";
-    const displayTitle = sampleCorpusDisplayTitle(asset, index);
+    let titleVariant = 0;
+    let displayTitle = sampleCorpusDisplayTitle(asset, platform, index, titleVariant);
+    while (usedTitles.has(displayTitle)) {
+      titleVariant += 1;
+      displayTitle = sampleCorpusDisplayTitle(asset, platform, index, titleVariant);
+    }
+    usedTitles.add(displayTitle);
     const mediaUrl = sampleCorpusMediaUrl(asset, portrait
       ? { width: 900, height: 1600 }
       : { width: 1600, height: 1000 });

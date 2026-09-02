@@ -38,11 +38,92 @@ The writing should feel like an inside joke penned by a volcano or praying manti
 8. Keep titles out of body copy.
    Titles are metadata. The narrator does not recite the title of its own post.
 
+   Titles must also read like individually edited headlines. Vary syntax, length, punctuation, point of view, and comic construction across the corpus. Never stamp every subject into one pattern such as `Subject: Invented Place`. A unique noun inside a repeated shell is still a repeated title.
+
 9. Keep the world natural.
    Do not reference computers, software, algorithms, databases, the internet, digital technology, dashboards, roadmaps, notifications, or similar machinery. Workplace language is allowed only as satire inside the LinkedIn voice, and it should describe natural behavior rather than actual technology.
 
 10. Keep people out of the pictures.
     Prefer pristine nature, microscopy, undersea life, geology, weather, and space. Avoid close-ups of people, travel portraits, cafes, roads, buildings, vehicles, tourist scenes, and human-centered compositions.
+
+11. Treat structure as content.
+    A new noun inside an old sentence is not new writing. Do not repeatedly open with a label followed by a colon, including `Field note:`, `My testimony:`, `Result:`, `Observed:`, `For the record:`, or `At this location:`. Do not repeatedly join one factual premise to one platform-flavored suffix. The shape of the joke must change along with its subject.
+
+12. Use memes as seasoning, not scaffolding.
+    Thirst traps, soft launches, choosing violence, understanding the assignment, main-character energy, receipts, plot twists, skill issues, ratios, suspiciously humble career announcements, and other recognizable social forms are welcome when the natural fact earns them. Never repeat the same meme until it becomes the corpus's personality. Never use a meme merely because a platform is associated with it.
+
+## Structural variety
+
+Every batch must deliberately mix narrative architecture. Select the structure after selecting the fact and comic target. Never select one wrapper and pour every subject into it.
+
+Approved structures include:
+
+- punchline first, explanation second;
+- an overheard line of dialogue;
+- a confession that becomes a boast;
+- a boast interrupted by an inconvenient fact;
+- a grievance addressed to one named rival;
+- mock advice that reveals terrible judgment;
+- a three-beat escalation;
+- a false correction followed by the worse truth;
+- a miniature scene with action and reaction;
+- a question answered too confidently;
+- a list whose final item breaks the list;
+- a before-and-after transformation;
+- an eyewitness account with an unreliable witness;
+- a calm observation that ends in menace;
+- a scientific result whose conclusion becomes personal;
+- a career announcement that accidentally describes geology or predation;
+- a documentary cold open;
+- a footnote that takes over the argument;
+- a parenthetical aside that contains the real joke;
+- a one-line verdict with no setup at all.
+
+Vary all of these dimensions across adjacent posts:
+
+- opening word and grammatical subject;
+- sentence count;
+- sentence length;
+- punctuation;
+- location of the factual reveal;
+- location of the punchline;
+- whether the narrator addresses the reader, a rival, or nobody;
+- whether the joke escalates, reverses, confesses, argues, or observes;
+- whether the first-person marker is `I`, `my`, `me`, or an implied first-person action later made explicit;
+- whether the post ends with a verdict, image, threat, concession, question, or sudden silence.
+
+A forty-post review set should contain at least twelve visibly different openings and at least ten visibly different narrative structures. No conspicuous opening phrase or joke scaffold should appear more than twice. Label-plus-colon openings should not appear at all unless a single post has a subject-specific reason to parody a label.
+
+## Meme and feistiness standard
+
+The desired energy is playful confidence with teeth. The narrator may be vain, petty, triumphant, impatient, territorial, or professionally unbearable. The joke should punch upward at pomposity, bad reasoning, unearned confidence, weak rivals, or the absurdity of trying to contain nature in human categories.
+
+Good meme use translates a real natural fact into a familiar social situation:
+
+- a frogfish lure becomes a thirst trap with consequences;
+- a supernova remnant calls the explosion a soft launch;
+- a mantis chooses violence, but only after the bee mistakes the pose for an invitation;
+- a peacock mantis shrimp understands the assignment because its color vision and strike genuinely justify the claim;
+- a tectonic plate brings receipts measured in mountain ranges;
+- gravity calls orbital failure a skill issue;
+- a LinkedIn planet announces a promotion it received from its own mass;
+- a Facebook leaf insect invites Martin to walk around because camouflage has made the path dispute personal.
+
+Bad meme use pastes the same phrase onto unrelated photographs. If the joke would work unchanged for a jellyfish, canyon, beetle, and galaxy, it is not specific enough.
+
+## Title standard
+
+Titles should feel social, edited, and irresistible without becoming tabloid sludge.
+
+- Prefer three to eight words before an identity or place qualifier.
+- Put the funniest or strangest word early.
+- Use questions, imperatives, fragments, reversals, mock announcements, and direct claims.
+- Mix titles that name the character with titles that lead on the event, argument, or reveal.
+- Keep LinkedIn astronomy titles at 58 characters or fewer.
+- Never use one repeated shell across the corpus, even when the inserted names are unique.
+- Never repeat `Against Modesty`, `Notes from`, `Field Report`, or another house phrase as a series title.
+- Do not let every title end in the same place qualifier or begin with the same identity syntax.
+- Clickbait must be paid off by the image and body. A title may tease the lure, strike, eruption, color, scale, rivalry, or reveal, but it may not promise a fact the post does not contain.
 
 ## Platform voices
 
@@ -52,15 +133,17 @@ The factual premise belongs to the subject. The comic form belongs to the platfo
 
 Slightly and comically egotistical. The narrator knows the light is excellent, assumes the landscape is a supporting actor, and treats magnificence as a personal brand that fortunately happens to be justified.
 
-Useful comic ingredients include flattering angles, equal billing, unnecessary modesty, colors refusing restraint, and the horizon serving as set dressing.
+Useful comic ingredients include thirst traps, suspiciously candid poses, soft launches, choosing violence, understanding the assignment, main-character behavior, flattering angles, colors refusing restraint, and the horizon serving as set dressing.
 
-Do not reduce the voice to hashtags, influencer slang, or repeated references to filters.
+Do not reduce the voice to hashtags, influencer slang, repeated references to filters, or the same modesty joke. Vanity should take different forms, such as pretending the ambush was candid, treating a planetary ring as a casual accessory, accusing the horizon of photobombing, or allowing a rival into frame only for scale.
 
 ### Facebook
 
 Opinionated, adversarial, and locally aggrieved. The narrator has identified somebody who is wrong and intends to settle the matter in public. The disagreement should feel oddly specific and socially familiar.
 
 Useful comic ingredients include appeals processes, neighborhood disputes, unsolicited corrections, territorial leaves, unqualified birds, and a person named Martin who should simply walk around.
+
+The voice may also use `unpopular opinion`, `I said what I said`, receipts, community-meeting melodrama, research conducted by somebody's cousin, and a public correction that becomes more incriminating than the original claim. Vary these devices.
 
 Do not make the voice hateful, partisan, or cruel.
 
@@ -70,13 +153,15 @@ Career-oriented workplace satire. The narrator converts survival, camouflage, er
 
 Useful comic ingredients include promotions, strategic ownership, visible leadership, organic growth, stakeholder humility, mentoring, measurable impact, and taking credit before the river circulates minutes.
 
-Do not reference real employers, products, software, or professional identities.
+Titles should be unusually tight. Prefer `Gravity Promoted Me`, `Scaling Wonder`, or `Synergy Goes Galactic` over a complete summary of the post.
+
+Do not reference real employers, products, software, or professional identities. Do not start every body with `Thrilled to announce` or `Proud to share`. Corporate vanity is funniest when its presentation keeps mutating.
 
 ### X
 
 Comically nerdy and scientific. The narrator records observations, rejects a null hypothesis, identifies uncontrolled variables, invokes sample size, and treats an ordinary rival as a threat to methodological rigor.
 
-The science joke must remain understandable without a degree. Keep the post within the platform character limit.
+The science joke must remain understandable without a degree. Viral scientific jokes such as `huge if gravitational`, `skill issue`, `source: the entire ocean`, an aggressively rejected null hypothesis, or a rival contaminating the control are welcome when earned by the fact. Keep the post within the platform character limit.
 
 Do not turn every post into the same `Observed` construction. Vary field notes, results, sample reports, and terse arguments.
 
@@ -198,18 +283,21 @@ Better:
 2. Find one true behavior, structure, process, scale, or ecological relationship unique to that subject.
 3. Write one first-person comic premise in the subject's own voice.
 4. Remove any opening that introduces or labels the narrator.
-5. Choose the platform and reshape the joke using that platform's personality.
-6. Add a distinct rival, occasion, or consequence only when it remains coherent with the subject's world.
-7. Read the post aloud. Remove anything clinical, explanatory, repetitive, or merely cute.
-8. Compare it against the entire corpus for repeated images, facts, names, titles, punch lines, and sentence structures.
-9. Confirm that the body never repeats its metadata title.
-10. Confirm that the post remains reverent even at maximum snark.
+5. Choose one narrative structure from the structural variety list. Check the preceding posts and choose a different shape from theirs.
+6. Choose the platform and reshape the joke using that platform's personality.
+7. Add a meme only if the natural fact makes the meme more specific and funnier.
+8. Add a distinct rival, occasion, or consequence only when it remains coherent with the subject's world.
+9. Read the post aloud. Remove anything clinical, explanatory, repetitive, merely cute, or shaped like a content template.
+10. Compare it against the entire corpus for repeated images, facts, names, titles, punch lines, opening phrases, transitions, punctuation rhythms, and sentence structures.
+11. Confirm that the body never repeats its metadata title.
+12. Confirm that the title is tight, pays off honestly, and does not reuse a house pattern.
+13. Confirm that the post remains reverent even at maximum snark.
 
 ## Reusable generation brief
 
 Use the following brief when drafting a new batch:
 
-> Write first-person sample posts narrated by the pictured natural subjects themselves. The world should feel like a nature documentary celebrating the glory and majesty of creation, with universally reverent, non-sectarian language and biting subject-specific humor. Begin inside the joke. Never introduce the narrator or begin every post with the same phrase. Anchor each joke in a true biological, geological, oceanographic, or astronomical detail. Give Instagram a slightly egotistical voice, Facebook an opinionated and adversarial voice, LinkedIn absurd career ambition, X nerdy scientific rigor, Substack footnoted long-form conviction, Medium reflective framework-building, YouTube visual showmanship, and RSS or saved reading patient field-report wit. Every post, image, title, identity name, factual premise, and conspicuous sentence structure must be unique. Do not mention digital technology, software, computers, the internet, or generic travel experiences. Keep reverence underneath the snark.
+> Write first-person sample posts narrated by the pictured natural subjects themselves. The world should feel like a nature documentary celebrating the glory and majesty of creation, with universally reverent, non-sectarian language and biting subject-specific humor. Begin inside the joke. Anchor each joke in a true biological, geological, oceanographic, or astronomical detail. Make the narrator feisty, specific, and socially recognizable. Use thirst traps, soft launches, choosing violence, understanding the assignment, receipts, plot twists, skill issues, suspicious career triumphs, and other viral forms only when the subject's real behavior earns the reference. Give Instagram comic vanity, Facebook opinionated neighborhood warfare, LinkedIn absurd career ambition, X nerdy scientific rigor, Substack footnoted long-form conviction, Medium reflective framework-building, YouTube visual showmanship, and RSS or saved reading patient field-report wit. Deliberately rotate narrative architecture among dialogue, confession, reversal, escalation, mock advice, eyewitness account, argument, list, scientific result, career announcement, documentary cold open, and punchline-first fragment. Do not use label-plus-colon openings. Do not attach one repeated platform suffix to every factual premise. Vary opening words, sentence count, punctuation, reveal placement, punchline placement, and endings. Every post, image, title, identity name, factual premise, opening phrase, punch line, and conspicuous sentence structure must be unique. Keep titles social, clicky, honest, and compact. Do not mention digital technology, software, computers, the internet, or generic travel experiences. Keep reverence underneath the snark.
 
 ## Engineering procedure for new subjects
 
@@ -234,6 +322,13 @@ A corpus addition is not complete until all of the following are true:
 - every displayed image matches the narrated subject;
 - every image URL and source hash is unique;
 - every full post, title, and identity name is unique;
+- title openings, punctuation, and grammatical structures remain visibly varied instead of sharing one corpus-wide template;
+- repeated subjects receive distinct opening jokes, not one premise with different trailing clauses;
+- no short label followed by a colon is being used as an opening factory;
+- no meme, rival, verdict, or platform catchphrase appears often enough to become a house tic;
+- a forty-post sample contains at least twelve distinct openings and ten distinct narrative structures;
+- LinkedIn astronomy titles remain at 58 characters or fewer;
+- every clickbait title pays off in the matching photograph and body copy;
 - no body repeats its title;
 - no banned technology language appears in rendered copy;
 - all X posts remain within 280 characters;
@@ -242,4 +337,3 @@ A corpus addition is not complete until all of the following are true:
 - Friends Galaxy identities retain provider neighborhoods and care levels 1 through 5;
 - the demo checkpoint remains deterministic and refreshes to a pristine read-only showcase;
 - the PWA production build remains inside its offline cache policy.
-

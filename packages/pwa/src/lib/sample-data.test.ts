@@ -7,7 +7,6 @@ import {
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_CORPUS_MEDIA,
-  sampleCorpusDisplayTitle,
   SAMPLE_STRESS_FRIEND_COUNT,
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
@@ -91,7 +90,7 @@ describe("sample data batches", () => {
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
       generatedAt: 123,
-      generatorVersion: 9,
+      generatorVersion: 11,
     });
   });
 
@@ -183,7 +182,14 @@ describe("sample data batches", () => {
     const authoredSentences = batch.items.flatMap((item) =>
       (item.content.text ?? "").split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
     );
-    expect(new Set(authoredSentences).size).toBe(authoredSentences.length);
+    const sentenceCounts = new Map<string, number>();
+    for (const sentence of authoredSentences) {
+      sentenceCounts.set(sentence, (sentenceCounts.get(sentence) ?? 0) + 1);
+    }
+    const duplicatedSentences = [...sentenceCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .slice(0, 20);
+    expect(duplicatedSentences).toEqual([]);
     expect(imageItems.every((item) => item.content.mediaUrls.every((url) =>
       new URL(url).hostname === "thumb.wikimedia.org"
     ))).toBe(true);
@@ -196,31 +202,38 @@ describe("sample data batches", () => {
     const bannedTechnologyLanguage = /\b(?:algorithm|computer|database|dashboard|design system|digital|email|group chat|hardware|internet|notification|roadmap|server|software|status page|version control|webinar)\b/i;
     expect(batch.items.filter((item) => bannedTechnologyLanguage.test(item.content.text ?? ""))).toEqual([]);
     expect(batch.items.some((item) => item.platform === "instagram" && /equal billing|effortless beauty|good side/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "facebook" && /will not accept corrections|walk around, Martin/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "linkedin" && /thrilled to report|visible leadership|growth strategy/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "x" && /observed|null hypothesis|uncontrolled variable/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "facebook" && /will not be taking corrections|wetlands tribunal|unpopular opinion/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "linkedin" && /major milestone|promoted|leadership philosophy|high-impact deliverable/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.some((item) => item.platform === "x" && /null hypothesis|uncontrolled variable|peer review|effect size/i.test(item.content.text ?? ""))).toBe(true);
+    expect(batch.items.filter((item) => /^[^.!?]{1,32}:/.test(item.content.text ?? ""))).toEqual([]);
+    const openingStructures = new Set(batch.items.map((item) =>
+      (item.content.text ?? "").toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/).slice(0, 4).join(" ")
+    ));
+    expect(openingStructures.size).toBeGreaterThan(300);
     const publicationItems = batch.items.filter((item) => item.platform === "rss");
     for (const publication of ["Substack", "Medium", "YouTube"] as const) {
       const channelItems = publicationItems.filter((item) => item.rssSource?.feedTitle.includes(publication));
       expect(channelItems).toHaveLength(40);
       expect(new Set(channelItems.map((item) => item.content.text ?? "")).size).toBe(channelItems.length);
     }
-    expect(batch.items.filter((item) => item.platform === "x").every((item) =>
-      (item.content.text ?? "").length <= 280
-    )).toBe(true);
+    const xPostLengths = batch.items
+      .filter((item) => item.platform === "x")
+      .map((item) => (item.content.text ?? "").length);
+    expect(Math.max(...xPostLengths)).toBeLessThanOrEqual(280);
     const locatedItems = batch.items.filter((item) => item.location?.coordinates);
     expect(locatedItems.length).toBeGreaterThanOrEqual(96);
     expect(locatedItems.every((item) => item.content.mediaUrls.length > 0)).toBe(true);
 
-    for (const [index, item] of imageItems.entries()) {
+    for (const item of imageItems) {
       const asset = SAMPLE_CORPUS_MEDIA.find((candidate) =>
         item.content.mediaUrls.some((url) => url.startsWith(candidate.baseUrl))
       );
       expect(asset, item.globalId).toBeDefined();
-      expect(item.content.linkPreview?.title, item.globalId).toBe(sampleCorpusDisplayTitle(asset!, index));
-      expect(item.content.text, item.globalId).not.toContain(sampleCorpusDisplayTitle(asset!, index));
+      const displayTitle = item.content.linkPreview?.title;
+      expect(displayTitle, item.globalId).toBeTruthy();
+      expect(item.content.text, item.globalId).not.toContain(displayTitle!);
       if (item.location && asset?.placeId) {
-        expect(item.location.name, item.globalId).toBe(sampleCorpusDisplayTitle(asset, index));
+        expect(item.location.name, item.globalId).toBe(displayTitle);
       }
     }
   });
