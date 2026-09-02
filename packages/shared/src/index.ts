@@ -56,3 +56,4 @@ export * from "./bug-report";
 export * from "./redact-sensitive";
 export * from "./story-wall";
 export * from "./youtube";
+export * from "./saved-item-note";

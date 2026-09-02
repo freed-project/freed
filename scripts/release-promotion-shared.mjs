@@ -30,6 +30,13 @@ export const RELEASE_ONLY_FILES = [
 
 export const RELEASE_ONLY_PREFIXES = ["release-notes/"];
 
+// Dev retains assertions for its signed isolated verifier job. Production main
+// intentionally omits that dev-only job, so this test has a reviewed lane-specific
+// variant instead of one blob that can be reverse-integrated between branches.
+const BRANCH_SPECIFIC_BACKFLOW_FILES = new Set([
+  "scripts/release-governance.test.mjs",
+]);
+
 export const FORBIDDEN_MAIN_PR_PREFIXES = ["website/"];
 
 export const PROMOTION_WEBSITE_CONFIG_FILES = ["website/next.config.ts"];
@@ -302,6 +309,7 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
 
   return mainChangedFiles
     .filter((filePath) => !isReleaseOnlyFile(filePath))
+    .filter((filePath) => !BRANCH_SPECIFIC_BACKFLOW_FILES.has(filePath))
     .filter(
       (filePath) =>
         filePath !== CARGO_LOCK_PATH ||
