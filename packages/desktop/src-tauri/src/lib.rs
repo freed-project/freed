@@ -310,8 +310,8 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
 fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
     match label {
         "fb-login" | "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
-        "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
-        "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        "ig-login" | "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+        "li-login" | "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
         "substack-login" | "substack-scraper" => Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
         "medium-login" | "medium-scraper" => Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
@@ -898,6 +898,13 @@ fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
                 || operation.starts_with("medium_")
         })
         .unwrap_or(false)
+}
+
+fn active_social_scraper_operation(
+    runtime: Option<&BackgroundRuntimeCoordinator>,
+) -> Option<(&'static str, Option<u128>)> {
+    let (operation, age_ms) = runtime?.active_job_for_health();
+    active_job_uses_social_scraper(operation).then(|| (operation.unwrap_or("unknown"), age_ms))
 }
 
 fn recycle_social_scraper_windows_unless_active(
@@ -7202,8 +7209,9 @@ fn recycle_social_scraper_windows_except(
 fn blocked_preflight_preserved_scraper_label<'a>(
     preserve_label: Option<&'a str>,
     critical: bool,
+    active_social_scraper: bool,
 ) -> Option<&'a str> {
-    if critical {
+    if critical || active_social_scraper {
         None
     } else {
         preserve_label
@@ -7298,14 +7306,48 @@ async fn prepare_social_scrape_memory_internal(
     let before = collect_runtime_memory_stats(app);
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycle_started_at = Instant::now();
-    let recycled_scraper_windows = recycle_social_scraper_windows_except(
-        app,
-        preserve_label,
-        WindowDestroyedReason::PreflightRecycle,
-        &reason,
-    );
-    let cache_trim_result = trim_webkit_network_cache(app);
+    let active_social_scraper = active_social_scraper_operation(background_runtime);
+    let recycled_scraper_windows = if active_social_scraper.is_some() {
+        false
+    } else {
+        recycle_social_scraper_windows_except(
+            app,
+            preserve_label,
+            WindowDestroyedReason::PreflightRecycle,
+            &reason,
+        )
+    };
+    let cache_trim_result = if active_social_scraper.is_some() {
+        WebkitCacheTrimResult {
+            before_bytes: before.webkit_cache_bytes.unwrap_or(0),
+            after_bytes: before.webkit_cache_bytes.unwrap_or(0),
+            cache_trimmed: false,
+        }
+    } else {
+        trim_webkit_network_cache(app)
+    };
     let cache_trimmed = cache_trim_result.cache_trimmed;
+
+    if let Some((active_operation, active_age_ms)) = active_social_scraper {
+        info!(
+            "[memory] deferred scrape cleanup provider={} operation={} active_op={} active_age_ms={}",
+            provider,
+            operation,
+            active_operation,
+            active_age_ms.unwrap_or(0)
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "scrape_memory_cleanup_deferred",
+                "provider": provider,
+                "operation": operation,
+                "activeOperation": active_operation,
+                "activeOperationAgeMs": active_age_ms.map(|value| u64::try_from(value).unwrap_or(u64::MAX)),
+                "reason": "active_social_scraper"
+            }),
+        );
+    }
 
     if recycled_scraper_windows || cache_trimmed {
         tokio::time::sleep(Duration::from_millis(700)).await;
@@ -7465,12 +7507,20 @@ async fn ensure_social_scrape_memory(
         "high"
     };
     let critical = pressure_label == "critically high";
+    let active_social_scraper = active_social_scraper_operation(Some(background_runtime)).is_some();
     if critical {
         let reason = format!("{} {} critical memory preflight", provider, operation);
-        recycle_social_scraper_windows(app, WindowDestroyedReason::CriticalPressure, &reason);
+        recycle_social_scraper_windows_unless_active(
+            app,
+            background_runtime,
+            WindowDestroyedReason::CriticalPressure,
+            &reason,
+        );
     }
     let mut recycled_preserved_scraper_window = false;
-    if let Some(label) = blocked_preflight_preserved_scraper_label(preserve_label, critical) {
+    if let Some(label) =
+        blocked_preflight_preserved_scraper_label(preserve_label, critical, active_social_scraper)
+    {
         let reason = format!("{} {} blocked memory preflight", provider, operation);
         recycled_preserved_scraper_window = app.get_webview_window(label).is_some();
         recycle_webview_window(app, label, WindowDestroyedReason::PreflightRecycle, &reason);
@@ -9500,6 +9550,8 @@ const IG_COMMENTS_EXTRACT_SCRIPT: &str = include_str!("ig-comments-extract.js");
 
 /// Show a visible WebView window navigated to instagram.com/accounts/login
 /// so the user can authenticate through the real Instagram login flow.
+/// The dedicated `ig-login` label prevents scraper cleanup from destroying the
+/// login page while both windows share the same provider data store.
 ///
 /// An `on_navigation` handler detects when the user completes login
 /// (URL leaves /accounts/login) and emits `ig-auth-result`.
@@ -9513,7 +9565,7 @@ async fn ig_show_login(
 
     recycle_webview_window(
         &app,
-        "ig-scraper",
+        "ig-login",
         WindowDestroyedReason::LoginFlow,
         "login restart",
     );
@@ -9524,7 +9576,7 @@ async fn ig_show_login(
 
     let login_window = WebviewWindowBuilder::new(
         &app,
-        "ig-scraper",
+        "ig-login",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
     )
     .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
@@ -9561,7 +9613,7 @@ async fn ig_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
-    observe_window_created("ig-scraper");
+    observe_window_created("ig-login");
     let close_app = app.clone();
     login_window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -9586,7 +9638,7 @@ async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
     );
     recycle_webview_window(
         &app,
-        "ig-scraper",
+        "ig-login",
         WindowDestroyedReason::LoginFlow,
         "login dismissed",
     );
@@ -10226,6 +10278,8 @@ const MEDIUM_EXTRACT_SCRIPT: &str = include_str!("medium-extract.js");
 
 /// Show a visible WebView window navigated to linkedin.com/login so the
 /// user can authenticate through the real LinkedIn login flow.
+/// The dedicated `li-login` label prevents scraper cleanup from destroying the
+/// login page while both windows share the same provider data store.
 ///
 /// An `on_navigation` handler detects when the user completes login
 /// (URL leaves /login) and emits `li-auth-result`.
@@ -10239,7 +10293,7 @@ async fn li_show_login(
 
     recycle_webview_window(
         &app,
-        "li-scraper",
+        "li-login",
         WindowDestroyedReason::LoginFlow,
         "login restart",
     );
@@ -10250,7 +10304,7 @@ async fn li_show_login(
 
     let login_window = WebviewWindowBuilder::new(
         &app,
-        "li-scraper",
+        "li-login",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
     )
     .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
@@ -10288,7 +10342,7 @@ async fn li_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
-    observe_window_created("li-scraper");
+    observe_window_created("li-login");
     let close_app = app.clone();
     login_window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -10313,7 +10367,7 @@ async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
     );
     recycle_webview_window(
         &app,
-        "li-scraper",
+        "li-login",
         WindowDestroyedReason::LoginFlow,
         "login dismissed",
     );
@@ -15735,9 +15789,27 @@ mod tests {
         assert!(active_job_uses_social_scraper(Some("fb_scrape_feed")));
         assert!(active_job_uses_social_scraper(Some("ig_scrape_feed")));
         assert!(active_job_uses_social_scraper(Some("li_scrape_feed")));
+        assert!(active_job_uses_social_scraper(Some(
+            "substack_authenticated_capture"
+        )));
+        assert!(active_job_uses_social_scraper(Some(
+            "medium_authenticated_capture"
+        )));
         assert!(active_job_uses_social_scraper(Some("fb_visit_url")));
         assert!(!active_job_uses_social_scraper(Some("cloud_sync")));
         assert!(!active_job_uses_social_scraper(None));
+
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        assert_eq!(active_social_scraper_operation(Some(&runtime)), None);
+        assert!(runtime.begin_job("li_scrape_feed").is_ok());
+        let active = active_social_scraper_operation(Some(&runtime));
+        assert_eq!(
+            active.map(|(operation, _)| operation),
+            Some("li_scrape_feed")
+        );
+        assert!(runtime.finish_job("li_scrape_feed").is_some());
     }
 
     #[test]
@@ -16010,7 +16082,15 @@ mod tests {
             Some(IG_SCRAPER_DATA_STORE_IDENTIFIER)
         );
         assert_eq!(
+            social_scraper_data_store_identifier("ig-login"),
+            Some(IG_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
             social_scraper_data_store_identifier("li-scraper"),
+            Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("li-login"),
             Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         );
         assert_eq!(
@@ -16030,6 +16110,16 @@ mod tests {
             Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
         );
         assert_eq!(social_scraper_data_store_identifier("main"), None);
+
+        for login_label in [
+            "fb-login",
+            "ig-login",
+            "li-login",
+            "substack-login",
+            "medium-login",
+        ] {
+            assert!(!SOCIAL_SCRAPER_WINDOW_LABELS.contains(&login_label));
+        }
 
         let unique = HashSet::from([
             FB_SCRAPER_DATA_STORE_IDENTIFIER,
@@ -16745,14 +16835,21 @@ mod tests {
     #[test]
     fn scrape_memory_recycles_preserved_window_under_high_pressure() {
         assert_eq!(
-            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false),
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false, false),
             Some("ig-scraper")
         );
         assert_eq!(
-            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), true),
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), true, false),
             None
         );
-        assert_eq!(blocked_preflight_preserved_scraper_label(None, false), None);
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false, true),
+            None
+        );
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(None, false, false),
+            None
+        );
     }
 
     #[test]
