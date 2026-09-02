@@ -3,7 +3,7 @@
   "version": "26.9.200-dev",
   "channel": "dev",
   "dayKey": "26.9.2",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-02T18:03:58.157Z",
   "model": "heuristic",
@@ -66,10 +66,19 @@
     ]
   },
   "release": {
-    "deck": "Searchable notes to saved content",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Saved-item notes and safer provider sync",
+    "features": [
+      "Add searchable, synchronized notes to saved URLs and edit them later from the reader",
+      "Preview URL metadata before saving while preserving notes entered during the preview"
+    ],
+    "fixes": [
+      "Keep LinkedIn and Instagram login windows separate from their scraper windows without losing the authenticated provider session",
+      "Defer shared provider cleanup while Facebook, Instagram, LinkedIn, Medium, or Substack work is active",
+      "Show provider beta badges from one canonical metadata source"
+    ],
+    "followUps": [
+      "Verify the signed build against the connected LinkedIn and Instagram accounts on the installation machine"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.200-dev\n\nSearchable notes to saved content\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.200-dev\n\nSaved-item notes and safer provider sync\n\n### Features\n\n- Add searchable, synchronized notes to saved URLs and edit them later from the reader\n- Preview URL metadata before saving while preserving notes entered during the preview\n\n### Fixes\n\n- Keep LinkedIn and Instagram login windows separate from their scraper windows without losing the authenticated provider session\n- Defer shared provider cleanup while Facebook, Instagram, LinkedIn, Medium, or Substack work is active\n- Show provider beta badges from one canonical metadata source\n\n### Follow-ups\n\n- Verify the signed build against the connected LinkedIn and Instagram accounts on the installation machine\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
