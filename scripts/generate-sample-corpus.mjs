@@ -34,8 +34,16 @@ const ALLOWED_LICENSES = new Set([
   "CC BY-SA 3.0",
   "CC BY-SA 4.0",
 ]);
-const REJECT_TITLE = /\b(?:annotated|animation|artifact|artwork|automobile|before and after|boy|bridge|building|camera phone|capsule|car collection|chart|child|city|comparison|computer.generated|crowd|diagram|dissection|drawing|engraving|etching|family and friends|football|fossil cast|furniture|girl|graph|helicopter|highway|hiker|house|human|icon|illustration|labels?|lander|launch|logo|man|map|mezzotint|mission patch|mountaineer|museum|naval|navy|operation|orbiter|painting|people|person|perspective view|portrait|poster|probe|projector|radar data|road|rocket|rover|scout|sculpture|selfie|shoes?|simulation|skeleton|spacecraft|specimen|stamp|statue|submarine|telescope mirrors|telescope model|ticket|tourist|village|visualization|warship|woman|woodcut|zoomorphic mount)\b/i;
-const REJECT_COMPOUNDS = /OperationPrayingMantis|Australia region|city lights|family and friends day|image on the left|image on the right|Lava Fields - Savai'i|Dragonfly 29|NEPTUNE ODYSSEY|Star Trails Over Gemini South|solar eclipse\. Projected|carretera|autopista/i;
+const REJECT_TITLE =
+  /\b(?:annotated|animation|artifact|artwork|automobile|before and after|boy|bridge|building|camera phone|capsule|car collection|chart|child|city|comparison|computer.generated|crowd|diagram|dissection|drawing|engraving|etching|family and friends|football|fossil cast|furniture|girl|graph|helicopter|highway|hiker|house|human|icon|illustration|labels?|lander|launch|logo|man|map|mezzotint|mission patch|mountaineer|museum|naval|navy|operation|orbiter|painting|people|person|perspective view|portrait|poster|probe|projector|radar data|road|rocket|rover|scout|sculpture|selfie|shoes?|simulation|skeleton|spacecraft|specimen|stamp|statue|submarine|telescope mirrors|telescope model|ticket|tourist|village|visualization|warship|woman|woodcut|zoomorphic mount)\b/i;
+const REJECT_COMPOUNDS =
+  /OperationPrayingMantis|PrayingMantisSRF|Australia region|city lights|family and friends day|image on the left|image on the right|Lava Fields - Savai'i|Dragonfly 29|NEPTUNE ODYSSEY|Star Trails Over Gemini South|solar eclipse\. Projected|carretera|autopista/i;
+const REJECT_PRAYING_MANTIS_BAND =
+  /praying\s*mantis\s*\(band\)|(?=.*praying\s*mantis)(?=.*(?:heavy metal|musicians? on stage|music festivals?|discograph|albums? by))/i;
+const REJECT_GREBES =
+  /\b(?:grebes?|podicipedidae|podicipediformes|podiceps|tachybaptus|aechmophorus|rollandia)\b/i;
+const REJECT_DOCUMENT_OR_DEAD_DISPLAY =
+  /\b(?:book signing|book covers?|page spread|double[- ]page spread|photographs? of (?:a|the) book|scans? of (?:a|the) book|scanned (?:books?|pages?)|title pages?)\b|\b(?:dead pigeons?|dead birds?|bird carcasses?|taxiderm(?:y|ied)|stuffed birds?|mounted birds?|preserved birds?)\b/i;
 const TOPIC_REQUIREMENTS = new Map([
   ["praying mantis", /mantis|mantodea/i],
   ["orchid mantis", /mantis|hymenopus/i],
@@ -87,24 +95,76 @@ const TOPIC_REQUIREMENTS = new Map([
   ["feather star underwater", /feather star|crinoid/i],
   ["seahorse courtship pair", /seahorse|hippocampus/i],
   ["nudibranch mating", /nudibranch/i],
-  ["penguin courtship", /(?=.*(?:penguin|sphenisc))(?=.*(?:courtship|courting|mate|mating|pair|love))/i],
-  ["swan courtship", /(?=.*(?:swan|cygnus))(?=.*(?:courtship|courting|mate|mating|pair|love))/i],
-  ["fox pair", /(?=.*(?:\bfox|vulpes))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection))/i],
-  ["otter pair", /(?=.*(?:otter|lutrinae|enhydra))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection|play))/i],
-  ["red panda pair", /(?=.*(?:red panda|ailurus))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection))/i],
-  ["prairie dog kiss", /(?=.*(?:prairie dog|cynomys))(?=.*(?:kiss|greet|pair|couple|affection))/i],
-  ["albatross courtship", /(?=.*(?:albatross|diomede))(?=.*(?:courtship|courting|mate|mating|pair|dance|display))/i],
-  ["flamingo courtship", /(?=.*(?:flamingo|phoenicopter))(?=.*(?:courtship|courting|mate|mating|pair|dance|display))/i],
-  ["elephant affection", /(?=.*(?:elephant|loxodonta|elephas))(?=.*(?:affection|touch|pair|couple|love|bond))/i],
-  ["giraffe pair", /(?=.*(?:giraffe|giraffa))(?=.*(?:courtship|courting|mate|mating|pair|couple|affection))/i],
-  ["peacock courtship display", /(?=.*(?:peacock|pavo))(?=.*(?:courtship|courting|mate|mating|display|train))/i],
-  ["gentoo penguin courtship", /(?=.*(?:gentoo|pygoscelis))(?=.*(?:courtship|courting|mate|mating|pair|pebble))/i],
-  ["lion mating pair", /(?=.*(?:lion|panthera leo))(?=.*(?:mate|mating|pair|copulat))/i],
-  ["macaw pair", /(?=.*(?:macaw|ara ))(?=.*(?:pair|couple|mate|bond|affection|love))/i],
-  ["lovebird pair", /(?=.*(?:lovebird|agapornis))(?=.*(?:pair|couple|mate|bond|affection|love))/i],
-  ["lemur pair", /(?=.*lemur)(?=.*(?:pair|couple|mate|courtship|groom|affection))/i],
-  ["rabbit pair", /(?=.*(?:rabbit|oryctolagus))(?=.*(?:pair|couple|mate|courtship|kiss|affection))/i],
-  ["meerkat affection", /(?=.*(?:meerkat|suricata))(?=.*(?:affection|groom|pair|couple|kiss|love))/i],
+  [
+    "nudibranch eggs",
+    /(?=.*nudibranch)(?=.*(?:eggs?|spawn|ribbon|spiral))/i,
+  ],
+  [
+    "penguin courtship",
+    /(?=.*(?:penguin|sphenisc))(?=.*(?:courtship|courting|mate|mating|pair|love))/i,
+  ],
+  ["swan", /swan|cygnus/i],
+  [
+    "fox pair",
+    /(?=.*(?:\bfox|vulpes))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection))/i,
+  ],
+  [
+    "otter pair",
+    /(?=.*(?:otter|lutrinae|enhydra))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection|play))/i,
+  ],
+  [
+    "red panda pair",
+    /(?=.*(?:red panda|ailurus))(?=.*(?:courtship|courting|mate|mating|pair|couple|kiss|love|affection))/i,
+  ],
+  [
+    "prairie dog kiss",
+    /(?=.*(?:prairie dog|cynomys))(?=.*(?:kiss|greet|pair|couple|affection))/i,
+  ],
+  [
+    "albatross courtship",
+    /(?=.*(?:albatross|diomede))(?=.*(?:courtship|courting|mate|mating|pair|dance|display))/i,
+  ],
+  ["flamingo", /flamingo|phoenicopter/i],
+  [
+    "elephant affection",
+    /(?=.*(?:elephant|loxodonta|elephas))(?=.*(?:affection|touch|pair|couple|love|bond))/i,
+  ],
+  [
+    "giraffe pair",
+    /(?=.*(?:giraffe|giraffa))(?=.*(?:courtship|courting|mate|mating|pair|couple|affection))/i,
+  ],
+  [
+    "peacock courtship display",
+    /(?=.*(?:peacock|pavo))(?=.*(?:courtship|courting|mate|mating|display|train))/i,
+  ],
+  [
+    "gentoo penguin courtship",
+    /(?=.*(?:gentoo|pygoscelis))(?=.*(?:courtship|courting|mate|mating|pair|pebble))/i,
+  ],
+  [
+    "lion mating pair",
+    /(?=.*(?:lion|panthera leo))(?=.*(?:mate|mating|pair|copulat))/i,
+  ],
+  [
+    "macaw pair",
+    /(?=.*(?:macaw|ara ))(?=.*(?:pair|couple|mate|bond|affection|love))/i,
+  ],
+  [
+    "lovebird pair",
+    /(?=.*(?:lovebird|agapornis))(?=.*(?:pair|couple|mate|bond|affection|love))/i,
+  ],
+  [
+    "lemur pair",
+    /(?=.*lemur)(?=.*(?:pair|couple|mate|courtship|groom|affection))/i,
+  ],
+  [
+    "rabbit pair",
+    /(?=.*(?:rabbit|oryctolagus))(?=.*(?:pair|couple|mate|courtship|kiss|affection))/i,
+  ],
+  [
+    "meerkat affection",
+    /(?=.*(?:meerkat|suricata))(?=.*(?:affection|groom|pair|couple|kiss|love))/i,
+  ],
   ["basalt columns geology", /basalt|columnar/i],
   ["volcanic lava geology", /volcan|lava/i],
   ["volcano crater geology", /volcano|crater|caldera/i],
@@ -152,7 +212,10 @@ const TOPIC_REQUIREMENTS = new Map([
   ["galaxy cluster astronomy", /galaxy cluster/i],
   ["globular cluster astronomy", /globular cluster/i],
   ["cosmic dust nebula", /cosmic dust|dust cloud|nebula/i],
-  ["stellar nursery nebula", /stellar nursery|star forming|star-forming|nebula/i],
+  [
+    "stellar nursery nebula",
+    /stellar nursery|star forming|star-forming|nebula/i,
+  ],
   ["Jupiter storm astronomy", /Jupiter|Great Red Spot/i],
   ["Saturn rings astronomy", /Saturn|rings/i],
   ["star trails night sky", /star trails/i],
@@ -223,14 +286,15 @@ const TOPICS = [
   ["feather star underwater", "undersea", "Feather Current"],
   ["seahorse courtship pair", "undersea", "Horace Seahorse"],
   ["nudibranch mating", "undersea", "Nudi Branch Manager"],
+  ["nudibranch eggs", "undersea", "Nudi Branch Manager"],
   ["penguin courtship", "wildlife", "Pebble Penguin"],
-  ["swan courtship", "wildlife", "Cygnus Shy"],
+  ["swan", "wildlife", "Cygnus Shy"],
   ["fox pair", "wildlife", "Vix and Vulpes"],
   ["otter pair", "wildlife", "Ottie Current"],
   ["red panda pair", "wildlife", "Redford Panda"],
   ["prairie dog kiss", "wildlife", "Prairie Dawn"],
   ["albatross courtship", "wildlife", "Alba Crosswind"],
-  ["flamingo courtship", "wildlife", "Flora Mingo"],
+  ["flamingo", "wildlife", "Flora Mingo"],
   ["elephant affection", "wildlife", "Ellie Phant"],
   ["giraffe pair", "wildlife", "Gigi Raffe"],
   ["peacock courtship display", "wildlife", "Percy Peacock"],
@@ -317,7 +381,7 @@ const TOPICS = [
   ["Mercury NASA", "astronomy", "Mercury Quick"],
   ["Uranus NASA", "astronomy", "Ura N. Us"],
   ["Neptune NASA", "astronomy", "Neptune Blue"],
-] ;
+];
 
 function stripHtml(value = "") {
   return value
@@ -339,6 +403,32 @@ function cleanDetail(title) {
     .trim();
 }
 
+function cleanCategoryTitle(title) {
+  return stripHtml(title)
+    .replace(/^Category:/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Positive subject identity comes only from Commons-controlled identity
+ * fields. Descriptions often mention nearby species or the contents of a
+ * photographed page, so using them here can turn a grebe or book into a swan.
+ */
+export function sampleCorpusSubjectIdentityText(page) {
+  const categories = (page.categories ?? [])
+    .map((category) => cleanCategoryTitle(category.title ?? ""))
+    .filter(Boolean);
+  return [cleanDetail(page.title ?? ""), ...categories].join(" ");
+}
+
+/** Descriptions remain useful as a conservative rejection signal. */
+export function sampleCorpusRejectionText(page) {
+  const metadata = page.imageinfo?.[0]?.extmetadata ?? {};
+  return `${sampleCorpusSubjectIdentityText(page)} ${stripHtml(metadata.ImageDescription?.value)}`.trim();
+}
+
 function pageUrl(title) {
   return `https://commons.wikimedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 }
@@ -352,7 +442,8 @@ async function queryTopic(topic, continuation) {
     gsrnamespace: "6",
     gsrlimit: "100",
     gsrsearch: `${topic} filetype:bitmap`,
-    prop: "imageinfo",
+    prop: "imageinfo|categories",
+    cllimit: "max",
     iiprop: "url|size|mime|sha1|extmetadata",
     iiurlwidth: "1280",
   });
@@ -360,98 +451,129 @@ async function queryTopic(topic, continuation) {
   const response = await fetch(`${API_URL}?${parameters}`, {
     headers: { "User-Agent": USER_AGENT },
   });
-  if (!response.ok) throw new Error(`Commons search failed with ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Commons search failed with ${response.status}`);
   return response.json();
 }
 
-function eligiblePage(page, topic) {
+export function eligiblePage(page, topic) {
   const info = page.imageinfo?.[0];
   const metadata = info?.extmetadata ?? {};
   const license = stripHtml(metadata.LicenseShortName?.value);
-  const detail = cleanDetail(page.title ?? "");
-  const description = stripHtml(metadata.ImageDescription?.value);
-  const searchableText = `${detail} ${description}`;
+  const subjectIdentityText = sampleCorpusSubjectIdentityText(page);
+  const rejectionText = sampleCorpusRejectionText(page);
   const ratio = info?.width && info?.height ? info.width / info.height : 0;
   const requirement = TOPIC_REQUIREMENTS.get(topic);
-  return info &&
+  return (
+    info &&
     info.mime === "image/jpeg" &&
     info.width >= 1_600 &&
     info.height >= 1_000 &&
     ratio >= 0.65 &&
     ratio <= 2.2 &&
     ALLOWED_LICENSES.has(license) &&
-    !REJECT_TITLE.test(searchableText) &&
-    !REJECT_COMPOUNDS.test(searchableText) &&
-    (!requirement || requirement.test(searchableText));
+    !REJECT_TITLE.test(rejectionText) &&
+    !REJECT_COMPOUNDS.test(rejectionText) &&
+    !REJECT_PRAYING_MANTIS_BAND.test(rejectionText) &&
+    !REJECT_GREBES.test(rejectionText) &&
+    !REJECT_DOCUMENT_OR_DEAD_DISPLAY.test(rejectionText) &&
+    (!requirement || requirement.test(subjectIdentityText))
+  );
 }
 
-const candidates = [];
-const seenSha1 = new Set();
-const seenTitles = new Set();
+export async function generateSampleCorpus() {
+  const candidates = [];
+  const seenSha1 = new Set();
+  const seenTitles = new Set();
 
-for (const [subject, category, identityNameBase] of TOPICS) {
-  let continuation;
-  let acceptedForTopic = 0;
-  for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
-    const payload = await queryTopic(subject, continuation);
-    for (const page of payload.query?.pages ?? []) {
-      if (!eligiblePage(page, subject)) continue;
-      const info = page.imageinfo[0];
-      if (seenSha1.has(info.sha1) || seenTitles.has(page.title)) continue;
-      seenSha1.add(info.sha1);
-      seenTitles.add(page.title);
-      const metadata = info.extmetadata ?? {};
-      const latitude = Number(metadata.GPSLatitude?.value);
-      const longitude = Number(metadata.GPSLongitude?.value);
-      candidates.push({
-        subject,
-        category,
-        identityNameBase,
-        detail: cleanDetail(page.title),
-        imageUrl: info.thumburl ?? info.url,
-        sourceUrl: pageUrl(page.title),
-        creator: stripHtml(metadata.Artist?.value) || "Wikimedia Commons contributor",
-        license: stripHtml(metadata.LicenseShortName?.value),
-        width: info.thumbwidth ?? info.width,
-        height: info.thumbheight ?? info.height,
-        sha1: info.sha1,
-        ...(Number.isFinite(latitude) && Number.isFinite(longitude) &&
-          Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
-          ? { coordinates: { lat: latitude, lng: longitude } }
-          : {}),
-      });
-      acceptedForTopic += 1;
+  for (const [subject, category, identityNameBase] of TOPICS) {
+    let continuation;
+    let acceptedForTopic = 0;
+    for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+      const payload = await queryTopic(subject, continuation);
+      for (const page of payload.query?.pages ?? []) {
+        if (!eligiblePage(page, subject)) continue;
+        const info = page.imageinfo[0];
+        if (seenSha1.has(info.sha1) || seenTitles.has(page.title)) continue;
+        seenSha1.add(info.sha1);
+        seenTitles.add(page.title);
+        const metadata = info.extmetadata ?? {};
+        const latitude = Number(metadata.GPSLatitude?.value);
+        const longitude = Number(metadata.GPSLongitude?.value);
+        candidates.push({
+          subject,
+          category,
+          identityNameBase,
+          detail: cleanDetail(page.title),
+          imageUrl: info.thumburl ?? info.url,
+          sourceUrl: pageUrl(page.title),
+          creator:
+            stripHtml(metadata.Artist?.value) ||
+            "Wikimedia Commons contributor",
+          license: stripHtml(metadata.LicenseShortName?.value),
+          width: info.thumbwidth ?? info.width,
+          height: info.thumbheight ?? info.height,
+          sha1: info.sha1,
+          ...(Number.isFinite(latitude) &&
+          Number.isFinite(longitude) &&
+          Math.abs(latitude) <= 90 &&
+          Math.abs(longitude) <= 180
+            ? { coordinates: { lat: latitude, lng: longitude } }
+            : {}),
+        });
+        acceptedForTopic += 1;
+      }
+      continuation = payload.continue?.gsroffset;
+      if (continuation === undefined) break;
     }
-    continuation = payload.continue?.gsroffset;
-    if (continuation === undefined) break;
+    process.stdout.write(
+      `${subject}: ${acceptedForTopic}, candidates ${candidates.length}\n`,
+    );
   }
-  process.stdout.write(`${subject}: ${acceptedForTopic}, candidates ${candidates.length}\n`);
-}
 
-const selected = [];
-for (const [category, target] of Object.entries(CATEGORY_TARGETS)) {
-  const topicQueues = TOPICS
-    .filter(([, candidateCategory]) => candidateCategory === category)
-    .map(([subject]) => candidates.filter((candidate) => candidate.subject === subject));
-  let categoryCount = 0;
-  while (categoryCount < target && topicQueues.some((queue) => queue.length > 0)) {
-    for (const queue of topicQueues) {
-      const candidate = queue.shift();
-      if (!candidate) continue;
-      selected.push(candidate);
-      categoryCount += 1;
-      if (categoryCount >= target) break;
+  const selected = [];
+  for (const [category, target] of Object.entries(CATEGORY_TARGETS)) {
+    const topicQueues = TOPICS.filter(
+      ([, candidateCategory]) => candidateCategory === category,
+    ).map(([subject]) =>
+      candidates.filter((candidate) => candidate.subject === subject),
+    );
+    let categoryCount = 0;
+    while (
+      categoryCount < target &&
+      topicQueues.some((queue) => queue.length > 0)
+    ) {
+      for (const queue of topicQueues) {
+        const candidate = queue.shift();
+        if (!candidate) continue;
+        selected.push(candidate);
+        categoryCount += 1;
+        if (categoryCount >= target) break;
+      }
+    }
+    if (categoryCount < target) {
+      throw new Error(
+        `Only found ${categoryCount.toLocaleString()} eligible unique ${category} images`,
+      );
     }
   }
-  if (categoryCount < target) {
-    throw new Error(`Only found ${categoryCount.toLocaleString()} eligible unique ${category} images`);
+
+  const catalog = selected.map((asset, index) => ({
+    id: `commons-${String(index + 1).padStart(4, "0")}`,
+    ...asset,
+  }));
+  if (catalog.length !== TARGET_COUNT) {
+    throw new Error(`Expected ${TARGET_COUNT}, received ${catalog.length}`);
   }
+  await writeFile(OUTPUT_PATH, `${JSON.stringify(catalog, null, 2)}\n`);
+  process.stdout.write(
+    `Wrote ${TARGET_COUNT.toLocaleString()} unique images to ${OUTPUT_PATH}\n`,
+  );
 }
 
-const catalog = selected.map((asset, index) => ({
-  id: `commons-${String(index + 1).padStart(4, "0")}`,
-  ...asset,
-}));
-if (catalog.length !== TARGET_COUNT) throw new Error(`Expected ${TARGET_COUNT}, received ${catalog.length}`);
-await writeFile(OUTPUT_PATH, `${JSON.stringify(catalog, null, 2)}\n`);
-process.stdout.write(`Wrote ${TARGET_COUNT.toLocaleString()} unique images to ${OUTPUT_PATH}\n`);
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  await generateSampleCorpus();
+}

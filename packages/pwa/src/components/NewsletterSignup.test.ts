@@ -61,7 +61,6 @@ describe("NewsletterSignup", () => {
     await act(async () => {
       root.render(
         createElement<NewsletterSignupProps>(NewsletterSignup, {
-          endpoint: "https://freed.wtf/api/subscribe",
           siteKey: "public-site-key",
         }),
       );
@@ -87,6 +86,9 @@ describe("NewsletterSignup", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://www.freed.wtf/api/subscribe",
+    );
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       email: "reader@example.com",
       name: "Reader Name",

@@ -26,8 +26,8 @@ import {
 } from "./library-core-sqlite-runtime";
 
 const DEMO_CREATED_AT = Date.UTC(2026, 7, 31, 12);
-const DEMO_BATCH_ID = "freed-demo-showcase-v9";
-const DEMO_LIBRARY_ID = "freed-demo-library-v9";
+const DEMO_BATCH_ID = "freed-demo-showcase-v11";
+const DEMO_LIBRARY_ID = "freed-demo-library-v11";
 const DEMO_EPOCH_ID = "1".repeat(64);
 const DEMO_WRITER_ID = "2".repeat(64);
 const DEMO_CAPABILITY_ID = "3".repeat(64);

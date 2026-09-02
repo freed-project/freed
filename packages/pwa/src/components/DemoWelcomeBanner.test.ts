@@ -1,11 +1,29 @@
 /**
  * @vitest-environment jsdom
+ * @vitest-environment-options {"url":"https://freed-pwa-orpin.vercel.app/"}
  */
 import { createElement } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { DemoWelcomeBanner } from "./DemoWelcomeBanner";
+
+function setInput(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
 
 function findButton(container: HTMLElement, label: string): HTMLButtonElement | undefined {
   return Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes(label));
@@ -18,6 +36,15 @@ describe("DemoWelcomeBanner", () => {
 
   afterAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    delete window.turnstile;
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("opens with the selected Take back direction and a theme-aware Freed logo", async () => {
@@ -95,5 +122,66 @@ describe("DemoWelcomeBanner", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.useRealTimers();
+  });
+
+  it("keeps the Field Guide newsletter inert on Vercel previews", async () => {
+    vi.stubEnv("DEV", false);
+    vi.useFakeTimers();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const turnstileRender = vi.fn((_container, options) => {
+      options.callback?.("verified-token");
+      return "newsletter-widget";
+    });
+    window.turnstile = {
+      render: turnstileRender,
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+    window.history.replaceState(null, "", "/");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        createElement(DemoWelcomeBanner, {
+          downloadUrl: "https://freed.wtf/get",
+        }),
+      );
+    });
+    await act(async () => {
+      findButton(container, "Explore Freed Demo")?.click();
+      await vi.advanceTimersByTimeAsync(470);
+    });
+    await act(async () => {
+      findButton(container, "Join the newsletter")?.click();
+    });
+    await act(async () => {
+      setInput(
+        container.querySelector<HTMLInputElement>('input[type="email"]')!,
+        "reader@example.com",
+      );
+      findButton(container, "Join the newsletter")?.click();
+    });
+    await act(async () => {
+      setInput(
+        container.querySelector<HTMLInputElement>(
+          'input[autocomplete="name"]',
+        )!,
+        "Reader Name",
+      );
+      findButton(container, "Join the newsletter")?.click();
+    });
+
+    expect(turnstileRender).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({ sitekey: "1x00000000000000000000AA" }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("That’s the complete signup flow.");
+
+    await act(async () => root.unmount());
+    container.remove();
   });
 });

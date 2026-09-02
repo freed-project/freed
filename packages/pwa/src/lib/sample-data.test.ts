@@ -180,7 +180,7 @@ describe("sample data batches", () => {
     expect(imageItems).toHaveLength(batch.items.length);
     expect(new Set(batch.items.map((item) => item.content.text ?? "")).size).toBe(batch.items.length);
     expect(imageItems.every((item) => item.content.mediaUrls.every((url) =>
-      new URL(url).hostname === "thumb.wikimedia.org"
+      ["thumb.wikimedia.org", "upload.wikimedia.org"].includes(new URL(url).hostname)
     ))).toBe(true);
     expect(new Set(imageItems.map((item) => item.platform))).toEqual(
       new Set(["facebook", "instagram", "linkedin", "rss", "saved", "x"]),

@@ -80,13 +80,13 @@ describe("demo checkpoint", () => {
     }
   });
 
-  it("uses only the curated Wikimedia host for remote display images", () => {
+  it("uses only curated Wikimedia hosts for remote display images", () => {
     const serialized = JSON.stringify(createFreedDemoCheckpointRecords(FIXED_PRESENTATION));
 
     expect(serialized).not.toContain("picsum.photos");
     expect(serialized).toContain("thumb.wikimedia.org");
     expect(serialized).not.toMatch(
-      /"(?:authorAvatarUrl|avatarUrl|imageUrl)":"https?:\/\/(?!thumb\.wikimedia\.org)[^"]+/i,
+      /"(?:authorAvatarUrl|avatarUrl|imageUrl)":"https?:\/\/(?!(?:thumb|upload)\.wikimedia\.org)[^"]+/i,
     );
     expect(serialized).not.toMatch(/private[_-]?key/i);
   });

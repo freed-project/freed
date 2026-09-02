@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
 import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
+import { isFreedNewsletterPreviewHostname } from "../lib/demo-mode";
 
 type DemoWelcomeBannerProps = {
   downloadUrl: string;
@@ -132,6 +133,9 @@ function FieldGuideWelcome({
   const [newsletterOpen, setNewsletterOpen] = useState(false);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
+  const newsletterPreviewOnly =
+    import.meta.env.DEV ||
+    isFreedNewsletterPreviewHostname(window.location.hostname);
   const cardRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -245,7 +249,7 @@ function FieldGuideWelcome({
           <div>
             {newsletterOpen ? (
               <>
-                {import.meta.env.DEV ? (
+                {newsletterPreviewOnly ? (
                   <NewsletterSignup
                     compact
                     previewOnly

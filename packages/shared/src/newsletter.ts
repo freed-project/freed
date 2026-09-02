@@ -1,5 +1,6 @@
 /** Public newsletter configuration shared by Freed's browser surfaces. */
-export const FREED_NEWSLETTER_SUBSCRIBE_URL = "https://freed.wtf/api/subscribe";
+export const FREED_NEWSLETTER_SUBSCRIBE_URL =
+  "https://www.freed.wtf/api/subscribe";
 
 /**
  * Cloudflare Turnstile site keys are public browser identifiers. The matching

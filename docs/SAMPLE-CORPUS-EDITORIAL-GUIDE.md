@@ -83,6 +83,18 @@ Before accepting a character arc, read the entire timeline in order and ask:
 16. Celebrate courtship, affection, and animal sexuality.
     Courtship and mating are part of planetary life, not an awkward appendix to it. Include beautiful photographs that clearly show courting pairs, mating rituals, mutual grooming, touch, dance, gift giving, and shy proximity. The copy may find comedy in crushes, polyamory, changing roles, or complicated relationship structures when the joke is affectionate and grounded in the species' real behavior. Never invent a relationship the photograph does not support, project human consent claims onto animals, or use sexuality as cheap shock. Cute, bashful longing is especially welcome. Keep explicit images scientifically legible and aesthetically tasteful.
 
+17. Keep courtship as one strand of a much larger life.
+    The flagship demo may devote no more than seven of its 45 episodes to courtship or family, with no more than two such episodes for any character. Flora Mingo gets four episodes, only one of which may concern courtship. Every animal arc must also contain hunger, danger, weather, movement, transformation, work, play, friendship, solitude, discovery, or another event that has nothing to do with finding a mate. A beautiful pair photograph is not permission to turn the whole corpus into a dating service.
+
+18. Kill performative prose.
+    Cut any line that sounds designed to become a quote card, prove the writer is clever, or make an animal deliver a content strategist's idea of profundity. `Doctrine`, `ceremonial robes`, `philosophy I had not requested`, `panel discussion`, and `review of commitment` are warning signs, not motifs. Put the creature in a physical situation. Let it act, fail, eat, flee, molt, freeze, collide, recover, or misunderstand something. End on the consequence.
+
+19. Bind every episode to one exact Commons file.
+    Every authored episode must declare `mediaSha1`. That value must equal the `sha1` of exactly one row in `sample-corpus.generated.json`, and that row's `subject` must equal the episode's `subject`. The runtime must not choose the first image for a subject, fall back by array position, or silently substitute another photograph after regeneration. If an exact hash disappears, the build fails until an editor reviews the replacement and updates the binding deliberately.
+
+20. Prove the subject from identity metadata, not description prose.
+    The generator may establish positive subject identity only from the Commons file title and category titles. Commons descriptions can mention nearby species, describe what appears inside a photographed book, or list every bird observed that day. They remain valuable rejection evidence, but they never prove that a photograph contains the requested subject. Explicitly reject band and performance metadata for Praying Mantis, grebe taxonomy in swan searches, photographed pages and books, dead or preserved birds, and comparable human-made display material. A rejection rule must remain narrow enough to preserve living animals photographed in natural behavior.
+
 ## Structural variety
 
 Every batch must deliberately mix narrative architecture. Select the structure after selecting the fact and comic target. Never select one wrapper and pour every subject into it.
@@ -242,6 +254,8 @@ Every selected image must:
 - avoid people, buildings, vehicles, diagrams, illustrations, specimens, labels, and obvious human staging;
 - preserve canonical coordinates when Commons supplies trustworthy latitude and longitude.
 
+An episode's `mediaSha1` is its durable editorial pointer. Catalog order, generated IDs, filenames, and source URLs may change presentation or storage details, but none of them may retarget an authored episode. The exact hash and exact subject pair is the binding.
+
 The source generator lives at `scripts/generate-sample-corpus.mjs`. The checked-in runtime catalog lives at `packages/shared/src/sample-corpus.generated.json` and intentionally excludes unused source prose and original dimensions to keep the PWA fast.
 
 ## Approved tonal examples
@@ -340,11 +354,13 @@ When a new subject is added:
 
 1. Add its search phrase, category, and comic identity base to `TOPICS` in `scripts/generate-sample-corpus.mjs`.
 2. Add a strict subject requirement to `TOPIC_REQUIREMENTS` so search results cannot drift to a merely related subject.
-3. Add one factual comic premise to `SUBJECT_PREMISES` in `packages/shared/src/sample-corpus.ts`.
-4. Add or refine category-specific rivals only when they remain plausible within that natural setting.
-5. Regenerate the catalog and inspect the images visually.
-6. Run the focused shared and PWA corpus tests.
-7. Run `npm run validate:feature` before publication.
+3. Prove positive identity from the Commons file title and category titles. Use its description only to reject false positives or staged material.
+4. Add one factual comic premise to `SUBJECT_PREMISES` in `packages/shared/src/sample-corpus.ts`.
+5. Add or refine category-specific rivals only when they remain plausible within that natural setting.
+6. Regenerate the catalog and inspect the images visually.
+7. Bind each published episode to one reviewed catalog row by exact `mediaSha1`, then verify the row's subject matches the episode subject.
+8. Run the focused generator, shared, and PWA corpus tests.
+9. Run `npm run validate:feature` before publication.
 
 ## Acceptance checklist
 
@@ -358,6 +374,9 @@ A corpus addition is not complete until all of the following are true:
 - courtship and affection appear as a visible recurring strand of planetary life, with the photographed behavior supporting the joke;
 - jokes about polyamory or fluid roles remain rare, affectionate, and grounded in real species behavior;
 - every image URL and source hash is unique;
+- every episode `mediaSha1` resolves to exactly one catalog row with the same subject, with no positional or subject-first fallback;
+- positive subject identity comes only from Commons titles and categories, while descriptions remain rejection-only evidence;
+- Praying Mantis band imagery, grebes returned for swan searches, photographed books or pages, and dead or preserved birds are absent;
 - every full post and title is editorially coherent, while memorable character identities recur naturally;
 - title openings, punctuation, and grammatical structures remain visibly varied instead of sharing one corpus-wide template;
 - repeated subjects receive distinct opening jokes, not one premise with different trailing clauses;

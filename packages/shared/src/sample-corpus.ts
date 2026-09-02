@@ -50,22 +50,32 @@ interface CuratedEpisodeAssignment {
 }
 
 const generatedAssets = generatedCorpus as readonly GeneratedAsset[];
-const availableAssetsBySubject = new Map<string, GeneratedAsset[]>();
+const generatedAssetsBySha1 = new Map<string, GeneratedAsset>();
 for (const asset of generatedAssets) {
-  const available = availableAssetsBySubject.get(asset.subject) ?? [];
-  available.push(asset);
-  availableAssetsBySubject.set(asset.subject, available);
+  if (generatedAssetsBySha1.has(asset.sha1)) {
+    throw new Error(`The sample corpus contains duplicate media SHA ${asset.sha1}.`);
+  }
+  generatedAssetsBySha1.set(asset.sha1, asset);
 }
-const usedAssetCountBySubject = new Map<string, number>();
 const curatedEpisodeAssignments = new Map<string, CuratedEpisodeAssignment>();
+const curatedAssetSha1s = new Set<string>();
 const curatedAssets: GeneratedAsset[] = [];
 for (const arc of SAMPLE_CHARACTER_ARCS) {
   for (const [sequence, episode] of arc.episodes.entries()) {
-    const available = availableAssetsBySubject.get(episode.subject) ?? [];
-    const used = usedAssetCountBySubject.get(episode.subject) ?? 0;
-    const asset = available[used];
-    if (!asset) throw new Error(`The curated ${arc.identityNameBase} arc needs another ${episode.subject} image.`);
-    usedAssetCountBySubject.set(episode.subject, used + 1);
+    if (!/^[0-9a-f]{40}$/.test(episode.mediaSha1)) {
+      throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} has an invalid media SHA.`);
+    }
+    const asset = generatedAssetsBySha1.get(episode.mediaSha1);
+    if (!asset) {
+      throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} references missing media SHA ${episode.mediaSha1}.`);
+    }
+    if (asset.subject !== episode.subject) {
+      throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} expects ${episode.subject} media, but ${asset.id} is ${asset.subject}.`);
+    }
+    if (curatedAssetSha1s.has(asset.sha1)) {
+      throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} reuses media SHA ${asset.sha1}.`);
+    }
+    curatedAssetSha1s.add(asset.sha1);
     curatedEpisodeAssignments.set(asset.id, { arc, episode, sequence });
     curatedAssets.push(asset);
   }
@@ -121,13 +131,16 @@ const SUBJECT_PREMISES: Readonly<Record<string, string>> = {
   "feather star underwater": "I spread eighty feathery arms into the current and let dinner make the first move",
   "seahorse courtship pair": "We have been dancing together every morning and I still rehearse the tail hold beforehand",
   "nudibranch mating": "We are both simultaneously the boyfriend and the girlfriend, and the reef can update its forms accordingly",
+  "nudibranch eggs": "I laid a ribbon of eggs in one clean spiral and left the current to handle the margins",
   "penguin courtship": "I brought one excellent pebble and have spent six minutes pretending not to watch for a reaction",
+  swan: "I crossed the water without moving anything above the surface and let the feet keep their own counsel",
   "swan courtship": "We synchronized our necks, then acted surprised when everyone saw the heart",
   "fox pair": "I crossed the whole field to sit nearby and become intensely interested in one ordinary blade of grass",
   "otter pair": "We held paws so the current could not separate us and agreed to call it navigation",
   "red panda pair": "I climbed this entire tree to sit three branches away and look casually unavailable",
   "prairie dog kiss": "We touched noses to say hello and both immediately forgot the rest of the protocol",
   "albatross courtship": "We rehearsed this dance for years and I still panic when the beak clicking starts",
+  flamingo: "I turned mud and brine into breakfast, then let carotenoids do the tailoring",
   "flamingo courtship": "The whole flock joined the dance and nobody has updated the relationship diagram since Tuesday",
   "elephant affection": "I reached for their face with my trunk and discovered dignity is incompatible with having a crush",
   "giraffe pair": "I came all this way to stand nearby and stare at a leaf that has never interested me before",
