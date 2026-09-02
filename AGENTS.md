@@ -1,5 +1,20 @@
 # Agent Instructions
 
+## Task startup freshness
+
+The checkout supplied as a new task's working directory is a launcher, not proof that the task has a fresh branch or an isolated worktree.
+
+Before asking for authorization, planning implementation, or changing files:
+
+1. Run the read-only `git fetch --all --prune` from the launcher checkout.
+2. Classify the destination lane from the request: `origin/dev` for product work, `origin/www` for public website work, or `origin/main` for production release preparation.
+3. Read the current `AGENTS.md` directly from that fetched remote ref with `git show <remote-ref>:AGENTS.md`. The already-loaded local copy may be stale. Follow the fetched instructions for the rest of the task.
+4. If the fetch or fetched instruction read fails, stop and report the exact blocker. Do not proceed under a possibly stale local policy.
+
+Level 1 remains read-only in the launcher checkout. For Level 2 or higher, create an isolated worktree from the explicit freshly fetched remote ref with the repository worktree helper before editing. A task may use its starting directory only when it is already a clean dedicated worktree at the required fetched ref.
+
+Never overwrite or discard launcher-checkout changes to make it fresh. Preserve and report unexpected work. After a task merges into its lane, fast-forward a clean launcher checkout to the verified remote head so the next task begins with the newest bootstrap policy.
+
 ## Authorization levels
 
 When authorization is required and the owner has not already set a level for the task, ask:
@@ -27,6 +42,8 @@ Do not request authorization for one isolated action. Do not append exclusions, 
 7. **Full task authority:** Level 6 plus autonomous execution of every reasonably necessary task-scoped action until the task is complete or a hard external blocker makes further progress impossible.
 
 Authorization applies to the stated task. Each level includes every lower level. The newest explicitly granted level controls. Once a level is active, do not ask again for actions included within it. Clarification questions about ambiguous task scope are not authorization challenges.
+
+Use these numbered levels in every owner-facing authorization request and status. Internal actor labels such as `observe-only`, `plan-only`, `pr-only`, and `merge-safe` are implementation bookkeeping. They never replace or rename the numbered owner authorization levels.
 
 ## Rules
 

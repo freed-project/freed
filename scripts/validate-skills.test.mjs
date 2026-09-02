@@ -34,6 +34,32 @@ test("checked-in Freed skills keep safe invocation and resolvable commands", () 
   }
 });
 
+test("feature tasks refresh policy before owner authorization", () => {
+  const agentInstructions = readFileSync(
+    new URL("../AGENTS.md", import.meta.url),
+    "utf8",
+  );
+  const featureSkill = readFileSync(
+    new URL("../.agents/skills/freed-build-feature/SKILL.md", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    agentInstructions.indexOf("## Task startup freshness") <
+      agentInstructions.indexOf("## Authorization levels"),
+    "startup freshness must precede the authorization policy",
+  );
+  assert.match(agentInstructions, /git show <remote-ref>:AGENTS\.md/);
+  assert.match(agentInstructions, /Internal actor labels[\s\S]*never replace or rename/);
+  assert.ok(
+    featureSkill.indexOf("## Start from current policy") <
+      featureSkill.indexOf("## Establish the contract"),
+    "the feature skill must refresh policy before establishing authority",
+  );
+  assert.match(featureSkill, /git show origin\/dev:AGENTS\.md/);
+  assert.match(featureSkill, /must never be presented as owner authorization choices/);
+});
+
 test("skill validation rejects automatic invocation and missing commands", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "freed-skill-validator-"));
   const skillDir = path.join(root, ".agents", "skills", "unsafe-skill");
