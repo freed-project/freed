@@ -1445,6 +1445,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   }
 
   function SectionContent({ id }: { id: SectionId }) {
+    const section = sectionById[id];
+    const providerHeading = section ? (
+      <SectionHeading label={section.label} stage={section.stage} />
+    ) : null;
+
     switch (id) {
       case "appearance":
         return (
@@ -1635,7 +1640,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "x":
         return XSettingsContent ? (
           <>
-            <SectionHeading label="X / Twitter" />
+            {providerHeading}
             <XSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1643,7 +1648,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "facebook":
         return FacebookSettingsContent ? (
           <>
-            <SectionHeading label="Facebook" />
+            {providerHeading}
             <FacebookSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1651,7 +1656,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "instagram":
         return InstagramSettingsContent ? (
           <>
-            <SectionHeading label="Instagram" />
+            {providerHeading}
             <InstagramSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1659,7 +1664,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "linkedin":
         return LinkedInSettingsContent ? (
           <>
-            <SectionHeading label="LinkedIn" />
+            {providerHeading}
             <LinkedInSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1667,7 +1672,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "substack":
         return SubstackSettingsContent ? (
           <>
-            <SectionHeading label="Substack" stage="beta" />
+            {providerHeading}
             <SubstackSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1675,7 +1680,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "medium":
         return MediumSettingsContent ? (
           <>
-            <SectionHeading label="Medium" stage="beta" />
+            {providerHeading}
             <MediumSettingsContent surface="settings" />
           </>
         ) : null;
@@ -1683,7 +1688,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "youtube":
         return YouTubeSettingsContent ? (
           <>
-            <SectionHeading label="YouTube" />
+            {providerHeading}
             <YouTubeSettingsContent surface="settings" />
           </>
         ) : null;
