@@ -1,0 +1,70 @@
+{
+  "tag": "v26.9.200-dev",
+  "version": "26.9.200-dev",
+  "channel": "dev",
+  "dayKey": "26.9.2",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-02T17:39:11.621Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.100-dev",
+    "previousPublishedDayTag": "v26.9.100-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "21cd496c9dd4ea07685b05dceb3af30845cff815",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.100-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "7f035735d6af129e3b7e8c50da88bdde6dffa298",
+        "toInclusiveProductCommitSha": "21cd496c9dd4ea07685b05dceb3af30845cff815"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:2ddfc7e5380f204b0cc56b8578da5b0f83d6a94fd53cdbc5cd9cc47d51fb6dc9",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.200-dev"
+    ],
+    "prNumbers": [
+      1771,
+      1773,
+      1774,
+      1775,
+      1776
+    ],
+    "commitSubjects": [
+      "fix: preserve active provider windows (#1776)",
+      "feat: add searchable notes to saved content (#1775)",
+      "fix: unify provider beta metadata (#1774)",
+      "fix: allow reviewed release lane divergence (#1773)",
+      "chore: merge main back into dev after production release (#1771)"
+    ]
+  },
+  "release": {
+    "deck": "Searchable notes to saved content",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.200-dev\n\nSearchable notes to saved content\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
