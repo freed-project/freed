@@ -1,0 +1,84 @@
+{
+  "tag": "v26.9.200-dev",
+  "version": "26.9.200-dev",
+  "channel": "dev",
+  "dayKey": "26.9.2",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-02T18:03:58.157Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.100-dev",
+    "previousPublishedDayTag": "v26.9.100-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "cafe12fa33bc57b0f9d0f021d4e9f75b0fef983a",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.100-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "7f035735d6af129e3b7e8c50da88bdde6dffa298",
+        "toInclusiveProductCommitSha": "cafe12fa33bc57b0f9d0f021d4e9f75b0fef983a"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:94d7fcb6229d41f184ac32226f9af555224d3d1a3a25b1b29a68b406f1f20910",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.200-dev"
+    ],
+    "prNumbers": [
+      1634,
+      1767,
+      1771,
+      1773,
+      1774,
+      1775,
+      1776
+    ],
+    "commitSubjects": [
+      "chore(deps): bump log (#1634)",
+      "chore(deps): bump postcss-selector-parser from 6.1.2 to 6.1.4 (#1767)",
+      "docs: add PWA stability continuity handoff (#1769)",
+      "fix: preserve active provider windows (#1776)",
+      "feat: add searchable notes to saved content (#1775)",
+      "fix: unify provider beta metadata (#1774)",
+      "fix: allow reviewed release lane divergence (#1773)",
+      "chore: merge main back into dev after production release (#1771)"
+    ]
+  },
+  "release": {
+    "deck": "Saved-item notes and safer provider sync",
+    "features": [
+      "Add searchable, synchronized notes to saved URLs and edit them later from the reader",
+      "Preview URL metadata before saving while preserving notes entered during the preview"
+    ],
+    "fixes": [
+      "Keep LinkedIn and Instagram login windows separate from their scraper windows without losing the authenticated provider session",
+      "Defer shared provider cleanup while Facebook, Instagram, LinkedIn, Medium, or Substack work is active",
+      "Show provider beta badges from one canonical metadata source"
+    ],
+    "followUps": [
+      "Verify the signed build against the connected LinkedIn and Instagram accounts on the installation machine"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.200-dev\n\nSaved-item notes and safer provider sync\n\n### Features\n\n- Add searchable, synchronized notes to saved URLs and edit them later from the reader\n- Preview URL metadata before saving while preserving notes entered during the preview\n\n### Fixes\n\n- Keep LinkedIn and Instagram login windows separate from their scraper windows without losing the authenticated provider session\n- Defer shared provider cleanup while Facebook, Instagram, LinkedIn, Medium, or Substack work is active\n- Show provider beta badges from one canonical metadata source\n\n### Follow-ups\n\n- Verify the signed build against the connected LinkedIn and Instagram accounts on the installation machine\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
