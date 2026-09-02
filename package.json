@@ -12,9 +12,12 @@
     "dev": "npm run dev --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "typecheck:graph": "tsc --build --dry"
+    "typecheck:graph": "tsc --build --dry",
+    "validate:agent-instructions": "node scripts/validate-agent-instructions.mjs",
+    "validate:skills": "node scripts/validate-skills.mjs"
   },
   "devDependencies": {
+    "js-yaml": "4.3.1",
     "typescript": "^5.3.0"
   }
 }

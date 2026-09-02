@@ -1,251 +1,111 @@
 # Agent Instructions
 
-## Rules
-
-- **After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
-- **Roadmap sync:** When `docs/PHASE-*.md` changes, update `website/src/pages/Roadmap.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`).
-- **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
-- **IDs:** Display tail — `...${id.slice(-8)}`.
-- **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
-- **Before creating any new component or hook:** `SemanticSearch` or `Grep` the package for existing code that does the same thing. Duplication is never acceptable — if two surfaces need the same UI or logic, extract a shared primitive and have both import it.
-- **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
-- **Platform copy:** Never write "for Mac", "for Windows", or "for desktop" in user-facing strings. The correct product name is "Freed Desktop". Use that.
-- **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
-- **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root.
-  - This monorepo uses local workspace packages. Raw subdirectory deploys like `vercel deploy website/` and `vercel deploy packages/pwa/` can upload an incomplete tree and fail at `npm install`.
-  - Website preview and production deploys should come from Vercel Git integration on the `www` branch.
-  - Keep the website helper scripts only for explicit manual fallback work.
-  - The PWA still uses the helper scripts:
-    - Preview: `./scripts/vercel-deploy-preview.sh pwa`
-    - Production: `./scripts/vercel-deploy-production.sh pwa`
-
-## Versioning
-
-CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
-
-- `patch = (day_of_month × 100) + build_number`
-- March 1, first build → `26.3.100`; fifth build → `26.3.104`
-- March 15, first build → `26.3.1500`
-
-Run `./scripts/release.sh` with no args to auto-compute the next version.
-
-## Package Boundaries
-
-| Package      | Rule                                                                                                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shared/`    | Pure functions + types. Zero runtime deps. No React.                                                                                                                                         |
-| `ui/`        | Platform-agnostic React UI layer. May import `@freed/shared`. No platform stores, no Tauri APIs, no service-worker logic, no `@freed/sync` imports. Ships raw `.tsx` source — no build step. |
-| `sync/`      | Storage-agnostic. Works in browser (IndexedDB) and Node (filesystem).                                                                                                                        |
-| `pwa/`       | PWA app shell only. Imports `@freed/ui` and `@freed/shared`. Never import Tauri APIs.                                                                                                        |
-| `desktop/`   | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`.                                                                                                        |
-| `capture-*/` | Isolated. Never import between capture packages.                                                                                                                                             |
-
-## URLs
-
-| Property            | URL                     |
-| ------------------- | ----------------------- |
-| Marketing site      | `https://freed.wtf`     |
-| PWA (mobile reader) | `https://app.freed.wtf` |
-| Download page       | `https://freed.wtf/get` |
+## Task startup freshness
 
-**Never write `freed.wtf/app`** — the PWA lives at the subdomain `app.freed.wtf`.
-
-## Website Theme Selector
-
-- The footer theme selector previews fonts and layout, so it must render its
-  interactive preview in a fixed layer captured before the theme changes. Do
-  not replace that layer with an inline-only hover preview. Page reflow can move
-  the control out from under the pointer and create an infinite preview loop.
-- Keep exactly three themes per row in this order: Ember, Midas, Scriptorium,
-  then Starship, Dark Star, Neon.
-- The active swatch is taller than resting themes. Reserve fixed row height for
-  the maximum active state so switching themes never moves either row.
-- Any change to `ThemeSelector.tsx`, `desktop-themes.css`, or the compact theme
-  preview styles must run `npm run test:e2e` from `website/`. The regression test
-  must keep asserting a stable pointer target, fixed row centers, and a taller
-  active swatch.
+The checkout supplied as a new task's working directory is a launcher, not proof that the task has a fresh branch or an isolated worktree.
 
-## Git Workflow
+Before asking for authorization, planning implementation, or changing files:
 
-**Never work directly on `main`.** Always create a git worktree for feature work:
+1. Run the read-only `git fetch --all --prune` from the launcher checkout.
+2. Confirm that the request belongs on `origin/www`. Public marketing pages, public copy, legal pages, public roadmap presentation, and public changelog presentation use this lane. Product code and product documentation use `origin/dev`. Production desktop release preparation uses `origin/main`.
+3. Read the current root instructions directly from the fetched destination ref with `git show <remote-ref>:AGENTS.md`. The loaded local copy may be stale. Follow the fetched instructions for the rest of the task.
+4. If the lane or path scope is unclear, ask before creating a worktree. If fetch or the remote instruction read fails, stop and report the exact blocker.
 
-```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch>
-# work in ../freed-<slug>/
-# remove when done: git worktree remove ../freed-<slug>
-```
+Level 1 stays read-only in the launcher checkout. For Level 2 or higher, use `./scripts/worktree-add.sh` to create an isolated worktree from the explicit fetched ref. The starting directory is usable only when it is already a clean dedicated worktree at that ref.
 
-`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
+Never discard launcher changes to make it fresh. Preserve and report unexpected work. After a task merges into `www`, fast-forward a clean launcher checkout to the verified remote head so the next task starts with the newest bootstrap policy.
 
-**Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
+## Authorization levels
 
-**Commit messages** follow Conventional Commits:
+When authorization is required and the owner has not set a level, ask exactly:
 
-| Prefix      | When to use                                       |
-| ----------- | ------------------------------------------------- |
-| `feat:`     | New user-facing feature                           |
-| `fix:`      | Bug fix                                           |
-| `chore:`    | Tooling, deps, config — no production code change |
-| `docs:`     | Documentation only                                |
-| `refactor:` | Code restructure with no behavior change          |
-| `perf:`     | Performance improvement                           |
-| `style:`    | Formatting, whitespace, CSS-only                  |
+> What authorization level should this task proceed at?
+>
+> 1. Inspect
+> 2. Build
+> 3. Publish
+> 4. Ship dev
+> 5. Change provider behavior
+> 6. Ship production
+> 7. Full task authority
+>
+> Reply with a number.
 
-**Merge policy:** Squash merge only. One PR = one commit on `main`.
+Do not request authorization for one isolated action or append exclusions and safety boilerplate.
 
-```bash
-# From the primary worktree (not the feature worktree):
-gh pr merge <n> --squash --delete-branch
+1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
+2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
+3. **Publish:** Level 2 plus commits, pushes, pull requests, CI repair, and non-production merges.
+4. **Ship dev:** Level 3 plus dev releases, installation, deployment, real local-data testing, and exercising existing provider behavior at its current cadence. No production release or provider-observable behavior change.
+5. **Change provider behavior:** Level 4 plus new or changed provider requests, navigation, refresh frequency, timing, retries, cookies, headers, scraping behavior, and necessary live provider mutations.
+6. **Ship production:** Level 5 plus production releases, production deployments, installation, rollback, and post-release verification.
+7. **Full task authority:** Level 6 plus every reasonably necessary task-scoped action until completion or a hard external blocker.
 
-# Immediately after merging, tear down the feature worktree:
-git worktree remove --force ../freed-<slug>
-git branch -D <branch>   # must use -D, not -d (squash leaves commits unreachable)
-```
+Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
 
-Or run the cleanup helper to sweep all merged worktrees at once:
+Use these numbers in owner-facing authorization requests and status. Internal labels such as `observe-only`, `plan-only`, `pr-only`, and `merge-safe` never replace them.
 
-```bash
-./scripts/worktree-cleanup.sh        # interactive
-./scripts/worktree-cleanup.sh --yes  # non-interactive
-```
+## Load only the applicable instructions
 
-Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
+Root instructions are the always-loaded governance kernel. Skills contain task workflows. Scoped `AGENTS.md` files contain path-specific invariants.
 
-**Production website branch:** `freed.wtf` ships from `www`, not `main`.
+When a task starts at repository root, descendant instructions are not discovered later merely because you enter or edit that directory. Before changing a scoped path, read its linked instructions manually. Scoped files add to this file and do not weaken it.
 
-- Merge production website changes to `www` before deploying the marketing site
-- Production desktop releases still tag from `main`
-- If a production release updates checked-in changelog or website content, merge that reviewed website state to `www` before the production website deploy runs
-- Never assume a website deploy from `main` is correct just because the desktop release tagged from `main`
+The maintenance model and enforced budgets live in [docs/AGENT-INSTRUCTIONS.md](docs/AGENT-INSTRUCTIONS.md).
 
-**Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
+- Website changes: [website/AGENTS.md](website/AGENTS.md)
+- Skill changes: [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md)
+- Website build and review workflow: [freed-build-www](.agents/skills/freed-build-www/SKILL.md)
+- Production website publication: [freed-ship-www](.agents/skills/freed-ship-www/SKILL.md)
 
-```bash
-gh pr list --state merged --head <branch>   # authoritative: did a PR for this branch land?
-git branch -vv | grep '\[gone\]'            # remote branch deleted = PR merged + auto-deleted
-```
+## Repository safety
 
----
+- Never edit or commit task changes directly on `www`, `dev`, or `main`. Use a task branch in an isolated worktree. A shipping workflow may use a clean lane checkout for read-only proof and post-merge operations.
+- Preserve user changes. Do not clean, reset, overwrite, or incorporate unrelated work.
+- Use the Node toolchain pinned by `.nvmrc`. `node`, `npm`, and `npx` must come from the same installation.
+- Gather available evidence yourself. Ask the owner to run a diagnostic only when the required account, hardware, or live state is outside your access.
+- Keep the active delivery bounded. Fix blockers. Record adjacent deferrable debt once, then resume. Drop speculative findings.
+- Give machine-time estimates only, such as "one conversation" or "~10 min". Never quote human hours or days.
 
-## Writing Style (All User-Facing Copy)
+## WWW lane and deployment authority
 
-Copy must read like a person wrote it. When in doubt, read it aloud. If it sounds like a press release, rewrite it.
+`www` is the production marketing branch for `https://freed.wtf`. Never base website work on `dev`, merge `dev` into `www`, or use `main` as a second website branch.
 
-- **No em dashes (—) or en dashes (–).** Standard hyphens and normal punctuation only. Em dashes are a near-universal AI tell.
-- **No AI filler phrases:** "not just X but Y", "delve into", "it's worth noting", "leverage" (verb), "in today's world", "Furthermore,", "Moreover,", "Additionally,", "at the end of the day", "game-changer", "seamlessly".
-- **No throat-clearing.** Cut the first sentence of any paragraph that just announces what the paragraph is about.
-- **Short sentences.** If a sentence needs an em dash to hold together, split it in two.
-- **Concrete over abstract.** "Stores posts on your hard drive" beats "enables local-first data persistence".
-- **Contractions are fine.** "We don't" reads warmer than "We do not". Use them.
+Opening or updating a pull request against `www` is Level 3 publication. Merging to `www` is a production action because Vercel Git integration deploys that branch. It requires Level 6 or 7. Do not merge merely because checks pass or a preview exists.
 
-## Desktop E2E Testing
+Vercel Git integration is the primary preview and production path:
 
-The Freed Desktop app has a Playwright test suite that runs in plain Chromium -- no Tauri binary, no
-native build required. Use this to reproduce UI bugs, verify fixes, and write regression tests
-without any manual clicking.
+- A pull request targeting `www` receives the normal Vercel preview.
+- A merge to `www` triggers the production deployment.
+- Repository deployment helpers are explicit manual fallbacks, not the ordinary path.
 
-### How it works
+The only permitted Vercel scope is `aubreyfs-projects`. Never run a raw Vercel command without `--scope aubreyfs-projects`, never run Vercel from the repository root, and never use an argument-free deployment tool.
 
-`VITE_TEST_TAURI=1` swaps every `@tauri-apps/*` import for a thin mock module under
-`packages/desktop/src/__mocks__/@tauri-apps/`. Each mock tracks calls in `window.__TAURI_MOCK_*`
-globals. A self-contained init script (`tests/e2e/fixtures/tauri-init.ts`) is injected via
-`page.addInitScript()` before any page JavaScript runs -- it installs `window.__TAURI_INTERNALS__`
-with default IPC handlers for every command the app calls on startup.
+Vercel Git integration is the supported website path. The current manual helper scripts are not verified for a fresh `www` worktree. If the owner explicitly requests a manual fallback, stop and route a separate helper-repair task. Do not invoke a helper or improvise with a raw Vercel command until that repair is reviewed and verified.
 
-### Running the tests
+## Source identity
 
-```bash
-# Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+Public roadmap and changelog updates must remain attributable to an approved source:
 
-# Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+- For roadmap presentation, use canonical `docs/roadmap-status.json` from an approved product source checkout. Record the source commit and file digest. Run `node scripts/validate-roadmap-status.mjs` inside that exact approved product checkout before transferring the validated data. Map it exactly. Do not infer status from phase prose, commit messages, or unchecked assumptions.
+- For changelog presentation, record the published release, tag, channel, source commit, and approved release-note artifact.
+- Put the relevant source identity in the task and pull request. Do not merge a product branch into `www` to transfer one presentation change.
 
-# Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
-```
+## Delivery kernel
 
-All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and
-tear it down after the run. No separate server startup needed.
+- Create website worktrees with `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www`. Never use bare `git worktree add`.
+- Build and test locally before publication. Run website commands from `website/`, with the worktree root `node_modules/.bin` on `PATH` when a hoisted binary is needed.
+- Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and pull request titles use the matching Conventional Commit prefix.
+- Do not put an agent product name or other authorship giveaway in a branch name, commit subject, pull request title, issue title, or external title.
+- Publish using the caller's existing GitHub authentication. A pull request must target `www`, carry the required external-post marker, identify its source when applicable, and represent a locally verified candidate.
+- Squash merge only. One pull request becomes one commit on `www`, and the pull request title becomes the squash subject.
+- Verify that required checks passed for the exact head SHA. After an authorized merge, verify `origin/www`, the Vercel deployment identity, and the production response before claiming the site shipped.
+- Stop only the current task's preview or browser session at closeout. Remove the merged worktree and task branch. Query pull request or remote branch state instead of using branch ancestry to judge a squash merge.
 
-### Writing a new test
+## Writing
 
-1. Add a spec file under `packages/desktop/tests/e2e/`.
-2. Import from `./fixtures/app` -- not from `@playwright/test` directly:
+Apply the installed `no-ai-slop` skill to substantial prose. Preserve the owner's meaning, cadence, humor, uncertainty, and edge. Public copy must remain appropriate to its audience.
 
-```ts
-import { test, expect } from "./fixtures/app";
-
-test("my new behaviour", async ({ app }) => {
-  // app.page is a Playwright Page. The Tauri mock is already injected.
-  // app.waitForReady() blocks until <main> is visible (app fully init'd).
-  await expect(app.page.locator("button")).toBeVisible();
-});
-```
-
-3. Use the `ipc` fixture to override handlers or read mock state:
-
-```ts
-test("invoke a command", async ({ app, ipc }) => {
-  await ipc.setHandler("my_command", (_args) => ({ ok: true }));
-
-  const result = await app.page.evaluate(async () =>
-    (window as any).__TAURI_MOCK_INVOKE__("my_command", {})
-  );
-  expect(result).toEqual({ ok: true });
-});
-```
-
-4. To assert on plugin-shell `open()` calls: `await ipc.openedUrls()`.
-5. To assert on plugin-process calls: `await ipc.processCalls()`.
-6. To pre-set the updater state before page load, inject a second `addInitScript`:
-
-```ts
-await page.addInitScript(tauriInitScript());  // always first
-await page.addInitScript(() => {
-  (window as any).__TAURI_MOCK_UPDATE__ = { version: "2.0.0", ... };
-});
-await page.goto("/");
-```
-
-### Adding a new IPC mock handler
-
-If the app starts calling a new `invoke()` command and tests fail because the handler is missing,
-add a default response in both places:
-
-1. `packages/desktop/tests/e2e/fixtures/tauri-init.ts` -- add an entry to `_defaults` inside the
-   IIFE. This covers the init-script path (plain Chromium / CI).
-2. `packages/desktop/src/__mocks__/@tauri-apps/api/core.ts` -- add to the `handlers` map in the
-   module-level mock (only hits when `VITE_TEST_TAURI=1` aliases are active, i.e. dev server runs
-   the real Vite mock modules instead of the injected init script).
-
-The two are complementary. `tauri-init.ts` is the reliable one for tests; the module mocks exist
-for completeness and for any test that doesn't use `page.addInitScript`.
-
-### Debugging a UI bug in the desktop app
-
-1. Create a worktree as usual.
-2. Write a failing test that reproduces the bug.
-3. Run with `--debug` to step through the browser state at each assertion.
-4. Fix the code, confirm the test goes green, then commit both together.
-
-This replaces manual testing. Never ask the user to click through the app to verify a fix -- write
-a test instead.
-
-## Automerge
-
-**Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
-
-**Mutations** must use `A.change()` — direct mutation silently fails to sync:
-
-```ts
-A.change(doc, (d) => {
-  d.items.push(item);
-}); // ✅
-doc.items.push(item); // ❌ silent failure
-```
-
-**Proxy constraints inside `A.change()`:**
-
-- Never assign `undefined` — use `delete` instead
-- Never replace an existing nested object — assign fields individually or use a `deepMergeInto` helper
+- Lead with the point. Use concrete nouns and active verbs.
+- Never use em dashes, en dashes, or double hyphens as prose punctuation.
+- Cut filler, throat-clearing, puffery, vague attribution, canned contrasts, and decorative conclusions.
