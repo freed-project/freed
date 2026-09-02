@@ -138,7 +138,10 @@ import {
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
 import { installFreedDemoCheckpoint } from "./lib/demo-checkpoint";
-import { isFreedDemoMode } from "./lib/demo-mode";
+import {
+  isFreedDemoMode,
+  isFreedNewsletterPreviewHostname,
+} from "./lib/demo-mode";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const IS_DEMO = isFreedDemoMode(window.location.hostname);
@@ -719,7 +722,11 @@ function App() {
 
 export default OAuthRouter;
 function PwaNewsletterSignup() {
-  return import.meta.env.DEV ? (
+  const previewOnly =
+    import.meta.env.DEV ||
+    isFreedNewsletterPreviewHostname(window.location.hostname);
+
+  return previewOnly ? (
     <NewsletterSignup
       previewOnly
       siteKey={FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY}
