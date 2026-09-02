@@ -10,6 +10,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import {
+  isAllowedNewsletterOrigin,
+  isAllowedTurnstileHostname,
+  newsletterCorsHeaders,
+} from "./newsletter-security";
 
 const BREVO_CONTACTS_ENDPOINT = "https://api.brevo.com/v3/contacts";
 const TURNSTILE_VERIFY_ENDPOINT =
@@ -17,8 +22,6 @@ const TURNSTILE_VERIFY_ENDPOINT =
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 6;
 const EMAIL_COOLDOWN_MS = 60 * 1000;
-const TURNSTILE_UNAVAILABLE_TOKEN = "turnstile-unavailable";
-
 const requestBuckets = new Map<string, { count: number; resetAt: number }>();
 const recentEmailSubmissions = new Map<string, number>();
 
@@ -38,7 +41,16 @@ interface BrevoError {
 interface TurnstileVerificationResponse {
   success: boolean;
   hostname?: string;
+  action?: string;
   "error-codes"?: string[];
+}
+
+function requiresAppChallengeAction(origin: string): boolean {
+  return (
+    Boolean(origin) &&
+    origin !== "https://freed.wtf" &&
+    origin !== "https://www.freed.wtf"
+  );
 }
 
 function isValidEmail(email: string): boolean {
@@ -147,23 +159,39 @@ async function verifyTurnstileToken(
 }
 
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get("origin")?.trim() ?? "";
+  const securityOptions = {
+    configuredOrigins: process.env.NEWSLETTER_ALLOWED_ORIGINS,
+    configuredHostnames: process.env.NEWSLETTER_ALLOWED_TURNSTILE_HOSTNAMES,
+    nodeEnv: process.env.NODE_ENV,
+  };
+  const respond = (body: object, status = 200) =>
+    NextResponse.json(body, {
+      status,
+      headers: newsletterCorsHeaders(origin),
+    });
+
+  if (!isAllowedNewsletterOrigin(origin, securityOptions)) {
+    return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+  }
+
   try {
-    const body = await request.json().catch(() => null) as SubscribeRequest | null;
+    const body = (await request
+      .json()
+      .catch(() => null)) as SubscribeRequest | null;
 
     if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+      return respond({ error: "Invalid request body" }, 400);
     }
 
     const normalizedEmail = (body.email ?? "").trim().toLowerCase();
     const normalizedName = (body.name ?? "").trim();
     const normalizedPhoneNumber = normalizePhoneNumber(body.phoneNumber ?? "");
     const turnstileToken = (body.turnstileToken ?? "").trim();
-    const isTurnstileUnavailable =
-      turnstileToken === TURNSTILE_UNAVAILABLE_TOKEN;
     const honeypotValue = (body.company ?? "").trim();
 
     if (honeypotValue) {
-      return NextResponse.json({
+      return respond({
         success: true,
         message: "Successfully subscribed",
       });
@@ -171,64 +199,75 @@ export async function POST(request: NextRequest) {
 
     // Validate email
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      return NextResponse.json(
-        { error: "Invalid email address" },
-        { status: 400 }
-      );
+      return respond({ error: "Invalid email address" }, 400);
     }
 
     if (!normalizedName) {
-      return NextResponse.json(
-        { error: "Please tell us your name." },
-        { status: 400 }
-      );
+      return respond({ error: "Please tell us your name." }, 400);
     }
 
     if (!isValidPhoneNumber(body.phoneNumber ?? "")) {
-      return NextResponse.json(
+      return respond(
         { error: "Please enter a valid phone number or leave it blank." },
-        { status: 400 }
+        400,
       );
     }
 
     if (!turnstileToken) {
-      return NextResponse.json(
+      return respond(
         { error: "Please complete the human check and try again." },
-        { status: 400 }
+        400,
       );
     }
 
     const requestIp = getRequestIp(request);
 
     if (isRateLimited(`newsletter:${requestIp}`)) {
-      return NextResponse.json(
-        { error: "Too many signup attempts. Please wait a minute and try again." },
-        { status: 429 }
+      return respond(
+        {
+          error:
+            "Too many signup attempts. Please wait a minute and try again.",
+        },
+        429,
       );
     }
 
-    if (!isTurnstileUnavailable) {
-      const turnstileResult = await verifyTurnstileToken(turnstileToken, request);
+    const turnstileResult = await verifyTurnstileToken(turnstileToken, request);
 
-      if (!turnstileResult.success) {
-        const errorCodes = turnstileResult["error-codes"] ?? [];
-        const isExpired = errorCodes.includes("timeout-or-duplicate");
+    if (!turnstileResult.success) {
+      const errorCodes = turnstileResult["error-codes"] ?? [];
+      const isExpired = errorCodes.includes("timeout-or-duplicate");
 
-        return NextResponse.json(
-          {
-            error: isExpired
-              ? "That human check expired. Please try again."
-              : "We could not verify the human check. Please try again.",
-          },
-          { status: 400 }
-        );
-      }
+      return respond(
+        {
+          error: isExpired
+            ? "That human check expired. Please try again."
+            : "We could not verify the human check. Please try again.",
+        },
+        400,
+      );
+    }
+
+    if (
+      !isAllowedTurnstileHostname(turnstileResult.hostname, securityOptions)
+    ) {
+      return respond({ error: "We could not verify the signup source." }, 400);
+    }
+
+    if (
+      requiresAppChallengeAction(origin) &&
+      turnstileResult.action !== "newsletter_signup"
+    ) {
+      return respond({ error: "We could not verify the signup action." }, 400);
     }
 
     if (isEmailCoolingDown(normalizedEmail)) {
-      return NextResponse.json(
-        { error: "Too many signup attempts. Please wait a minute and try again." },
-        { status: 429 }
+      return respond(
+        {
+          error:
+            "Too many signup attempts. Please wait a minute and try again.",
+        },
+        429,
       );
     }
 
@@ -238,22 +277,16 @@ export async function POST(request: NextRequest) {
 
     if (!apiKey || !listId) {
       console.error(
-        "Missing BREVO_API_KEY or BREVO_LIST_ID environment variables"
+        "Missing BREVO_API_KEY or BREVO_LIST_ID environment variables",
       );
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
+      return respond({ error: "Server configuration error" }, 500);
     }
 
     const parsedListId = Number.parseInt(listId, 10);
 
     if (!Number.isFinite(parsedListId) || parsedListId <= 0) {
       console.error("Invalid BREVO_LIST_ID environment variable");
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
+      return respond({ error: "Server configuration error" }, 500);
     }
 
     // Add contact to Brevo
@@ -277,30 +310,45 @@ export async function POST(request: NextRequest) {
 
     // Handle Brevo response
     if (brevoResponse.ok) {
-      return NextResponse.json({
+      return respond({
         success: true,
         message: "Successfully subscribed",
       });
     }
 
     // Handle specific Brevo errors
-    const brevoError = (await brevoResponse.json().catch(() => ({}))) as BrevoError;
+    const brevoError = (await brevoResponse
+      .json()
+      .catch(() => ({}))) as BrevoError;
 
     // Contact already exists (not really an error for our use case)
     if (brevoError.code === "duplicate_parameter") {
-      return NextResponse.json({
+      return respond({
         success: true,
         message: "Already subscribed",
       });
     }
 
     console.error("Brevo API error:", brevoError);
-    return NextResponse.json({ error: "Subscription failed" }, { status: 500 });
+    return respond({ error: "Subscription failed" }, 500);
   } catch (error) {
     console.error("Route handler error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return respond({ error: "Internal server error" }, 500);
   }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get("origin")?.trim() ?? "";
+  if (
+    !isAllowedNewsletterOrigin(origin, {
+      configuredOrigins: process.env.NEWSLETTER_ALLOWED_ORIGINS,
+      nodeEnv: process.env.NODE_ENV,
+    })
+  ) {
+    return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+  }
+  return new NextResponse(null, {
+    status: 204,
+    headers: newsletterCorsHeaders(origin),
+  });
 }

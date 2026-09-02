@@ -5,8 +5,22 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ["@freed/shared", "@freed/ui"],
   env: {
-    NEXT_PUBLIC_TURNSTILE_SITE_KEY:
-      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+  },
+
+  async headers() {
+    return [
+      {
+        source: "/newsletter/embed",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' tauri: http://tauri.localhost https://tauri.localhost http://localhost:* https://localhost:*",
+          },
+        ],
+      },
+    ];
   },
 
   async redirects() {
