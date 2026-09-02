@@ -1,7 +1,6 @@
 ---
 name: freed-canary
 description: Judge an installed Freed Desktop build against comparable historical runtime windows. Use after a release has run long enough, when a soak looks worse than usual, or when deciding whether a metric regressed. Require event-derived build identity, immutable time bounds, healthy evidence sources, matching workload cohorts, and at least three comparable baselines before declaring a regression.
-disable-model-invocation: true
 ---
 
 # Canary

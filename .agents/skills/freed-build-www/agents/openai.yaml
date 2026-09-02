@@ -2,3 +2,6 @@ interface:
   display_name: "Build Freed WWW"
   short_description: "Build marketing changes in the www lane"
   default_prompt: "Use $freed-build-www to build and verify this Freed marketing-site change in the www lane."
+
+policy:
+  allow_implicit_invocation: true

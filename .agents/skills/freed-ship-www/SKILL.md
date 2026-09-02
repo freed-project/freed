@@ -1,7 +1,6 @@
 ---
 name: freed-ship-www
 description: Publish verified Freed marketing changes from www, refresh the public changelog after a release, or apply an approved structured roadmap update. Use for production freed.wtf deployments. Require explicit deployment authority, exact commit and deployment identity, and source-attributed roadmap data. Never fast-forward www to dev.
-disable-model-invocation: true
 ---
 
 # Ship WWW

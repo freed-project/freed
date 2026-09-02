@@ -8,6 +8,7 @@ import {
   collectReleaseArtifactsToValidate,
   describePlan,
   executeReleaseIdentityValidation,
+  isAgentInstructionValidationPath,
   isDesktopNativeSurface,
   isLibraryCoreReleaseActivationPath,
   isPwaOpfsDurabilityPath,
@@ -622,6 +623,8 @@ test("stability status paths route focused tests in feature and dev plans", () =
 test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly", () => {
   const labels = describePlan(buildValidationPlan("dev", []));
 
+  assert.ok(labels.includes("agent instruction validation"));
+  assert.ok(labels.includes("skill validation"));
   assert.ok(labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
@@ -639,6 +642,8 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
 test("production plan includes dev desktop gates without duplicating shipped builds", () => {
   const labels = describePlan(buildValidationPlan("production", []));
 
+  assert.ok(labels.includes("agent instruction validation"));
+  assert.ok(labels.includes("skill validation"));
   assert.ok(labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
@@ -811,6 +816,79 @@ test("every Freed skill and its validator route focused skill checks", () => {
     assert.ok(labels.includes("skill validation tests"), filePath);
     assert.ok(labels.includes("skill validation"), filePath);
   }
+});
+
+test("instruction-only paths route exactly the focused instruction checks", () => {
+  for (const filePath of [
+    "AGENTS.md",
+    ".github/CODEOWNERS",
+    "docs/AGENT-INSTRUCTIONS.md",
+    "docs/AGENTS.md",
+    "packages/capture-facebook/AGENTS.md",
+    "packages/desktop/AGENTS.md",
+    "packages/desktop/AGENTS.override.md",
+    "packages/desktop/src-tauri/AGENTS.md",
+    "packages/pwa/AGENTS.md",
+    "packages/pwa/src/lib/library-core-sqlite/AGENTS.md",
+    "packages/shared/AGENTS.md",
+    "packages/shared/src/library-core/AGENTS.md",
+    "packages/ui/AGENTS.md",
+    "scripts/AGENTS.md",
+    "scripts/validate-agent-instructions.mjs",
+    "scripts/validate-agent-instructions.test.mjs",
+    "website/AGENTS.md",
+  ]) {
+    assert.equal(isAgentInstructionValidationPath(filePath), true, filePath);
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.deepEqual(
+      labels,
+      [
+        "root typecheck",
+        "agent instruction validation tests",
+        "agent instruction validation",
+      ],
+      filePath,
+    );
+  }
+});
+
+test("skill authoring instructions route both focused validators", () => {
+  assert.deepEqual(
+    describePlan(buildValidationPlan("feature", [".agents/skills/AGENTS.md"])),
+    [
+      "root typecheck",
+      "agent instruction validation tests",
+      "agent instruction validation",
+      "skill validation tests",
+      "skill validation",
+    ],
+  );
+});
+
+test("scoped instructions do not hide product changes in the same package", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/ui/AGENTS.md",
+      "packages/ui/src/components/Example.tsx",
+    ]),
+  );
+  assert.ok(labels.includes("pwa production build"));
+  assert.ok(labels.includes("desktop e2e smoke"));
+  assert.ok(labels.includes("agent instruction validation"));
+});
+
+test("provider code cannot bypass validation of a changed instruction file", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/capture-facebook/AGENTS.md",
+      "packages/capture-facebook/src/index.ts",
+    ]),
+  );
+  assert.ok(labels.includes("desktop social provider unit tests"));
+  assert.ok(labels.includes("desktop social provider e2e"));
+  assert.ok(labels.includes("packages/capture-facebook typecheck"));
+  assert.ok(labels.includes("agent instruction validation tests"));
+  assert.ok(labels.includes("agent instruction validation"));
 });
 
 test("feature plan routes every Release Publisher surface through its full suite", () => {

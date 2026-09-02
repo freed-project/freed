@@ -1,0 +1,7 @@
+interface:
+  display_name: "Freed UI Polish"
+  short_description: "Batch small UI fixes through visual review"
+  default_prompt: "Use $freed-ui-polish to apply this batch of small Freed UI corrections and keep the preview ready for review."
+
+policy:
+  allow_implicit_invocation: true
