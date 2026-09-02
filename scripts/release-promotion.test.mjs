@@ -1105,6 +1105,38 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   assert.match(result.stdout, /Main backflow is in sync/);
 });
 
+test("validate-main-backflow permits the reviewed branch-specific release governance test", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'dev-isolated-verifier';\n",
+  );
+  commitAll(cwd, "test: retain dev release verifier assertions");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'production';\n",
+  );
+  commitAll(cwd, "test: retain production release assertions");
+  updateOriginRef(cwd, "main");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
 test("validate-main-backflow rejects dependency drift in Cargo.lock", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
