@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
+import {
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useState,
+  Profiler,
+  type ProfilerOnRenderCallback,
+} from "react";
 import {
   formatReleaseVersion,
   getWebsiteHostForChannel,
@@ -17,6 +25,8 @@ import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
+import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
+import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
@@ -33,10 +43,18 @@ import {
   getDeviceAIPreferences,
   subscribeDeviceAIPreferences,
 } from "@freed/ui/lib/device-ai-preferences";
-import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
+import {
+  UpdateNotification,
+  type UpdateState,
+} from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshRssFeeds } from "./lib/capture";
+import {
+  addRssFeed,
+  importOPMLFeeds,
+  exportFeedsAsOPML,
+  refreshRssFeeds,
+} from "./lib/capture";
 import {
   startRssPoller,
   stopRssPoller,
@@ -120,7 +138,10 @@ import {
   updateBackgroundActivity,
 } from "@freed/ui/lib/background-activity-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
-import { disconnectIgForFactoryReset, storeIgAuthState } from "./lib/instagram-auth";
+import {
+  disconnectIgForFactoryReset,
+  storeIgAuthState,
+} from "./lib/instagram-auth";
 import { disconnectFbForFactoryReset, storeFbAuthState } from "./lib/fb-auth";
 import { disconnectLiForFactoryReset, storeLiAuthState } from "./lib/li-auth";
 import {
@@ -146,6 +167,7 @@ import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-pref
 import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
+import { useAppliedThemeId } from "@freed/ui/lib/theme";
 import {
   clearFactoryResetCloudCleanupBarrier,
   beginFactoryResetBoundary,
@@ -199,7 +221,11 @@ import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSe
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
 import { DesktopFeedsSettingsSection } from "./components/DesktopFeedsSettingsSection";
 import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
-import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
+import {
+  acceptDesktopBundle,
+  acceptProviderRisk,
+  hasAcceptedDesktopBundle,
+} from "./lib/legal-consent";
 import {
   clearProviderPause,
   forgetRssFeedHealth,
@@ -207,7 +233,11 @@ import {
 } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
 
-import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
+import {
+  clearSnapshots,
+  startSnapshotManager,
+  stopSnapshotManager,
+} from "./lib/snapshots";
 import {
   appendSqliteLibraryPersonReachOut,
   assignSqliteLibraryAccountToPerson,
@@ -222,7 +252,10 @@ import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
 import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
-import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
+import {
+  clearFatalRuntimeError,
+  useFatalRuntimeError,
+} from "@freed/ui/lib/bug-report";
 import {
   capturePreLibraryMemoryBaseline,
   startMemoryMonitor,
@@ -369,8 +402,11 @@ const executeDesktopLibraryScopeAction: NonNullable<
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
-const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
-const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
+const IS_LOCAL_PREVIEW =
+  IS_FEATURE_PREVIEW ||
+  (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+const LOCAL_PREVIEW_LABEL =
+  import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = [
   "x",
   "facebook",
@@ -419,7 +455,8 @@ type FriendGraphSurfacePerf = {
 };
 
 type SurfacePerfSnapshot = {
-  activeSurface: "feed" | "friends_graph" | "map" | "settings" | "dialog" | "unknown";
+  activeSurface:
+    "feed" | "friends_graph" | "map" | "settings" | "dialog" | "unknown";
   friendsGraph?: FriendGraphSurfacePerf;
   map?: {
     ready: boolean;
@@ -430,7 +467,10 @@ type SurfacePerfSnapshot = {
   };
 };
 
-function readNumberDatasetValue(element: HTMLElement, key: string): number | undefined {
+function readNumberDatasetValue(
+  element: HTMLElement,
+  key: string,
+): number | undefined {
   const value = element.dataset[key];
   if (value === undefined) return undefined;
   const parsed = Number.parseInt(value, 10);
@@ -443,11 +483,15 @@ function collectSurfacePerf(): SurfacePerfSnapshot {
   const dialogOpen = Boolean(document.querySelector(".theme-dialog-shell"));
   if (dialogOpen) return { activeSurface: "dialog" };
 
-  const friendGraph = document.querySelector<HTMLElement>('[data-testid="friend-graph-viewport"]');
+  const friendGraph = document.querySelector<HTMLElement>(
+    '[data-testid="friend-graph-viewport"]',
+  );
   if (friendGraph) {
-    const graphPerf = (window as typeof window & {
-      __FREED_GRAPH_PERF__?: FriendGraphSurfacePerf;
-    }).__FREED_GRAPH_PERF__;
+    const graphPerf = (
+      window as typeof window & {
+        __FREED_GRAPH_PERF__?: FriendGraphSurfacePerf;
+      }
+    ).__FREED_GRAPH_PERF__;
     return {
       activeSurface: "friends_graph",
       friendsGraph: graphPerf
@@ -455,15 +499,26 @@ function collectSurfacePerf(): SurfacePerfSnapshot {
         : {
             nodeCount: readNumberDatasetValue(friendGraph, "graphNodeCount"),
             linkCount: readNumberDatasetValue(friendGraph, "graphLinkCount"),
-            personCount: readNumberDatasetValue(friendGraph, "graphPersonCount"),
-            channelCount: readNumberDatasetValue(friendGraph, "graphChannelCount"),
-            visibleLabelCount: readNumberDatasetValue(friendGraph, "visibleLabelCount"),
+            personCount: readNumberDatasetValue(
+              friendGraph,
+              "graphPersonCount",
+            ),
+            channelCount: readNumberDatasetValue(
+              friendGraph,
+              "graphChannelCount",
+            ),
+            visibleLabelCount: readNumberDatasetValue(
+              friendGraph,
+              "visibleLabelCount",
+            ),
             qualityMode: friendGraph.dataset.graphQualityMode,
           },
     };
   }
 
-  const mapSurface = document.querySelector<HTMLElement>('[data-testid="map-surface"]');
+  const mapSurface = document.querySelector<HTMLElement>(
+    '[data-testid="map-surface"]',
+  );
   if (mapSurface) {
     return {
       activeSurface: "map",
@@ -471,8 +526,10 @@ function collectSurfacePerf(): SurfacePerfSnapshot {
         ready: mapSurface.dataset.mapReady === "true",
         moving: mapSurface.dataset.mapMoving === "true",
         dense: mapSurface.dataset.mapDense === "true",
-        renderedMarkers: readNumberDatasetValue(mapSurface, "mapRenderedMarkers") ?? 0,
-        totalMarkers: readNumberDatasetValue(mapSurface, "mapTotalMarkers") ?? 0,
+        renderedMarkers:
+          readNumberDatasetValue(mapSurface, "mapRenderedMarkers") ?? 0,
+        totalMarkers:
+          readNumberDatasetValue(mapSurface, "mapTotalMarkers") ?? 0,
       },
     };
   }
@@ -491,9 +548,15 @@ setGoogleDriveFetch(googleDriveFetchViaTauri);
 // ---------------------------------------------------------------------------
 
 // Accumulate React render phases when running under Playwright (VITE_TEST_TAURI=1)
-interface ProfileEntry { id: string; phase: string; actualDuration: number; baseDuration: number }
+interface ProfileEntry {
+  id: string;
+  phase: string;
+  actualDuration: number;
+  baseDuration: number;
+}
 if (import.meta.env.VITE_TEST_TAURI === "1") {
-  (window as unknown as Record<string, unknown>).__FREED_REACT_PROFILE__ = [] as ProfileEntry[];
+  (window as unknown as Record<string, unknown>).__FREED_REACT_PROFILE__ =
+    [] as ProfileEntry[];
 }
 const onRender: ProfilerOnRenderCallback = (id, phase, actual, base) => {
   const w = window as unknown as Record<string, unknown>;
@@ -511,29 +574,36 @@ function isTouchOnlyInputSurface(): boolean {
   const hasHoverInput = window.matchMedia("(any-hover: hover)").matches;
   const hasTouch = navigator.maxTouchPoints > 0;
 
-  return hasTouch && coarsePrimaryPointer && primaryPointerCannotHover && !hasFinePointer && !hasHoverInput;
+  return (
+    hasTouch &&
+    coarsePrimaryPointer &&
+    primaryPointerCannotHover &&
+    !hasFinePointer &&
+    !hasHoverInput
+  );
 }
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
-  const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
-  const [lockedStartupState, setLockedStartupState] = useState<LockedStartupState>(
-    tauriRuntimeAvailable ? "checking" : "ready",
-  );
+  const tauriRuntimeAvailable =
+    import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
+  const [lockedStartupState, setLockedStartupState] =
+    useState<LockedStartupState>(tauriRuntimeAvailable ? "checking" : "ready");
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
-    bootstrapDesktopReleaseChannel(),
+  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(
+    () => bootstrapDesktopReleaseChannel(),
   );
-  const [installedReleaseChannel, setInstalledReleaseChannel] = useState<ReleaseChannel>(() =>
-    bootstrapDesktopReleaseChannel(),
-  );
-  const [releaseChannelResolved, setReleaseChannelResolved] = useState(IS_LOCAL_PREVIEW);
-  const [hasKeyboardShortcutSettingsSurface, setHasKeyboardShortcutSettingsSurface] = useState(
-    () => !isTouchOnlyInputSurface(),
-  );
+  const [installedReleaseChannel, setInstalledReleaseChannel] =
+    useState<ReleaseChannel>(() => bootstrapDesktopReleaseChannel());
+  const [releaseChannelResolved, setReleaseChannelResolved] =
+    useState(IS_LOCAL_PREVIEW);
+  const [
+    hasKeyboardShortcutSettingsSurface,
+    setHasKeyboardShortcutSettingsSurface,
+  ] = useState(() => !isTouchOnlyInputSurface());
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
@@ -554,7 +624,8 @@ function App() {
       window.matchMedia("(any-pointer: fine)"),
       window.matchMedia("(any-hover: hover)"),
     ];
-    const refresh = () => setHasKeyboardShortcutSettingsSurface(!isTouchOnlyInputSurface());
+    const refresh = () =>
+      setHasKeyboardShortcutSettingsSurface(!isTouchOnlyInputSurface());
 
     for (const query of queries) {
       query.addEventListener?.("change", refresh);
@@ -580,11 +651,16 @@ function App() {
 
     async function checkLockedSession() {
       try {
-        const state = await invoke<DesktopSessionState>("get_desktop_session_state");
+        const state = await invoke<DesktopSessionState>(
+          "get_desktop_session_state",
+        );
         if (cancelled) return;
         if (state?.screenLocked) {
           setLockedStartupState("locked");
-          timeoutId = window.setTimeout(checkLockedSession, LOCKED_STARTUP_RECHECK_MS);
+          timeoutId = window.setTimeout(
+            checkLockedSession,
+            LOCKED_STARTUP_RECHECK_MS,
+          );
           return;
         }
         setLockedStartupState("ready");
@@ -639,7 +715,9 @@ function App() {
       }
 
       await acceptDesktopBundle();
-      await Promise.all(PREVIEW_PROVIDER_RISKS.map((provider) => acceptProviderRisk(provider)));
+      await Promise.all(
+        PREVIEW_PROVIDER_RISKS.map((provider) => acceptProviderRisk(provider)),
+      );
       return true;
     };
 
@@ -689,12 +767,15 @@ function App() {
         stopContentFetcher();
         stopPriorityIndexer();
         stopSemanticClassifier();
-        toast.error("Freed paused background fetch because memory is critically high", {
-          actionLabel: "Restart",
-          onAction: () => {
-            void relaunch();
+        toast.error(
+          "Freed paused background fetch because memory is critically high",
+          {
+            actionLabel: "Restart",
+            onAction: () => {
+              void relaunch();
+            },
           },
-        });
+        );
       },
       onSample: (snapshot) => {
         noteMemoryPressure(snapshot);
@@ -721,14 +802,19 @@ function App() {
     startSemanticClassifier({
       isEnabled: () => {
         const prefs = useDesktopStore.getState().preferences.ai;
-        return getDeviceAIPreferences().provider === "integrated" && prefs.extractTopics;
+        return (
+          getDeviceAIPreferences().provider === "integrated" &&
+          prefs.extractTopics
+        );
       },
       subscribeToPreferenceChanges: (callback) => {
-        const unsubscribeStore = useDesktopStore.subscribe((state, previous) => {
-          if (state.preferences.ai !== previous.preferences.ai) {
-            callback();
-          }
-        });
+        const unsubscribeStore = useDesktopStore.subscribe(
+          (state, previous) => {
+            if (state.preferences.ai !== previous.preferences.ai) {
+              callback();
+            }
+          },
+        );
         const unsubscribeDevice = subscribeDeviceAIPreferences(callback);
         return () => {
           unsubscribeStore();
@@ -784,26 +870,38 @@ function App() {
     listen<RendererRecoveryStateEvent>("renderer-recovery-state", (event) => {
       noteRendererRecoveryState(event.payload);
       if (typeof document !== "undefined") {
-        document.documentElement.dataset.rendererRecoveryPhase = event.payload.phase;
-        document.documentElement.dataset.rendererSafeMode = String(Boolean(event.payload.safeModeActive));
+        document.documentElement.dataset.rendererRecoveryPhase =
+          event.payload.phase;
+        document.documentElement.dataset.rendererSafeMode = String(
+          Boolean(event.payload.safeModeActive),
+        );
       }
       if (event.payload.phase === "safe_mode") {
         stopContentFetcher();
         stopPriorityIndexer();
         stopSemanticClassifier();
-        toast.error("Freed paused background work while the renderer recovers", {
-          actionLabel: "Restart",
-          onAction: () => {
-            void relaunch();
+        toast.error(
+          "Freed paused background work while the renderer recovers",
+          {
+            actionLabel: "Restart",
+            onAction: () => {
+              void relaunch();
+            },
           },
-        });
+        );
       }
-      if (event.payload.phase === "recovered" && typeof document !== "undefined") {
+      if (
+        event.payload.phase === "recovered" &&
+        typeof document !== "undefined"
+      ) {
         document.documentElement.dataset.rendererSafeMode = "false";
       }
     }).then((unlisten) => cleanups.push(unlisten));
 
-    return () => cleanups.forEach((fn, index) => safeUnlisten(fn, `app-lifecycle:${index.toLocaleString()}`));
+    return () =>
+      cleanups.forEach((fn, index) =>
+        safeUnlisten(fn, `app-lifecycle:${index.toLocaleString()}`),
+      );
   }, [legalAccepted, tauriRuntimeAvailable]);
 
   useEffect(() => {
@@ -909,7 +1007,9 @@ function App() {
   // --- Update system ---
 
   // Single source of truth for update state, shared by the toast and the Settings flow.
-  const [updateState, setUpdateState] = useState<UpdateState>({ phase: "idle" });
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    phase: "idle",
+  });
   const pendingUpdate = useRef<PendingDesktopUpdate | null>(null);
   const crashRecoveryUpdateCheckStarted = useRef(false);
   const launchUpdateCheckStarted = useRef(false);
@@ -951,18 +1051,25 @@ function App() {
     };
   }, [releaseChannel]);
 
-  const setAvailableUpdate = useCallback((availableUpdate: PendingDesktopUpdate) => {
-    pendingUpdate.current = availableUpdate;
-    setFallbackDownloadUrl(availableUpdate.fallbackDownloadUrl);
-    setUpdateState({
-      phase: "available",
-      channel: availableUpdate.channel,
-      update: availableUpdate.update,
-    });
-  }, []);
+  const setAvailableUpdate = useCallback(
+    (availableUpdate: PendingDesktopUpdate) => {
+      pendingUpdate.current = availableUpdate;
+      setFallbackDownloadUrl(availableUpdate.fallbackDownloadUrl);
+      setUpdateState({
+        phase: "available",
+        channel: availableUpdate.channel,
+        update: availableUpdate.update,
+      });
+    },
+    [],
+  );
 
   const runDesktopUpdateCheck = useCallback(
-    async ({ showCheckingState }: { showCheckingState: boolean }): Promise<AvailableUpdateInfo | null> => {
+    async ({
+      showCheckingState,
+    }: {
+      showCheckingState: boolean;
+    }): Promise<AvailableUpdateInfo | null> => {
       if (IS_LOCAL_PREVIEW) return null;
 
       const activityId = startBackgroundActivity({
@@ -981,7 +1088,11 @@ function App() {
         const availableUpdate = await checkDesktopUpdate(releaseChannel);
         if (availableUpdate) {
           setAvailableUpdate(availableUpdate);
-          finishBackgroundActivity(activityId, "success", `Freed Desktop ${availableUpdate.update.version} is available.`);
+          finishBackgroundActivity(
+            activityId,
+            "success",
+            `Freed Desktop ${availableUpdate.update.version} is available.`,
+          );
           return {
             version: availableUpdate.update.version,
             channel: availableUpdate.channel,
@@ -992,11 +1103,19 @@ function App() {
         if (showCheckingState) {
           setUpdateState({ phase: "idle" });
         }
-        finishBackgroundActivity(activityId, "success", "Freed Desktop is up to date.");
+        finishBackgroundActivity(
+          activityId,
+          "success",
+          "Freed Desktop is up to date.",
+        );
         return null;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        finishBackgroundActivity(activityId, "error", `Update check failed: ${message}`);
+        finishBackgroundActivity(
+          activityId,
+          "error",
+          `Update check failed: ${message}`,
+        );
         throw error;
       }
     },
@@ -1026,16 +1145,22 @@ function App() {
   }, [legalAccepted, releaseChannelResolved, runDesktopUpdateCheck]);
 
   // Manual check triggered from Settings panel.
-  const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
-    return runDesktopUpdateCheck({ showCheckingState: true });
-  }, [runDesktopUpdateCheck]);
+  const checkForUpdates =
+    useCallback(async (): Promise<AvailableUpdateInfo | null> => {
+      return runDesktopUpdateCheck({ showCheckingState: true });
+    }, [runDesktopUpdateCheck]);
 
   const isStartupCrash = Boolean(error && !isInitialized);
   const isCrashState = isStartupCrash || Boolean(fatalError);
 
   // Recovery mode should trigger its own immediate update check.
   useEffect(() => {
-    if (!legalAccepted || IS_LOCAL_PREVIEW || !releaseChannelResolved || !isCrashState) {
+    if (
+      !legalAccepted ||
+      IS_LOCAL_PREVIEW ||
+      !releaseChannelResolved ||
+      !isCrashState
+    ) {
       crashRecoveryUpdateCheckStarted.current = false;
       return;
     }
@@ -1044,7 +1169,12 @@ function App() {
     void runDesktopUpdateCheck({ showCheckingState: false }).catch(() => {
       // Silent. Recovery still exposes the manual download path.
     });
-  }, [isCrashState, legalAccepted, releaseChannelResolved, runDesktopUpdateCheck]);
+  }, [
+    isCrashState,
+    legalAccepted,
+    releaseChannelResolved,
+    runDesktopUpdateCheck,
+  ]);
 
   // Download + install with progress, then relaunch. Used by both the toast
   // and the "Install & Restart" button in Settings via PlatformContext.
@@ -1090,7 +1220,11 @@ function App() {
       setInstalledReleaseChannel(pending.channel);
       await persistDesktopReleaseChannel(releaseChannel);
       localStorage.setItem(JUST_UPDATED_KEY, version);
-      finishBackgroundActivity(activityId, "success", `Freed Desktop ${version} installed. Restarting.`);
+      finishBackgroundActivity(
+        activityId,
+        "success",
+        `Freed Desktop ${version} installed. Restarting.`,
+      );
       await relaunch();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Update failed";
@@ -1098,36 +1232,43 @@ function App() {
         phase: "error",
         message,
       });
-      finishBackgroundActivity(activityId, "error", `Update failed: ${message}`);
+      finishBackgroundActivity(
+        activityId,
+        "error",
+        `Update failed: ${message}`,
+      );
     }
   }, [releaseChannel]);
 
   const handleRelaunch = useCallback(() => relaunch(), []);
-  const handleDismissUpdate = useCallback(() => setUpdateState({ phase: "idle" }), []);
+  const handleDismissUpdate = useCallback(
+    () => setUpdateState({ phase: "idle" }),
+    [],
+  );
   const handleOpenLatestDownload = useCallback(() => {
     void shellOpen(fallbackDownloadUrl);
   }, [fallbackDownloadUrl]);
-  const setReleaseChannel = useCallback(async (channel: ReleaseChannel) => {
-    if (channel === releaseChannel) {
-      return;
-    }
+  const setReleaseChannel = useCallback(
+    async (channel: ReleaseChannel) => {
+      if (channel === releaseChannel) {
+        return;
+      }
 
-    await persistDesktopReleaseChannel(channel);
-    pendingUpdate.current = null;
-    setUpdateState({ phase: "idle" });
-    setReleaseChannelState(channel);
-  }, [releaseChannel]);
-
-  const handleOpenClipboardSaveDialog = useCallback(
-    (initialUrl?: string) => {
-      window.dispatchEvent(
-        new CustomEvent("freed:open-save-content-dialog", {
-          detail: { initialUrl },
-        }),
-      );
+      await persistDesktopReleaseChannel(channel);
+      pendingUpdate.current = null;
+      setUpdateState({ phase: "idle" });
+      setReleaseChannelState(channel);
     },
-    [],
+    [releaseChannel],
   );
+
+  const handleOpenClipboardSaveDialog = useCallback((initialUrl?: string) => {
+    window.dispatchEvent(
+      new CustomEvent("freed:open-save-content-dialog", {
+        detail: { initialUrl },
+      }),
+    );
+  }, []);
 
   const {
     config: clipboardSaveShortcutConfig,
@@ -1230,7 +1371,10 @@ function App() {
       reload: () => location.reload(),
       onFailure: (error) => {
         const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
-        const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
+        const recovery = getDesktopFactoryResetFailureRecovery(
+          error,
+          cloudCleanupPaused,
+        );
         toast.error(recovery.message);
       },
     });
@@ -1240,117 +1384,148 @@ function App() {
     await restartCloudSync(provider);
   }, []);
 
-  const recordGoogleContactSyncError = useCallback((message: string) => {
-    if (!tauriRuntimeAvailable || !isInitialized) return;
-    void mutateNormalizedDeviceContacts({
-      authStatus: "reconnect_required",
-      errorCode: "auth",
-      errorMessage: message,
-      mutationKind: "device_contact_status_set_v1",
-      schemaVersion: 1,
-      syncStartedAt: null,
-      syncStatus: "error",
-      updatedAt: Date.now(),
-    }).catch((error) => {
-      log.warn(
-        `[contacts] SQLite contact status update failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
-  }, [isInitialized, tauriRuntimeAvailable]);
-
-  const recordGoogleContactsConnectError = useCallback((error: unknown) => {
-    if (isOAuthCanceledError(error)) return;
-    const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
-    recordGoogleContactSyncError(message);
-    log.warn(`[contacts] Google reconnect failed: ${message}`);
-  }, [recordGoogleContactSyncError]);
-
-  const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
-    clearCloudProvider(provider);
-    const lifecycle = captureCloudLifecycle(provider);
-    try {
-      const token = await initiateDesktopOAuth(provider);
-      if (!lifecycle.isCurrent()) return;
-      storeCloudToken(provider, token);
-      await startCloudSync(provider, token.accessToken);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
-
-  const connectGoogleContacts = useCallback(async (options?: { signal?: AbortSignal }) => {
-    const lifecycle = captureCloudLifecycle("gdrive");
-    let token: Awaited<ReturnType<typeof initiateDesktopOAuth>>;
-    try {
-      token = await initiateDesktopOAuth("gdrive", options);
-    } catch (error) {
-      if (isOAuthCanceledError(error)) {
-        log.info("[contacts] Google reconnect canceled");
-        throw error;
-      }
-      recordGoogleContactsConnectError(error);
-      throw error;
-    }
-
-    if (!lifecycle.isCurrent()) return;
-    storeCloudToken("gdrive", token);
-    try {
-      await startCloudSync("gdrive", token.accessToken);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log.warn(`[contacts] Google Drive sync failed after Contacts reconnect: ${message}`);
-    }
-  }, [recordGoogleContactsConnectError]);
-
-  const fetchGoogleContactsForDesktop = useCallback((
-    accessToken: string,
-    syncToken?: string | null,
-  ) => runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
-      log.info(`[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`);
-      try {
-        assertFactoryResetEpoch(resetEpoch);
-        const result = await fetchGoogleContactsViaTauri(accessToken, syncToken);
-        assertFactoryResetEpoch(resetEpoch);
-        log.info(
-          `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+  const recordGoogleContactSyncError = useCallback(
+    (message: string) => {
+      if (!tauriRuntimeAvailable || !isInitialized) return;
+      void mutateNormalizedDeviceContacts({
+        authStatus: "reconnect_required",
+        errorCode: "auth",
+        errorMessage: message,
+        mutationKind: "device_contact_status_set_v1",
+        schemaVersion: 1,
+        syncStartedAt: null,
+        syncStatus: "error",
+        updatedAt: Date.now(),
+      }).catch((error) => {
+        log.warn(
+          `[contacts] SQLite contact status update failed: ${error instanceof Error ? error.message : String(error)}`,
         );
-        return result;
+      });
+    },
+    [isInitialized, tauriRuntimeAvailable],
+  );
+
+  const recordGoogleContactsConnectError = useCallback(
+    (error: unknown) => {
+      if (isOAuthCanceledError(error)) return;
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Google Contacts connection failed.";
+      recordGoogleContactSyncError(message);
+      log.warn(`[contacts] Google reconnect failed: ${message}`);
+    },
+    [recordGoogleContactSyncError],
+  );
+
+  const reconnectCloudProvider = useCallback(
+    async (provider: CloudProvider) => {
+      clearCloudProvider(provider);
+      const lifecycle = captureCloudLifecycle(provider);
+      try {
+        const token = await initiateDesktopOAuth(provider);
+        if (!lifecycle.isCurrent()) return;
+        storeCloudToken(provider, token);
+        await startCloudSync(provider, token.accessToken);
       } catch (error) {
-        assertFactoryResetEpoch(resetEpoch);
-        const status = typeof error === "object" && error !== null && "status" in error
-          ? (error as { status?: number }).status
-          : undefined;
-        if (status === 401) {
-          let refreshedToken: string | null = null;
-          try {
-            assertFactoryResetEpoch(resetEpoch);
-            refreshedToken = await forceRefreshCloudToken("gdrive");
-            assertFactoryResetEpoch(resetEpoch);
-          } catch (refreshError) {
-            assertFactoryResetEpoch(resetEpoch);
-            const message = refreshError instanceof Error
-              ? refreshError.message
-              : "Google token refresh failed.";
-            recordGoogleContactSyncError(message);
-            log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
-            throw refreshError;
-          }
-          if (refreshedToken && refreshedToken !== accessToken) {
-            assertFactoryResetEpoch(resetEpoch);
-            log.info("[contacts] Google sync retrying after token refresh");
-            const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);
-            assertFactoryResetEpoch(resetEpoch);
-            log.info(
-              `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
-            );
-            return result;
-          }
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        log.warn(`[contacts] Google sync failed: ${message}`);
         throw error;
       }
-    }), [recordGoogleContactSyncError]);
+    },
+    [],
+  );
+
+  const connectGoogleContacts = useCallback(
+    async (options?: { signal?: AbortSignal }) => {
+      const lifecycle = captureCloudLifecycle("gdrive");
+      let token: Awaited<ReturnType<typeof initiateDesktopOAuth>>;
+      try {
+        token = await initiateDesktopOAuth("gdrive", options);
+      } catch (error) {
+        if (isOAuthCanceledError(error)) {
+          log.info("[contacts] Google reconnect canceled");
+          throw error;
+        }
+        recordGoogleContactsConnectError(error);
+        throw error;
+      }
+
+      if (!lifecycle.isCurrent()) return;
+      storeCloudToken("gdrive", token);
+      try {
+        await startCloudSync("gdrive", token.accessToken);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn(
+          `[contacts] Google Drive sync failed after Contacts reconnect: ${message}`,
+        );
+      }
+    },
+    [recordGoogleContactsConnectError],
+  );
+
+  const fetchGoogleContactsForDesktop = useCallback(
+    (accessToken: string, syncToken?: string | null) =>
+      runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+        log.info(
+          `[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`,
+        );
+        try {
+          assertFactoryResetEpoch(resetEpoch);
+          const result = await fetchGoogleContactsViaTauri(
+            accessToken,
+            syncToken,
+          );
+          assertFactoryResetEpoch(resetEpoch);
+          log.info(
+            `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+          );
+          return result;
+        } catch (error) {
+          assertFactoryResetEpoch(resetEpoch);
+          const status =
+            typeof error === "object" && error !== null && "status" in error
+              ? (error as { status?: number }).status
+              : undefined;
+          if (status === 401) {
+            let refreshedToken: string | null = null;
+            try {
+              assertFactoryResetEpoch(resetEpoch);
+              refreshedToken = await forceRefreshCloudToken("gdrive");
+              assertFactoryResetEpoch(resetEpoch);
+            } catch (refreshError) {
+              assertFactoryResetEpoch(resetEpoch);
+              const message =
+                refreshError instanceof Error
+                  ? refreshError.message
+                  : "Google token refresh failed.";
+              recordGoogleContactSyncError(message);
+              log.warn(
+                `[contacts] Google token refresh failed during sync: ${message}`,
+              );
+              throw refreshError;
+            }
+            if (refreshedToken && refreshedToken !== accessToken) {
+              assertFactoryResetEpoch(resetEpoch);
+              log.info("[contacts] Google sync retrying after token refresh");
+              const result = await fetchGoogleContactsViaTauri(
+                refreshedToken,
+                syncToken,
+              );
+              assertFactoryResetEpoch(resetEpoch);
+              log.info(
+                `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+              );
+              return result;
+            }
+          }
+          const message =
+            error instanceof Error ? error.message : String(error);
+          log.warn(`[contacts] Google sync failed: ${message}`);
+          throw error;
+        }
+      }),
+    [recordGoogleContactSyncError],
+  );
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -1366,9 +1541,16 @@ function App() {
     } = useAppStore.getState();
     const now = Date.now();
 
-    const xCookies = { ct0: "sample-ct0-token", authToken: "sample-auth-token" };
+    const xCookies = {
+      ct0: "sample-ct0-token",
+      authToken: "sample-auth-token",
+    };
     storeCookies(xCookies);
-    setXAuth({ isAuthenticated: true, cookies: xCookies, username: "sample_user" });
+    setXAuth({
+      isAuthenticated: true,
+      cookies: xCookies,
+      username: "sample_user",
+    });
 
     const fbState = { isAuthenticated: true, lastCheckedAt: now };
     storeFbAuthState(fbState);
@@ -1395,7 +1577,8 @@ function App() {
   // deterministic control unless the preview helper opts in explicitly.
   useEffect(() => {
     const shouldAutoSeedPreview =
-      IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+      IS_FEATURE_PREVIEW ||
+      (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
     if (!isInitialized || !shouldAutoSeedPreview) return;
 
     const guardKey = "freed_dev_seeded";
@@ -1439,6 +1622,7 @@ function App() {
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
+      NewsletterSettingsContent: DesktopNewsletterSignup,
       ShortcutsSettingsContent:
         tauriRuntimeAvailable && hasKeyboardShortcutSettingsSurface
           ? ShortcutsSettingsContent
@@ -1453,13 +1637,24 @@ function App() {
       SubstackSettingsContent: SubstackSettingsSection,
       MediumSettingsContent: MediumSettingsSection,
       YouTubeSettingsContent: YouTubeSettingsSection,
-      GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
+      GoogleContactsSettingsContent: tauriRuntimeAvailable
+        ? GoogleContactsSection
+        : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       changelogPreview: DESKTOP_CHANGELOG_PREVIEW,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
-      releaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : releaseChannel,
-      installedReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : installedReleaseChannel,
-      setReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : setReleaseChannel,
+      releaseChannel:
+        IS_LOCAL_PREVIEW || !releaseChannelResolved
+          ? undefined
+          : releaseChannel,
+      installedReleaseChannel:
+        IS_LOCAL_PREVIEW || !releaseChannelResolved
+          ? undefined
+          : installedReleaseChannel,
+      setReleaseChannel:
+        IS_LOCAL_PREVIEW || !releaseChannelResolved
+          ? undefined
+          : setReleaseChannel,
       factoryReset: handleFactoryReset,
       factoryResetRevokesMobilePairing: true,
       seedSocialConnections,
@@ -1498,11 +1693,17 @@ function App() {
           return;
         }
 
-        if (sourceId === "x" && state.xAuth.isAuthenticated && state.xAuth.cookies) {
+        if (
+          sourceId === "x" &&
+          state.xAuth.isAuthenticated &&
+          state.xAuth.cookies
+        ) {
           if (isPaused) {
             await clearProviderPause("x");
           }
-          await runManualProviderSync("x", () => captureXTimeline(state.xAuth.cookies!, undefined, "manual"));
+          await runManualProviderSync("x", () =>
+            captureXTimeline(state.xAuth.cookies!, undefined, "manual"),
+          );
           return;
         }
 
@@ -1510,7 +1711,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("facebook");
           }
-          await runManualProviderSync("facebook", () => captureFbFeed("manual"));
+          await runManualProviderSync("facebook", () =>
+            captureFbFeed("manual"),
+          );
           return;
         }
 
@@ -1518,7 +1721,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("instagram");
           }
-          await runManualProviderSync("instagram", () => captureIgFeed("manual"));
+          await runManualProviderSync("instagram", () =>
+            captureIgFeed("manual"),
+          );
           return;
         }
 
@@ -1526,7 +1731,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("linkedin");
           }
-          await runManualProviderSync("linkedin", () => captureLiFeed("manual"));
+          await runManualProviderSync("linkedin", () =>
+            captureLiFeed("manual"),
+          );
           return;
         }
 
@@ -1534,7 +1741,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("substack");
           }
-          await runManualProviderSync("substack", () => captureSubstackFeed("manual"));
+          await runManualProviderSync("substack", () =>
+            captureSubstackFeed("manual"),
+          );
           return;
         }
 
@@ -1542,7 +1751,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("medium");
           }
-          await runManualProviderSync("medium", () => captureMediumFeed("manual"));
+          await runManualProviderSync("medium", () =>
+            captureMediumFeed("manual"),
+          );
           return;
         }
 
@@ -1550,7 +1761,9 @@ function App() {
           if (isPaused) {
             await clearProviderPause("youtube");
           }
-          await runManualProviderSync("youtube", () => captureYouTube("manual"));
+          await runManualProviderSync("youtube", () =>
+            captureYouTube("manual"),
+          );
         }
       },
       getSourceStatus: (sourceId) => {
@@ -1581,7 +1794,8 @@ function App() {
       },
       localAIModels,
       checkOllamaReachable,
-      importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),
+      importInstagramStoryWallArchive: (files) =>
+        importMetaExportFiles("instagram", files),
       getStoryWallArchiveSummaries: async () => {
         const [facebook, instagram] = await Promise.all([
           summarizeMediaVault("facebook"),
@@ -1593,7 +1807,9 @@ function App() {
         ];
       },
       publishStoryWall: publishStoryWallToGitHubPages,
-      openUrl: (url: string) => { void shellOpen(url); },
+      openUrl: (url: string) => {
+        void shellOpen(url);
+      },
       openBoundedFeedReader: tauriRuntimeAvailable
         ? openBoundedDesktopFeedReader
         : undefined,
@@ -1707,14 +1923,17 @@ function App() {
         ? {
             getToken: async () => {
               try {
-                return await runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
-                  const token = await getValidCloudToken("gdrive");
-                  assertFactoryResetEpoch(resetEpoch);
-                  return token;
-                });
+                return await runFactoryResetSensitiveDesktopOperation(
+                  async (resetEpoch) => {
+                    const token = await getValidCloudToken("gdrive");
+                    assertFactoryResetEpoch(resetEpoch);
+                    return token;
+                  },
+                );
               } catch (error) {
                 if (isOAuthCanceledError(error)) return null;
-                const message = error instanceof Error ? error.message : String(error);
+                const message =
+                  error instanceof Error ? error.message : String(error);
                 log.warn(`[contacts] Google token lookup failed: ${message}`);
                 return null;
               }
@@ -1724,13 +1943,33 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
-        if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
-        if (updateState.phase === "error") return { phase: "error", message: updateState.message };
+        if (updateState.phase === "downloading")
+          return { phase: "downloading", percent: updateState.percent };
+        if (updateState.phase === "error")
+          return { phase: "error", message: updateState.message };
         return null;
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
+    [
+      checkForUpdates,
+      applyUpdate,
+      connectGoogleContacts,
+      fetchGoogleContactsForDesktop,
+      handleFactoryReset,
+      hasKeyboardShortcutSettingsSurface,
+      installedReleaseChannel,
+      isInitialized,
+      reconnectCloudProvider,
+      releaseChannel,
+      releaseChannelResolved,
+      retryCloudProvider,
+      seedSocialConnections,
+      setReleaseChannel,
+      ShortcutsSettingsContent,
+      tauriRuntimeAvailable,
+      updateState,
+    ],
   );
 
   if (lockedStartupState !== "ready") {
@@ -1817,11 +2056,30 @@ function App() {
             {justUpdated && (
               <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
                 <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                    <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path
+                      d="M3 8l3.5 3.5L13 5"
+                      stroke="#22c55e"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                   <span className="text-sm text-text-primary">
-                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated, installedReleaseChannel)}</span>
+                    Updated to{" "}
+                    <span className="font-mono font-bold">
+                      v
+                      {formatReleaseVersion(
+                        justUpdated,
+                        installedReleaseChannel,
+                      )}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -1854,4 +2112,24 @@ declare global {
       };
     };
   }
+}
+function DesktopNewsletterSignup() {
+  const themeId = useAppliedThemeId();
+
+  if (import.meta.env.DEV) {
+    return (
+      <NewsletterSignup
+        previewOnly
+        siteKey={FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY}
+      />
+    );
+  }
+
+  return (
+    <iframe
+      title="Freed newsletter signup"
+      src={`https://freed.wtf/newsletter/embed?theme=${encodeURIComponent(themeId)}`}
+      className="h-[26rem] w-full rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
+    />
+  );
 }

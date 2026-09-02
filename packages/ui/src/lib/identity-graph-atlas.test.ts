@@ -45,6 +45,40 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it("places higher-care friends closer to the center with a larger radius", () => {
+    const persons = Array.from({ length: 5 }, (_, index) => ({
+      id: `care-${index + 1}`,
+      name: `Care ${index + 1}`,
+      relationshipStatus: "friend" as const,
+      careLevel: (index + 1) as Person["careLevel"],
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    const width = 1_000;
+    const height = 800;
+    const model = buildIdentityGraphAtlasModel({
+      persons,
+      accounts: {},
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width,
+      height,
+    });
+    const nodesByCare = [...model.nodes]
+      .filter((entry) => entry.kind === "friend_person")
+      .sort((left, right) => (left.careLevel ?? 0) - (right.careLevel ?? 0));
+    const centerDistances = nodesByCare.map((entry) =>
+      Math.hypot(entry.x - width / 2, (entry.y - height / 2) / 0.74)
+    );
+
+    expect(nodesByCare.map((entry) => entry.careLevel)).toEqual([1, 2, 3, 4, 5]);
+    for (let index = 1; index < nodesByCare.length; index += 1) {
+      expect(centerDistances[index]).toBeLessThan(centerDistances[index - 1]!);
+      expect(nodesByCare[index]!.radius).toBeGreaterThan(nodesByCare[index - 1]!.radius);
+    }
+  });
+
   it("normalizes legacy social accounts with missing provider metadata", () => {
     const legacyAccount = {
       ...account(1),

@@ -21,6 +21,68 @@
   --visual-viewport-height: 100dvh;
 }
 
+@keyframes demo-welcome-backdrop-away {
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes demo-welcome-card-away {
+  55% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(38vh) scale(0.58);
+  }
+}
+
+@keyframes demo-welcome-field-guide-in {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(5rem) scale(0.78);
+  }
+
+  72% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-0.4rem) scale(1.015);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+.demo-welcome-first-look-backdrop--departing {
+  animation: demo-welcome-backdrop-away 460ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.demo-welcome-first-look-card--departing {
+  animation: demo-welcome-card-away 460ms cubic-bezier(0.55, 0, 0.9, 0.45) both;
+  transform-origin: center bottom;
+}
+
+.demo-welcome-field-guide--arriving {
+  animation: demo-welcome-field-guide-in 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center bottom;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-welcome-first-look-backdrop--departing,
+  .demo-welcome-first-look-card--departing,
+  .demo-welcome-field-guide--arriving {
+    animation-duration: 1ms;
+  }
+}
+
 /* Base styles */
 html {
   height: 100%;

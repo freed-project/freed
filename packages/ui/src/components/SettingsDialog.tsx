@@ -372,6 +372,12 @@ const ICON_BETA = (
 );
 
 const ICONS: Record<SectionId, ReactNode> = {
+  newsletter: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 17.25V6.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6l7.13 5.35a1.875 1.875 0 002.24 0L20.25 6" />
+    </svg>
+  ),
   legal: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l7.5 3v6c0 5.25-3.34 9.922-7.5 11.25C7.84 21.922 4.5 17.25 4.5 12V6L12 3z" />
@@ -468,6 +474,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const isMobile = useIsMobile();
   const {
     SettingsExtraSections,
+    NewsletterSettingsContent,
     ShortcutsSettingsContent,
     LegalSettingsContent,
     XSettingsContent,
@@ -515,6 +522,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     () =>
       buildSettingsSectionMetas({
         hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
+        hasNewsletterSignup: !!NewsletterSettingsContent,
         hasGoogleContacts: !!GoogleContactsSettingsContent,
         hasGoogleContactsManagement: !!googleContacts,
         hasAISettings: !!(secureStorage || localAIModels),
@@ -550,6 +558,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       localAIModels,
       secureStorage,
       ShortcutsSettingsContent,
+      NewsletterSettingsContent,
     ],
   );
 
@@ -591,6 +600,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         ],
       },
       ...(sectionById.updates ? [sectionById.updates] : []),
+      ...(sectionById.newsletter ? [sectionById.newsletter] : []),
       sectionById.legal!,
       ...(sectionById.danger ? [sectionById.danger] : []),
     ],
@@ -1623,6 +1633,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             {LegalSettingsContent ? <LegalSettingsContent /> : null}
           </>
         );
+
+      case "newsletter":
+        return NewsletterSettingsContent ? (
+          <>
+            <SectionHeading label="Newsletter" />
+            <NewsletterSettingsContent />
+          </>
+        ) : null;
 
       case "shortcuts":
         return ShortcutsSettingsContent ? (

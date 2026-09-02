@@ -41,10 +41,13 @@ export * from "./location";
 
 // Re-export sample data generators (browser-safe, no deps)
 export * from "./sample-data";
+export * from "./sample-corpus";
+export * from "./sample-character-arcs";
 
 // Re-export shared theme metadata (browser-safe, no deps)
 export * from "./themes";
 export * from "./release-channel";
+export * from "./newsletter";
 
 // Re-export legal metadata and acceptance helpers (browser-safe, no deps)
 export * from "./legal";

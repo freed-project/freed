@@ -7,6 +7,7 @@
 
 export type SectionId =
   | "legal"
+  | "newsletter"
   | "appearance"
   | "shortcuts"
   | "feeds"
@@ -34,6 +35,7 @@ export interface SectionMeta {
 }
 
 export interface SettingsSectionAvailability {
+  hasNewsletterSignup: boolean;
   hasFeedManagement: boolean;
   hasGoogleContacts: boolean;
   hasGoogleContactsManagement: boolean;
@@ -52,6 +54,11 @@ export interface SettingsSectionAvailability {
 
 /** Sections always present, regardless of platform capabilities. */
 export const BASE_SECTION_METAS: readonly SectionMeta[] = [
+  {
+    id: "newsletter",
+    label: "Newsletter",
+    keywords: ["newsletter", "email", "updates", "subscribe", "new builds", "product progress"],
+  },
   {
     id: "appearance",
     label: "Appearance",
@@ -220,6 +227,7 @@ export function buildSettingsSectionMetas(
     baseSectionById.storyWall,
     ...(availability.hasAISettings ? [AI_SECTION_META] : []),
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
+    ...(availability.hasNewsletterSignup ? [baseSectionById.newsletter] : []),
     baseSectionById.legal,
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
   ].map((section) =>

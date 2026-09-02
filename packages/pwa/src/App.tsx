@@ -12,6 +12,8 @@ import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
+import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
+import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
@@ -36,12 +38,12 @@ import {
   initPwaUpdater,
   onUpdateAvailable,
 } from "./lib/pwa-updater";
-import {
-  isContactPickerAvailable,
-  pickContactViaWebApi,
-} from "./lib/contacts";
+import { isContactPickerAvailable, pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
-import { PwaSyncSettings } from "./components/PwaSyncSettings";
+import {
+  PwaDemoSyncSettings,
+  PwaSyncSettings,
+} from "./components/PwaSyncSettings";
 import {
   PwaFacebookSettings,
   PwaFeedsSettings,
@@ -304,8 +306,7 @@ function App() {
       await settlePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
       const sampleIsComplete =
-        facets.sampleAccountCount >=
-          SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
+        facets.sampleAccountCount >= SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
         facets.sampleFeedCount >= SAMPLE_SHOWCASE_FEED_COUNT &&
         facets.sampleItemCount >= SAMPLE_SHOWCASE_ITEM_COUNT &&
         facets.samplePersonCount >= SAMPLE_SHOWCASE_FRIEND_COUNT;
@@ -323,7 +324,9 @@ function App() {
     })().catch((error) => {
       console.error(
         "[sample-data] failed to seed local preview data:",
-        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error),
       );
     });
   }, [isInitialized]);
@@ -497,22 +500,23 @@ function App() {
     () => ({
       store: useAppStore,
       interactionMode: IS_DEMO ? "read-only" : "full",
-      geographicMapMode: IS_DEMO ? "local-showcase" : "online",
+      geographicMapMode: "online",
       feedMediaPreviews: "inline",
       SourceIndicator: null,
       HeaderSyncIndicator: null,
-      FeedsSettingsContent: IS_DEMO ? null : PwaFeedsSettings,
-      SettingsExtraSections: IS_DEMO ? null : PwaSyncSettings,
+      FeedsSettingsContent: PwaFeedsSettings,
+      SettingsExtraSections: IS_DEMO ? PwaDemoSyncSettings : PwaSyncSettings,
+      NewsletterSettingsContent: PwaNewsletterSignup,
       LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
-      XSettingsContent: IS_DEMO ? null : PwaXSettings,
-      FacebookSettingsContent: IS_DEMO ? null : PwaFacebookSettings,
-      InstagramSettingsContent: IS_DEMO ? null : PwaInstagramSettings,
-      LinkedInSettingsContent: IS_DEMO ? null : PwaLinkedInSettings,
+      XSettingsContent: PwaXSettings,
+      FacebookSettingsContent: PwaFacebookSettings,
+      InstagramSettingsContent: PwaInstagramSettings,
+      LinkedInSettingsContent: PwaLinkedInSettings,
       SubstackSettingsContent: null,
       MediumSettingsContent: null,
-      YouTubeSettingsContent: IS_DEMO ? null : PwaYouTubeSettings,
-      GoogleContactsSettingsContent: IS_DEMO ? null : PwaGoogleContactsSettings,
+      YouTubeSettingsContent: PwaYouTubeSettings,
+      GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates: IS_DEMO ? undefined : checkForUpdates,
       applyUpdate: IS_DEMO ? undefined : applyPwaUpdate,
       releaseChannel,
@@ -544,14 +548,17 @@ function App() {
           ? pickContactViaWebApi
           : undefined,
       openUrl: IS_DEMO
-        ? async () => toast.info("External links are disabled in this read only demo")
+        ? async () =>
+            toast.info("External links are disabled in this read only demo")
         : openPwaUrl,
       openBoundedFeedReader: openPwaLibraryCoreFeedReader,
       openBoundedFriendsFeedReader: openPwaLibraryCoreFriendsFeedReader,
       openBoundedSavedFeedReader: openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
-      executeLibraryScopeAction: IS_DEMO ? undefined : executePwaLibraryCoreScopeAction,
+      executeLibraryScopeAction: IS_DEMO
+        ? undefined
+        : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
@@ -561,8 +568,12 @@ function App() {
       replaceLibraryFriend: IS_DEMO ? undefined : replacePwaLibraryCoreFriend,
       upsertLibraryPerson: IS_DEMO ? undefined : upsertPwaLibraryCorePerson,
       removeLibraryPerson: IS_DEMO ? undefined : removePwaLibraryCorePerson,
-      assignLibraryAccountToPerson: IS_DEMO ? undefined : assignPwaLibraryCoreAccountToPerson,
-      appendLibraryPersonReachOut: IS_DEMO ? undefined : appendPwaLibraryCorePersonReachOut,
+      assignLibraryAccountToPerson: IS_DEMO
+        ? undefined
+        : assignPwaLibraryCoreAccountToPerson,
+      appendLibraryPersonReachOut: IS_DEMO
+        ? undefined
+        : appendPwaLibraryCorePersonReachOut,
       upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
@@ -701,3 +712,13 @@ function App() {
 }
 
 export default OAuthRouter;
+function PwaNewsletterSignup() {
+  return import.meta.env.DEV ? (
+    <NewsletterSignup
+      previewOnly
+      siteKey={FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY}
+    />
+  ) : (
+    <NewsletterSignup />
+  );
+}

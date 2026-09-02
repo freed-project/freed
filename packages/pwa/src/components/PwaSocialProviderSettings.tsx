@@ -102,7 +102,7 @@ function DownloadIcon() {
 }
 
 function DesktopManagementLink() {
-  const { releaseChannel } = usePlatform();
+  const { interactionMode, releaseChannel } = usePlatform();
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   return (
@@ -113,8 +113,24 @@ function DesktopManagementLink() {
       className="theme-accent-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs transition-colors"
     >
       <DownloadIcon />
-      Download Freed Desktop
+      {interactionMode === "read-only"
+        ? "Download Freed Desktop to configure"
+        : "Download Freed Desktop"}
     </a>
+  );
+}
+
+function DemoConnectionNotice({ label }: { label: string }) {
+  const { interactionMode } = usePlatform();
+  if (interactionMode !== "read-only") return null;
+
+  return (
+    <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] p-4" data-testid="demo-provider-disabled">
+      <p className="text-xs font-semibold text-[var(--theme-text-primary)]">Connections are off in the demo</p>
+      <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">
+        The sample Library is read only and cannot connect to {label}. Download Freed Desktop free to configure your own sources.
+      </p>
+    </div>
   );
 }
 
@@ -147,6 +163,8 @@ function PwaSocialProviderSettings({
           <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">{content.body}</p>
         </div>
       </div>
+
+      <DemoConnectionNotice label={content.label} />
 
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Synced items" value={stats.total.toLocaleString()} />
@@ -220,6 +238,8 @@ export function PwaFeedsSettings() {
         </div>
       </div>
 
+      <DemoConnectionNotice label="RSS feeds" />
+
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Synced feeds" value={stats.syncedFeeds.toLocaleString()} />
         <StatCard label="Synced items" value={stats.syncedItems.toLocaleString()} />
@@ -253,6 +273,8 @@ export function PwaGoogleContactsSettings() {
           </p>
         </div>
       </div>
+
+      <DemoConnectionNotice label="Google Contacts" />
 
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Imported contacts" value={facets.contactAccountCount.toLocaleString()} />
