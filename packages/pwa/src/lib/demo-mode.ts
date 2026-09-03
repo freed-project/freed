@@ -12,6 +12,13 @@ export function isFreedNewsletterPreviewHostname(hostname: string): boolean {
 export function isFreedDemoMode(
   hostname: string,
   explicitDemoBuild = import.meta.env.VITE_FREED_DEMO === "1",
+  search = "",
 ): boolean {
-  return explicitDemoBuild || isFreedDemoHostname(hostname);
+  const explicitPreviewRequest =
+    new URLSearchParams(search).get("freed-demo") === "1";
+  return (
+    explicitDemoBuild ||
+    isFreedDemoHostname(hostname) ||
+    (explicitPreviewRequest && isFreedNewsletterPreviewHostname(hostname))
+  );
 }

@@ -144,7 +144,11 @@ import {
 } from "./lib/demo-mode";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
-const IS_DEMO = isFreedDemoMode(window.location.hostname);
+const IS_DEMO = isFreedDemoMode(
+  window.location.hostname,
+  undefined,
+  window.location.search,
+);
 const LOCAL_PREVIEW_LABEL =
   import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 

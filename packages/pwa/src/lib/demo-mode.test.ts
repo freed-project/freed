@@ -18,6 +18,28 @@ describe("demo mode", () => {
     expect(isFreedDemoMode("localhost", false)).toBe(false);
   });
 
+  it("allows explicit demo links only on Vercel preview hosts", () => {
+    expect(
+      isFreedDemoMode(
+        "freed-pwa-git-feat-demo-aubreyfs-projects.vercel.app",
+        false,
+        "?freed-demo=1",
+      ),
+    ).toBe(true);
+    expect(
+      isFreedDemoMode(
+        "freed-pwa-git-feat-demo-aubreyfs-projects.vercel.app",
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      isFreedDemoMode("app.freed.wtf", false, "?freed-demo=1"),
+    ).toBe(false);
+    expect(
+      isFreedDemoMode("vercel.app.example.com", false, "?freed-demo=1"),
+    ).toBe(false);
+  });
+
   it("keeps newsletter submissions inert on Vercel preview hosts", () => {
     expect(
       isFreedNewsletterPreviewHostname(
