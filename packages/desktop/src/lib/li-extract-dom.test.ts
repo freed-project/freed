@@ -80,4 +80,64 @@ describe("LinkedIn DOM extractor", () => {
       dataUrnCount: 0,
     });
   });
+
+  it("extracts current semantic feed posts without legacy classes or URNs", () => {
+    const html = `
+      <main role="main">
+        <section class="feed">
+          <div class="current-post-shell">
+            <header>
+              <h2>Feed post</h2>
+              <a href="https://www.linkedin.com/in/person-who-liked-this/">Person Who Liked This</a>
+              <a href="https://www.linkedin.com/in/alice-example/" aria-label="View Alice Example's profile"></a>
+              <span>2h</span>
+              <button aria-label="Open control menu for post by Alice Example">Menu</button>
+            </header>
+            <p>A current LinkedIn post with semantic markup and enough text to extract.</p>
+            <footer>
+              <button aria-label="12 reactions">12 reactions</button>
+              <button aria-label="3 comments">3 comments</button>
+              <button aria-label="1 repost">1 repost</button>
+              <button aria-label="Like">Like</button>
+            </footer>
+          </div>
+          <div class="current-post-shell">
+            <header>
+              <h2>Feed post</h2>
+              <a href="https://www.linkedin.com/company/example-co/">Example Co</a>
+              <span>Promoted</span>
+            </header>
+            <div dir="ltr">A promoted post that must not enter the library.</div>
+            <footer><button aria-label="Like">Like</button></footer>
+          </div>
+        </section>
+      </main>
+    `;
+
+    const firstPayload = runExtractor(html);
+    const secondPayload = runExtractor(html);
+
+    expect(firstPayload?.candidateCount).toBe(2);
+    expect(firstPayload?.posts).toEqual([
+      expect.objectContaining({
+        urn: expect.stringMatching(/^urn:freed:linkedin:content:[0-9a-f]{8}$/),
+        url: null,
+        authorName: "Alice Example",
+        authorProfileUrl: "https://www.linkedin.com/in/alice-example/",
+        text: "A current LinkedIn post with semantic markup and enough text to extract.",
+        timestampRelative: "2h",
+        reactionCount: 12,
+        commentCount: 3,
+        repostCount: 1,
+      }),
+    ]);
+    const firstPosts = firstPayload?.posts as Array<{ urn: string }>;
+    const secondPosts = secondPayload?.posts as Array<{ urn: string }>;
+    expect(secondPosts[0]?.urn).toBe(firstPosts[0]?.urn);
+    expect(firstPayload?.pageState).toMatchObject({
+      candidateCount: 2,
+      extractedPostCount: 1,
+      semanticFeedPostHeadingCount: 2,
+    });
+  });
 });

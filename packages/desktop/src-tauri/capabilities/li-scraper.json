@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "li-scraper",
+  "description": "Allows the hidden LinkedIn WebView to emit events back to the app",
+  "windows": ["li-scraper"],
+  "remote": {
+    "urls": ["https://linkedin.com/*", "https://*.linkedin.com/*"]
+  },
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-listen"
+  ]
+}

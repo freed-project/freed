@@ -103,6 +103,108 @@
     return "unknown";
   }
 
+  function normalizeWhitespace(text) {
+    return text ? text.replace(/\s+/g, " ").trim() : "";
+  }
+
+  function stableContentId(parts) {
+    var value = parts.map(normalizeWhitespace).join("|").toLowerCase();
+    var hash = 2166136261;
+    for (var i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return "urn:freed:linkedin:content:" + (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function authorNameFromControl(container) {
+    var controls = container.querySelectorAll("button[aria-label]");
+    for (var i = 0; i < controls.length; i++) {
+      var label = normalizeWhitespace(controls[i].getAttribute("aria-label"));
+      var match = label.match(/^open control menu for post by (.+)$/i);
+      if (match) return match[1];
+    }
+    return null;
+  }
+
+  function profileLinkForAuthor(container, authorName) {
+    var links = container.querySelectorAll("a[href*='/in/'], a[href*='/company/']");
+    var normalizedAuthor = normalizeWhitespace(authorName).toLowerCase();
+    for (var i = 0; i < links.length; i++) {
+      var label = normalizeWhitespace(
+        links[i].getAttribute("aria-label") || links[i].textContent
+      ).toLowerCase();
+      if (normalizedAuthor && label.indexOf(normalizedAuthor) >= 0) return links[i];
+    }
+    return links.length > 0 ? links[0] : null;
+  }
+
+  function semanticPostText(container) {
+    var preferred = qs(container, [
+      "[data-view-name='feed-commentary']",
+      "[data-testid='expandable-text-box']",
+      "[data-test-id='main-feed-activity-card__commentary']",
+      "div[dir='ltr']",
+      "p[dir='ltr']",
+    ]);
+    if (preferred) {
+      var preferredText = normalizeWhitespace(preferred.textContent);
+      if (preferredText.length >= 20) return preferredText;
+    }
+
+    var candidates = container.querySelectorAll("p, div, span");
+    var best = "";
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (candidate.closest("button, nav")) continue;
+      if (candidate.querySelector("h2, button")) continue;
+      var text = normalizeWhitespace(candidate.textContent);
+      if (text.length < 20 || text === "Feed post") continue;
+      if (text.length > best.length) best = text;
+    }
+    return best || null;
+  }
+
+  function feedPostHeadingCount(root) {
+    var headings = root.querySelectorAll("h2");
+    var count = 0;
+    for (var i = 0; i < headings.length; i++) {
+      if (normalizeWhitespace(headings[i].textContent).toLowerCase() === "feed post") count++;
+    }
+    return count;
+  }
+
+  function hasPostSignals(root) {
+    if (!root.querySelector("a[href*='/in/'], a[href*='/company/']")) return false;
+    var controls = root.querySelectorAll("button, a, span[role='button']");
+    for (var i = 0; i < controls.length; i++) {
+      var label = normalizeWhitespace(
+        controls[i].getAttribute("aria-label") || controls[i].textContent
+      ).toLowerCase();
+      if (/\b(like|comment|repost|send|reaction)s?\b/.test(label)) return true;
+    }
+    return false;
+  }
+
+  function findSemanticFeedPostContainers() {
+    var headings = document.querySelectorAll("h2");
+    var containers = [];
+    for (var i = 0; i < headings.length; i++) {
+      if (normalizeWhitespace(headings[i].textContent).toLowerCase() !== "feed post") continue;
+
+      var node = headings[i];
+      var best = null;
+      for (var depth = 0; depth < 12 && node && node.parentElement; depth++) {
+        node = node.parentElement;
+        if (node === document.body || node.tagName === "MAIN") break;
+        if (feedPostHeadingCount(node) !== 1) break;
+        if (hasPostSignals(node)) best = node;
+      }
+      if (best && containers.indexOf(best) === -1) containers.push(best);
+    }
+    return containers;
+  }
+
   // ---------------------------------------------------------------------------
   // Sponsored post detection
   // ---------------------------------------------------------------------------
@@ -118,6 +220,10 @@
     // Text-based check: "Promoted" in actor sub-description
     var subDesc = container.querySelector(".update-components-actor__sub-description");
     if (subDesc && /promoted/i.test(subDesc.textContent)) return true;
+    var labels = container.querySelectorAll("span, div");
+    for (var j = 0; j < labels.length; j++) {
+      if (normalizeWhitespace(labels[j].textContent).toLowerCase() === "promoted") return true;
+    }
     return false;
   }
 
@@ -150,6 +256,9 @@
       var fallback = document.querySelectorAll(".feed-shared-update-v2");
       all = Array.from(fallback);
     }
+    // LinkedIn's current feed exposes a stable semantic heading for each post
+    // even when the historical data-urn and BEM class names are absent.
+    if (all.length === 0) all = findSemanticFeedPostContainers();
     return all;
   }
 
@@ -171,6 +280,9 @@
       dataUrnCount: document.querySelectorAll("[data-urn]").length,
       activityUrnCount: document.querySelectorAll("[data-urn*='urn:li:activity'], [data-urn*='urn:li:ugcPost'], [data-urn*='urn:li:reshare']").length,
       articleCount: document.querySelectorAll("article").length,
+      semanticFeedPostHeadingCount: Array.from(document.querySelectorAll("h2")).filter(function (heading) {
+        return normalizeWhitespace(heading.textContent).toLowerCase() === "feed post";
+      }).length,
     };
   }
 
@@ -182,7 +294,8 @@
     expandLongTextControls(container);
 
     // URN / ID
-    var urn = container.getAttribute("data-urn") || null;
+    var urnNode = container.matches("[data-urn]") ? container : container.querySelector("[data-urn]");
+    var urn = urnNode ? (urnNode.getAttribute("data-urn") || null) : null;
 
     // Post URL — try to derive from URN or find a share link
     var url = null;
@@ -195,8 +308,6 @@
       if (shareLink) url = shareLink.href;
     }
 
-    if (!urn && !url) return null;
-
     // Sponsored check
     if (isSponsored(container)) return null;
 
@@ -206,6 +317,18 @@
       ".update-components-actor__name",
       ".feed-shared-actor__name",
     ]);
+
+    var controlledAuthorName = authorNameFromControl(container);
+    if (controlledAuthorName) authorName = controlledAuthorName;
+    var semanticProfileLink = profileLinkForAuthor(container, authorName);
+    if (!authorName && semanticProfileLink) {
+      authorName = normalizeWhitespace(semanticProfileLink.textContent);
+      if (!authorName) {
+        var profileLabel = normalizeWhitespace(semanticProfileLink.getAttribute("aria-label"));
+        var profileMatch = profileLabel.match(/^view\s+(.+?)(?:'s|’s)\s+profile$/i);
+        authorName = profileMatch ? profileMatch[1] : profileLabel;
+      }
+    }
 
     var authorHeadline = getText(container, [
       ".update-components-actor__description span[aria-hidden='true']",
@@ -218,6 +341,7 @@
       ".update-components-actor__container a[href*='/in/']",
       ".feed-shared-actor__container-link",
     ], "href");
+    if (!authorProfileUrl && semanticProfileLink) authorProfileUrl = semanticProfileLink.href || null;
 
     // Normalize LinkedIn profile URL (strip tracking params)
     if (authorProfileUrl) {
@@ -240,6 +364,7 @@
       ".update-components-text",
     ]);
     var text = textNode ? textNode.textContent.trim() : null;
+    if (!text) text = semanticPostText(container);
 
     // ── Timestamp ────────────────────────────────────────────────────────────
     var timestampIso = null;
@@ -263,6 +388,21 @@
         timestampRelative = relMatch;
       }
     }
+
+    if (!timestampRelative) {
+      var relativeText = normalizeWhitespace(container.textContent);
+      var relativeMatch = relativeText.match(/\b\d+\s*(?:s|m|h|d|w|mo|yr)\b/i);
+      if (relativeMatch) timestampRelative = relativeMatch[0];
+    }
+
+    if (!urn && !url && text) {
+      urn = stableContentId([
+        authorProfileUrl || authorName || "unknown",
+        text,
+      ]);
+    }
+
+    if (!urn && !url) return null;
 
     // ── Media ────────────────────────────────────────────────────────────────
     var mediaUrls = [];
@@ -318,6 +458,13 @@
     if (reactionEl) {
       reactionCount = parseEngagementCount(reactionEl.textContent);
     }
+    if (reactionCount === null) {
+      var reactionControl = container.querySelector("[aria-label*=' reaction'], [aria-label$=' reactions']");
+      if (reactionControl) {
+        var reactionMatch = normalizeWhitespace(reactionControl.getAttribute("aria-label") || reactionControl.textContent).match(/[\d,.]+\s*[km]?/i);
+        if (reactionMatch) reactionCount = parseEngagementCount(reactionMatch[0]);
+      }
+    }
 
     var commentCount = null;
     var commentLinks = container.querySelectorAll(".social-details-social-counts__comments a");
@@ -330,11 +477,25 @@
         if (countSpan) commentCount = parseEngagementCount(countSpan.textContent);
       }
     }
+    if (commentCount === null) {
+      var semanticComment = container.querySelector("[aria-label*=' comment'], [aria-label$=' comments']");
+      if (semanticComment) {
+        var commentMatch = normalizeWhitespace(semanticComment.getAttribute("aria-label") || semanticComment.textContent).match(/[\d,.]+\s*[km]?/i);
+        if (commentMatch) commentCount = parseEngagementCount(commentMatch[0]);
+      }
+    }
 
     var repostCount = null;
     var repostLinks = container.querySelectorAll(".social-details-social-counts__reshares a");
     if (repostLinks.length > 0) {
       repostCount = parseEngagementCount(repostLinks[0].textContent);
+    }
+    if (repostCount === null) {
+      var semanticRepost = container.querySelector("[aria-label*=' repost'], [aria-label$=' reposts']");
+      if (semanticRepost) {
+        var repostMatch = normalizeWhitespace(semanticRepost.getAttribute("aria-label") || semanticRepost.textContent).match(/[\d,.]+\s*[km]?/i);
+        if (repostMatch) repostCount = parseEngagementCount(repostMatch[0]);
+      }
     }
 
     // ── Hashtags ─────────────────────────────────────────────────────────────
