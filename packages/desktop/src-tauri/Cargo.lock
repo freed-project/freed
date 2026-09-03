@@ -1266,7 +1266,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.9.200"
+version = "26.9.300"
 dependencies = [
  "base64 0.23.1",
  "dirs",
