@@ -14,6 +14,7 @@
     "./components/Tooltip": "./src/components/Tooltip.tsx",
     "./components/icons": "./src/components/icons.tsx",
     "./components/LocalPreviewBadge": "./src/components/LocalPreviewBadge.tsx",
+    "./components/NewsletterSignup": "./src/components/NewsletterSignup.tsx",
     "./components/DraggableFloatingPanel": "./src/components/DraggableFloatingPanel.tsx",
     "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",

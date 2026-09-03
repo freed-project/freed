@@ -169,6 +169,24 @@ function recencySignal(latestActivityAt: number | undefined, now: number): numbe
   return 1 - clamp(ageDays / 120, 0, 1);
 }
 
+function semanticBrightness(node: IdentityGraphAtlasNode, now: number): number {
+  const activity = activitySignal(node.activityCount);
+  const recency = recencySignal(node.latestActivityAt, now);
+  if (
+    node.kind === "friend_person" ||
+    node.kind === "connection_person"
+  ) {
+    const careLevel = clamp(node.careLevel ?? 1, 1, 5);
+    const importance = (careLevel - 1) / 4;
+    return clamp(
+      0.58 + importance * 0.36 + activity * 0.03 + recency * 0.03,
+      0.58,
+      1,
+    );
+  }
+  return clamp(0.76 + activity * 0.14 + recency * 0.1, 0.76, 1);
+}
+
 function staticNodeFlags(node: IdentityGraphAtlasNode): number {
   let flags = 0;
   if (node.graphPinned) flags |= IdentityGalaxyNodeFlag.Pinned;
@@ -319,11 +337,7 @@ export function compileIdentityGalaxyScene(
 
   for (let index = 0; index < nodeCount; index += 1) {
     const node = source.nodes[index]!;
-    brightness[index] = clamp(
-      0.76 + activitySignal(node.activityCount) * 0.14 + recencySignal(node.latestActivityAt, now) * 0.1,
-      0.76,
-      1,
-    );
+    brightness[index] = semanticBrightness(node, now);
   }
 
   const edgeIndices = compileIdentityGalaxyEdgeIndices(nodeIds, source.edges);

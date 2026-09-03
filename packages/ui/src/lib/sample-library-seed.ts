@@ -52,6 +52,12 @@ const SAMPLE_DATA_CLEAR_PHASE_LABELS: Record<
   settling: "Finalizing Library",
 };
 
+function samplePresentationSeed(): number {
+  const values = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(values);
+  return values[0]!;
+}
+
 export function formatSampleDataImportProgress(
   progress: SampleDataImportProgress,
 ): string {
@@ -82,7 +88,9 @@ export async function refreshSampleLibraryData({
     await initialize();
   }
 
-  await addSampleLibraryData(generateSampleLibraryData(), onProgress);
+  await addSampleLibraryData(generateSampleLibraryData({
+    presentationSeed: samplePresentationSeed(),
+  }), onProgress);
 
   seedSocialConnections?.();
 }

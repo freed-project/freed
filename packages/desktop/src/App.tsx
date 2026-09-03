@@ -17,6 +17,8 @@ import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
+import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
+import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
@@ -146,6 +148,7 @@ import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-pref
 import { clearLegacyDeviceGraphLayoutImport } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
+import { useAppliedThemeId } from "@freed/ui/lib/theme";
 import {
   clearFactoryResetCloudCleanupBarrier,
   beginFactoryResetBoundary,
@@ -1443,6 +1446,7 @@ function App() {
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
+      NewsletterSettingsContent: DesktopNewsletterSignup,
       ShortcutsSettingsContent:
         tauriRuntimeAvailable && hasKeyboardShortcutSettingsSurface
           ? ShortcutsSettingsContent
@@ -1860,4 +1864,24 @@ declare global {
       };
     };
   }
+}
+function DesktopNewsletterSignup() {
+  const themeId = useAppliedThemeId();
+
+  if (import.meta.env.DEV) {
+    return (
+      <NewsletterSignup
+        previewOnly
+        siteKey={FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY}
+      />
+    );
+  }
+
+  return (
+    <iframe
+      title="Freed newsletter signup"
+      src={`https://freed.wtf/newsletter/embed?theme=${encodeURIComponent(themeId)}`}
+      className="h-[26rem] w-full rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
+    />
+  );
 }

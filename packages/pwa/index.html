@@ -14,7 +14,7 @@
       ) {
         const policy = document.createElement("meta");
         policy.httpEquiv = "Content-Security-Policy";
-        policy.content = "default-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
+        policy.content = "default-src 'self'; connect-src 'self' https://freed.wtf https://www.freed.wtf https://challenges.cloudflare.com https://tiles.openfreemap.org https://nominatim.openstreetmap.org; font-src 'self' data:; frame-src https://challenges.cloudflare.com; img-src 'self' https://thumb.wikimedia.org https://upload.wikimedia.org data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
         document.head.append(policy);
       }
     </script>

@@ -43,9 +43,13 @@ function facetSummary(
   };
 }
 
-function createPlatform(summary: LibraryFacetSummary): PlatformConfig {
+function createPlatform(
+  summary: LibraryFacetSummary,
+  interactionMode: PlatformConfig["interactionMode"] = "full",
+): PlatformConfig {
   return {
     store: useAppStore,
+    interactionMode,
     SourceIndicator: null,
     HeaderSyncIndicator: null,
     SettingsExtraSections: null,
@@ -67,12 +71,13 @@ function createPlatform(summary: LibraryFacetSummary): PlatformConfig {
 async function renderWithPlatform(
   node: ReactNode,
   summary = facetSummary(),
+  interactionMode: PlatformConfig["interactionMode"] = "full",
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(createElement(PlatformProvider, { value: createPlatform(summary), children: node }));
+    root.render(createElement(PlatformProvider, { value: createPlatform(summary, interactionMode), children: node }));
     await Promise.resolve();
   });
 
@@ -124,6 +129,21 @@ describe("PWA source provider settings", () => {
     expect(downloadLink?.querySelector("svg")).not.toBeNull();
     expect(downloadLink?.parentElement?.className).toContain("justify-center");
     expect(downloadLink?.parentElement?.className).toContain("pt-3");
+    cleanup();
+  });
+
+  it("replaces connection controls with a Desktop handoff in the read only demo", async () => {
+    const { container, cleanup } = await renderWithPlatform(
+      createElement(PwaFacebookSettings, { surface: "settings" }),
+      facetSummary(),
+      "read-only",
+    );
+
+    expect(container.textContent).toContain("Connections are off in the demo");
+    expect(container.textContent).toContain("Download Freed Desktop free to configure your own sources.");
+    expect(container.textContent).toContain("Download Freed Desktop to configure");
+    expect(container.querySelector('[data-testid="demo-provider-disabled"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Connect Facebook");
     cleanup();
   });
 

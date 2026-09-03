@@ -11,6 +11,8 @@ A people CRM built on a force-directed social graph. Canonical same-human identi
 
 Confirmed friends stay at the center of the graph. Their linked social and contact accounts orbit as attached nodes. Unconfirmed followed accounts can stay separate until the operator confirms that they belong to the same person.
 
+Each Person's one-to-five care level is the Friends Galaxy importance scale. Higher-care people sit closer to the center and render as larger, nearer, brighter stars. The galaxy uses this single continuous visual hierarchy without a separate type legend.
+
 The geo map from the original Phase 8 design is retained as sub-phase 8D. It now supports both Friend-linked pins and an `All content` fallback that shows the latest valid location per followed account when no Friend graph exists yet.
 
 This phase also becomes the home for future-aware social planning. Historical post locations still matter, but the map and friend timeline now need to handle future-dated place windows from sources like Mozi, plus derived overlap views when multiple friends are in the same place at the same time.
@@ -650,6 +652,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.200 | Delete the final full-dictionary identity, map-count, and graph-activity helpers. FriendGraph accepts no FeedItem or activity-summary corpus, and all shipping identity activity reaches the UI through bounded SQLite graph, timeline, map, and facet responses | High       | Done |
 | 8.201 | Delete the direct Friends Galaxy whole-source worker lane and advance the closed worker protocol to version 4. The product and laboratory now use only normalized source begin, bounded SQLite page, and commit messages under one exact source fence, with no caller-side source compiler or whole-model queue | High       | Done |
 | 8.202 | Retry one recoverable Friends Galaxy source-fence race by restarting bounded SQLite paging from a fresh source receipt. The worker never combines revisions, and repeated or non-recoverable failures remain visible instead of falling back to a renderer corpus | High       | Done |
+| 8.203 | Map the Person care scale directly to Friends Galaxy centrality, radius, depth, and luminance, with an explicit one-to-five spread in the curated demo cast | Medium     | Done |
 
 ---
 
@@ -659,7 +662,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] Identity resolution runs in registered SQLite joins and returns only bounded Person, Account, timeline, graph, and map projections
 - [x] Outreach state derives from exact Person details and bounded Friends directory rows without renderer identity dictionaries
 - [x] Device contact import injected via `PlatformContext`
-- [x] Friends Galaxy renders GPU-resident semantic stars from acknowledged bounded SQLite pages with recency and care encoding
+- [x] Friends Galaxy renders GPU-resident semantic stars from acknowledged bounded SQLite pages, with each Person's one-to-five care level increasing centrality, size, depth, and luminance
 - [x] Reconnect ring attracts overdue Fam contacts
 - [x] Clicking a node opens a cross-platform timeline
 - [x] Reach-out can be logged and clears the Reconnect ring

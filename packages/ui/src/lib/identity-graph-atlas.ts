@@ -423,7 +423,7 @@ export function buildIdentityGraphAtlasModel({
     const angle = friend
       ? -Math.PI / 2 + friendIndex * GOLDEN_ANGLE + (seededUnit(`person:${person.id}:angle`) - 0.5) * 0.16
       : -Math.PI / 2 + connectionIndex * GOLDEN_ANGLE + (seededUnit(`connection:${person.id}:angle`) - 0.5) * 0.2;
-    const carePull = 1 - ((person.careLevel - 1) / 4) * 0.12;
+    const carePull = 1 - ((person.careLevel - 1) / 4) * 0.32;
     const radius = friend
       ? Math.sqrt((friendIndex + 0.55) / Math.max(1, friendCount)) * friendFieldRadius * carePull
       : connectionInnerRadius +
@@ -442,7 +442,7 @@ export function buildIdentityGraphAtlasModel({
       x: position.x,
       y: position.y,
       radius: friend
-        ? Math.min(70, 44 + person.careLevel * 4 + Math.min(16, linkedAccounts.length * 0.8))
+        ? 40 + person.careLevel * 8
         : Math.min(46, 28 + Math.min(12, linkedAccounts.length * 1.2)),
       priority: friend ? 900 + person.careLevel * 40 : 560 + linkedAccounts.length * 10,
       personId: person.id,

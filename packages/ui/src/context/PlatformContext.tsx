@@ -561,6 +561,9 @@ export interface PlatformConfig {
   /** Rendered inside Settings > Legal for local consent details. */
   LegalSettingsContent: ComponentType | null;
 
+  /** Rendered inside Settings > Newsletter. */
+  NewsletterSettingsContent?: ComponentType | null;
+
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
 
