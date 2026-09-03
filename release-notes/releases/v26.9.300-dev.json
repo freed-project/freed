@@ -3,7 +3,7 @@
   "version": "26.9.300-dev",
   "channel": "dev",
   "dayKey": "26.9.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-03T13:59:47.700Z",
   "model": "heuristic",
@@ -55,10 +55,15 @@
     ]
   },
   "release": {
-    "deck": "Split and validate repository instructions and LinkedIn feed extraction restored",
+    "deck": "LinkedIn feed sync works again after reconnecting",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Restore LinkedIn extraction events after reconnecting the provider",
+      "Read LinkedIn's current feed markup while excluding promoted posts"
+    ],
+    "followUps": [
+      "Verify the signed build against the connected LinkedIn account on the installation machine"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.300-dev\n\nSplit and validate repository instructions and LinkedIn feed extraction restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.300-dev\n\nLinkedIn feed sync works again after reconnecting\n\n### Fixes\n\n- Restore LinkedIn extraction events after reconnecting the provider\n- Read LinkedIn's current feed markup while excluding promoted posts\n\n### Follow-ups\n\n- Verify the signed build against the connected LinkedIn account on the installation machine\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
