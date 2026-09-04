@@ -634,6 +634,43 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
   }
 });
 
+test("iPhone WebKit treats a second Library tab as busy, not corrupted", async () => {
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-library-busy-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    const opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    const secondPage = await context.newPage();
+    await secondPage.goto("/");
+    await acceptLegalGate(secondPage);
+
+    await expect(
+      secondPage.getByRole("heading", {
+        name: "Freed is open in another tab",
+      }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      secondPage.getByRole("button", { name: "Retry here" }),
+    ).toBeVisible();
+    await expect(
+      secondPage.getByRole("heading", { name: "Freed hit a fatal error" }),
+    ).toHaveCount(0);
+    await expect(
+      secondPage.getByRole("button", { name: "Replace local Library" }),
+    ).toHaveCount(0);
+
+    await opened.page.close();
+    await secondPage.getByRole("button", { name: "Retry here" }).click();
+    await waitForLibrary(secondPage);
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
 test("iPhone WebKit rejects a corrupted accepted OPFS SQLite generation", async () => {
   test.setTimeout(180_000);
   const profileRoot = await mkdtemp(
