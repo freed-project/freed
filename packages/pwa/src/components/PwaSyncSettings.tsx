@@ -147,6 +147,28 @@ function ProviderLogo() {
   );
 }
 
+export function PwaDemoSyncSettings() {
+  const { releaseChannel } = usePlatform();
+  const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-5" data-testid="demo-sync-disabled">
+        <div className="flex items-start gap-4">
+          <div className="rounded-xl bg-[var(--theme-bg-muted)] p-3 text-[var(--theme-accent-secondary)]"><ProviderLogo /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync is off in this demo</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">This showcase resets on refresh and never connects to a cloud account. Download Freed Desktop free to create a private Library and configure sync.</p>
+          </div>
+        </div>
+        <a href={websiteGetUrl} target="_blank" rel="noopener noreferrer" className="theme-accent-button mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs">
+          Download Freed Desktop to configure
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export function PwaSyncSettings() {
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);

@@ -103,7 +103,49 @@ test("global clipboard shortcut opens Save Content blank for non-URL clipboard t
   await expect(page.getByLabel("Article or page URL")).toHaveValue("");
 });
 
-test("saving new content opens the saved item in reader mode", async ({ app, page, ipc }) => {
+test("URL preview shows activity and fills untouched notes", async ({ app, page, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("fetch_url", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return '<html><head><meta name="description" content="A useful preview note." /></head></html>';
+  });
+
+  const shortcut = await waitForRegisteredShortcut(page);
+  await page.evaluate(() => {
+    (window as unknown as { __TAURI_MOCK_CLIPBOARD_TEXT__?: string })
+      .__TAURI_MOCK_CLIPBOARD_TEXT__ = "https://example.com/preview-note";
+  });
+  await triggerShortcut(page, shortcut);
+
+  await expect(page.getByRole("status", { name: "Reading URL details" })).toBeVisible();
+  await expect(page.getByLabel("Notes")).toHaveValue("A useful preview note.");
+  await expect(page.getByPlaceholder("Notes will be auto-populated from the URL when available.")).toBeVisible();
+});
+
+test("URL preview never replaces notes after the user edits them", async ({ app, page, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("fetch_url", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return '<html><head><meta name="description" content="Fetched note that must not win." /></head></html>';
+  });
+
+  const shortcut = await waitForRegisteredShortcut(page);
+  await page.evaluate(() => {
+    (window as unknown as { __TAURI_MOCK_CLIPBOARD_TEXT__?: string })
+      .__TAURI_MOCK_CLIPBOARD_TEXT__ = "https://example.com/user-note-wins";
+  });
+  await triggerShortcut(page, shortcut);
+
+  const notes = page.getByLabel("Notes");
+  await notes.fill("My note");
+  await expect(page.getByRole("status", { name: "Reading URL details" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Reading URL details" })).toBeHidden();
+  await expect(notes).toHaveValue("My note");
+});
+
+test("saving and editing content persists preview details and searchable notes", async ({ app, page, ipc }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -131,10 +173,11 @@ test("saving new content opens the saved item in reader mode", async ({ app, pag
   });
   await triggerShortcut(page, shortcut);
 
+  const notes = page.getByLabel("Notes");
+  await expect(notes).toHaveValue("A saved article should open immediately.");
+  await notes.fill("Updated comet note");
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Saved Reader Transition").first()).toBeVisible();
-  await expect(page.getByRole("article").getByText("A saved article should open immediately.")).toBeVisible();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const state = (w.__FREED_STORE__ as { getState: () => {
@@ -147,6 +190,54 @@ test("saving new content opens the saved item in reader mode", async ({ app, pag
       && typeof state.selectedItemId === "string"
       && state.selectedItemId.startsWith("saved:");
   });
+
+  const savedState = await page.evaluate(() => {
+    const root = window as Record<string, unknown>;
+    const selectedItemId = (root.__FREED_STORE__ as {
+      getState: () => { selectedItemId: string | null };
+    }).getState().selectedItemId;
+    const library = root.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+      items: Record<string, {
+        content: { linkPreview: { title: string; url: string } };
+        userState: { highlights?: Array<{ note?: string }> };
+      }>;
+    };
+    return {
+      item: selectedItemId ? library.items[selectedItemId] : null,
+      selectedItemId,
+    };
+  });
+  expect(savedState.item?.content.linkPreview.title).toBe("Saved Reader Transition");
+  expect(savedState.item?.userState.highlights?.[0]?.note).toBe("Updated comet note");
+
+  await page.evaluate((item) => {
+    window.dispatchEvent(new CustomEvent("freed:edit-saved-content", { detail: { item } }));
+  }, savedState.item);
+  await expect(page.getByText("Edit Save", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Article or page URL")).toHaveValue(
+    "https://example.com/saved-reader-transition",
+  );
+  await expect(page.getByLabel("Notes")).toHaveValue("Updated comet note");
+  await page.getByLabel("Article or page URL").fill(
+    "https://example.com/saved-reader-transition-edited",
+  );
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Update save", exact: true }).click();
+  await page.waitForFunction((previousId) => {
+    const state = ((window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { selectedItemId: string | null };
+    }).getState();
+    return typeof state.selectedItemId === "string" && state.selectedItemId !== previousId;
+  }, savedState.selectedItemId);
+
+  const search = page.locator('[aria-label="Search or run"]:visible').first();
+  await search.fill("Updated comet note");
+  const searchAction = page.getByRole("option", {
+    name: /Search current feed for "Updated comet note"/,
+  });
+  await expect(searchAction).toBeVisible();
+  await searchAction.click();
+  await expect(page.getByText("Saved Reader Transition").first()).toBeVisible();
 });
 
 test("Settings records, disables, and resets the Save Content shortcut", async ({ app, page }) => {

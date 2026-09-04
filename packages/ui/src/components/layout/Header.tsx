@@ -1682,10 +1682,10 @@ export function Header({
             style={collapsedReaderActionStyle}
           >
             <ToolbarAnimatedSlot
-              visible={true}
+              visible={!readOnly}
               width={TOOLBAR_ICON_BUTTON_SIZE}
             >
-              <Tooltip label={`Background activity: ${backgroundActivityStatus.label}`}>
+              {!readOnly ? <Tooltip label={`Background activity: ${backgroundActivityStatus.label}`}>
                 <button
                   ref={activityButtonRef}
                   type="button"
@@ -1721,7 +1721,7 @@ export function Header({
                     />
                   )}
                 </button>
-              </Tooltip>
+              </Tooltip> : null}
             </ToolbarAnimatedSlot>
 
             {readerActive && !selectedItem ? (

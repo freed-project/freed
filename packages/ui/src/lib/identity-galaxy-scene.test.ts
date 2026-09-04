@@ -54,6 +54,27 @@ function atlas(
 }
 
 describe("compileIdentityGalaxyScene", () => {
+  it("maps care levels to monotonically larger, nearer, brighter stars", () => {
+    const nodes = Array.from({ length: 5 }, (_, index) => {
+      const careLevel = (index + 1) as 1 | 2 | 3 | 4 | 5;
+      return node(`person:care-${careLevel}`, {
+        personId: `care-${careLevel}`,
+        careLevel,
+        radius: 40 + careLevel * 8,
+        priority: 900 + careLevel * 40,
+        activityCount: 0,
+      });
+    });
+    const scene = compileIdentityGalaxyScene(atlas(nodes), { quality: "settled", now: 1_000 });
+    const depths = nodes.map((_, index) => scene.positions[index * 3 + 2]!);
+
+    for (let index = 1; index < nodes.length; index += 1) {
+      expect(scene.pointSizes[index]).toBeGreaterThan(scene.pointSizes[index - 1]!);
+      expect(depths[index]).toBeGreaterThan(depths[index - 1]!);
+      expect(scene.brightness[index]).toBeGreaterThan(scene.brightness[index - 1]!);
+    }
+  });
+
   it("builds compact typed buffers with stable node and edge indices", () => {
     const input = atlas(
       [

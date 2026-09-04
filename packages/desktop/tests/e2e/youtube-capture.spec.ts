@@ -42,7 +42,7 @@ async function emitTauriEvent(
   );
 }
 
-test("beta source badges stay beside their source names", async ({ app }) => {
+test("beta source badges stay beside source names in navigation and settings", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -71,6 +71,29 @@ test("beta source badges stay beside their source names", async ({ app }) => {
     expect(badgeBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(
       8,
     );
+  }
+
+  const settingsButton = app.page
+    .locator("button")
+    .filter({ hasText: /settings/i })
+    .first();
+  await settingsButton.click();
+  const dialog = settingsDialog(app.page);
+
+  for (const source of ["substack", "medium", "youtube"] as const) {
+    const label = source === "substack"
+      ? "Substack"
+      : source === "medium"
+        ? "Medium"
+        : "YouTube";
+    const sectionButton = dialog.locator("button").filter({
+      has: app.page.getByText(label, { exact: true }),
+    }).last();
+    await expect(sectionButton).toContainText("Beta");
+    await sectionButton.click();
+
+    const section = dialog.locator(`[data-section="${source}"]`);
+    await expect(section.getByRole("heading").first()).toContainText("Beta");
   }
 });
 

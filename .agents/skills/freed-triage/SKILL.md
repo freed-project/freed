@@ -1,7 +1,6 @@
 ---
 name: freed-triage
 description: Reconcile fresh Freed stability evidence into governed, deduplicated GitHub debt issues. Use after runtime alarms, soak verdicts, canary results, or CI failures, and when deciding what to fix next. Require healthy evidence sources, temporal and build matching, issue identity, atomic evidence generations, explicit authority, and instrumentation-first handling of contradictory metrics.
-disable-model-invocation: true
 ---
 
 # Triage

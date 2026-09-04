@@ -324,6 +324,7 @@ export function SearchJumpField({
     YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     ShortcutsSettingsContent,
+    NewsletterSettingsContent,
     googleContacts,
     secureStorage,
     localAIModels,
@@ -455,6 +456,7 @@ export function SearchJumpField({
     () =>
       buildSettingsSectionMetas({
         hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
+        hasNewsletterSignup: !!NewsletterSettingsContent,
         hasGoogleContacts: !!GoogleContactsSettingsContent,
         hasGoogleContactsManagement: !!googleContacts,
         hasAISettings: !!(secureStorage || localAIModels),
@@ -475,6 +477,7 @@ export function SearchJumpField({
       InstagramSettingsContent,
       LinkedInSettingsContent,
       MediumSettingsContent,
+      NewsletterSettingsContent,
       SubstackSettingsContent,
       YouTubeSettingsContent,
       XSettingsContent,

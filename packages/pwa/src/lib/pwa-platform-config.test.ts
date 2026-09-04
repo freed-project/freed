@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("PWA platform capabilities", () => {
+  it("keeps the geographic map online in the read-only demo", () => {
+    const appSource = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(appSource).toContain('geographicMapMode: "online"');
+    expect(appSource).not.toContain('geographicMapMode: IS_DEMO ? "local-showcase"');
+  });
+
   it("does not expose source management through the platform config", () => {
     const appSource = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
 

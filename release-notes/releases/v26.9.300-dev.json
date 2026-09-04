@@ -1,0 +1,69 @@
+{
+  "tag": "v26.9.300-dev",
+  "version": "26.9.300-dev",
+  "channel": "dev",
+  "dayKey": "26.9.3",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-03T13:59:47.700Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.200-dev",
+    "previousPublishedDayTag": "v26.9.200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "5d4cf0fb5f32f5893f6add30e8992d0be1b9b73a",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.200-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "cafe12fa33bc57b0f9d0f021d4e9f75b0fef983a",
+        "toInclusiveProductCommitSha": "5d4cf0fb5f32f5893f6add30e8992d0be1b9b73a"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:f50580b7d946ea27854eb4b78e7bb566b9c5f08ee07bb9ed71bab23fac04be9d",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.300-dev"
+    ],
+    "prNumbers": [
+      1783,
+      1787
+    ],
+    "commitSubjects": [
+      "fix: restore LinkedIn feed extraction (#1787)",
+      "chore: split and validate repository instructions (#1783)"
+    ]
+  },
+  "release": {
+    "deck": "LinkedIn feed sync works again after reconnecting",
+    "features": [],
+    "fixes": [
+      "Restore LinkedIn extraction events after reconnecting the provider",
+      "Read LinkedIn's current feed markup while excluding promoted posts"
+    ],
+    "followUps": [
+      "Verify the signed build against the connected LinkedIn account on the installation machine"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.300-dev\n\nLinkedIn feed sync works again after reconnecting\n\n### Fixes\n\n- Restore LinkedIn extraction events after reconnecting the provider\n- Read LinkedIn's current feed markup while excluding promoted posts\n\n### Follow-ups\n\n- Verify the signed build against the connected LinkedIn account on the installation machine\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -2,3 +2,6 @@ interface:
   display_name: "Ship Freed WWW"
   short_description: "Deploy verified marketing changes from www"
   default_prompt: "Use $freed-ship-www to deploy this verified Freed marketing change from www."
+
+policy:
+  allow_implicit_invocation: true

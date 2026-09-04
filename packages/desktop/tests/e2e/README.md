@@ -15,6 +15,84 @@ The permanent suite was trimmed to keep functional flows and measured
 performance budgets. Removed tests should stay removed unless the behavior is
 converted into a durable user-flow assertion or an explicit visual snapshot.
 
+## Test runtime
+
+The suite runs the Desktop React app in Chromium without launching a Tauri
+binary. The Playwright web server sets `VITE_TEST_TAURI=1`, which aliases each
+`@tauri-apps/*` import to the thin modules under
+`packages/desktop/src/__mocks__/@tauri-apps/`.
+
+Import `test` and `expect` from `./fixtures/app`, not directly from
+`@playwright/test`:
+
+```ts
+import { test, expect } from "./fixtures/app";
+
+test("renders the expected state", async ({ app, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await expect(app.page.locator("main")).toBeVisible();
+});
+```
+
+The shared `app` fixture injects `tauriInitScript()` with
+`page.addInitScript()` before application JavaScript runs. That script installs
+`window.__TAURI_INTERNALS__`, default IPC handlers, and the mock state used at
+startup. A test that creates its own page setup must inject `tauriInitScript()`
+first and must do so before `page.goto()`.
+
+## Running the suite
+
+Run Desktop commands from `packages/desktop/`:
+
+```bash
+npm run test:e2e
+```
+
+The standard command starts and stops its Vite server automatically and runs
+headless. `npm run test:e2e:ui` and `npm run test:e2e:debug` open external
+browser surfaces, so use them only when the owner explicitly requests that
+surface.
+
+## Test-specific state and assertions
+
+Override an IPC command after fixture injection with `ipc.setHandler()`. Use
+`ipc.invocations()` to inspect recorded command calls and `ipc.openedUrls()` to
+inspect URLs passed to the shell plugin.
+
+State that must exist before application startup belongs in another init
+script registered before navigation. For example, updater tests set
+`window.__TAURI_MOCK_UPDATE__` before `app.goto()`:
+
+```ts
+await app.page.addInitScript(() => {
+  (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__ = {
+    version: "2.0.0",
+  };
+});
+await app.goto();
+```
+
+The process plugin has its own module mock at
+`src/__mocks__/@tauri-apps/plugin-process/index.ts`. Update that mock when a
+test depends on changed relaunch or exit behavior instead of inventing an IPC
+handler for a module-level plugin call.
+
+## Keeping IPC mocks complete
+
+When the app starts invoking a new Tauri command, add a safe default response
+in both places:
+
+1. `tests/e2e/fixtures/tauri-init.ts`, inside the object assigned to
+   `window.__TAURI_MOCK_HANDLERS__`. This is the reliable pre-page path used by
+   the Playwright fixture.
+2. `src/__mocks__/@tauri-apps/api/core.ts`, inside its `handlers` map. This is
+   the Vite module-alias path.
+
+These paths are complementary. Keep their defaults semantically aligned so a
+test does not pass or fail merely because it entered the mock boundary through
+a different route.
+
 ## Permanent E2E Tests
 
 Keep a Playwright test when it protects one of these surfaces:

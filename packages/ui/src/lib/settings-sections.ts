@@ -5,8 +5,15 @@
  * Pure TypeScript (no React). Consumers add their own icons on top.
  */
 
+import {
+  PROVIDER_PRESENTATION,
+  type ProviderPresentationStage,
+  type SettingsProviderId,
+} from "./provider-presentation.js";
+
 export type SectionId =
   | "legal"
+  | "newsletter"
   | "appearance"
   | "shortcuts"
   | "feeds"
@@ -28,12 +35,20 @@ export type SectionId =
 export interface SectionMeta {
   id: SectionId;
   label: string;
-  stage?: "beta";
+  stage?: ProviderPresentationStage;
   /** Lowercase keywords matched against search queries. */
   keywords: string[];
 }
 
+function providerSectionMeta(
+  id: SettingsProviderId,
+  keywords: string[],
+): SectionMeta {
+  return { id, ...PROVIDER_PRESENTATION[id], keywords };
+}
+
 export interface SettingsSectionAvailability {
+  hasNewsletterSignup: boolean;
   hasFeedManagement: boolean;
   hasGoogleContacts: boolean;
   hasGoogleContactsManagement: boolean;
@@ -52,6 +67,11 @@ export interface SettingsSectionAvailability {
 
 /** Sections always present, regardless of platform capabilities. */
 export const BASE_SECTION_METAS: readonly SectionMeta[] = [
+  {
+    id: "newsletter",
+    label: "Newsletter",
+    keywords: ["newsletter", "email", "updates", "subscribe", "new builds", "product progress"],
+  },
   {
     id: "appearance",
     label: "Appearance",
@@ -114,56 +134,38 @@ export const SHORTCUTS_SECTION_META: SectionMeta = {
 };
 
 /** Shown only when the platform provides an X/Twitter settings component (desktop). */
-export const X_SECTION_META: SectionMeta = {
-  id: "x",
-  label: "X / Twitter",
-  keywords: ["twitter", "x", "tweet", "timeline", "connect", "cookies", "auth", "token"],
-};
+export const X_SECTION_META = providerSectionMeta("x", [
+  "twitter", "x", "tweet", "timeline", "connect", "cookies", "auth", "token",
+]);
 
 /** Shown only when the platform provides a Facebook settings component (desktop). */
-export const FB_SECTION_META: SectionMeta = {
-  id: "facebook",
-  label: "Facebook",
-  keywords: ["facebook", "fb", "meta", "feed", "connect", "cookies", "auth", "mbasic"],
-};
+export const FB_SECTION_META = providerSectionMeta("facebook", [
+  "facebook", "fb", "meta", "feed", "connect", "cookies", "auth", "mbasic",
+]);
 
 /** Shown only when the platform provides an Instagram settings component (desktop). */
-export const IG_SECTION_META: SectionMeta = {
-  id: "instagram",
-  label: "Instagram",
-  keywords: ["instagram", "ig", "meta", "feed", "connect", "photos", "reels", "stories"],
-};
+export const IG_SECTION_META = providerSectionMeta("instagram", [
+  "instagram", "ig", "meta", "feed", "connect", "photos", "reels", "stories",
+]);
 
 /** Shown only when the platform provides a LinkedIn settings component (desktop). */
-export const LI_SECTION_META: SectionMeta = {
-  id: "linkedin",
-  label: "LinkedIn",
-  keywords: ["linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts"],
-};
+export const LI_SECTION_META = providerSectionMeta("linkedin", [
+  "linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts",
+]);
 
-export const SUBSTACK_SECTION_META: SectionMeta = {
-  id: "substack",
-  label: "Substack",
-  stage: "beta",
-  keywords: ["substack", "essay", "notes", "publication", "subscriptions", "followers", "following"],
-};
+export const SUBSTACK_SECTION_META = providerSectionMeta("substack", [
+  "substack", "essay", "notes", "publication", "subscriptions", "followers", "following",
+]);
 
-export const MEDIUM_SECTION_META: SectionMeta = {
-  id: "medium",
-  label: "Medium",
-  stage: "beta",
-  keywords: ["medium", "story", "essay", "responses", "claps", "followers", "following"],
-};
+export const MEDIUM_SECTION_META = providerSectionMeta("medium", [
+  "medium", "story", "essay", "responses", "claps", "followers", "following",
+]);
 
 /** Shown when this surface can manage or report YouTube integration state. */
-export const YOUTUBE_SECTION_META: SectionMeta = {
-  id: "youtube",
-  label: "YouTube",
-  keywords: [
+export const YOUTUBE_SECTION_META = providerSectionMeta("youtube", [
     "youtube", "video", "subscriptions", "channels", "focus mode", "offline",
     "premium", "playlist", "freed offline", "shorts", "reels",
-  ],
-};
+]);
 
 /** Shown only when the platform provides a Google Contacts settings component. */
 export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
@@ -220,6 +222,7 @@ export function buildSettingsSectionMetas(
     baseSectionById.storyWall,
     ...(availability.hasAISettings ? [AI_SECTION_META] : []),
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
+    ...(availability.hasNewsletterSignup ? [baseSectionById.newsletter] : []),
     baseSectionById.legal,
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
   ].map((section) =>

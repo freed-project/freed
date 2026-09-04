@@ -182,7 +182,7 @@ curl -X POST http://localhost:3000/api/subscribe \
 
 ### Desktop and PWA follow up
 
-- Add a recurring invite banner in Freed Desktop and app.freed.wtf to nudge users to join the newsletter after they run the desktop app.
+- [x] Add a shared in-app newsletter signup to Freed Desktop Settings and the PWA, including the anonymous demo Field Guide. The form collects email and name, completes Turnstile in place, submits directly to Freed's protected Brevo proxy, confirms success without navigation, and remembers the successful signup on that device.
 
 **Files:**
 

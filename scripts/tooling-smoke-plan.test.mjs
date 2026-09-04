@@ -34,7 +34,9 @@ const COMPLETED = {
 };
 
 test("a capped duration is not treated as a measurement", () => {
-  const capped = suiteWeights({ durations: CAPPED }).get("outcome-ledger-repair");
+  const capped = suiteWeights({ durations: CAPPED }).get(
+    "outcome-ledger-repair",
+  );
   assert.equal(capped.capped, true);
   assert.equal(capped.measured, false);
 
@@ -255,10 +257,34 @@ test("every Freed skill path relies on its focused skill validator", () => {
   for (const filePath of [
     ".agents/skills/freed-provider-risk-review/SKILL.md",
     ".agents/skills/freed-provider-risk-review/agents/openai.yaml",
+    ".agents/skills/freed-library-core/references/storage.md",
     ".agents/skills/freed-memory-profile/SKILL.md",
     ".agents/skills/future-skill/SKILL.md",
     "scripts/validate-skills.mjs",
     "scripts/validate-skills.test.mjs",
+  ]) {
+    const selection = selectApplicableSuites([filePath]);
+    assert.deepEqual(selection.suites, [], filePath);
+    assert.match(
+      selection.reason,
+      /explicit focused feature-validation/,
+      filePath,
+    );
+  }
+});
+
+test("agent instruction paths rely on focused feature validation", () => {
+  for (const filePath of [
+    "AGENTS.md",
+    ".github/CODEOWNERS",
+    ".agents/skills/AGENTS.md",
+    "docs/AGENT-INSTRUCTIONS.md",
+    "docs/AGENTS.md",
+    "packages/desktop/AGENTS.override.md",
+    "packages/pwa/AGENTS.md",
+    "scripts/validate-agent-instructions.mjs",
+    "scripts/validate-agent-instructions.test.mjs",
+    "website/AGENTS.md",
   ]) {
     const selection = selectApplicableSuites([filePath]);
     assert.deepEqual(selection.suites, [], filePath);

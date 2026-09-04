@@ -23,6 +23,7 @@ import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 import { FocusText } from "./FocusText.js";
 import { YouTubeFocusPlayer } from "./YouTubeFocusPlayer.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
@@ -352,8 +353,10 @@ export function ReaderView({
     hydrateReaderItem,
     pinReaderItem,
     openUrl: platformOpenUrl,
+    updateSavedContent,
     youtube,
   } = usePlatform();
+  const openSavedContentEditor = useCommandSurfaceStore((state) => state.openSavedContentEditor);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -971,18 +974,31 @@ export function ReaderView({
             {readerPresentation.title}
           </h1>
 
-          {articleUrl && (
-            <a
-              href={articleUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm font-medium text-[var(--theme-accent-secondary)] transition-colors hover:opacity-80"
-            >
-              View original
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
+          {(articleUrl || (item.platform === "saved" && updateSavedContent)) && (
+            <div className="flex flex-wrap items-center gap-3">
+              {articleUrl && (
+                <a
+                  href={articleUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--theme-accent-secondary)] transition-colors hover:opacity-80"
+                >
+                  View original
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              )}
+              {item.platform === "saved" && updateSavedContent && (
+                <button
+                  type="button"
+                  onClick={() => openSavedContentEditor(item)}
+                  className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold"
+                >
+                  Edit save
+                </button>
+              )}
+            </div>
           )}
         </div>
 

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { FeedItem } from "@freed/shared";
 
 export type LibraryDialogTab = "import" | "export";
 
@@ -8,6 +9,7 @@ interface CommandSurfaceStore {
   addFeedOpen: boolean;
   savedContentOpen: boolean;
   savedContentInitialUrl: string;
+  savedContentEditItem: FeedItem | null;
   libraryDialogOpen: boolean;
   libraryDialogTab: LibraryDialogTab;
   requestSearchPalette: () => void;
@@ -15,6 +17,7 @@ interface CommandSurfaceStore {
   openAddFeedDialog: () => void;
   closeAddFeedDialog: () => void;
   openSavedContentDialog: (initialUrl?: string) => void;
+  openSavedContentEditor: (item: FeedItem) => void;
   closeSavedContentDialog: () => void;
   openLibraryDialog: (tab?: LibraryDialogTab) => void;
   closeLibraryDialog: () => void;
@@ -26,6 +29,7 @@ export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
   addFeedOpen: false,
   savedContentOpen: false,
   savedContentInitialUrl: "",
+  savedContentEditItem: null,
   libraryDialogOpen: false,
   libraryDialogTab: "import",
   requestSearchPalette: () =>
@@ -37,9 +41,23 @@ export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
   openAddFeedDialog: () => set({ addFeedOpen: true }),
   closeAddFeedDialog: () => set({ addFeedOpen: false }),
   openSavedContentDialog: (initialUrl = "") =>
-    set({ savedContentOpen: true, savedContentInitialUrl: initialUrl }),
+    set({
+      savedContentOpen: true,
+      savedContentInitialUrl: initialUrl,
+      savedContentEditItem: null,
+    }),
+  openSavedContentEditor: (item) =>
+    set({
+      savedContentOpen: true,
+      savedContentInitialUrl: item.sourceUrl ?? item.content.linkPreview?.url ?? "",
+      savedContentEditItem: item,
+    }),
   closeSavedContentDialog: () =>
-    set({ savedContentOpen: false, savedContentInitialUrl: "" }),
+    set({
+      savedContentOpen: false,
+      savedContentInitialUrl: "",
+      savedContentEditItem: null,
+    }),
   openLibraryDialog: (tab = "import") =>
     set({ libraryDialogOpen: true, libraryDialogTab: tab }),
   closeLibraryDialog: () => set({ libraryDialogOpen: false }),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSettingsSectionMetas } from "../../../ui/src/lib/settings-sections";
 
 const BASE_AVAILABILITY = {
+  hasNewsletterSignup: false,
   hasFeedManagement: false,
   hasGoogleContacts: false,
   hasGoogleContactsManagement: false,
@@ -32,6 +33,15 @@ describe("settings section availability", () => {
     });
 
     expect(sections.map((section) => section.id)).toContain("ai");
+  });
+
+  it("shows Newsletter only when the platform provides the signup surface", () => {
+    expect(buildSettingsSectionMetas(BASE_AVAILABILITY).map((section) => section.id))
+      .not.toContain("newsletter");
+    expect(buildSettingsSectionMetas({
+      ...BASE_AVAILABILITY,
+      hasNewsletterSignup: true,
+    }).map((section) => section.id)).toContain("newsletter");
   });
 
   it("keeps Shortcuts after Appearance when the platform has shortcut controls", () => {

@@ -1,8 +1,23 @@
 # Agent Instructions
 
+## Task startup freshness
+
+The checkout supplied as a new task's working directory is a launcher, not proof that the task has a fresh branch or an isolated worktree.
+
+Before asking for authorization, planning implementation, or changing files:
+
+1. Run the read-only `git fetch --all --prune` from the launcher checkout.
+2. Classify the destination lane: `origin/dev` for product work, `origin/www` for the public website, or `origin/main` for production release preparation. If the lane or path scope is unclear, ask before creating a worktree.
+3. Read the current root instructions directly from that fetched ref with `git show <remote-ref>:AGENTS.md`. The loaded local copy may be stale. Follow the fetched instructions for the rest of the task.
+4. If fetch or the remote instruction read fails, stop and report the exact blocker.
+
+Level 1 stays read-only in the launcher checkout. For Level 2 or higher, use `./scripts/worktree-add.sh` to create an isolated worktree from the explicit fetched remote ref. The starting directory is usable only when it is already a clean dedicated worktree at that ref.
+
+Never discard launcher changes to make it fresh. Preserve and report unexpected work. After a task merges into its lane, fast-forward a clean launcher checkout to the verified remote head so the next task starts with the newest bootstrap policy.
+
 ## Authorization levels
 
-When authorization is required and the owner has not already set a level for the task, ask:
+When authorization is required and the owner has not set a level, ask exactly:
 
 > What authorization level should this task proceed at?
 >
@@ -16,429 +31,138 @@ When authorization is required and the owner has not already set a level for the
 >
 > Reply with a number.
 
-Do not request authorization for one isolated action. Do not append exclusions, caveats, safety boilerplate, or a restatement of normal task boundaries.
+Do not request authorization for one isolated action or append exclusions and safety boilerplate.
 
 1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
 2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
 3. **Publish:** Level 2 plus commits, pushes, pull requests, CI repair, and non-production merges.
 4. **Ship dev:** Level 3 plus dev releases, installation, deployment, real local-data testing, and exercising existing provider behavior at its current cadence. No production release or provider-observable behavior change.
-5. **Change provider behavior:** Level 4 plus new or changed provider requests, navigation, refresh frequency, timing, retries, cookies, headers, scraping behavior, and live provider mutations necessary for the stated task.
+5. **Change provider behavior:** Level 4 plus new or changed provider requests, navigation, refresh frequency, timing, retries, cookies, headers, scraping behavior, and necessary live provider mutations.
 6. **Ship production:** Level 5 plus production releases, production deployments, installation, rollback, and post-release verification.
-7. **Full task authority:** Level 6 plus autonomous execution of every reasonably necessary task-scoped action until the task is complete or a hard external blocker makes further progress impossible.
+7. **Full task authority:** Level 6 plus every reasonably necessary task-scoped action until completion or a hard external blocker.
 
-Authorization applies to the stated task. Each level includes every lower level. The newest explicitly granted level controls. Once a level is active, do not ask again for actions included within it. Clarification questions about ambiguous task scope are not authorization challenges.
+Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
 
-## Rules
-
-- **After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
-- **Roadmap sync:** When `docs/PHASE-*.md` changes, update the roadmap data in `website/src/app/roadmap/RoadmapContent.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`). The roadmap is public marketing surface: route the website edit through the `www` lane (`freed-build-www`), not through `dev`.
-- **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
-- **IDs:** Display tail — `...${id.slice(-8)}`.
-- **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
-- **Node toolchain:** Use the repo-pinned Node toolchain from `.nvmrc`. Shell scripts must resolve `node`, `npm`, and `npx` from the same install, never by mixing a global `npm`/`npx` with a different `node` on `PATH`.
-- **Debt deferral:** Keep the active delivery plan. Use the smallest check needed to classify an adjacent finding as blocking, deferrable, or speculative. Fix blockers. For deferrable debt, deduplicate open GitHub Issues, create or update one issue with `.github/ISSUE_TEMPLATE/debt.yml`, then resume the plan. Drop speculative findings until evidence exists. After deferral, do not audit adjacent code, implement the debt, expand tests, redesign, or start follow-up work in that delivery. Issues labeled `debt` are the sole backlog. Create a control task only after an issue is selected, and store it as `details.githubIssue: { number, url }`. Scheduled debt discovery follows the stability controller contract and never expands an active delivery. Do not use fixed follow-up quotas.
-- **Before creating any new component or hook:** `SemanticSearch` or `Grep` the package for existing code that does the same thing. Duplication is never acceptable — if two surfaces need the same UI or logic, extract a shared primitive and have both import it.
-- **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
-- **Platform copy:** Never write "for Mac", "for Windows", or "for desktop" in user-facing strings. The correct product name is "Freed Desktop". Use that.
-- **Buttons and dialog controls:** Do not invent custom CTA styling when the repo already has an established button hierarchy. For dialogs, recovery surfaces, and other utility UI, use standard primary and secondary control treatment with the repo's usual sizing, radius, and typography. Never add hover lift, vertical motion, bounce, or "raise on hover" effects to buttons. Never introduce ad hoc glossy or gradient CTA buttons for utility UI.
-- **UI design vocabulary:** Before adding or changing UI, inspect the nearest mature product surface and shared theme primitives first. Match the established vocabulary for tokens, radius, density, typography, borders, shadows, states, and responsive behavior. Introduce new styling only when the existing vocabulary cannot express the required behavior, and keep it compatible with all active themes.
-- **Toolbar right-edge controls:** Any new control added to the right edge of a shared toolbar must also map into an existing overflow section or add a new named overflow section at the same time. The control must remain reachable at every supported desktop and mobile toolbar width. When controls collapse into a menu, form controls such as selects, radio groups, segmented controls, sliders, and toggles must fill the menu content width instead of keeping their inline toolbar width. If a control is wrapped by a tooltip or trigger element, that wrapper must also fill the menu content width. Add or update focused e2e coverage for both the inline state and the overflow state, including menu-section width assertions for collapsed form controls, before shipping.
-- **Menu scroll bounds:** Any floating menu, command palette, context menu, overflow menu, or dropdown must scroll internally and stay inside the viewport. Use the shared `theme-menu-shell` class with a top or max-height CSS variable instead of raw `overflow-hidden`. Add or update focused e2e coverage when a menu can grow beyond the visible viewport.
-- **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
-- **Fingerprinting risk requires a stop sign:** Before implementing or enabling any feature that could increase provider fingerprinting or detection risk, stop and warn the user in plain language. This includes new authenticated WebView loads, background provider navigation, extra provider API calls, automatic reply or comment hydration, scripted scrolling or clicking, altered timing patterns, new cookies or headers, media preloads, canvas or WebGL behavior, device fingerprint masking, and anything that changes how often Freed contacts X, Facebook, Instagram, LinkedIn, or another third-party provider. The warning must name the provider, describe the new observable behavior, explain why it could make Freed easier to fingerprint, and offer the lowest-profile alternative. Gate 1 requires sufficient authorization before code. Level 5 or higher covers necessary provider-observable behavior within the stated task after the warning has been given. If the active level is lower, give the warning and ask what authorization level the task should proceed at. Permission without an authorization level is not provider approval. The canonical machine-readable provider-visible path list lives in `scripts/lib/provider-visible-paths.mjs`; add new provider surfaces there, not in per-script copies. Provider-visible branches may publish as draft after implementation and validation. Draft publication does not authorize live provider traffic. Before the human review path publishes, write the approved Gate 1 decision as a healthy `provider-risk-review` stability artifact and pass it with `--provider-risk-review-artifact`. The helper posts one GitHub review comment bound to that artifact, the provider-visible path set, and the provider-only binary diff. That comment is the audit record, not a second approval step: the Gate 1 artifact is the authority, and a provider-visible branch carrying one may publish directly with `--ready`. The artifact approves the described behavior, not one exact diff, so a later commit does not mechanically invalidate it and the helper will not block on a changed fingerprint. What the helper still enforces is classification: it detects every provider-visible path in the diff, including files renamed out of the provider tree, and posts an audit comment naming them on every publish. Enforcement of the approval itself rests on this rule and that audit record, so any change to provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a new Gate 1 artifact before it is written. The optional signed `control-task` path remains available for unattended publication. It binds the same provider-only fingerprint to a governed task and approved provider authority. Any material behavior change returns to Gate 1.
-
-There is no reaction-based second gate. It was removed on owner instruction: on a single-maintainer repository it asked the same person to re-confirm a decision they had already made and recorded in the artifact, and it forced a draft-then-react-then-republish cycle for every provider-visible change.
+Use these numbers in owner-facing authorization requests and status. Internal labels such as `observe-only`, `plan-only`, `pr-only`, and `merge-safe` never replace them.
 
-Be clear about what that removed. The reaction was the only thing binding an approval to a specific diff: a changed subdiff produced a new review comment, and the reaction had to be fresh on it. Nothing now checks the artifact against the diff, and that is deliberate. Binding to a diff SHA would require the code to exist before the artifact could be written, which contradicts Gate 1 approving behavior _before_ code. The owner chose behavior-only approval on 2026-07-24 and accepted that the remaining control is judgment rather than mechanism.
-
-Two machine checks do remain: the artifact must be healthy and record `behavior_approved` or `diff_authorized`, and its `payload.providers` must match the provider set of the current provider-visible diff. An approval scoped to Instagram cannot authorize a Facebook extractor change.
-
-Everything else rests on the rule itself. Changing provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond what the approved artifact describes requires a new Gate 1 approval, even though no check will stop you. This is a behavior rule, not a file rule: editing a provider-visible file without changing provider-observable behavior is fine, and changing provider-observable behavior from a file outside the list is not. When it is unclear which side a change falls on, ask before writing code. Use `./scripts/worktree-publish.sh --print-provider-subdiff` to see the provider surface a branch touches.
-
-- **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root.
-  - This monorepo uses local workspace packages. Raw subdirectory deploys like `vercel deploy website/` and `vercel deploy packages/pwa/` can upload an incomplete tree and fail at `npm install`.
-  - Always use the preview helper instead:
-    - Website: `./scripts/vercel-deploy-preview.sh website`
-    - PWA: `./scripts/vercel-deploy-preview.sh pwa`
-
-## Machine Preflight
-
-`node scripts/doctor.mjs` checks the machine before loop or worktree work: the pinned Node toolchain from `.nvmrc`, PATH `node` consistency, `gh` (presence, that it runs, and binary architecture on macOS), git credential helpers that point at missing binaries, `git`, `curl`, `python3`, `~/.freed/automation/`, and optional publisher trust readiness. The publisher check uses the fixed root-owned schema v2 config at `/Library/Application Support/Freed/trusted-publisher-host.json`. It validates exact config shape, ownership and modes, pinned file digests, designated broker signature, exact clean control commit, private state and public-key record, and non-secret Keychain item presence without reading the signing key. Use `--require-publisher` only when deliberately selecting that optional host profile. The trusted host repeats all use-time checks before signing a capability. `worktree-add.sh`, `worktree-publish.sh`, and the nightly runner run the doctor automatically in warn-only mode; loops and CI gates should run `node scripts/doctor.mjs --strict` and stop on failures. A surprising `node`/`npm` path or a broken `gh` is a machine issue to fix before debugging the repo.
-
-Before activating a saved Freed automation, run `npm run validate:host-automations`. It compares identity, prompt, schedule, authoritative callable model and supported reasoning effort, target, working directories, execution environment, root-owned launcher binding, pinned runtime digests, and a nonmutating live channel attestation without editing host files. An ACTIVE actor fails closed unless its trusted launcher proves the pinned launcher, Node child, verifier process chain, and one-use channel challenge before returning only the actor's short-lived canonical lease. The five general actors store no credential in Keychain. This does not change the separate optional publisher or release credentials. Missing actors remain PAUSED. Reconcile missing or drifted actors through the supported host automation controls, and never repair drift by editing `automation.toml` directly.
-
-When the owner explicitly approves one exact lifecycle operation in the current task, a private current-task owner confirmation file is the supported cooperative fallback for that operation. It may acquire only a short `freed-owner` lease bound to the named task and canonical operation intent. Store the file outside the repository. The file does not authenticate the owner, does not grant provider traffic, and does not replace the provider behavior gate or repository CODEOWNER requirements. Each different operation requires its own exact intent and confirmation record.
-
-## Versioning
-
-CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
-
-- `patch = (day_of_month × 100) + build_number`
-- March 1, first build → `26.3.100`; fifth build → `26.3.104`
-- March 15, first build → `26.3.1500`
-
-Run `./scripts/release.sh` with no args from a fresh release-prep worktree based on `origin/main` to auto-compute the next production version. For a dev release, use `./scripts/release.sh --channel=dev` from a fresh release-prep worktree based on `origin/dev`.
-
-## Package Boundaries
-
-| Package      | Rule                                                                                                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shared/`    | Pure functions + types. Zero runtime deps. No React.                                                                                                                                         |
-| `ui/`        | Platform-agnostic React UI layer. May import `@freed/shared`. No platform stores, no Tauri APIs, no service-worker logic, no `@freed/sync` imports. Ships raw `.tsx` source — no build step. |
-| `sync/`      | Storage-agnostic. Works in browser (IndexedDB) and Node (filesystem).                                                                                                                        |
-| `pwa/`       | PWA app shell only. Imports `@freed/ui` and `@freed/shared`. Never import Tauri APIs.                                                                                                        |
-| `desktop/`   | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`.                                                                                                        |
-| `capture-*/` | Isolated. Never import between capture packages.                                                                                                                                             |
-
-## URLs
-
-| Property            | URL                     |
-| ------------------- | ----------------------- |
-| Marketing site      | `https://freed.wtf`     |
-| PWA (mobile reader) | `https://app.freed.wtf` |
-| Download page       | `https://freed.wtf/get` |
-
-**Never write `freed.wtf/app`** — the PWA lives at the subdomain `app.freed.wtf`.
-
-## Git Workflow
-
-**Never work directly on `main`.** Always create a git worktree for feature work:
-
-```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --target shared
-# work in ../freed-<slug>/
-# remove when done: git worktree remove ../freed-<slug>
-```
-
-`worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
-Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
-For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
-Prefer the lightest useful local preview before opening a draft PR:
-
-- **Local-first iteration:** Build, run, and test feature work locally in its worktree. Do not push a branch, update a PR, or wait for GitHub Actions merely to obtain a test build or to see whether an ordinary implementation step works. GitHub CI validates a locally runnable final candidate. It is not the development loop.
-- Publish only when the complete intended slice is locally runnable and ready for exact-head gates. An intermediate push is justified only when the failure depends on a GitHub-hosted runner, signing, notarization, release infrastructure, or another environment that cannot be reproduced locally, or when the owner explicitly requests remote publication.
-- A local Desktop build does not require a version bump, tag, release, or GitHub workflow. Use the native worktree preview or build commands for manual testing, then publish once at the real integration boundary.
-- product work usually uses `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"`
-- website work uses `PORT=$(node scripts/lib/find-free-port.mjs 3000) && ./scripts/worktree-preview.sh website --port "$PORT"`
-- use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
-- for mocked Desktop preview, use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"`
-- product previews launched through `./scripts/worktree-preview.sh` mark the app as a feature preview, auto-accept local legal gates, and populate sample data so the first screen is ready to inspect
-- never run `./scripts/dev-session-clean.sh` just to relaunch a preview. Launch on a fresh explicit port instead.
-- never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
-- **Local-first release iteration:** Do not publish a PR, tag, or GitHub release merely to test a Desktop build. Build and run the candidate locally against the relevant real fixture or local Library first. For native Desktop behavior, use `npm run tauri:build -- --bundles app` from `packages/desktop` with the pinned Node toolchain, then launch that local app bundle. Publish only after the local candidate works end to end. GitHub is the final path for exact-head CI, signing, notarization, updater metadata, and distributable artifacts. A signed installer is required for final installed-build proof, but it is not the ordinary implementation feedback loop.
-- root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
-- the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
-- if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
-- expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
-- publish normal feature work with `./scripts/worktree-publish.sh` and the caller's existing GitHub authentication. A host may optionally configure the absolute signed broker path in `FREED_TRUSTED_PUBLISHER` for unattended publication. The broker lives outside the candidate worktree, validates its root-owned trust configuration and pinned tools, then invokes the same helper with a short-lived target-scoped lease. Missing broker provisioning does not block normal publication. Any partial broker handoff fails closed.
-- rerunning the publication helper should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it. At closeout, publish finished work with `--ready`. For provider-visible work, publish with a healthy `behavior_approved` Gate 1 artifact or a `diff_authorized` path-only artifact through `--provider-risk-review-artifact`. The generated provider review comment is the audit record. No reaction-based second gate exists. Draft means "still iterating, blocked, or needs discussion", not "authored by automation"
-- **Local preview surface:** Show every user-facing local preview in the task's built-in Browser. Start it with `./scripts/worktree-preview.sh`, then open the printed localhost URL with `@Browser` from the task that owns the preview. Keep that Browser tab attached to the task for review. Never open a visible local preview in Google Chrome or another external browser.
-- **External browser focus:** Keep Playwright and other browser tests headless by default. For browser work, do not launch headed Playwright, Playwright UI or debug mode, Chrome DevTools MCP, Playwright MCP, Computer Use, Google Chrome, or another external browser window unless the user explicitly asks for that external surface. A request to build, update, preview, test, inspect, or verify a UI does not grant this permission. If `@Browser` is unavailable, report that and provide the preview URL instead of silently falling back to an external browser.
-- When an explicitly approved external browser window is required, keep it in the background where the tool permits and close only that task's window at closeout.
-- after browser tooling work, do not run broad cleanup while the preview should remain open. If cleanup is needed, scope it with `./scripts/dev-session-clean.sh --worktree <worktree>`.
-- when a PR is merged, the worktree is removed, or the thread is archived, close only that thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop|website>`.
-- the publication helper refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
-
-### Installed Desktop Soaks
-
-The canonical soak and trigger contract is [docs/SOAK-AND-TRIGGERS.md](docs/SOAK-AND-TRIGGERS.md). Installed soaks are terminal-driven through `open -g`, logs, `runtime-health.jsonl`, and the already authorized `node scripts/dev-sync-trigger.mjs <provider>` path. Background work does not stall overnight for a routine local click. Ask with a 10 minute response window, then continue only within authority already granted. A timeout never authorizes provider traffic, authentication, external posting, deployment, destructive state changes, or a new behavior. Ship a terminal trigger for anything recurring.
-
-### Queued UI Polish
+## Load only the applicable instructions
 
-When a user queues several small UI fixes for the same product surface, keep the work in the active feature worktree and PR until the queue is done.
+Root instructions are the always-loaded governance kernel. Skills contain task workflows. Scoped `AGENTS.md` files contain path-specific invariants.
 
-- For each small UI fix, implement the narrow change, then verify it in the active thread with the cheapest proof that actually answers the question: live preview, screenshot comparison, browser inspection, or a temporary geometry check.
-- When the user is reviewing UI through screenshots or a live browser, update the preview and explicitly hand the current rendered result back to the user before creating or amending a commit, running `npm run validate:feature`, or starting any broad test suite. A preview inspected only by the agent does not satisfy this checkpoint.
-- Treat the user's visual review as the commit boundary for an open UI batch. Do not commit the batch until the user says it is ready, unless the user explicitly asked for a commit earlier. Focused checks needed to keep the preview runnable are allowed before review.
-- Do not add permanent e2e coverage for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
-- Do not run `npm run validate:feature` after every small visual adjustment. Run it at the publish checkpoint, or earlier only when the user asks for a full validation checkpoint.
-- Do not run desktop e2e between queued UI updates in the same thread unless the user asks for that checkpoint or the change is too risky to inspect with the live preview. Prefer keeping the preview running, applying the next queued visual fix, and doing one focused e2e pass after the queue settles.
-- When the user is actively sending browser comments or screenshots, treat the queue as still open. Give a short status update, keep the preview current, and wait to spend machine time on heavier verification until the user signals that the batch is ready or asks for tests.
-- If browser automation is needed for a visual fix, use it for that fix and keep the local preview current. Do not run broad cleanup before closeout unless the user no longer needs the preview. Prefer targeted cleanup for this worktree.
-- Update the draft PR once after the queued batch is ready, unless the user asks for an interim publish.
+When a task starts at repository root, descendant instructions are not discovered later merely because you enter or edit that directory. Before changing a scoped path, read its linked instructions manually. Scoped files add to this file and do not weaken it.
 
-**Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
-
-**Commit messages** follow Conventional Commits:
-
-| Prefix      | When to use                                       |
-| ----------- | ------------------------------------------------- |
-| `feat:`     | New user-facing feature                           |
-| `fix:`      | Bug fix                                           |
-| `chore:`    | Tooling, deps, config — no production code change |
-| `docs:`     | Documentation only                                |
-| `refactor:` | Code restructure with no behavior change          |
-| `perf:`     | Performance improvement                           |
-| `style:`    | Formatting, whitespace, CSS-only                  |
+The maintenance model and enforced budgets live in [docs/AGENT-INSTRUCTIONS.md](docs/AGENT-INSTRUCTIONS.md).
 
-**Merge policy:** Squash merge only. One PR = one commit on `main`.
+### Sequencing-critical router
 
-```bash
-# From the primary worktree (not the feature worktree):
-gh pr merge <n> --squash --delete-branch
+Task skills are discovered from their descriptions. These routes must happen before a risky action:
 
-# Immediately after merging, tear down the feature worktree:
-git worktree remove --force ../freed-<slug>
-git branch -D <branch>   # must use -D, not -d (squash leaves commits unreachable)
-```
+- Provider-visible behavior or path classification: [freed-provider-risk-review](.agents/skills/freed-provider-risk-review/SKILL.md) before code.
+- Durable library authority, migration, storage, or Automerge: [freed-library-core](.agents/skills/freed-library-core/SKILL.md) before design or code.
+- Live rare or stateful failures: [freed-evidence-capture](.agents/skills/freed-evidence-capture/SKILL.md) before mutation.
+- Skill creation or changes: [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) before editing a skill.
 
-Or run the cleanup helper to sweep all merged worktrees at once:
+### Path router
 
-```bash
-./scripts/worktree-cleanup.sh        # interactive
-./scripts/worktree-cleanup.sh --yes  # non-interactive
-```
+- `docs/**`: [docs/AGENTS.md](docs/AGENTS.md)
+- `packages/shared/**`: [packages/shared/AGENTS.md](packages/shared/AGENTS.md)
+- `packages/ui/**`: [packages/ui/AGENTS.md](packages/ui/AGENTS.md)
+- `packages/pwa/**`: [packages/pwa/AGENTS.md](packages/pwa/AGENTS.md)
+- `packages/desktop/**`: [packages/desktop/AGENTS.md](packages/desktop/AGENTS.md)
+- `scripts/**`: [scripts/AGENTS.md](scripts/AGENTS.md)
 
-Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
-
-### Worktree Routing
+## Always-on governance
 
-Before creating a worktree, classify the requested work by destination branch.
+### Repository and tool safety
 
-- Product work targets `dev`: Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs.
-- Public marketing work targets `www`: `website/`, marketing copy, public roadmap presentation, changelog presentation, and marketing docs.
-- Production release prep targets `main`.
-- Dev release prep targets `dev`.
-- Use `freed-build-feature` for product work targeting `dev`.
-- Use `freed-build-www` for marketing-site changes targeting `www`.
-- Use `freed-ship-build` for desktop release shipping.
-- Use `freed-ship-www` for publishing `www`, refreshing changelog, or syncing `main` into `www`.
-- Ask before creating a worktree if destination branch or path scope is unclear.
-- Never base public marketing work from `dev`.
-- Never fast-forward `www` to `dev`.
-
-### Branch Promotion
+- Never edit or commit task changes directly on `dev`, `main`, or `www`. Use a task branch in an isolated worktree. A shipping skill may use a clean lane checkout for read-only proof and post-merge operations.
+- Preserve user changes. Do not clean, reset, overwrite, or incorporate unrelated work.
+- Use the Node toolchain pinned by `.nvmrc`. `node`, `npm`, and `npx` must come from the same installation.
+- Gather available evidence yourself. Ask the owner to run a diagnostic only when the required account, hardware, or live state is outside your access.
+- Keep the active delivery bounded. Fix blockers. For adjacent deferrable debt, deduplicate or create one GitHub issue with `.github/ISSUE_TEMPLATE/debt.yml`, then resume. Drop speculative findings.
+- Code before the first `await` in an async function is synchronous. Keep O(n) work such as serialization, `A.save()`, or large typed-array conversion out of fire-and-forget hot paths before the first yield.
 
-Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
+### Provider fingerprinting stop sign
 
-- `dev` is the default branch for ongoing product work.
-- `main` is the production release branch. Do not use it as a second development branch.
-- Promote `dev` into `main` when shipping a reviewed production release.
-- After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
-- If a hotfix lands on `main`, include it in that reverse-integration PR immediately after the production release is stable. Do not let `main` drift sit around.
-- `www` is the public marketing branch. Sync approved `main` changes into `www` when the website or checked-in changelog needs them. Never sync `www` from `dev`.
-- Treat the `main` back into `dev` reverse merge as part of the production release closeout, not as an optional cleanup.
-- When release tooling or deployment helpers exist on more than one long-lived branch, update the matching copies in the same sweep or document why they intentionally differ.
+Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, stop. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
 
-### Validation Tiers
+Warn the owner in plain language. Name the provider, describe the observable change, explain how it could increase fingerprinting or detection risk, and offer the lowest-profile alternative. Level 5 or higher covers necessary provider-observable behavior only after that warning. At a lower level, ask for an authorization level. Ordinary permission without a numbered level is not provider approval.
 
-- `npm run validate:feature` is the default feature-branch check. It always runs root typecheck, then scopes the rest of the checks from the changed path set.
-- `npm run validate:dev` is the full integration suite for merges and pushes to `dev`.
-- `npm run validate:release` is the heaviest lane for release-prep work on `main`.
-- Do not default feature threads to the full integration suite when the touched surface is narrow.
+Read and follow [freed-provider-risk-review](.agents/skills/freed-provider-risk-review/SKILL.md). A publishable provider-visible branch requires a healthy `provider-risk-review` artifact recording `behavior_approved` or `diff_authorized`, and its provider set must match the current provider-visible diff. Approval covers the described behavior, not arbitrary later changes. Any material deviation in requests, navigation, cookies, headers, timing, extraction, or provider API use requires a new Gate 1 decision before code, even when no mechanical check would catch it.
 
-### Release Economy
+`scripts/lib/provider-visible-paths.mjs` is the canonical path classifier. Use `./scripts/worktree-publish.sh --print-provider-subdiff` to inspect the classified surface. Editing a listed path without observable behavior change can be classified `diff_authorized`; changing behavior from an unlisted path still requires Gate 1. Draft publication never grants live provider traffic.
 
-Maximize trustworthy evidence per unit of machine time. Use the shallowest loop that can actually prove the contract at risk, reuse exact green receipts, and move deeper as soon as a shallower loop cannot answer the question. Economy never means skipping unique proof for data integrity, migrations, authority, provider safety, native command admission, platform behavior, signing, installation, updating, rollback, or soak stability.
+### Deployment, automation, and release safety
 
-Signed releases are normally terminal validation, not the ordinary debugging loop. Use this sequence for Desktop release work:
+- The only permitted Vercel scope is `aubreyfs-projects`. Never use a raw Vercel command without `--scope aubreyfs-projects`, never run Vercel from repository root, and never use the argument-free `deploy_to_vercel` tool. Use the repository preview and deployment helpers.
+- Keep browser tests headless. Show visible local previews in the task's built-in Browser. Do not open Chrome, headed Playwright, Playwright UI or debug mode, Computer Use, or another external browser unless the owner explicitly requests that external surface. If the built-in Browser is unavailable, report the preview URL. Keep an approved external window in the background where possible and close only that task's window at closeout.
+- Run `node scripts/doctor.mjs --strict` before loops and CI gates. Treat a surprising Node, npm, npx, GitHub CLI, or credential path as a machine problem.
+- Before activating a saved Freed automation, run `npm run validate:host-automations`. An ACTIVE actor with drift fails closed. Reconcile it through supported host automation controls and never edit `automation.toml` directly.
+- A private current-task owner confirmation outside the repository may authorize only the exact lifecycle operation it names. It does not authenticate the owner, grant provider traffic, replace provider review, or replace CODEOWNER requirements.
+- Releases require exact source, artifact, branch, installed build, and remote-head evidence. Use the shipping skills and release scripts. Never hand-edit version files or push release commits or tags around those controls.
 
-1. Prove logic, migrations, UI behavior, and deterministic sync behavior with the cheapest relevant local tests and mocked Desktop runs.
-2. Build and exercise an exact local native Desktop candidate for SQLite, command registration, OAuth callbacks, provider triggers, real-library behavior, and every changed native entry point. A frontend call is not proof that the installed binary admits it.
-3. Cut one signed dev release only after the local logic and native candidate pass. Use the signed build to prove updater identity, signing, notarization, release metadata, installation, rollback, and installed-build behavior.
+### Incidents and durable data
 
-Batch local fixes into the current candidate. Do not cut another dev release for each test or defect. Cut another only when a verified fix changes installed behavior or a release-only surface that cannot be proved locally. Promote to production only after one signed dev candidate passes installation, real-data verification, and the required soak.
+- For a rare, intermittent, long-running, stateful, or data-loss failure, preserve attributable evidence before restarting, repairing, or changing code. Use [freed-evidence-capture](.agents/skills/freed-evidence-capture/SKILL.md).
+- After capture, fix the root cause and add the smallest safe mitigation. Add bounded telemetry plus tests for the relevant state machine, thresholds, retry limits, and recovery transitions. If the root cause remains unknown, say so and state what the next telemetry will distinguish.
+- Changes to durable library authority, migrations, rollback, storage epochs, snapshots, sync journals, tombstones, or Automerge must use [freed-library-core](.agents/skills/freed-library-core/SKILL.md). Identity is not storage authority. A UI or TypeScript guard is not enough where the database or native runtime owns enforcement.
 
-This sequence is a routing rule, not a mandatory delay. Start at the native or signed stage when the failure exists only there. Run full dev build loops whenever the affected contract spans packaging, multiple operating systems, updater behavior, signed identity, destructive migration risk, provider-observable behavior, or long-running process state. Do not repeat a full dev build loop whose exact source, artifact, platform, and result are already covered by a healthy receipt.
+## Product invariants
 
-### Test Economy
+- After implementing a new feature, update every affected `docs/PHASE-*.md` file and `docs/roadmap-status.json` in the product commit, even when the phase status is unchanged. Validate the structured roadmap. Route public roadmap presentation through a separate `www` task from the approved source commit. Never edit the website from the `dev` worktree for this sync.
+- Give machine-time estimates only, such as "one conversation" or "~10 min". Never quote human hours or days.
+- Display opaque IDs by their last eight characters, prefixed with `...`.
+- Format user-facing counts and totals with `Number.toLocaleString()` or `Intl.NumberFormat`, never raw interpolation or `.toString()`.
+- In user-facing strings, use "Freed Desktop". Never write "for Mac", "for Windows", or "for desktop".
+- Before creating a component or hook, search the package for an existing equivalent. Share logic or primitives instead of duplicating them.
+- Before shipping, confirm every exported function or class you added or touched has an appropriate caller.
 
-The binding standard is [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md). Read it before adding, moving, or deleting a permanent test.
+## Package boundaries
 
-- **Admission.** A new permanent test must protect a distinct user, data-integrity, security, authority, provider, release, migration, or operational contract. Search for existing same-layer coverage first and prefer extending it. State the unique failure it detects, use the cheapest deterministic layer, assign a tier, and measure its runtime. Individual test additions do not need owner approval, they need judgment.
-- **Tiers.** Changed-path suites for ordinary PRs, one full integration proof on the latest `dev` tree, release-delta checks at tag and promotion, exhaustive coverage nightly. A test can be release-critical through an exact inherited receipt without rerunning in the release workflow.
-- **Local coverage is not automatically a release gate.** A test earns a blocking lane by protecting a contract in the universal release gate list, not by having caught something once.
-- **No real sleeps or production-duration timeouts in blocking lanes.** Use injected clocks. Tooling shards run with a 5 minute per-test timeout; anything slower in a blocking lane is a defect.
-- **Delete temporary probes before publishing.** Exact pixel offsets, one-off geometry checks, and fixture self-tests already covered by real workflows do not survive to `main`.
-- **Platform honesty.** A test that skips itself wholesale on the runner it executes on is not coverage. Route it to the lane where it actually asserts something.
-- **The tooling smoke matrix is computed, never hardcoded.** `scripts/plan-tooling-smoke.mjs` derives applicable suites from changed paths and currently caps the lane at 16 jobs while debt issue #1147 tracks the underlying control-plane runtime. Do not reintroduce a literal suite or shard list in `ci.yml`.
-- **Prune continuously.** Move expensive-but-useful tests to nightly, merge duplicate assertions, and quarantine flaky noncritical tests behind one debt issue with an owner. Never quarantine data integrity, authority, provider safety, signing, release identity, or updater protection without an equivalent deterministic blocker.
-
-**Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
-
-```bash
-gh pr list --state merged --head <branch>   # authoritative: did a PR for this branch land?
-git branch -vv | grep '\[gone\]'            # remote branch deleted = PR merged + auto-deleted
-```
+- `shared`: pure functions and types, zero runtime dependencies, no React.
+- `ui`: platform-agnostic React. It may import `@freed/shared`, but no platform stores, Tauri, service-worker logic, or `@freed/sync`. It ships raw TSX.
+- `sync`: storage-agnostic across browser IndexedDB and Node filesystems.
+- `pwa`: imports `@freed/ui` and `@freed/shared`, never Tauri.
+- `desktop`: imports `@freed/ui` and `@freed/shared`, never `@freed/pwa`.
+- `capture-*`: isolated. Capture packages never import one another.
 
----
+## Canonical URLs
 
-## Writing Style (All User-Facing Copy)
+Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downloads are at `https://freed.wtf/get`. Never write `freed.wtf/app`.
 
-Copy must read like a person wrote it. When in doubt, read it aloud. If it sounds like a press release, rewrite it.
-
-- **No em dashes (—) or en dashes (–).** Standard hyphens and normal punctuation only. Em dashes are a near-universal AI tell.
-- **No AI filler phrases:** "not just X but Y", "delve into", "it's worth noting", "leverage" (verb), "in today's world", "Furthermore,", "Moreover,", "Additionally,", "at the end of the day", "game-changer", "seamlessly".
-- **No throat-clearing.** Cut the first sentence of any paragraph that just announces what the paragraph is about.
-- **Short sentences.** If a sentence needs an em dash to hold together, split it in two.
-- **Concrete over abstract.** "Stores posts on your hard drive" beats "enables local-first data persistence".
-- **Contractions are fine.** "We don't" reads warmer than "We do not". Use them.
+## Delivery kernel
 
-## Desktop E2E Testing
+### Lanes and local proof
 
-The Freed Desktop app has a Playwright test suite that runs in plain Chromium, with no Tauri binary or
-native build required. Use this to reproduce UI bugs, verify fixes, and write regression tests
-when the test protects durable behavior. For the detailed policy, see
-`packages/desktop/tests/e2e/README.md`.
+- Product work targets `dev`. Public website work targets `www`. Production release preparation targets `main`. Dev release preparation targets `dev`.
+- Never base public website work on `dev`, merge `dev` into `www`, or use `main` as a second development branch.
+- Use `./scripts/worktree-add.sh` with an explicit remote base. Do not use bare `git worktree add`.
+- Build and test locally first. Publish only when the intended slice is locally runnable. GitHub CI is exact-head verification, not the development loop.
+- Use `./scripts/worktree-preview.sh <target>` for local previews. Do not run root `npm run dev`. Run workspace commands from the workspace directory, not with root workspace dispatch. If a workspace needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`.
+- Keep each task's previews and cleanup scoped to its worktree. Do not run broad cleanup while the owner is reviewing a preview.
 
-Permanent desktop e2e coverage should earn its cost. Add or keep it for complete workflows across
-React state, Automerge state, and the Tauri mock boundary; provider auth, sync, reconnect, pause,
-or diagnostics behavior; startup, legal gate, crash recovery, updater, and renderer health paths;
-shared layout contracts with known regression risk; performance budgets; maintained visual
-snapshots; and rare or stateful failures where the next occurrence needs better evidence.
+### Validation and publication
 
-Do not preserve temporary implementation probes as permanent tests. Exact pixel offsets, widths,
-gaps, colors, shadows, padding, one-off toolbar geometry checks, duplicate "button exists" checks,
-and fixture self-tests that are already exercised by real workflows should be deleted before
-publishing unless they are converted into a durable user-flow assertion or an explicit visual test.
+- `npm run validate:feature` is the normal feature-branch gate.
+- `npm run validate:dev` is the full integration gate for merges and pushes to `dev`.
+- `npm run validate:release` is the release-preparation gate on `main`.
+- Read [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md) before adding, moving, or deleting permanent tests. Use the cheapest deterministic layer that protects a distinct contract. Delete temporary probes before publication.
+- Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
+- Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and PR titles use the matching Conventional Commit prefix.
+- Squash merge into the PR's destination lane. One PR becomes one commit on that lane. Use the PR title as the squash commit subject.
+- After a merge, stop only that worktree's processes, remove its worktree, and delete the local task branch. Never use branch ancestry to infer whether a squash PR merged; query the PR or remote branch state.
 
-### How it works
-
-`VITE_TEST_TAURI=1` swaps every `@tauri-apps/*` import for a thin mock module under
-`packages/desktop/src/__mocks__/@tauri-apps/`. Each mock tracks calls in `window.__TAURI_MOCK_*`
-globals. A self-contained init script (`tests/e2e/fixtures/tauri-init.ts`) is injected via
-`page.addInitScript()` before any page JavaScript runs. It installs `window.__TAURI_INTERNALS__`
-with default IPC handlers for every command the app calls on startup.
+### Promotion
 
-### Running the tests
-
-```bash
-# Standard run (headless Chromium)
-cd packages/desktop
-npm run test:e2e
-
-# Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui
-
-# Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug
-```
-
-All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and
-tear it down after the run. No separate server startup needed.
+`dev`, `main`, and `www` are separate lanes. Promote a reviewed immutable `dev` snapshot into `main` only through the release workflow. After a stable production release, reverse-integrate `main` into `dev`. Sync approved `main` changes into `www` only when the website or checked-in changelog needs them.
 
-### Writing a new test
-
-1. Add a spec file under `packages/desktop/tests/e2e/`.
-2. Import from `./fixtures/app` instead of from `@playwright/test` directly:
-
-```ts
-import { test, expect } from "./fixtures/app";
-
-test("my new behaviour", async ({ app }) => {
-  // app.page is a Playwright Page. The Tauri mock is already injected.
-  // app.waitForReady() blocks until <main> is visible (app fully init'd).
-  await expect(app.page.locator("button")).toBeVisible();
-});
-```
+Use [freed-ship-build](.agents/skills/freed-ship-build/SKILL.md) for release economy, CalVer, signing, installation, rollback, and reverse integration. Use [freed-ship-www](.agents/skills/freed-ship-www/SKILL.md) for website deployment. Use [docs/SOAK-AND-TRIGGERS.md](docs/SOAK-AND-TRIGGERS.md) and [freed-soak](.agents/skills/freed-soak/SKILL.md) for installed observation.
 
-3. Use the `ipc` fixture to override handlers or read mock state:
+## Writing
 
-```ts
-test("invoke a command", async ({ app, ipc }) => {
-  await ipc.setHandler("my_command", (_args) => ({ ok: true }));
-
-  const result = await app.page.evaluate(async () =>
-    (window as any).__TAURI_MOCK_INVOKE__("my_command", {}),
-  );
-  expect(result).toEqual({ ok: true });
-});
-```
+Apply the installed `no-ai-slop` skill to substantial prose. Preserve the owner's meaning, cadence, humor, uncertainty, and edge.
 
-4. To assert on plugin-shell `open()` calls: `await ipc.openedUrls()`.
-5. To assert on plugin-process calls: `await ipc.processCalls()`.
-6. To pre-set the updater state before page load, inject a second `addInitScript`:
-
-```ts
-await page.addInitScript(tauriInitScript());  // always first
-await page.addInitScript(() => {
-  (window as any).__TAURI_MOCK_UPDATE__ = { version: "2.0.0", ... };
-});
-await page.goto("/");
-```
-
-### Adding a new IPC mock handler
-
-If the app starts calling a new `invoke()` command and tests fail because the handler is missing,
-add a default response in both places:
-
-1. `packages/desktop/tests/e2e/fixtures/tauri-init.ts`: add an entry to `_defaults` inside the
-   IIFE. This covers the init-script path (plain Chromium / CI).
-2. `packages/desktop/src/__mocks__/@tauri-apps/api/core.ts`: add to the `handlers` map in the
-   module-level mock (only hits when `VITE_TEST_TAURI=1` aliases are active, i.e. dev server runs
-   the real Vite mock modules instead of the injected init script).
-
-The two are complementary. `tauri-init.ts` is the reliable one for tests; the module mocks exist
-for completeness and for any test that doesn't use `page.addInitScript`.
-
-### Debugging a UI bug in the desktop app
-
-1. Create a worktree as usual.
-2. Reproduce the bug with the cheapest useful tool: live preview, Playwright UI mode, a temporary
-   browser assertion, or a focused failing test when permanent coverage is justified.
-3. Use `--debug` when stepping through browser state will materially speed up the fix.
-4. Fix the code, confirm the relevant check goes green, and delete temporary probes before commit.
-
-Do not ask the user to click through the app to verify a fix when the repo can verify it locally.
-For simple visual polish, thread-level preview or browser verification is enough. Write a permanent
-test only when it delivers future value under the e2e policy above.
-
-### Debugging rare or stateful failures
-
-When fixing a rare, intermittent, long-running, stateful, or hard-to-reproduce failure, do not ship
-only a one-off patch. Treat the work as root-cause debugging plus mitigation. The same patch should
-make the next occurrence easier to explain, prove whether the mitigation worked, and reduce the odds
-that the same class of bug escapes again. If that is impossible, document exactly why in the PR.
-
-This rule applies to freezes, hangs, blank screens, stale renderers, stuck background jobs, sync
-stalls, data loss, data corruption, runaway memory, runaway CPU, repeated retries, update failures,
-cache poisoning, crash loops, and any fix where the first explanation is "this should not happen."
-
-Before changing code, preserve live evidence while the system is still in the bad state. Choose the
-evidence that fits the failure:
-
-- process state, stack samples, memory maps, open files, child processes, network sockets, and CPU or memory pressure
-- app logs, OS logs, crash reports, failed job records, retry history, queue depth, and last-success timestamps
-- local data footprint, cache size, snapshot size, database size, schema or version markers, and largest files
-- current route, visible UI state, selected account or provider, pending operation, and recent user or system events
-- remote service status, API response shape, deployment id, release channel, updater manifest, or sync peer state when relevant
-
-For the fix itself, add lightweight telemetry that distinguishes plausible failure classes. Prefer
-structured fields that can answer "what was the system doing, how long had it been doing it, what
-resource was growing, and what dependency was waiting?" Examples include:
-
-- heartbeat or progress payloads with event loop lag, visibility, route, app phase, pending operation, and oldest pending age
-- worker state, queue state, retry counters, timeout counters, active provider, active task id, and last successful checkpoint
-- persistence state, document size, cache size, snapshot activity, schema version, migration version, and save duration
-- native process RSS, child process RSS, heap usage, DOM node count, open handles, and relevant cache sizes
-- sleep, resume, hide, show, online, offline, update check, sync start, sync finish, and recovery timestamps
-- a small rotating diagnostics file when the failure could prevent normal logs or heartbeats from being delivered
-
-Mitigation and recovery behavior should be conservative and observable:
-
-- recover quickly enough to avoid leaving the user stuck
-- avoid churn when normal background throttling, offline state, or temporary provider errors explain the symptom
-- log the recovery reason, stale age or failed duration, last known state, probe results, resource usage, and whether the system resumed normal work afterward
-- recycle or reset related background resources when they may share the failing process, connection pool, cache, worker, or queue
-
-Tests should cover the state machine, thresholds, retry limits, and telemetry fields that prove the
-new behavior. If the root cause is still unknown after the patch, say that directly in the PR and
-list exactly what the new telemetry will prove on the next occurrence.
-
-## Automerge
-
-**Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
-
-**Mutations** must use `A.change()` — direct mutation silently fails to sync:
-
-```ts
-A.change(doc, (d) => {
-  d.items.push(item);
-}); // ✅
-doc.items.push(item); // ❌ silent failure
-```
-
-**Proxy constraints inside `A.change()`:**
-
-- Never assign `undefined` — use `delete` instead
-- Never replace an existing nested object — assign fields individually or use a `deepMergeInto` helper
+- Lead with the point. Use concrete nouns and active verbs.
+- Never use em dashes, en dashes, or double hyphens as prose punctuation.
+- Cut filler, throat-clearing, puffery, vague attribution, canned contrasts, and decorative conclusions.
+- Keep public copy appropriate to its audience. Do not put agent-product authorship giveaways in external titles.
