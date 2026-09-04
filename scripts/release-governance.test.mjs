@@ -34,6 +34,19 @@ const releaseWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "release.yml"),
   "utf8",
 );
+const isolatedDesktopConfig = JSON.parse(
+  readFileSync(
+    path.join(
+      scriptsDir,
+      "..",
+      "packages",
+      "desktop",
+      "src-tauri",
+      "tauri.preview.conf.json",
+    ),
+    "utf8",
+  ),
+);
 const ciWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "ci.yml"),
   "utf8",
@@ -389,6 +402,48 @@ test("draft release assets and publication use the exact release ID", () => {
     "isolated verifier failure must block dev publication without blocking production releases",
   );
   assert.doesNotMatch(publishJob, /gh release edit/);
+});
+
+test("dev releases publish a signed isolated Apple Silicon verifier without updater artifacts", () => {
+  const isolatedJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  isolated-dev-macos:"),
+    releaseWorkflow.indexOf("\n  updater-manifest:"),
+  );
+  const publishJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish:"),
+    releaseWorkflow.indexOf("\n  # Redeploy the public marketing site"),
+  );
+
+  assert.equal(isolatedDesktopConfig.productName, "Freed Preview");
+  assert.equal(
+    isolatedDesktopConfig.identifier,
+    "wtf.freed.desktop.sqlite-native-preview",
+  );
+  assert.equal(isolatedDesktopConfig.bundle.createUpdaterArtifacts, false);
+
+  assert.match(isolatedJob, /release_channel == 'dev'/);
+  assert.match(isolatedJob, /runs-on: macos-latest/);
+  assert.match(isolatedJob, /--target aarch64-apple-darwin/);
+  assert.match(isolatedJob, /--bundles app/);
+  assert.match(isolatedJob, /--features isolated-preview-data-root/);
+  assert.match(isolatedJob, /--config src-tauri\/tauri\.preview\.conf\.json/);
+  assert.match(
+    isolatedJob,
+    /releaseAssetNamePattern: Freed_Preview_\[version\]_aarch64\[ext\]/,
+  );
+  assert.match(isolatedJob, /uploadUpdaterJson: false/);
+  assert.match(isolatedJob, /uploadUpdaterSignatures: false/);
+  assert.match(isolatedJob, /codesign --verify --deep --strict/);
+  assert.match(isolatedJob, /xcrun stapler validate/);
+  assert.match(
+    isolatedJob,
+    /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.sqlite-native-preview/,
+  );
+
+  assert.match(
+    publishJob,
+    /needs\.isolated-dev-macos\.result == 'success' \|\| needs\.isolated-dev-macos\.result == 'skipped'/,
+  );
 });
 
 test("production releases publish an exact-tag local-only PWA showcase", () => {
