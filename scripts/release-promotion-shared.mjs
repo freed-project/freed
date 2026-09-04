@@ -33,7 +33,8 @@ export const RELEASE_ONLY_PREFIXES = ["release-notes/"];
 // Dev retains assertions for its signed isolated verifier job. Production main
 // intentionally omits that dev-only job, so this test has a reviewed lane-specific
 // variant instead of one blob that can be reverse-integrated between branches.
-const BRANCH_SPECIFIC_BACKFLOW_FILES = new Set([
+const BRANCH_SPECIFIC_RELEASE_LANE_FILES = new Set([
+  ".github/workflows/release.yml",
   "scripts/release-governance.test.mjs",
 ]);
 
@@ -47,7 +48,6 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/deploy-pwa-production-snapshot.sh",
   "scripts/promote-dev-to-main.sh",
   "scripts/promote-dev-to-main.test.mjs",
-  "scripts/release-governance.test.mjs",
   "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
   "scripts/release.sh",
@@ -162,6 +162,7 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
 
   return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles]).filter(
     (filePath) => {
+      if (BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath)) return false;
       if (isPromotionControlFile(filePath)) return false;
       if (isReleaseOnlyFile(filePath)) return false;
       if (filePath !== CARGO_LOCK_PATH) return true;
@@ -194,7 +195,11 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     ...promotionScopeFiles,
     ...websiteConfigFiles,
     ...releaseNoteFiles,
-  ]).filter((filePath) => !isPromotionControlFile(filePath));
+  ]).filter(
+    (filePath) =>
+      !BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath) &&
+      !isPromotionControlFile(filePath),
+  );
 }
 
 export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
@@ -224,7 +229,11 @@ export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
     ...promotionScopeFiles,
     ...websiteConfigFiles,
     ...releaseNoteFiles,
-  ]).filter((filePath) => !isPromotionControlFile(filePath));
+  ]).filter(
+    (filePath) =>
+      !BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath) &&
+      !isPromotionControlFile(filePath),
+  );
 }
 
 export function listComparisonFiles({ baseRef, headRef, cwd }) {
@@ -309,7 +318,7 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
 
   return mainChangedFiles
     .filter((filePath) => !isReleaseOnlyFile(filePath))
-    .filter((filePath) => !BRANCH_SPECIFIC_BACKFLOW_FILES.has(filePath))
+    .filter((filePath) => !BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath))
     .filter(
       (filePath) =>
         filePath !== CARGO_LOCK_PATH ||
