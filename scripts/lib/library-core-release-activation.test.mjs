@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -14,6 +18,7 @@ import {
   libraryCoreOwnerApprovalIntent,
   libraryCoreReleaseArtifactProposalDigest,
   prepareLibraryCoreReleaseActivation,
+  resolveLibraryCoreActivationManifestInspection,
   validateLibraryCoreReleaseActivation,
   validatePreviousLibraryCoreActivationContinuity,
 } from "./library-core-release-activation.mjs";
@@ -101,6 +106,54 @@ function manifestV2Contents({ previousTransitions = [], transitions = [] }) {
     null,
     2,
   )}\n`;
+}
+
+function git(cwd, args) {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+function makeManifestHistory(t, contentsByCommit) {
+  const cwd = mkdtempSync(
+    path.join(tmpdir(), "freed-library-core-manifest-chain-"),
+  );
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  const manifestPath = path.join(
+    cwd,
+    "docs/library-core-activation-manifest.json",
+  );
+  mkdirSync(path.dirname(manifestPath), { recursive: true });
+  const commits = [];
+  for (const [index, contents] of contentsByCommit.entries()) {
+    writeFileSync(manifestPath, contents);
+    git(cwd, ["add", "docs/library-core-activation-manifest.json"]);
+    git(cwd, ["commit", "-m", `test: manifest state ${index + 1}`]);
+    commits.push(git(cwd, ["rev-parse", "HEAD"]));
+  }
+  return { cwd, commits };
+}
+
+function resolveProductionManifestHistory({
+  cwd,
+  previousCommitSha,
+  currentCommitSha,
+  previousContents,
+  currentContents,
+}) {
+  return resolveLibraryCoreActivationManifestInspection({
+    channel: "production",
+    previousContents,
+    currentContents,
+    previousPromotedDevCommitSha: previousCommitSha,
+    currentPromotedDevCommitSha: currentCommitSha,
+    cwd,
+  });
 }
 
 const EMPTY_MANIFEST_INSPECTION = inspectLibraryCoreActivationManifest({
@@ -795,6 +848,292 @@ test("release declarations must equal the exact manifest delta", () => {
         requireReviewed: false,
       }),
     /manifest evidence does not match/,
+  );
+});
+
+test("non-production manifest inspection keeps the direct endpoint comparison", () => {
+  const previousContents = manifestContents();
+  const currentContents = manifestContents([
+    migrationTransition({ activationId: "activation-001" }),
+  ]);
+
+  assert.deepEqual(
+    resolveLibraryCoreActivationManifestInspection({
+      channel: "dev",
+      previousContents,
+      currentContents,
+    }),
+    inspectLibraryCoreActivationManifest({
+      previousContents,
+      currentContents,
+    }),
+  );
+});
+
+test("production manifest inspection recovers an exact v1 to intermediate v1 to v2 chain", (t) => {
+  const previousTransitions = [
+    migrationTransition({ activationId: "activation-000" }),
+  ];
+  const intermediateTransition = migrationTransition({
+    activationId: "activation-001",
+  });
+  const intermediateTransitions = [
+    ...previousTransitions,
+    intermediateTransition,
+  ];
+  const currentTransition = sqliteEpochTransition({
+    activationId: "activation-002",
+  });
+  const previousContents = manifestContents(previousTransitions);
+  const intermediateContents = manifestContents(intermediateTransitions);
+  const currentContents = manifestV2Contents({
+    previousTransitions: intermediateTransitions,
+    transitions: [currentTransition],
+  });
+  const { cwd, commits } = makeManifestHistory(t, [
+    previousContents,
+    intermediateContents,
+    currentContents,
+  ]);
+
+  const inspection = resolveProductionManifestHistory({
+    cwd,
+    previousCommitSha: commits[0],
+    currentCommitSha: commits[2],
+    previousContents,
+    currentContents,
+  });
+
+  assert.deepEqual(inspection.transitions, [
+    intermediateTransition,
+    currentTransition,
+  ]);
+  assert.equal(inspection.manifest.previousPresent, true);
+  assert.equal(
+    inspection.manifest.previousDigest,
+    inspectLibraryCoreActivationManifest({
+      previousContents,
+      currentContents: previousContents,
+    }).manifest.currentDigest,
+  );
+  assert.equal(
+    inspection.manifest.currentDigest,
+    inspectLibraryCoreActivationManifest({
+      previousContents: currentContents,
+      currentContents,
+    }).manifest.currentDigest,
+  );
+});
+
+test("production manifest inspection rejects a missing or wrong intermediate digest", (t) => {
+  const intermediateTransition = migrationTransition({
+    activationId: "activation-001",
+  });
+  const currentTransition = sqliteEpochTransition({
+    activationId: "activation-002",
+  });
+  const previousContents = manifestContents();
+  const intermediateContents = manifestContents([intermediateTransition]);
+  const wrongDigestContents = manifestV2Contents({
+    previousTransitions: [],
+    transitions: [currentTransition],
+  });
+  const wrongDigestHistory = makeManifestHistory(t, [
+    previousContents,
+    intermediateContents,
+    wrongDigestContents,
+  ]);
+
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: wrongDigestHistory.cwd,
+        previousCommitSha: wrongDigestHistory.commits[0],
+        currentCommitSha: wrongDigestHistory.commits[2],
+        previousContents,
+        currentContents: wrongDigestContents,
+      }),
+    /must bind the exact superseded v1 history/,
+  );
+
+  const missingDigestContents = `${JSON.stringify(
+    {
+      schemaVersion: 2,
+      supersedes: { schemaVersion: 1 },
+      transitions: [currentTransition],
+    },
+    null,
+    2,
+  )}\n`;
+  const missingDigestHistory = makeManifestHistory(t, [
+    previousContents,
+    intermediateContents,
+    missingDigestContents,
+  ]);
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: missingDigestHistory.cwd,
+        previousCommitSha: missingDigestHistory.commits[0],
+        currentCommitSha: missingDigestHistory.commits[2],
+        previousContents,
+        currentContents: missingDigestContents,
+      }),
+    /unsupported or missing fields/,
+  );
+});
+
+test("production manifest inspection rejects non-ancestor promoted dev receipts", (t) => {
+  const baseContents = manifestContents();
+  const currentContents = manifestContents([
+    migrationTransition({ activationId: "activation-002" }),
+  ]);
+  const history = makeManifestHistory(t, [baseContents, currentContents]);
+  git(history.cwd, ["checkout", "-b", "previous-sibling", history.commits[0]]);
+  const previousContents = manifestContents([
+    migrationTransition({ activationId: "activation-001" }),
+  ]);
+  const manifestPath = path.join(
+    history.cwd,
+    "docs/library-core-activation-manifest.json",
+  );
+  writeFileSync(manifestPath, previousContents);
+  git(history.cwd, ["add", "docs/library-core-activation-manifest.json"]);
+  git(history.cwd, ["commit", "-m", "test: sibling previous receipt"]);
+  const previousCommitSha = git(history.cwd, ["rev-parse", "HEAD"]);
+
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: history.cwd,
+        previousCommitSha,
+        currentCommitSha: history.commits[1],
+        previousContents,
+        currentContents,
+      }),
+    /is not an ancestor of current promoted dev commit/,
+  );
+});
+
+test("production manifest inspection rejects dev and main endpoint mismatch", (t) => {
+  const previousContents = manifestContents();
+  const currentDevContents = manifestContents([
+    migrationTransition({ activationId: "activation-001" }),
+  ]);
+  const currentMainContents = manifestContents([
+    migrationTransition({ activationId: "activation-002" }),
+  ]);
+  const history = makeManifestHistory(t, [
+    previousContents,
+    currentDevContents,
+  ]);
+
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: history.cwd,
+        previousCommitSha: history.commits[0],
+        currentCommitSha: history.commits[1],
+        previousContents,
+        currentContents: currentMainContents,
+      }),
+    /Current promoted dev Library Core manifest does not match the corresponding main release boundary/,
+  );
+});
+
+test("production manifest inspection rejects duplicate or out-of-order IDs across recovered edges", (t) => {
+  const duplicateId = "activation-001";
+  const previousContents = manifestContents();
+  const duplicateIntermediateTransitions = [
+    migrationTransition({ activationId: duplicateId }),
+  ];
+  const duplicateIntermediateContents = manifestContents(
+    duplicateIntermediateTransitions,
+  );
+  const duplicateCurrentContents = manifestV2Contents({
+    previousTransitions: duplicateIntermediateTransitions,
+    transitions: [sqliteEpochTransition({ activationId: duplicateId })],
+  });
+  const duplicateHistory = makeManifestHistory(t, [
+    previousContents,
+    duplicateIntermediateContents,
+    duplicateCurrentContents,
+  ]);
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: duplicateHistory.cwd,
+        previousCommitSha: duplicateHistory.commits[0],
+        currentCommitSha: duplicateHistory.commits[2],
+        previousContents,
+        currentContents: duplicateCurrentContents,
+      }),
+    /unique ASCII-sorted activation IDs/,
+  );
+
+  const outOfOrderIntermediateTransitions = [
+    migrationTransition({ activationId: "activation-200" }),
+  ];
+  const outOfOrderIntermediateContents = manifestContents(
+    outOfOrderIntermediateTransitions,
+  );
+  const outOfOrderCurrentContents = manifestV2Contents({
+    previousTransitions: outOfOrderIntermediateTransitions,
+    transitions: [
+      sqliteEpochTransition({ activationId: "activation-100" }),
+    ],
+  });
+  const outOfOrderHistory = makeManifestHistory(t, [
+    previousContents,
+    outOfOrderIntermediateContents,
+    outOfOrderCurrentContents,
+  ]);
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: outOfOrderHistory.cwd,
+        previousCommitSha: outOfOrderHistory.commits[0],
+        currentCommitSha: outOfOrderHistory.commits[2],
+        previousContents,
+        currentContents: outOfOrderCurrentContents,
+      }),
+    /unique ASCII-sorted activation IDs/,
+  );
+});
+
+test("production manifest inspection caps combined recovered transitions at 64", (t) => {
+  const previousContents = manifestContents();
+  const intermediateTransitions = Array.from({ length: 40 }, (_, index) =>
+    migrationTransition({
+      activationId: `activation-${String(index).padStart(3, "0")}`,
+    }),
+  );
+  const intermediateContents = manifestContents(intermediateTransitions);
+  const currentTransitions = Array.from({ length: 25 }, (_, index) =>
+    sqliteEpochTransition({
+      activationId: `activation-${String(index + 40).padStart(3, "0")}`,
+    }),
+  );
+  const currentContents = manifestV2Contents({
+    previousTransitions: intermediateTransitions,
+    transitions: currentTransitions,
+  });
+  const history = makeManifestHistory(t, [
+    previousContents,
+    intermediateContents,
+    currentContents,
+  ]);
+
+  assert.throws(
+    () =>
+      resolveProductionManifestHistory({
+        cwd: history.cwd,
+        previousCommitSha: history.commits[0],
+        currentCommitSha: history.commits[2],
+        previousContents,
+        currentContents,
+      }),
+    /at most 64 entries/,
   );
 });
 

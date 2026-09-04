@@ -9,8 +9,8 @@ import { inspectCargoLockReleaseChange } from "./lib/cargo-lock-release.mjs";
 import {
   LIBRARY_CORE_ACTIVATION_DECISION_STATES,
   LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
-  inspectLibraryCoreActivationManifest,
   inspectPreviousLibraryCoreActivationWitness,
+  resolveLibraryCoreActivationManifestInspection,
   validateLibraryCoreReleaseActivation,
   validatePreviousLibraryCoreActivationContinuity,
 } from "./lib/library-core-release-activation.mjs";
@@ -296,6 +296,7 @@ function expectedLibraryCoreActivationRange({
       isAncestor: (fromRef, toRef) => gitIsAncestor(cwd, fromRef, toRef),
     }),
     previousArtifact,
+    previousSource,
     previousTagCommitSha,
   };
 }
@@ -855,6 +856,7 @@ export function validateReleaseIdentity({
       const {
         range: expectedRange,
         previousArtifact,
+        previousSource,
         previousTagCommitSha,
       } = expectedLibraryCoreActivationRange({
         cwd,
@@ -895,12 +897,17 @@ export function validateReleaseIdentity({
           `${LIBRARY_CORE_ACTIVATION_MANIFEST_PATH} is missing from exact release source ${productCommitSha}.`,
         );
       }
-      const manifestInspection = inspectLibraryCoreActivationManifest({
+      const manifestInspection = resolveLibraryCoreActivationManifestInspection({
+        channel: expected.channel,
         previousContents:
           previousManifestRead.state === "present"
             ? previousManifestRead.contents
             : null,
         currentContents: currentManifestRead.contents,
+        previousPromotedDevCommitSha:
+          previousSource?.promotedDevCommitSha ?? null,
+        currentPromotedDevCommitSha: promotedDevCommitSha,
+        cwd,
       });
       validatePreviousLibraryCoreActivationContinuity({
         witness: previousActivationWitness,

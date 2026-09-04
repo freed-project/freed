@@ -31,9 +31,9 @@ import {
 } from "./release-receipt.mjs";
 import {
   LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
-  inspectLibraryCoreActivationManifest,
   inspectPreviousLibraryCoreActivationWitness,
   prepareLibraryCoreReleaseActivation,
+  resolveLibraryCoreActivationManifestInspection,
   validatePreviousLibraryCoreActivationContinuity,
   withReleaseArtifactWriteLock,
 } from "./lib/library-core-release-activation.mjs";
@@ -1004,12 +1004,17 @@ async function collectReleaseContext(
         `${LIBRARY_CORE_ACTIVATION_MANIFEST_PATH} is missing from exact release source ${releaseReceipt.productCommitSha}.`,
       );
     }
-    const manifestInspection = inspectLibraryCoreActivationManifest({
+    const manifestInspection = resolveLibraryCoreActivationManifestInspection({
+      channel,
       previousContents:
         previousManifestRead.state === "present"
           ? previousManifestRead.contents
           : null,
       currentContents: currentManifestRead.contents,
+      previousPromotedDevCommitSha:
+        previousSource?.promotedDevCommitSha ?? null,
+      currentPromotedDevCommitSha: releaseReceipt.promotedDevCommitSha,
+      cwd: REPO_ROOT,
     });
     validatePreviousLibraryCoreActivationContinuity({
       witness: previousActivationWitness,

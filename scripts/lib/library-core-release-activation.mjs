@@ -1,8 +1,9 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, openSync, rmSync } from "node:fs";
 
 import { resolveGithubReadToken } from "./github-release-publications.mjs";
+import { readGitPathAtRef } from "./git-path-at-ref.mjs";
 
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40,64}$/;
 const RELEASE_TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-dev)?$/;
@@ -696,6 +697,224 @@ export function inspectLibraryCoreActivationManifest({
       currentDigest: inspectionDigest(current),
     },
     transitions,
+  };
+}
+
+function manifestEndpointEvidence(contents, label) {
+  const present = contents !== null && contents !== undefined;
+  const manifest = parseActivationManifest(contents, {
+    allowAbsent: true,
+    label,
+  });
+  return {
+    present,
+    digest: inspectionDigest(manifest),
+  };
+}
+
+function runManifestChainGit(spawn, cwd, args, label) {
+  const result = spawn("git", args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    const detail =
+      String(result.stderr ?? "").trim() ||
+      result.error?.message ||
+      (result.signal ? `terminated by ${result.signal}` : "git failed");
+    throw new Error(`${label}: ${detail}.`);
+  }
+  return String(result.stdout ?? "").trim();
+}
+
+/**
+ * Resolves one release's activation delta. Production releases with two
+ * promoted dev receipts can recover manifest schema changes that crossed an
+ * unpublished intermediate dev state. Other release ranges retain the direct
+ * endpoint comparison.
+ */
+export function resolveLibraryCoreActivationManifestInspection({
+  channel,
+  previousContents = null,
+  currentContents,
+  previousPromotedDevCommitSha = null,
+  currentPromotedDevCommitSha = null,
+  cwd = null,
+  spawn = spawnSync,
+}) {
+  if (channel !== "dev" && channel !== "production") {
+    throw new Error("Library Core activation channel is invalid.");
+  }
+
+  const hasPromotedDevRange =
+    channel === "production" &&
+    previousPromotedDevCommitSha !== null &&
+    previousPromotedDevCommitSha !== undefined &&
+    currentPromotedDevCommitSha !== null &&
+    currentPromotedDevCommitSha !== undefined;
+  if (!hasPromotedDevRange) {
+    return inspectLibraryCoreActivationManifest({
+      previousContents,
+      currentContents,
+    });
+  }
+
+  const previousPromotedDevSha = requireFullCommitSha(
+    previousPromotedDevCommitSha,
+    "Previous promoted dev commit",
+  );
+  const currentPromotedDevSha = requireFullCommitSha(
+    currentPromotedDevCommitSha,
+    "Current promoted dev commit",
+  );
+  if (typeof cwd !== "string" || cwd.length === 0) {
+    throw new Error(
+      "Production Library Core manifest recovery requires a repository path.",
+    );
+  }
+
+  const ancestry = spawn(
+    "git",
+    [
+      "merge-base",
+      "--is-ancestor",
+      previousPromotedDevSha,
+      currentPromotedDevSha,
+    ],
+    { cwd, encoding: "utf8" },
+  );
+  if (ancestry.status !== 0) {
+    if (ancestry.status === 1) {
+      throw new Error(
+        `Previous promoted dev commit ${previousPromotedDevSha} is not an ancestor of current promoted dev commit ${currentPromotedDevSha}.`,
+      );
+    }
+    const detail =
+      String(ancestry.stderr ?? "").trim() ||
+      ancestry.error?.message ||
+      (ancestry.signal ? `terminated by ${ancestry.signal}` : "git failed");
+    throw new Error(
+      `Could not verify promoted dev ancestry ${previousPromotedDevSha} to ${currentPromotedDevSha}: ${detail}.`,
+    );
+  }
+
+  const previousPromotedManifest = readGitPathAtRef({
+    cwd,
+    ref: previousPromotedDevSha,
+    filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+    spawn,
+  });
+  const currentPromotedManifest = readGitPathAtRef({
+    cwd,
+    ref: currentPromotedDevSha,
+    filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+    spawn,
+  });
+  const previousMainEndpoint = manifestEndpointEvidence(
+    previousContents,
+    "Previous main Library Core activation manifest",
+  );
+  const currentMainEndpoint = manifestEndpointEvidence(
+    currentContents,
+    "Current main Library Core activation manifest",
+  );
+  const previousDevEndpoint = manifestEndpointEvidence(
+    previousPromotedManifest.state === "present"
+      ? previousPromotedManifest.contents
+      : null,
+    "Previous promoted dev Library Core activation manifest",
+  );
+  const currentDevEndpoint = manifestEndpointEvidence(
+    currentPromotedManifest.state === "present"
+      ? currentPromotedManifest.contents
+      : null,
+    "Current promoted dev Library Core activation manifest",
+  );
+
+  for (const [label, mainEndpoint, devEndpoint] of [
+    ["Previous", previousMainEndpoint, previousDevEndpoint],
+    ["Current", currentMainEndpoint, currentDevEndpoint],
+  ]) {
+    if (
+      mainEndpoint.present !== devEndpoint.present ||
+      mainEndpoint.digest !== devEndpoint.digest
+    ) {
+      throw new Error(
+        `${label} promoted dev Library Core manifest does not match the corresponding main release boundary.`,
+      );
+    }
+  }
+
+  const manifestChangingCommits = runManifestChainGit(
+    spawn,
+    cwd,
+    [
+      "rev-list",
+      "--first-parent",
+      "--reverse",
+      `${previousPromotedDevSha}..${currentPromotedDevSha}`,
+      "--",
+      LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+    ],
+    "Could not read first-parent Library Core manifest history",
+  )
+    .split("\n")
+    .filter(Boolean);
+  for (const commitSha of manifestChangingCommits) {
+    requireFullCommitSha(commitSha, "Library Core manifest history commit");
+  }
+  if (manifestChangingCommits.at(-1) !== currentPromotedDevSha) {
+    manifestChangingCommits.push(currentPromotedDevSha);
+  }
+
+  const transitions = [];
+  let previousState = {
+    commitSha: previousPromotedDevSha,
+    contents:
+      previousPromotedManifest.state === "present"
+        ? previousPromotedManifest.contents
+        : null,
+  };
+  for (const commitSha of manifestChangingCommits) {
+    const read =
+      commitSha === currentPromotedDevSha
+        ? currentPromotedManifest
+        : readGitPathAtRef({
+            cwd,
+            ref: commitSha,
+            filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+            spawn,
+          });
+    const currentState = {
+      commitSha,
+      contents: read.state === "present" ? read.contents : null,
+    };
+    let inspection;
+    try {
+      inspection = inspectLibraryCoreActivationManifest({
+        previousContents: previousState.contents,
+        currentContents: currentState.contents,
+      });
+    } catch (error) {
+      throw new Error(
+        `Library Core activation manifest chain ${previousState.commitSha} to ${currentState.commitSha} is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    transitions.push(...inspection.transitions);
+    previousState = currentState;
+  }
+
+  return {
+    manifest: {
+      path: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+      previousPresent: previousMainEndpoint.present,
+      previousDigest: previousMainEndpoint.digest,
+      currentDigest: currentMainEndpoint.digest,
+    },
+    transitions: validateTransitions(transitions),
   };
 }
 
