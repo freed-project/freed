@@ -147,6 +147,32 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const WORKER_ERROR_MAXIMUM_UTF8_BYTES = 4_096;
 const textEncoder = new TextEncoder();
 
+type PwaLibraryCoreSqliteWorkerErrorCode =
+  | "invalid_request"
+  | "library_busy"
+  | "sqlite_initialization_failed"
+  | "sqlite_integrity_failed";
+
+export class PwaLibraryCoreSqliteWorkerError extends Error {
+  readonly code: PwaLibraryCoreSqliteWorkerErrorCode;
+
+  constructor(code: PwaLibraryCoreSqliteWorkerErrorCode, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "PwaLibraryCoreSqliteWorkerError";
+  }
+}
+
+export function isPwaLibraryCoreSqliteBusyError(
+  error: unknown,
+): error is PwaLibraryCoreSqliteWorkerError &
+  Readonly<{ code: "library_busy" }> {
+  return (
+    error instanceof PwaLibraryCoreSqliteWorkerError &&
+    error.code === "library_busy"
+  );
+}
+
 export class PwaLibraryCoreSqliteWorkerUnavailableError extends Error {
   readonly code = "pwa_sqlite_worker_unavailable" as const;
 
@@ -893,7 +919,9 @@ export class PwaLibraryCoreSqliteClient {
           "PWA Library SQLite worker failure response is not closed",
         );
       }
-      pending.reject(new Error(response.message));
+      pending.reject(
+        new PwaLibraryCoreSqliteWorkerError(response.code, response.message),
+      );
     } catch (error) {
       pending.reject(
         error instanceof Error

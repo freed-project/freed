@@ -70,6 +70,7 @@ import {
   mutatePwaDeviceGraphLayout,
   queryPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
+import { isPwaLibraryCoreSqliteBusyError } from "./library-core-sqlite-client";
 
 let appInitializationPromise: Promise<void> | null = null;
 let documentSubscriptionTeardown: (() => void) | null = null;
@@ -93,6 +94,8 @@ function recordReadStateInfo(
 
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
+  initializationBlocker: "library_busy" | null;
+  setInitializationFailure: (error: unknown) => void;
   syncConnected: boolean;
   setSyncConnected: (connected: boolean) => void;
 }
@@ -288,6 +291,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoading: true,
   isSyncing: false,
   isInitialized: false,
+  initializationBlocker: null,
   error: null,
   activeFilter: {},
   selectedItemId: null,
@@ -313,7 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     appInitializationPromise = (async () => {
       const runtimeLifecycle = capturePwaRuntimeLifecycle();
       try {
-        set({ isLoading: true });
+        set({ error: null, initializationBlocker: null, isLoading: true });
         const state = await initializePwaLibraryCoreState();
         runtimeLifecycle.assertCurrent();
         migrateLegacyDeviceDisplayPreferences(state.preferences.display as unknown);
@@ -350,20 +354,11 @@ export const useAppStore = create<AppState>((set, get) => ({
             getDeviceDisplayPreferences().feedSignalModes,
           ),
           isInitialized: true,
+          initializationBlocker: null,
           isLoading: false,
         });
       } catch (error) {
-        recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
-        recordBugReportEvent(
-          "pwa:initialize",
-          "error",
-          "Initialization failed",
-        );
-        set({
-          error:
-            error instanceof Error ? error.message : "Failed to initialize",
-          isLoading: false,
-        });
+        get().setInitializationFailure(error);
       }
     })().finally(() => {
       appInitializationPromise = null;
@@ -800,6 +795,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),
+  setInitializationFailure: (error) => {
+    const initializationBlocker = isPwaLibraryCoreSqliteBusyError(error)
+      ? "library_busy"
+      : null;
+    if (initializationBlocker === null) {
+      recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
+      recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
+    }
+    set({
+      error:
+        initializationBlocker === null
+          ? error instanceof Error
+            ? error.message
+            : "Failed to initialize"
+          : null,
+      initializationBlocker,
+      isLoading: false,
+    });
+  },
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
   openMapForPerson: (personId) =>

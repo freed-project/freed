@@ -110,6 +110,7 @@ async function openLibrary(page: Page): Promise<void> {
 
 async function launchPersistentLibraryContext(
   profileRoot: string,
+  baseURL = pwaOpfsE2eBaseUrl,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
   return webkit.launchPersistentContext(profileRoot, {
@@ -119,7 +120,7 @@ async function launchPersistentLibraryContext(
     deviceScaleFactor: iphone.deviceScaleFactor,
     isMobile: iphone.isMobile,
     hasTouch: iphone.hasTouch,
-    baseURL: pwaOpfsE2eBaseUrl,
+    baseURL,
     headless: true,
   });
 }
@@ -628,6 +629,48 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
     const reopened = await readIdentityAndSign(opened.page);
     expect(reopened.identity).toEqual(first.identity);
     expect(reopened.verified).toBe(true);
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit treats a second Library tab as busy, not corrupted", async () => {
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-library-busy-webkit-"),
+  );
+  let context: BrowserContext | null = null;
+
+  try {
+    // This case interrupts sample writes when the owning tab closes. Give it
+    // its own origin as well as its own profile to isolate WebKit OPFS state.
+    const busyOrigin = new URL(pwaOpfsE2eBaseUrl);
+    busyOrigin.hostname = "localhost";
+    context = await launchPersistentLibraryContext(profileRoot, busyOrigin.origin);
+    const firstPage = context.pages()[0] ?? (await context.newPage());
+    await openLibrary(firstPage);
+    const secondPage = await context.newPage();
+    await secondPage.goto("/");
+    await acceptLegalGate(secondPage);
+
+    await expect(
+      secondPage.getByRole("heading", {
+        name: "Freed is open in another tab",
+      }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      secondPage.getByRole("button", { name: "Retry here" }),
+    ).toBeVisible();
+    await expect(
+      secondPage.getByRole("heading", { name: "Freed hit a fatal error" }),
+    ).toHaveCount(0);
+    await expect(
+      secondPage.getByRole("button", { name: "Replace local Library" }),
+    ).toHaveCount(0);
+
+    await firstPage.close();
+    await secondPage.getByRole("button", { name: "Retry here" }).click();
+    await waitForLibrary(secondPage);
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });

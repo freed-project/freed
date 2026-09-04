@@ -40,6 +40,7 @@ import {
 } from "./lib/pwa-updater";
 import { isContactPickerAvailable, pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
+import { PwaLibraryBusyScreen } from "./components/PwaLibraryBusyScreen";
 import {
   PwaDemoSyncSettings,
   PwaSyncSettings,
@@ -219,8 +220,13 @@ function FloatingNotice({
 function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
+  const initializationBlocker = useAppStore(
+    (state) => state.initializationBlocker,
+  );
   const error = useAppStore((state) => state.error);
-  const setError = useAppStore((state) => state.setError);
+  const setInitializationFailure = useAppStore(
+    (state) => state.setInitializationFailure,
+  );
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installNotice, setInstallNotice] = useState<InstallNotice | null>(
@@ -279,15 +285,7 @@ function App() {
           return initialize();
         })
         .catch((error) => {
-          console.error(
-            "[demo] failed to activate showcase checkpoint:",
-            error,
-          );
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Freed could not prepare the showcase Library",
-          );
+          setInitializationFailure(error);
         });
       return;
     }
@@ -298,17 +296,9 @@ function App() {
     void ensurePwaLibraryCoreLocalSampleState()
       .then(() => initialize())
       .catch((error) => {
-        console.error(
-          "[sample-data] failed to initialize local preview data:",
-          error,
-        );
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Freed could not prepare the local preview Library",
-        );
+        setInitializationFailure(error);
       });
-  }, [initialize, legalAccepted, setError]);
+  }, [initialize, legalAccepted, setInitializationFailure]);
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
@@ -634,6 +624,10 @@ function App() {
         </p>
       </div>
     );
+  }
+
+  if (initializationBlocker === "library_busy" && !isInitialized) {
+    return <PwaLibraryBusyScreen onRetry={() => window.location.reload()} />;
   }
 
   if (error && !isInitialized) {

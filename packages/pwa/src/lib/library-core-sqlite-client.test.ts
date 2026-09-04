@@ -5,7 +5,10 @@ import {
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
 } from "@freed/shared/library-core";
-import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
+import {
+  PwaLibraryCoreSqliteClient,
+  isPwaLibraryCoreSqliteBusyError,
+} from "./library-core-sqlite-client";
 
 class FakeWorker {
   static latest: FakeWorker | null = null;
@@ -172,6 +175,28 @@ describe("PWA SQLite worker response boundary", () => {
     });
 
     await expect(pending).resolves.toEqual(validStatus());
+    client.dispose();
+  });
+
+  it("preserves a busy Library response as a typed startup condition", async () => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const pending = client.open();
+    const worker = activeWorker();
+    worker.respond({
+      code: "library_busy",
+      message: "PWA Library SQLite is already open in another app window",
+      ok: false,
+      requestId: requestId(worker),
+    });
+
+    const error = await pending.catch((reason: unknown) => reason);
+
+    expect(isPwaLibraryCoreSqliteBusyError(error)).toBe(true);
+    expect(error).toMatchObject({
+      code: "library_busy",
+      message: "PWA Library SQLite is already open in another app window",
+      name: "PwaLibraryCoreSqliteWorkerError",
+    });
     client.dispose();
   });
 
