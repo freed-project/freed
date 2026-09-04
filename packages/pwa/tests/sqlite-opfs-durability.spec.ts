@@ -110,6 +110,7 @@ async function openLibrary(page: Page): Promise<void> {
 
 async function launchPersistentLibraryContext(
   profileRoot: string,
+  baseURL = pwaOpfsE2eBaseUrl,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
   return webkit.launchPersistentContext(profileRoot, {
@@ -119,7 +120,7 @@ async function launchPersistentLibraryContext(
     deviceScaleFactor: iphone.deviceScaleFactor,
     isMobile: iphone.isMobile,
     hasTouch: iphone.hasTouch,
-    baseURL: pwaOpfsE2eBaseUrl,
+    baseURL,
     headless: true,
   });
 }
@@ -641,8 +642,13 @@ test("iPhone WebKit treats a second Library tab as busy, not corrupted", async (
   let context: BrowserContext | null = null;
 
   try {
-    const opened = await openPersistentLibrary(profileRoot);
-    context = opened.context;
+    // This case interrupts sample writes when the owning tab closes. Give it
+    // its own origin as well as its own profile to isolate WebKit OPFS state.
+    const busyOrigin = new URL(pwaOpfsE2eBaseUrl);
+    busyOrigin.hostname = "localhost";
+    context = await launchPersistentLibraryContext(profileRoot, busyOrigin.origin);
+    const firstPage = context.pages()[0] ?? (await context.newPage());
+    await openLibrary(firstPage);
     const secondPage = await context.newPage();
     await secondPage.goto("/");
     await acceptLegalGate(secondPage);
@@ -662,7 +668,7 @@ test("iPhone WebKit treats a second Library tab as busy, not corrupted", async (
       secondPage.getByRole("button", { name: "Replace local Library" }),
     ).toHaveCount(0);
 
-    await opened.page.close();
+    await firstPage.close();
     await secondPage.getByRole("button", { name: "Retry here" }).click();
     await waitForLibrary(secondPage);
   } finally {
