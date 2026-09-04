@@ -1500,6 +1500,10 @@ export function tauriInitScript(): string {
           var preview = content.linkPreview || {};
           var author = item.author || {};
           var rssSource = item.rssSource || {};
+          var user = sqliteItemState(item);
+          var highlights = (user.highlights || []).flatMap(function(highlight) {
+            return [highlight.text, highlight.note];
+          });
           var searchable = [
             content.text,
             preview.title,
@@ -1507,6 +1511,7 @@ export function tauriInitScript(): string {
             author.displayName,
             author.handle,
             rssSource.feedTitle,
+            highlights.join(' '),
           ].filter(Boolean).join(' ').toLowerCase();
           return searchTerms.every(function(term) { return searchable.includes(term); });
         }).slice(0, request.limit || 32).map(function(item) {

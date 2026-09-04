@@ -1,7 +1,6 @@
 ---
 name: freed-ship-build
 description: Ship and verify a versioned Freed Desktop build through GitHub Actions. Use when asked to cut a dev or production release, publish a reviewed build, or repair a failed release pipeline. Preserve source and installed build identity, require exact-head validation including native tests, and create a governed post-install verification task.
-disable-model-invocation: true
 ---
 
 # Ship Build

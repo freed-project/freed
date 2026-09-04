@@ -2,3 +2,6 @@ interface:
   display_name: "Freed Stability Controller"
   short_description: "Reconcile evidence into governed stability tasks"
   default_prompt: "Use $freed-stability-controller to reconcile current evidence into one governed stability task."
+
+policy:
+  allow_implicit_invocation: true

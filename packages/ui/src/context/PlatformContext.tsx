@@ -431,6 +431,25 @@ export interface SaveUrlResult {
   globalId: string;
 }
 
+export interface SaveUrlPreview {
+  description?: string;
+  suggestedNote: string;
+  title: string;
+  url: string;
+}
+
+export interface SaveUrlOptions {
+  notes?: string;
+  preview?: SaveUrlPreview;
+  tags?: string[];
+}
+
+export interface UpdateSavedContentInput {
+  notes: string;
+  preview?: SaveUrlPreview;
+  url: string;
+}
+
 export interface YouTubeOfflinePlaylistResult {
   playlistId: string;
   playlistUrl: string;
@@ -541,6 +560,9 @@ export interface PlatformConfig {
 
   /** Rendered inside Settings > Legal for local consent details. */
   LegalSettingsContent: ComponentType | null;
+
+  /** Rendered inside Settings > Newsletter. */
+  NewsletterSettingsContent?: ComponentType | null;
 
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
@@ -809,7 +831,19 @@ export interface PlatformConfig {
    */
   saveUrl?: (
     url: string,
-    options?: { tags?: string[] },
+    options?: SaveUrlOptions,
+  ) => Promise<SaveUrlResult>;
+
+  /** Fetch a bounded public preview while the save dialog remains editable. */
+  previewSaveUrl?: (
+    url: string,
+    signal?: AbortSignal,
+  ) => Promise<SaveUrlPreview>;
+
+  /** Replace the URL or whole-item note for an existing manual save. */
+  updateSavedContent?: (
+    item: FeedItem,
+    input: UpdateSavedContentInput,
   ) => Promise<SaveUrlResult>;
 
   /**

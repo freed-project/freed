@@ -22,9 +22,13 @@ const stubItem: FeedItem = {
 
 const mockAddLibraryStubItem = vi.fn(async () => stubItem);
 const mockEnqueue = vi.fn();
+const mockRemoveLibraryFeedItem = vi.fn(async () => undefined);
+const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
 
 vi.mock("./library-client.js", () => ({
   addLibraryStubItem: mockAddLibraryStubItem,
+  removeLibraryFeedItem: mockRemoveLibraryFeedItem,
+  updateLibraryFeedItem: mockUpdateLibraryFeedItem,
 }));
 
 vi.mock("./content-fetcher.js", () => ({
@@ -40,10 +44,26 @@ describe("saveUrlInDesktop", () => {
   it("writes a saved stub and queues background detail fetching", async () => {
     const { saveUrlInDesktop } = await import("./save-url.js");
 
-    const result = await saveUrlInDesktop(SAMPLE_URL, { tags: ["research"] });
+    const result = await saveUrlInDesktop(SAMPLE_URL, {
+      notes: "Follow up",
+      tags: ["research"],
+    });
 
     expect(mockAddLibraryStubItem).toHaveBeenCalledWith(SAMPLE_URL, ["research"]);
-    expect(mockEnqueue).toHaveBeenCalledWith([stubItem], {
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledWith(
+      "saved:abc123",
+      expect.objectContaining({
+        userState: expect.objectContaining({
+          highlights: [expect.objectContaining({ note: "Follow up" })],
+        }),
+      }),
+    );
+    expect(mockEnqueue).toHaveBeenCalledWith([expect.objectContaining({
+      globalId: stubItem.globalId,
+      userState: expect.objectContaining({
+        highlights: [expect.objectContaining({ note: "Follow up" })],
+      }),
+    })], {
       priority: true,
       force: true,
       bypassStartupDelay: true,

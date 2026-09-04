@@ -1,7 +1,6 @@
 ---
 name: freed-build-www
 description: Build Freed marketing-site work in a worktree based on origin/www, verify the website, and publish a pull request to www. Use for freed.wtf pages, marketing copy, legal pages, public changelog presentation, and public roadmap presentation. Use roadmap mode only from an approved docs/roadmap-status.json source commit, never by inferring status from prose or by merging dev into www.
-disable-model-invocation: true
 ---
 
 # Build WWW

@@ -1,18 +1,25 @@
 ---
 name: freed-build-feature
 description: Build governed Freed product work in a worktree based on origin/dev, verify the runnable slice, and publish a correctly staged pull request to dev. Use for Desktop, PWA, shared packages, sync, capture, release tooling, product behavior, and product documentation. Also use for stability tasks that require a stable task identity, a measurable counter, native validation, or an installed-build verification handoff. Do not use for public website work targeting www.
-disable-model-invocation: true
 ---
 
 # Build Feature
 
 Build one attributable product change from the latest `origin/dev`. Keep the change connected to its task, evidence, authority, and post-merge verification.
 
+## Start from current policy
+
+1. Treat the supplied working directory as a launcher until proven otherwise.
+2. Before the owner-facing authorization exchange, run `git fetch --all --prune` and read `AGENTS.md` from `origin/dev` with `git show origin/dev:AGENTS.md`.
+3. If either command fails, stop. Do not rely on a possibly stale local instruction copy.
+4. Use the numbered Level 1 through Level 7 labels from the fetched `AGENTS.md` with the owner. Internal actor labels are bookkeeping only and must never be presented as owner authorization choices.
+5. After Level 2 or higher is active, create the implementation worktree from that exact fetched `origin/dev` head. Level 1 stays read-only and may inspect the fetched ref without creating a worktree.
+
 ## Establish the contract
 
 1. Confirm the destination is `dev`. Route public website work to `freed-build-www`.
 2. Search open GitHub Issues labeled `debt` before creating work for a tracked root cause. Keep the existing issue as the canonical debt record. When governed execution needs a control task, use the selected task ID and store the issue as `details.githubIssue: { number, url }`.
-3. Record canonical task authority as `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. Record provider authority separately as `forbidden`, `approval-required`, or `approved`. Also record which external actions the user explicitly granted, such as publishing a PR, merging, releasing, or deploying. None of these fields substitutes for another.
+3. Map the active numbered owner authorization level to any operational record that requires `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. Record provider authority separately as `forbidden`, `approval-required`, or `approved`. Also record which external actions the active numbered level grants, such as publishing a PR, merging, releasing, or deploying. These internal fields never replace the owner-facing number.
 4. For sync, capture, memory, or recovery work, name the metric-registry entry that will judge the change. Record its event predicate, denominator, target, baseline window, minimum coverage, and expected direction.
 5. Treat missing build identity, mixed-build evidence, insufficient coverage, or broken sources as `inconclusive`. Do not turn absence of evidence into a passing result.
 6. Record the source build identity for every baseline: app version, channel, git SHA, native boot ID, app session ID, and exact start and end timestamps when available.

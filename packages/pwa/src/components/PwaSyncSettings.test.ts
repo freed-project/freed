@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
-import { PwaSyncSettings } from "./PwaSyncSettings";
+import { PwaDemoSyncSettings, PwaSyncSettings } from "./PwaSyncSettings";
 
 const mocks = vi.hoisted(() => ({
   clipboardWrite: vi.fn(async () => {}),
@@ -248,6 +248,17 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     act(() => {
       root.unmount();
     });
+  });
+
+  it("keeps cloud connection controls disabled in the demo", () => {
+    const { container, root } = renderWithPlatform(createElement(PwaDemoSyncSettings));
+
+    expect(container.textContent).toContain("Sync is off in this demo");
+    expect(container.textContent).toContain("Download Freed Desktop to configure");
+    expect(container.querySelector('[data-testid="demo-sync-disabled"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Connect Google Drive");
+
+    act(() => root.unmount());
   });
 
   it("clears the configured cloud provider and immediately shows the reconnect UI", async () => {

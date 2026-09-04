@@ -1,7 +1,6 @@
 ---
 name: freed-memory-profile
 description: Measure Freed memory demand with matched builds, workloads, document fixtures, and process generations. Use for idle growth, provider WebKit retention, Automerge worker churn, document transport amplification, bulk import, cloud merge, or suspected native and renderer memory regressions. Do not use a slope that crosses restarts, sleep, renderer replacement, or mixed activity states.
-disable-model-invocation: true
 ---
 
 # Memory Profile

@@ -16,7 +16,13 @@ import App from './App.tsx'
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
 import { isFreedDemoMode } from './lib/demo-mode'
 
-if (!isFreedDemoMode(window.location.hostname)) {
+if (
+  !isFreedDemoMode(
+    window.location.hostname,
+    undefined,
+    window.location.search,
+  )
+) {
   const fonts = document.createElement('link')
   fonts.rel = 'stylesheet'
   fonts.href = 'https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap'

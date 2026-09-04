@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isFreedDemoHostname, isFreedDemoMode } from "./demo-mode";
+import {
+  isFreedDemoHostname,
+  isFreedDemoMode,
+  isFreedNewsletterPreviewHostname,
+} from "./demo-mode";
 
 describe("demo mode", () => {
   it("recognizes only the dedicated production hostname", () => {
@@ -12,5 +16,40 @@ describe("demo mode", () => {
   it("allows an explicit demo build for local and release capture", () => {
     expect(isFreedDemoMode("localhost", true)).toBe(true);
     expect(isFreedDemoMode("localhost", false)).toBe(false);
+  });
+
+  it("allows explicit demo links only on Vercel preview hosts", () => {
+    expect(
+      isFreedDemoMode(
+        "freed-pwa-git-feat-demo-aubreyfs-projects.vercel.app",
+        false,
+        "?freed-demo=1",
+      ),
+    ).toBe(true);
+    expect(
+      isFreedDemoMode(
+        "freed-pwa-git-feat-demo-aubreyfs-projects.vercel.app",
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      isFreedDemoMode("app.freed.wtf", false, "?freed-demo=1"),
+    ).toBe(false);
+    expect(
+      isFreedDemoMode("vercel.app.example.com", false, "?freed-demo=1"),
+    ).toBe(false);
+  });
+
+  it("keeps newsletter submissions inert on Vercel preview hosts", () => {
+    expect(
+      isFreedNewsletterPreviewHostname(
+        "freed-pwa-orpin.vercel.app",
+      ),
+    ).toBe(true);
+    expect(isFreedNewsletterPreviewHostname("DEMO.VERCEL.APP")).toBe(true);
+    expect(isFreedNewsletterPreviewHostname("demo.freed.wtf")).toBe(false);
+    expect(
+      isFreedNewsletterPreviewHostname("vercel.app.example.com"),
+    ).toBe(false);
   });
 });

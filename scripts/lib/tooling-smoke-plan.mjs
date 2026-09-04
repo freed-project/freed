@@ -274,13 +274,20 @@ function isRepoSurface(changedFile) {
 function hasFocusedFeatureValidation(changedFile) {
   return (
     FOCUSED_FEATURE_VALIDATION_PATHS.has(changedFile) ||
+    /(?:^|\/)AGENTS(?:\.override)?\.md$/.test(changedFile) ||
+    changedFile === "docs/AGENT-INSTRUCTIONS.md" ||
+    changedFile === ".github/CODEOWNERS" ||
+    /^scripts\/validate-agent-instructions(?:\.test)?\.mjs$/.test(
+      changedFile,
+    ) ||
     /^docs\/PHASE-\d+-[^/]+\.md$/.test(changedFile) ||
     /^release-notes\/daily\/(?:dev|production)\/[^/]+\.json$/.test(
       changedFile,
     ) ||
     /^release-notes\/releases\/v[^/]+\.(?:json|md)$/.test(changedFile) ||
     /^\.agents\/skills\/[^/]+\/SKILL\.md$/.test(changedFile) ||
-    /^\.agents\/skills\/[^/]+\/agents\/openai\.yaml$/.test(changedFile)
+    /^\.agents\/skills\/[^/]+\/agents\/openai\.yaml$/.test(changedFile) ||
+    /^\.agents\/skills\/[^/]+\/references\/[^/]+\.md$/.test(changedFile)
   );
 }
 
@@ -305,9 +312,7 @@ export function selectApplicableSuites(
     });
   }
 
-  const smokeFiles = files.filter(
-    (file) => !hasFocusedFeatureValidation(file),
-  );
+  const smokeFiles = files.filter((file) => !hasFocusedFeatureValidation(file));
   if (smokeFiles.length === 0) {
     return Object.freeze({
       suites: Object.freeze([]),
@@ -481,7 +486,11 @@ export function suiteWeights({ repoRoot = REPO_ROOT, durations = null } = {}) {
     for (const testFile of suiteTestFiles(suite, repoRoot)) {
       size += readIfPresent(repoRoot, testFile)?.length ?? 0;
     }
-    weights.set(suite, { weight: Math.max(1, size), measured: false, capped: false });
+    weights.set(suite, {
+      weight: Math.max(1, size),
+      measured: false,
+      capped: false,
+    });
   }
   return weights;
 }
@@ -514,8 +523,14 @@ export function projectShardRuntime(allocation, weights, timeoutSeconds) {
       // would reproduce the bug this function exists to catch.
       fits: capped
         ? false
-        : !isSeconds || !Number.isFinite(timeoutSeconds) || perShardSeconds <= timeoutSeconds,
-      predictedFrom: capped ? "capped" : entry?.measured === true ? "measured" : "size",
+        : !isSeconds ||
+          !Number.isFinite(timeoutSeconds) ||
+          perShardSeconds <= timeoutSeconds,
+      predictedFrom: capped
+        ? "capped"
+        : entry?.measured === true
+          ? "measured"
+          : "size",
     };
   });
 }
@@ -566,7 +581,11 @@ export function buildToolingSmokeMatrix({
   const selection = selectApplicableSuites(changedFiles, { repoRoot });
   const weights = suiteWeights({ repoRoot, durations });
   const allocation = allocateShardBudget(selection.suites, maxJobs, weights);
-  const projection = projectShardRuntime(allocation, weights, shardTimeoutSeconds);
+  const projection = projectShardRuntime(
+    allocation,
+    weights,
+    shardTimeoutSeconds,
+  );
   const include = allocation.flatMap(({ suite, shardCount }) =>
     Array.from({ length: shardCount }, (_, index) => ({
       suite,
@@ -591,6 +610,8 @@ export function buildToolingSmokeMatrix({
     // Suites this plan predicts will not finish inside the job timeout. The
     // caller decides what to do about it; the point is that it is known before
     // the jobs run rather than ninety minutes later.
-    overrunSuites: projection.filter((entry) => !entry.fits).map((entry) => entry.suite),
+    overrunSuites: projection
+      .filter((entry) => !entry.fits)
+      .map((entry) => entry.suite),
   });
 }
