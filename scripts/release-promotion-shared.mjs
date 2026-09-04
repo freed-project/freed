@@ -31,8 +31,9 @@ export const RELEASE_ONLY_FILES = [
 export const RELEASE_ONLY_PREFIXES = ["release-notes/"];
 
 // Dev retains assertions for its signed isolated verifier job. Production main
-// intentionally omits that dev-only job, so this test has a reviewed lane-specific
-// variant instead of one blob that can be reverse-integrated between branches.
+// intentionally omits that dev-only job, so the workflow and its governance
+// test have reviewed lane-specific variants instead of blobs that can be
+// promoted or reverse-integrated between branches.
 const BRANCH_SPECIFIC_RELEASE_LANE_FILES = new Set([
   ".github/workflows/release.yml",
   "scripts/release-governance.test.mjs",
@@ -50,6 +51,7 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/promote-dev-to-main.test.mjs",
   "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
+  "scripts/release-workflow-matrix.test.mjs",
   "scripts/release.sh",
   "scripts/validate-main-pr.mjs",
   "scripts/trusted-worktree-publish.sh",

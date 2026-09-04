@@ -157,6 +157,11 @@ test("the promotion control definition preserves itself", () => {
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release-promotion-shared.mjs"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/deploy-pwa-production-snapshot.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release.sh"));
+  assert.ok(
+    PROMOTION_CONTROL_FILES.includes(
+      "scripts/release-workflow-matrix.test.mjs",
+    ),
+  );
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/worktree-publish.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/trusted-worktree-publish.sh"));
   assert.ok(
@@ -211,12 +216,22 @@ test("an old product snapshot preserves current promotion controls", (t) => {
     "packages/pwa/src/app.ts",
     "export const value = 'selected snapshot';\n",
   );
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
+    "export const control = 'selected snapshot';\n",
+  );
   commitAll(cwd, "selected product snapshot");
   const snapshotSha = git(cwd, ["rev-parse", "HEAD"]);
 
   writeRepoFile(
     cwd,
     "scripts/validate-main-pr.mjs",
+    "export const control = 'current';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
     "export const control = 'current';\n",
   );
   commitAll(cwd, "fix: current promotion control");
@@ -226,6 +241,11 @@ test("an old product snapshot preserves current promotion controls", (t) => {
   writeRepoFile(
     cwd,
     "scripts/validate-main-pr.mjs",
+    "export const control = 'current';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
     "export const control = 'current';\n",
   );
   commitAll(cwd, "fix: backport promotion control");
@@ -244,6 +264,10 @@ test("an old product snapshot preserves current promotion controls", (t) => {
   );
   assert.equal(
     git(cwd, ["show", ":scripts/validate-main-pr.mjs"]),
+    "export const control = 'current';",
+  );
+  assert.equal(
+    git(cwd, ["show", ":scripts/release-workflow-matrix.test.mjs"]),
     "export const control = 'current';",
   );
 });
@@ -1250,6 +1274,66 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Promotion branch matches selected dev snapshot/);
+});
+
+test("validate-main-pr backports the shared matrix test without replacing production governance", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
+    "export const sharedMatrix = 'current';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'dev-isolated-verifier';\n",
+  );
+  commitAll(cwd, "test: update shared and dev release assertions");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
+    "export const sharedMatrix = 'stale';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'production';\n",
+  );
+  commitAll(cwd, "test: retain production release governance");
+  updateOriginRef(cwd, "main");
+  const productionGovernanceBlob = git(cwd, [
+    "rev-parse",
+    "HEAD:scripts/release-governance.test.mjs",
+  ]);
+
+  const branch = "fix/main-governance-release-matrix";
+  git(cwd, ["checkout", "-b", branch, "origin/main"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-workflow-matrix.test.mjs",
+    "export const sharedMatrix = 'current';\n",
+  );
+  commitAll(cwd, "fix: backport shared release matrix assertions");
+
+  assert.equal(
+    git(cwd, ["rev-parse", "HEAD:scripts/release-governance.test.mjs"]),
+    productionGovernanceBlob,
+  );
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    `--head-branch=${branch}`,
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Governance backport matches origin\/dev/);
 });
 
 test("validate-main-pr rejects a promotion whose parent is no longer current main", (t) => {
