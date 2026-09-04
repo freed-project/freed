@@ -159,6 +159,9 @@ test("the promotion control definition preserves itself", () => {
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/worktree-publish.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/trusted-worktree-publish.sh"));
+  assert.ok(
+    !PROMOTION_CONTROL_FILES.includes("scripts/release-governance.test.mjs"),
+  );
 });
 
 test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
@@ -350,6 +353,16 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     "packages/pwa/package.json",
     '{\n  "name": "@freed/pwa",\n  "version": "26.7.700"\n}\n',
   );
+  writeRepoFile(
+    cwd,
+    ".github/workflows/release.yml",
+    "name: production-release\n",
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'production';\n",
+  );
   commitAll(cwd, "release: preserve main version");
   updateOriginRef(cwd, "main");
 
@@ -373,6 +386,16 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     cwd,
     "automation/specs/freed-runtime-observer.json",
     '{\n  "version": "dev"\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'dev-isolated-verifier';\n",
+  );
+  writeRepoFile(
+    cwd,
+    ".github/workflows/release.yml",
+    "name: dev-isolated-release\n",
   );
   rmSync(path.join(cwd, "docs/PHASE-1-FOUNDATION.md"));
   chmodSync(path.join(cwd, "scripts/release.sh"), 0o755);
@@ -427,6 +450,14 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     /"version": "dev"/,
   );
   assert.equal(
+    git(cwd, ["show", ":scripts/release-governance.test.mjs"]),
+    "export const releaseLane = 'production';",
+  );
+  assert.equal(
+    git(cwd, ["show", ":.github/workflows/release.yml"]),
+    "name: production-release",
+  );
+  assert.equal(
     git(cwd, ["rev-parse", ":packages/pwa/src/icon.bin"]),
     git(cwd, ["rev-parse", "origin/dev:packages/pwa/src/icon.bin"]),
   );
@@ -468,6 +499,13 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     `--snapshot-ref=${git(cwd, ["rev-parse", "origin/dev"])}`,
   ]);
   assert.equal(validated.status, 0, validated.stderr);
+
+  const releaseValidated = runNode(VALIDATE_RELEASE_PROMOTION, [
+    `--cwd=${cwd}`,
+    "--from-ref=origin/dev",
+    "--to-ref=HEAD",
+  ]);
+  assert.equal(releaseValidated.status, 0, releaseValidated.stderr);
 });
 
 test("validate-main-backflow ignores squashed promotion content already in dev history", (t) => {
@@ -1102,6 +1140,38 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   ]);
 
   assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
+test("validate-main-backflow permits the reviewed branch-specific release governance test", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'dev-isolated-verifier';\n",
+  );
+  commitAll(cwd, "test: retain dev release verifier assertions");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "scripts/release-governance.test.mjs",
+    "export const releaseLane = 'production';\n",
+  );
+  commitAll(cwd, "test: retain production release assertions");
+  updateOriginRef(cwd, "main");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Main backflow is in sync/);
 });
 
