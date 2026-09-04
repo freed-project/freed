@@ -189,7 +189,7 @@ jobs:
 
       - name: Cache Rust build artifacts
         if: needs.notes.outputs.release_channel != 'dev'
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           workspaces: packages/desktop/src-tauri -> target
 
@@ -347,7 +347,7 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           workspaces: packages/desktop/src-tauri
 
@@ -517,7 +517,7 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Rust cache
-        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           workspaces: packages/desktop/src-tauri
 
