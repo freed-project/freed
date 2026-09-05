@@ -6,6 +6,7 @@ import {
 } from "./identity-graph-atlas.js";
 import type { IdentityGraphActivitySummaries } from "./identity-graph-activity-summary.js";
 import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
+import { galaxyIconGlyph } from "./galaxy-label-icons.js";
 
 function buildIdentityGraphAtlas(
   input: Parameters<typeof buildIdentityGraphAtlasModel>[0] &
@@ -301,7 +302,7 @@ describe("buildIdentityGraphAtlas", () => {
     const maxAccountDistance = Math.max(
       ...accountNodes.map((node) => Math.hypot(node.x - personNode!.x, node.y - personNode!.y)),
     );
-    expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 26);
+    expect(maxAccountDistance).toBeLessThan(personNode!.radius);
   });
 
   it("distributes a sparse set of linked accounts around a complete local orbit", () => {
@@ -334,6 +335,40 @@ describe("buildIdentityGraphAtlas", () => {
     );
 
     expect(occupiedQuadrants.size).toBe(4);
+  });
+
+  it("labels every admitted detail node without selection, including low-priority feeds", () => {
+    const model = buildIdentityGraphAtlasModel({
+      persons: [person(1)],
+      accounts: {},
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 390,
+      height: 760,
+    });
+    const template = model.nodes[0]!;
+    model.nodes = Array.from({ length: 100 }, (_, index) => ({
+      ...template,
+      id: `feed:detail-${index}`,
+      kind: "feed" as const,
+      personId: undefined,
+      x: 100 + index % 10,
+      y: 100 + Math.floor(index / 10),
+      priority: 100,
+    }));
+    model.regions = [];
+    const atlas = sliceIdentityGraphAtlas({
+      model,
+      transform: { x: 0, y: 0, scale: 1 },
+      width: 390,
+      height: 760,
+      quality: "settled",
+    });
+    expect(atlas.nodes).toHaveLength(100);
+    expect(atlas.labels.map((label) => label.nodeId).sort()).toEqual(
+      atlas.nodes.map((node) => node.id).sort(),
+    );
   });
 
   it("distributes unlinked provider accounts through bounded spiral arms", () => {
@@ -400,7 +435,7 @@ describe("buildIdentityGraphAtlas", () => {
     });
     expect(providerAtlas.labels).toContainEqual(expect.objectContaining({
       nodeId: "provider:instagram",
-      text: "Instagram 48",
+      text: `Instagram 48 ${galaxyIconGlyph("instagram")}`,
     }));
     expect(providerAccounts.every((account) => providerAtlas.labels.some((label) =>
       label.nodeId === `account:${account.id}`

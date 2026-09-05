@@ -31,6 +31,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { discoveredSocialAccountFromItem, type FeedItem } from "@freed/shared";
@@ -750,9 +751,13 @@ export function FeedView() {
     selectedItemPin.selectedItemId === selectedItemId
       ? selectedItemPin.item
       : null;
+  // A cold deep link can name an item outside the resident feed pages. Read
+  // exactly that row without expanding the bounded feed or selecting a neighbor.
+  const selectedItemDetail = useLibraryItemDetail(selectedItemId, libraryItemVersion);
   const selectedItem =
     residentSelectedItem ??
-    (boundedFeedEligible ? currentSelectedItemPin : null);
+    (boundedFeedEligible ? currentSelectedItemPin : null) ??
+    selectedItemDetail.item;
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
@@ -812,9 +817,9 @@ export function FeedView() {
           ];
     const pinnedSelection =
       boundedFeedEligible &&
-      currentSelectedItemPin?.globalId === selectedItemId &&
+      selectedItem?.globalId === selectedItemId &&
       !residentItems.some((item) => item.globalId === selectedItemId)
-        ? currentSelectedItemPin
+        ? selectedItem
         : null;
     return pinnedSelection
       ? [pinnedSelection, ...residentItems]
@@ -822,7 +827,7 @@ export function FeedView() {
   }, [
     readerWindow,
     boundedFeedEligible,
-    currentSelectedItemPin,
+    selectedItem,
     selectedItemId,
     visibleItems,
   ]);

@@ -28,8 +28,8 @@
     },
     {
       "id": 6,
-      "status": "current",
-      "source": "docs/PHASE-6-PWA.md"
+      "source": "docs/PHASE-6-PWA.md",
+      "status": "current"
     },
     {
       "id": 7,

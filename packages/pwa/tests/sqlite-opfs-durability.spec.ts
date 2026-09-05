@@ -496,8 +496,11 @@ test("iPhone WebKit completes interrupted sample population after restart", asyn
     let opened = await openPersistentLibrary(profileRoot);
     context = opened.context;
     await expect(
-      opened.page.getByText("Adding items: 30%", { exact: true }),
+      opened.page.getByText("30% complete", { exact: true }),
     ).toBeVisible({ timeout: 90_000 });
+    await expect(
+      opened.page.getByRole("status", { name: "Populating demo", exact: true }),
+    ).toBeVisible();
     const interrupted = await readFacetSummary(opened.page);
     expect(interrupted).toMatchObject({
       rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,

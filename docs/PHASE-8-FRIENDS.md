@@ -821,11 +821,11 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] Raw WebGPU and Three.js WebGPU keep a bounded identity icon atlas resident and animate its scale-derived opacity without rebuilding presentation during zoom
 - [x] Hover, pointer, wheel, and Safari input share one cached viewport origin, with geometry reads bounded to interaction boundaries and resize
 - [x] Active pan and pinch mutate one fixed typed pointer roster without per-move Map iterators or point objects
-- [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
+- [x] Linked accounts occupy compact complete local orbits and share their identity's depth with only a small deterministic offset. The active product worker compiles the same scene used by Raw WebGPU: care levels 1 through 5 span distinct depth bands as well as size and luminance. Pinned planar coordinates remain unchanged. Dense people fields reserve enough space for those systems.
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
 - [x] iPhone pan and pinch use native non-passive touch events instead of WebKit pointer capture, preserve the pinch midpoint, recover after touch cancellation, and leave browser zoom unchanged
-- [x] Billboard labels render through one instanced glyph-atlas draw, avoid screen-space collisions against the current camera on every changed frame, remain density-capped during motion, and use active theme colors
+- [x] Billboard labels render through one instanced glyph-atlas draw and use active theme colors. Close detail names every admitted visible identity and profile without requiring selection or suppressing labels for collisions. Overview and middle views retain density controls. The product worker prioritizes candidates visible through the actual 3D camera, not only the flat atlas viewport, while retaining the 192-node and 120-preselected-label metadata budgets. Complete small-source metadata fits within those same budgets; larger scenes narrow their visible candidate set through zoom.
 - [x] Mac Safari trackpad pinch uses native gesture events, preserves its focal point, leaves browser page zoom unchanged, and synchronizes only bounded presentation metadata during movement
 - [x] Friends uses the same vertical sidebar inset as every other workspace while its pointer-free Galaxy background continues beneath the sidebar to the full content-frame bounds
 - [x] Provider sectors use deterministic spiral placement and theme-aware nebula fields, with Nebula as the default treatment and no idle identity-to-account links

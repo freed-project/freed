@@ -3,7 +3,6 @@ import {
   SAMPLE_CHARACTER_ARCS,
   SAMPLE_CURATED_DEMO_MEDIA,
   sampleCorpusAttribution,
-  sampleCorpusDisplayTitle,
   sampleCorpusMediaUrl,
   sampleCorpusSourceUrl,
   type Account,
@@ -35,6 +34,7 @@ const DEMO_PUBLIC_KEY = "4".repeat(64);
 const DEMO_CHAIN_DIGEST = "5".repeat(64);
 const DEMO_PAGE_RECORDS = 512;
 const DEMO_LAST_TOP_ITEM_KEY = "freed.demo.last-top-item.v1";
+export type FreedDemoCheckpointProgressListener = (percent: number) => void;
 const DEMO_CHARACTER_CARE_LEVELS = {
   "manny-tis": 5,
   "cygnus-shy": 4,
@@ -42,6 +42,9 @@ const DEMO_CHARACTER_CARE_LEVELS = {
   "frogbert-angler": 3,
   "flora-mingo": 2,
   "nova-remains": 1,
+  "alma-eight": 4,
+  "mora-grey": 2,
+  "colm-still": 1,
 } as const satisfies Readonly<Record<string, Person["careLevel"]>>;
 
 interface FreedDemoCheckpointOptions {
@@ -86,11 +89,15 @@ function curatedDemoSample(
   presentationSeed: number,
   previousTopItemId: string | null | undefined,
 ) {
+  const mediaBySha = new Map(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => [asset.sha1, asset]));
   const mediaByCharacter = new Map<string, typeof SAMPLE_CURATED_DEMO_MEDIA>();
   for (const arc of SAMPLE_CHARACTER_ARCS) {
     mediaByCharacter.set(
       arc.characterId,
-      SAMPLE_CURATED_DEMO_MEDIA.filter((asset) => asset.identityNameBase === arc.identityNameBase),
+      arc.episodes.flatMap((episode) => {
+        const asset = episode.mediaSha1 ? mediaBySha.get(episode.mediaSha1) : undefined;
+        return asset ? [asset] : [];
+      }),
     );
   }
   const characterItems = new Map<string, FeedItem[]>();
@@ -98,29 +105,36 @@ function curatedDemoSample(
   for (const arc of SAMPLE_CHARACTER_ARCS) {
     const assets = mediaByCharacter.get(arc.characterId) ?? [];
     const externalId = `${DEMO_BATCH_ID}:sample-character-${arc.characterId}`;
-    const items = assets.map((asset, sequence) => {
+    const items = arc.episodes.map((episode, sequence) => {
+      const asset = episode.mediaSha1 ? mediaBySha.get(episode.mediaSha1) : undefined;
+      if (episode.mediaSha1 && !asset) {
+        throw new Error(`Missing reviewed demo media for ${arc.characterId}:${sequence}`);
+      }
       const template = sample.items[templateIndex++]!;
-      const title = sampleCorpusDisplayTitle(asset, arc.platform, sequence);
+      const globalId = `${DEMO_BATCH_ID}:sample-character:${arc.characterId}:${sequence}`;
+      const sourceUrl = asset
+        ? sampleCorpusSourceUrl(asset)
+        : `https://demo.freed.wtf/?item=${encodeURIComponent(globalId)}`;
       return {
         ...template,
-        globalId: `${DEMO_BATCH_ID}:sample-character:${arc.characterId}:${sequence}`,
+        globalId,
         platform: arc.platform,
         contentType: arc.platform === "rss" ? "article" as const : "post" as const,
-        sourceUrl: sampleCorpusSourceUrl(asset),
+        sourceUrl,
         author: {
           id: externalId,
           displayName: arc.identityNameBase,
           handle: arc.characterId,
-          avatarUrl: sampleCorpusMediaUrl(assets[0] ?? asset),
+          avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
         },
         content: {
-          text: asset.fieldNote,
-          mediaUrls: [sampleCorpusMediaUrl(asset)],
-          mediaTypes: ["image" as const],
+          text: episode.body,
+          mediaUrls: asset ? [sampleCorpusMediaUrl(asset)] : [],
+          mediaTypes: asset ? ["image" as const] : [],
           linkPreview: {
-            url: sampleCorpusSourceUrl(asset),
-            title,
-            description: sampleCorpusAttribution(asset),
+            url: sourceUrl,
+            title: episode.title,
+            description: asset ? sampleCorpusAttribution(asset) : undefined,
           },
         },
         ...(arc.platform === "rss"
@@ -132,11 +146,11 @@ function curatedDemoSample(
               },
             }
           : { rssSource: undefined }),
-        ...(asset.coordinates
+        ...(arc.location || asset?.coordinates
           ? {
               location: {
-                name: asset.detail,
-                coordinates: asset.coordinates,
+                name: arc.location?.name ?? asset!.detail,
+                coordinates: arc.location?.coordinates ?? asset!.coordinates!,
                 source: "text_extraction" as const,
               },
             }
@@ -146,9 +160,9 @@ function curatedDemoSample(
               preservedAt: generatedAt,
               publishedAt: generatedAt,
               author: arc.identityNameBase,
-              text: asset.fieldNote,
-              wordCount: asset.fieldNote.trim().split(/\s+/).length,
-              readingTime: 1,
+              text: episode.body,
+              wordCount: episode.body.trim().split(/\s+/).length,
+              readingTime: Math.max(1, Math.ceil(episode.body.trim().split(/\s+/).length / 200)),
             }
           : undefined,
         userState: {
@@ -203,8 +217,9 @@ function curatedDemoSample(
       id: `${DEMO_BATCH_ID}:sample-person-${arc.characterId}`,
       name: arc.identityNameBase,
       bio: arc.bio,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : template.avatarUrl,
-      careLevel: DEMO_CHARACTER_CARE_LEVELS[arc.characterId as keyof typeof DEMO_CHARACTER_CARE_LEVELS],
+      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
+      careLevel: DEMO_CHARACTER_CARE_LEVELS[arc.characterId as keyof typeof DEMO_CHARACTER_CARE_LEVELS]
+        ?? (1 + stablePresentationNumber(arc.characterId, 0) % 5) as Person["careLevel"],
       relationshipStatus: "friend",
     } satisfies Person;
   });
@@ -219,18 +234,18 @@ function curatedDemoSample(
       externalId,
       handle: arc.characterId,
       displayName: arc.identityNameBase,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : template.avatarUrl,
+      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
       personId: persons[index]!.id,
     } satisfies Account;
   });
-  const nova = SAMPLE_CHARACTER_ARCS.find((arc) => arc.characterId === "nova-remains")!;
   const feedTemplate = sample.feeds[0]!;
-  const feeds: RssFeed[] = [{
+  const feeds: RssFeed[] = SAMPLE_CHARACTER_ARCS.filter((arc) => arc.platform === "rss").map((arc) => ({
     ...feedTemplate,
-    url: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${nova.characterId}`,
-    title: `${nova.identityNameBase} Field Notes`,
+    url: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${arc.characterId}`,
+    title: `${arc.identityNameBase} Field Notes`,
     siteUrl: "https://sample.freed.wtf",
-  }];
+    imageUrl: undefined,
+  }));
   return { accounts, feeds, items, persons };
 }
 
@@ -529,8 +544,11 @@ let demoInstallTask: Promise<void> | null = null;
 
 async function activateDemoCheckpoint(
   records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+  onProgress?: FreedDemoCheckpointProgressListener,
+  progressRange: readonly [start: number, end: number] = [0, 90],
 ): Promise<void> {
   const stageId = `demo:${crypto.randomUUID()}`;
+  const [progressStart, progressEnd] = progressRange;
   await beginPwaNormalizedCheckpointStage({
     authorityEpoch: DEMO_EPOCH_ID,
     createdAt: DEMO_CREATED_AT,
@@ -539,24 +557,34 @@ async function activateDemoCheckpoint(
     sourceRevision: 1,
     stageId,
   });
+  onProgress?.(progressStart);
   for (let offset = 0; offset < records.length; offset += DEMO_PAGE_RECORDS) {
     await appendPwaNormalizedCheckpointStagePage({
       records: records.slice(offset, offset + DEMO_PAGE_RECORDS),
       stageId,
     });
+    const completedRecords = Math.min(offset + DEMO_PAGE_RECORDS, records.length);
+    const fraction = completedRecords / Math.max(records.length, 1);
+    onProgress?.(
+      Math.round(progressStart + (progressEnd - progressStart) * fraction),
+    );
   }
   await activatePwaNormalizedCheckpointStage({
     followerReceipt: null,
     replaceExisting: true,
     stageId,
   });
+  onProgress?.(progressEnd);
 }
 
-async function installFreedDemoCheckpointOnce(): Promise<void> {
+async function installFreedDemoCheckpointOnce(
+  onProgress?: FreedDemoCheckpointProgressListener,
+): Promise<void> {
   const records = createFreedDemoCheckpointRecords({
     previousTopItemId: readPreviousDemoTopItemId(),
   });
-  await activateDemoCheckpoint(records);
+  onProgress?.(0);
+  await activateDemoCheckpoint(records, onProgress, [2, 88]);
   const firstSummary = await queryPwaNormalizedLibrary({
     queryId: "library_facet_summary_v1",
     schemaVersion: 1,
@@ -564,15 +592,19 @@ async function installFreedDemoCheckpointOnce(): Promise<void> {
   const expectedItems = records.filter(
     (candidate) => candidate.registryKey === "10_feed_item",
   ).length;
+  onProgress?.(92);
   if (firstSummary.summary.totalCount !== expectedItems) {
-    await activateDemoCheckpoint(records);
+    await activateDemoCheckpoint(records, onProgress, [92, 98]);
   }
   const topItemId = demoTopItemId(records);
   if (topItemId) writePreviousDemoTopItemId(topItemId);
+  onProgress?.(98);
 }
 
-export function installFreedDemoCheckpoint(): Promise<void> {
-  demoInstallTask ??= installFreedDemoCheckpointOnce().catch((error) => {
+export function installFreedDemoCheckpoint(
+  onProgress?: FreedDemoCheckpointProgressListener,
+): Promise<void> {
+  demoInstallTask ??= installFreedDemoCheckpointOnce(onProgress).catch((error) => {
     demoInstallTask = null;
     throw error;
   });

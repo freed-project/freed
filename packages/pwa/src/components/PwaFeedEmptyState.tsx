@@ -3,6 +3,7 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 import { useLibraryRssFeedDetail } from "@freed/ui/hooks/useLibraryRssFeedDetail";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
+import { useSamplePopulationProgress } from "../lib/sample-population-progress";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
@@ -11,10 +12,11 @@ function isMergeBlocked(message?: string): boolean {
   return message?.includes("blocked a sync merge") ?? false;
 }
 
-function SyncSpinner() {
+function StatusSpinner({ label }: { label: string }) {
   return (
     <div
-      aria-label="Syncing"
+      aria-label={label}
+      role="status"
       className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
     />
   );
@@ -23,6 +25,8 @@ function SyncSpinner() {
 export function PwaFeedEmptyState() {
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
+  const samplePopulationActive = useSamplePopulationProgress((s) => s.active);
+  const samplePopulationPercent = useSamplePopulationProgress((s) => s.percent);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const { feed: activeFeed } = useLibraryRssFeedDetail(
@@ -48,6 +52,18 @@ export function PwaFeedEmptyState() {
   // Per-feed view: a specific feed is selected but has no items yet.
   // `lastFetched` is absent until Freed Desktop polls the feed.
   const isPendingSync = activeFeed != null && !activeFeed.lastFetched;
+
+  if (samplePopulationActive) {
+    return (
+      <>
+        <StatusSpinner label="Populating demo" />
+        <p className="mb-2 text-lg font-medium">Populating your demo</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">
+          {samplePopulationPercent.toLocaleString()}% complete
+        </p>
+      </>
+    );
+  }
 
   if (isPendingSync) {
     // Display hostname when the title is still the raw URL sentinel
@@ -100,7 +116,7 @@ export function PwaFeedEmptyState() {
 
   return (
     <>
-      {cloudTransferRunning && <SyncSpinner />}
+      {cloudTransferRunning && <StatusSpinner label="Syncing" />}
       <p className="text-lg font-medium mb-2">
         {syncBlocked ? "Sync is blocked" : syncConnected ? "Waiting for content..." : "No content yet"}
       </p>

@@ -73,6 +73,10 @@ describe("compileIdentityGalaxyScene", () => {
       expect(depths[index]).toBeGreaterThan(depths[index - 1]!);
       expect(scene.brightness[index]).toBeGreaterThan(scene.brightness[index - 1]!);
     }
+    expect(depths[4]! - depths[0]!).toBeGreaterThan(300);
+    for (let index = 1; index < depths.length; index += 1) {
+      expect(depths[index]! - depths[index - 1]!).toBeGreaterThan(70);
+    }
   });
 
   it("builds compact typed buffers with stable node and edge indices", () => {
@@ -111,7 +115,7 @@ describe("compileIdentityGalaxyScene", () => {
     expect(scene.edgeIndices).toEqual(new Uint32Array([0, 1]));
   });
 
-  it("keeps relationship and care dominant while placing linked accounts behind people", () => {
+  it("keeps care dominant while placing linked accounts in their parent's depth shell", () => {
     const input = atlas([
       node("person:fam", {
         personId: "fam",
@@ -148,7 +152,7 @@ describe("compileIdentityGalaxyScene", () => {
 
     expect(famDepth).toBeGreaterThan(activeFriendDepth);
     expect(activeFriendDepth).toBeGreaterThan(activeConnectionDepth);
-    expect(linkedAccountDepth).toBeLessThan(famDepth - 40);
+    expect(Math.abs(linkedAccountDepth - famDepth)).toBeLessThanOrEqual(3);
   });
 
   it("encodes transient interaction state without changing stable positions", () => {
@@ -169,6 +173,7 @@ describe("compileIdentityGalaxyScene", () => {
     const positions = scene.positions;
     const edgeIndices = scene.edgeIndices;
     const basePointSize = scene.pointSizes[0]!;
+    expect(Array.from(scene.positions.slice(0, 2))).toEqual([100, -200]);
     updateIdentityGalaxySceneInteraction(scene, {
       quality: "interactive",
       selectedPersonId: "selected",
