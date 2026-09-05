@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Website work uses its own immutable Next.js staging contract on the www lane.
+if [[ "${1:-}" == "website" ]]; then
+  [[ $# -le 2 ]] || { echo "Usage: $0 website [vercel-token]" >&2; exit 1; }
+  source "$(dirname "${BASH_SOURCE[0]}")/lib/node-tooling.sh"
+  use_resolved_node_path
+  export VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
+  exec "$(resolve_node_bin)" "$(dirname "${BASH_SOURCE[0]}")/deploy-website.mjs" preview
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/node-tooling.sh
 source "${SCRIPT_DIR}/lib/node-tooling.sh"

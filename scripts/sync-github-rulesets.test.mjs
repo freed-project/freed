@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   findReleaseAppReadinessEvidence,
+  findRulesetReadinessEvidence,
   loadRulesets,
   parseArgs,
   planRulesetSync,
@@ -23,6 +24,7 @@ import {
   verifyCodeownerApprovalReadiness,
   verifyCodeownersReadiness,
   verifyLiveReleaseTagAuthority,
+  verifyLiveBranchRuleset,
   verifyReleaseAppReadiness,
   verifyReleaseTagActivation,
   verifyReleaseTagLockdown,
@@ -31,12 +33,24 @@ import {
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 
-test("checked-in branch rulesets require PRs, CODEOWNER review, squash, and strict checks", () => {
+test("checked-in branch rulesets require PRs, squash, and strict app-bound checks without self-review deadlock", () => {
   const rulesets = loadRulesets();
   const branchRulesets = rulesets.filter(
     (ruleset) => ruleset.target === "branch",
   );
   assert.equal(branchRulesets.length, 3);
+  for (const ruleset of branchRulesets) {
+    const policy = ruleset.rules.find(
+      (rule) => rule.type === "pull_request",
+    ).parameters;
+    assert.equal(policy.require_code_owner_review, false);
+    assert.equal(policy.required_approving_review_count, 0);
+    assert.equal(policy.require_last_push_approval, false);
+    const checks = ruleset.rules.find(
+      (rule) => rule.type === "required_status_checks",
+    ).parameters.required_status_checks;
+    assert.ok(checks.every((check) => check.integration_id === 15368));
+  }
   assert.deepEqual(
     branchRulesets
       .map((ruleset) => ruleset.conditions.ref_name.include[0])
@@ -103,10 +117,7 @@ test("ruleset apply requires one branch and successful check evidence", () => {
     parseArgs(["--apply", "--lock-release-tags"]).releaseTagLockdown,
     true,
   );
-  assert.throws(
-    () => parseArgs(["--apply", "--branch", "dev"]),
-    /requires --publisher-login/,
-  );
+  assert.equal(parseArgs(["--apply", "--branch", "dev"]).branch, "dev");
   assert.equal(
     parseArgs([
       "--apply",
@@ -123,16 +134,91 @@ test("ruleset apply requires one branch and successful check evidence", () => {
   assert.throws(
     () =>
       verifyRulesetReadiness(dev, [
-        { name: "Tooling smoke", conclusion: "success" },
+        { name: "Tooling smoke", conclusion: "success", app: { id: 15368 } },
       ]),
     /Missing successful check contexts: Feature validation/,
   );
   assert.deepEqual(
     verifyRulesetReadiness(dev, [
-      { name: "Tooling smoke", conclusion: "success" },
-      { name: "Feature validation", conclusion: "success" },
+      { name: "Tooling smoke", conclusion: "success", app: { id: 15368 } },
+      { name: "Feature validation", conclusion: "success", app: { id: 15368 } },
     ]).ready,
     true,
+  );
+});
+
+test("single-maintainer readiness needs merged exact-head checks, not a fabricated owner approval", () => {
+  const dev = loadRulesets().find(
+    (item) => item.name === "Freed dev governance",
+  );
+  const calls = [];
+  const exec = (_command, args) => {
+    calls.push(args[1]);
+    if (args[1].includes("/pulls?"))
+      return JSON.stringify([
+        {
+          number: 1,
+          merged_at: "2026-09-04T00:00:00Z",
+          head: { sha: "a".repeat(40) },
+          user: { login: "AubreyF", type: "User" },
+        },
+      ]);
+    if (args[1].includes("/check-runs?"))
+      return JSON.stringify({
+        check_runs: requiredCheckContexts(dev).map((name) => ({
+          name,
+          conclusion: "success",
+          app: { id: 15368 },
+        })),
+      });
+    throw new Error("Unexpected API request: " + args[1]);
+  };
+  assert.equal(
+    findRulesetReadinessEvidence("example/repo", dev, null, { exec }).headSha,
+    "a".repeat(40),
+  );
+  assert.equal(calls.length, 2);
+  assert.throws(
+    () =>
+      verifyRulesetReadiness(
+        dev,
+        requiredCheckContexts(dev).map((name) => ({
+          name,
+          conclusion: "success",
+          app: { id: 42 },
+        })),
+      ),
+    /Missing successful check contexts/,
+  );
+});
+
+test("branch readback rejects missing protection, duplicate policy, bypasses, and check source drift", () => {
+  const desired = loadRulesets().find(
+    (item) => item.name === "Freed dev governance",
+  );
+  const live = { ...structuredClone(desired), id: 12 };
+  assert.deepEqual(verifyLiveBranchRuleset(desired, [live]), {
+    ready: true,
+    id: 12,
+  });
+  assert.throws(() => verifyLiveBranchRuleset(desired, []), /exactly one/);
+  assert.throws(
+    () => verifyLiveBranchRuleset(desired, [live, live]),
+    /exactly one/,
+  );
+  assert.throws(
+    () =>
+      verifyLiveBranchRuleset(desired, [
+        { ...live, bypass_actors: [{ actor_id: 1 }] },
+      ]),
+    /bypass_actors/,
+  );
+  live.rules.find(
+    (rule) => rule.type === "required_status_checks",
+  ).parameters.required_status_checks[0].integration_id = 42;
+  assert.throws(
+    () => verifyLiveBranchRuleset(desired, [live]),
+    /differs from declared policy/,
   );
 });
 
