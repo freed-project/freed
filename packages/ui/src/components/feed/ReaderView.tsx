@@ -355,6 +355,7 @@ export function ReaderView({
     openUrl: platformOpenUrl,
     updateSavedContent,
     youtube,
+    interactionMode,
   } = usePlatform();
   const openSavedContentEditor = useCommandSurfaceStore((state) => state.openSavedContentEditor);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
@@ -489,6 +490,16 @@ export function ReaderView({
       setHasRequestedThreadReplies(false);
       setThreadReplyMessage(null);
       setPreservedText(item.preservedContent?.text ?? null);
+
+      // Demo copy is complete authored content, not an article teaser. Its
+      // attribution URL must never become a hydration or article-cache target.
+      if (interactionMode === "read-only") {
+        setHtml(null);
+        setPreservedText(item.preservedContent?.text ?? item.content.text ?? null);
+        setContentSource("text");
+        setIsLoading(false);
+        return;
+      }
 
       if (item.userState.saved && pinReaderItem && !youtubeReference) {
         void pinReaderItem(item);
@@ -650,6 +661,7 @@ export function ReaderView({
     };
   }, [
     item.globalId,
+    interactionMode,
     articleUrl,
     getLocalContent,
     getLocalPreservedText,
@@ -662,7 +674,7 @@ export function ReaderView({
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
-    if (!hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
+    if (interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
 
     setHasRequestedThreadReplies(true);
     setThreadReplyMessage(null);
@@ -704,7 +716,7 @@ export function ReaderView({
     } finally {
       setIsThreadLoading(false);
     }
-  }, [hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
+  }, [interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);

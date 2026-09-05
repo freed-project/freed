@@ -364,7 +364,10 @@ export function Header({
   const visibleFeedTotalCount = useAppStore(
     (state) => state.visibleFeedTotalCount,
   );
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(
+    searchCorpusVersion,
+    isLibraryInitialized,
+  );
   const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);

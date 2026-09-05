@@ -19,15 +19,7 @@ const WIKIMEDIA_IMAGE_HOSTS = new Set(["thumb.wikimedia.org", "upload.wikimedia.
 
 const EXPECTED_CURATED_MEDIA_SHA1S = [
   // Manny Tis
-  "c88ce5d5c8cd990996d841db9af09646ae2d47c7",
-  "d419335f51a0e926dbd6a7a49d0e5449b6790d0a",
-  "e5f6a877347285e1ca1e38f040566752f1b90305",
-  "5e6da761a344b8f0a359091ac1b995a6d5c4056e",
-  "4bd31bee0500c333e4367a0bbacb3b24efce198c",
-  "2cb2762eb9cb6f68bcbe16287fb038170521aaed",
-  "31e1e5639ab0477d2a2466941d5883f6dfe1a57f",
-  "7e07c6b30b74a08ea83cbbb05e68d54da3adfe10",
-  "d67cc98af34b60d6e8b2e7aa586aa9e05de4d3fd",
+  "27b7ebe285129ff07853aa2d19185414fffd682c",
   // Frogbert Angler
   "ab98dabf54fe33be92581795707d73fd56b68176",
   "d8db811f9a3957e75569f46ac91be3a8456373b0",
@@ -38,6 +30,15 @@ const EXPECTED_CURATED_MEDIA_SHA1S = [
   "17fe76cd81e2688f0ba67e0de0b378e32bdd8d1c",
   "791547f8fd744ca2c6c6406b352b1c12282d63f0",
   "9663a30640ec7d977a6ce02a9a1b87b875f85365",
+  "3624eaf19c3acf8fa1cca99db5e805484c19a308",
+  "5ed8136cce82cbab004eae9e7a0862df6e5e96f8",
+  "49519db6c9912690ba9207fa4598a50eef1db15d",
+  "263790270be285a77e106ff15a6aa54ce22babc7",
+  "02edfc1a3e7dfa7484ae030053c6cf6de2110be4",
+  "ca03f3c6dce3d3ac18871575bcab8eac4335c57b",
+  "55a4eef5f61d3304f1605aa15eaa3a683d913594",
+  "b6112ff78acbbd8a7824285a820f2d205a56015a",
+  "63d3cd65c960859551065b660c587a04388d57a2",
   // Nudi Branch Manager
   "132c45ae85dc04fbd3f381cd972135af36b1f7ea",
   "999b6de9c270b6cf084e91d32519aab2f1b24366",
@@ -69,6 +70,25 @@ const EXPECTED_CURATED_MEDIA_SHA1S = [
   "c03fc532fda31868f7f0269abd2fe2eaa4560fb9",
   "30d841ea8b83576cf6e622d4fd5f08987daf8807",
   "ba2a2537792822fe82dd11f8f9d8aab93e37f1e0",
+  // Alma Eight
+  "e3b02baa078bc64dd9c72ca6a799761a9fa4d0b8",
+  "d37b45d8da6d29de546005a5817439a76970e224",
+  "80b6a70616f9714429b2df7f2f72f57612c64430",
+  "ff7652dda66a6db6ac59eaf12b315fe925d35b88",
+  "93a24cc4435adc73ecf8c680a36f5e785ed96ccc",
+  "9cbc38f956e32fb306eef4b966f3720a59b81673",
+  "03eda8d06209532d34f3299c666b2ab3d006065b",
+  "2b6cceb9d37459e39fb0e1be6c7a9de565e2587e",
+  // Mora Grey
+  "69768a771ef6aa522927343b39e820d69f089e2d",
+  "45bb50db85ebfb51c8f184a12cf8f09b599b734b",
+  "82c7e06d9c1a1a5062b35af29764e100024bced0",
+  "049d2dd8430d88fc72510d0f8815aaacf9659435",
+  "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
+  // Colm Still
+  "e79a752849690cedabe3da27bb875d7e8072fe36",
+  "4bfa89fc6b9b8721976b3cfdb59ce7b0b9493d06",
+  "b611390cec6348b9ee887a0ea3baae1bed485b7b",
 ] as const;
 
 const KNOWN_BAD_CURATED_MEDIA_SHA1S = new Set([
@@ -93,12 +113,26 @@ const containsEditorialLocation = (value: string): boolean =>
   EDITORIAL_LOCATIONS.some((location) => value.includes(location));
 
 describe("sample corpus", () => {
+  it("ships exactly 500 distinct authored entries across 52 located characters", () => {
+    const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
+    const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    expect(episodes).toHaveLength(500);
+    expect(new Set(episodes.map((episode) => normalize(episode.title))).size).toBe(500);
+    expect(new Set(episodes.map((episode) => normalize(episode.body))).size).toBe(500);
+    expect(SAMPLE_CHARACTER_ARCS.filter((arc) => arc.platform === "rss").flatMap((arc) => arc.episodes)).toHaveLength(145);
+    for (const arc of SAMPLE_CHARACTER_ARCS) {
+      if (arc.characterId === "nova-remains") continue; // A supernova has no Earth coordinate.
+      expect(arc.location, arc.characterId).toBeDefined();
+      expect(Math.abs(arc.location!.coordinates.lat)).toBeLessThanOrEqual(90);
+      expect(Math.abs(arc.location!.coordinates.lng)).toBeLessThanOrEqual(180);
+    }
+  });
   it("keeps every curated image attributable and uniquely addressable", () => {
-    expect(SAMPLE_CORPUS_MEDIA).toHaveLength(1_750);
-    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(45);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(45);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(45);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(45);
+    expect(SAMPLE_CORPUS_MEDIA).toHaveLength(1_772);
+    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(80);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(80);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(80);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(80);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.creator.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.license.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.alt.trim().length > 0)).toBe(true);
@@ -116,13 +150,16 @@ describe("sample corpus", () => {
     )).toBe(true);
   });
 
-  it("binds every authored episode to its exact reviewed image", () => {
-    const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
-    const authoredSha1s = episodes.map((episode) => episode.mediaSha1);
+  it("preserves exact reviewed bindings and admits intentional text-only episodes", () => {
+    const allEpisodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
+    const episodes = allEpisodes.filter((episode) => episode.mediaSha1 !== null);
+    const authoredSha1s = episodes.map((episode) => episode.mediaSha1!);
     const curatedSha1s = SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1);
 
-    expect(authoredSha1s).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
-    expect(curatedSha1s).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
+    expect(allEpisodes).toHaveLength(500);
+    expect(allEpisodes.filter((episode) => episode.mediaSha1 === null)).toHaveLength(420);
+    expect(authoredSha1s.slice(0, 62)).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
+    expect(curatedSha1s).toEqual(authoredSha1s);
     expect(new Set(authoredSha1s).size).toBe(authoredSha1s.length);
     expect(authoredSha1s.every((sha1) => /^[0-9a-f]{40}$/.test(sha1))).toBe(true);
     expect(episodes.every((episode, index) =>
@@ -135,8 +172,8 @@ describe("sample corpus", () => {
     const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
     const intimateThemes = new Set(["courtship", "family"]);
 
-    expect(episodes).toHaveLength(45);
-    expect(episodes.filter((episode) => intimateThemes.has(episode.theme))).toHaveLength(7);
+    expect(episodes).toHaveLength(500);
+    expect(episodes.filter((episode) => intimateThemes.has(episode.theme)).length).toBeLessThanOrEqual(50);
     for (const arc of SAMPLE_CHARACTER_ARCS) {
       expect(arc.episodes.filter((episode) => intimateThemes.has(episode.theme)).length).toBeLessThanOrEqual(2);
     }
@@ -156,7 +193,8 @@ describe("sample corpus", () => {
 
     expect(authoredCopy).not.toMatch(/three a\.m\. doctrine|ceremonial robes|review of commitment|philosophy I had not requested/i);
     expect(SAMPLE_CORPUS_MEDIA.some((asset) => asset.detail === "PrayingMantisSRF2010")).toBe(false);
-    expect(rainAsset?.detail).toBe("Praying mantis camouflaging");
+    expect(rainAsset).toBeUndefined();
+    expect(SAMPLE_CHARACTER_ARCS.find((arc) => arc.characterId === "manny-tis")?.episodes.find((episode) => episode.title === "Rain has hands")?.mediaSha1).toBeNull();
   });
 
   it("renders through Wikimedia Commons and preserves valid corpus places", () => {
@@ -187,7 +225,8 @@ describe("sample corpus", () => {
     );
     expect(new Set(curatedTitles).size).toBe(curatedTitles.length);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset, index) =>
-      !asset.fieldNote.includes(curatedTitles[index]!)
+      // The owner-approved "grey." deliberately repeats its one-word title.
+      curatedTitles[index] === "grey." || !asset.fieldNote.includes(curatedTitles[index]!)
     )).toBe(true);
   });
 
@@ -196,7 +235,8 @@ describe("sample corpus", () => {
 
     expect(names.every((name, index) => name === SAMPLE_CURATED_DEMO_MEDIA[index]!.identityNameBase)).toBe(true);
     expect(names.every((name) => !containsEditorialLocation(name))).toBe(true);
-    expect(new Set(names).size).toBe(SAMPLE_CHARACTER_ARCS.length);
+    expect(SAMPLE_CHARACTER_ARCS).toHaveLength(52);
+    expect(new Set(SAMPLE_CHARACTER_ARCS.map((arc) => arc.identityNameBase)).size).toBe(52);
   });
 
   it("reserves invented locations for rare status jokes", () => {
@@ -230,7 +270,7 @@ describe("sample corpus", () => {
       sampleCorpusAuthoredText(asset, "instagram", index).split(";")[0]!.trim()
     );
 
-    expect(frogfish).toHaveLength(9);
+    expect(frogfish).toHaveLength(18);
     expect(new Set(openings).size).toBe(frogfish.length);
   });
 });

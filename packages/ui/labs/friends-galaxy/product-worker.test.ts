@@ -11,6 +11,7 @@ import {
   FriendsGalaxyProductWorkerService,
 } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
+import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
 import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
 import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
 import { buildFriendsGalaxyProductServiceSource } from "./product-sqlite-source-fixture.js";
@@ -145,6 +146,17 @@ describe("Friends Galaxy product worker", () => {
       request.viewport.width,
       request.viewport.height,
     );
+    const projected = new Float32Array(2);
+    const visibleIds = scene.scene.nodeIds.filter((_, index) => projectFriendsGalaxyWorldPoint(
+      projected,
+      { viewProjection: matrix, width: request.viewport.width, height: request.viewport.height },
+      scene.scene.positions[index * 3]!,
+      scene.scene.positions[index * 3 + 1]!,
+      scene.scene.positions[index * 3 + 2]!,
+    ));
+    expect(visibleIds.length).toBeGreaterThan(0);
+    expect(visibleIds.length).toBeLessThan(190);
+    expect(visibleIds.every((id) => metadataByNodeId.has(id))).toBe(true);
     const labels = selectFriendsGalaxyLabels(
       scene,
       (_rendererScene, nodeIndex) => {

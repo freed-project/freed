@@ -6,6 +6,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -20,6 +21,7 @@ declare global {
           sitekey: string;
           theme?: "light" | "dark" | "auto";
           size?: "normal" | "compact" | "flexible";
+          appearance?: "always" | "execute" | "interaction-only";
           action?: string;
           callback?: (token: string) => void;
           "expired-callback"?: () => void;
@@ -34,6 +36,20 @@ declare global {
 
 const TURNSTILE_SCRIPT_ID = "freed-newsletter-turnstile";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Match the marketing signup suggestion, but never replace a name the reader edits.
+function inferNameFromEmail(email: string): string {
+  const cleaned = (email.split("@")[0] ?? "")
+    .replace(/\+.*/, "")
+    .replace(/[0-9]+/g, " ")
+    .replace(/[._-]+/g, " ")
+    .trim();
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
 
 type SignupStatus =
   "idle" | "submitting" | "subscribed" | "preview-complete" | "error";
@@ -101,9 +117,14 @@ export function NewsletterSignup({
   previewOnly = false,
   onSubscribed,
 }: NewsletterSignupProps = {}) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [verificationStarted, setVerificationStarted] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({ email: "", name: "" });
+  const fieldId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const pendingSubmitRef = useRef(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [company, setCompany] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileReady, setTurnstileReady] = useState(() =>
@@ -117,21 +138,29 @@ export function NewsletterSignup({
   const widgetIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!detailsOpen) return;
+    if (nameManuallyEdited) return;
+    const suggestedName = inferNameFromEmail(email);
+    setName(suggestedName);
+    if (suggestedName) setFieldErrors((errors) => ({ ...errors, name: "" }));
+  }, [email, nameManuallyEdited]);
+
+  useEffect(() => {
+    if (!verificationStarted) return;
     return ensureTurnstileScript(
       () => setTurnstileReady(true),
       () => {
+        pendingSubmitRef.current = false;
         setStatus("error");
         setMessage(
           "The human check could not load. Check your connection and try again.",
         );
       },
     );
-  }, [detailsOpen]);
+  }, [verificationStarted]);
 
   useEffect(() => {
     if (
-      !detailsOpen ||
+      !verificationStarted ||
       !turnstileReady ||
       !turnstileContainerRef.current ||
       widgetIdRef.current ||
@@ -146,10 +175,12 @@ export function NewsletterSignup({
         sitekey: siteKey,
         theme: "auto",
         size: "flexible",
+        appearance: "interaction-only",
         action: "newsletter_signup",
         callback: setTurnstileToken,
         "expired-callback": () => setTurnstileToken(""),
         "error-callback": () => {
+          pendingSubmitRef.current = false;
           setTurnstileToken("");
           setStatus("error");
           setMessage("The human check failed. Please try again.");
@@ -163,36 +194,38 @@ export function NewsletterSignup({
       }
       widgetIdRef.current = null;
     };
-  }, [detailsOpen, siteKey, turnstileReady]);
+  }, [verificationStarted, siteKey, turnstileReady]);
+
+  useEffect(() => {
+    if (turnstileToken && pendingSubmitRef.current) {
+      pendingSubmitRef.current = false;
+      formRef.current?.requestSubmit();
+    }
+  }, [turnstileToken]);
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedName = name.trim();
-
-      if (!EMAIL_PATTERN.test(normalizedEmail)) {
-        setStatus("error");
-        setMessage("Enter a valid email address.");
-        return;
-      }
-
-      if (!detailsOpen) {
-        setStatus("idle");
-        setMessage("");
-        setDetailsOpen(true);
-        return;
-      }
-
-      if (!normalizedName) {
-        setStatus("error");
-        setMessage("Tell us your name.");
+      const errors = {
+        email: EMAIL_PATTERN.test(normalizedEmail) ? "" : "Enter a valid email address.",
+        name: normalizedName ? "" : "Enter your name.",
+      };
+      setFieldErrors(errors);
+      setMessage("");
+      // Preserve the existing first-valid-email-submit boundary for Cloudflare contact.
+      if (!errors.email) setVerificationStarted(true);
+      if (errors.email || errors.name) {
+        pendingSubmitRef.current = false;
+        formRef.current?.querySelector<HTMLInputElement>(errors.email ? 'input[type="email"]' : 'input[autocomplete="name"]')?.focus();
         return;
       }
 
       if (!turnstileToken) {
-        setStatus("error");
-        setMessage("Complete the human check.");
+        pendingSubmitRef.current = true;
+        setStatus("idle");
+        setMessage("Checking you’re human. Your signup will continue automatically.");
         return;
       }
 
@@ -244,7 +277,6 @@ export function NewsletterSignup({
     },
     [
       company,
-      detailsOpen,
       email,
       endpoint,
       name,
@@ -293,68 +325,76 @@ export function NewsletterSignup({
       className={
         compact
           ? "space-y-3"
-          : "rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4 sm:p-5"
+          : "space-y-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4 sm:p-5"
       }
       aria-label="Freed newsletter signup"
     >
-      <div>
+      {!compact && <div>
         <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
           Keep up with Freed.
         </p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">
           New builds, real progress, and the thinking behind Freed. No spam.
         </p>
-      </div>
+      </div>}
 
       <form
+        ref={formRef}
         className="space-y-3"
         onSubmit={(event) => void submit(event)}
         noValidate
       >
-        <div
-          className={
-            detailsOpen
-              ? "grid gap-3 sm:grid-cols-2"
-              : "flex flex-col gap-2 sm:flex-row"
-          }
-        >
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="min-w-0 flex-1">
-            <span className="sr-only">Email address</span>
+            <span className="mb-1 block text-xs text-[var(--theme-text-muted)]">Email address</span>
             <input
               type="email"
               inputMode="email"
               autoComplete="email"
+              name="email"
+              maxLength={254}
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                pendingSubmitRef.current = false;
+                setMessage("");
+                setFieldErrors((errors) => ({ ...errors, email: "" }));
+              }}
+              onBlur={() => setFieldErrors((errors) => ({ ...errors, email: email && !EMAIL_PATTERN.test(email.trim()) ? "Enter a valid email address." : "" }))}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? `${fieldId}-email-error` : undefined}
               placeholder="you@example.com"
               className="theme-input w-full rounded-xl px-3 py-2.5 text-sm outline-none"
               disabled={status === "submitting"}
               required
             />
+            {fieldErrors.email ? <span id={`${fieldId}-email-error`} role="alert" className="mt-1 block text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">{fieldErrors.email}</span> : null}
           </label>
-          {detailsOpen ? (
             <label className="min-w-0 flex-1">
-              <span className="sr-only">Name</span>
+              <span className="mb-1 block text-xs text-[var(--theme-text-muted)]">Name</span>
               <input
                 type="text"
                 autoComplete="name"
+                name="name"
+                maxLength={120}
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameManuallyEdited(true);
+                  pendingSubmitRef.current = false;
+                  setMessage("");
+                  setFieldErrors((errors) => ({ ...errors, name: "" }));
+                }}
+                onBlur={() => setFieldErrors((errors) => ({ ...errors, name: name && !name.trim() ? "Enter your name." : "" }))}
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? `${fieldId}-name-error` : undefined}
                 placeholder="Your name"
                 className="theme-input w-full rounded-xl px-3 py-2.5 text-sm outline-none"
                 disabled={status === "submitting"}
                 required
               />
+              {fieldErrors.name ? <span id={`${fieldId}-name-error`} role="alert" className="mt-1 block text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">{fieldErrors.name}</span> : null}
             </label>
-          ) : null}
-          {!detailsOpen ? (
-            <button
-              type="submit"
-              className="btn-secondary inline-flex min-h-10 items-center justify-center px-4 py-2 text-sm font-semibold"
-            >
-              Join the newsletter
-            </button>
-          ) : null}
         </div>
 
         <input
@@ -364,30 +404,26 @@ export function NewsletterSignup({
           onChange={(event) => setCompany(event.target.value)}
         />
 
-        {detailsOpen ? (
-          <>
-            <div ref={turnstileContainerRef} className="min-h-[68px]" />
-            <button
-              type="submit"
-              className="btn-primary inline-flex min-h-11 w-full items-center justify-center px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={status === "submitting"}
-            >
-              {status === "submitting" ? "Joining…" : "Join the newsletter"}
-            </button>
-          </>
-        ) : null}
+        <div ref={turnstileContainerRef} className="!mt-0" />
+        <button
+          type="submit"
+          className="btn-primary inline-flex min-h-11 w-full items-center justify-center px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={status === "submitting"}
+        >
+          {status === "submitting" ? "Joining…" : "Join the newsletter"}
+        </button>
 
         {message ? (
           <p
-            className="text-xs leading-relaxed text-[rgb(var(--theme-feedback-danger-rgb))]"
-            role="alert"
+            className={`text-xs leading-relaxed ${status === "error" ? "text-[rgb(var(--theme-feedback-danger-rgb))]" : "text-[var(--theme-text-muted)]"}`}
+            role={status === "error" ? "alert" : "status"}
           >
             {message}
           </p>
         ) : null}
       </form>
 
-      <p className="text-[11px] leading-relaxed text-[var(--theme-text-soft)]">
+      <p className={`text-[11px] leading-relaxed text-[var(--theme-text-soft)] ${compact ? "text-center" : ""}`}>
         Unsubscribe anytime. Your email goes to our newsletter provider and
         nowhere else.
       </p>

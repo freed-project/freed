@@ -1,3 +1,4 @@
+import { drawGalaxyLabel, measureGalaxyLabel } from "./galaxy-label-icons.js";
 const LABEL_INSTANCE_FLOATS = 11;
 const LABEL_PIXEL_SCALE = 2;
 const LABEL_TEXTURE_WIDTH = 2_048;
@@ -21,6 +22,7 @@ export interface FriendsGalaxyLabelSeed {
   gapY: number;
   priority: number;
   provider: boolean;
+  centered?: boolean;
 }
 
 export interface FriendsGalaxyBillboardLabel extends FriendsGalaxyLabelSeed {
@@ -42,6 +44,7 @@ export interface FriendsGalaxyLabelAtlas extends FriendsGalaxyBillboardAtlas {
 export interface FriendsGalaxyLabelPalette {
   background: string;
   text: string;
+  providers?: Readonly<Record<string, string>>;
 }
 
 export interface FriendsGalaxyAvatarExclusion {
@@ -67,7 +70,7 @@ export function writeFriendsGalaxyLabelInstances(
     target[offset + 1] = label.anchorY;
     target[offset + 2] = label.anchorZ;
     target[offset + 3] = 0;
-    target[offset + 4] = label.gapY + label.height * 0.5;
+    target[offset + 4] = label.centered ? 0 : label.gapY + label.height * 0.5;
     target[offset + 5] = label.width;
     target[offset + 6] = label.height;
     target.set(label.uv, offset + 7);
@@ -78,6 +81,7 @@ export function writeFriendsGalaxyLabelInstances(
 export function placeFriendsGalaxyLabelsAroundAvatars(
   seeds: readonly FriendsGalaxyLabelSeed[],
   avatars: readonly FriendsGalaxyAvatarExclusion[],
+  preserveNeighbors = false,
 ): readonly FriendsGalaxyLabelSeed[] {
   if (avatars.length === 0) return seeds;
 
@@ -90,7 +94,7 @@ export function placeFriendsGalaxyLabelsAroundAvatars(
       }];
     }
 
-    const overlapsAvatar = avatars.some((avatar) => Math.hypot(
+    const overlapsAvatar = !preserveNeighbors && avatars.some((avatar) => Math.hypot(
       seed.anchorX - avatar.anchorX,
       seed.anchorY - avatar.anchorY,
     ) < avatar.size * AVATAR_EXCLUSION_RADIUS_SCALE + AVATAR_LABEL_GAP);
@@ -114,7 +118,7 @@ export function createFriendsGalaxyLabelAtlas(
   }
   const measurements = seeds.map((label) => {
     measuringContext.font = `650 ${String(label.fontSize * LABEL_PIXEL_SCALE)}px ${fontFamily}`;
-    const width = Math.ceil(measuringContext.measureText(label.text).width) +
+    const width = Math.ceil(measureGalaxyLabel(measuringContext, label.text, label.fontSize * LABEL_PIXEL_SCALE)) +
       LABEL_PADDING_X * 2 * LABEL_PIXEL_SCALE;
     const height = Math.ceil(label.fontSize * 1.42 * LABEL_PIXEL_SCALE) +
       LABEL_PADDING_Y * 2 * LABEL_PIXEL_SCALE;
@@ -148,11 +152,13 @@ export function createFriendsGalaxyLabelAtlas(
   context.lineWidth = LABEL_OUTLINE_WIDTH * LABEL_PIXEL_SCALE;
   const labels = seeds.map((label, index): FriendsGalaxyBillboardLabel => {
     const placement = placements[index]!;
+    context.fillStyle = label.provider
+      ? palette.providers?.[label.nodeId.replace(/^provider:/, "")] ?? palette.text
+      : palette.text;
     context.font = `650 ${String(label.fontSize * LABEL_PIXEL_SCALE)}px ${fontFamily}`;
     const textX = placement.left + placement.width / 2;
     const textY = placement.top + placement.height / 2;
-    context.strokeText(label.text, textX, textY);
-    context.fillText(label.text, textX, textY);
+    drawGalaxyLabel(context, label.text, textX, textY, label.fontSize * LABEL_PIXEL_SCALE);
     return {
       ...label,
       width: placement.width / LABEL_PIXEL_SCALE,

@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
 import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { isFreedNewsletterPreviewHostname } from "../lib/demo-mode";
@@ -6,8 +6,6 @@ import { isFreedNewsletterPreviewHostname } from "../lib/demo-mode";
 type DemoWelcomeBannerProps = {
   downloadUrl: string;
 };
-
-type PanelMode = "minimized" | "expanded";
 
 type WelcomeCopy = {
   eyebrow: string;
@@ -26,27 +24,10 @@ function FreedLogo({ className = "h-16 w-16" }: { className?: string }) {
     <span
       role="img"
       aria-label="Freed"
-      className={`${className} inline-flex shrink-0 items-center justify-center rounded-[28%] bg-[image:var(--theme-logo-spectrum)] text-[var(--theme-button-primary-text)] shadow-xl shadow-black/20 [container-type:inline-size]`}
+      className={`${className} demo-freed-logo inline-flex shrink-0 items-center justify-center rounded-[28%] bg-[image:var(--theme-logo-spectrum)] text-[var(--theme-button-primary-text)] shadow-xl shadow-black/20 [container-type:inline-size]`}
     >
       <span className="font-logo text-[58cqi] font-bold leading-none">F</span>
     </span>
-  );
-}
-
-function ChevronIcon({ direction }: { direction: "up" | "down" }) {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={direction === "up" ? "m7 14 5-5 5 5" : "m7 10 5 5 5-5"} />
-    </svg>
   );
 }
 
@@ -59,17 +40,20 @@ function WelcomeActions({
   onJoinNewsletter: () => void;
 }) {
   return (
-    <div className={`flex ${stacked ? "flex-col" : "flex-wrap"} gap-2`}>
+    <div className={`demo-banner-actions grid ${stacked ? "grid-cols-1" : "grid-cols-2"} gap-2`}>
       <a
-        className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm"
+        className="btn-primary inline-flex min-w-0 items-center justify-center px-3 py-3 text-center text-sm"
         href={downloadUrl}
+        style={{ borderRadius: "var(--demo-button-radius, 1.5rem)" }}
       >
-        Download Freed Desktop
+        <span className="hidden min-[641px]:inline">Download Freed Desktop</span>
+        <span className="whitespace-nowrap min-[641px]:hidden">Download Freed</span>
       </a>
       <button
         type="button"
-        className="btn-secondary inline-flex items-center justify-center px-4 py-2 text-sm"
+        className="btn-secondary inline-flex min-w-0 items-center justify-center px-3 py-3 text-center text-sm"
         onClick={onJoinNewsletter}
+        style={{ borderRadius: "var(--demo-button-radius, 1.5rem)" }}
       >
         Join the newsletter
       </button>
@@ -89,9 +73,12 @@ function FirstLookWelcome({
   return (
     <div
       data-testid="demo-welcome-desktop"
-      className={`fixed inset-0 z-[140] flex items-center justify-center bg-black/55 p-5 backdrop-blur-md ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
+      className={`fixed inset-0 z-[150] flex items-center justify-center bg-black/55 p-5 backdrop-blur-md ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
     >
-      <div className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}>
+      <div
+        className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}
+        style={{ background: "var(--theme-bg-elevated)", border: "4px solid var(--theme-border-strong)", borderRadius: "2rem" }}
+      >
         <div
           className="absolute inset-0 bg-[radial-gradient(circle_at_top,var(--theme-accent-glow),transparent_58%)] opacity-60"
           aria-hidden="true"
@@ -122,12 +109,8 @@ function FirstLookWelcome({
 
 function FieldGuideWelcome({
   downloadUrl,
-  mode,
-  onModeChange,
   arriving,
 }: DemoWelcomeBannerProps & {
-  mode: PanelMode;
-  onModeChange: (mode: PanelMode) => void;
   arriving: boolean;
 }) {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
@@ -137,6 +120,45 @@ function FieldGuideWelcome({
     import.meta.env.DEV ||
     isFreedNewsletterPreviewHostname(window.location.hostname);
   const cardRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState<number>();
+  const measuredHeightRef = useRef<number | undefined>(undefined);
+  // Keep the chosen edge stable through a form's entire expand/collapse cycle.
+  const expansionAnchorRef = useRef<"top" | "bottom">("bottom");
+  useLayoutEffect(() => {
+    const fitNarrowViewport = () => {
+      if (window.innerWidth <= 576) setOffset((previous) => ({ ...previous, x: 0 }));
+    };
+    window.addEventListener("resize", fitNarrowViewport);
+    return () => window.removeEventListener("resize", fitNarrowViewport);
+  }, []);
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    // Layout height excludes the entrance animation's temporary scale.
+    const measure = () => {
+      const nextHeight = content.offsetHeight;
+      const previousHeight = measuredHeightRef.current;
+      const card = cardRef.current;
+      if (card && previousHeight !== undefined && previousHeight !== nextHeight) {
+        const rect = card.getBoundingClientRect();
+        const delta = nextHeight - previousHeight;
+        const anchorTop = expansionAnchorRef.current === "top";
+        setOffset((previous) => ({
+          ...previous,
+          y: previous.y + (anchorTop ? delta : 0) +
+            Math.max(0, 16 - (rect.top - (anchorTop ? 0 : delta))) -
+            Math.max(0, rect.bottom + (anchorTop ? delta : 0) - window.innerHeight + 16),
+        }));
+      }
+      measuredHeightRef.current = nextHeight;
+      setContentHeight(nextHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -147,10 +169,12 @@ function FieldGuideWelcome({
     baseRight: number;
     baseTop: number;
     baseBottom: number;
+    verticalOnly: boolean;
   } | null>(null);
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !cardRef.current) return;
+    if ((event.target as Element).closest("button, a, input, textarea, select, label, iframe, [role='button']")) return;
     const rect = cardRef.current.getBoundingClientRect();
     dragRef.current = {
       pointerId: event.pointerId,
@@ -162,6 +186,7 @@ function FieldGuideWelcome({
       baseRight: rect.right - offset.x,
       baseTop: rect.top - offset.y,
       baseBottom: rect.bottom - offset.y,
+      verticalOnly: window.innerWidth <= 576,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDragging(true);
@@ -174,7 +199,7 @@ function FieldGuideWelcome({
     const nextX = drag.originX + event.clientX - drag.startX;
     const nextY = drag.originY + event.clientY - drag.startY;
     setOffset({
-      x: Math.min(
+      x: drag.verticalOnly ? 0 : Math.min(
         window.innerWidth - margin - drag.baseRight,
         Math.max(margin - drag.baseLeft, nextX),
       ),
@@ -188,67 +213,56 @@ function FieldGuideWelcome({
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     dragRef.current = null;
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (rect) expansionAnchorRef.current = rect.top < window.innerHeight / 2 ? "top" : "bottom";
     setDragging(false);
   };
-
-  if (mode === "minimized") {
-    return (
-      <button
-        type="button"
-        data-testid="demo-welcome-reopen"
-        className="theme-floating-panel fixed bottom-0 left-1/2 z-[140] flex min-h-12 -translate-x-1/2 items-center gap-2 rounded-t-xl border-b-0 px-5 pb-[max(0.625rem,var(--safe-area-bottom))] pt-2 text-sm font-semibold text-[var(--theme-text-primary)] shadow-xl"
-        onClick={() => onModeChange("expanded")}
-      >
-        <ChevronIcon direction="up" />
-        Freed Demo
-      </button>
-    );
-  }
 
   return (
     <div
       data-testid="demo-welcome-desktop"
-      className="fixed bottom-[max(1rem,var(--safe-area-bottom))] left-1/2 z-[140] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2"
+      className="fixed bottom-[max(1rem,var(--safe-area-bottom))] left-1/2 z-[140] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 max-[576px]:w-[calc(100vw-2rem)]"
     >
       <div
         ref={cardRef}
-        className={`theme-floating-panel max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl shadow-2xl shadow-black/30 ${arriving ? "demo-welcome-field-guide--arriving" : ""}`}
-        style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0)` }}
+        className={`theme-floating-panel max-h-[calc(100dvh-2rem)] touch-none overflow-y-auto rounded-[2rem] ${dragging ? "cursor-grabbing" : "cursor-grab"} ${arriving ? "demo-welcome-field-guide--arriving" : ""}`}
+        style={{
+          transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
+          transition: dragging ? "none" : "transform 300ms ease-in-out",
+          background: "var(--theme-bg-elevated)",
+          borderRadius: "2rem",
+          border: "4px solid var(--theme-border-strong)",
+          boxShadow: "0 24px 64px -12px rgb(0 0 0 / 0.6), 0 8px 20px rgb(0 0 0 / 0.25)",
+        }}
+        onPointerDown={beginDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <div
           data-testid="demo-welcome-drag-handle"
-          className={`flex touch-none select-none items-center justify-between border-b border-[var(--theme-border-subtle)] px-4 py-2.5 ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
-          onPointerDown={beginDrag}
-          onPointerMove={moveDrag}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
+          className="flex select-none items-center justify-between px-5 pt-4"
         >
           <div className="flex items-center gap-2">
             <FreedLogo className="h-7 w-7" />
             <span className="text-sm font-semibold text-[var(--theme-text-primary)]">
-              Freed Demo
+              {newsletterOpen ? "Freed Newsletter" : "Freed Demo"}
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <span
-              className="hidden h-1.5 w-10 rounded-full bg-[var(--theme-border-strong)] sm:block"
-              aria-hidden="true"
-            />
-            <button
-              type="button"
-              aria-label="Minimize Freed Demo"
-              className="theme-toolbar-button-neutral -mr-1 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--theme-text-muted)] sm:hidden"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => onModeChange("minimized")}
-            >
-              <ChevronIcon direction="down" />
-            </button>
-          </div>
         </div>
-        <div className="p-3">
-          <div>
+        <div className="overflow-hidden transition-[height] duration-300 ease-in-out motion-reduce:transition-none" style={{ height: contentHeight }}>
+          <div ref={contentRef} className="px-4 pb-4">
+            {!newsletterOpen && (
+              <p className="pb-4 pt-0 text-center text-sm leading-relaxed text-[var(--theme-text-muted)] max-[480px]:pt-3">
+                <span className="min-[641px]:hidden">Social media that respects you.</span>
+                <span className="hidden min-[641px]:inline">
+                  Social media that respects you, and your friends.
+                  <span className="block">Ready to make it your own?</span>
+                </span>
+              </p>
+            )}
             {newsletterOpen ? (
-              <>
+              <div className="pt-4">
                 {newsletterPreviewOnly ? (
                   <NewsletterSignup
                     compact
@@ -258,22 +272,28 @@ function FieldGuideWelcome({
                 ) : (
                   <NewsletterSignup compact />
                 )}
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="demo-banner-actions mt-3 grid grid-cols-2 gap-2">
                   <a
-                    className="btn-secondary inline-flex items-center justify-center px-4 py-2 text-sm"
+                    className="btn-secondary inline-flex min-w-0 items-center justify-center px-3 py-3 text-center text-sm"
                     href={downloadUrl}
+                    style={{ borderRadius: "var(--demo-button-radius, 1.5rem)" }}
                   >
-                    Download Freed Desktop
+                    <span className="hidden min-[641px]:inline">Download Freed Desktop</span>
+                    <span className="whitespace-nowrap min-[641px]:hidden">Download Freed</span>
                   </a>
                   <button
                     type="button"
-                    className="theme-toolbar-button-ghost rounded-lg px-3 py-2 text-xs font-semibold"
+                    className="btn-secondary inline-flex min-w-0 items-center justify-center gap-2 px-3 py-3 text-center text-sm"
                     onClick={() => setNewsletterOpen(false)}
+                    style={{ borderRadius: "var(--demo-button-radius, 1.5rem)" }}
                   >
-                    Back to guide
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="m6 6 12 12M6 18 18 6" />
+                    </svg>
+                    Skip the newsletter
                   </button>
                 </div>
-              </>
+              </div>
             ) : (
               <WelcomeActions
                 downloadUrl={downloadUrl}
@@ -288,36 +308,34 @@ function FieldGuideWelcome({
 }
 
 export function DemoWelcomeBanner({ downloadUrl }: DemoWelcomeBannerProps) {
-  const [mode, setMode] = useState<PanelMode>("expanded");
   const [transitioningToGuide, setTransitioningToGuide] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
   const [guideArriving, setGuideArriving] = useState(false);
 
   const exploreDemo = () => {
+    if (transitioningToGuide || guideVisible) return;
     setTransitioningToGuide(true);
+    setGuideVisible(true);
+    setGuideArriving(true);
     window.setTimeout(() => {
-      setGuideVisible(true);
-      setMode("expanded");
       setTransitioningToGuide(false);
-      setGuideArriving(true);
-      window.setTimeout(() => setGuideArriving(false), 620);
     }, 460);
+    window.setTimeout(() => setGuideArriving(false), 900);
   };
 
   return (
     <>
-      {guideVisible ? (
-        <FieldGuideWelcome
-          downloadUrl={downloadUrl}
-          mode={mode}
-          onModeChange={setMode}
-          arriving={guideArriving}
-        />
-      ) : (
+      {(!guideVisible || transitioningToGuide) && (
         <FirstLookWelcome
           copy={WELCOME_COPY}
           departing={transitioningToGuide}
           onExplore={exploreDemo}
+        />
+      )}
+      {guideVisible && (
+        <FieldGuideWelcome
+          downloadUrl={downloadUrl}
+          arriving={guideArriving}
         />
       )}
     </>

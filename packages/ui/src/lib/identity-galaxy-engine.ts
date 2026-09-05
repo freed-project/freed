@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { drawGalaxyIcon, drawGalaxyLabel, isGalaxyIconGlyph } from "./galaxy-label-icons.js";
+import { truncateGalaxyNodeLabel } from "./identity-graph-atlas.js";
 import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
 import { friendsGalaxyAmbientMotionTimeSeconds } from "./friends-galaxy-ambient-motion.js";
 import type {
@@ -26,6 +28,17 @@ import {
 export type IdentityGalaxyVariation = "nebula-rings" | "nebula" | "rings";
 export type IdentityGalaxyRendererType = "three-starfield" | "canvas-starfield-fallback";
 
+/** Close inspection names every resident star; distant clouds stay bounded. */
+export function galaxyLabelVisibilityPolicy(
+  lod: IdentityGraphAtlas["metrics"]["lod"],
+  width: number,
+  renderer: IdentityGalaxyRendererType,
+): { cap: number; suppressOverlaps: boolean } {
+  return lod === "detail"
+    ? { cap: Infinity, suppressOverlaps: false }
+    : { cap: width < 720 ? 24 : renderer === "three-starfield" ? 96 : 72, suppressOverlaps: true };
+}
+
 interface GraphPalette {
   surface: string;
   text: string;
@@ -48,6 +61,7 @@ interface GraphPalette {
 
 interface GalaxyLabelRecord {
   id: string;
+  color: THREE.Color;
   text: string;
   fontSize: number;
   offsetY: number;
@@ -556,9 +570,7 @@ function nextPowerOfTwo(value: number): number {
 }
 
 function truncateGalaxyLabel(text: string): string {
-  const characters = Array.from(text.trim());
-  if (characters.length <= LABEL_TEXT_MAX_CHARACTERS) return characters.join("");
-  return `${characters.slice(0, LABEL_TEXT_MAX_CHARACTERS - 3).join("")}...`;
+  return truncateGalaxyNodeLabel(text, LABEL_TEXT_MAX_CHARACTERS);
 }
 
 function makeTransparentTexture(): THREE.DataTexture {
@@ -606,6 +618,8 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
       uniform vec2 resolution;
       attribute vec2 glyphUv;
       attribute vec3 instanceAnchor;
+      attribute vec3 instanceLabelColor;
+      varying vec3 vLabelColor;
       attribute vec2 instanceOffset;
       attribute vec2 instanceGlyphSize;
       attribute vec4 instanceUvRect;
@@ -617,12 +631,13 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
         centerClip.xy += pixelPosition * (2.0 / resolution) * centerClip.w;
         gl_Position = centerClip;
         vGlyphUv = mix(instanceUvRect.xy, instanceUvRect.zw, glyphUv);
+        vLabelColor = instanceLabelColor;
       }
     `,
     fragmentShader: `
       uniform sampler2D atlas;
       uniform vec2 atlasTexel;
-      uniform vec3 textColor;
+      varying vec3 vLabelColor;
       uniform vec3 outlineColor;
       varying vec2 vGlyphUv;
 
@@ -642,7 +657,7 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
         float outlineAlpha = smoothstep(0.04, 0.46, outline) * 0.92;
         float alpha = max(fillAlpha, outlineAlpha);
         if (alpha < 0.02) discard;
-        vec3 color = mix(outlineColor, textColor, fillAlpha);
+        vec3 color = mix(outlineColor, vLabelColor, fillAlpha);
         gl_FragColor = vec4(color, alpha);
       }
     `,
@@ -680,7 +695,10 @@ function buildGlyphAtlas(records: readonly GalaxyLabelRecord[], fontFamily: stri
     const row = Math.floor(index / columns);
     const left = column * LABEL_ATLAS_CELL_SIZE;
     const top = row * LABEL_ATLAS_CELL_SIZE;
-    if (character.trim()) {
+    if (isGalaxyIconGlyph(character)) {
+      drawGalaxyIcon(context, character, left + LABEL_ATLAS_CELL_SIZE / 2,
+        top + LABEL_ATLAS_CELL_SIZE / 2 + 2, LABEL_ATLAS_FONT_SIZE);
+    } else if (character.trim()) {
       context.fillText(
         character,
         left + LABEL_ATLAS_CELL_SIZE / 2,
@@ -688,7 +706,7 @@ function buildGlyphAtlas(records: readonly GalaxyLabelRecord[], fontFamily: stri
         LABEL_ATLAS_CELL_SIZE - 10,
       );
     }
-    const measuredWidth = context.measureText(character).width;
+    const measuredWidth = isGalaxyIconGlyph(character) ? LABEL_ATLAS_FONT_SIZE + 4 : context.measureText(character).width;
     entries.set(character, {
       advance: Math.max(0.28, Math.min(1.28, measuredWidth / LABEL_ATLAS_FONT_SIZE)),
       uv: [
@@ -831,7 +849,7 @@ function drawFallbackLabels(
   residentLabelIds: ReadonlySet<string> | null,
 ): Set<string> | null {
   const smallViewport = width < 720;
-  const cap = smallViewport ? 24 : 72;
+  const { cap, suppressOverlaps } = galaxyLabelVisibilityPolicy(atlas.metrics.lod, width, "canvas-starfield-fallback");
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
   const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
   const nextResidentLabelIds = residentLabelIds === null ? new Set<string>() : null;
@@ -843,17 +861,18 @@ function drawFallbackLabels(
     const fontSize = label.kind === "provider_cluster"
       ? smallViewport ? 16 : 19
       : label.kind === "friend_person"
-        ? smallViewport ? 14 : 16
+        ? smallViewport ? 16 : 18
         : label.kind === "connection_person"
-          ? smallViewport ? 13 : 15
-          : smallViewport ? 12 : 13;
+          ? smallViewport ? 16 : 18
+          : smallViewport ? 10 : 11;
     const text = truncateGalaxyLabel(label.text);
     const screenX = transform.x + label.x * transform.scale;
     const parentNode = nodeById.get(label.nodeId);
     const starRadius = parentNode
       ? Math.max(5, parentNode.radius * 0.82 * transform.scale)
       : 5;
-    const labelOffset = starRadius + fontSize * 0.68 + 3;
+    const labelOffset = label.centered ? 0 :
+      label.kind === "account" || label.kind === "feed" ? fontSize * 0.5 + 5 : starRadius + fontSize * 0.68 + 3;
     const screenY = transform.y + label.y * transform.scale - labelOffset;
     context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
     if (nextResidentLabelIds) {
@@ -865,21 +884,22 @@ function drawFallbackLabels(
         bottom: screenY + fontSize * 0.75,
       };
       const outside = bounds.left < 8 || bounds.right > width - 8 || bounds.top < 8 || bounds.bottom > height - 8;
-      const collides = occupied.some((entry) =>
+      const collides = suppressOverlaps && occupied.some((entry) =>
         bounds.left < entry.right &&
         bounds.right > entry.left &&
         bounds.top < entry.bottom &&
         bounds.bottom > entry.top,
       );
       if (outside || collides) continue;
-      occupied.push(bounds);
+      if (suppressOverlaps) occupied.push(bounds);
       nextResidentLabelIds.add(label.id);
     }
     context.lineWidth = label.kind === "provider_cluster" ? 5.5 : 4.5;
     context.strokeStyle = palette.labelFill;
-    context.fillStyle = palette.text;
-    context.strokeText(text, screenX, screenY);
-    context.fillText(text, screenX, screenY);
+    context.fillStyle = label.kind === "provider_cluster"
+      ? providerColor(label.nodeId.replace(/^provider:/, ""), palette)
+      : palette.text;
+    drawGalaxyLabel(context, text, screenX, screenY, fontSize);
   }
   return nextResidentLabelIds;
 }
@@ -1025,6 +1045,7 @@ class StarfieldGraphRenderer {
   private labelTexture: THREE.Texture;
   private starPoints: THREE.Points | null = null;
   private labelRecords: GalaxyLabelRecord[] = [];
+  private suppressLabelOverlaps = true;
   private glyphAtlas: GlyphAtlas | null = null;
   private labelSignature = "";
   private renderedLabelCount = 0;
@@ -1321,14 +1342,14 @@ class StarfieldGraphRenderer {
         bounds.right > this.width - 8 ||
         bounds.top < 8 ||
         bounds.bottom > this.height - 8;
-      const collides = occupied.some((entry) =>
+      const collides = this.suppressLabelOverlaps && occupied.some((entry) =>
         bounds.left < entry.right &&
         bounds.right > entry.left &&
         bounds.top < entry.bottom &&
         bounds.bottom > entry.top,
       );
       if (outside || collides) continue;
-      occupied.push(bounds);
+      if (this.suppressLabelOverlaps) occupied.push(bounds);
       visibleLabels.push(label);
     }
 
@@ -1337,6 +1358,7 @@ class StarfieldGraphRenderer {
       glyphCount += Array.from(label.text).filter((character) => character.trim()).length;
     }
     const anchors = new Float32Array(glyphCount * 3);
+    const labelColors = new Float32Array(glyphCount * 3);
     const offsets = new Float32Array(glyphCount * 2);
     const sizes = new Float32Array(glyphCount * 2);
     const uvRects = new Float32Array(glyphCount * 4);
@@ -1356,12 +1378,14 @@ class StarfieldGraphRenderer {
           sizes[glyphIndex * 2] = label.fontSize * glyphScale;
           sizes[glyphIndex * 2 + 1] = label.fontSize * glyphScale;
           uvRects.set(glyph.uv, glyphIndex * 4);
+          label.color.toArray(labelColors, glyphIndex * 3);
           glyphIndex += 1;
         }
         cursor += advance;
       }
     }
     this.labelGeometry.setAttribute("instanceAnchor", new THREE.InstancedBufferAttribute(anchors, 3));
+    this.labelGeometry.setAttribute("instanceLabelColor", new THREE.InstancedBufferAttribute(labelColors, 3));
     this.labelGeometry.setAttribute("instanceOffset", new THREE.InstancedBufferAttribute(offsets, 2));
     this.labelGeometry.setAttribute("instanceGlyphSize", new THREE.InstancedBufferAttribute(sizes, 2));
     this.labelGeometry.setAttribute("instanceUvRect", new THREE.InstancedBufferAttribute(uvRects, 4));
@@ -1512,15 +1536,16 @@ class StarfieldGraphRenderer {
     if (quality === "interactive") return;
     this.ensureSceneIndex(galaxyScene);
     const smallViewport = this.width < 720;
-    const cap = smallViewport ? 24 : 96;
+    const { cap, suppressOverlaps } = galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.width, "three-starfield");
+    this.suppressLabelOverlaps = suppressOverlaps;
     const records = atlas.labels.slice(0, cap).map((label): GalaxyLabelRecord => {
       const fontSize = label.kind === "provider_cluster"
         ? smallViewport ? 16 : 19
         : label.kind === "friend_person"
-          ? smallViewport ? 14 : 16
+          ? smallViewport ? 16 : 18
           : label.kind === "connection_person"
-            ? smallViewport ? 13 : 15
-            : smallViewport ? 12 : 13;
+            ? smallViewport ? 16 : 18
+            : smallViewport ? 10 : 11;
       const nodeIndex = this.nodeIndexById.get(label.nodeId);
       const nodeDepth = nodeIndex === undefined
         ? label.kind === "provider_cluster" ? -38 : 0
@@ -1536,9 +1561,13 @@ class StarfieldGraphRenderer {
         : galaxyScene.positions[nodeIndex * 3 + 1]!;
       return {
         id: label.id,
+        color: colorFromCss(label.kind === "provider_cluster"
+          ? providerColor(label.nodeId.replace(/^provider:/, ""), palette)
+          : palette.text, "#f8fafc"),
         text: truncateGalaxyLabel(label.text),
         fontSize,
-        offsetY: starRadius + fontSize * 0.68 + (label.kind === "provider_cluster" ? 4 : 3),
+        offsetY: label.centered ? 0 : label.kind === "account" || label.kind === "feed"
+          ? fontSize * 0.5 + 5 : starRadius + fontSize * 0.68 + (label.kind === "provider_cluster" ? 4 : 3),
         position: new THREE.Vector3(nodeX, nodeY, nodeDepth),
       };
     });
@@ -1548,6 +1577,7 @@ class StarfieldGraphRenderer {
         label.id,
         label.text,
         label.fontSize,
+        label.color.getHexString(),
         label.position.x.toFixed(2),
         label.position.y.toFixed(2),
         label.position.z.toFixed(2),
@@ -1646,7 +1676,7 @@ export class IdentityGalaxyEngine {
     this.variation = options.variation;
     this.decorativeStarsEnabled = options.decorativeStarCount !== 0;
     if (!this.renderer && options.quality === "settled") {
-      this.fallbackLabelCount = Math.min(atlas.labels.length, this.canvas.clientWidth < 720 ? 24 : 72);
+      this.fallbackLabelCount = Math.min(atlas.labels.length, galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.canvas.clientWidth, "canvas-starfield-fallback").cap);
       this.fallbackLabelLayoutDirty = true;
     }
     this.renderer?.syncScene(
@@ -1667,7 +1697,7 @@ export class IdentityGalaxyEngine {
     }
     this.fallbackLabelCount = Math.min(
       atlas.labels.length,
-      this.canvas.clientWidth < 720 ? 24 : 72,
+      galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.canvas.clientWidth, "canvas-starfield-fallback").cap,
     );
     this.fallbackLabelLayoutDirty = true;
   }

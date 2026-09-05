@@ -1,4 +1,7 @@
 import generatedCorpus from "./sample-corpus.generated.json" with { type: "json" };
+import airMedia from "./sample-corpus-air-media.json" with { type: "json" };
+import landMedia from "./sample-corpus-land-media.json" with { type: "json" };
+import oceanMedia from "./sample-corpus-ocean-media.json" with { type: "json" };
 import { SAMPLE_CHARACTER_ARCS, type SampleCharacterArc, type SampleCharacterEpisode } from "./sample-character-arcs.js";
 
 // Editorial contract: docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md
@@ -49,7 +52,7 @@ interface CuratedEpisodeAssignment {
   sequence: number;
 }
 
-const generatedAssets = generatedCorpus as readonly GeneratedAsset[];
+const generatedAssets = [...generatedCorpus, ...airMedia, ...landMedia, ...oceanMedia] as readonly GeneratedAsset[];
 const generatedAssetsBySha1 = new Map<string, GeneratedAsset>();
 for (const asset of generatedAssets) {
   if (generatedAssetsBySha1.has(asset.sha1)) {
@@ -62,6 +65,7 @@ const curatedAssetSha1s = new Set<string>();
 const curatedAssets: GeneratedAsset[] = [];
 for (const arc of SAMPLE_CHARACTER_ARCS) {
   for (const [sequence, episode] of arc.episodes.entries()) {
+    if (episode.mediaSha1 === null) continue;
     if (!/^[0-9a-f]{40}$/.test(episode.mediaSha1)) {
       throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} has an invalid media SHA.`);
     }
@@ -77,7 +81,7 @@ for (const arc of SAMPLE_CHARACTER_ARCS) {
     }
     curatedAssetSha1s.add(asset.sha1);
     curatedEpisodeAssignments.set(asset.id, { arc, episode, sequence });
-    curatedAssets.push(asset);
+    curatedAssets.push({ ...asset, identityNameBase: arc.identityNameBase });
   }
 }
 

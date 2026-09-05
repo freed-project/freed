@@ -79,7 +79,8 @@ export type IdentityGalaxySceneSource = Pick<IdentityGraphAtlas, "nodes" | "edge
 
 const GALAXY_FAR_DEPTH = -220;
 const GALAXY_DEPTH_SPAN = 440;
-const LINKED_ACCOUNT_DEPTH_GAP = 44;
+const FRIEND_NEAR_DEPTH = 20;
+const FRIEND_CARE_DEPTH_STEP = 80;
 const DAY_MS = 86_400_000;
 
 function clamp(value: number, min: number, max: number): number {
@@ -159,7 +160,12 @@ function pointSize(
       : kind === IdentityGalaxyNodeKindCode.ProviderCluster
         ? 0.55
         : 0.36;
-  const size = roleSize + radius * radiusScale + (selected ? 18 : hovered ? 10 : 0);
+  // Friend radii encode care levels 1..5 as 48..80. Keep their visual
+  // importance legible instead of burying it beneath a large constant size.
+  const baseSize = kind === IdentityGalaxyNodeKindCode.FriendPerson
+    ? 28 + clamp((radius - 48) / 8, 0, 4) * 10
+    : roleSize + radius * radiusScale;
+  const size = baseSize + (selected ? 18 : hovered ? 10 : 0);
   return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
 }
 
@@ -306,7 +312,12 @@ export function compileIdentityGalaxyScene(
     const node = source.nodes[index]!;
     const nodeProminence = semanticProminence(node);
     const jitter = (seededUnit(`${node.id}:galaxy-depth`) - 0.5) * 8;
-    const depth = GALAXY_FAR_DEPTH + nodeProminence * GALAXY_DEPTH_SPAN + jitter;
+    // Importance owns identity depth directly. Activity must not collapse the
+    // five care levels into a shallow band near the front of the same plane.
+    const careLevel = clamp(node.careLevel ?? Math.round((node.priority - 900) / 40), 1, 5);
+    const depth = node.kind === "friend_person"
+      ? FRIEND_NEAR_DEPTH + (careLevel - 1) * FRIEND_CARE_DEPTH_STEP + jitter
+      : GALAXY_FAR_DEPTH + nodeProminence * GALAXY_DEPTH_SPAN + jitter;
     nodeIds[index] = node.id;
     personIds[index] = node.personId ?? null;
     accountIds[index] = node.accountId ?? null;
@@ -328,11 +339,10 @@ export function compileIdentityGalaxyScene(
     if (!node.linkedPersonId) continue;
     const personDepth = personDepthById.get(node.linkedPersonId);
     if (personDepth === undefined) continue;
-    const orbitOffset = seededUnit(`${node.id}:orbit-depth`) * 22;
-    positions[index * 3 + 2] = Math.min(
-      positions[index * 3 + 2]!,
-      personDepth - LINKED_ACCOUNT_DEPTH_GAP - orbitOffset,
-    );
+    // A linked profile belongs to the same compact system as its identity.
+    // Large depth separation made even tiny XY orbits project far apart.
+    const orbitOffset = (seededUnit(`${node.id}:orbit-depth`) - 0.5) * 6;
+    positions[index * 3 + 2] = personDepth + orbitOffset;
   }
 
   for (let index = 0; index < nodeCount; index += 1) {

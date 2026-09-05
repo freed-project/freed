@@ -135,6 +135,24 @@ describe("ReaderView cache-first hydration", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([true, false])("keeps demo text local with native hydrator available: %s", async (nativeHydrator) => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const hydrateReaderItem = vi.fn();
+    const getLocalContent = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { container, root } = await renderReaderView({
+      ...basePlatformConfig,
+      interactionMode: "read-only",
+      getLocalContent,
+      hydrateReaderItem: nativeHydrator ? hydrateReaderItem : undefined,
+    }, makeArticleItem({ globalId: "freed-demo-showcase-v11:sample-character:nell-pelagic:4" }));
+    expect(container.textContent).toContain("Cached preview");
+    expect(hydrateReaderItem).not.toHaveBeenCalled();
+    expect(getLocalContent).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
   it("does not run live hydration when full cached content is already available", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const hydrateReaderItem = vi.fn(async () => ({

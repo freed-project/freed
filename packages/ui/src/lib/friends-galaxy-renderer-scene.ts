@@ -7,6 +7,7 @@ import type {
 } from "./friends-galaxy-renderer.js";
 import { createFriendsGalaxySceneInteractionIndex } from "./friends-galaxy-scene-interaction-index.js";
 import { createFriendsGalaxyPackedStarInstances } from "./friends-galaxy-star-instances.js";
+import { FRIENDS_GALAXY_PRESENTATION_LABEL_CAP } from "./friends-galaxy-presentation-atlas.js";
 
 export interface CreateFriendsGalaxyRendererSceneInput {
   atlas: IdentityGraphAtlas;
@@ -131,6 +132,10 @@ export function compactFriendsGalaxyPresentationMetadata(
   return {
     ...atlas,
     nodes,
+    // Close-view labels are derived from admitted node metadata. Keep the
+    // optional preselected labels inside the existing worker wire budget.
+    labels: atlas.labels.filter((label) => label.kind === "provider_cluster" || acceptedNodeIds.has(label.nodeId))
+      .slice(0, FRIENDS_GALAXY_PRESENTATION_LABEL_CAP),
     edges: [],
     hitBuckets: [],
     metrics: {

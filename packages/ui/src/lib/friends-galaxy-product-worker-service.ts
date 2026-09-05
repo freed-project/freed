@@ -11,6 +11,8 @@ import {
   type FriendsGalaxyActivitySceneBinding,
 } from "./friends-galaxy-activity-patches.js";
 import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP } from "./friends-galaxy-presentation-atlas.js";
+import { writeFriendsGalaxyWebGpuViewProjection } from "./friends-galaxy-camera.js";
+import { projectFriendsGalaxyWorldPoint } from "./friends-galaxy-projection.js";
 import { compileFriendsGalaxyProductRendererScene } from "./friends-galaxy-product-scene.js";
 import {
   compactFriendsGalaxyPresentationMetadata,
@@ -41,6 +43,7 @@ interface CachedFriendsGalaxyProductSource {
   sourceRevision: number;
   model: IdentityGraphAtlasModel;
   semanticNodeCount: number;
+  depthByNodeId: Map<string, number>;
   linkedPersonNodeIdByAccountId: Map<string, string>;
   metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
   activityEncoder: FriendsGalaxyActivityScenePatchEncoder;
@@ -235,8 +238,15 @@ export class FriendsGalaxyProductWorkerService {
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
     });
+    // The renderer projects the complete 3D scene, not this 2D atlas slice.
+    // When all metadata fits the existing budget, retain it so perspective
+    // cannot reveal a star whose name was culled on the worker's flat plane.
+    const sourceIndexes = productSourceIndexes(model);
+    const presentationAtlas = model.nodes.length <= FRIENDS_GALAXY_PRESENTATION_NODE_CAP
+      ? includeFriendsGalaxyPriorityMetadata(atlas, sourceIndexes.metadataByNodeId, model.nodes.map((node) => node.id))
+      : atlas;
     const rendererScene = compileFriendsGalaxyProductRendererScene({
-      atlas,
+      atlas: presentationAtlas,
       source: model,
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
@@ -244,7 +254,6 @@ export class FriendsGalaxyProductWorkerService {
       proceduralBackgroundStarCount: request.proceduralBackgroundStarCount,
       backgroundSeed: request.backgroundSeed,
     });
-    const sourceIndexes = productSourceIndexes(model);
     const activityEncoder = new FriendsGalaxyActivityScenePatchEncoder(
       productActivityBindings(source, rendererScene),
     );
@@ -252,6 +261,7 @@ export class FriendsGalaxyProductWorkerService {
       sourceRevision: request.sourceRevision,
       model,
       semanticNodeCount: rendererScene.scene.nodeIds.length,
+      depthByNodeId: new Map(rendererScene.scene.nodeIds.map((id, index) => [id, rendererScene.scene.positions[index * 3 + 2]!])),
       ...sourceIndexes,
       activityEncoder,
     };
@@ -361,6 +371,27 @@ export class FriendsGalaxyProductWorkerService {
       request.viewport.selectedAccountId,
       cached.linkedPersonNodeIdByAccountId,
     );
+    const projectedIds: string[] = [];
+    if (request.viewport.transform.scale >= 0.85) {
+      const matrix = new Float32Array(16);
+      const width = viewportDimension("viewport width", request.viewport.width);
+      const height = viewportDimension("viewport height", request.viewport.height);
+      writeFriendsGalaxyWebGpuViewProjection(matrix, request.viewport.transform, width, height);
+      const projection = { viewProjection: matrix, width, height };
+      const scratch = new Float32Array(2);
+      for (const node of cached.model.nodes) {
+        const depth = cached.depthByNodeId.get(node.id);
+        if (depth !== undefined && projectFriendsGalaxyWorldPoint(scratch, projection, node.x, -node.y, depth, 24)) {
+          projectedIds.push(node.id);
+        }
+      }
+    }
+    // Actual 3D-visible nodes precede flat-plane candidates in the same bounded
+    // budget. If more than 192 are visible, further zoom narrows the admitted set.
+    const admittedMetadataIds = [...priorityIds, ...projectedIds];
+    if (cached.model.nodes.length <= FRIENDS_GALAXY_PRESENTATION_NODE_CAP) {
+      admittedMetadataIds.push(...cached.model.nodes.map((node) => node.id));
+    }
     const atlas = compactFriendsGalaxyPresentationMetadata(
       includeFriendsGalaxyPriorityMetadata(
         sliceIdentityGraphAtlas({
@@ -373,11 +404,11 @@ export class FriendsGalaxyProductWorkerService {
           selectedAccountId: request.viewport.selectedAccountId,
         }),
         cached.metadataByNodeId,
-        priorityIds,
+        admittedMetadataIds,
       ),
       cached.semanticNodeCount,
       FRIENDS_GALAXY_PRESENTATION_NODE_CAP,
-      priorityIds,
+      admittedMetadataIds,
     );
     return {
       kind: "presentation-ready",
