@@ -1415,6 +1415,59 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
   });
 
+  it("coalesces overlapping publication requests before opening the singleton native export", async () => {
+    // Scheduled and manual entry points share this function. Separate exports
+    // replace the native cursor even when both describe the same revision.
+    await Promise.all([
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ]);
+
+    expect(mocks.beginNormalizedExport).toHaveBeenCalledTimes(1);
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a canceled native export owned until it settles", async () => {
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let finishExport!: (value: unknown) => void;
+    const nativeExport = new Promise<unknown>((resolve) => {
+      finishExport = resolve;
+    });
+    mocks.beginNormalizedExport.mockImplementationOnce(() => {
+      enter();
+      return nativeExport;
+    });
+    const controller = new AbortController();
+    const canceled = publishCurrentSqliteLibraryToGoogleDrive({
+      accessToken: "token",
+      signal: controller.signal,
+    });
+    await entered;
+    controller.abort();
+    await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
+
+    try {
+      await expect(
+        publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+      ).rejects.toThrow("checkpoint export is still finishing");
+      expect(mocks.beginNormalizedExport).toHaveBeenCalledTimes(1);
+      expect(mocks.publish).not.toHaveBeenCalled();
+    } finally {
+      finishExport(await mocks.describeNormalizedCheckpoint());
+    }
+    // Drain the native response and its ownership-release microtasks.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+    expect(mocks.beginNormalizedExport).toHaveBeenCalledTimes(2);
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+  });
+
   it("does not queue a fresh publication behind an abandoned native command", async () => {
     const controller = new AbortController();
     mocks.describeCloudIdentity
@@ -1425,6 +1478,11 @@ describe("SQLite Library Google Drive production wiring", () => {
       signal: controller.signal,
     });
     await Promise.resolve();
+
+    // An attempt is abandoned only once its owner cancels it. A still-live
+    // attempt must coalesce the manual and scheduled callers above.
+    controller.abort();
+    await expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
 
     mocks.describeCloudIdentity.mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
@@ -1441,9 +1499,6 @@ describe("SQLite Library Google Drive production wiring", () => {
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 7 });
-
-    controller.abort();
-    await expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("refuses cloud publication when restored state belongs to another Desktop installation", async () => {

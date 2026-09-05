@@ -436,13 +436,16 @@ async function tracedPublicationStage<T>(
 
 async function* normalizedCheckpointRecords(
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  signal?: AbortSignal,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
   let after: Parameters<
     typeof readNormalizedLibraryCheckpointPage
   >[0]["after"] = null;
   let recordCount = 0;
   for (;;) {
+    throwIfPublicationCanceled(signal);
     const page = await readNormalizedLibraryCheckpointPage({ snapshot, after });
+    throwIfPublicationCanceled(signal);
     for (const record of page.records) {
       yield record;
       recordCount += 1;
@@ -874,7 +877,17 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
  * copied cloud state. A stale or independently advanced copy must bootstrap
  * from the active immutable checkpoint before it may replace authority.
  */
-export async function makeThisSqliteLibraryDesktopWriter(input: {
+export function makeThisSqliteLibraryDesktopWriter(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<LibraryCoreCloudPublishResult> {
+  return withCheckpointExport(() =>
+    makeThisSqliteLibraryDesktopWriterInternal(input),
+  );
+}
+
+async function makeThisSqliteLibraryDesktopWriterInternal(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
@@ -998,7 +1011,7 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     }),
     expectedControl: { pointer, revision: controlRead.revision },
     generation: 0,
-    records: normalizedCheckpointRecords(normalizedTarget),
+    records: normalizedCheckpointRecords(normalizedTarget, input.signal),
     subtle: crypto.subtle,
   });
   if (result.status === "conflict") {
@@ -1049,6 +1062,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     "read local SQLite revision",
     describeNormalizedLibraryCloudIdentity,
   );
+  throwIfPublicationCanceled(input.signal);
   const loaded = await tracedPublicationStage(
     "load local writer authority",
     () => loadOrCreateCloudState(descriptor),
@@ -1143,64 +1157,98 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     libraryId: state.libraryId,
     signal: input.signal,
   });
-  const normalizedCheckpoint =
-    await beginNormalizedLibraryCheckpointExport();
-  if (
-    normalizedCheckpoint.libraryId !== state.libraryId ||
-    normalizedCheckpoint.authorityEpoch !== state.storageEpoch ||
-    normalizedCheckpoint.writerId !== state.writerId
-  ) {
-    throw new Error(
-      "Normalized SQLite checkpoint authority conflicts with cloud state",
-    );
-  }
-  if (state.lastPublishedRevision === normalizedCheckpoint.sourceRevision) {
-    const receipt = checkpointReceiptForState(state);
+  throwIfPublicationCanceled(input.signal);
+  return withCheckpointExport(async () => {
+    const normalizedCheckpoint =
+      await beginNormalizedLibraryCheckpointExport();
+    throwIfPublicationCanceled(input.signal);
     if (
-      receipt === null ||
-      pointer === null ||
-      controlRead.revision !== receipt.controlRevision ||
-      !controlPointersEqual(pointer, receipt.controlPointer)
+      normalizedCheckpoint.libraryId !== state.libraryId ||
+      normalizedCheckpoint.authorityEpoch !== state.storageEpoch ||
+      normalizedCheckpoint.writerId !== state.writerId
     ) {
       throw new Error(
-        "Stored Library Core publication receipt does not match Drive control",
+        "Normalized SQLite checkpoint authority conflicts with cloud state",
       );
     }
-    return { status: "current", revision: normalizedCheckpoint.sourceRevision };
-  }
-  const generation = pointer === null ? 0 : pointer.generation + 1;
-  const result = await publishLibraryCoreNormalizedCheckpointV2({
-    activeTransport: "google_drive_app_data_v1",
-    adapter,
-    descriptor: normalizedCheckpoint,
-    expectedControl: { revision: controlRead.revision, pointer },
-    generation,
-    records: normalizedCheckpointRecords(normalizedCheckpoint),
-    subtle: crypto.subtle,
-  });
-  if (result.status === "conflict") {
-    throw new Error("Library Core cloud authority changed during publication");
-  }
-  await setSqliteLibraryCloudWriterAdmission({
-    localWriterId: loaded.currentWriterId,
-    activeWriterId: state.writerId,
-    storageEpoch: state.storageEpoch,
-    controlRevision: result.revision,
-  });
-  state = Object.freeze({
-    ...state,
-    lastPublishedActorDigest: null,
-    lastPublishedCheckpoint: checkpointPublicationReceipt({
-      localRevision: normalizedCheckpoint.sourceRevision,
-      itemCount: normalizedCheckpoint.itemCount,
-      checkpointStoredByteLength: checkpointStoredByteLength(result),
+    if (state.lastPublishedRevision === normalizedCheckpoint.sourceRevision) {
+      const receipt = checkpointReceiptForState(state);
+      if (
+        receipt === null ||
+        pointer === null ||
+        controlRead.revision !== receipt.controlRevision ||
+        !controlPointersEqual(pointer, receipt.controlPointer)
+      ) {
+        throw new Error(
+          "Stored Library Core publication receipt does not match Drive control",
+        );
+      }
+      return { status: "current", revision: normalizedCheckpoint.sourceRevision };
+    }
+    const generation = pointer === null ? 0 : pointer.generation + 1;
+    const result = await publishLibraryCoreNormalizedCheckpointV2({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      descriptor: normalizedCheckpoint,
+      expectedControl: { revision: controlRead.revision, pointer },
+      generation,
+      records: normalizedCheckpointRecords(normalizedCheckpoint, input.signal),
+      subtle: crypto.subtle,
+    });
+    if (result.status === "conflict") {
+      throw new Error("Library Core cloud authority changed during publication");
+    }
+    await setSqliteLibraryCloudWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      activeWriterId: state.writerId,
+      storageEpoch: state.storageEpoch,
       controlRevision: result.revision,
-      controlPointer: result.controlPointer,
-    }),
-    lastPublishedRevision: normalizedCheckpoint.sourceRevision,
+    });
+    state = Object.freeze({
+      ...state,
+      lastPublishedActorDigest: null,
+      lastPublishedCheckpoint: checkpointPublicationReceipt({
+        localRevision: normalizedCheckpoint.sourceRevision,
+        itemCount: normalizedCheckpoint.itemCount,
+        checkpointStoredByteLength: checkpointStoredByteLength(result),
+        controlRevision: result.revision,
+        controlPointer: result.controlPointer,
+      }),
+      lastPublishedRevision: normalizedCheckpoint.sourceRevision,
+    });
+    await persistCloudState(state);
+    return { status: "published", revision: normalizedCheckpoint.sourceRevision };
   });
-  await persistCloudState(state);
-  return { status: "published", revision: normalizedCheckpoint.sourceRevision };
+}
+
+let checkpointExportInProgress = false;
+
+function checkpointExportBusyError(): Error {
+  return new Error(
+    "SQLite checkpoint export is still finishing. Try Sync now again shortly.",
+  );
+}
+
+/**
+ * Keep the native singleton owned until the underlying work settles, even
+ * when the caller's bounded UI promise has already rejected on cancellation.
+ */
+async function withCheckpointExport<T>(work: () => Promise<T>): Promise<T> {
+  if (checkpointExportInProgress) {
+    throw checkpointExportBusyError();
+  }
+  checkpointExportInProgress = true;
+  try {
+    return await work();
+  } finally {
+    checkpointExportInProgress = false;
+  }
+}
+
+function throwIfPublicationCanceled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw publicationAbortError("SQLite Library publication was canceled.");
+  }
 }
 
 function publicationAbortError(message: string): Error {
@@ -1215,8 +1263,9 @@ function publicationAbortError(message: string): Error {
  * Native SQLite and Keychain commands cannot be interrupted after Tauri has
  * accepted them. Their result is still safe to ignore because every cloud
  * mutation below rechecks the supplied signal before the request and Drive
- * publication ends in an exact control CAS. A canceled native invoke must not
- * remain the head of a module-wide queue and wedge every later sync attempt.
+ * publication ends in an exact control CAS. Canceled preflight work may be
+ * abandoned. Once export starts, withCheckpointExport retains ownership until
+ * the underlying work settles; callers receive a bounded busy error meanwhile.
  */
 async function runBoundedPublication(input: {
   readonly accessToken: string;
@@ -1266,13 +1315,30 @@ async function runBoundedPublication(input: {
   }
 }
 
+let activePublication: Promise<LibraryCoreCloudPublishResult> | null = null;
+
 export function publishCurrentSqliteLibraryToGoogleDrive(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
   requirePrimaryLibraryCoreDesktopRole();
-  return runBoundedPublication(input);
+  if (input.signal?.aborted) {
+    return Promise.reject(
+      publicationAbortError("SQLite Library publication was canceled."),
+    );
+  }
+  // Manual Sync now and the periodic coordinator must not replace each other's
+  // native export cursor or race the same Drive control publication.
+  if (activePublication !== null) return activePublication;
+  if (checkpointExportInProgress) {
+    return Promise.reject(checkpointExportBusyError());
+  }
+  const publication = runBoundedPublication(input).finally(() => {
+    if (activePublication === publication) activePublication = null;
+  });
+  activePublication = publication;
+  return publication;
 }
 
 async function prepareDesktopNormalizedFollowerEnrollment() {
