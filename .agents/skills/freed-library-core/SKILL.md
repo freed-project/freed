@@ -7,7 +7,15 @@ description: Build or migrate Freed's bounded-memory Library Core across Desktop
 
 Treat storage authority as product behavior. Read
 [LIBRARY-CORE-CONTRACT.md](../../../docs/LIBRARY-CORE-CONTRACT.md) before
-designing or editing a Library Core slice.
+designing or editing a Library Core slice. Read its matching chapters and, for
+queries, the matching query-family references. Record the selected paths and
+loaded bytes; do not load every chapter by default.
+
+The current SQLite contract owns the target architecture. Historical gate
+references below describe migration workflows, not permission to restore a
+retired engine or compatibility authority. If a reference conflicts with the
+current contract or activation manifest, inspect the implementation and resolve
+the discrepancy before design or code. Never choose the weaker requirement.
 
 ## Declare the slice
 
@@ -39,8 +47,8 @@ may cross several modes, so use every matching reference.
 - For legacy epoch bootstrap, creator and adopter control, IndexedDB legacy
   saves, ancestry, recovery, or bootstrap retries, read
   [bootstrap-and-legacy-control.md](references/bootstrap-and-legacy-control.md).
-- For Gate A registries, authoritative SQLite, browser row storage, derived
-  projections, shadow rebuilds, generation publication, or dormant readers,
+- For Gate A registries, dormant SQLite or browser row-store construction,
+  shadow rebuilds, candidate-generation publication, or dormant readers,
   read
   [dormant-census-and-shadow-stores.md](references/dormant-census-and-shadow-stores.md).
 - For canonical values, digests, signed transactions, actor enrollment, native

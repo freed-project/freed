@@ -51,8 +51,7 @@ function trustedAcquireEnv() {
   return {
     FREED_PUBLISHER_ACQUIRE_OPERATION_ID:
       "12345678-1234-4123-8123-123456789abc",
-    FREED_PUBLISHER_ACQUIRE_TOKEN:
-      "publisher-caller-retained-token-1234567890",
+    FREED_PUBLISHER_ACQUIRE_TOKEN: "publisher-caller-retained-token-1234567890",
   };
 }
 
@@ -567,7 +566,10 @@ async function authorizeProviderApproval(fixture, approval) {
     .digest("hex")}`;
   const seedStateRoot = await fs.realpath(
     await fs.mkdtemp(
-      path.join(path.dirname(fixture.automationStateRoot), "provider-control-seed-"),
+      path.join(
+        path.dirname(fixture.automationStateRoot),
+        "provider-control-seed-",
+      ),
     ),
   );
   try {
@@ -575,8 +577,7 @@ async function authorizeProviderApproval(fixture, approval) {
     const seedPaths = automationControlPaths(seedStateRoot);
     const controller = "freed-stability-controller";
     const controllerPolicy = AUTOMATION_ACTOR_POLICIES[controller];
-    const controllerLeaseToken =
-      `provider-approval-controller:${"x".repeat(64)}`;
+    const controllerLeaseToken = `provider-approval-controller:${"x".repeat(64)}`;
     const acquiredController = acquireGeneralActorLeaseForTest({
       stateRoot: seedStateRoot,
       name: controllerPolicy.leaseName,
@@ -645,9 +646,7 @@ async function authorizeProviderApproval(fixture, approval) {
         intent: ownerIntent,
         intentDigest: ownerIntentDigest,
         approvedAt: new Date(ownerLeaseAcquiredAtMs - 1_000).toISOString(),
-        expiresAt: new Date(
-          ownerLeaseAcquiredAtMs + 60 * 60_000,
-        ).toISOString(),
+        expiresAt: new Date(ownerLeaseAcquiredAtMs + 60 * 60_000).toISOString(),
       })}\n`,
       { mode: 0o600 },
     );
@@ -817,6 +816,48 @@ async function writeProviderReviewArtifact(
   return { artifact: stored, path: artifactPath };
 }
 
+test("provider subdiff query rejects dirty sources without staging, committing, or publishing", async (t) => {
+  const fixture = await createPublishFixture(t);
+  const before = run("git", ["rev-parse", "HEAD"], {
+    cwd: fixture.worktree,
+  }).stdout;
+  await fs.writeFile(
+    path.join(fixture.worktree, "README.md"),
+    "unstaged change\n",
+  );
+  await fs.writeFile(path.join(fixture.worktree, "untracked.md"), "new file\n");
+  const status = run("git", ["status", "--porcelain"], {
+    cwd: fixture.worktree,
+  }).stdout;
+  const result = run(
+    "bash",
+    [publishScript, "--print-provider-subdiff", "--include-untracked"],
+    {
+      cwd: fixture.worktree,
+      env: directPublishEnv(fixture),
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /never stages or commits/);
+  assert.equal(
+    run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+    before,
+  );
+  assert.equal(
+    run("git", ["status", "--porcelain"], { cwd: fixture.worktree }).stdout,
+    status,
+  );
+  assert.equal(
+    run("git", ["diff", "--cached"], { cwd: fixture.worktree }).stdout,
+    "",
+  );
+  const calls = await readGhLog(fixture.ghLogFile);
+  assert.equal(
+    calls.some((call) => ["create", "edit", "merge"].includes(call.args[1])),
+    false,
+  );
+});
+
 test("worktree-publish keeps the ordinary authenticated GitHub path available", async (t) => {
   const fixture = await createPublishFixture(t, {
     preacquirePublisherLease: false,
@@ -930,16 +971,13 @@ test("worktree-publish refreshes origin/dev before direct main validation", asyn
     0,
   );
   assert.equal(
-    run("git", ["fetch", "origin", "main"], { cwd: fixture.worktree })
-      .status,
+    run("git", ["fetch", "origin", "main"], { cwd: fixture.worktree }).status,
     0,
   );
   assert.equal(
-    run(
-      "git",
-      ["checkout", "-B", "chore/release-v26.7.1002", "origin/main"],
-      { cwd: fixture.worktree },
-    ).status,
+    run("git", ["checkout", "-B", "chore/release-v26.7.1002", "origin/main"], {
+      cwd: fixture.worktree,
+    }).status,
     0,
   );
   const releaseFile = path.join(
@@ -978,7 +1016,10 @@ test("worktree-publish refreshes origin/dev before direct main validation", asyn
     0,
   );
   await fs.writeFile(path.join(devAdvancer, "README.md"), "advanced dev\n");
-  assert.equal(run("git", ["add", "README.md"], { cwd: devAdvancer }).status, 0);
+  assert.equal(
+    run("git", ["add", "README.md"], { cwd: devAdvancer }).status,
+    0,
+  );
   assert.equal(
     run("git", ["commit", "-m", "chore: advance dev"], {
       cwd: devAdvancer,
@@ -1020,8 +1061,9 @@ test("worktree-publish refreshes origin/dev before direct main validation", asyn
 
   assertSuccess(result);
   assert.equal(
-    run("git", ["rev-parse", "origin/dev"], { cwd: fixture.worktree })
-      .stdout.trim(),
+    run("git", ["rev-parse", "origin/dev"], {
+      cwd: fixture.worktree,
+    }).stdout.trim(),
     remoteDevHead,
   );
 
@@ -1073,11 +1115,9 @@ test("worktree-publish refreshes origin/dev before direct main validation", asyn
     /canonical dev moved after the local ref was fetched/,
   );
   assert.equal(
-    run(
-      "git",
-      ["ls-remote", "origin", "refs/heads/chore/release-v26.7.1002"],
-      { cwd: fixture.worktree },
-    ).stdout.split("\t")[0],
+    run("git", ["ls-remote", "origin", "refs/heads/chore/release-v26.7.1002"], {
+      cwd: fixture.worktree,
+    }).stdout.split("\t")[0],
     publishedHead,
   );
 });
@@ -2023,20 +2063,14 @@ test("worktree-publish permits cooperative direct publication from a nightly env
 
   const result = run(
     "bash",
-    [
-      publishScript,
-      "--title",
-      "fix: preserve cooperative nightly publication",
-    ],
+    [publishScript, "--title", "fix: preserve cooperative nightly publication"],
     {
       cwd: fixture.worktree,
       env: {
         ...directPublishEnv(fixture),
         FREED_AUTOMATION_ACTOR: "freed-nightly-runner",
-        FREED_AUTOMATION_ACTOR_TOKEN:
-          "nightly-persistent-secret-1234567890",
-        FREED_AUTOMATION_LEASE_TOKEN:
-          "nightly-short-lived-secret-1234567890",
+        FREED_AUTOMATION_ACTOR_TOKEN: "nightly-persistent-secret-1234567890",
+        FREED_AUTOMATION_LEASE_TOKEN: "nightly-short-lived-secret-1234567890",
       },
     },
   );
@@ -2101,12 +2135,13 @@ test("worktree-publish requires a provider review artifact before provider draft
   const fixture = await createPublishFixture(t, {
     preacquirePublisherLease: false,
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// provider review artifact required\n");
-  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }),
+  );
   assertSuccess(
     run("git", ["commit", "-m", "fix: require provider review artifact"], {
       cwd: fixture.worktree,
@@ -2124,9 +2159,13 @@ test("worktree-publish requires a provider review artifact before provider draft
   const ghCalls = await readGhLog(fixture.ghLogFile);
   assert.equal(ghCalls.length, 0);
   assert.equal(
-    run("git", ["ls-remote", "origin", "refs/heads/fix/worktree-publish-test"], {
-      cwd: fixture.worktree,
-    }).stdout,
+    run(
+      "git",
+      ["ls-remote", "origin", "refs/heads/fix/worktree-publish-test"],
+      {
+        cwd: fixture.worktree,
+      },
+    ).stdout,
     "",
   );
 });
@@ -2139,12 +2178,13 @@ test("worktree-publish rejects provider review artifacts with the wrong provider
     taskId: "provider-review-wrong-scope",
     providers: ["instagram"],
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// mismatched provider review scope\n");
-  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }),
+  );
   assertSuccess(
     run("git", ["commit", "-m", "fix: reject mismatched provider scope"], {
       cwd: fixture.worktree,
@@ -2196,10 +2236,7 @@ test("worktree-publish rejects provider review artifacts without a current healt
       });
       const relativeExtractorPath =
         "packages/desktop/src-tauri/src/fb-extract.js";
-      const extractorPath = path.join(
-        fixture.worktree,
-        relativeExtractorPath,
-      );
+      const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
       await fs.mkdir(path.dirname(extractorPath), { recursive: true });
       await fs.writeFile(extractorPath, "// approval state must be current\n");
       assertSuccess(
@@ -2336,10 +2373,7 @@ test("worktree-publish leaves a new provider PR draft when its audit record cann
       });
       const relativeExtractorPath =
         "packages/desktop/src-tauri/src/fb-extract.js";
-      const extractorPath = path.join(
-        fixture.worktree,
-        relativeExtractorPath,
-      );
+      const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
       await fs.mkdir(path.dirname(extractorPath), { recursive: true });
       await fs.writeFile(
         extractorPath,
@@ -2385,14 +2419,11 @@ test("worktree-publish leaves a new provider PR draft when its audit record cann
       assert.ok(createCall?.args.includes("--draft"));
       assert.equal(
         ghCalls.some(
-          (call) =>
-            call.args[1] === "ready" && !call.args.includes("--undo"),
+          (call) => call.args[1] === "ready" && !call.args.includes("--undo"),
         ),
         false,
       );
-      const state = JSON.parse(
-        await fs.readFile(fixture.ghStateFile, "utf8"),
-      );
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
       assert.equal((state.comments || []).length, failureCase.expectedComments);
     });
   }
@@ -2405,8 +2436,7 @@ test("worktree-publish verifies a new provider audit record before marking the P
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-new-ready",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(
@@ -2658,9 +2688,15 @@ test("worktree-publish retires owner-confirmed provider approval packets", async
   );
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /owner-confirmation approval packets are retired/);
+  assert.match(
+    result.stderr,
+    /owner-confirmation approval packets are retired/,
+  );
   const ghCalls = await readGhLog(fixture.ghLogFile);
-  assert.equal(ghCalls.some((call) => call.args[1] === "edit"), false);
+  assert.equal(
+    ghCalls.some((call) => call.args[1] === "edit"),
+    false,
+  );
 });
 
 test("worktree-publish revalidates provider approval immediately before PR creation", async (t) => {
@@ -2962,10 +2998,7 @@ test("worktree-publish keeps a control-task provider PR draft until its audit co
       });
       const relativeExtractorPath =
         "packages/desktop/src-tauri/src/fb-extract.js";
-      const extractorPath = path.join(
-        fixture.worktree,
-        relativeExtractorPath,
-      );
+      const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
       await fs.mkdir(path.dirname(extractorPath), { recursive: true });
       await fs.writeFile(
         extractorPath,
@@ -3046,14 +3079,11 @@ test("worktree-publish keeps a control-task provider PR draft until its audit co
       assert.ok(createCall?.args.includes("--draft"));
       assert.equal(
         ghCalls.some(
-          (call) =>
-            call.args[1] === "ready" && !call.args.includes("--undo"),
+          (call) => call.args[1] === "ready" && !call.args.includes("--undo"),
         ),
         false,
       );
-      const state = JSON.parse(
-        await fs.readFile(fixture.ghStateFile, "utf8"),
-      );
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
       assert.equal((state.comments || []).length, failureCase.expectedComments);
     });
   }
@@ -3066,8 +3096,7 @@ test("worktree-publish restores draft and stops when a provider PR becomes ready
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-post-push-draft-race",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// post-push draft race\n");
@@ -3123,8 +3152,7 @@ test("worktree-publish refuses to push when an existing provider PR cannot be ve
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-draft-before-push",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// draft verification before push\n");
@@ -3188,8 +3216,7 @@ test("worktree-publish returns an unexpectedly ready provider PR to draft before
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-new-draft-verification",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// new provider PR draft verification\n");
@@ -3220,10 +3247,7 @@ test("worktree-publish returns an unexpectedly ready provider PR to draft before
   );
 
   assert.notEqual(result.status, 0);
-  assert.match(
-    result.stderr,
-    /unexpectedly ready and was returned to draft/,
-  );
+  assert.match(result.stderr, /unexpectedly ready and was returned to draft/);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.prList[0].isDraft, true);
   assert.equal((state.comments || []).length, 0);
@@ -3294,12 +3318,13 @@ test("worktree-publish promotes a provider branch to ready on the Gate 1 artifac
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-codeowner",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// reviewed provider change\n");
-  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }),
+  );
   assertSuccess(
     run("git", ["commit", "-m", "fix: adjust reviewed extractor"], {
       cwd: fixture.worktree,
@@ -3361,9 +3386,7 @@ test("worktree-publish promotes a provider branch to ready on the Gate 1 artifac
       (call) => call.args[1] === "ready" && !call.args.includes("--undo"),
     ),
   );
-  const readyState = JSON.parse(
-    await fs.readFile(fixture.ghStateFile, "utf8"),
-  );
+  const readyState = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(readyState.comments.length, 1);
 });
 
@@ -3384,12 +3407,13 @@ test("worktree-publish rejects a Gate 1 artifact scoped to the wrong provider", 
     providers: ["instagram"],
     observableBehavior: "An approval scoped to a different provider.",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// stable provider diff\n");
-  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }),
+  );
   assertSuccess(
     run("git", ["commit", "-m", "fix: review stable provider diff"], {
       cwd: fixture.worktree,
@@ -3476,12 +3500,13 @@ test("worktree-publish promotes a provider branch to ready and binds exactly one
   const review = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-artifact-authority",
   });
-  const relativeExtractorPath =
-    "packages/desktop/src-tauri/src/fb-extract.js";
+  const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
   await fs.writeFile(extractorPath, "// behavior-approved provider change\n");
-  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }),
+  );
   assertSuccess(
     run("git", ["commit", "-m", "fix: adjust approved extractor"], {
       cwd: fixture.worktree,
@@ -3539,10 +3564,7 @@ test("worktree-publish requires values for provider risk file flags", async (t) 
   );
 
   assert.notEqual(approvalResult.status, 0);
-  assert.match(
-    approvalResult.stderr,
-    /--provider-risk-approval-file requires/,
-  );
+  assert.match(approvalResult.stderr, /--provider-risk-approval-file requires/);
 
   const reviewResult = run(
     "bash",
@@ -3559,10 +3581,7 @@ test("worktree-publish requires values for provider risk file flags", async (t) 
   );
 
   assert.notEqual(reviewResult.status, 0);
-  assert.match(
-    reviewResult.stderr,
-    /--provider-risk-review-artifact requires/,
-  );
+  assert.match(reviewResult.stderr, /--provider-risk-review-artifact requires/);
 });
 
 test("worktree-publish commits uncommitted provider-visible changes into a draft", async (t) => {
@@ -3689,12 +3708,7 @@ test("worktree-publish rolls a PR back to draft when GitHub does not apply the r
 
   const result = run(
     "bash",
-    [
-      publishScript,
-      "--title",
-      "fix: verify ready publish state",
-      "--ready",
-    ],
+    [publishScript, "--title", "fix: verify ready publish state", "--ready"],
     {
       cwd: fixture.worktree,
       env: directPublishEnv(fixture),
