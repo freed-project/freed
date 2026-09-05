@@ -44,6 +44,8 @@ const mocks = vi.hoisted(() => {
     ),
     sqliteActive: false,
     writerAllowed: true,
+    writerConfigured: true,
+    writerError: null as Error | null,
   };
 });
 
@@ -102,15 +104,18 @@ vi.mock("./store", () => ({
 
 vi.mock("./sqlite-library", () => ({
   isSqliteLibraryActive: () => mocks.sqliteActive,
-  sqliteLibraryCloudWriterAdmissionStatus: vi.fn(async () => ({
-    configured: true,
-    allowed: mocks.writerAllowed,
-    localWriterId: "writer-local",
-    activeWriterId: mocks.writerAllowed ? "writer-local" : "writer-other",
-    storageEpoch: "epoch-1",
-    controlRevision: "revision-1",
-    verifiedAtMs: 1,
-  })),
+  sqliteLibraryCloudWriterAdmissionStatus: vi.fn(async () => {
+    if (mocks.writerError) throw mocks.writerError;
+    return {
+      configured: mocks.writerConfigured,
+      allowed: mocks.writerAllowed,
+      localWriterId: "writer-local",
+      activeWriterId: mocks.writerAllowed ? "writer-local" : "writer-other",
+      storageEpoch: "epoch-1",
+      controlRevision: "revision-1",
+      verifiedAtMs: 1,
+    };
+  }),
 }));
 
 let captureModule: typeof import("./capture");
@@ -148,6 +153,8 @@ describe("scheduled social capture retries", () => {
     mocks.state.ytAuth = { isAuthenticated: false };
     mocks.sqliteActive = false;
     mocks.writerAllowed = true;
+    mocks.writerConfigured = true;
+    mocks.writerError = null;
   });
 
   afterEach(() => {
@@ -200,6 +207,33 @@ describe("scheduled social capture retries", () => {
     expect(mocks.captureYouTube).not.toHaveBeenCalled();
     expect(mocks.refreshLibraryFeeds).not.toHaveBeenCalled();
   });
+
+  it.each(["linkedin", "instagram", "facebook", "youtube"] as const)(
+    "distinguishes missing and unreadable writer admission for %s without provider contact",
+    async (provider) => {
+      mocks.sqliteActive = true;
+      mocks.writerAllowed = false;
+      mocks.writerConfigured = false;
+      expect(await captureModule.refreshSocialProvider(provider)).toMatchObject(
+        {
+          status: "ignored",
+          stage: "writer_admission_missing",
+        },
+      );
+      mocks.writerError = new Error("database is locked");
+      expect(await captureModule.refreshSocialProvider(provider)).toMatchObject(
+        {
+          status: "ignored",
+          stage: "writer_admission_unavailable",
+        },
+      );
+      expect(mocks.captureLiFeed).not.toHaveBeenCalled();
+      expect(mocks.captureIgFeed).not.toHaveBeenCalled();
+      expect(mocks.captureFbFeed).not.toHaveBeenCalled();
+      expect(mocks.captureYouTube).not.toHaveBeenCalled();
+      expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns success details when Facebook sees posts", async () => {
     mocks.captureFbFeed.mockResolvedValueOnce({
@@ -300,12 +334,30 @@ describe("scheduled social capture retries", () => {
       "scheduled",
       onProviderContact,
     );
-    expect(mocks.captureFbFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
-    expect(mocks.captureIgFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
-    expect(mocks.captureLiFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
-    expect(mocks.captureYouTube).toHaveBeenCalledWith("scheduled", onProviderContact);
-    expect(mocks.captureSubstackFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
-    expect(mocks.captureMediumFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureFbFeed).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureIgFeed).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureLiFeed).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureYouTube).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureSubstackFeed).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureMediumFeed).toHaveBeenCalledWith(
+      "scheduled",
+      onProviderContact,
+    );
   });
 
   it("returns empty when Facebook sees no posts", async () => {
@@ -359,10 +411,7 @@ describe("scheduled social capture retries", () => {
   });
 
   it("refuses every social capture before provider contact in follower mode", async () => {
-    window.localStorage.setItem(
-      "freed.libraryCore.desktopRoleV1",
-      "follower",
-    );
+    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
 
     const result = await captureModule.refreshSocialProvider(
       "facebook",
@@ -374,7 +423,7 @@ describe("scheduled social capture retries", () => {
     expect(result).toMatchObject({
       provider: "facebook",
       status: "ignored",
-      stage: "retired_writer",
+      stage: "follower",
     });
   });
 
