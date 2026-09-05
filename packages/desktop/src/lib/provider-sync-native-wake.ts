@@ -34,5 +34,17 @@ export async function replaceNativeProviderScheduleWake(
   wake: NativeProviderScheduleWake | null,
 ): Promise<void> {
   if (!canUseTauriEvents()) return;
-  await invoke("replace_provider_schedule_wake", { wake });
+  // Sampled deadlines may be fractional; Rust's u64 command rejects them.
+  // Round only the native mirror upward so contact can never be brought forward.
+  if (
+    wake &&
+    (!Number.isFinite(wake.deadlineAtMs) ||
+      wake.deadlineAtMs < 0 ||
+      !Number.isSafeInteger(Math.ceil(wake.deadlineAtMs)))
+  ) {
+    throw new Error("Invalid native provider wake deadline");
+  }
+  await invoke("replace_provider_schedule_wake", {
+    wake: wake ? { ...wake, deadlineAtMs: Math.ceil(wake.deadlineAtMs) } : null,
+  });
 }

@@ -52,6 +52,7 @@ let nativeMirrorPending = false;
 let nativeMirrorFailureReported = false;
 const activeOperations = new Set<Promise<unknown>>();
 const reportedStorageBlocks = new Set<AutomaticSyncProvider>();
+const reportedSessionDeferrals = new Map<AutomaticSyncProvider, string>();
 
 function nextNativeWake(): {
   provider: AutomaticSyncProvider;
@@ -210,7 +211,41 @@ async function runOne(wakeContext: boolean): Promise<void> {
   const random = activeRandom;
   const decisionAt = nowSource();
   const runtimeEligibility = await getProviderSyncRuntimeEligibility();
-  if (!runtimeEligibility.eligible) return;
+  if (!runtimeEligibility.eligible) {
+    if (!getAutomaticProviderSyncEnabled()) return;
+    for (const provider of AUTOMATIC_SYNC_PROVIDERS) {
+      const snapshot = getProviderScheduleSnapshot(provider);
+      if (snapshot.status !== "supported" || !snapshot.record) continue;
+      const record = snapshot.record;
+      if (
+        record.automaticPaused ||
+        record.phase === "blocked" ||
+        record.attempt ||
+        decisionAt < Math.max(
+          record.nextDueAt,
+          record.activationAt,
+          record.localEligibilityRetryAt ?? 0,
+        )
+      ) continue;
+      const category = runtimeEligibility.reason ?? "session_state_unavailable";
+      const key = `${category}:${record.nextDueAt}`;
+      if (reportedSessionDeferrals.get(provider) === key) continue;
+      reportedSessionDeferrals.set(provider, key);
+      // Observe the gate without consuming or moving the persisted due time.
+      recordProviderScheduleEvent("provider_schedule_deferred", {
+        ...eventBase(record, {
+          actualAt: decisionAt,
+          dueAgeMs: Math.max(0, decisionAt - record.nextDueAt),
+          wakeContext,
+        }),
+        deferralCategory: category,
+        outcome: "deferred",
+        stage: "runtime_eligibility",
+      });
+    }
+    return;
+  }
+  reportedSessionDeferrals.clear();
   const nativeOperation = await getNativeBackgroundRuntimeOperationStatus();
   const ownership = reconcileProviderScheduleOwnership({
     now: decisionAt,
@@ -446,6 +481,7 @@ export function startProviderSyncScheduler(
   activeRandom = options.random ?? createCryptoRandomSource();
   nowSource = options.now ?? Date.now;
   reportedStorageBlocks.clear();
+  reportedSessionDeferrals.clear();
   nativeMirrorFailureReported = false;
   initialize(nowSource(), activeRandom, options.existingInstall ?? false);
   requestNativeWakeMirror();

@@ -368,10 +368,39 @@ impl Default for ProviderScheduleWakeState {
 
 #[cfg(target_os = "macos")]
 fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
-    let locked_key = "<key>CGSSessionScreenIsLocked</key>";
-    text.split(locked_key)
-        .nth(1)
-        .map(|tail| tail.trim_start().starts_with("<true/>"))
+    // Recent macOS versions expose IOConsoleLocked on the registry root and
+    // omit CGSSessionScreenIsLocked when unlocked. Parse actual booleans: a
+    // missing or malformed value must never accidentally mean unlocked.
+    let value = plist::Value::from_reader_xml(text.as_bytes()).ok()?;
+    let roots: Vec<&plist::Value> = match value.as_array() {
+        Some(entries) => entries.iter().collect(),
+        None => vec![&value],
+    };
+    let mut states = Vec::new();
+    for root in roots {
+        let root = root.as_dictionary()?;
+        for key in ["IOConsoleLocked", "CGSSessionScreenIsLocked"] {
+            if let Some(state) = root.get(key) {
+                states.push(state.as_boolean());
+            }
+        }
+        if let Some(sessions) = root.get("IOConsoleUsers") {
+            for session in sessions.as_array()? {
+                let session = session.as_dictionary()?;
+                if let Some(state) = session.get("CGSSessionScreenIsLocked") {
+                    states.push(state.as_boolean());
+                }
+            }
+        }
+    }
+    // Any explicit locked signal wins, including conflicting session evidence.
+    if states.contains(&Some(true)) {
+        Some(true)
+    } else if !states.is_empty() && states.iter().all(|state| *state == Some(false)) {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
@@ -638,11 +667,11 @@ fn get_desktop_session_state() -> DesktopSessionState {
         }
 
         let text = String::from_utf8_lossy(&output.stdout);
-        let screen_locked = parse_screen_locked_from_ioreg_plist(&text).unwrap_or(false);
+        let screen_locked = parse_screen_locked_from_ioreg_plist(&text);
 
         DesktopSessionState {
-            available: parse_screen_locked_from_ioreg_plist(&text).is_some(),
-            screen_locked,
+            available: screen_locked.is_some(),
+            screen_locked: screen_locked.unwrap_or(false),
             error: None,
         }
     }
@@ -15229,19 +15258,34 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn parses_macos_screen_lock_state_from_ioreg_plist() {
-        assert_eq!(
-            parse_screen_locked_from_ioreg_plist(
-                r#"<dict><key>CGSSessionScreenIsLocked</key><true/></dict>"#,
-            ),
-            Some(true),
-        );
-        assert_eq!(
-            parse_screen_locked_from_ioreg_plist(
-                r#"<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"#,
-            ),
-            Some(false),
-        );
-        assert_eq!(parse_screen_locked_from_ioreg_plist("<dict></dict>"), None);
+        for (body, expected) in [
+            ("<dict><key>CGSSessionScreenIsLocked</key><true/></dict>", Some(true)),
+            ("<dict><key>CGSSessionScreenIsLocked</key><false/></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><false/><key>IOConsoleUsers</key><array><dict><key>kCGSSessionOnConsoleKey</key><true/></dict></array></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><true/></dict>", Some(true)),
+            ("<array><dict><key>IOConsoleLocked</key><false/></dict></array>", Some(false)),
+            ("<dict><key>IOConsoleUsers</key><array><dict><key>CGSSessionScreenIsLocked</key><false/></dict></array></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><false/><key>IOConsoleUsers</key><array><dict><key>CGSSessionScreenIsLocked</key><true/></dict></array></dict>", Some(true)),
+            ("<dict><key>IOConsoleLocked</key><true/><key>CGSSessionScreenIsLocked</key><false/></dict>", Some(true)),
+            ("<dict><key>IOConsoleLocked</key><string>false</string></dict>", None),
+            ("<dict><key>CGSSessionScreenIsLocked</key><string>invalid</string></dict>", None),
+            ("<dict><key>IOConsoleLocked</key><false/><key>CGSSessionScreenIsLocked</key><string>invalid</string></dict>", None),
+            ("<dict></dict>", None),
+            ("<dict><key>IOConsoleLocked</key>", None),
+        ] {
+            let xml = format!(r#"<?xml version="1.0"?><plist version="1.0">{body}</plist>"#);
+            assert_eq!(parse_screen_locked_from_ioreg_plist(&xml), expected, "{body}");
+        }
+        assert_eq!(parse_screen_locked_from_ioreg_plist("not a plist"), None);
+    }
+
+    #[test]
+    fn provider_wake_wire_contract_requires_integral_milliseconds() {
+        let fractional = r#"{"provider":"facebook","deadlineAtMs":1788075817236.207}"#;
+        assert!(serde_json::from_str::<ProviderScheduleWakeRequest>(fractional).is_err());
+        let rounded = r#"{"provider":"facebook","deadlineAtMs":1788075817237}"#;
+        let wake = serde_json::from_str::<ProviderScheduleWakeRequest>(rounded).unwrap();
+        assert_eq!(wake.deadline_at_ms, 1788075817237);
     }
 
     fn binary_cookie_record(name: &str) -> Vec<u8> {
