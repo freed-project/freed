@@ -421,4 +421,46 @@ describe("provider sync scheduler", () => {
       scheduler.stopProviderSyncScheduler();
     },
   );
+
+  it("reports a due session deferral once, retains its deadline, and resumes after unlock", async () => {
+    getProviderScheduleSnapshot.mockImplementation((provider: string) => ({
+      status: "supported",
+      record: { ...record, provider },
+    }));
+    getProviderSyncRuntimeEligibility.mockResolvedValue({
+      available: false,
+      eligible: false,
+      reason: "session_state_unavailable",
+    });
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await flushScheduler();
+    await vi.advanceTimersByTimeAsync(120_000);
+    const facebookEvents = recordProviderScheduleEvent.mock.calls.filter(
+      ([event, data]) => event === "provider_schedule_deferred" && data.provider === "facebook",
+    );
+    expect(facebookEvents).toHaveLength(1);
+    expect(facebookEvents[0][1]).toMatchObject({
+      deferralCategory: "session_state_unavailable",
+      scheduledAt: 1_000,
+      dueAgeMs: 9_000,
+      attemptId: null,
+    });
+    expect(deferProviderScheduleLocally).not.toHaveBeenCalled();
+    expect(claimProviderSchedule).not.toHaveBeenCalled();
+    expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+
+    getProviderSyncRuntimeEligibility.mockResolvedValue({
+      available: true,
+      eligible: true,
+      reason: null,
+    });
+    scheduler.wakeProviderSyncSchedulerFromNative();
+    await flushScheduler();
+    expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
+    scheduler.stopProviderSyncScheduler();
+  });
 });
