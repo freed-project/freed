@@ -31,6 +31,9 @@ jobs:
       - name: Test instruction validators
         run: node --test scripts/validate-agent-instructions.test.mjs scripts/validate-skills.test.mjs
 
+      - name: Test manual deployment contract
+        run: bash -n scripts/vercel-deploy-preview.sh scripts/vercel-deploy-production.sh && node --test scripts/deploy-website.test.mjs
+
       - name: Validate agent instructions
         run: npm run validate:agent-instructions
 
