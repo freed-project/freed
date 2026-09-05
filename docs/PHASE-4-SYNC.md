@@ -245,6 +245,12 @@ loads an alternate Library engine or compatibility path.
       the separately approved bounded OAuth recovery after a 401.
 - [ ] Complete installed Freed Desktop and physical iPhone acceptance evidence.
 
+Native checkpoint page reads and completion probes use tuple keyset seeks on
+the pinned export index. This prevents late pages from rescanning the exported
+prefix. A deterministic SQLite VM-step test protects bounded work for first,
+late, and terminal pages. Record order, page limits, receipts, and the wire
+format are unchanged; receipt-heavy installed Drive acceptance remains open.
+
 Desktop publication coalesces overlapping manual and scheduled requests. A
 canceled native checkpoint export retains its local slot until the underlying
 call settles; a new request receives a bounded busy error instead of replacing
