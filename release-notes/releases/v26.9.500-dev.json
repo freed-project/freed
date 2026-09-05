@@ -1,0 +1,79 @@
+{
+  "tag": "v26.9.500-dev",
+  "version": "26.9.500-dev",
+  "channel": "dev",
+  "dayKey": "26.9.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-05T22:36:42.775Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.300-dev",
+    "previousPublishedDayTag": "v26.9.300-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "e6bbae8baa58d9b7502b04d02084f549885e9c05",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.300-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "5d4cf0fb5f32f5893f6add30e8992d0be1b9b73a",
+        "toInclusiveProductCommitSha": "e6bbae8baa58d9b7502b04d02084f549885e9c05"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:e26fb3ed59bcc640d083c86c55023483425e91c493359c6932e27792f72195b2",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.500-dev"
+    ],
+    "prNumbers": [
+      1765,
+      1789,
+      1791,
+      1794
+    ],
+    "commitSubjects": [
+      "perf: seek checkpoint pages through the export index",
+      "fix: restore automatic provider sync on unlocked macOS sessions",
+      "fix: coalesce Drive checkpoint publication and fence cancellation",
+      "fix: keep snapshot exports responsive and classify writer refusals",
+      "chore: route instruction contracts and harden governance",
+      "fix: treat PWA Library contention as a busy state",
+      "fix: preserve shared release matrix across promotion (#1794)",
+      "fix: preserve release lane controls during promotion (#1791)",
+      "docs: codify the demo corpus editorial canon (#1790)",
+      "fix: preserve library activation history across releases (#1789)",
+      "feat: launch the complete interactive Freed demo experience (#1765)"
+    ]
+  },
+  "release": {
+    "deck": "Launch the complete interactive Freed demo experience, coalesce Drive checkpoint publication and fence cancellation, and keep snapshot exports responsive and classify writer refusals",
+    "features": [
+      "Launch the complete interactive Freed demo experience"
+    ],
+    "fixes": [
+      "Preserve Library Core activation history across releases"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.500-dev\n\nLaunch the complete interactive Freed demo experience, coalesce Drive checkpoint publication and fence cancellation, and keep snapshot exports responsive and classify writer refusals\n\n### Features\n\n- Launch the complete interactive Freed demo experience\n\n### Fixes\n\n- Preserve Library Core activation history across releases\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
