@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress: LinkedIn and YouTube are integrated, and authenticated Substack and Medium capture is available in beta with local sessions, visible roster and activity extraction, provider health controls, and connection-only identity ingestion
 
+LinkedIn normalization keeps media types aligned with existing URLs, including
+video posts whose media URL was unavailable during extraction. Article link
+previews remain intact. Closed capture-payload regressions protect this local
+projection; they do not substitute for installed LinkedIn extraction proof.
+
 > **Library and media target:** Every captured record enters the exhaustive
 > Library Core mutation registry and normalized SQLite schema. Large media does
 > not enter checkpoint rows. Synced metadata carries typed content descriptors

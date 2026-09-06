@@ -1,7 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { igPostToFeedItem } from "@freed/capture-instagram/browser";
+import { sanitizeFeedItemCaptureWrite } from "@freed/shared";
+import { FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 
 describe("igPostToFeedItem", () => {
+  it("already preserves a valid empty media pair when a video URL is unavailable", () => {
+    const item = igPostToFeedItem({
+      shortcode: "empty_video", url: "https://www.instagram.com/p/empty_video/",
+      authorHandle: "ada", authorDisplayName: "Ada", authorAvatarUrl: null,
+      authorProfileUrl: "https://www.instagram.com/ada/", caption: "Video post",
+      timestampIso: "2026-09-01T00:00:00.000Z", mediaUrls: [],
+      isVideo: true, isCarousel: false, likeCount: null, commentCount: null,
+      hashtags: [], location: null, locationUrl: null, postType: "video",
+    });
+    expect(item).not.toBeNull();
+    expect(item!.content.mediaUrls).toEqual([]);
+    expect(item!.content.mediaTypes).toEqual([]);
+    expect(FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+      item: sanitizeFeedItemCaptureWrite(item!),
+    })).toMatchObject({ ok: true });
+  });
+
   it("preserves story location metadata and marks it as a sticker", () => {
     const item = igPostToFeedItem({
       shortcode: "story_123",

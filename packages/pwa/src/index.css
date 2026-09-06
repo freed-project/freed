@@ -112,6 +112,29 @@ html[data-theme="neon"] .demo-freed-logo {
   }
 }
 
+/* Safari may anchor inset:0 above its floating toolbar. Overscan only the
+   decorative layer, never the card's layout or interactive controls. */
+@keyframes demo-welcome-shade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.demo-welcome-shade {
+  animation: demo-welcome-shade-in 600ms ease-out both;
+  left: 0;
+  right: 0;
+  top: calc(0px - env(safe-area-inset-top, 0px));
+  bottom: calc(0px - env(safe-area-inset-bottom, 0px));
+  min-height: 100vh;
+  -webkit-backdrop-filter: blur(12px);
+}
+@supports (height: 100lvh) {
+  .demo-welcome-shade {
+    min-height: 100lvh;
+    bottom: calc(0px - max(env(safe-area-inset-bottom, 0px), calc(100lvh - 100dvh)));
+  }
+}
+
 .demo-welcome-first-look-backdrop--departing {
   animation: demo-welcome-backdrop-away 460ms cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
@@ -128,6 +151,7 @@ html[data-theme="neon"] .demo-freed-logo {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .demo-welcome-shade,
   .demo-welcome-first-look-backdrop--departing,
   .demo-welcome-first-look-card--departing,
   .demo-welcome-field-guide--arriving {

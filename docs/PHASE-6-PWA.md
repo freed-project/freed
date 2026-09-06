@@ -808,11 +808,19 @@ permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
 and fails on policy violations rather than relying on localhost-only behavior.
 
+Demo startup and routed feed, reader, Friends, and Map views share a compact,
+theme-aware loading spinner with an optional inline message. Map initialization
+does not render fallback markers before native map markers are ready; fallback
+presentation is reserved for unavailable maps.
+
 Demo reloads generate unread replacement items rather than inheriting sample
 templates' read timestamps. The previous-first-item session-storage memory is
 removed. Demo presentation preferences except theme and welcome display state use document-local storage
 before App imports hydrate. Theme and the modal, banner, or minimized choice are retained between sessions. The banner's expand button reopens the welcome modal. The shorter folder tab uses smooth cubic curves and restores directly on a return visit without the modal. Normal PWA preferences and real Library authority
-remain outside this change. Exactly 15% of admitted identities, rounded to the
+remain outside this change. On mobile, the minimized tab rotates counterclockwise
+onto the right edge and supports bounded vertical dragging without restoring on
+drag release. Its position follows visible viewport changes; desktop retains the
+bottom-centered tab. Exactly 15% of admitted identities, rounded to the
 nearest whole identity, are stable friends; the remainder are connections so
 Friends and All content produce distinct results.
 The sidebar reads total and unread counts from the bounded Library facet summary,
