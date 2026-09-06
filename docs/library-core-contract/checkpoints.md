@@ -50,7 +50,7 @@ verification. This preserves every binary64 bit across clients.
 The exact canonical UTF-8 record ceiling is 131,072 bytes. The producer measures
 canonical bytes before append and flushes before crossing either page ceiling:
 
-- 128 records
+- 4,096 records, from executable `limits.checkpointPageRecords`
 - 2,097,152 decoded canonical bytes
 
 One native export response contains at most 1,048,576 source bytes. This is an

@@ -3,7 +3,12 @@ import {
   createLibraryCoreImmutableObjectKey,
   parseLibraryCoreImmutableObjectDescriptorV1,
 } from "./immutable-transport-contracts.js";
-import { parseLibraryCoreCheckpointManifestV1 } from "./checkpoint-manifest-contracts.js";
+import {
+  parseLibraryCoreCheckpointManifestV1,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
+} from "./checkpoint-manifest-contracts.js";
 
 const PAGE_DIGESTS = ["11".repeat(32), "22".repeat(32)] as const;
 
@@ -13,7 +18,7 @@ function page(
   lastRecordIdentity: string,
   recordCount = 2,
 ) {
-  const contentDigest = PAGE_DIGESTS[pageIndex]!;
+  const contentDigest = PAGE_DIGESTS[pageIndex % PAGE_DIGESTS.length]!;
   return {
     firstRecordIdentity,
     lastRecordIdentity,
@@ -55,6 +60,33 @@ function manifest() {
 }
 
 describe("Library Core checkpoint manifest contract", () => {
+  it("derives aggregate admission from bounded pages without allocating their records", () => {
+    for (const pageCount of [257, LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT]) {
+      const source = {
+        ...manifest(),
+        pages: Array.from({ length: pageCount }, (_, index) => {
+          const prefix = String(index).padStart(6, "0");
+          return page(
+            index,
+            `${prefix}:a`,
+            `${prefix}:z`,
+            LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
+          );
+        }),
+        totalRecordCount:
+          pageCount * LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
+      };
+      expect(parseLibraryCoreCheckpointManifestV1(source).totalRecordCount).toBe(
+        source.totalRecordCount,
+      );
+    }
+    expect(() =>
+      parseLibraryCoreCheckpointManifestV1({
+        ...manifest(),
+        totalRecordCount: LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT + 1,
+      }),
+    ).toThrow(/totalRecordCount/);
+  });
   it("closes the exact dataset, frontier, page receipts, counts, and identity ranges", () => {
     const source = manifest();
     const parsed = parseLibraryCoreCheckpointManifestV1(source);

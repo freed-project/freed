@@ -71,6 +71,7 @@ import {
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
+import { createCheckpointPublicationDeadline } from "./checkpoint-publication-deadline";
 import {
   readLibraryCoreDesktopRole,
   requireFollowerLibraryCoreDesktopRole,
@@ -80,7 +81,6 @@ import {
 const STATE_FILE = "library-core-cloud-v2.json";
 const STATE_KEY = "state";
 const FOLLOWER_SYNC_POLL_MS = 60_000;
-const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
 
 interface LocalLibraryCoreCloudStateV2 {
@@ -437,6 +437,7 @@ async function tracedPublicationStage<T>(
 async function* normalizedCheckpointRecords(
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
   signal?: AbortSignal,
+  advanceRecords?: (count: number) => void,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
   let after: Parameters<
     typeof readNormalizedLibraryCheckpointPage
@@ -450,7 +451,10 @@ async function* normalizedCheckpointRecords(
       yield record;
       recordCount += 1;
     }
-    if (page.done) break;
+    if (page.done) {
+      if (recordCount === snapshot.recordCount) advanceRecords?.(recordCount);
+      break;
+    }
     if (
       page.nextCursor === null ||
       (after !== null &&
@@ -460,6 +464,7 @@ async function* normalizedCheckpointRecords(
       throw new Error("Normalized checkpoint export cursor did not advance");
     }
     after = page.nextCursor;
+    advanceRecords?.(recordCount);
   }
   if (recordCount !== snapshot.recordCount) {
     throw new Error("Normalized checkpoint changed during export");
@@ -1057,6 +1062,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
+  readonly deadline?: ReturnType<typeof createCheckpointPublicationDeadline>;
 }): Promise<LibraryCoreCloudPublishResult> {
   const descriptor = await tracedPublicationStage(
     "read local SQLite revision",
@@ -1171,6 +1177,8 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
         "Normalized SQLite checkpoint authority conflicts with cloud state",
       );
     }
+    input.deadline?.beginCheckpoint(normalizedCheckpoint.recordCount);
+    throwIfPublicationCanceled(input.signal);
     if (state.lastPublishedRevision === normalizedCheckpoint.sourceRevision) {
       const receipt = checkpointReceiptForState(state);
       if (
@@ -1188,13 +1196,33 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     const generation = pointer === null ? 0 : pointer.generation + 1;
     const result = await publishLibraryCoreNormalizedCheckpointV2({
       activeTransport: "google_drive_app_data_v1",
-      adapter,
+      adapter: {
+        ...adapter,
+        async verifyImmutable(receipt) {
+          const verified = await adapter.verifyImmutable(receipt);
+          throwIfPublicationCanceled(input.signal);
+          if (
+            verified.objectKey === receipt.descriptor.objectKey &&
+            verified.contentDigest === receipt.descriptor.contentDigest &&
+            verified.byteLength === receipt.descriptor.byteLength
+          ) {
+            input.deadline?.verifiedObject(verified.objectKey);
+          }
+          return verified;
+        },
+      },
       descriptor: normalizedCheckpoint,
       expectedControl: { revision: controlRead.revision, pointer },
       generation,
-      records: normalizedCheckpointRecords(normalizedCheckpoint, input.signal),
+      records: normalizedCheckpointRecords(
+        normalizedCheckpoint,
+        input.signal,
+        input.deadline?.advanceRecords,
+      ),
       subtle: crypto.subtle,
     });
+    input.deadline?.check();
+    throwIfPublicationCanceled(input.signal);
     if (result.status === "conflict") {
       throw new Error("Library Core cloud authority changed during publication");
     }
@@ -1282,10 +1310,19 @@ async function runBoundedPublication(input: {
   timeoutController.signal.addEventListener("abort", abortCombined, {
     once: true,
   });
-  const timer = window.setTimeout(
-    () => timeoutController.abort(),
-    PUBLICATION_TIMEOUT_MS,
-  );
+  let timeoutReason: "stalled" | "total" = "total";
+  const deadline = createCheckpointPublicationDeadline((reason) => {
+    timeoutReason = reason;
+    timeoutController.abort();
+    const diagnostic = deadline.diagnostics();
+    const message = `Checkpoint publication ${reason}: elapsed ${diagnostic.elapsedMs.toLocaleString()} ms, idle ${diagnostic.idleMs.toLocaleString()} ms, records ${diagnostic.advancedRecords.toLocaleString()}/${diagnostic.expectedRecords.toLocaleString()}, verified objects ${diagnostic.verifiedObjects.toLocaleString()}.`;
+    log.warn(`[library-core-cloud] ${message}`);
+    recordCloudProviderEvent("gdrive", {
+      kind: "error",
+      stage: "upload",
+      message,
+    });
+  });
   const canceled = new Promise<never>((_resolve, reject) => {
     combinedController.signal.addEventListener(
       "abort",
@@ -1293,7 +1330,9 @@ async function runBoundedPublication(input: {
         reject(
           publicationAbortError(
             timeoutController.signal.aborted
-              ? "SQLite Library publication timed out. Try Sync now again."
+              ? timeoutReason === "stalled"
+                ? "SQLite Library publication stalled: no checkpoint progress for five minutes."
+                : "SQLite Library publication reached its total time budget."
               : "SQLite Library publication was canceled.",
           ),
         );
@@ -1306,11 +1345,12 @@ async function runBoundedPublication(input: {
       publishCurrentSqliteLibraryToGoogleDriveInternal({
         ...input,
         signal: combinedController.signal,
+        deadline,
       }),
       canceled,
     ]);
   } finally {
-    window.clearTimeout(timer);
+    deadline.dispose();
     input.signal?.removeEventListener("abort", abortCombined);
   }
 }
