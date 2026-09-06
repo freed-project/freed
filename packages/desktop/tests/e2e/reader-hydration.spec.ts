@@ -237,7 +237,9 @@ test("reader author link opens the channel details in Friends", async ({ app }) 
   const sidebar = app.page.getByTestId("friends-sidebar");
   await expect(sidebar).toContainText("Instagram Author");
   await expect(sidebar).toContainText("Instagram");
-  await expect(sidebar).toContainText("1 captured post");
+  await expect(sidebar).toContainText("Recent activity");
+  await expect(sidebar).toContainText(IG_TITLE);
+  await expect(sidebar).not.toContainText("1 captured post");
 });
 
 test("X post reader offers native replies first and loads inline replies on beta action", async ({ app, ipc }) => {

@@ -897,6 +897,15 @@ pub(super) fn read_normalized_library_checkpoint_page(
         .as_ref()
         .is_some_and(|active| active.export.snapshot() == &request.snapshot);
     if starting && !already_started {
+        // Report session loss separately from a real source revision change.
+        // Counts and revisions are bounded diagnostics, never Library contents.
+        log::warn!(
+            "[checkpoint-export] first page has no matching pinned session: present={} requested_revision={} active_revision={:?} requested_records={}",
+            guard.is_some(),
+            request.snapshot.source_revision,
+            guard.as_ref().map(|active| active.export.snapshot().source_revision),
+            request.snapshot.record_count,
+        );
         let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin(
             open_normalized_database(&app)?,
             request.snapshot.clone(),
@@ -1756,26 +1765,34 @@ fn normalized_snapshot_reason(
 }
 
 #[tauri::command]
-pub(super) fn create_normalized_local_snapshot(
+pub(super) async fn create_normalized_local_snapshot(
     _app: tauri::AppHandle,
     created_at_ms: u64,
     reason: String,
 ) -> Result<freed_library_core::NormalizedLocalSnapshotSummaryV1, String> {
-    #[cfg(unix)]
-    return freed_library_core::desktop_binding()
-        .map_err(|error| error.to_string())?
-        .create_normalized_local_snapshot_v1(created_at_ms, normalized_snapshot_reason(&reason)?)
-        .map_err(|error| error.to_string());
-    #[cfg(not(unix))]
-    let mut connection = open_normalized_database(&_app)?;
-    #[cfg(not(unix))]
-    freed_library_core::create_normalized_local_snapshot_v1(
-        &mut connection,
-        &normalized_snapshot_root(&_app)?,
-        created_at_ms,
-        normalized_snapshot_reason(&reason)?,
-    )
-    .map_err(|error| error.to_string())
+    // Snapshot export can scan a large Library. Tauri synchronous commands run
+    // on the main thread, which also services provider WebViews and IPC.
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        return freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .create_normalized_local_snapshot_v1(
+                created_at_ms,
+                normalized_snapshot_reason(&reason)?,
+            )
+            .map_err(|error| error.to_string());
+        #[cfg(not(unix))]
+        let mut connection = open_normalized_database(&_app)?;
+        #[cfg(not(unix))]
+        freed_library_core::create_normalized_local_snapshot_v1(
+            &mut connection,
+            &normalized_snapshot_root(&_app)?,
+            created_at_ms,
+            normalized_snapshot_reason(&reason)?,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
 }
 
 #[tauri::command]

@@ -1,6 +1,7 @@
 import {
   buildIdentityGraphAtlasModel,
   fitTransformToAtlasBounds,
+  galaxyNodeLabel,
   sliceIdentityGraphAtlas,
   type BuildIdentityGraphAtlasModelInput,
   type IdentityGraphAtlasModel,
@@ -10,7 +11,9 @@ import {
   FriendsGalaxyActivityScenePatchEncoder,
   type FriendsGalaxyActivitySceneBinding,
 } from "./friends-galaxy-activity-patches.js";
-import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP } from "./friends-galaxy-presentation-atlas.js";
+import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP, FRIENDS_GALAXY_PRESENTATION_LABEL_CAP } from "./friends-galaxy-presentation-atlas.js";
+import { writeFriendsGalaxyWebGpuViewProjection } from "./friends-galaxy-camera.js";
+import { projectFriendsGalaxyWorldPoint } from "./friends-galaxy-projection.js";
 import { compileFriendsGalaxyProductRendererScene } from "./friends-galaxy-product-scene.js";
 import {
   compactFriendsGalaxyPresentationMetadata,
@@ -41,6 +44,7 @@ interface CachedFriendsGalaxyProductSource {
   sourceRevision: number;
   model: IdentityGraphAtlasModel;
   semanticNodeCount: number;
+  positionByNodeId: Map<string, readonly [number, number, number]>;
   linkedPersonNodeIdByAccountId: Map<string, string>;
   metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
   activityEncoder: FriendsGalaxyActivityScenePatchEncoder;
@@ -235,8 +239,15 @@ export class FriendsGalaxyProductWorkerService {
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
     });
+    // The renderer projects the complete 3D scene, not this 2D atlas slice.
+    // When all metadata fits the existing budget, retain it so perspective
+    // cannot reveal a star whose name was culled on the worker's flat plane.
+    const sourceIndexes = productSourceIndexes(model);
+    const presentationAtlas = model.nodes.length <= FRIENDS_GALAXY_PRESENTATION_NODE_CAP
+      ? includeFriendsGalaxyPriorityMetadata(atlas, sourceIndexes.metadataByNodeId, model.nodes.map((node) => node.id))
+      : atlas;
     const rendererScene = compileFriendsGalaxyProductRendererScene({
-      atlas,
+      atlas: presentationAtlas,
       source: model,
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
@@ -244,7 +255,6 @@ export class FriendsGalaxyProductWorkerService {
       proceduralBackgroundStarCount: request.proceduralBackgroundStarCount,
       backgroundSeed: request.backgroundSeed,
     });
-    const sourceIndexes = productSourceIndexes(model);
     const activityEncoder = new FriendsGalaxyActivityScenePatchEncoder(
       productActivityBindings(source, rendererScene),
     );
@@ -252,6 +262,11 @@ export class FriendsGalaxyProductWorkerService {
       sourceRevision: request.sourceRevision,
       model,
       semanticNodeCount: rendererScene.scene.nodeIds.length,
+      positionByNodeId: new Map(rendererScene.scene.nodeIds.map((id, index) => [id, [
+        rendererScene.scene.positions[index * 3]!,
+        rendererScene.scene.positions[index * 3 + 1]!,
+        rendererScene.scene.positions[index * 3 + 2]!,
+      ] as const])),
       ...sourceIndexes,
       activityEncoder,
     };
@@ -361,7 +376,34 @@ export class FriendsGalaxyProductWorkerService {
       request.viewport.selectedAccountId,
       cached.linkedPersonNodeIdByAccountId,
     );
-    const atlas = compactFriendsGalaxyPresentationMetadata(
+    const hovered = request.viewport.hoveredNodeId
+      ? cached.metadataByNodeId.get(request.viewport.hoveredNodeId)
+      : undefined;
+    if (hovered) priorityIds.unshift(hovered.id);
+    const projectedIds: string[] = [];
+    if (request.viewport.transform.scale >= 0.85) {
+      const matrix = new Float32Array(16);
+      const width = viewportDimension("viewport width", request.viewport.width);
+      const height = viewportDimension("viewport height", request.viewport.height);
+      writeFriendsGalaxyWebGpuViewProjection(matrix, request.viewport.transform, width, height);
+      const projection = { viewProjection: matrix, width, height };
+      const scratch = new Float32Array(2);
+      for (const node of cached.model.nodes) {
+        // Admission must use the exact rendered position, including compact
+        // profile shells, rather than mixing atlas XY with compiled depth.
+        const position = cached.positionByNodeId.get(node.id);
+        if (position && projectFriendsGalaxyWorldPoint(scratch, projection, position[0], position[1], position[2], 24)) {
+          projectedIds.push(node.id);
+        }
+      }
+    }
+    // Actual 3D-visible nodes precede flat-plane candidates in the same bounded
+    // budget. If more than 192 are visible, further zoom narrows the admitted set.
+    const admittedMetadataIds = [...priorityIds, ...projectedIds];
+    if (cached.model.nodes.length <= FRIENDS_GALAXY_PRESENTATION_NODE_CAP) {
+      admittedMetadataIds.push(...cached.model.nodes.map((node) => node.id));
+    }
+    let atlas = compactFriendsGalaxyPresentationMetadata(
       includeFriendsGalaxyPriorityMetadata(
         sliceIdentityGraphAtlas({
           model: cached.model,
@@ -373,12 +415,27 @@ export class FriendsGalaxyProductWorkerService {
           selectedAccountId: request.viewport.selectedAccountId,
         }),
         cached.metadataByNodeId,
-        priorityIds,
+        admittedMetadataIds,
       ),
       cached.semanticNodeCount,
       FRIENDS_GALAXY_PRESENTATION_NODE_CAP,
-      priorityIds,
+      admittedMetadataIds,
     );
+    if (hovered) {
+      const position = cached.positionByNodeId.get(hovered.id);
+      atlas = {
+        ...atlas,
+        labels: [{
+          id: `label:${hovered.id}`,
+          nodeId: hovered.id,
+          text: galaxyNodeLabel(hovered.linkedPersonId ? "" : hovered.label, hovered.kind, hovered.provider).trim(),
+          x: position?.[0] ?? hovered.x,
+          y: position ? -position[1] : hovered.y,
+          priority: 2_000_000,
+          kind: hovered.kind,
+        }, ...atlas.labels.filter(label => label.nodeId !== hovered.id)].slice(0, FRIENDS_GALAXY_PRESENTATION_LABEL_CAP),
+      };
+    }
     return {
       kind: "presentation-ready",
       protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,

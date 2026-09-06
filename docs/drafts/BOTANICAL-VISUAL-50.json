@@ -1,0 +1,154 @@
+{
+  "status": "one proposed visual Story; independent lead image and prose decisions required",
+  "counts": {
+    "exactOriginalsOpened": 4,
+    "extraDerivativeDownloads": 0,
+    "sourcePublishedDisplayFilesReviewed": 2,
+    "newIdentities": 1,
+    "visualStoryProposals": 1
+  },
+  "characters": [
+    {
+      "characterId": "lucille-loop",
+      "identityNameBase": "Lucille Loop",
+      "subject": "Cucamonga manroot",
+      "species": "Marah macrocarpa",
+      "platform": "instagram",
+      "bio": "Still here. There is some give.",
+      "location": {
+        "name": "Coastal sage scrub on Point Loma, San Diego",
+        "coordinates": {
+          "lat": 32.67,
+          "lng": -117.24
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "50-01",
+      "characterId": "lucille-loop",
+      "identityNameBase": "Lucille Loop",
+      "episode": {
+        "subject": "Cucamonga manroot",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "1ebfeabf759705dec5bd0852379aeaf53e12e7f2",
+        "theme": "social",
+        "title": "Still attached",
+        "body": "I caught the little twig and wound the stretch between us into a spring.\n\nThe first gust pulled us away from each other. I thought I was losing her.\n\nThe coil lengthened. My tip stayed wrapped around the twig."
+      },
+      "localFile": "/tmp/botanical50/tendril.jpg",
+      "localBytes": 225460,
+      "visualReview": "Coiled green tendril and its attachment to a small woody neighbor are visible. Source identifies Marah macrocarpa gripping lemonade berry. Static image does not show the gust or prove a measured length change; those are fictional motion grounded in the pictured coil and its supporting function. Opposite coil handedness was considered but not asserted.",
+      "status": "proposed"
+    }
+  ],
+  "media": [
+    {
+      "id": "botanical50-01",
+      "imageUrl": "https://www.nps.gov/cabr/blogs/images/Tendril.JPG",
+      "localFile": "/tmp/botanical50/tendril.jpg",
+      "bytes": 225460,
+      "dimensions": [
+        750,
+        1000
+      ],
+      "sha1": "1ebfeabf759705dec5bd0852379aeaf53e12e7f2",
+      "sha256": "c5257ff66e32b1615e4efd57c46e134da292519e612b89872c5939a74334bdba",
+      "status": 200,
+      "seconds": 0.316,
+      "encodedDimensions": [
+        1000,
+        750
+      ],
+      "exifOrientation": 6,
+      "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+      "creator": "NPS / Andrew Rosales",
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+      "rightsEvidence": "Exact image NPS Photo/Andrew Rosales credit without copyright mark or third-party restriction; NPS ownership policy",
+      "sourceLocal": "/tmp/botanical50/cucumber.html",
+      "category": "wildlife",
+      "aggregated": false,
+      "subject": "Cucamonga manroot",
+      "species": "Marah macrocarpa",
+      "alt": "A green Marah macrocarpa tendril forms a hanging helix below its grip on a small lemonade-berry twig.",
+      "detail": "Source specifically identifies the vine and supporting lemonade berry. Exact JPEG has EXIF orientation 6: encoded 1000 x 750, displayed 750 x 1000. No local rotation was applied."
+    },
+    {
+      "id": "botanical50-lucille-avatar",
+      "imageUrl": "https://www.nps.gov/cabr/blogs/images/Male-Flowers.JPG",
+      "localFile": "/tmp/botanical50/cucumber-profile.jpg",
+      "bytes": 212918,
+      "dimensions": [
+        1000,
+        1000
+      ],
+      "sha1": "6206ed56478487503810b5afa05d8d8eadd01655",
+      "sha256": "abc28d6e0bc9a64847621fb90f76136bbb608059b804700161115efff96a4896",
+      "status": 200,
+      "seconds": 0.368,
+      "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+      "creator": "NPS / Andrew Rosales",
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+      "rightsEvidence": "Exact image NPS Photo/Andrew Rosales credit without copyright mark or third-party restriction; NPS ownership policy",
+      "sourceLocal": "/tmp/botanical50/cucumber.html",
+      "category": "wildlife",
+      "aggregated": false,
+      "subject": "Cucamonga manroot",
+      "species": "Marah macrocarpa",
+      "alt": "White star-shaped male flowers of wild cucumber grow along a green stalk in front of lobed leaves.",
+      "detail": "Single lower open male flower chosen for the avatar; other flowers belong to the same illustrated plant species. This is a botanical organ portrait, not a whole-body view."
+    }
+  ],
+  "holds": [
+    {
+      "source": {
+        "id": "moss-capsules",
+        "imageUrl": "https://www.nps.gov/articles/000/images/Rhytidiadelphus_triquetrus_Hermann-Schachner_CreativeCommons_CC0-1.jpg",
+        "localFile": "/tmp/botanical50/moss-capsules.jpg",
+        "bytes": 1131929,
+        "dimensions": [
+          2816,
+          1880
+        ],
+        "sha1": "41d7cea1f7830ab1f91cdc04b95e0c3ff6cf52b9",
+        "sha256": "573a19307fdda1540cd390907a4675b51f230e1f236b07bb603f0338c11739ea",
+        "status": 200,
+        "seconds": 0.646,
+        "sourceUrl": "https://www.nps.gov/articles/000/electrified-cat-s-tail-moss.htm",
+        "creator": "Hermann Schachner",
+        "license": "CC0 1.0",
+        "sourceLocal": "/tmp/botanical50/moss-cat.html"
+      },
+      "reason": "Beautiful moist moss and three intact capsules. No cap removal, open capsule mouth or fresh dispersal event is visible. No Story or identity proposed."
+    },
+    {
+      "source": {
+        "id": "dodder",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/FF4242B4-155D-4519-3EB7A1033EAFB72C/original.jpg?",
+        "localFile": "/tmp/botanical50/dodder.jpg",
+        "bytes": 226148,
+        "dimensions": [
+          667,
+          500
+        ],
+        "sha1": "c9222bdd0d7993be3df445af3ba3d2f726f47832",
+        "sha256": "723c2d92d2d41d6a0aee3936e25e40b9fcce56a5b7bcab63c37d736428c65474",
+        "status": 200,
+        "seconds": 1.01,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ff4242b4-155d-4519-3eb7-a1033eafb72c",
+        "creator": "National Park Service",
+        "license": "Public domain",
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "sourceLocal": "/tmp/botanical50/dodder.html"
+      },
+      "reason": "667 x 500 tangled California dodder has little clear host-contact detail. No independently compelling event; no new identity proposed."
+    }
+  ],
+  "canonFile": "BOTANICAL-VISUAL-50-CANON.md",
+  "avatarFile": "BOTANICAL-VISUAL-50-AVATARS.json",
+  "deliveryNote": "Exact NPS page originals are already 225,460 and 212,918 bytes. They are proposed unchanged as bounded published delivery files; no guessed or locally produced derivative is needed."
+}

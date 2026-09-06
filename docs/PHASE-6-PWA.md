@@ -13,6 +13,11 @@
 
 ## Current SQLite PWA work
 
+The shared checkpoint parser reuses only its own deeply frozen validated
+records. Incoming OPFS and transport values still receive full validation, and
+the shared codec preserves exact canonical UTF-8 bytes. These serialization
+optimizations do not establish physical iPhone acceptance.
+
 - [x] Consume the same generated normalized checkpoint registry, typed primary
       key identity, protocol ceilings, and content chunk transforms as the
       native core. The browser transform has no `00_library_shell` record.
@@ -655,9 +660,9 @@ never sorts, filters, or ranks a Library collection.
 | 6.131 | Prevent stale PWA Google OAuth refresh responses from restoring or overwriting credentials after Disconnect, credential replacement, or factory reset. Admit a refreshed token only while the exact cloud lifecycle, factory reset write epoch, and stored token bundle remain current. Preserve request fields, count, timing, retry, cadence, and coalescing behavior, and prove each race with deferred offline responses                                                                                                                                                                                                                                                                                                                   | High       | ✓ Complete                                                                                       |
 | 6.132 | Treat a malformed PWA factory-reset reload envelope as missing completion evidence instead of crashing coordinator construction. Keep the durable tombstone and shared write boundary authoritative, use the existing liveness-proven recovery to publish one complete matching envelope, reload once, and clear matching state only after the simulated reload                                                                                                                                                                                                                                                                                                                                                               | High       | ✓ Complete                                                                                       |
 | 6.133 | Recover a fresh Safari Private Browsing session when WebKit transiently rejects the first OPFS SAH pool installation. Retry exactly one `UnknownError` through SQLite's supported failed-initialization reset, then fail closed on a repeated transient failure or any quota, permission, integrity, or other storage error                                                                                                                                                                                                                                                                                                                                        | High       | ✓ Complete                                                                                       |
-| 6.134 | Refine the anonymous showcase welcome into the selected one-action "Take back" First Look that transforms into a concise, draggable, bottom-centered Field Guide after entry. Remove desktop window controls, let mobile readers minimize the guide into a bottom-edge Freed Demo tab, hide background activity controls in the read-only demo, and expose disabled cloud and source configuration sections with Freed Desktop download handoffs                                                                                                                                                                                                                                                          | Medium     | ✓ Complete                                                                                       |
-| 6.135 | Add the shared protected newsletter signup to PWA Settings and the anonymous demo Field Guide. Keep users inside Freed while collecting email and name, completing Turnstile, submitting to the Freed-owned Brevo proxy, confirming success, and remembering the completed signup locally. Keep the Freed Desktop download action independent. Let Vercel previews exercise the complete flow with Cloudflare's test key without creating a real subscription | Medium | ✓ Complete |
-| 6.136 | Replace the generic public demo feed with a shared nature documentary world used by PWA, Freed Desktop, feature previews, and the anonymous demo checkpoint. Maintain a broad catalog of 1,750 remotely hosted, attributable Wikimedia Commons photographs across insects, microscopic creatures, undersea subjects, wildlife, geological formations, and astronomical phenomena, but publish a deliberately small flagship cast in the demo. Give six recurring characters 45 individually authored episodes with distinct events, evolving relationships, remembered consequences, and photographs that support each joke. Bind every episode to exactly one catalog row by `mediaSha1`, require an exact subject match, and fail instead of falling back by subject or position. Establish positive subject identity only from Commons titles and categories, keep descriptions as rejection-only evidence, and reject the Praying Mantis band, grebes in swan results, photographed books or pages, and dead or preserved birds without excluding valid living animals. Keep courtship, affection, mating rituals, and shy animal crushes to seven of the 45 flagship episodes, with no more than two per character. Give Flora Mingo four episodes with one courtship entry, and let hunger, danger, weather, movement, transformation, work, play, friendship, solitude, discovery, and cosmic time dominate the rest. Cut performative or robotic prose in favor of physical events and consequences. Keep invented locations out of identities and prose except for rare self-important setting jokes. Never construct public demo posts from platform wrappers, noun substitution, randomized fragments, or prompt-time generation. Randomize how character arcs interleave on each visit while preserving the chronology inside every character's timeline and preventing the previous first item from immediately returning. Avoid checking image binaries into the repository, preserve the fast demo checkpoint plus removable signed sample-import path, and govern future expansion with the [sample corpus editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) | High | ✓ Complete |
+| 6.134 | Refine the selected one-action "Take back" First Look into a draggable bottom-centered Field Guide. Use themed logos, opaque elevated panels, and 4px strong theme borders. Overlap the 460ms First Look departure above the 900ms guide arrival. Center the guide description: below 641px, "Social media that respects you." and "Download Freed"; at 641px and wider, "Social media that respects you, and your friends." followed by "Ready to make it your own?" and "Download Freed Desktop". Keep compact action buttons. At 576px and narrower, use the available width with side gutters and vertical-only dragging. An explicit minimize button replaces the guide with a stationary bottom-center folder tab carrying the logo, title, and restore control. Preserve newsletter drafts and transfer keyboard focus when minimizing or restoring. Keep the guide within viewport bounds and animate newsletter height changes around the chosen edge. | Medium | Implemented locally; owner review and final tests pending |
+| 6.135 | Keep protected newsletter signup inside PWA Settings and the demo Field Guide. The compact guide switches its header to "Freed Newsletter", removes the guide description and duplicate signup introduction, and centers the privacy footer. Suggest a name from the email until the reader edits it; retain inline validation and automatic continuation after the existing Turnstile check. Keep the smaller download action independent and provide "Skip the newsletter" with an X icon to return to the guide. Preview-only completion sends no subscription request. Preserve the Freed-owned subscription endpoint, success confirmation, and local completed-signup memory. | Medium | Implemented locally; owner review and final tests pending |
+| 6.136 | Replace formulaic demo captions with 500 individually authored episodes from 52 recurring natural characters, including 145 RSS story entries. The local integrated feed intentionally combines 80 reviewed photos and 420 text-only entries. Resolve every declared image hash once with an exact subject match across the base and three supplemental source catalogs, totaling 1,772 attributable remote image records; null means intentional text-only, never an unresolved or broken-image fallback. Preserve approved prose, natural-history grounding, plausible fictional home coordinates, and distinct events with remembered consequences. Keep romance below the editorial cap, reject misleading images and performative copy, and never construct public posts from wrappers or randomized fragments. Interleave stable arcs afresh on each visit while preserving each character's chronology. Keep image binaries outside the repository and preserve the read-only demo checkpoint and signed sample-import path. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) and [expansion ledger](SAMPLE-CORPUS-500-EXPANSION.md) govern review and delivery evidence. | High | Local integration complete; final validation and publication pending |
 
 ---
 
@@ -706,8 +711,10 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Sample clearing reports committed bounded removal progress in one persistent toast, keeps maintenance controls disabled through final settlement and SQLite invalidation, and restores population controls only after the marked sample Library is fully removed
 - [x] The anonymous demo atomically activates its curated normalized checkpoint before mounting the app shell, restores the pristine Library on refresh, avoids the signed mutation importer, and opens directly into the Unified Feed behind a one-action First Look. Entering the demo descends into a responsive Field Guide. Background activity stays hidden, while Settings explains that provider and cloud connections are disabled and hands configuration off to Freed Desktop.
 - [x] PWA Settings and the anonymous demo Field Guide complete protected newsletter signup in place, confirm success without navigation, and keep the Freed Desktop download action separate
-- [x] The anonymous demo checkpoint is compiled from the same versioned nature corpus used by every sample-data surface. Every item has concise first-person comic narration, a short editorial title, a unique matching Wikimedia Commons photograph with source attribution, a recurring subject-specific identity, and canonical coordinates when the source supplies them. Invented locations never appear in identities or titles and appear in fewer than 1 in 40 bodies, only as an explicit status joke. Instagram, Facebook, LinkedIn, X, Substack, Medium, and YouTube each have a distinct authored voice without label-plus-colon opening factories or explanatory copy after the joke lands. Sample population preserves this editorial content while randomizing current-relative timeline slots, and successive demo reloads do not repeat the previous first item in the same browser tab.
-- [x] Every successful production release captures five themed demo views and a release-specific animated GIF from the exact validated tag, then publishes the manifest and media as GitHub release assets
+- [ ] Rebuild and publish exactly 1,000 illustrated entries under the [revised delivery contract](SAMPLE-CORPUS-1000-REBUILD.md). The former 500-entry snapshot is a rejected baseline, not an accepted milestone. Every entry needs an independently reviewed image/text pairing, every profile needs a reviewed avatar, and every character needs private continuity notes. Mixed social and RSS episodes must stay linked to one identity. Preserve plausible homes, source attribution, chronological character arcs and fresh visit interleaving. Final tests, production builds and official-domain verification remain delivery gates, not implied by a local count.
+- [x] Mount the application shell during demo checkpoint preparation. In an empty content region, show only the friendly "Populating your demo" message, status spinner, and percentage from population progress. Suppress the ordinary connect/sample maintenance empty state during population; completion returns the normal feed. Do not replace the shell with a blank startup screen or rely on a population toast for this state.
+- [x] Reconcile `docs/roadmap-status.json` for this corpus revision. Phase 6 remains `current`; the structured schema records phase identity, status, and source, not episode counts. The source document above owns the counts and pending delivery evidence.
+- [ ] Verify the five themed demo captures and release-specific animated GIF against the exact production tag, then confirm the manifest and media are publicly accessible GitHub release assets. Functional releases may publish the reviewed interim corpus with its actual counts and an explicit `interim` stage. Only the exact 900 regular entries and 100 Stories qualify as `complete`. Capture waits for settled map tiles, not merely map construction. Workflow wiring exists; updated capture behavior still requires final release proof.
 - [x] An unconnected PWA can populate one durable local sample Library without Drive traffic, retain it across WebKit restarts, recover an interrupted accepted result, prevent repeat population, clear only internally marked sample records in bounded signed batches, and rebuild the sample Library from the rendered mobile workflow
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.
@@ -772,5 +779,76 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 ---
 
 ## Deliverable
+
+The illustrated demo targets 900 regular entries and 100 visual Stories.
+Each demo document uses its own in-memory SQLite worker and does not acquire
+the persistent app's OPFS lock. Concurrent demo tabs therefore remain usable,
+while refresh rebuilds the anonymous Library without deleting persistent data.
+Demo routes mount only after checkpoint activation and store initialization.
+This prevents direct Map and Friends links from querying an absent SQLite
+materialization during startup.
+Unresolved image-less drafts are excluded from the checkpoint. Articles remain
+distinct from the `story` content type. YouTube admission requires verified
+video provenance rather than a photograph presented as playable video. The
+local projection now validates the canonical watch ID, actual uploader/channel,
+primary source, and exact reviewed thumbnail. Reader text preserves both video
+and photograph credits and identifies fictional commentary. Synthetic projection
+tests pass. The first admitted YouTube entry preserves NOAA uploader attribution,
+fictional character commentary, and a separately reviewed NOAA archive still.
+Full corpus acceptance and production verification remain pending.
+
+YouTube reader descriptions preserve authored paragraph breaks and separate
+video, uploader, source, and thumbnail credit lines. Long credit URLs wrap
+without enabling player loading or changing provider requests.
+
+The production demo CSP admits exact reviewed Commons, NOAA, NPS, FWS, Chandra,
+and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
+avatar origin against the actual HTML policy. Existing click-to-watch playback
+permits the privacy-enhanced YouTube frame and its API script hosts, without
+eager player loading. Showcase capture enables the production CSP on loopback
+and fails on policy violations rather than relying on localhost-only behavior.
+
+Demo reloads generate unread replacement items rather than inheriting sample
+templates' read timestamps. The previous-first-item session-storage memory is
+removed. Demo presentation preferences except theme and welcome display state use document-local storage
+before App imports hydrate. Theme and the modal, banner, or minimized choice are retained between sessions. The banner's expand button reopens the welcome modal. The shorter folder tab uses smooth cubic curves and restores directly on a return visit without the modal. Normal PWA preferences and real Library authority
+remain outside this change. Exactly 15% of admitted identities, rounded to the
+nearest whole identity, are stable friends; the remainder are connections so
+Friends and All content produce distinct results.
+The sidebar reads total and unread counts from the bounded Library facet summary,
+not retired store counters. Opening a demo item records a document-local read
+receipt and updates page presentation and unread counts without a durable write,
+actor key, or sync intent. Reload discards these receipts. The SQLite checkpoint,
+storage epoch, schema, and replication authority remain unchanged.
+Benchmark sample generation preserves its explicit stress scale and limits
+duplicate-caption retries to 64 candidates per item. Only stress fixtures may
+fall back to marked synthetic text. Showcase exhaustion reports an error rather
+than hanging or substituting benchmark prose. Deterministic regression coverage
+checks the work bound, media retention, uniqueness, and showcase isolation.
+The feed header uses the active reader count in Friends mode rather than the
+whole-library facet count. Headless browser verification showed 34 Friends items
+versus 252 All content items for the checked corpus snapshot. Display preferences
+reset to document defaults on reload; theme and welcome display state persist.
+Map, Friends, and feed audience controls share one device-local preference,
+defaulting to All content. Changing either legacy mode alias updates both;
+ordinary app sessions retain the choice, while demo reloads reset it.
+
+Release capture selects themes through Settings after dismissing the opening
+modal to make each capture explicit regardless of the retained theme. Its manifest
+records the public image URLs used; unrelated remote requests fail capture.
+This validation observes existing demo image loads without adding requests,
+retries, provider login, or video autoplay.
+Local capture produced all five themed PNGs and a 933 KB animated GIF after
+waiting for visible images to decode. Release-tag capture, public asset URLs,
+and final-corpus screenshots remain unverified.
+
+An earlier 93-portrait snapshot loaded in the local browser and successfully drew
+and read back each through a canvas using the configured delivery URLs. The 15
+NOAA portraits used the same-origin registry route. A focused contract test
+requires every non-Commons reviewed avatar to have an exact registered source.
+The relay accepts only JPEG or PNG with matching signatures and reviewed hashes,
+bounded to 4 MiB and five seconds. Redirects and caller-selected source URLs
+remain forbidden. Added portraits require fresh delivery verification.
+This proves local delivery, not deployment availability or every Galaxy layout.
 
 Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article, image, and pinned saved-reader support.

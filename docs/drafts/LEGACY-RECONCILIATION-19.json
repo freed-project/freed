@@ -1,0 +1,377 @@
+{
+  "status": "read-only recommendation; no runtime changes",
+  "scope": [
+    "nib-willow",
+    "juniper-ears",
+    "kit-snowshoe",
+    "nessa-whisker",
+    "percy-silt"
+  ],
+  "decision": "Recommend ratifying all five through evidence reconciliation. The prior records explicitly inspect the exact media and central scenes; current independent prose and continuity review finds no material change requiring another image inspection.",
+  "independenceLimit": "Historical image inspections are attributed to the land or ocean author. The records do not establish two separate people inspecting every image. This pass supplies a separate writing and continuity decision, not a second pixel inspection. The editorial guide requires independent image and writing decisions; this recommendation does not invent missing reviewer identities.",
+  "counting": {
+    "reconciledExistingPairs": 5,
+    "newEntries": 0,
+    "newImages": 0,
+    "newImageInspections": 0,
+    "pendingOutsideScope": [
+      "manny-tis:1",
+      "frogbert-angler:7"
+    ]
+  },
+  "releaseLimit": "No network requests made. Historical scene acceptance does not prove current remote image delivery. 403 availability remains a separate release check and cannot be declared repaired by these records.",
+  "entries": [
+    {
+      "character": {
+        "characterId": "nib-willow",
+        "identityNameBase": "Nib Willow",
+        "platform": "instagram",
+        "bio": "A red panda who has found the perfect sleeping branch and would like the sun to stop moving.",
+        "location": {
+          "name": "Singalila montane forest",
+          "coordinates": {
+            "lat": 27.09,
+            "lng": 88.03
+          }
+        }
+      },
+      "index": 0,
+      "episode": {
+        "subject": "red panda",
+        "mediaSha1": "2843095a7583d16b1e021d507f4f12d9094a2bd7",
+        "theme": "movement",
+        "title": "Face first",
+        "body": "I came down the trunk headfirst, beautifully. Near the bottom I discovered how much of a descent depends on knowing where the bottom is. The last little bit was mostly face."
+      },
+      "media": {
+        "id": "commons-nib-descent-2843095a",
+        "subject": "red panda",
+        "category": "wildlife",
+        "identityNameBase": "Nib Willow",
+        "detail": "Red panda descending headfirst through a mossy tree fork, its long tail extending above it",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/RedPanda_at_SingalilaNationalPark.jpg/960px-RedPanda_at_SingalilaNationalPark.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:RedPanda_at_SingalilaNationalPark.jpg",
+        "creator": "Ajit Hota",
+        "license": "CC BY-SA 4.0",
+        "width": 960,
+        "height": 633,
+        "sha1": "2843095a7583d16b1e021d507f4f12d9094a2bd7"
+      },
+      "recommendation": "keep by evidence reconciliation",
+      "newImageInspection": false,
+      "newUniqueEntry": false,
+      "priorEvidence": [
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 57,
+          "endLine": 67,
+          "sectionExcerpt": "### Exact image handoff\n\nOnly these four episode/image pairs were accepted for the handoff. Each actual image was visually inspected, with provenance retained in the JSON. None depicts every fictional beat; each supports the central visible situation.\n\n| Episode | SHA-1 | Visible fit |\n| --- | --- | --- |\n| Nib Willow 1 | `2843095a7583d16b1e021d507f4f12d9094a2bd7` | Headfirst red panda descent through tree fork |\n| Juniper Ears 3 | `f75dbf0c7b4389ca11cb83932fdf0ae0b262af51` | Fennec ears beside a sandy burrow entrance |\n| Kit Snowshoe 1 | `3ad59da6eb348ba742c65cb1c6303ff9748117a6` | Pika carrying a broad plant bundle beside talus |\n| Nessa Whisker 5 | `4166db4f4461285fb2e09caacdea9a314562cadf` | Loose pale coat over darker fox on bare ground |\n"
+        },
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 110,
+          "endLine": 117,
+          "sectionExcerpt": "### Second visual pass\n\nSource-file pages and original images were inspected in the same hidden in-app tab. Original bytes for red panda and pika were hashed in memory, without saving binaries. No source catalog or runtime binding was changed by this pass.\n\n| Candidate | Observed scene and decision | Current source proof |\n| --- | --- | --- |\n| RedPanda at SingalilaNationalPark | Clear wild red panda, head pointed down through a mossy tree fork, entire long tail visible. Good candidate for Nib 1's headfirst descent; no feeding or rain claim supported. | Ajit Hota, CC BY-SA 4.0, SHA-1 `2843095a7583d16b1e021d507f4f12d9094a2bd7`. Original `https://upload.wikimedia.org/wikipedia/commons/b/bc/RedPanda_at_SingalilaNationalPark.jpg` |\n| American pika haying saxifrage | Pika collecting a conspicuous bundle of plant stems beside talus. Good candidate for Kit 1's large hay mouthful; does not independently show the later doorway jam. | Charles J. Sharp, CC BY-SA 4.0, SHA-1 `3ad59da6eb348ba742c65cb1c6303ff9748117a6`. Original `https://upload.wikimedia.org/wikipedia/commons/4/44/American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg` |"
+        }
+      ],
+      "laterCanonEvidence": [
+        "docs/drafts/strange-canon-09.md:26",
+        "docs/drafts/strange-canon-09.md:40"
+      ],
+      "materialDifference": "No title, body or hash change. Later canon replaces other slots and explicitly preserves illustrated episode 1. A remembered mother adds history without changing the mature descent scene or Singalila home.",
+      "independentWritingDecision": "The confident headfirst descent reverses into an embarrassingly imprecise landing. The short final sentence makes the face the physical cost of confidence. That payoff depends on the photographed downward posture; it does not claim a photographed impact.",
+      "sourceAndHomeReview": "Red panda source from Singalila agrees with the fictional home. Keep species precision bounded by the accepted primary record.",
+      "historicalComparison": {
+        "commit": "c72ecf98",
+        "runtimeFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "runtimeLine": 48,
+        "titleUnchanged": true,
+        "bodyUnchanged": true,
+        "mediaSha1Unchanged": true,
+        "bodySha256": "2e63ca6ed1d4d212a12b408c1fdc9c8ed6c5879ae86eebb1804a319fc474197a"
+      }
+    },
+    {
+      "character": {
+        "characterId": "juniper-ears",
+        "identityNameBase": "Juniper Ears",
+        "platform": "facebook",
+        "bio": "A fennec fox with exceptional hearing and a long list of noises she would prefer not to have identified.",
+        "location": {
+          "name": "Erg Chebbi dune margin",
+          "coordinates": {
+            "lat": 31.17,
+            "lng": -4
+          }
+        }
+      },
+      "index": 2,
+      "episode": {
+        "subject": "fennec fox",
+        "mediaSha1": "f75dbf0c7b4389ca11cb83932fdf0ae0b262af51",
+        "theme": "movement",
+        "title": "Room for the ears",
+        "body": "Enlarged the tunnel this morning. My shoulders already fitted, but every time I turned my head the ceiling folded an ear. I refuse to spend another day agreeing with both walls."
+      },
+      "media": {
+        "id": "commons-juniper-burrow-f75dbf0c",
+        "subject": "fennec fox",
+        "category": "wildlife",
+        "identityNameBase": "Juniper Ears",
+        "detail": "Fennec fox crouching beside a sandy burrow entrance with its large ears upright",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/19/Desert_fennec_._Sahara_fox_in_Morocco.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Desert_fennec_._Sahara_fox_in_Morocco.jpg",
+        "creator": "Merzougaloisirs",
+        "license": "CC BY-SA 4.0",
+        "width": 3241,
+        "height": 2022,
+        "sha1": "f75dbf0c7b4389ca11cb83932fdf0ae0b262af51"
+      },
+      "recommendation": "keep by evidence reconciliation",
+      "newImageInspection": false,
+      "newUniqueEntry": false,
+      "priorEvidence": [
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 57,
+          "endLine": 67,
+          "sectionExcerpt": "### Exact image handoff\n\nOnly these four episode/image pairs were accepted for the handoff. Each actual image was visually inspected, with provenance retained in the JSON. None depicts every fictional beat; each supports the central visible situation.\n\n| Episode | SHA-1 | Visible fit |\n| --- | --- | --- |\n| Nib Willow 1 | `2843095a7583d16b1e021d507f4f12d9094a2bd7` | Headfirst red panda descent through tree fork |\n| Juniper Ears 3 | `f75dbf0c7b4389ca11cb83932fdf0ae0b262af51` | Fennec ears beside a sandy burrow entrance |\n| Kit Snowshoe 1 | `3ad59da6eb348ba742c65cb1c6303ff9748117a6` | Pika carrying a broad plant bundle beside talus |\n| Nessa Whisker 5 | `4166db4f4461285fb2e09caacdea9a314562cadf` | Loose pale coat over darker fox on bare ground |\n"
+        },
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 90,
+          "endLine": 94,
+          "sectionExcerpt": "### Visually inspected candidate\n\n[Desert fennec . Sahara fox in Morocco.jpg](https://commons.wikimedia.org/wiki/File:Desert_fennec_._Sahara_fox_in_Morocco.jpg): a fennec crouched directly beside a sandy burrow entrance, ears upright, no visible people, enclosure hardware, or staging. Fits Juniper episode 3's burrow/ear scene, though it does not document actual tunnel widening. Source author Merzougaloisirs (EXIF AliOubassidi), CC BY-SA 4.0, SHA-1 `f75dbf0c7b4389ca11cb83932fdf0ae0b262af51`, original 3,241 by 2,022. Reviewed using the actual remote 960-pixel thumbnail in a hidden in-app tab. Candidate only until parent adds source metadata and binds deliberately.\n\nThumbnail: `https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Desert_fennec_._Sahara_fox_in_Morocco.jpg/960px-Desert_fennec_._Sahara_fox_in_Morocco.jpg`"
+        }
+      ],
+      "laterCanonEvidence": [
+        "docs/drafts/strange-canon-11.md:19"
+      ],
+      "materialDifference": "No title, body or hash change. Later canon explicitly preserves Room for the ears, Erg Chebbi and the unnamed neighbor. The later hearing memory does not contradict the existing ear-clearance scene.",
+      "independentWritingDecision": "The shoulders fit while the ears do not, giving the tunnel an anatomical rather than administrative problem. Agreeing with both walls converts bent ears into an involuntary social gesture. This is the weakest of the five against the owner’s dislike of shelter errands, but the ear-specific reversal supplies a distinct joke, not merely a completed widening task.",
+      "sourceAndHomeReview": "Fennec in Morocco agrees with Erg Chebbi habitat. No visible enclosure or staging was reported in the prior review; that finding was not independently repeated here.",
+      "historicalComparison": {
+        "commit": "c72ecf98",
+        "runtimeFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "runtimeLine": 67,
+        "titleUnchanged": true,
+        "bodyUnchanged": true,
+        "mediaSha1Unchanged": true,
+        "bodySha256": "603c7a1417a90bcd0b5b458641497494847f22e5a0efe37f3593d7a1be2ecd13"
+      }
+    },
+    {
+      "character": {
+        "characterId": "kit-snowshoe",
+        "identityNameBase": "Kit Snowshoe",
+        "platform": "rss",
+        "bio": "An American pika with enough hay for winter and several reasons to fetch one more mouthful.",
+        "location": {
+          "name": "Rocky Mountain alpine talus",
+          "coordinates": {
+            "lat": 40.4,
+            "lng": -105.75
+          }
+        }
+      },
+      "index": 0,
+      "episode": {
+        "subject": "American pika",
+        "mediaSha1": "3ad59da6eb348ba742c65cb1c6303ff9748117a6",
+        "theme": "feeding",
+        "title": "Too wide for the doorway",
+        "body": "Cut a beautiful mouthful of stems at the meadow edge. Carried them all the way to my haypile. The stems caught across the gap between the rocks.\n\nPushed harder. They bent. Backed out, dropped them, and took the bundle through in two loads.\n\nIt looked smaller afterward. I went out for more, having learned almost the wrong thing from the whole experience."
+      },
+      "media": {
+        "id": "commons-kit-haying-3ad59da6",
+        "subject": "American pika",
+        "category": "wildlife",
+        "identityNameBase": "Kit Snowshoe",
+        "detail": "American pika carrying a broad mouthful of plant stems beside alpine talus",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg/960px-American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:American_pika_(Ochotona_princeps_princeps)_haying_spotted_saxifrage_(Saxifraga_bronchialis)_Moraine_Lake_2.jpg",
+        "creator": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "width": 960,
+        "height": 640,
+        "sha1": "3ad59da6eb348ba742c65cb1c6303ff9748117a6"
+      },
+      "recommendation": "keep by evidence reconciliation",
+      "newImageInspection": false,
+      "newUniqueEntry": false,
+      "priorEvidence": [
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 57,
+          "endLine": 68,
+          "sectionExcerpt": "### Exact image handoff\n\nOnly these four episode/image pairs were accepted for the handoff. Each actual image was visually inspected, with provenance retained in the JSON. None depicts every fictional beat; each supports the central visible situation.\n\n| Episode | SHA-1 | Visible fit |\n| --- | --- | --- |\n| Nib Willow 1 | `2843095a7583d16b1e021d507f4f12d9094a2bd7` | Headfirst red panda descent through tree fork |\n| Juniper Ears 3 | `f75dbf0c7b4389ca11cb83932fdf0ae0b262af51` | Fennec ears beside a sandy burrow entrance |\n| Kit Snowshoe 1 | `3ad59da6eb348ba742c65cb1c6303ff9748117a6` | Pika carrying a broad plant bundle beside talus |\n| Nessa Whisker 5 | `4166db4f4461285fb2e09caacdea9a314562cadf` | Loose pale coat over darker fox on bare ground |\n\nKit's source is explicitly focus-stacked by the photographer. The source's invalid zero camera coordinates are not used. It has a 960 by 640 thumbnail and a 5,941 by 3,961 original. This photographic processing is source metadata, not a claim that the fictional doorway jam was photographed. No binaries were added and no image API retries followed the rate limit."
+        },
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 110,
+          "endLine": 118,
+          "sectionExcerpt": "### Second visual pass\n\nSource-file pages and original images were inspected in the same hidden in-app tab. Original bytes for red panda and pika were hashed in memory, without saving binaries. No source catalog or runtime binding was changed by this pass.\n\n| Candidate | Observed scene and decision | Current source proof |\n| --- | --- | --- |\n| RedPanda at SingalilaNationalPark | Clear wild red panda, head pointed down through a mossy tree fork, entire long tail visible. Good candidate for Nib 1's headfirst descent; no feeding or rain claim supported. | Ajit Hota, CC BY-SA 4.0, SHA-1 `2843095a7583d16b1e021d507f4f12d9094a2bd7`. Original `https://upload.wikimedia.org/wikipedia/commons/b/bc/RedPanda_at_SingalilaNationalPark.jpg` |\n| American pika haying saxifrage | Pika collecting a conspicuous bundle of plant stems beside talus. Good candidate for Kit 1's large hay mouthful; does not independently show the later doorway jam. | Charles J. Sharp, CC BY-SA 4.0, SHA-1 `3ad59da6eb348ba742c65cb1c6303ff9748117a6`. Original `https://upload.wikimedia.org/wikipedia/commons/4/44/American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg` |\n| Arctic fox (js) 16 | Fox curled on bare gravel with abundant pale loose coat contrasting its darker body. Good candidate for Nessa 5's seasonal coat scene. No snow in this image, so not winter shelter. | Jerzy Strzelecki, selectable CC BY-SA 3.0, SHA-1 `4166db4f4461285fb2e09caacdea9a314562cadf`. Original `https://upload.wikimedia.org/wikipedia/commons/3/33/Arctic_fox_%28js%29_16.jpg` |"
+        }
+      ],
+      "laterCanonEvidence": [
+        "docs/drafts/legacy-land-canon-audit-12.md:61"
+      ],
+      "materialDifference": "No title, body or hash change. Later provisional history retains haying and seasonal storage. The Canadian source image illustrates a compatible American pika at talus; the fictional Colorado home does not become the photographer’s location. Focus stacking remains disclosed.",
+      "independentWritingDecision": "The carried bundle is the visual premise. Splitting it solves the doorway problem but makes the store appear inadequate, so acquisition restarts. That misapplied lesson is a coherent comic reversal. The source does not show the doorway jam or two trips; those are the fictional sequence built around the conspicuous bundle.",
+      "sourceAndHomeReview": "Ochotona princeps source at Moraine Lake is compatible with Rocky Mountain talus. Photographer declares focus stacking. Invalid zero camera coordinates must not replace the fictional home.",
+      "historicalComparison": {
+        "commit": "c72ecf98",
+        "runtimeFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "runtimeLine": 235,
+        "titleUnchanged": true,
+        "bodyUnchanged": true,
+        "mediaSha1Unchanged": true,
+        "bodySha256": "643115aac82fd69e866d29109177007574dafc8c09ff1ee1cb9db9a681b867c3"
+      }
+    },
+    {
+      "character": {
+        "characterId": "nessa-whisker",
+        "identityNameBase": "Nessa Whisker",
+        "platform": "rss",
+        "bio": "An Arctic fox who remembers where she put things, provided the entire ground has not changed overnight.",
+        "location": {
+          "name": "Svalbard tundra coast",
+          "coordinates": {
+            "lat": 78.15,
+            "lng": 15.25
+          }
+        }
+      },
+      "index": 4,
+      "episode": {
+        "subject": "Arctic fox",
+        "mediaSha1": "4166db4f4461285fb2e09caacdea9a314562cadf",
+        "theme": "wonder",
+        "title": "White fur, dark stones",
+        "body": "My coat had begun coming loose in pale tufts. Rubbed against a rock and left a little of winter on its edge.\n\nUnderneath I was darker. The bare ground no longer made me look like something that had wandered into the wrong season.\n\nSat in a sunny patch and pulled at another loose tuft. It stuck to my lip. A great deal of looking appropriate involves looking ridiculous first."
+      },
+      "media": {
+        "id": "commons-nessa-molt-4166db4f",
+        "subject": "Arctic fox",
+        "category": "wildlife",
+        "identityNameBase": "Nessa Whisker",
+        "detail": "Arctic fox curled on bare gravel, with pale loose winter fur over its darker coat",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/33/Arctic_fox_%28js%29_16.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_fox_(js)_16.jpg",
+        "creator": "Jerzy Strzelecki",
+        "license": "CC BY-SA 3.0",
+        "width": 4039,
+        "height": 2693,
+        "sha1": "4166db4f4461285fb2e09caacdea9a314562cadf"
+      },
+      "recommendation": "keep by evidence reconciliation",
+      "newImageInspection": false,
+      "newUniqueEntry": false,
+      "priorEvidence": [
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 57,
+          "endLine": 67,
+          "sectionExcerpt": "### Exact image handoff\n\nOnly these four episode/image pairs were accepted for the handoff. Each actual image was visually inspected, with provenance retained in the JSON. None depicts every fictional beat; each supports the central visible situation.\n\n| Episode | SHA-1 | Visible fit |\n| --- | --- | --- |\n| Nib Willow 1 | `2843095a7583d16b1e021d507f4f12d9094a2bd7` | Headfirst red panda descent through tree fork |\n| Juniper Ears 3 | `f75dbf0c7b4389ca11cb83932fdf0ae0b262af51` | Fennec ears beside a sandy burrow entrance |\n| Kit Snowshoe 1 | `3ad59da6eb348ba742c65cb1c6303ff9748117a6` | Pika carrying a broad plant bundle beside talus |\n| Nessa Whisker 5 | `4166db4f4461285fb2e09caacdea9a314562cadf` | Loose pale coat over darker fox on bare ground |\n"
+        },
+        {
+          "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+          "startLine": 110,
+          "endLine": 119,
+          "sectionExcerpt": "### Second visual pass\n\nSource-file pages and original images were inspected in the same hidden in-app tab. Original bytes for red panda and pika were hashed in memory, without saving binaries. No source catalog or runtime binding was changed by this pass.\n\n| Candidate | Observed scene and decision | Current source proof |\n| --- | --- | --- |\n| RedPanda at SingalilaNationalPark | Clear wild red panda, head pointed down through a mossy tree fork, entire long tail visible. Good candidate for Nib 1's headfirst descent; no feeding or rain claim supported. | Ajit Hota, CC BY-SA 4.0, SHA-1 `2843095a7583d16b1e021d507f4f12d9094a2bd7`. Original `https://upload.wikimedia.org/wikipedia/commons/b/bc/RedPanda_at_SingalilaNationalPark.jpg` |\n| American pika haying saxifrage | Pika collecting a conspicuous bundle of plant stems beside talus. Good candidate for Kit 1's large hay mouthful; does not independently show the later doorway jam. | Charles J. Sharp, CC BY-SA 4.0, SHA-1 `3ad59da6eb348ba742c65cb1c6303ff9748117a6`. Original `https://upload.wikimedia.org/wikipedia/commons/4/44/American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg` |\n| Arctic fox (js) 16 | Fox curled on bare gravel with abundant pale loose coat contrasting its darker body. Good candidate for Nessa 5's seasonal coat scene. No snow in this image, so not winter shelter. | Jerzy Strzelecki, selectable CC BY-SA 3.0, SHA-1 `4166db4f4461285fb2e09caacdea9a314562cadf`. Original `https://upload.wikimedia.org/wikipedia/commons/3/33/Arctic_fox_%28js%29_16.jpg` |\n| Short-beaked Echidna Tasmania | Clear side view, snout and claws visible, walking on grass. Natural appearance but no log, water, root gap, or defensive digging. Hold for a better scene match. | KeresH. Original `https://upload.wikimedia.org/wikipedia/commons/8/80/Short-beaked_Echidna_Tasmania.jpg` |"
+        }
+      ],
+      "laterCanonEvidence": [
+        "docs/drafts/LAND-REGULAR-05-ADMISSION.md:17",
+        "docs/drafts/legacy-land-canon-audit-12.md:87",
+        "docs/drafts/AVATAR-REVIEW-06.md"
+      ],
+      "materialDifference": "No title, body or hash change. Later accepted summer scenes are explicitly ordered after this molt. The Svalbard home and seasonal transition remain intact. The avatar uses this source independently; portrait admission is corroboration, not an episode approval substitute.",
+      "independentWritingDecision": "Loose winter fur makes camouflage look less appropriate before it becomes more appropriate. The tuft stuck to the lip undercuts composure with a specific bodily annoyance. Loose pale fur and dark coat on bare ground establish the contrast; the lip incident is fiction.",
+      "sourceAndHomeReview": "Vulpes lagopus source in Svalbard agrees with the coastal home and seasonal molt premise.",
+      "historicalComparison": {
+        "commit": "c72ecf98",
+        "runtimeFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "runtimeLine": 273,
+        "titleUnchanged": true,
+        "bodyUnchanged": true,
+        "mediaSha1Unchanged": true,
+        "bodySha256": "739784b4d6020a09e6c73ef8d5da02871c2959623f1aad44e9aec23fe3371de8"
+      }
+    },
+    {
+      "character": {
+        "characterId": "percy-silt",
+        "identityNameBase": "Percy Silt",
+        "platform": "rss",
+        "bio": "A sea pig with exacting sediment preferences and a passenger he did not remember inviting.",
+        "location": {
+          "name": "Abyssal Pacific west of Monterey, approximate home",
+          "coordinates": {
+            "lat": 35.8,
+            "lng": -123.2
+          }
+        }
+      },
+      "index": 1,
+      "episode": {
+        "subject": "sea pig",
+        "mediaSha1": "2ef33d258cd005c86fae0606370699e8720af1ae",
+        "theme": "social",
+        "title": "Something underneath",
+        "body": "A small crab had tucked itself beneath me. I could feel the difference when it moved. At first I stopped every time, waiting for it to get off.\n\nIt stayed through three stops and one fairly pointed change of direction.\n\nI resumed eating. The crab drew its legs closer underneath me and settled against my belly."
+      },
+      "media": {
+        "id": "commons-percy-passenger-2ef33d25",
+        "subject": "sea pig",
+        "category": "undersea",
+        "identityNameBase": "Percy Silt",
+        "detail": "A pale Scotoplanes globosa stands on sediment with a small pink crab visibly sheltering beneath its body",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7b/Scotoplanes_globosa_and_crab.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Scotoplanes_globosa_and_crab.jpg",
+        "creator": "NOAA/MBARI",
+        "license": "CC BY-SA 3.0",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "2ef33d258cd005c86fae0606370699e8720af1ae",
+        "coordinates": {
+          "lat": 36.694919,
+          "lng": -122.297988
+        }
+      },
+      "recommendation": "keep by evidence reconciliation",
+      "newImageInspection": false,
+      "newUniqueEntry": false,
+      "priorEvidence": [
+        {
+          "path": "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+          "startLine": 105,
+          "endLine": 112,
+          "sectionExcerpt": "### Percy, episode 2: Something underneath\n\n- Original: `https://upload.wikimedia.org/wikipedia/commons/7/7b/Scotoplanes_globosa_and_crab.jpg`\n- Source: `https://commons.wikimedia.org/wiki/File:Scotoplanes_globosa_and_crab.jpg`\n- SHA1: `2ef33d258cd005c86fae0606370699e8720af1ae`, computed from original bytes in memory. 1,132,157 bytes; 1920 by 1080.\n- Creator: NOAA/MBARI. CC BY-SA 3.0, with Commons VRT permission confirmed. Do not incorrectly mark this public domain because NOAA appears in the credit.\n- Visually inspected: live pale sea pig walking on gray sediment, pink crab legs clearly visible underneath. This is the exact central relationship in the episode. ROV scaling dots are visible at the frame edges.\n- Pip candidate `Euprymna scolopes (Bobtail squid) behavior.jpg` was rejected before binding: its description explicitly says possible Euprymna species, not E. scolopes, and its camera location is Timor rather than Hawaii. Filename and category do not establish species identity."
+        },
+        {
+          "path": "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+          "startLine": 17,
+          "endLine": 22,
+          "sectionExcerpt": "| Character | Subject, body, perception | Desire, flaw, relationships, change |\n| --- | --- | --- |\n| Nell Pelagic | Grimpoteuthis sp.; fin swimming and webbed arms; benthic invertebrate prey. Do not turn her into a marine-snow detritivore. | Uses upward movement to avoid inconvenience, then becomes willing to share a feeding neighborhood. Another octopus and a determined cucumber recur. No human ear hearing implied by the ear-shaped fins. |\n| Percy Silt | Scotoplanes sp.; tube feet, sediment feeding, chemical and tactile contact. Do not imply human eyesight. | Insists on good sediment, finds his own old trail, acquires a juvenile king-crab passenger and gradually accommodates it. The passenger remains underneath. |\n| Vera Veil | Enypniastes eximia; transparent gut, swimming flaps, sediment feeding, mechanically triggered luminescence. | Leaves disappointing patches too quickly, finds that meals travel with her, learns to finish eating before departure. Explicit visual self-inspection was removed. |\n| Iris Undertow | Sepia officinalis; chromatophores, tentacular strike, burial, jet escape. | Changes her appearance to escape awkwardness, then learns that a persistent wrasse wants displaced prey, not her attention. A familiar feeding route anchors later encounters. |"
+        }
+      ],
+      "laterCanonEvidence": [
+        "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md:35"
+      ],
+      "materialDifference": "No title, body or hash change. No later species, passenger or home replacement found. Scotoplanes globosa in source metadata fits the genus-level narrator, and the approximate abyssal Pacific home remains compatible. NOAA/MBARI credit stays CC BY-SA 3.0 rather than public domain.",
+      "independentWritingDecision": "Repeated stops fail to evict the passenger; continuing to eat makes room for it. The last contact turns irritation into toleration without declaring affection. A visible crab beneath the host is unusually direct photographic support for the relationship; the stops and private feeling are fictional.",
+      "sourceAndHomeReview": "Scotoplanes globosa source and approximate abyssal Pacific home are compatible. Tactile narration avoids invented eyesight. Credit NOAA/MBARI under CC BY-SA 3.0, not public domain.",
+      "historicalComparison": {
+        "commit": "c72ecf98",
+        "runtimeFile": "packages/shared/src/sample-character-arcs-ocean.ts",
+        "runtimeLine": 28,
+        "titleUnchanged": true,
+        "bodyUnchanged": true,
+        "mediaSha1Unchanged": true,
+        "bodySha256": "ba522618576694481f3a4287d4197b47163ae0836e9b53a3f7de8de9666e0355"
+      }
+    }
+  ]
+}

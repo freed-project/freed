@@ -99,6 +99,11 @@ export interface LibraryCoreContentChunkPayloadV1 {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
+// Only factory-produced records enter this set, after canonical decoding has
+// detached and deeply frozen their payload and primary key. Reusing those
+// immutable snapshots avoids repeated codec round trips in the page pipeline.
+// Weak ownership keeps completed export pages collectible.
+const validatedRecords = new WeakSet<LibraryCoreNormalizedCheckpointRecordV2>();
 const binary64Buffer = new ArrayBuffer(8);
 const binary64View = new DataView(binary64Buffer);
 const checkpointDigestPrefix = Uint8Array.from(
@@ -294,12 +299,20 @@ export function createLibraryCoreNormalizedCheckpointRecordV2(input: {
   encodeLibraryCoreCanonicalValue(record, {
     maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   });
+  validatedRecords.add(record);
   return record;
 }
 
 export function parseLibraryCoreNormalizedCheckpointRecordV2(
   value: unknown,
 ): LibraryCoreNormalizedCheckpointRecordV2 {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    validatedRecords.has(value as LibraryCoreNormalizedCheckpointRecordV2)
+  ) {
+    return value as LibraryCoreNormalizedCheckpointRecordV2;
+  }
   const record = ownClosedRecord(
     value,
     ["format", "payload", "primaryKey", "protocolVersion", "registryKey"],

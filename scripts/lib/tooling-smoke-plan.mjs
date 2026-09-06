@@ -86,6 +86,8 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/repository-config.test.mjs",
     "scripts/sync-github-rulesets.mjs",
     "scripts/sync-github-rulesets.test.mjs",
+    "scripts/deploy-website.mjs",
+    "scripts/deploy-website.test.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
     "scripts/validate-roadmap-status.mjs",
     "scripts/validate-roadmap-status.test.mjs",
@@ -276,6 +278,10 @@ function hasFocusedFeatureValidation(changedFile) {
     FOCUSED_FEATURE_VALIDATION_PATHS.has(changedFile) ||
     /(?:^|\/)AGENTS(?:\.override)?\.md$/.test(changedFile) ||
     changedFile === "docs/AGENT-INSTRUCTIONS.md" ||
+    changedFile === "docs/instruction-routing-fixtures.json" ||
+    /^scripts\/validate-instruction-routing(?:\.test)?\.mjs$/.test(
+      changedFile,
+    ) ||
     changedFile === ".github/CODEOWNERS" ||
     /^scripts\/validate-agent-instructions(?:\.test)?\.mjs$/.test(
       changedFile,

@@ -1,0 +1,26 @@
+{
+  "characterId": "nova-remains",
+  "mediaSha1": "9d5d5d332cb330e6582ed6cb4af44387a69f864e",
+  "focalPoint": {
+    "x": 0.5,
+    "y": 0.5,
+    "zoom": 1
+  },
+  "media": {
+    "id": "nova-avatar-nine-casa",
+    "subject": "supernova remnant NASA",
+    "category": "astronomy",
+    "identityNameBase": "Nova Remains",
+    "detail": "Cassiopeia A Chandra broadband X-ray shell",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/01/Chandra_Broadband_Image_of_Cassiopeia_A_%282004-casa-more-4%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chandra_Broadband_Image_of_Cassiopeia_A_(2004-casa-more-4).jpg",
+    "creator": "NASA/CXC/GSFC/U.Hwang et al.",
+    "license": "Public domain",
+    "width": 576,
+    "height": 576,
+    "sha1": "9d5d5d332cb330e6582ed6cb4af44387a69f864e",
+    "alt": "Cassiopeia A in blue-assigned X-ray emission, showing a broken round shell and a jet extending toward the upper left."
+  },
+  "reviewImage": "/tmp/freed-nova-09/avatar-circles.png",
+  "leadReview": "Approved exact source and rendered circles at x0.5 y0.5 zoom1"
+}

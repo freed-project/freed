@@ -1,3 +1,4 @@
+import { isFreedDemoMode } from "./demo-mode";
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
@@ -147,6 +148,32 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const WORKER_ERROR_MAXIMUM_UTF8_BYTES = 4_096;
 const textEncoder = new TextEncoder();
 
+type PwaLibraryCoreSqliteWorkerErrorCode =
+  | "invalid_request"
+  | "library_busy"
+  | "sqlite_initialization_failed"
+  | "sqlite_integrity_failed";
+
+export class PwaLibraryCoreSqliteWorkerError extends Error {
+  readonly code: PwaLibraryCoreSqliteWorkerErrorCode;
+
+  constructor(code: PwaLibraryCoreSqliteWorkerErrorCode, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "PwaLibraryCoreSqliteWorkerError";
+  }
+}
+
+export function isPwaLibraryCoreSqliteBusyError(
+  error: unknown,
+): error is PwaLibraryCoreSqliteWorkerError &
+  Readonly<{ code: "library_busy" }> {
+  return (
+    error instanceof PwaLibraryCoreSqliteWorkerError &&
+    error.code === "library_busy"
+  );
+}
+
 export class PwaLibraryCoreSqliteWorkerUnavailableError extends Error {
   readonly code = "pwa_sqlite_worker_unavailable" as const;
 
@@ -237,7 +264,14 @@ export class PwaLibraryCoreSqliteClient {
     const useMemoryE2eWorker =
       import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
       memoryE2eRequested;
-    this.#worker = useMemoryE2eWorker
+    const useDemoWorker = typeof location !== "undefined" &&
+      isFreedDemoMode(location.hostname, undefined, location.search);
+    this.#worker = useDemoWorker
+      ? new Worker(
+          new URL("./library-core-sqlite-worker.ts", import.meta.url),
+          { name: "freed-library-core-sqlite-demo", type: "module" },
+        )
+      : useMemoryE2eWorker
       ? new Worker(
           new URL("./library-core-sqlite-worker.ts", import.meta.url),
           { name: "freed-library-core-sqlite-memory-e2e", type: "module" },
@@ -893,7 +927,9 @@ export class PwaLibraryCoreSqliteClient {
           "PWA Library SQLite worker failure response is not closed",
         );
       }
-      pending.reject(new Error(response.message));
+      pending.reject(
+        new PwaLibraryCoreSqliteWorkerError(response.code, response.message),
+      );
     } catch (error) {
       pending.reject(
         error instanceof Error

@@ -14,7 +14,7 @@
       ) {
         const policy = document.createElement("meta");
         policy.httpEquiv = "Content-Security-Policy";
-        policy.content = "default-src 'self'; connect-src 'self' https://freed.wtf https://www.freed.wtf https://challenges.cloudflare.com https://tiles.openfreemap.org https://nominatim.openstreetmap.org; font-src 'self' data:; frame-src https://challenges.cloudflare.com; img-src 'self' https://thumb.wikimedia.org https://upload.wikimedia.org data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
+        policy.content = "default-src 'self'; connect-src 'self' https://freed.wtf https://www.freed.wtf https://challenges.cloudflare.com https://tiles.openfreemap.org https://nominatim.openstreetmap.org; font-src 'self' data:; frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com; img-src 'self' https://thumb.wikimedia.org https://upload.wikimedia.org https://oceanexplorer.noaa.gov https://archive.oceanexplorer.noaa.gov https://www.fisheries.noaa.gov https://media.fisheries.noaa.gov https://npgallery.nps.gov https://www.nps.gov https://www.fws.gov https://d9-wret.s3.us-west-2.amazonaws.com https://chandra.harvard.edu https://i.ytimg.com data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
         document.head.append(policy);
       }
     </script>

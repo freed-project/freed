@@ -1390,35 +1390,32 @@ parity prevents the runtime copy from drifting silently.
 
 Dev, main, and www ruleset payloads are checked in under `.github/rulesets/`.
 They prohibit deletion and force pushes, require pull requests, allow squash
-merge only, dismiss stale reviews, require resolved review threads, require
-CODEOWNER review for owned paths, and name the exact status checks for each
-branch. There are no bypass actors.
+merge only, dismiss stale reviews, and require resolved review threads. Each
+lane requires its named checks from the GitHub Actions App (ID 15368), with
+strict head validation. There are no bypass actors.
 
-`npm run governance:rulesets` is a read-only branch dry run. It compares the
-checked-in branch payloads with GitHub and reports the required release-tag
-lockdown state. Once an owner-reviewed App ID is checked in, use
-`--release-tags` with the exact App and publisher arguments to compare the two
-tag policies. Apply one branch lane at a time with
-`npm run governance:rulesets -- --branch <dev|main|www> --publisher-login <bot-login> --apply`. Apply fails
-unless the target branch already contains the exact governed CODEOWNERS file,
-a recent merged pull request was authored by that distinct publisher identity,
-the exact merged head has an APPROVED review from `@AubreyF`, and that head has
-a successful run for every required check context. This prevents the sole
-CODEOWNER from locking the repository by authoring a PR they cannot
-self-approve. The publisher identity may create branches and PRs, but it must
-not have approval or merge authority. CODEOWNERS must land in `dev`, then ride the explicit
-promotion into `main` and a separate handoff into `www` before either ruleset
-is applied. The `www` handoff must also add the repository `.nvmrc`, which is
-not present on the current `www` branch, before its workflows use
-`node-version-file`. Installing a review or check rule before its base-branch
-policy, pinned toolchain, and workflow exist can lock the branch with an
-impossible condition.
+The single-maintainer policy requires zero blanket approvals and does not
+require CODEOWNER or last-push approval. CODEOWNERS still routes review.
+Explicit owner checkpoints, provider behavior approval, migration activation,
+and release authority remain separate task requirements. This avoids making
+the sole owner approve their own pull request, which GitHub cannot accept.
 
-The publisher login is a GitHub author identity, not merely the local trusted
-publisher broker. A broker that still invokes `gh` as `@AubreyF` does not solve
-self-approval and cannot satisfy ruleset readiness. Keep all three rulesets
-unapplied until a distinct least-privilege App or bot has produced the required
-review evidence.
+`npm run governance:rulesets` is a read-only dry run. Apply one branch at a time
+with `npm run governance:rulesets -- --branch <dev|main|www> --apply`. Before
+applying, the helper requires a recent merged PR whose exact head passed every
+required check from the declared App. It reads back the live policy after
+applying and fails if enforcement, bypasses, target, or declared rules differ.
+
+A future policy can explicitly enable CODEOWNER review. That mode additionally
+requires `--publisher-login <bot-login>`, matching base-branch CODEOWNERS, and
+an exact-head owner approval on a PR authored by that distinct bot identity.
+Do not activate that mode until its review path works. A local broker that
+still publishes as `@AubreyF` does not solve self-approval.
+
+Release-tag creation and immutability policies remain independent. These
+branch changes do not grant tag authority or change the dedicated release App.
+Use the release-tag modes only through their existing attested provisioning
+workflow.
 
 Release preparation is also PR-only. Dev prep starts from current `origin/dev`
 and returns through a reviewed PR to `dev`. Production prep starts from current

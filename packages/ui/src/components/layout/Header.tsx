@@ -364,7 +364,10 @@ export function Header({
   const visibleFeedTotalCount = useAppStore(
     (state) => state.visibleFeedTotalCount,
   );
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(
+    searchCorpusVersion,
+    isLibraryInitialized,
+  );
   const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
@@ -548,6 +551,9 @@ export function Header({
 
   const fullScopeItemCount = useMemo(() => {
     if (
+      // Library facets include connections too. The active reader owns the
+      // count when the Friends lens narrows the feed to linked friends.
+      effectiveFriendsMode === "friends" ||
       activeFilter.savedOnly ||
       activeFilter.archivedOnly ||
       activeFilter.socialContentFilter ||
@@ -574,6 +580,7 @@ export function Header({
     activeFilter.signals,
     activeFilter.socialContentFilter,
     activeFilter.tags,
+    effectiveFriendsMode,
     filterScope.summary?.itemCount,
     libraryFacets.platformCounts,
     libraryFacets.totalCount,

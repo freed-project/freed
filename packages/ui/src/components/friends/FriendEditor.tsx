@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { CareRating } from "./CareRating.js";
 import type {
   Friend,
   FriendSource,
@@ -69,10 +70,10 @@ const platformIcons: Record<string, ReactNode> = {
 
 const CARE_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
   5: "Fam, nudge weekly",
-  4: "High friend, nudge every 2 weeks",
+  4: "Friend, nudge every 2 weeks",
   3: "Friend, nudge monthly",
-  2: "Acquaintance, nudge quarterly",
-  1: "Followed, no nudges",
+  2: "Connection, nudge quarterly",
+  1: "Connection, no nudges",
 };
 
 // ---------------------------------------------------------------------------
@@ -489,7 +490,7 @@ export function FriendEditor({
       name: name.trim(),
       avatarUrl: avatarUrl.trim() || undefined,
       bio: bio.trim() || undefined,
-      relationshipStatus: existing?.relationshipStatus ?? "friend",
+      relationshipStatus: careLevel <= 2 ? "connection" : "friend",
       sources,
       contact,
       careLevel,
@@ -614,32 +615,8 @@ export function FriendEditor({
               Relationship
             </h3>
             <div className="space-y-2">
-              {([5, 4, 3, 2, 1] as const).map((level) => (
-                <button
-                  key={level}
-                  onClick={() => setCareLevel(level)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
-                    careLevel === level ? "theme-chip-active" : "theme-chip"
-                  }`}
-                >
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <svg
-                        key={i}
-                        viewBox="0 0 12 12"
-                        className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-white/15"}`}
-                        fill="currentColor"
-                        aria-hidden
-                      >
-                        <path d="M6 1l1.5 3H11L8.5 6l1 3L6 7.5 2.5 9l1-3L1 4h3.5z" />
-                      </svg>
-                    ))}
-                  </div>
-                  <span className="text-xs text-text-secondary">
-                    {CARE_LABELS[level]}
-                  </span>
-                </button>
-              ))}
+              <CareRating level={careLevel} onChange={setCareLevel} />
+              <p className="text-xs text-text-secondary">{CARE_LABELS[careLevel]}</p>
               <div className="mt-2">
                 <label className="text-xs text-text-secondary mb-1 block">
                   Custom interval (days), overrides the default above

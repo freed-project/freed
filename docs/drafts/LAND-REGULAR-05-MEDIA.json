@@ -1,0 +1,74 @@
+[
+  {
+    "status": "candidate",
+    "subject": "Arctic fox",
+    "identityNameBase": "Nessa Whisker",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/92/Arctic_Fox_in_Alkhornet%2C_Svalbard%2C_Arctic_%2820095874740%29.jpg/960px-Arctic_Fox_in_Alkhornet%2C_Svalbard%2C_Arctic_%2820095874740%29.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_Fox_in_Alkhornet,_Svalbard,_Arctic_(20095874740).jpg",
+    "creator": "Gary Bembridge",
+    "license": "CC BY 2.0",
+    "width": 2779,
+    "height": 1853,
+    "sha1": "084d482a20b06a9450fa5c4e4096ed3d0b5cb800"
+  },
+  {
+    "status": "candidate",
+    "subject": "Arctic fox",
+    "identityNameBase": "Nessa Whisker",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Arctic_Fox_on_Banks_Island_04.jpg/960px-Arctic_Fox_on_Banks_Island_04.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_Fox_on_Banks_Island_04.jpg",
+    "creator": "Stephan Sprinz",
+    "license": "CC BY 4.0",
+    "width": 2967,
+    "height": 2967,
+    "sha1": "9e24b0348fd09652399ecf64d61b561f06217d3f"
+  },
+  {
+    "status": "candidate",
+    "subject": "common wombat",
+    "identityNameBase": "Bramble Shortlegs",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Common_wombat_%28Vombatus_ursinus%29_female_with_juvenile_Maria_Island_2.jpg/960px-Common_wombat_%28Vombatus_ursinus%29_female_with_juvenile_Maria_Island_2.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Common_wombat_(Vombatus_ursinus)_female_with_juvenile_Maria_Island_2.jpg",
+    "creator": "Charles J. Sharp",
+    "license": "CC BY-SA 4.0",
+    "width": 1915,
+    "height": 1915,
+    "sha1": "ee8525784aded7bb55e47ffa94cace257e3f6b9f"
+  },
+  {
+    "status": "candidate-low-confidence",
+    "subject": "common wombat",
+    "identityNameBase": "Bramble Shortlegs",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Common_wombat_%28Vombatus_ursinus_tasmaniensis%29_Maria_Island_2.jpg/960px-Common_wombat_%28Vombatus_ursinus_tasmaniensis%29_Maria_Island_2.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Common_wombat_(Vombatus_ursinus_tasmaniensis)_Maria_Island_2.jpg",
+    "creator": "Charles J. Sharp",
+    "license": "CC BY-SA 4.0",
+    "width": 3548,
+    "height": 2365,
+    "sha1": "ae7fd32d3d8f3071d729ed6d62664cf1bc5b39c3"
+  },
+  {
+    "status": "hold-prose",
+    "subject": "ground pangolin",
+    "identityNameBase": "Mallow Fold",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/Manis_temminckii_%2829681414615%29.jpg/960px-Manis_temminckii_%2829681414615%29.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Manis_temminckii_(29681414615).jpg",
+    "creator": "Tikki Hywood Trust, via U.S. Fish and Wildlife Service",
+    "license": "CC BY 2.0",
+    "width": 1024,
+    "height": 660,
+    "sha1": "ee256a5a0db7c007464a9b6311db5392ca8e3d53"
+  },
+  {
+    "status": "hold-image-and-prose",
+    "subject": "ground pangolin",
+    "identityNameBase": "Mallow Fold",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ed/20150808_Schuppentier_am_Waterberg.jpg/960px-20150808_Schuppentier_am_Waterberg.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:20150808_Schuppentier_am_Waterberg.jpg",
+    "creator": "Matthias Bethke",
+    "license": "CC BY-SA 4.0",
+    "width": 2865,
+    "height": 1910,
+    "sha1": "55c46989950792dc3346a9d97bb4b5f47805a5df"
+  }
+]

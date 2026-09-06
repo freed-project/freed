@@ -1,0 +1,146 @@
+[
+  {
+    "characterId": "tobin-sound",
+    "sourceIndex": 1,
+    "focal": {
+      "x": 0.54,
+      "y": 0.47,
+      "zoom": 1
+    },
+    "sizesReviewed": [
+      220,
+      48
+    ],
+    "localRender": "/tmp/freed-ocean-21/avatar-circles.png",
+    "status": "lead_visually_approved_crop_only",
+    "media": {
+      "index": 1,
+      "characterSpecies": "humpback",
+      "sourcePage": "https://www.fisheries.noaa.gov/species/humpback-whale",
+      "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/2160x1440_humpbackwhale_noaa.jpg",
+      "originalDimensions": [
+        1280,
+        853
+      ],
+      "sha1": "0b5bf9a7fde26b7e4a50b9fa51b60057dd887a54",
+      "sha256": "35ec5a27b9de2a044cd9e3b7d78276e4cd292166d4413427d3094928501a14be",
+      "localPath": "/tmp/freed-ocean-21/source-01.jpg",
+      "sourceAlt": "Humpback whale breaching. Credit: NOAA Fisheries.",
+      "sourceContext": " \n\n\n                  \n       Humpback whale breaching. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Humpback whale breaching. Credit: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Humpback whale breaching. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n ",
+      "attribution": "NOAA Fisheries",
+      "width": 1280,
+      "height": 853,
+      "license": "Public domain, NOAA-authored United States government image",
+      "licenseUrl": "https://sanctuaries.noaa.gov/news/media/"
+    },
+    "leadReview": "Lead independently opened exact avatar-circles.png at 220/48 and approved the preserved focal values. Character and regular admission remain separate."
+  },
+  {
+    "characterId": "fenn-lowtide",
+    "sourceIndex": 6,
+    "focal": {
+      "x": 0.725,
+      "y": 0.56,
+      "zoom": 3
+    },
+    "sizesReviewed": [
+      220,
+      48
+    ],
+    "localRender": "/tmp/freed-ocean-21/avatar-circles.png",
+    "status": "lead_visually_approved_crop_only",
+    "media": {
+      "index": 6,
+      "characterSpecies": "harbor",
+      "sourcePage": "https://www.fisheries.noaa.gov/species/harbor-seal",
+      "imageUrl": "https://www.fisheries.noaa.gov/s3/2025-07/Harbor-seals-on-ice.-Photo-by-NOAAs-Alaska-Fisheries-Science-Center.jpg",
+      "originalDimensions": [
+        2160,
+        1446
+      ],
+      "sha1": "b19af9a0c7c4a08030747d26dec40005fe06007b",
+      "sha256": "bd721f5477c7a61cfa7c909a0a9e78d712653516aa81c87bd1ff6c407af8dacd",
+      "localPath": "/tmp/freed-ocean-21/source-06.jpg",
+      "sourceAlt": "Alaska harbor seals and their pups rest on ice",
+      "sourceContext": " \n\n\n    \n\n       \n     \n  \n    \n   \n   \n     Feature Story \n     \n       \n Late Spring Brings Sun, Flowers\u2014and Harbor Seal Pups to Alaska\u2019s Glacial Fjords \n \n     \n     \n      \n   \n                  \n         Alaska \n       \n       \n     \n   \n \n\n\n               \n           \n                  \n        \n\n\n\n\n \n   \n\n                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n<img class=\"dam-image img-responsive\" src=\"/s3//styles/in",
+      "attribution": "NOAA Alaska Fisheries Science Center",
+      "width": 2160,
+      "height": 1446,
+      "license": "Public domain, NOAA-authored United States government image",
+      "licenseUrl": "https://sanctuaries.noaa.gov/news/media/"
+    },
+    "leadReview": "Lead independently opened exact avatar-circles.png at 220/48 and approved the preserved focal values. Character and regular admission remain separate."
+  },
+  {
+    "characterId": "selma-shore",
+    "sourceIndex": 8,
+    "focal": {
+      "x": 0.4,
+      "y": 0.38,
+      "zoom": 2.2
+    },
+    "sizesReviewed": [
+      220,
+      48
+    ],
+    "localRender": "/tmp/freed-ocean-21/avatar-circles.png",
+    "status": "lead_visually_approved_crop_only",
+    "media": {
+      "index": 8,
+      "characterSpecies": "sea-lion",
+      "sourcePage": "https://www.fisheries.noaa.gov/species/california-sea-lion",
+      "imageUrl": "https://www.fisheries.noaa.gov/s3/2026-03/1_ca-sea-lion-mom-and-pup-on-beach_0.JPG",
+      "originalDimensions": [
+        1500,
+        1000
+      ],
+      "sha1": "4913b56ef11f8541fbdc393c70ec0761d623a28c",
+      "sha256": "e70613afeac8b5c182177ac2fe2c924a4c18afbabc6ca0a27bbb3d355c6fe0e8",
+      "localPath": "/tmp/freed-ocean-21/source-08.jpg",
+      "sourceAlt": "A California sea lion mother rests on a sandy beach with her head up, eyes closed, and standing on her flippers, while her pup lies across her belly. Behind her are more sea lions and the water's edge.",
+      "sourceContext": " \n\n\n                  \n       A California sea lion with her pup on the beach at San Miguel Island. Photo taken under NOAA Fisheries Permit #16087. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n    \n   \n   \n     Feature Story \n     \n       \n 50 Years of Environmental Data Can Predict Health and Strandings of Sea Lions Pups in California \n \n     \n     \n      \n   \n                  \n         West Coast \n       \n       \n     \n   \n \n\n\n               \n           \n                  \n        \n\n\n\n\n<div class=\"ne",
+      "attribution": "NOAA Fisheries; Permit #16087",
+      "width": 1500,
+      "height": 1000,
+      "license": "Public domain, NOAA-authored United States government image",
+      "licenseUrl": "https://sanctuaries.noaa.gov/news/media/"
+    },
+    "leadReview": "Lead independently opened exact avatar-circles.png at 220/48 and approved the preserved focal values. Character and regular admission remain separate."
+  },
+  {
+    "characterId": "della-crosswake",
+    "sourceIndex": 10,
+    "focal": {
+      "x": 0.3,
+      "y": 0.48,
+      "zoom": 1.55
+    },
+    "sizesReviewed": [
+      220,
+      48
+    ],
+    "localRender": "/tmp/freed-ocean-21/avatar-circles.png",
+    "status": "lead_visually_approved_crop_only",
+    "media": {
+      "index": 10,
+      "characterSpecies": "dolphin",
+      "sourcePage": "https://www.fisheries.noaa.gov/species/common-bottlenose-dolphin",
+      "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/common-bottlenose-dolphin.jpg",
+      "originalDimensions": [
+        750,
+        500
+      ],
+      "sha1": "898e6bdc409a92e140c1ab1f097238579ddddbb2",
+      "sha256": "ec5f75de9bd53941544b2ec1d7443ad52c23ea331376b80d32d167bafeac742e",
+      "localPath": "/tmp/freed-ocean-21/source-10.jpg",
+      "sourceAlt": "Bottlenose dolphin leaping mid-air out of choppy water near a rocky coastal cliff.",
+      "sourceContext": " \n\n\n                  \n       Common Bottlenose Dolphin. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Common Bottlenose Dolphin. Credit: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Common Bottlenose Dolphin. Credit: NOAA Fisheries \n    \n",
+      "attribution": "NOAA Fisheries",
+      "width": 750,
+      "height": 500,
+      "license": "Public domain, NOAA-authored United States government image",
+      "licenseUrl": "https://sanctuaries.noaa.gov/news/media/"
+    },
+    "leadReview": "Lead independently opened exact avatar-circles.png at 220/48 and approved the preserved focal values. Character and regular admission remain separate."
+  }
+]

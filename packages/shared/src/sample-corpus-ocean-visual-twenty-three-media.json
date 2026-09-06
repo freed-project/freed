@@ -1,0 +1,34 @@
+[
+  {
+    "id": "ocean-visual-23-01",
+    "sha1": "f3400ddd7f078e214cb416226d51eed6af54680c",
+    "subject": "California sea lion",
+    "identityNameBase": "Selma Shore",
+    "category": "undersea",
+    "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_wkV3TwlfX1d3.jpg",
+    "sourceUrl": "https://www.fisheries.noaa.gov/feature-story/california-sea-lion-population-rebounded-new-highs",
+    "creator": "NOAA Fisheries/Jeff Harris",
+    "license": "Public domain, NOAA staff photograph",
+    "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+    "width": 1280,
+    "height": 960,
+    "alt": "A dark California sea lion is fully airborne in a sideways arc above the water. A nearer sea lion holds its head above water facing the jumper; a rookery occupies the shore behind.",
+    "detail": "A dark California sea lion is fully airborne in a sideways arc above the water. A nearer sea lion holds its head above water facing the jumper; a rookery occupies the shore behind."
+  },
+  {
+    "id": "ocean-visual-23-05",
+    "sha1": "c3d41e4a37a9cefa561218e4dae81ab169cd18eb",
+    "subject": "common bottlenose dolphin",
+    "identityNameBase": "Della Crosswake",
+    "category": "undersea",
+    "imageUrl": "https://www.fisheries.noaa.gov/s3/2024-03/750x500-SEFSC-4dolphins-photoIDsupp.jpg",
+    "sourceUrl": "https://www.fisheries.noaa.gov/southeast/science-data/what-can-marine-mammal-photo-identification-tell-us",
+    "creator": "NOAA Fisheries/Amy Brossard (Permit #14450)",
+    "license": "Public domain, NOAA staff photograph",
+    "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+    "width": 750,
+    "height": 500,
+    "alt": "Four common bottlenose dolphins crowd close at the surface. One has its pale head raised between the others, with its chin near another dolphin's back.",
+    "detail": "Four common bottlenose dolphins crowd close at the surface. One has its pale head raised between the others, with its chin near another dolphin's back."
+  }
+]

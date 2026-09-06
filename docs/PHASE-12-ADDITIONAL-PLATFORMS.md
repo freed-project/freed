@@ -617,6 +617,10 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - Bluesky is the most promising due to open protocol
 - API-based platforms such as Bluesky and Reddit are generally more stable than DOM extraction
 - YouTube embeds, roster capture, playlist interactions, media resolution, and media transfer are separate provider-visible behaviors and must remain user-controlled and bounded
+- The demo's CSP permits the existing click-to-watch privacy-enhanced YouTube
+  frame and API scripts. It does not eagerly load the player or enable roster,
+  playlist, or media-transfer traffic. Reader descriptions preserve narrative
+  paragraphs and separate original-video and thumbnail credits.
 - YouTube current behavior uses the user's authenticated website session and does not require a developer project, OAuth grant, Data API quota, or hosted provider requests
 - Public YouTube RSS remains a separate manual intake mode. It is not the source of truth for the authenticated follow roster
 - Substack and Medium are beta sources. Authenticated WebView extraction fills

@@ -1,0 +1,364 @@
+{
+  "status": "proposal only; no runtime edits",
+  "counts": {
+    "proposals": 5,
+    "newIdentities": 2,
+    "regularPosts": 4,
+    "mediumArticles": 1,
+    "visualStories": 0
+  },
+  "characters": [
+    {
+      "characterId": "hester-sweetlip",
+      "identityNameBase": "Hester Sweetlip",
+      "subject": "pale pitcher plant",
+      "platform": "instagram",
+      "bio": "Hospitality is going better than hunting.",
+      "location": {
+        "name": "Wet pine savanna in the Big Thicket region",
+        "coordinates": {
+          "lat": 30.6,
+          "lng": -94.4
+        }
+      }
+    },
+    {
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "subject": "saguaro cactus",
+      "platform": "facebook",
+      "bio": "Took his time. Is being rushed by flowers.",
+      "location": {
+        "name": "Sonoran Desert cactus forest east of Tucson",
+        "coordinates": {
+          "lat": 32.2,
+          "lng": -110.6
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "24-01",
+      "characterId": "hester-sweetlip",
+      "identityNameBase": "Hester Sweetlip",
+      "episode": {
+        "subject": "pale pitcher plant",
+        "platform": "medium",
+        "contentType": "article",
+        "mediaSha1": "a2c2c97ca23c34848048b35258da3018dfb26a6d",
+        "theme": "feeding",
+        "title": "The useful edge",
+        "body": "I had made the entrance sweet and the way down slippery. A wasp arrived. He put his head inside.\n\nFor a while I considered the matter settled.\n\nThen one of his feet tightened on my rim. Another found the edge beside it. He lowered himself farther without giving up either hold. I had attracted an insect who understood the difference between visiting and committing.\n\nThere was no correction I could make. I could not turn the rim inward. I could not close the top. All the growing that had brought me to this shape was finished, at least for this particular pitcher. The wasp had found an advantage in the part I had been most pleased with.\n\nHe shifted his grip. I prepared to regard that as progress. He shifted it back.\n\nBelow him, the whole funnel waited. Above him, his abdomen remained in the sunlight. Between the two he had arranged his legs with an attention to detail I would have admired in almost anyone else.\n\nI had supplied the invitation, the sweetness, the drop. I had also supplied a very good handrail."
+      },
+      "sourceAssetId": "407003ab-8bf4-4699-840a-616f5fa03339",
+      "localFile": "/tmp/botanical24/407003ab-8bf4-4699-840a-616f5fa03339.jpg",
+      "visualReview": "A red-brown wasp has its head lowered into a green pitcher while legs visibly brace on the rim. The final physical reversal is visible. Changes of grip, waiting and private certainty are fiction; escape or capture is not claimed.",
+      "admission": "proposal; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "24-02",
+      "characterId": "hester-sweetlip",
+      "identityNameBase": "Hester Sweetlip",
+      "episode": {
+        "subject": "pale pitcher plant",
+        "platform": "instagram",
+        "contentType": "post",
+        "mediaSha1": "26daa17f47a6bcdb65bcb488a684c579ac0271d0",
+        "theme": "social",
+        "title": "A different part of me",
+        "body": "A butterfly settled on my flower. Six feet, almost no weight. I waited for the familiar satisfaction of having caught something.\n\nIt stayed. Nothing was caught.\n\nA small gust moved us together, and for once I was pleased that the part it had chosen was good at letting go."
+      },
+      "sourceAssetId": "8076e7a4-3af0-40cf-9555-43cfbed03cb7",
+      "localFile": "/tmp/botanical24/8076e7a4-3af0-40cf-9555-43cfbed03cb7.jpg",
+      "visualReview": "A butterfly rests on the separate yellow-green flower, with another flower behind it. No pitcher trap is mistaken for a blossom. Wind and the narrator’s change of feeling are fiction; pollination or departure is not established.",
+      "admission": "proposal; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "24-03",
+      "characterId": "hester-sweetlip",
+      "identityNameBase": "Hester Sweetlip",
+      "episode": {
+        "subject": "pale pitcher plant",
+        "platform": "instagram",
+        "contentType": "post",
+        "mediaSha1": "fba342753d090f98a39a9051d571a72a48af8f95",
+        "theme": "feeding",
+        "title": "Halfway down",
+        "body": "Two ants met inside me and stopped.\n\nI had expected the slope to settle things. They appeared to have found it a convenient place to pause.\n\nOne touched the other with an antenna. I waited. My entire interior had become somewhere to exchange news."
+      },
+      "sourceAssetId": "f5a2dd47-2f93-4bdf-9127-56a22e03e714",
+      "localFile": "/tmp/botanical24/f5a2dd47-2f93-4bdf-9127-56a22e03e714.jpg",
+      "visualReview": "Two ants are legible low inside the green veined funnel. The pause and antennal meeting are fictional elaboration, not a verified behavioral sequence. No distressed victim or digestive remains supply the joke.",
+      "admission": "proposal; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "24-04",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "subject": "saguaro cactus",
+        "platform": "facebook",
+        "contentType": "post",
+        "mediaSha1": "531d1c1c4da5b074699c55bddff586c2e5d2fa26",
+        "theme": "transformation",
+        "title": "Not even an arm yet",
+        "body": "The new nub had hardly got clear of my side when it produced a flower.\n\nI spent decades becoming this tall. It has barely become a lump.\n\nThere it is, flowering sideways, making the rest of me look as though I have been putting things off."
+      },
+      "sourceAssetId": "8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9",
+      "localFile": "/tmp/botanical24/8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9.jpg",
+      "visualReview": "The tiny nub carries an open flower and developing or spent flower structures beside the mature ribbed trunk. This is a documented unusual 2021 bloom pattern. Comparison with decades of growth is fictional personal history, not an exact age claim.",
+      "admission": "proposal; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "24-05",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "subject": "saguaro cactus",
+        "platform": "facebook",
+        "contentType": "post",
+        "mediaSha1": "4bd48d69adbb238bde0b87fb505d6dfbbc16b832",
+        "theme": "social",
+        "title": "The point of arms",
+        "body": "A bird landed on one arm. Another took the other side.\n\nFor years I had been meaning to do something impressive with all this branching. Now there were feet on the ends of it.\n\nOne bird left. I had that arm back to myself.\n\nIt was less impressive than I had expected."
+      },
+      "sourceAssetId": "11dcdf69-92e8-4663-ab20-3b3b22f1c8e6",
+      "localFile": "/tmp/botanical24/11dcdf69-92e8-4663-ab20-3b3b22f1c8e6.jpg",
+      "visualReview": "Multiple bird silhouettes perch on cactus arms against a luminous sky. The departure is fictional; the source is not a time sequence. No bird species, sound perception or voluntary arm movement is asserted.",
+      "admission": "proposal; independent lead image and prose decisions required"
+    }
+  ],
+  "media": [
+    {
+      "id": "nps-botanical-24-407003ab",
+      "subject": "pale pitcher plant",
+      "category": "plant",
+      "identityNameBase": "Hester Sweetlip",
+      "detail": "Going Down?",
+      "alt": "A red-brown colored wasp seen climbing into a pitcher plant with its rear end sticking up and out.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/407003ab-8bf4-4699-840a-616f5fa03339/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/407003ab-8bf4-4699-840a-616f5fa03339",
+      "creator": "NPS Photo / Scott Sharaga",
+      "license": "Public domain",
+      "width": 5269,
+      "height": 3513,
+      "sha1": "a2c2c97ca23c34848048b35258da3018dfb26a6d"
+    },
+    {
+      "id": "nps-botanical-24-8076e7a4",
+      "subject": "pale pitcher plant",
+      "category": "plant",
+      "identityNameBase": "Hester Sweetlip",
+      "detail": "Butterfly and Pitcher Plant Flowers",
+      "alt": "orange, black, and white butterfly resting on a yellow-green pitcher plant flower.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8076e7a4-3af0-40cf-9555-43cfbed03cb7/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8076e7a4-3af0-40cf-9555-43cfbed03cb7",
+      "creator": "NPS Photo / Scott Sharaga",
+      "license": "Public domain",
+      "width": 5189,
+      "height": 3459,
+      "sha1": "26daa17f47a6bcdb65bcb488a684c579ac0271d0"
+    },
+    {
+      "id": "nps-botanical-24-52f2199f",
+      "subject": "pale pitcher plant",
+      "category": "plant",
+      "identityNameBase": "Hester Sweetlip",
+      "detail": "Pitcher Plant Flowers",
+      "alt": "Yellow-green flowers covered in dew hanging upside down from thin green stems on a spring morning.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/52f2199f-cd0c-4e07-aa14-60ef140794fc",
+      "creator": "NPS Photo / Scott Sharaga",
+      "license": "Public domain",
+      "width": 4000,
+      "height": 2665,
+      "sha1": "192c83030ff8893e833c9a3f3b6d593a37145611"
+    },
+    {
+      "id": "nps-botanical-24-f5a2dd47",
+      "subject": "pale pitcher plant",
+      "category": "plant",
+      "identityNameBase": "Hester Sweetlip",
+      "detail": "Inside of a Pitcher Plant",
+      "alt": "Looking down into the funnel of a green pitcher plant, with 2 ants crawling on the inside.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f5a2dd47-2f93-4bdf-9127-56a22e03e714/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f5a2dd47-2f93-4bdf-9127-56a22e03e714",
+      "creator": "NPS Photo / Scott Sharaga",
+      "license": "Public domain",
+      "width": 3024,
+      "height": 4032,
+      "sha1": "fba342753d090f98a39a9051d571a72a48af8f95"
+    },
+    {
+      "id": "nps-botanical-24-8f3c1cb1",
+      "subject": "saguaro cactus",
+      "category": "plant",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "IMG_5514.JPG",
+      "alt": "Blooms grow from a saguaro nubbin",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9",
+      "creator": "National Park Service/Tani Hubbard",
+      "license": "Public domain",
+      "width": 1872,
+      "height": 1862,
+      "sha1": "531d1c1c4da5b074699c55bddff586c2e5d2fa26"
+    },
+    {
+      "id": "nps-botanical-24-11dcdf69",
+      "subject": "saguaro cactus",
+      "category": "plant",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "IMG_5485.jpg",
+      "alt": "Several birds perch on the arms of a saguaro backlit by the sun",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/11dcdf69-92e8-4663-ab20-3b3b22f1c8e6/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/11dcdf69-92e8-4663-ab20-3b3b22f1c8e6",
+      "creator": "National Park Service/Tani Hubbard",
+      "license": "Public domain",
+      "width": 1656,
+      "height": 1648,
+      "sha1": "4bd48d69adbb238bde0b87fb505d6dfbbc16b832"
+    },
+    {
+      "id": "nps-botanical-24-0acb7148",
+      "subject": "saguaro cactus",
+      "category": "plant",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "IMG_5538.JPG",
+      "alt": "Close-up of blooms on short saguaro arm",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0acb7148-a0d1-4dc1-894b-c883fbf42429",
+      "creator": "National Park Service/Tani Hubbard",
+      "license": "Public domain",
+      "width": 1880,
+      "height": 2174,
+      "sha1": "c805054fb9ba2db5c8896de5aa5aab15b152573f"
+    }
+  ],
+  "sourceEvidence": [
+    {
+      "assetId": "407003ab-8bf4-4699-840a-616f5fa03339",
+      "localFile": "/tmp/botanical24/407003ab-8bf4-4699-840a-616f5fa03339.jpg",
+      "localBytes": 1733302,
+      "sha1": "a2c2c97ca23c34848048b35258da3018dfb26a6d",
+      "dimensions": [
+        5269,
+        3513
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "episode"
+    },
+    {
+      "assetId": "8076e7a4-3af0-40cf-9555-43cfbed03cb7",
+      "localFile": "/tmp/botanical24/8076e7a4-3af0-40cf-9555-43cfbed03cb7.jpg",
+      "localBytes": 2146510,
+      "sha1": "26daa17f47a6bcdb65bcb488a684c579ac0271d0",
+      "dimensions": [
+        5189,
+        3459
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "episode"
+    },
+    {
+      "assetId": "52f2199f-cd0c-4e07-aa14-60ef140794fc",
+      "localFile": "/tmp/botanical24/52f2199f-cd0c-4e07-aa14-60ef140794fc.jpg",
+      "localBytes": 4303122,
+      "sha1": "192c83030ff8893e833c9a3f3b6d593a37145611",
+      "dimensions": [
+        4000,
+        2665
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "avatar only"
+    },
+    {
+      "assetId": "f5a2dd47-2f93-4bdf-9127-56a22e03e714",
+      "localFile": "/tmp/botanical24/f5a2dd47-2f93-4bdf-9127-56a22e03e714.jpg",
+      "localBytes": 2007910,
+      "sha1": "fba342753d090f98a39a9051d571a72a48af8f95",
+      "dimensions": [
+        3024,
+        4032
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "episode"
+    },
+    {
+      "assetId": "8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9",
+      "localFile": "/tmp/botanical24/8f3c1cb1-f2e6-46a1-9824-f8d2ef3a25a9.jpg",
+      "localBytes": 1993712,
+      "sha1": "531d1c1c4da5b074699c55bddff586c2e5d2fa26",
+      "dimensions": [
+        1872,
+        1862
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "episode"
+    },
+    {
+      "assetId": "11dcdf69-92e8-4663-ab20-3b3b22f1c8e6",
+      "localFile": "/tmp/botanical24/11dcdf69-92e8-4663-ab20-3b3b22f1c8e6.jpg",
+      "localBytes": 938328,
+      "sha1": "4bd48d69adbb238bde0b87fb505d6dfbbc16b832",
+      "dimensions": [
+        1656,
+        1648
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "episode"
+    },
+    {
+      "assetId": "0acb7148-a0d1-4dc1-894b-c883fbf42429",
+      "localFile": "/tmp/botanical24/0acb7148-a0d1-4dc1-894b-c883fbf42429.jpg",
+      "localBytes": 2492730,
+      "sha1": "c805054fb9ba2db5c8896de5aa5aab15b152573f",
+      "dimensions": [
+        1880,
+        2174
+      ],
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "aggregated": false,
+      "usage": "avatar only"
+    }
+  ],
+  "heldDirections": [
+    "Dew-covered flowers are a portrait candidate only; no wet-flower episode proposed because the event was too slight.",
+    "The flower-covered short saguaro arm is avatar imagery only; another exuberant-bloom joke would repeat candidate24-04."
+  ],
+  "biologyAndCanon": "BOTANICAL-REGULAR-24-CANON.md",
+  "duplicateCheck": "All seven exact source SHA1s absent from current sample JSON catalogs before proposal. Five episodes use five distinct photographic scenes. No re-exposure is counted as an additional event.",
+  "screenshots": [
+    "output/playwright/botanical24-full.png",
+    "output/playwright/botanical24-avatars-final.png"
+  ],
+  "avatarProposals": "BOTANICAL-REGULAR-24-AVATARS.json"
+}

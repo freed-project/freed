@@ -750,6 +750,21 @@ impl Drop for NormalizedCheckpointExportSessionV2 {
     }
 }
 
+// A tuple comparison lets SQLite seek the export order index. An optional-
+// cursor OR predicate makes every late page scan the already-exported prefix.
+// Registered keys are nonempty, so the empty first-page tuple sorts before all
+// records without a separate unbounded OR branch.
+const NORMALIZED_CHECKPOINT_PAGE_SQL: &str =
+    "SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+     FROM library_checkpoint_export
+     WHERE (registry_key, primary_key_json) > (?1, ?2)
+     ORDER BY registry_key, primary_key_json
+     LIMIT ?3;";
+
+const NORMALIZED_CHECKPOINT_REMAINING_SQL: &str = "SELECT 1 FROM library_checkpoint_export
+     WHERE (registry_key, primary_key_json) > (?1, ?2)
+     LIMIT 1;";
+
 pub fn export_normalized_checkpoint_page_v2(
     connection: &Connection,
     request: &NormalizedCheckpointExportRequestV2,
@@ -786,13 +801,7 @@ pub fn export_normalized_checkpoint_page_v2(
     }
 
     let fetch_limit = request.maximum_records.saturating_add(1);
-    let mut statement = connection.prepare(
-        "SELECT registry_key, primary_key_json, payload_json, chunk_bytes
-         FROM library_checkpoint_export
-         WHERE (?1 = '' OR registry_key > ?1 OR (registry_key = ?1 AND primary_key_json > ?2))
-         ORDER BY registry_key, primary_key_json
-         LIMIT ?3;",
-    )?;
+    let mut statement = connection.prepare(NORMALIZED_CHECKPOINT_PAGE_SQL)?;
     let mut rows = statement.query(params![
         after_registry_key,
         after_primary_key_json,
@@ -862,21 +871,19 @@ pub fn export_normalized_checkpoint_page_v2(
     }
     page.done = connection
         .query_row(
-                "SELECT 1 FROM library_checkpoint_export
-                 WHERE (?1 = '' OR registry_key > ?1 OR (registry_key = ?1 AND primary_key_json > ?2))
-                 LIMIT 1;",
-                params![
-                    page.next_cursor
-                        .as_ref()
-                        .map(|cursor| cursor.registry_key.as_str())
-                        .unwrap_or(""),
-                    page.next_cursor
-                        .as_ref()
-                        .map(|cursor| cursor.primary_key_json.as_str())
-                        .unwrap_or("")
-                ],
-                |_| Ok(()),
-            )
+            NORMALIZED_CHECKPOINT_REMAINING_SQL,
+            params![
+                page.next_cursor
+                    .as_ref()
+                    .map(|cursor| cursor.registry_key.as_str())
+                    .unwrap_or(""),
+                page.next_cursor
+                    .as_ref()
+                    .map(|cursor| cursor.primary_key_json.as_str())
+                    .unwrap_or("")
+            ],
+            |_| Ok(()),
+        )
         .optional()?
         .is_none();
     if page.records.is_empty() && !page.done {
@@ -895,6 +902,61 @@ pub fn export_normalized_checkpoint_page_v2(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checkpoint_page_and_completion_probe_seek_without_rescanning_prefix() {
+        let connection = Connection::open_in_memory().expect("database");
+        connection
+            .execute_batch(
+                "CREATE TEMP TABLE library_checkpoint_export (
+                registry_key TEXT, primary_key_json TEXT,
+                payload_json TEXT, chunk_bytes BLOB);
+             CREATE UNIQUE INDEX temp.library_checkpoint_export_order
+                ON library_checkpoint_export(registry_key, primary_key_json);
+             WITH RECURSIVE n(i) AS (
+                VALUES(0) UNION ALL SELECT i + 1 FROM n WHERE i < 9999
+             ) INSERT INTO library_checkpoint_export
+               SELECT 'a0_receipt', printf('%08d', i), '{}', NULL FROM n;",
+            )
+            .expect("indexed export fixture");
+
+        for (registry, cursor, expected_first, expected_count) in [
+            ("", "", "00000000", 129),
+            ("a0_receipt", "00009800", "00009801", 129),
+            ("a0_receipt", "00009999", "", 0),
+        ] {
+            let mut page = connection
+                .prepare(NORMALIZED_CHECKPOINT_PAGE_SQL)
+                .expect("page");
+            let keys = page
+                .query_map(params![registry, cursor, 129], |row| {
+                    row.get::<_, String>(1)
+                })
+                .expect("query")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("keys");
+            assert_eq!(keys.len(), expected_count);
+            assert_eq!(
+                keys.first().map(String::as_str).unwrap_or(""),
+                expected_first
+            );
+            assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+            // Deterministic work admission, not a host-dependent timing test.
+            assert!(page.get_status(rusqlite::StatementStatus::VmStep) < 5_000);
+            assert_eq!(page.get_status(rusqlite::StatementStatus::Sort), 0);
+
+            let mut remaining = connection
+                .prepare(NORMALIZED_CHECKPOINT_REMAINING_SQL)
+                .expect("completion probe");
+            let exists = remaining
+                .query_row(params![registry, cursor], |_| Ok(()))
+                .optional()
+                .expect("remaining")
+                .is_some();
+            assert_eq!(exists, expected_count != 0);
+            assert!(remaining.get_status(rusqlite::StatementStatus::VmStep) < 100);
+        }
+    }
     use crate::normalized_checkpoint::reassemble_content_records_v1;
     use crate::normalized_checkpoint::split_content_records_v1;
     use crate::normalized_import::{

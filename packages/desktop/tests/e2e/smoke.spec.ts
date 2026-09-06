@@ -3424,7 +3424,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
   const lastSeenCard = page
     .getByTestId("friends-sidebar")
-    .getByRole("button", { name: /last seen paris/i });
+    .getByRole("button", { name: "Open map for Ada Lovelace" });
   await expect(lastSeenCard).toBeVisible({ timeout: 10_000 });
   await lastSeenCard.evaluate((element) => {
     (element as HTMLElement).click();
@@ -4861,7 +4861,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
   });
 });
 
-test("relationship slider maps selected people across Followed, Friends, and Fam", async ({ app, page }) => {
+test("care stars map selected people across Connection, Friend, and Fam", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4892,9 +4892,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     store.getState().setSelectedPerson("tier-slider-person");
   });
 
-  const control = page.getByTestId("relationship-tier-control");
+  const control = page.getByTestId("friends-sidebar").getByRole("group", { name: /^Care level/ });
   await expect(control).toBeVisible({ timeout: 10_000 });
-  await control.getByRole("button", { name: "Friends" }).evaluate((element) => {
+  await control.getByRole("button", { name: "Set Friend: 3 of 5 stars" }).evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
 
@@ -4907,7 +4907,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
-  await control.getByRole("button", { name: "Fam" }).evaluate((element) => {
+  await control.getByRole("button", { name: "Set Fam: 5 of 5 stars" }).evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
   await expect.poll(async () =>
@@ -4919,7 +4919,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
-  await control.getByRole("button", { name: "Followed" }).evaluate((element) => {
+  await control.getByRole("button", { name: "Set Connection: 1 of 5 stars" }).evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
   await expect.poll(async () =>

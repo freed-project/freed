@@ -181,12 +181,14 @@ export function validateRuleset(ruleset, fileName = "ruleset") {
   if (
     JSON.stringify(pullRequest?.allowed_merge_methods) !==
       JSON.stringify(["squash"]) ||
-    pullRequest?.require_code_owner_review !== true ||
+    typeof pullRequest?.require_code_owner_review !== "boolean" ||
+    pullRequest?.required_approving_review_count !== 0 ||
+    pullRequest?.require_last_push_approval !== false ||
     pullRequest?.required_review_thread_resolution !== true ||
     pullRequest?.dismiss_stale_reviews_on_push !== true
   ) {
     throw new Error(
-      `${fileName}: pull_request must require squash, CODEOWNER review, stale dismissal, and resolved threads.`,
+      `${fileName}: pull_request must require squash, explicit CODEOWNER policy, zero blanket approvals, no last-push approval, stale dismissal, and resolved threads.`,
     );
   }
   const checks = ruleset.rules.find(
@@ -264,6 +266,44 @@ export function rulesetBranch(ruleset) {
     throw new Error(`${ruleset.name} is not a branch ruleset.`);
   }
   return ruleset.conditions.ref_name.include[0].replace("refs/heads/", "");
+}
+
+export function verifyLiveBranchRuleset(desired, currentRulesets) {
+  const matches = currentRulesets.filter((item) => item.name === desired.name);
+  if (matches.length !== 1)
+    throw new Error(
+      "Expected exactly one live branch ruleset: " + desired.name,
+    );
+  const live = matches[0];
+  validateRuleset(live, desired.name);
+  // GitHub adds optional default parameters. Verify every declared field,
+  // while allowing those response-only fields. Arrays remain closed.
+  function matchesDeclared(expected, actual) {
+    if (Array.isArray(expected)) {
+      return (
+        Array.isArray(actual) &&
+        expected.length === actual.length &&
+        expected.every((value) =>
+          actual.some((item) => matchesDeclared(value, item)),
+        )
+      );
+    }
+    if (expected && typeof expected === "object") {
+      return (
+        actual &&
+        Object.entries(expected).every(([key, value]) =>
+          matchesDeclared(value, actual[key]),
+        )
+      );
+    }
+    return expected === actual;
+  }
+  if (!matchesDeclared(comparableRuleset(desired), comparableRuleset(live))) {
+    throw new Error(
+      "Live branch ruleset differs from declared policy: " + desired.name,
+    );
+  }
+  return { ready: true, id: live.id };
 }
 
 export function verifyReleaseTagActivation(rulesets, releaseAppId) {
@@ -431,9 +471,21 @@ export function requiredCheckContexts(ruleset) {
 }
 
 export function verifyRulesetReadiness(ruleset, checkRuns) {
+  const required = ruleset.rules.find(
+    (rule) => rule.type === "required_status_checks",
+  ).parameters.required_status_checks;
   const successful = new Set(
     checkRuns
-      .filter((run) => run.conclusion === "success")
+      .filter(
+        (run) =>
+          run.conclusion === "success" &&
+          required.some(
+            (check) =>
+              check.context === run.name &&
+              (check.integration_id == null ||
+                check.integration_id === run.app?.id),
+          ),
+      )
       .map((run) => run.name),
   );
   const missing = requiredCheckContexts(ruleset).filter(
@@ -564,7 +616,7 @@ function deleteRuleset(repo, rulesetId, { exec = execFileSync } = {}) {
   });
 }
 
-function findRulesetReadinessEvidence(
+export function findRulesetReadinessEvidence(
   repo,
   ruleset,
   publisherLogin,
@@ -580,10 +632,15 @@ function findRulesetReadinessEvidence(
   ).filter((pull) => pull.merged_at && pull.head?.sha);
   const failures = [];
   for (const pull of pulls) {
-    const reviews = ghJson(
-      ["api", `repos/${repo}/pulls/${pull.number}/reviews?per_page=100`],
-      { exec },
-    );
+    const requiresOwner = ruleset.rules.find(
+      (rule) => rule.type === "pull_request",
+    ).parameters.require_code_owner_review;
+    const reviews = requiresOwner
+      ? ghJson(
+          ["api", `repos/${repo}/pulls/${pull.number}/reviews?per_page=100`],
+          { exec },
+        )
+      : [];
     const checkRuns =
       ghJson(
         [
@@ -593,11 +650,12 @@ function findRulesetReadinessEvidence(
         { exec },
       ).check_runs ?? [];
     try {
-      verifyCodeownerApprovalReadiness({
-        pull,
-        reviews,
-        publisherLogin,
-      });
+      if (requiresOwner)
+        verifyCodeownerApprovalReadiness({
+          pull,
+          reviews,
+          publisherLogin,
+        });
       verifyRulesetReadiness(ruleset, checkRuns);
       return { pullNumber: pull.number, headSha: pull.head.sha };
     } catch (error) {
@@ -733,11 +791,6 @@ export function parseArgs(argv) {
       "--apply requires exactly one branch, --lock-release-tags, or --release-tags target.",
     );
   }
-  if (args.apply && args.branch !== null && !args.publisherLogin) {
-    throw new Error(
-      "--apply requires --publisher-login for a distinct PR author identity that @AubreyF can review.",
-    );
-  }
   if (
     args.apply &&
     args.releaseTags &&
@@ -821,13 +874,23 @@ function main() {
         applyRuleset(args.repo, item);
         continue;
       }
-      const codeowners = findCodeownersReadinessEvidence(
-        args.repo,
-        item.desired,
-      );
-      process.stdout.write(
-        `codeowners: ${rulesetBranch(item.desired)} ${codeowners.sha || "verified"}\n`,
-      );
+      const requiresOwner = item.desired.rules.find(
+        (rule) => rule.type === "pull_request",
+      ).parameters.require_code_owner_review;
+      if (requiresOwner && !args.publisherLogin) {
+        throw new Error(
+          "CODEOWNER enforcement requires --publisher-login for a distinct reviewable PR author.",
+        );
+      }
+      if (requiresOwner) {
+        const codeowners = findCodeownersReadinessEvidence(
+          args.repo,
+          item.desired,
+        );
+        process.stdout.write(
+          `codeowners: ${rulesetBranch(item.desired)} ${codeowners.sha || "verified"}\n`,
+        );
+      }
       const evidence = findRulesetReadinessEvidence(
         args.repo,
         item.desired,
@@ -837,6 +900,16 @@ function main() {
         `readiness: ${rulesetBranch(item.desired)} PR #${evidence.pullNumber.toLocaleString()} ${evidence.headSha}\n`,
       );
       applyRuleset(args.repo, item);
+    }
+  }
+  if (args.apply && args.branch !== null) {
+    const refreshedSummary = ghJson(["api", `repos/${args.repo}/rulesets`]);
+    const refreshed = refreshedSummary.map((item) =>
+      ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
+    );
+    for (const ruleset of desired) {
+      const verified = verifyLiveBranchRuleset(ruleset, refreshed);
+      process.stdout.write(`verified: ${ruleset.name} ${verified.id}\n`);
     }
   }
   if (args.apply && args.releaseTags) {
@@ -874,7 +947,7 @@ function main() {
         ? "Dry run only. Re-run with --apply after the dedicated release GitHub App is installed with tag-push authority.\n"
         : args.releaseTagLockdown
           ? "Dry run only. Apply the no-bypass release-tag lockdown before provisioning App creation authority.\n"
-          : "Dry run only. Re-run with --apply after matching CODEOWNERS and required workflow checks exist on the target branch.\n",
+          : "Dry run only. Re-run with --apply after required workflow checks exist on the target branch. CODEOWNER enforcement additionally requires review readiness.\n",
     );
   }
 }

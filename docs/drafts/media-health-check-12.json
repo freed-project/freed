@@ -1,0 +1,416 @@
+{
+  "checkedAt": "2026-09-05T13:27:39.248Z",
+  "scope": "First 40 assets of SAMPLE_CURATED_DEMO_MEDIA as loaded by the current runtime module",
+  "method": "HEAD",
+  "maxConcurrency": 2,
+  "timeoutMs": 10000,
+  "retries": 0,
+  "records": [
+    {
+      "id": "commons-manny-bee-27b7ebe2",
+      "sha1": "27b7ebe285129ff07853aa2d19185414fffd682c",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/23/Chinese-mantis-bee.JPG",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chinese-mantis-bee.JPG",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 189
+    },
+    {
+      "id": "commons-0448",
+      "sha1": "ab98dabf54fe33be92581795707d73fd56b68176",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/Flickr_-_JennyHuang_-_Where_is_the_frogfish.jpg/1280px-Flickr_-_JennyHuang_-_Where_is_the_frogfish.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AFlickr_-_JennyHuang_-_Where_is_the_frogfish.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 102
+    },
+    {
+      "id": "commons-0468",
+      "sha1": "d8db811f9a3957e75569f46ac91be3a8456373b0",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/Painted_frogfish_from_North_Sulawesi%3B_Christian_Gloor%3B_July_2016.jpg/1280px-Painted_frogfish_from_North_Sulawesi%3B_Christian_Gloor%3B_July_2016.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APainted_frogfish_from_North_Sulawesi%3B_Christian_Gloor%3B_July_2016.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 221
+    },
+    {
+      "id": "commons-0488",
+      "sha1": "28f071a8ba9eb3e27a92f099918b66dabe6f8662",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1e/2015_09_Bali_91_clown_frogfish_%2821906341239%29.jpg/1280px-2015_09_Bali_91_clown_frogfish_%2821906341239%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3A2015_09_Bali_91_clown_frogfish_(21906341239).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 83
+    },
+    {
+      "id": "commons-0508",
+      "sha1": "01e2e869995438145c0354c19e554df0a82dffd3",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Antennarius_striatus_%288492976355%29.jpg/1280px-Antennarius_striatus_%288492976355%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_striatus_(8492976355).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 349
+    },
+    {
+      "id": "commons-0526",
+      "sha1": "4fac2f792ffba0fc2240e5e6cb792decd3596f65",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/Antennarius_striatus_%2814911110794%29.jpg/1280px-Antennarius_striatus_%2814911110794%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_striatus_(14911110794).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 81
+    },
+    {
+      "id": "commons-0544",
+      "sha1": "e710824197892596f5f929fb93529038436cc68d",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/91/Antennarius_maculatus_%2819202441363%29.jpg/1280px-Antennarius_maculatus_%2819202441363%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_maculatus_(19202441363).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 101
+    },
+    {
+      "id": "commons-0562",
+      "sha1": "17fe76cd81e2688f0ba67e0de0b378e32bdd8d1c",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Antennarius_pictus_%2827675620746%29.jpg/1280px-Antennarius_pictus_%2827675620746%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_pictus_(27675620746).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 99
+    },
+    {
+      "id": "commons-0580",
+      "sha1": "791547f8fd744ca2c6c6406b352b1c12282d63f0",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9c/Antennarius_striatus_%2830559623856%29.jpg/1280px-Antennarius_striatus_%2830559623856%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_striatus_(30559623856).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 1037
+    },
+    {
+      "id": "commons-0597",
+      "sha1": "9663a30640ec7d977a6ce02a9a1b87b875f85365",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/60/Antennarius_pictus_%2811435771445%29.jpg/1280px-Antennarius_pictus_%2811435771445%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_pictus_(11435771445).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 209
+    },
+    {
+      "id": "commons-0613",
+      "sha1": "3624eaf19c3acf8fa1cca99db5e805484c19a308",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Painted_frogfish_%28Antennarius_pictus%29_%2814206711009%29.jpg/1280px-Painted_frogfish_%28Antennarius_pictus%29_%2814206711009%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APainted_frogfish_(Antennarius_pictus)_(14206711009).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 215
+    },
+    {
+      "id": "commons-0629",
+      "sha1": "5ed8136cce82cbab004eae9e7a0862df6e5e96f8",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Warty_frogfish_%28Antennarius_maculatus%29_%2814390002871%29.jpg/1280px-Warty_frogfish_%28Antennarius_maculatus%29_%2814390002871%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AWarty_frogfish_(Antennarius_maculatus)_(14390002871).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 88
+    },
+    {
+      "id": "commons-0645",
+      "sha1": "49519db6c9912690ba9207fa4598a50eef1db15d",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/91/Painted_frogfish_%28Antennarius_pictus%29_%2814213462968%29.jpg/1280px-Painted_frogfish_%28Antennarius_pictus%29_%2814213462968%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APainted_frogfish_(Antennarius_pictus)_(14213462968).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 205
+    },
+    {
+      "id": "commons-0660",
+      "sha1": "263790270be285a77e106ff15a6aa54ce22babc7",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/92/Warty_frogfish_%28Antennarius_maculatus%29_%2814402973142%29.jpg/1280px-Warty_frogfish_%28Antennarius_maculatus%29_%2814402973142%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AWarty_frogfish_(Antennarius_maculatus)_(14402973142).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 81
+    },
+    {
+      "id": "commons-0674",
+      "sha1": "02edfc1a3e7dfa7484ae030053c6cf6de2110be4",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Giant_Frogfish_%28Antennarius_commerson%29_%2814424475723%29.jpg/1280px-Giant_Frogfish_%28Antennarius_commerson%29_%2814424475723%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Frogfish_(Antennarius_commerson)_(14424475723).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 83
+    },
+    {
+      "id": "commons-0688",
+      "sha1": "ca03f3c6dce3d3ac18871575bcab8eac4335c57b",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/Giant_Frogfish%2C_Sulawesi_Utara_%283%29.jpg/1280px-Giant_Frogfish%2C_Sulawesi_Utara_%283%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Frogfish%2C_Sulawesi_Utara_(3).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 287
+    },
+    {
+      "id": "commons-0702",
+      "sha1": "55a4eef5f61d3304f1605aa15eaa3a683d913594",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Giant_Frogfish%2C_Sulawesi_Utara_%281%29.jpg/1280px-Giant_Frogfish%2C_Sulawesi_Utara_%281%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Frogfish%2C_Sulawesi_Utara_(1).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 208
+    },
+    {
+      "id": "commons-0715",
+      "sha1": "b6112ff78acbbd8a7824285a820f2d205a56015a",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/Giant_Frogfish%2C_Sulawesi_Utara_%282%29.jpg/1280px-Giant_Frogfish%2C_Sulawesi_Utara_%282%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Frogfish%2C_Sulawesi_Utara_(2).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 221
+    },
+    {
+      "id": "commons-0728",
+      "sha1": "63d3cd65c960859551065b660c587a04388d57a2",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Giant_Frogfish%2C_Sulawesi_Utara_%284%29.jpg/1280px-Giant_Frogfish%2C_Sulawesi_Utara_%284%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Frogfish%2C_Sulawesi_Utara_(4).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 97
+    },
+    {
+      "id": "commons-0431",
+      "sha1": "132c45ae85dc04fbd3f381cd972135af36b1f7ea",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Chromodoris_nudibranch_komodo.jpg/1280px-Chromodoris_nudibranch_komodo.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AChromodoris_nudibranch_komodo.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 86
+    },
+    {
+      "id": "commons-0452",
+      "sha1": "999b6de9c270b6cf084e91d32519aab2f1b24366",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Glossodorid_nudibranch_komodo.jpg/1280px-Glossodorid_nudibranch_komodo.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGlossodorid_nudibranch_komodo.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 172
+    },
+    {
+      "id": "commons-0472",
+      "sha1": "f78edbd368573323bec2926ac2459c1cc009a6f6",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/Gem_nudibranch_at_Mayor_Island_PB164667.JPG/1280px-Gem_nudibranch_at_Mayor_Island_PB164667.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGem_nudibranch_at_Mayor_Island_PB164667.JPG",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 97
+    },
+    {
+      "id": "commons-0492",
+      "sha1": "a1bfc86887366dde276f85612da527a42f49d3a1",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Frilled_nudibranch_on_the_wreck_of_MFV_Princess_Elizabeth_P3167280.JPG/1280px-Frilled_nudibranch_on_the_wreck_of_MFV_Princess_Elizabeth_P3167280.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AFrilled_nudibranch_on_the_wreck_of_MFV_Princess_Elizabeth_P3167280.JPG",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 99
+    },
+    {
+      "id": "commons-0451",
+      "sha1": "129c619a92dfef320bf5e9fb98b05742b3e36a7b",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Nembrotha_kubaryana_%28Nudibranchs%29_hermaphroditic_mating.jpg/1280px-Nembrotha_kubaryana_%28Nudibranchs%29_hermaphroditic_mating.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ANembrotha_kubaryana_(Nudibranchs)_hermaphroditic_mating.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 88
+    },
+    {
+      "id": "commons-0512",
+      "sha1": "6da2fa0f46144ea10d89649891e6e7aef2964355",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Aegires_gardineri_Papua_New_Guinea_by_Nick_Hobgood-001.jpg/1280px-Aegires_gardineri_Papua_New_Guinea_by_Nick_Hobgood-001.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAegires_gardineri_Papua_New_Guinea_by_Nick_Hobgood-001.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 102
+    },
+    {
+      "id": "commons-0471",
+      "sha1": "4e80c87a290b277ca8c9770557c51119552827c8",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/Nudibranch_ribbon_eggs%2C_spiral_corner%2C_wakatobi%2C_2018_%2845813150341%29.jpg/1280px-Nudibranch_ribbon_eggs%2C_spiral_corner%2C_wakatobi%2C_2018_%2845813150341%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ANudibranch_ribbon_eggs%2C_spiral_corner%2C_wakatobi%2C_2018_(45813150341).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 102
+    },
+    {
+      "id": "commons-0530",
+      "sha1": "09361b603602c7aa91cf31ea3236aa39d049a4f6",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7a/Colourful_Nudibranch.jpg/1280px-Colourful_Nudibranch.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AColourful_Nudibranch.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 103
+    },
+    {
+      "id": "commons-0566",
+      "sha1": "a86cab4596ddf0314085105b82709bbfd72017ca",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/81/Austraeolis_ornata_Nudibranch.jpg/1280px-Austraeolis_ornata_Nudibranch.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAustraeolis_ornata_Nudibranch.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 93
+    },
+    {
+      "id": "commons-0871",
+      "sha1": "a28cb915c46d2dcb4966227b7b34b475cc5cdfdc",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Cygnus_olor.006_-_London.JPG/1280px-Cygnus_olor.006_-_London.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ACygnus_olor.006_-_London.JPG",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 98
+    },
+    {
+      "id": "commons-0885",
+      "sha1": "cd185b8e433a0179c4ffea8bd75db0ecd252c90c",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Mute_swan_%28Cygnus_olor%29_taking_off.jpg/1280px-Mute_swan_%28Cygnus_olor%29_taking_off.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMute_swan_(Cygnus_olor)_taking_off.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 212
+    },
+    {
+      "id": "commons-0898",
+      "sha1": "ce1ef641230b414aeb30ce82ce63b418334d53a9",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/de/Swan_love_%284494735232%29.jpg/1280px-Swan_love_%284494735232%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ASwan_love_(4494735232).jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 207
+    },
+    {
+      "id": "commons-0911",
+      "sha1": "eb7c447489d5ac7dc20d38c1a658b843f933102e",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/02/Courtship_of_the_swan.jpg/1280px-Courtship_of_the_swan.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ACourtship_of_the_swan.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 205
+    },
+    {
+      "id": "commons-0924",
+      "sha1": "c73bd0646805fbbb12ecd768c90d88ac07194f6d",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/29/SwanFeeding.jpg/1280px-SwanFeeding.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ASwanFeeding.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 200
+    },
+    {
+      "id": "commons-0935",
+      "sha1": "fd8a4385cec80d48c4d960c5c4e145b8ca5834ad",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Swan_with_nine_cygnets_1.jpg/1280px-Swan_with_nine_cygnets_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ASwan_with_nine_cygnets_1.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 213
+    },
+    {
+      "id": "commons-0945",
+      "sha1": "a2a57edb7708d629231c15bc1ff5fa6af728f513",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Mute_swan_preening_in_Hyde_Park.jpg/1280px-Mute_swan_preening_in_Hyde_Park.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMute_swan_preening_in_Hyde_Park.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 79
+    },
+    {
+      "id": "commons-0876",
+      "sha1": "edc8481461023dbcd11a9cdd43607db51b9a5e49",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Juvenile_Chilean_Flamingo_005.jpg/1280px-Juvenile_Chilean_Flamingo_005.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AJuvenile_Chilean_Flamingo_005.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 191
+    },
+    {
+      "id": "commons-0890",
+      "sha1": "edb5d781162da4eb272fea42020ce8a14e36ef59",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c5/Flamingo_courtship.jpg/1280px-Flamingo_courtship.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AFlamingo_courtship.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 199
+    },
+    {
+      "id": "commons-0903",
+      "sha1": "d7db5d3f032ac43eb40c19d527e79ea12e4a6ac8",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/03/Greater_flamingo_-_Feeding_in_water.jpg/1280px-Greater_flamingo_-_Feeding_in_water.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGreater_flamingo_-_Feeding_in_water.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 221
+    },
+    {
+      "id": "commons-0916",
+      "sha1": "93e39136932440ef7d122a427808cf6d1b383dd1",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Flamingo_Sleeping_in_Ngorongoro.jpg/1280px-Flamingo_Sleeping_in_Ngorongoro.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AFlamingo_Sleeping_in_Ngorongoro.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 154
+    },
+    {
+      "id": "commons-1373",
+      "sha1": "315078d06ac86e674de56d66f859d89bc516295e",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/d/d4/Keplers_supernova.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AKeplers_supernova.jpg",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "ok": true,
+      "durationMs": 90
+    }
+  ],
+  "summary": {
+    "checked": 40,
+    "healthy": 40,
+    "failures": 0,
+    "failuresById": []
+  }
+}

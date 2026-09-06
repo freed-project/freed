@@ -1,0 +1,373 @@
+{
+  "status": "proposal only; no runtime edits",
+  "counts": {
+    "exactOriginalsOpened": 15,
+    "regularCandidates": 5,
+    "longformArticles": 2,
+    "newIdentities": 1,
+    "unselectedOriginals": 10
+  },
+  "characters": [
+    {
+      "characterId": "ansel-threadbark",
+      "identityNameBase": "Ansel Threadbark",
+      "subject": "Great Basin bristlecone pine",
+      "platform": "facebook",
+      "bio": "Still growing around the difficult parts.",
+      "location": {
+        "name": "Limestone ridge in the southern Snake Range, Nevada",
+        "coordinates": {
+          "lat": 38.9,
+          "lng": -114.3
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "32-01",
+      "characterId": "ansel-threadbark",
+      "identityNameBase": "Ansel Threadbark",
+      "episode": {
+        "platform": "substack",
+        "contentType": "article",
+        "theme": "transformation",
+        "title": "The part that stayed",
+        "body": "One side of me stopped putting out needles. I kept growing on the other side. For a while I treated this as a temporary arrangement.\n\nThe bare wood stayed. It lost its bark, paled, took the weather directly. The living part grew around it, and the shape I had expected to recover became harder to remember.\n\nI had assumed that losing a part meant being rid of it. Instead, I was still resting my weight on something that could no longer grow. Every new tuft of needles had that old wood somewhere beneath it.\n\nThis annoyed me. I would have preferred either a full recovery or a clean absence. The arrangement I actually had required me to keep making room for both.\n\nWind came across the ridge and moved the needles. The pale trunk held them up. I had been thinking of it as the part of me that had stopped doing anything.\n\nLater, another season added growth along the living edge. Very little. It was tempting to dismiss it beside all that weathered wood. But I had wanted it, and there it was.\n\nI have stopped waiting to look as I did before. I still rest a surprising amount of myself on what remained.",
+        "subject": "Great Basin bristlecone pine",
+        "mediaSha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f"
+      },
+      "sourceAssetId": "b91d4781-155d-4519-3e99-c4f2f0da69ce",
+      "localFile": "/tmp/botanical32/b91d4781-155d-4519-3e99-c4f2f0da69ce.jpg",
+      "localBytes": 3152282,
+      "visualReview": "One clearly living bristlecone has a green crown above a broad pale exposed trunk and conspicuous open gap. This supports a rooted body combining live growth and retained bare wood. The photograph is not a longitudinal study: loss of a sector, the remembered expectation of recovery, particular seasons and private revision are fictional context grounded in the NPS account of sectored architecture. The exact cause and date of this specimen\u2019s exposed wood are not diagnosed.",
+      "admission": "proposal; independent image and prose decisions required",
+      "authorPriority": "recommend review"
+    },
+    {
+      "candidateId": "32-02",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "platform": "medium",
+        "contentType": "article",
+        "theme": "social",
+        "title": "Above the flowers",
+        "body": "They arrived with a pole and began extending it beside me.\n\nI was used to people looking up. This appeared to be an unusually elaborate version of the same thing. One held the bottom, the others stayed close, and the little black object at the far end rose past my arm.\n\nThen it kept going.\n\nI had put the flowers at the top. That had seemed a perfectly satisfactory height for flowers. A bird could reach them. A bee could reach them. The people had apparently decided that they, too, should have a view straight into the middle.\n\nThe camera tilted down. I could not rearrange a single blossom. The buds that weren't ready stayed shut; the flowers that were open stayed open. There was nothing to do about the awkward small arm behind the large one.\n\nFor a moment I wanted them to take the picture from farther away, where I looked more like an impressive cactus.\n\nThey took it from here. All the crowded buds, the open cups, the spines around them. I had spent decades growing tall enough to be looked up to. It was strangely intimate to be looked down into.",
+        "subject": "saguaro cactus",
+        "mediaSha1": "488c41b52d00c67bbf68074bfbfee7857e98d657"
+      },
+      "sourceAssetId": "saguaro-overhead",
+      "localFile": "/tmp/botanical32/saguaro-overhead.jpg",
+      "localBytes": 688884,
+      "visualReview": "The overhead photograph shows a blossoming saguaro arm, attached smaller growth, a camera pole running down toward the person holding it, and other people below. NPS identifies it as a Flower Power camera-pole photograph. Extension and tilting are reconstructed fiction compatible with that documented method; no photographer dialogue or real-person motive is asserted. The little camera itself is necessarily outside its own photograph.",
+      "admission": "proposal; independent image and prose decisions required",
+      "authorPriority": "recommend review"
+    },
+    {
+      "candidateId": "32-03",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "danger",
+        "title": "Less conspicuous",
+        "body": "I had been waiting for rain. The first lightning lit up every tall cactus on the slope.\n\nI wanted to lower my arms. They had taken decades to reach this position.\n\nThe next flash found me exactly where the first one had. I began to appreciate the small, unbranched years I had been so eager to finish.",
+        "subject": "saguaro cactus",
+        "mediaSha1": "54fb396461e80a0a21bb69b73d3efdda84adec21"
+      },
+      "sourceAssetId": "saguaro-lightning",
+      "localFile": "/tmp/botanical32/saguaro-lightning.jpg",
+      "localBytes": 2441203,
+      "visualReview": "Bright branching lightning is visible behind several silhouetted saguaros, including a clearly branched foreground individual. No pictured cactus is claimed to be struck. Repeated flashes and Ambrose\u2019s unsuccessful desire to lower fixed arms are fictional timing, not a claim of observed plant movement.",
+      "admission": "proposal; independent image and prose decisions required",
+      "authorPriority": "recommend review"
+    },
+    {
+      "candidateId": "32-04",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "family",
+        "title": "His ribs",
+        "body": "The old cactus fell. Over time the green flesh went, and his wooden ribs lay open in the grass.\n\nI had known the outline of his arms for so long that I kept trying to put it back around what remained. There was more of him on the ground than I could fit inside my memory.\n\nI had never thought much about the wood inside me. For a while, every arm felt heavy.",
+        "subject": "saguaro cactus",
+        "mediaSha1": "1eeaca70d29889c6ec645c82a3a9eae9d25af627"
+      },
+      "sourceAssetId": "d03ad2cd-155d-451f-6706-91be3154a399",
+      "localFile": "/tmp/botanical32/d03ad2cd-155d-451f-6706-91be3154a399.jpg",
+      "localBytes": 3328404,
+      "visualReview": "A fallen saguaro skeleton lies across desert vegetation with exposed woody ribs and former arm structures. The real source is the Grand-daddy Cactus; the fictional unnamed neighbor is not a biographical claim about that individual. Falling and flesh loss are retrospective scene context consistent with the pictured skeleton. No living tissue, current speech, return to life or cause of death is invented.",
+      "admission": "proposal; independent image and prose decisions required",
+      "authorPriority": "recommend review"
+    },
+    {
+      "candidateId": "32-05",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "transformation",
+        "title": "After the white flowers",
+        "body": "The white flowers shriveled. I was trying to endure the loss of my good looks when the fruit split.\n\nRed flesh. Black seeds. Right at the top, where everybody could see.\n\nI had expected to spend the rest of summer looking dignified and green. I appear to have become delicious.",
+        "subject": "saguaro cactus",
+        "mediaSha1": "ee52e59859907052be39c56107607fb73c526ca4"
+      },
+      "sourceAssetId": "d0458fc7-155d-451f-6785-51be57482110",
+      "localFile": "/tmp/botanical32/d0458fc7-155d-451f-6785-51be57482110.jpg",
+      "localBytes": 3082280,
+      "visualReview": "Multiple ripe saguaro fruits have visibly split open, exposing vivid red flesh and dense black seeds beside still-closed green fruit and dried flower remains. The change in appearance is physically present. Ambrose\u2019s vanity is fiction; no animal visitor or dispersal success is claimed.",
+      "admission": "proposal; independent image and prose decisions required",
+      "authorPriority": "secondary: older photograph is soft, and vanity turn is less developed"
+    }
+  ],
+  "media": [
+    {
+      "id": "botanical32-b91d4781-155d-4519-3e99-c4f2f0da69ce",
+      "subject": "Great Basin bristlecone pine",
+      "category": "wildlife",
+      "identityNameBase": "Ansel Threadbark",
+      "detail": "The part that stayed",
+      "alt": "One clearly living bristlecone has a green crown above a broad pale exposed trunk and conspicuous open gap.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b91d4781-155d-4519-3e99-c4f2f0da69ce/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b91d4781-155d-4519-3e99-c4f2f0da69ce",
+      "creator": "U.S. National Park Service",
+      "license": "Public domain",
+      "width": 2592,
+      "height": 1944,
+      "sha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f",
+      "aggregated": false,
+      "localFile": "/tmp/botanical32/b91d4781-155d-4519-3e99-c4f2f0da69ce.jpg",
+      "localBytes": 3152282,
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "id": "botanical32-saguaro-overhead",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "Above the flowers",
+      "alt": "The overhead photograph shows a blossoming saguaro arm, attached smaller growth, a camera pole running down toward the person holding it, and other people below.",
+      "imageUrl": "https://www.nps.gov/sagu/getinvolved/images/Lupe.jpg",
+      "sourceUrl": "https://www.nps.gov/sagu/getinvolved/saguaro-flower-power-project.htm",
+      "creator": "NPS / Lupe S.",
+      "license": "Public domain",
+      "width": 1500,
+      "height": 1125,
+      "sha1": "488c41b52d00c67bbf68074bfbfee7857e98d657",
+      "aggregated": false,
+      "localFile": "/tmp/botanical32/saguaro-overhead.jpg",
+      "localBytes": 688884,
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "Basis": "Primary NPS page explicitly credits this exact photograph to NPS."
+      }
+    },
+    {
+      "id": "botanical32-saguaro-lightning",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "Less conspicuous",
+      "alt": "Bright branching lightning is visible behind several silhouetted saguaros, including a clearly branched foreground individual.",
+      "imageUrl": "https://www.nps.gov/common/uploads/structured_data/3C85873C-1DD8-B71B-0BA5D81599611142.jpg",
+      "sourceUrl": "https://www.nps.gov/sagu/index.htm",
+      "creator": "NPS",
+      "license": "Public domain",
+      "width": 4203,
+      "height": 2870,
+      "sha1": "54fb396461e80a0a21bb69b73d3efdda84adec21",
+      "aggregated": false,
+      "localFile": "/tmp/botanical32/saguaro-lightning.jpg",
+      "localBytes": 2441203,
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "Basis": "Primary NPS page explicitly credits this exact photograph to NPS."
+      }
+    },
+    {
+      "id": "botanical32-d03ad2cd-155d-451f-6706-91be3154a399",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "His ribs",
+      "alt": "A fallen saguaro skeleton lies across desert vegetation with exposed woody ribs and former arm structures.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/d03ad2cd-155d-451f-6706-91be3154a399/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/d03ad2cd-155d-451f-6706-91be3154a399",
+      "creator": "National Park Service",
+      "license": "Public domain",
+      "width": 3833,
+      "height": 2560,
+      "sha1": "1eeaca70d29889c6ec645c82a3a9eae9d25af627",
+      "aggregated": false,
+      "localFile": "/tmp/botanical32/d03ad2cd-155d-451f-6706-91be3154a399.jpg",
+      "localBytes": 3328404,
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "id": "botanical32-d0458fc7-155d-451f-6785-51be57482110",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "After the white flowers",
+      "alt": "Multiple ripe saguaro fruits have visibly split open, exposing vivid red flesh and dense black seeds beside still-closed green fruit and dried flower remains.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/d0458fc7-155d-451f-6785-51be57482110/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/d0458fc7-155d-451f-6785-51be57482110",
+      "creator": "National Park Service",
+      "license": "Public domain",
+      "width": 3869,
+      "height": 2560,
+      "sha1": "ee52e59859907052be39c56107607fb73c526ca4",
+      "aggregated": false,
+      "localFile": "/tmp/botanical32/d0458fc7-155d-451f-6785-51be57482110.jpg",
+      "localBytes": 3082280,
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    }
+  ],
+  "heldSources": [
+    {
+      "sourceAssetId": "b9024d2d-155d-4519-3eb4-e48b3a45748d",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b9024d2d-155d-4519-3eb4-e48b3a45748d/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b9024d2d-155d-4519-3eb4-e48b3a45748d",
+      "localFile": "/tmp/botanical32/b9024d2d-155d-4519-3eb4-e48b3a45748d.jpg",
+      "sha1": "c332377afe96d83182b4edc458864987a3eafc5e",
+      "dimensions": [
+        2592,
+        1944
+      ],
+      "localBytes": 3114365,
+      "reason": "Living wind-shaped bristlecone is usable media, but another body-deformation reflection repeats 01."
+    },
+    {
+      "sourceAssetId": "b8c8880c-155d-4519-3e9b-3083147f170e",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b8c8880c-155d-4519-3e9b-3083147f170e/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b8c8880c-155d-4519-3e9b-3083147f170e",
+      "localFile": "/tmp/botanical32/b8c8880c-155d-4519-3e9b-3083147f170e.jpg",
+      "sha1": "e1dbef5af5d18282fddc0cf58625713195fa8053",
+      "dimensions": [
+        171,
+        270
+      ],
+      "localBytes": 29029,
+      "reason": "171 by 270 original fails image quality."
+    },
+    {
+      "sourceAssetId": "69f11a58-155d-451f-6735-f963b035a6b5",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/69f11a58-155d-451f-6735-f963b035a6b5/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/69f11a58-155d-451f-6735-f963b035a6b5",
+      "localFile": "/tmp/botanical32/69f11a58-155d-451f-6735-f963b035a6b5.jpg",
+      "sha1": "b031d59f6ea037da984393241665d30704b63f3d",
+      "dimensions": [
+        2832,
+        2128
+      ],
+      "localBytes": 3586903,
+      "reason": "Beautiful purple cones, but no distinct event beyond a reproductive portrait; no age-versus-sex quip added."
+    },
+    {
+      "sourceAssetId": "6367ef2c-155d-451f-678f-8b9e42024e5f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/6367ef2c-155d-451f-678f-8b9e42024e5f/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/6367ef2c-155d-451f-678f-8b9e42024e5f",
+      "localFile": "/tmp/botanical32/6367ef2c-155d-451f-678f-8b9e42024e5f.jpg",
+      "sha1": "3c0df7a812be281d129008d454912084d746923c",
+      "dimensions": [
+        1464,
+        1850
+      ],
+      "localBytes": 1726915,
+      "reason": "Snow and bare trunk are visible, but life of this exact foreground tree is not established. No new Ansel event inferred."
+    },
+    {
+      "sourceAssetId": "aspen-writing",
+      "imageUrl": "https://www.nps.gov/articles/000/images/2018_Aspen_LibraryTalk_to_share-003.jpg",
+      "sourceUrl": "https://www.nps.gov/articles/000/aspen-dendroglyphs-as-historic-records.htm",
+      "localFile": "/tmp/botanical32/aspen-writing.jpg",
+      "sha1": "53b497d81b3e3fdf061ccf5c8212d5bc2db34094",
+      "dimensions": [
+        320,
+        359
+      ],
+      "localBytes": 27123,
+      "reason": "320 by 359 original too small; no aspen identity created."
+    },
+    {
+      "sourceAssetId": "296c8d97-155d-451f-6733-fa37c3bd4f87",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/296c8d97-155d-451f-6733-fa37c3bd4f87/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/296c8d97-155d-451f-6733-fa37c3bd4f87",
+      "localFile": "/tmp/botanical32/296c8d97-155d-451f-6733-fa37c3bd4f87.jpg",
+      "sha1": "ac070fd900fed7dca3cfa89a42639b0f92842b88",
+      "dimensions": [
+        324,
+        432
+      ],
+      "localBytes": 94323,
+      "reason": "Detached carved trunk inside a museum case; also small. Cannot depict a living aspen encounter."
+    },
+    {
+      "sourceAssetId": "4fcde554-ab09-452d-8ba3-500f3780e9ab",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/4fcde554-ab09-452d-8ba3-500f3780e9ab/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/4fcde554-ab09-452d-8ba3-500f3780e9ab",
+      "localFile": "/tmp/botanical32/4fcde554-ab09-452d-8ba3-500f3780e9ab.jpg",
+      "sha1": "6bc4c88eb572e283860fb8e19c352f4bceb9410e",
+      "dimensions": [
+        3376,
+        5064
+      ],
+      "localBytes": 2256870,
+      "reason": "Good skunk-cabbage portrait lacks the proposed snow-melting or insect-contact event."
+    },
+    {
+      "sourceAssetId": "577f260e-572e-441c-b487-6795c1cd52ee",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/577f260e-572e-441c-b487-6795c1cd52ee/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/577f260e-572e-441c-b487-6795c1cd52ee",
+      "localFile": "/tmp/botanical32/577f260e-572e-441c-b487-6795c1cd52ee.jpg",
+      "sha1": "478fccc836b3867d16410df243f50e1415ba1d80",
+      "dimensions": [
+        1024,
+        680
+      ],
+      "localBytes": 993178,
+      "reason": "No snow or visible insect contact; another plant portrait does not justify a new cast member."
+    },
+    {
+      "sourceAssetId": "5390f810-8175-4f1e-9919-dbaf14e2102d",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/5390f810-8175-4f1e-9919-dbaf14e2102d/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5390f810-8175-4f1e-9919-dbaf14e2102d",
+      "localFile": "/tmp/botanical32/5390f810-8175-4f1e-9919-dbaf14e2102d.jpg",
+      "sha1": "050ad952e4959d1fecaf15a3e22fd33d80a32388",
+      "dimensions": [
+        1702,
+        2452
+      ],
+      "localBytes": 1619887,
+      "reason": "Dissected pitcher contains obvious snail shells and dark remains despite generic insect-carcase caption. Exact Sarracenia alata identification is not supplied by this record; detached dissection and source ambiguity held."
+    },
+    {
+      "sourceAssetId": "bristlecone-two-cones",
+      "imageUrl": "https://www.nps.gov/grba/planyourvisit/images/purple-and-brown-Bristlecone-cones.jpg",
+      "sourceUrl": "https://www.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm",
+      "localFile": "/tmp/botanical32/bristlecone-two-cones.jpg",
+      "sha1": "d0c2c383152d97f12fd29085d65c81bd5ac64bdd",
+      "dimensions": [
+        288,
+        433
+      ],
+      "localBytes": 154680,
+      "reason": "288 by 433 original too small and repeats cone portrait without developed event."
+    }
+  ],
+  "sourcePolicy": "No blocked-source retries. All originals were opened individually and hash/dimension measured. Remote originals remain external; no image binaries are proposed for Git."
+}

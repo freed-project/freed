@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as corpus from "../../../shared/src/sample-corpus.js";
 import {
   SAMPLE_SHOWCASE_FEED_COUNT,
   SAMPLE_SHOWCASE_FRIEND_COUNT,
@@ -35,6 +36,34 @@ function linkedSampleAuthorKeys(
 }
 
 describe("sample data batches", () => {
+  it("bounds exhausted template work and limits synthetic fallback to deterministic stress fixtures", () => {
+    const text = vi.spyOn(corpus, "sampleCorpusGeneratedText")
+      .mockReturnValue("I am a fixed synthetic fixture.");
+    const options = {
+      batchId: "exhausted-template-pool",
+      seed: 11,
+      generatedAt: 123,
+      scale: "stress" as const,
+      friendCount: 1,
+      identitiesPerFriend: 1,
+      unlinkedIdentityRatio: 0,
+    };
+    try {
+      const first = generateSampleLibraryData(options);
+      expect(text).toHaveBeenCalledTimes(1 + (first.items.length - 1) * 64);
+      expect(new Set(first.items.map((item) => item.content.text)).size).toBe(first.items.length);
+      expect(first.items[0]?.content.text).toBe("I am a fixed synthetic fixture.");
+      expect(first.items[1]?.content.text).toBe("I am a fixed synthetic fixture.\n\n[Synthetic benchmark entry 2]");
+      expect(first.items.every((item) => item.content.mediaUrls.length === 1)).toBe(true);
+      const second = generateSampleLibraryData(options);
+      expect(second).toEqual(first);
+      expect(() => generateSampleLibraryData({ ...options, scale: "showcase" }))
+        .toThrow("Sample showcase text pool exhausted");
+    } finally {
+      text.mockRestore();
+    }
+  });
+
   it("appends unique friend, feed, and item ids across batches", () => {
     const batchA = generateSampleLibraryData({ batchId: "batch-a", seed: 1 });
     const batchB = generateSampleLibraryData({ batchId: "batch-b", seed: 2 });

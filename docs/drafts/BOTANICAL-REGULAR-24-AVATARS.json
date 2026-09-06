@@ -1,0 +1,48 @@
+{
+  "status": "proposals only; no runtime edits",
+  "implementation": "Exact source-square arithmetic from packages/ui/src/lib/friends-galaxy-avatar-crop.ts: clamp center/zoom, side=min(width,height)/zoom, clamp origin, draw into256px canvas, display circularly at220px and48px.",
+  "screenshot": "output/playwright/botanical24-avatars-final.png",
+  "fullImagesScreenshot": "output/playwright/botanical24-full.png",
+  "crops": [
+    {
+      "characterId": "hester-sweetlip",
+      "mediaSha1": "192c83030ff8893e833c9a3f3b6d593a37145611",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/52f2199f-cd0c-4e07-aa14-60ef140794fc",
+      "focal": {
+        "x": 0.575,
+        "y": 0.375,
+        "zoom": 2.8
+      },
+      "localFile": "/tmp/botanical24/52f2199f-cd0c-4e07-aa14-60ef140794fc.jpg",
+      "localBytes": 4303122,
+      "dimensions": [
+        4000,
+        2665
+      ],
+      "aggregated": false,
+      "admission": "propose; lead review required",
+      "visibleReview": "One central pale-yellow Sarracenia alata flower fills the circle. The curved pedicel and hanging petals identify a flower rather than a pitfall leaf. A second flower is mostly outside the crop. At 48 pixels the pendulous form and light color remain legible; droplets are an adult-size detail, not an essential identity cue."
+    },
+    {
+      "characterId": "ambrose-armful",
+      "mediaSha1": "c805054fb9ba2db5c8896de5aa5aab15b152573f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0acb7148-a0d1-4dc1-894b-c883fbf42429",
+      "focal": {
+        "x": 0.58,
+        "y": 0.49,
+        "zoom": 1.8
+      },
+      "localFile": "/tmp/botanical24/0acb7148-a0d1-4dc1-894b-c883fbf42429.jpg",
+      "localBytes": 2492730,
+      "dimensions": [
+        1880,
+        2174
+      ],
+      "aggregated": false,
+      "admission": "propose; lead review required",
+      "visibleReview": "Ribbed, spiny green cactus surface crosses the circle diagonally; a single open white flower and blue sky preserve the subject at 48 pixels. It is one visible arm, not an ambiguous choice between cactus individuals. No face is fabricated."
+    }
+  ]
+}

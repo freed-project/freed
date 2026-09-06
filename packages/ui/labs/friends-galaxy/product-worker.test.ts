@@ -11,6 +11,7 @@ import {
   FriendsGalaxyProductWorkerService,
 } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
+import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
 import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
 import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
 import { buildFriendsGalaxyProductServiceSource } from "./product-sqlite-source-fixture.js";
@@ -111,6 +112,48 @@ describe("Friends Galaxy product worker", () => {
     expect(friendsGalaxyProductWorkerResponseTransferables(response)).toEqual([]);
   });
 
+  it("admits contracted profiles using rendered XYZ rather than their original orbit", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    const source = buildSource(service).rendererScene.scene;
+    expect(source.nodeIds.length).toBeGreaterThan(192);
+    let checked = 0;
+    for (let index = 0; index < source.nodeIds.length && checked < 5; index += 1) {
+      const linkedId = source.linkedPersonIds[index];
+      if (!linkedId) continue;
+      const parent = source.nodeIds.indexOf(`person:${linkedId}`);
+      if (parent < 0) continue;
+      const x = source.positions[index * 3]!;
+      const y = source.positions[index * 3 + 1]!;
+      const z = source.positions[index * 3 + 2]!;
+      // Undo the compiler's half-radius shell to model the retired admission path.
+      const oldX = source.positions[parent * 3]! + (x - source.positions[parent * 3]!) * 2;
+      const oldY = source.positions[parent * 3 + 1]! + (y - source.positions[parent * 3 + 1]!) * 2;
+      const request = presentationRequest();
+      request.viewport = {
+        width: 64, height: 844,
+        transform: { x: 32 - x * 6, y: 422 + y * 6, scale: 6 },
+      };
+      const matrix = new Float32Array(16);
+      writeFriendsGalaxyWebGpuViewProjection(matrix, request.viewport.transform, 64, 844);
+      const projection = { viewProjection: matrix, width: 64, height: 844 };
+      const scratch = new Float32Array(2);
+      if (!projectFriendsGalaxyWorldPoint(scratch, projection, x, y, z, 0) ||
+        projectFriendsGalaxyWorldPoint(scratch, projection, oldX, oldY, z, 24)) continue;
+      const response = service.handle(request);
+      if (response.kind !== "presentation-ready") throw new Error("Expected presentation");
+      expect(response.atlas.nodes.some((node) => node.id === source.nodeIds[index])).toBe(true);
+      const renderedVisible = source.nodeIds.filter((_, candidate) => projectFriendsGalaxyWorldPoint(
+        scratch, projection, source.positions[candidate * 3]!,
+        source.positions[candidate * 3 + 1]!, source.positions[candidate * 3 + 2]!, 24,
+      ));
+      expect(renderedVisible.length).toBeLessThan(192);
+      expect(response.atlas.nodes.slice(0, renderedVisible.length).map((node) => node.id))
+        .toEqual(renderedVisible);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("keeps product label resolution inside worker-admitted metadata", () => {
     const service = new FriendsGalaxyProductWorkerService();
     const sourceResponse = buildSource(service);
@@ -145,6 +188,17 @@ describe("Friends Galaxy product worker", () => {
       request.viewport.width,
       request.viewport.height,
     );
+    const projected = new Float32Array(2);
+    const visibleIds = scene.scene.nodeIds.filter((_, index) => projectFriendsGalaxyWorldPoint(
+      projected,
+      { viewProjection: matrix, width: request.viewport.width, height: request.viewport.height },
+      scene.scene.positions[index * 3]!,
+      scene.scene.positions[index * 3 + 1]!,
+      scene.scene.positions[index * 3 + 2]!,
+    ));
+    expect(visibleIds.length).toBeGreaterThan(0);
+    expect(visibleIds.length).toBeLessThan(190);
+    expect(visibleIds.every((id) => metadataByNodeId.has(id))).toBe(true);
     const labels = selectFriendsGalaxyLabels(
       scene,
       (_rendererScene, nodeIndex) => {

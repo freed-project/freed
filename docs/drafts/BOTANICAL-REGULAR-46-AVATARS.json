@@ -1,0 +1,28 @@
+{
+  "avatars": [
+    {
+      "characterId": "sabine-warmfold",
+      "mediaSha1": "291d8d5c9b72e6506e64f50e04d74fbcecaba518",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/CA8559B0-1DD8-B71C-0706942B1B581459/proxyhires.jpg?",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+      "localFile": "/tmp/botanical46/skunk-avatar-display.jpg",
+      "bytes": 312941,
+      "dimensions": [
+        1000,
+        750
+      ],
+      "focal": {
+        "x": 0.435,
+        "y": 0.54,
+        "zoom": 1.25
+      },
+      "review220": "PASS: entire curved maroon-green spathe, dark opening and adjacent green shoot visible, with strong mottled pattern.",
+      "review48": "PASS: tapered mottled hood remains distinct against brown leaf litter; fine markings simplify.",
+      "status": "proposal; independent lead review required"
+    }
+  ],
+  "screenshot": "/tmp/botanical46/avatar-review.png",
+  "screenshotSha256": "d37c105339118f969d91446eec3d84e2cb69eea0099f6db90b748c71248c8f8a",
+  "renderer": "Current cropDecodedGalaxyAvatar; 256-pixel runtime canvases shown at 220 and 48 pixels in headless Chromium",
+  "sourceSquarePixels": 600
+}

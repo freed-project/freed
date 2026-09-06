@@ -1,74 +1,33 @@
-import { describe, expect, it } from "vitest";
-import {
-  FRIENDS_GALAXY_IDENTITY_DETAIL_FADE_END_SCALE,
-  FRIENDS_GALAXY_IDENTITY_DETAIL_FADE_START_SCALE,
-  FriendsGalaxyIdentityDetailFade,
-  friendsGalaxyIdentityDetailTargetOpacity,
-} from "../../src/lib/friends-galaxy-identity-detail-fade.js";
+import { expect, it } from "vitest";
+import { FriendsGalaxyIdentityDetailFade, friendsGalaxyIdentityDetailTargetOpacity } from "../../src/lib/friends-galaxy-identity-detail-fade.js";
+import { FriendsGalaxyLabelFade } from "../../src/lib/friends-galaxy-label-fade.js";
 
-describe("Friends Galaxy identity detail fade", () => {
-  it("uses a smooth scale band instead of a discrete close-detail threshold", () => {
-    expect(friendsGalaxyIdentityDetailTargetOpacity(
-      FRIENDS_GALAXY_IDENTITY_DETAIL_FADE_START_SCALE,
-    )).toBe(0);
-    expect(friendsGalaxyIdentityDetailTargetOpacity(0.78)).toBeCloseTo(0.5, 8);
-    expect(friendsGalaxyIdentityDetailTargetOpacity(
-      FRIENDS_GALAXY_IDENTITY_DETAIL_FADE_END_SCALE,
-    )).toBe(1);
-  });
+it("has only discrete zoom targets, including the former translucent band", () => {
+  for (const scale of [0, 0.58, 0.78, 0.899, NaN]) expect(friendsGalaxyIdentityDetailTargetOpacity(scale)).toBe(0);
+  for (const scale of [0.9, 0.98, 1, 3]) expect(friendsGalaxyIdentityDetailTargetOpacity(scale)).toBe(1);
+});
 
-  it("fades in over elapsed time without appearing on the threshold frame", () => {
-    const fade = new FriendsGalaxyIdentityDetailFade();
-    fade.step(0.5, 0, true);
-    const thresholdFrame = fade.step(1, 16, true);
-    expect(thresholdFrame.opacity).toBeGreaterThan(0);
-    expect(thresholdFrame.opacity).toBeLessThan(1);
-    expect(thresholdFrame.active).toBe(true);
+it("matches label timing through entry, reversal and complete exit", () => {
+  const avatars = new FriendsGalaxyIdentityDetailFade();
+  const labels = new FriendsGalaxyLabelFade<{ id: string }>();
+  const layer = [{ id: "test" }];
+  for (const [scale, time] of [[0.5, 0], [0.95, 16], [0.95, 136], [0.8, 152], [0.8, 212], [1, 228], [1, 468], [0.78, 484], [0.78, 724]]) {
+    const rows = labels.step(layer, new Set(scale! >= 0.9 ? ["test"] : []), time!, true);
+    expect(avatars.step(scale!, time!, true).opacity).toBe(rows[0]?.opacity ?? 0);
+  }
+  expect(avatars.currentOpacity).toBe(0);
+  expect(avatars.isActive).toBe(false);
+});
 
-    let settled = thresholdFrame;
-    for (let timeMs = 32; timeMs <= 1_500; timeMs += 16) {
-      settled = fade.step(1, timeMs, true);
-      if (!settled.active) break;
-    }
-    expect(settled.opacity).toBe(1);
-    expect(settled.active).toBe(false);
-  });
-
-  it("fades out from its current opacity and reverses without a jump", () => {
-    const fade = new FriendsGalaxyIdentityDetailFade();
-    fade.step(1, 0, false);
-    expect(fade.currentOpacity).toBe(1);
-
-    const outward = fade.step(0.4, 16, true);
-    expect(outward.opacity).toBeGreaterThan(0);
-    expect(outward.opacity).toBeLessThan(1);
-    const beforeReverse = outward.opacity;
-    const inward = fade.step(1, 32, true);
-    expect(inward.opacity).toBeGreaterThan(beforeReverse);
-    expect(inward.opacity).toBeLessThan(1);
-  });
-
-  it("settles immediately when animation is disabled", () => {
-    const fade = new FriendsGalaxyIdentityDetailFade();
-    const visible = fade.step(1, 0, false);
-    expect(visible).toEqual({
-      opacity: 1,
-      targetOpacity: 1,
-      active: false,
-      changed: true,
-    });
-    const hidden = fade.step(0.4, 16, false);
-    expect(hidden.opacity).toBe(0);
-    expect(hidden.active).toBe(false);
-  });
-
-  it("restarts replacement icon sets from transparent and reuses its step object", () => {
-    const fade = new FriendsGalaxyIdentityDetailFade();
-    fade.step(1, 0, false);
-    fade.restartFromHidden();
-    const first = fade.step(1, 16, true);
-    expect(first.opacity).toBe(0);
-    expect(first.active).toBe(true);
-    expect(fade.step(1, 32, true)).toBe(first);
-  });
+it("settles fully at fixed zoom, supports reduced motion, and resets only explicitly", () => {
+  const fade = new FriendsGalaxyIdentityDetailFade();
+  fade.step(0.95, 0, true);
+  expect(fade.step(0.95, 240, true).opacity).toBe(1);
+  expect(fade.step(0.95, 5000, true).opacity).toBe(1);
+  expect(fade.step(0.78, 5016, false).opacity).toBe(0);
+  expect(fade.step(1, 5032, false).opacity).toBe(1);
+  fade.restartFromHidden();
+  const result = fade.step(1, 5050, true);
+  expect(result.opacity).toBe(0);
+  expect(fade.step(1, 5066, true)).toBe(result);
 });

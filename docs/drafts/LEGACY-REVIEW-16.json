@@ -1,0 +1,660 @@
+{
+  "status": "proposal only; no runtime edits",
+  "indexConvention": "zero-based within character arc",
+  "summary": {
+    "reconciledPairs": 12,
+    "exactCachedImagesViewed": 5,
+    "keep": 3,
+    "exclude": 2,
+    "unresolved": 7
+  },
+  "ledgerFinding": "These are twelve inherited bindings, not twelve never-reviewed bindings. Earlier exact scene records explicitly cover Manny, Nib, Juniper, Kit, Nessa, Nell, Percy, Vera and Willa. Earlier titles for Nell and Vera differ from current protected prose; only later preserved-anchor records establish continuity to the current wording. Frogbert7 explicitly remained pending. This pass does not manufacture twelve fresh admissions.",
+  "accessLimit": "Seven uncached image requests and primary metadata access returned HTTP403. No retry or bypass. Retain unresolved bindings unchanged pending lead review; lack of retrieval is not visual rejection.",
+  "proseProtection": "All twelve original bodies preserved byte-for-byte in entries. Frogbert gravel, grey. and crush passages are outside this selection and remain protected. Alma Premature condolences is outside this selection and remains protected.",
+  "entries": [
+    {
+      "character": {
+        "characterId": "manny-tis",
+        "location": {
+          "name": "Mediterranean scrub near Hyères",
+          "coordinates": {
+            "lat": 43.12,
+            "lng": 6.15
+          }
+        },
+        "identityNameBase": "Manny Tis",
+        "platform": "instagram",
+        "bio": "A praying mantis with excellent posture, a complicated relationship with birds, and several recent reasons to distrust the sky."
+      },
+      "index": 1,
+      "episode": {
+        "subject": "praying mantis",
+        "mediaSha1": "27b7ebe285129ff07853aa2d19185414fffd682c",
+        "theme": "feeding",
+        "title": "Violence, and better lighting.",
+        "body": "Caught a bee where the light was good. Then a bird landed above me. I carried breakfast under a leaf and ate in the dark, where I am considerably less impressive and still alive."
+      },
+      "media": {
+        "id": "commons-manny-bee-27b7ebe2",
+        "subject": "praying mantis",
+        "category": "insect",
+        "identityNameBase": "Manny Tis",
+        "detail": "Mantis holding and eating a bee among leaves",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/23/Chinese-mantis-bee.JPG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chinese-mantis-bee.JPG",
+        "creator": "Jot Powers",
+        "license": "CC BY-SA 2.0",
+        "width": 1136,
+        "height": 1431,
+        "sha1": "27b7ebe285129ff07853aa2d19185414fffd682c"
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Earlier exact-hash audit explicitly saw a bee held in the mantis forelegs among leaves. That is genuine prior scene evidence. Current exact pixels were unavailable.",
+      "taxonomyAndHome": "Earlier audit explicitly reports inconsistent species identification between source filename and description. New Manny admission uses Mantis religiosa at Hyères. Resolve that continuity conflict before calling this pair species-verified; do not identify the animal solely from its filename.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-MANNY-IMAGE-AUDIT.md",
+        "docs/drafts/manny-lead-13.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "a6231bdd8c6c71279ade3ed08c83c1e4f2760c503243b9b955a8b4fb02cf753f",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "frogbert-angler",
+        "identityNameBase": "Frogbert Angler",
+        "platform": "x",
+        "location": {
+          "name": "Lembeh Strait seabed",
+          "coordinates": {
+            "lat": 1.46,
+            "lng": 125.235
+          }
+        },
+        "bio": "A frogfish who walks instead of swimming, fishes with its forehead, and regards subtlety as a rumor spread by faster animals."
+      },
+      "index": 7,
+      "episode": {
+        "subject": "frogfish underwater",
+        "mediaSha1": "791547f8fd744ca2c6c6406b352b1c12282d63f0",
+        "theme": "social",
+        "title": "Back to being furniture",
+        "body": "The grouper passed. A shrimp settled on my head and began picking at me. I could have eaten it if it had been anywhere else on the entire reef."
+      },
+      "media": {
+        "id": "commons-0580",
+        "subject": "frogfish underwater",
+        "category": "undersea",
+        "identityNameBase": "Frogbert Angler",
+        "detail": "Antennarius striatus (30559623856)",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9c/Antennarius_striatus_%2830559623856%29.jpg/1280px-Antennarius_striatus_%2830559623856%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AAntennarius_striatus_(30559623856).jpg",
+        "creator": "Christian Gloor from Wakatobi Dive Resort, Indonesia",
+        "license": "CC BY 2.0",
+        "width": 1280,
+        "height": 960,
+        "sha1": "791547f8fd744ca2c6c6406b352b1c12282d63f0",
+        "coordinates": {
+          "lat": 1.467887,
+          "lng": 125.241994
+        }
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "No attributable cached copy of this exact source was recovered. A shrimp on the head must be legible to support the central physical joke. Other reviewed frogfish portraits cannot establish this scene.",
+      "taxonomyAndHome": "Catalog labels Antennarius striatus and provides Lembeh-region coordinates, compatible with canon but insufficient for independent visual admission.",
+      "priorReviewRecords": [
+        "docs/drafts/FROGBERT-VISUAL-CANON-02.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "a7d8170dd051a0567ee063bcd39ebbfe66a5d27c48796f6bb2034435ed951a89",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "alma-eight",
+        "identityNameBase": "Alma Eight",
+        "platform": "rss",
+        "bio": "A common octopus keeping notes on a den, its troublesome entrance, and the things her arms bring home.",
+        "location": {
+          "name": "Rocky seabed off Mouro",
+          "coordinates": {
+            "lat": 43.473,
+            "lng": -3.753
+          }
+        }
+      },
+      "index": 6,
+      "episode": {
+        "subject": "octopus underwater",
+        "mediaSha1": "03eda8d06209532d34f3299c666b2ab3d006065b",
+        "theme": "movement",
+        "title": "A way out",
+        "body": "Cold water was coming through a crack beside my den. I put two arms through from outside and found the place where I sleep. I had been dragging everything through the narrow entrance when there was a second one beside it.\n\nI moved the loose stones. Twice I pulled rubble onto my own head. By afternoon I could squeeze through. I went out the old entrance and in the new one to be certain.\n\nOn the third circuit I found a shrimp and ate it. Went around again. No shrimp. Again, a little slower. Still none. I built an escape route and spent the evening checking whether it made shrimp."
+      },
+      "media": {
+        "id": "commons-0731",
+        "subject": "octopus underwater",
+        "category": "undersea",
+        "identityNameBase": "Doctor Octavia Arms",
+        "detail": "Pulpo (Octopus vulgaris), isla de Mouro, Santander, España, 2019-08-14, DD 35",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/Pulpo_%28Octopus_vulgaris%29%2C_isla_de_Mouro%2C_Santander%2C_Espa%C3%B1a%2C_2019-08-14%2C_DD_35.jpg/1280px-Pulpo_%28Octopus_vulgaris%29%2C_isla_de_Mouro%2C_Santander%2C_Espa%C3%B1a%2C_2019-08-14%2C_DD_35.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APulpo_(Octopus_vulgaris)%2C_isla_de_Mouro%2C_Santander%2C_Espa%C3%B1a%2C_2019-08-14%2C_DD_35.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 1280,
+        "sha1": "03eda8d06209532d34f3299c666b2ab3d006065b"
+      },
+      "localFile": "/tmp/freed-ocean-images.hpi0Iy/17-commons-0731.jpg",
+      "localBytes": 744370,
+      "localSha1": "183240f825e76fc90356e4e7a88eda5f2a2a9691",
+      "localDimensions": [
+        1280,
+        1280
+      ],
+      "cacheReused": true,
+      "decision": "exclude",
+      "sceneEvidence": "Mottled octopus flattened against rock and sand, eye and siphon visible, arms tucked. The image does not establish the excavated second entrance, moved rubble or shrimp that carry this episode.",
+      "taxonomyAndHome": "Octopus vulgaris source at Mouro agrees with the fictional home. Species compatibility does not supply the missing scene.",
+      "priorReviewRecords": [],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": true,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "789d49c88771786ea60516a5981aa7dc1269b2c4aaddeaa55f5c83e332959382"
+    },
+    {
+      "character": {
+        "characterId": "alma-eight",
+        "identityNameBase": "Alma Eight",
+        "platform": "rss",
+        "bio": "A common octopus keeping notes on a den, its troublesome entrance, and the things her arms bring home.",
+        "location": {
+          "name": "Rocky seabed off Mouro",
+          "coordinates": {
+            "lat": 43.473,
+            "lng": -3.753
+          }
+        }
+      },
+      "index": 7,
+      "episode": {
+        "subject": "octopus underwater",
+        "mediaSha1": "2b6cceb9d37459e39fb0e1be6c7a9de565e2587e",
+        "theme": "wonder",
+        "title": "Nothing to carry",
+        "body": "Went over the ridge with every intention of leaving things where they were. Found a lovely shell. A foot withdrew inside it. I put it back.\n\nFarther down, a smooth stone fitted beautifully into the curl of an arm. I held it, turned it, put it down. Kept moving. I went all the way home without a shell, a stone, or anyone else's house.\n\nAt the entrance an arm uncurled and produced a second stone. I do not know when it picked that up. I moved aside to let it bring the stone in."
+      },
+      "media": {
+        "id": "commons-0757",
+        "subject": "octopus underwater",
+        "category": "undersea",
+        "identityNameBase": "Doctor Octavia Arms",
+        "detail": "Pulpo común (Octopus vulgaris), Parque natural de la Arrábida, Portugal, 2020-07-21, DD 33",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg/1280px-Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APulpo_com%C3%BAn_(Octopus_vulgaris)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 1280,
+        "sha1": "2b6cceb9d37459e39fb0e1be6c7a9de565e2587e"
+      },
+      "localFile": "/tmp/freed-ocean-images.hpi0Iy/18-commons-0757.jpg",
+      "localBytes": 520944,
+      "localSha1": "e6e139b862837356f47ec3987ecf6f4e3f54acf6",
+      "localDimensions": [
+        1280,
+        1280
+      ],
+      "cacheReused": true,
+      "decision": "exclude",
+      "sceneEvidence": "Brown-orange octopus sprawls over algae and sponges. Neither a carried stone nor an occupied shell is legible. The object-carrying reversal has no visual support.",
+      "taxonomyAndHome": "Octopus vulgaris source at Arrábida is compatible with the species, but does not document a visit from the Mouro narrator. No relocation proposed.",
+      "priorReviewRecords": [],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": true,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "86f9f013d96d05e226888e17906625524834645d09ca847204e89f98d8a3f5a1"
+    },
+    {
+      "character": {
+        "characterId": "nib-willow",
+        "identityNameBase": "Nib Willow",
+        "platform": "instagram",
+        "bio": "A red panda who has found the perfect sleeping branch and would like the sun to stop moving.",
+        "location": {
+          "name": "Singalila montane forest",
+          "coordinates": {
+            "lat": 27.09,
+            "lng": 88.03
+          }
+        }
+      },
+      "index": 0,
+      "episode": {
+        "subject": "red panda",
+        "mediaSha1": "2843095a7583d16b1e021d507f4f12d9094a2bd7",
+        "theme": "movement",
+        "title": "Face first",
+        "body": "I came down the trunk headfirst, beautifully. Near the bottom I discovered how much of a descent depends on knowing where the bottom is. The last little bit was mostly face."
+      },
+      "media": {
+        "id": "commons-nib-descent-2843095a",
+        "subject": "red panda",
+        "category": "wildlife",
+        "identityNameBase": "Nib Willow",
+        "detail": "Red panda descending headfirst through a mossy tree fork, its long tail extending above it",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/RedPanda_at_SingalilaNationalPark.jpg/960px-RedPanda_at_SingalilaNationalPark.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:RedPanda_at_SingalilaNationalPark.jpg",
+        "creator": "Ajit Hota",
+        "license": "CC BY-SA 4.0",
+        "width": 960,
+        "height": 633,
+        "sha1": "2843095a7583d16b1e021d507f4f12d9094a2bd7"
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Prior exact-hash review saw a red panda descending headfirst through a mossy tree fork, long tail visible. It supports descent, not a photographed fall. Current exact file was unavailable.",
+      "taxonomyAndHome": "Red panda source from Singalila agrees with the fictional home. Keep species precision bounded by the accepted primary record.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-LAND-REVIEW.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "2e63ca6ed1d4d212a12b408c1fdc9c8ed6c5879ae86eebb1804a319fc474197a",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "juniper-ears",
+        "identityNameBase": "Juniper Ears",
+        "platform": "facebook",
+        "bio": "A fennec fox with exceptional hearing and a long list of noises she would prefer not to have identified.",
+        "location": {
+          "name": "Erg Chebbi dune margin",
+          "coordinates": {
+            "lat": 31.17,
+            "lng": -4
+          }
+        }
+      },
+      "index": 2,
+      "episode": {
+        "subject": "fennec fox",
+        "mediaSha1": "f75dbf0c7b4389ca11cb83932fdf0ae0b262af51",
+        "theme": "movement",
+        "title": "Room for the ears",
+        "body": "Enlarged the tunnel this morning. My shoulders already fitted, but every time I turned my head the ceiling folded an ear. I refuse to spend another day agreeing with both walls."
+      },
+      "media": {
+        "id": "commons-juniper-burrow-f75dbf0c",
+        "subject": "fennec fox",
+        "category": "wildlife",
+        "identityNameBase": "Juniper Ears",
+        "detail": "Fennec fox crouching beside a sandy burrow entrance with its large ears upright",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/19/Desert_fennec_._Sahara_fox_in_Morocco.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Desert_fennec_._Sahara_fox_in_Morocco.jpg",
+        "creator": "Merzougaloisirs",
+        "license": "CC BY-SA 4.0",
+        "width": 3241,
+        "height": 2022,
+        "sha1": "f75dbf0c7b4389ca11cb83932fdf0ae0b262af51"
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Prior exact-hash review saw a fennec crouching beside a sandy burrow entrance with upright ears. It supports the burrow-and-ears premise, not actual widening. Current exact file was unavailable.",
+      "taxonomyAndHome": "Fennec in Morocco agrees with Erg Chebbi habitat. No visible enclosure or staging was reported in the prior review; that finding was not independently repeated here.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+        "docs/drafts/strange-canon-11.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "603c7a1417a90bcd0b5b458641497494847f22e5a0efe37f3593d7a1be2ecd13",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "kit-snowshoe",
+        "identityNameBase": "Kit Snowshoe",
+        "platform": "rss",
+        "bio": "An American pika with enough hay for winter and several reasons to fetch one more mouthful.",
+        "location": {
+          "name": "Rocky Mountain alpine talus",
+          "coordinates": {
+            "lat": 40.4,
+            "lng": -105.75
+          }
+        }
+      },
+      "index": 0,
+      "episode": {
+        "subject": "American pika",
+        "mediaSha1": "3ad59da6eb348ba742c65cb1c6303ff9748117a6",
+        "theme": "feeding",
+        "title": "Too wide for the doorway",
+        "body": "Cut a beautiful mouthful of stems at the meadow edge. Carried them all the way to my haypile. The stems caught across the gap between the rocks.\n\nPushed harder. They bent. Backed out, dropped them, and took the bundle through in two loads.\n\nIt looked smaller afterward. I went out for more, having learned almost the wrong thing from the whole experience."
+      },
+      "media": {
+        "id": "commons-kit-haying-3ad59da6",
+        "subject": "American pika",
+        "category": "wildlife",
+        "identityNameBase": "Kit Snowshoe",
+        "detail": "American pika carrying a broad mouthful of plant stems beside alpine talus",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg/960px-American_pika_%28Ochotona_princeps_princeps%29_haying_spotted_saxifrage_%28Saxifraga_bronchialis%29_Moraine_Lake_2.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:American_pika_(Ochotona_princeps_princeps)_haying_spotted_saxifrage_(Saxifraga_bronchialis)_Moraine_Lake_2.jpg",
+        "creator": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "width": 960,
+        "height": 640,
+        "sha1": "3ad59da6eb348ba742c65cb1c6303ff9748117a6"
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Prior exact-hash review saw a pika carrying a broad plant bundle beside talus. The bundle supports the setup; the doorway jam remains fiction. Current exact file was unavailable.",
+      "taxonomyAndHome": "Ochotona princeps source at Moraine Lake is compatible with Rocky Mountain talus. Photographer declares focus stacking. Invalid zero camera coordinates must not replace the fictional home.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-LAND-REVIEW.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "643115aac82fd69e866d29109177007574dafc8c09ff1ee1cb9db9a681b867c3",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "nessa-whisker",
+        "identityNameBase": "Nessa Whisker",
+        "platform": "rss",
+        "bio": "An Arctic fox who remembers where she put things, provided the entire ground has not changed overnight.",
+        "location": {
+          "name": "Svalbard tundra coast",
+          "coordinates": {
+            "lat": 78.15,
+            "lng": 15.25
+          }
+        }
+      },
+      "index": 4,
+      "episode": {
+        "subject": "Arctic fox",
+        "mediaSha1": "4166db4f4461285fb2e09caacdea9a314562cadf",
+        "theme": "wonder",
+        "title": "White fur, dark stones",
+        "body": "My coat had begun coming loose in pale tufts. Rubbed against a rock and left a little of winter on its edge.\n\nUnderneath I was darker. The bare ground no longer made me look like something that had wandered into the wrong season.\n\nSat in a sunny patch and pulled at another loose tuft. It stuck to my lip. A great deal of looking appropriate involves looking ridiculous first."
+      },
+      "media": {
+        "id": "commons-nessa-molt-4166db4f",
+        "subject": "Arctic fox",
+        "category": "wildlife",
+        "identityNameBase": "Nessa Whisker",
+        "detail": "Arctic fox curled on bare gravel, with pale loose winter fur over its darker coat",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/33/Arctic_fox_%28js%29_16.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_fox_(js)_16.jpg",
+        "creator": "Jerzy Strzelecki",
+        "license": "CC BY-SA 3.0",
+        "width": 4039,
+        "height": 2693,
+        "sha1": "4166db4f4461285fb2e09caacdea9a314562cadf"
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Prior exact-hash review saw a curled fox on bare gravel with abundant loose pale fur over darker coat. Current Avatar06 full-image sheet reconfirms that broad scene, but is a screenshot, not a recovered exact source JPEG. The tuft on the lip is not established.",
+      "taxonomyAndHome": "Vulpes lagopus source in Svalbard agrees with the coastal home and seasonal molt premise.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+        "docs/drafts/AVATAR-REVIEW-06.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "739784b4d6020a09e6c73ef8d5da02871c2959623f1aad44e9aec23fe3371de8",
+      "localFile": null,
+      "secondaryVisualEvidence": "output/playwright/avatar-review-06-full.png, fourth source tile; screenshot only"
+    },
+    {
+      "character": {
+        "characterId": "nell-pelagic",
+        "identityNameBase": "Nell Pelagic",
+        "platform": "rss",
+        "bio": "A dumbo octopus who can leave any argument vertically, and usually does.",
+        "location": {
+          "name": "Deep Gulf of Mexico, approximate benthic home",
+          "coordinates": {
+            "lat": 26.1,
+            "lng": -91.5
+          }
+        }
+      },
+      "index": 4,
+      "episode": {
+        "subject": "dumbo octopus",
+        "platform": "rss",
+        "mediaSha1": "93eaea49a5ea54cfbe91c1004ac9a24a66e271b0",
+        "theme": "wonder",
+        "title": "I stayed with the light",
+        "body": "The light followed me. I went left. It went left. I stopped, and the enormous thing behind it stopped too.\n\nI had tucked all my arms underneath me. Nothing down here had ever wanted such a thorough look. After a while I opened them a little. The thing held still.\n\nPerhaps it was frightened. It had brought so much light.\n\nI swam beside it until it began to rise. It was very slow, and kept looking back. I went a little way up with it, then turned toward the bottom.\n\nFor the rest of the night I kept checking behind me. I hope it found whatever it had come down here to find. It seemed terribly poorly equipped to be alone."
+      },
+      "media": {
+        "id": "commons-nell-curled-93eaea49",
+        "subject": "dumbo octopus",
+        "category": "undersea",
+        "identityNameBase": "Nell Pelagic",
+        "detail": "A live dumbo octopus floats in dark water with curled arms and extended ear-like fins under exploration lights",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6b/Dumbo-hires.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Dumbo-hires.jpg",
+        "creator": "NOAA Okeanos Explorer",
+        "license": "Public domain",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "93eaea49a5ea54cfbe91c1004ac9a24a66e271b0"
+      },
+      "localFile": "/tmp/freed-ocean-scenes.WkE99I/01-commons-nell-curled-93eaea49.jpg",
+      "localBytes": 1009288,
+      "localSha1": "93eaea49a5ea54cfbe91c1004ac9a24a66e271b0",
+      "localDimensions": [
+        1920,
+        1080
+      ],
+      "cacheReused": true,
+      "decision": "keep",
+      "sceneEvidence": "Pale dumbo octopus suspended in black water under bright ROV illumination, arms curled into a conspicuous bundle. The visible light and posture support the encounter; companionship and nervousness remain fiction.",
+      "taxonomyAndHome": "Grimpoteuthis at genus level, consistent with canon and a broadly defined deep Gulf home. Do not invent a species.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+        "docs/drafts/YOUTUBE-CANDIDATES-03-SECOND-REVIEW.md",
+        "docs/drafts/nell-vera-canon-12.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": true,
+      "protectedOriginalAnchor": true,
+      "originalBodySha256": "75460e990969abfac50e24c5e46ea090ae63cd3e471e3092cf962e3b84ec2051"
+    },
+    {
+      "character": {
+        "characterId": "percy-silt",
+        "identityNameBase": "Percy Silt",
+        "platform": "rss",
+        "bio": "A sea pig with exacting sediment preferences and a passenger he did not remember inviting.",
+        "location": {
+          "name": "Abyssal Pacific west of Monterey, approximate home",
+          "coordinates": {
+            "lat": 35.8,
+            "lng": -123.2
+          }
+        }
+      },
+      "index": 1,
+      "episode": {
+        "subject": "sea pig",
+        "mediaSha1": "2ef33d258cd005c86fae0606370699e8720af1ae",
+        "theme": "social",
+        "title": "Something underneath",
+        "body": "A small crab had tucked itself beneath me. I could feel the difference when it moved. At first I stopped every time, waiting for it to get off.\n\nIt stayed through three stops and one fairly pointed change of direction.\n\nI resumed eating. The crab drew its legs closer underneath me and settled against my belly."
+      },
+      "media": {
+        "id": "commons-percy-passenger-2ef33d25",
+        "subject": "sea pig",
+        "category": "undersea",
+        "identityNameBase": "Percy Silt",
+        "detail": "A pale Scotoplanes globosa stands on sediment with a small pink crab visibly sheltering beneath its body",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7b/Scotoplanes_globosa_and_crab.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Scotoplanes_globosa_and_crab.jpg",
+        "creator": "NOAA/MBARI",
+        "license": "CC BY-SA 3.0",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "2ef33d258cd005c86fae0606370699e8720af1ae",
+        "coordinates": {
+          "lat": 36.694919,
+          "lng": -122.297988
+        }
+      },
+      "mediaError": "HTTP Error 403: Forbidden",
+      "decision": "unresolved",
+      "sceneEvidence": "Prior exact-hash review saw pale sea pig on grey sediment with pink crab legs clearly underneath. This directly supports the passenger relationship. Current exact file was unavailable.",
+      "taxonomyAndHome": "Scotoplanes globosa source and approximate abyssal Pacific home are compatible. Tactile narration avoids invented eyesight. Credit NOAA/MBARI under CC BY-SA 3.0, not public domain.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": false,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "ba522618576694481f3a4287d4197b47163ae0836e9b53a3f7de8de9666e0355",
+      "localFile": null
+    },
+    {
+      "character": {
+        "characterId": "vera-veil",
+        "identityNameBase": "Vera Veil",
+        "platform": "rss",
+        "bio": "A swimming sea cucumber who keeps discovering that her stomach comes with her.",
+        "location": {
+          "name": "Deep Caribbean south of Puerto Rico, approximate home",
+          "coordinates": {
+            "lat": 17.2,
+            "lng": -66.7
+          }
+        }
+      },
+      "index": 3,
+      "episode": {
+        "subject": "swimming sea cucumber",
+        "platform": "x",
+        "mediaSha1": "6863cb85d6ef2bdba5e093efc6f3900e93a68977",
+        "theme": "courtship",
+        "title": "A little mystery",
+        "body": "Someone said I should leave a little to the imagination. I tried turning sideways. My intestine came with me."
+      },
+      "media": {
+        "id": "commons-vera-transparent-6863cb85",
+        "subject": "swimming sea cucumber",
+        "category": "undersea",
+        "identityNameBase": "Vera Veil",
+        "detail": "A translucent red Enypniastes eximia swims above the seabed with its looped gut visible through its body",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/67/Enypniastes_eximia_Puerto_Rico.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_eximia_Puerto_Rico.jpg",
+        "creator": "NOAA Okeanos Explorer; color adjustment by Togabi",
+        "license": "Public domain",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "6863cb85d6ef2bdba5e093efc6f3900e93a68977"
+      },
+      "localFile": "/tmp/freed-ocean-scenes.WkE99I/02-commons-vera-transparent-6863cb85.jpg",
+      "localBytes": 507513,
+      "localSha1": "6863cb85d6ef2bdba5e093efc6f3900e93a68977",
+      "localDimensions": [
+        1920,
+        1080
+      ],
+      "cacheReused": true,
+      "decision": "keep",
+      "sceneEvidence": "Translucent reddish swimming cucumber has a clearly visible orange intestinal loop. Transparency and the gut carry the exact joke. Turning sideways is imagined action, not a photographed sequence.",
+      "taxonomyAndHome": "Enypniastes eximia source at Puerto Rico agrees with the approximate Caribbean home. The prose addresses the reader without claiming eyesight.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+        "docs/drafts/nell-vera-canon-12.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": true,
+      "protectedOriginalAnchor": true,
+      "originalBodySha256": "d6f140a64fb74b223de9214620eb6ec849deee75671fb60ca29e57077a14b79f"
+    },
+    {
+      "character": {
+        "characterId": "willa-drift",
+        "identityNameBase": "Willa Drift",
+        "platform": "instagram",
+        "bio": "A leafy seadragon who resembles the garden and resents being treated as part of the gardening.",
+        "location": {
+          "name": "Seagrass and kelp near Rapid Bay",
+          "coordinates": {
+            "lat": -35.51,
+            "lng": 138.18
+          }
+        }
+      },
+      "index": 5,
+      "episode": {
+        "subject": "leafy seadragon underwater",
+        "mediaSha1": "94af8624565c4a94c21bf13f61bf19720f4e6024",
+        "theme": "movement",
+        "title": "The open patch",
+        "body": "I crossed a gap between the weeds. All that careful resemblance and blue water behind me. I have never been more aware of the amount of myself on display."
+      },
+      "media": {
+        "id": "commons-0447",
+        "subject": "leafy seadragon underwater",
+        "category": "undersea",
+        "identityNameBase": "Leaf Erickson",
+        "detail": "Leafy Seadragon on Kangaroo Island",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Leafy_Seadragon_on_Kangaroo_Island.jpg/1280px-Leafy_Seadragon_on_Kangaroo_Island.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ALeafy_Seadragon_on_Kangaroo_Island.jpg",
+        "creator": "James Rosindell",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 852,
+        "sha1": "94af8624565c4a94c21bf13f61bf19720f4e6024"
+      },
+      "localFile": "/tmp/freed-ocean-scenes.WkE99I/06-commons-0447.jpg",
+      "localBytes": 261661,
+      "localSha1": "1b5bd36d93280a277000e732acdece1c2897aece",
+      "localDimensions": [
+        1280,
+        852
+      ],
+      "cacheReused": true,
+      "decision": "keep",
+      "sceneEvidence": "Golden leafy seadragon is conspicuous against open blue water, with weeds at the edges. That exposure directly supports the gap-between-weeds premise and camouflage embarrassment.",
+      "taxonomyAndHome": "Phycodurus eques; Kangaroo Island source and Rapid Bay fictional home are compatible southern Australian settings. The photo does not establish a journey between them.",
+      "priorReviewRecords": [
+        "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+        "docs/drafts/AVATAR-REVIEW-06.md"
+      ],
+      "preserveOriginalProse": true,
+      "runtimeAction": "none; lead decision required",
+      "independentlyViewedExactSourceThisPass": true,
+      "protectedOriginalAnchor": false,
+      "originalBodySha256": "9810203a10cacac8ca215f73de20a1c5ca171eb1d4c20488bc9438f332ed8bb5"
+    }
+  ]
+}

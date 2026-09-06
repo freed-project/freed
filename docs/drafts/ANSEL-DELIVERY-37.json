@@ -1,0 +1,30 @@
+{
+  "url": "https://npgallery.nps.gov/GetAsset/B91D4781-155D-4519-3E99C4F2F0DA69CE/proxyhires.jpg?",
+  "status": 200,
+  "contentType": "image/jpeg",
+  "bytes": 253405,
+  "sha1": "d8d8461cf318d1686a782a4a8a34196f136ef1cd",
+  "sha256": "c5463afe91cc06b6a00736df0b3ed064fb9940769a157e308d63dd92e93b14a1",
+  "seconds": 1.0165958750003483,
+  "dimensions": [
+    1000,
+    750
+  ],
+  "localPath": "/tmp/freed-ansel-delivery-37/ansel-hires.jpg",
+  "publishedLabel": "247.5 KB, 1000x750",
+  "characterId": "ansel-threadbark",
+  "originalSha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f",
+  "originalUrl": "https://npgallery.nps.gov/GetAsset/b91d4781-155d-4519-3e99-c4f2f0da69ce/original.jpg",
+  "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b91d4781-155d-4519-3e99-c4f2f0da69ce",
+  "sourceEvidenceFile": "/tmp/freed-ansel-delivery-37/source.html",
+  "license": "Public domain:Full Granting Rights",
+  "focal": {
+    "x": 0.49,
+    "y": 0.455,
+    "zoom": 1.65
+  },
+  "reviewScreenshot": "/tmp/freed-ansel-delivery-37/review.png",
+  "reviewScreenshotSha256": "284c8e94932c38f635b9303fb0f0e9ee5639303121692efd880a6e3b220efc7d",
+  "recommendation": "PASS: full image and actual runtime circles220/48; independent root second review required",
+  "relayStatus": "Not tested by author; direct download timing is not relay evidence"
+}

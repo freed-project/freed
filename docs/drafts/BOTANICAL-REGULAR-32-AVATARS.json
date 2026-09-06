@@ -1,0 +1,27 @@
+{
+  "status": "proposal only",
+  "crops": [
+    {
+      "characterId": "ansel-threadbark",
+      "mediaSha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b91d4781-155d-4519-3e99-c4f2f0da69ce/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b91d4781-155d-4519-3e99-c4f2f0da69ce",
+      "focal": {
+        "x": 0.49,
+        "y": 0.455,
+        "zoom": 1.65
+      },
+      "localFile": "/tmp/botanical32/b91d4781-155d-4519-3e99-c4f2f0da69ce.jpg",
+      "localBytes": 3152282,
+      "dimensions": [
+        2592,
+        1944
+      ],
+      "aggregated": false,
+      "admission": "proposal; independent lead review required",
+      "visibleReview": "One central living bristlecone fills the circle: low broad green crown, pale twisted trunk and open gap, with limestone ground below. Neighboring trees are excluded. At 48px the flat crown and pale trunk remain recognizable; fine wood grain is not required for identity."
+    }
+  ],
+  "implementation": "Runtime clamped square crop from source, drawn to 256px canvas and displayed circularly at 220 and 48 pixels.",
+  "screenshot": "output/playwright/botanical32-avatar-final.png"
+}

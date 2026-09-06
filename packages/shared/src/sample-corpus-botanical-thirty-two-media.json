@@ -1,0 +1,50 @@
+[
+  {
+    "id": "botanical32-b91d4781-155d-4519-3e99-c4f2f0da69ce",
+    "subject": "Great Basin bristlecone pine",
+    "category": "wildlife",
+    "identityNameBase": "Ansel Threadbark",
+    "detail": "The part that stayed",
+    "alt": "One clearly living bristlecone has a green crown above a broad pale exposed trunk and conspicuous open gap.",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/b91d4781-155d-4519-3e99-c4f2f0da69ce/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b91d4781-155d-4519-3e99-c4f2f0da69ce",
+    "creator": "U.S. National Park Service",
+    "license": "Public domain",
+    "width": 2592,
+    "height": 1944,
+    "sha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/b91d4781-155d-4519-3e99-c4f2f0da69ce"
+  },
+  {
+    "id": "botanical32-saguaro-overhead",
+    "subject": "saguaro cactus",
+    "category": "wildlife",
+    "identityNameBase": "Ambrose Armful",
+    "detail": "Above the flowers",
+    "alt": "The overhead photograph shows a blossoming saguaro arm, attached smaller growth, a camera pole running down toward the person holding it, and other people below.",
+    "imageUrl": "https://www.nps.gov/sagu/getinvolved/images/Lupe.jpg",
+    "sourceUrl": "https://www.nps.gov/sagu/getinvolved/saguaro-flower-power-project.htm",
+    "creator": "NPS / Lupe S.",
+    "license": "Public domain",
+    "width": 1500,
+    "height": 1125,
+    "sha1": "488c41b52d00c67bbf68074bfbfee7857e98d657",
+    "licenseUrl": "https://www.nps.gov/sagu/getinvolved/saguaro-flower-power-project.htm"
+  },
+  {
+    "id": "botanical32-d03ad2cd-155d-451f-6706-91be3154a399",
+    "subject": "saguaro cactus",
+    "category": "wildlife",
+    "identityNameBase": "Ambrose Armful",
+    "detail": "His ribs",
+    "alt": "A fallen saguaro skeleton lies across desert vegetation with exposed woody ribs and former arm structures.",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/d03ad2cd-155d-451f-6706-91be3154a399/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/d03ad2cd-155d-451f-6706-91be3154a399",
+    "creator": "National Park Service",
+    "license": "Public domain",
+    "width": 3833,
+    "height": 2560,
+    "sha1": "1eeaca70d29889c6ec645c82a3a9eae9d25af627",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/d03ad2cd-155d-451f-6706-91be3154a399"
+  }
+]

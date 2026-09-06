@@ -15,6 +15,7 @@ declare module "@tauri-apps/api/core" {
     args?: Record<string, unknown>,
   ): Promise<T>;
   export function isTauri(): boolean;
+  export function convertFileSrc(filePath: string, protocol?: string): string;
 }
 
 declare module "@tauri-apps/api/event" {

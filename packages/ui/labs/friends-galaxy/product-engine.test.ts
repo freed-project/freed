@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import { FriendsGalaxyProductEngine } from "../../src/lib/friends-galaxy-product-engine.js";
 import type { FriendsGalaxyProductWorkerPort } from "../../src/lib/friends-galaxy-product-worker-client.js";
@@ -24,6 +24,12 @@ import {
   productNormalizedSourceInput,
 } from "./product-sqlite-source-fixture.js";
 
+const avatarCrop = vi.hoisted(() => ({ crop: vi.fn(() => ({}) as HTMLCanvasElement) }));
+
+vi.mock("../../src/lib/friends-galaxy-avatar-crop.js", () => ({
+  cropDecodedGalaxyAvatar: avatarCrop.crop,
+}));
+
 class ControlledProductWorker implements FriendsGalaxyProductWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null = null;
@@ -45,6 +51,7 @@ class ControlledProductWorker implements FriendsGalaxyProductWorkerPort {
 }
 
 class ProductRendererBackend implements FriendsGalaxyRendererBackend {
+  setAvatarImages(): void { this.events.push("avatar-images"); }
   readonly events: string[] = [];
   initializedScene: FriendsGalaxyRendererScene | null = null;
   presentationAtlas: IdentityGraphAtlas | null = null;
@@ -201,6 +208,9 @@ async function admitSource(
   sourceRevision = 1,
   personCount = 12,
   accountCount = 48,
+  sourceResponsePatch?: (
+    response: Extract<FriendsGalaxyProductWorkerResponse, { kind: "source-ready" }>,
+  ) => Extract<FriendsGalaxyProductWorkerResponse, { kind: "source-ready" }>,
 ): Promise<number> {
   const options = {
     accountCount,
@@ -224,7 +234,12 @@ async function admitSource(
     if (messageIndex >= worker.messages.length) await flushActivation();
     const request = worker.messages[messageIndex];
     if (!request) throw new Error("Expected normalized source worker message.");
-    worker.emit(service.handle(request));
+    const workerResponse = service.handle(request);
+    worker.emit(
+      request.kind === "normalized-source-commit" && workerResponse.kind === "source-ready"
+        ? sourceResponsePatch?.(workerResponse) ?? workerResponse
+        : workerResponse,
+    );
     messageIndex += 1;
     await flushActivation();
     if (request.kind === "normalized-source-commit") break;
@@ -234,6 +249,88 @@ async function admitSource(
 }
 
 describe("Friends Galaxy product engine", () => {
+  it("does not admit images without an explicit demo allowlist even at close detail", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backend = new ProductRendererBackend("raw-webgpu");
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined, showSurface: () => undefined, removeSurface: () => undefined,
+      createBackend: async () => backend,
+    });
+    await admitSource(engine, worker, service);
+    engine.setSettledView("close", { x: 195, y: 422, scale: 3 });
+    engine.render({ x: 195, y: 422, scale: 3 }, 100);
+    await flushActivation();
+    expect(backend.events).not.toContain("avatar-images");
+    engine.dispose();
+  });
+
+  it("loads and presents approved demo avatars during an active first zoom gesture", async () => {
+    const sourceUrl = "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/03/20210319-hires.jpg";
+    const blockedUrl = "https://attacker.example/avatar.jpg";
+    const deliveryUrl = "/api/demo-avatar?sha=f4ea6b19e7b17e7a2447496e97792e3b88bc30fc";
+    const focal = { x: 0.27, y: 0.61, zoom: 1.4 };
+    const requests: string[] = [];
+    class FakeImage {
+      crossOrigin = "";
+      referrerPolicy = "";
+      naturalWidth = 640;
+      naturalHeight = 480;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(value: string) { requests.push(value); queueMicrotask(() => this.onload?.()); }
+    }
+    vi.stubGlobal("Image", FakeImage);
+    avatarCrop.crop.mockClear();
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backend = new ProductRendererBackend("raw-webgpu");
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker, createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined, showSurface: () => undefined, removeSurface: () => undefined,
+      createBackend: async () => backend,
+      approvedDemoAvatarUrls: new Set([sourceUrl]),
+      approvedDemoAvatarDeliveryUrls: new Map([[sourceUrl, deliveryUrl]]),
+      approvedDemoAvatarFocalPoints: new Map([[sourceUrl, focal]]),
+    });
+    try {
+      engine.resize(390, 844, 1);
+      await admitSource(engine, worker, service, 1, 12, 48, (response) => ({
+        ...response,
+        rendererScene: {
+          ...response.rendererScene,
+          atlas: {
+            ...response.rendererScene.atlas,
+            nodes: response.rendererScene.atlas.nodes.map((node) => node.id === "person:product-person-2"
+              ? { ...node, avatarUrlCandidates: [blockedUrl, sourceUrl] }
+              : node),
+          },
+        },
+      }));
+      engine.setInteraction({ selectedNodeId: "person:product-person-2", hoveredNodeId: null });
+      expect(engine.focusNode("person:product-person-2", 3)).toBe(true);
+      const transform = engine.cameraTransform!;
+      engine.setCameraMotion(true);
+      backend.events.length = 0;
+      engine.render(transform, 100);
+      await flushActivation();
+      expect(requests).toEqual([deliveryUrl]);
+      expect(requests).not.toContain(sourceUrl);
+      expect(requests).not.toContain(blockedUrl);
+      expect(avatarCrop.crop).toHaveBeenCalledWith(expect.any(FakeImage), 640, 480, focal);
+      expect(backend.events).toContain("avatar-images");
+      engine.render(transform, 116);
+      await flushActivation();
+      expect(requests).toEqual([deliveryUrl]);
+    } finally {
+      engine.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
   it("connects the real worker scene, bounded metadata, and replayed renderer state", async () => {
     const worker = new ControlledProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
@@ -545,6 +642,10 @@ describe("Friends Galaxy product engine", () => {
     expect(backend.events.some((event) => event.startsWith("settled:"))).toBe(true);
     expect(backend.events.some((event) => event.startsWith("render:"))).toBe(true);
 
+    engine.setInteraction({
+      selectedNodeId: "person:product-person-2",
+      hoveredNodeId: "account:product-account-3",
+    });
     expect(engine.requestCameraPresentation(4, {
       selectedPersonId: "product-person-2",
     })).not.toBeNull();
@@ -557,6 +658,7 @@ describe("Friends Galaxy product engine", () => {
     expect(request.viewport.width).toBe(1_280);
     expect(request.viewport.height).toBe(720);
     expect(request.viewport.selectedPersonId).toBe("product-person-2");
+    expect(request.viewport.hoveredNodeId).toBe("account:product-account-3");
     expect(request.viewport.transform).toEqual(engine.cameraTransform);
   });
 

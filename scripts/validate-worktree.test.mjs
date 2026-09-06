@@ -785,6 +785,10 @@ test("normative Library Core docs and skills route contract and skill validation
     ".agents/skills/freed-library-core/SKILL.md",
     "docs/LIBRARY-CORE-CONTRACT.md",
     "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
+    "docs/library-core-contract/queries.md",
+    "docs/library-core-contract/queries/person-and-account.md",
+    ".agents/skills/freed-library-core/references/runtime-authority-invariants.md",
+    ".agents/skills/freed-ship-build/references/prepare-and-publish.md",
   ]) {
     assert.equal(isLibraryCoreReleaseActivationPath(filePath), true, filePath);
     const labels = describePlan(buildValidationPlan("feature", [filePath]));
@@ -836,6 +840,9 @@ test("instruction-only paths route exactly the focused instruction checks", () =
     "scripts/AGENTS.md",
     "scripts/validate-agent-instructions.mjs",
     "scripts/validate-agent-instructions.test.mjs",
+    "scripts/validate-instruction-routing.mjs",
+    "scripts/validate-instruction-routing.test.mjs",
+    "docs/instruction-routing-fixtures.json",
     "website/AGENTS.md",
   ]) {
     assert.equal(isAgentInstructionValidationPath(filePath), true, filePath);

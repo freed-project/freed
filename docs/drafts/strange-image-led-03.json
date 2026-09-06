@@ -1,0 +1,202 @@
+{
+  "status": "partial candidate batch, not accepted runtime content",
+  "targetCount": 12,
+  "candidateCount": 6,
+  "longStoryCount": 3,
+  "reviewNote": "Fourteen images independently inspected. Several excluded rather than filling the target. Every event is fiction; image fit is stated separately from invented action. Prairie-dog species remains unresolved.",
+  "entries": [
+    {
+      "id": "strange-03-01",
+      "characterId": "vesta-prickle",
+      "platform": "rss",
+      "title": "Depends who's asking",
+      "body": "The beetle asked whether I could sting. I curled my abdomen a little higher.\n\n\"Depends who's asking.\"\n\nHe backed down the twig. I kept both forelegs raised until he was gone, which took longer than I would have liked. Then I ate the leaf beside me. A very good leaf. I had been looking at it throughout the confrontation.\n\nHe came back with someone else.\n\n\"That's her.\"\n\nThe second beetle kept a careful distance. Asked if I would deal with a spider.\n\nI said I didn't work with spiders.\n\n\"Too dangerous?\"\n\n\"Personal reasons.\"\n\nThey left me another leaf. I have put it beside the first one. I am beginning to see how this could get out of hand.",
+      "theme": "bluff and unintended responsibility",
+      "image": {
+        "catalogId": "commons-0015",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/41/Giant_Prickly_Stick_Insect%2C_Spiny_Leaf_insect%2C_Macleay%27s_Spectre_%28Extatosoma_tiaratum%29_%288226498949%29.jpg/1280px-Giant_Prickly_Stick_Insect%2C_Spiny_Leaf_insect%2C_Macleay%27s_Spectre_%28Extatosoma_tiaratum%29_%288226498949%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Raised forelegs, curled abdomen and spiny silhouette visibly support an intimidating bluff. Beetles and gifts are fictional, not claimed present in the photo.",
+        "sceneMatch": "Raised forelegs, curled abdomen and spiny silhouette visibly support an intimidating bluff. Beetles and gifts are fictional, not claimed present in the photo.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0015",
+        "subject": "leaf insect",
+        "category": "insect",
+        "identityNameBase": "Leif Disguise",
+        "detail": "Giant Prickly Stick Insect, Spiny Leaf insect, Macleay's Spectre (Extatosoma tiaratum) (8226498949)",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/41/Giant_Prickly_Stick_Insect%2C_Spiny_Leaf_insect%2C_Macleay%27s_Spectre_%28Extatosoma_tiaratum%29_%288226498949%29.jpg/1280px-Giant_Prickly_Stick_Insect%2C_Spiny_Leaf_insect%2C_Macleay%27s_Spectre_%28Extatosoma_tiaratum%29_%288226498949%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiant_Prickly_Stick_Insect%2C_Spiny_Leaf_insect%2C_Macleay's_Spectre_(Extatosoma_tiaratum)_(8226498949).jpg",
+        "creator": "Pavel Kirillov from St.Petersburg, Russia",
+        "license": "CC BY-SA 2.0",
+        "width": 1280,
+        "height": 1904,
+        "sha1": "9436259663d105d1963b70dfcdaca530c1e1e9d2"
+      },
+      "payoff": "She invents a dangerous reputation and accepts payment despite lacking the advertised ability.",
+      "editorialStatus": "unreviewed candidate"
+    },
+    {
+      "id": "strange-03-02",
+      "characterId": "nellie-notch",
+      "platform": "x",
+      "title": "Down here",
+      "body": "I fell off the leaf and landed in the soil. Several things down here have no legs. I described the accident as a visit.",
+      "theme": "status after a mishap",
+      "image": {
+        "catalogId": "commons-0059",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/83/Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-05_%2802%29.jpg/1280px-Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-05_%2802%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Green leaf weevil stands on dark loose soil rather than a leaf. The prior fall is fictional.",
+        "sceneMatch": "Green leaf weevil stands on dark loose soil rather than a leaf. The prior fall is fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0059",
+        "subject": "weevil macro",
+        "category": "insect",
+        "identityNameBase": "Evelyn Weevil",
+        "detail": "Green Immigrant Leaf Weevil (Polydrusus formosus) - London, Ontario 2015-06-05 (02)",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/83/Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-05_%2802%29.jpg/1280px-Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-05_%2802%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGreen_Immigrant_Leaf_Weevil_(Polydrusus_formosus)_-_London%2C_Ontario_2015-06-05_(02).jpg",
+        "creator": "Ryan Hodnett",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 720,
+        "sha1": "c039112c7d6faa3bb68b784136ed5db77027ec4c"
+      },
+      "payoff": "She turns an undignified fall into a condescending social call.",
+      "editorialStatus": "unreviewed candidate"
+    },
+    {
+      "id": "strange-03-03",
+      "characterId": "nellie-notch",
+      "platform": "instagram",
+      "title": "Last bite",
+      "body": "I said I could stop whenever I wanted. Then I followed the edge round until I was hanging underneath it. Apparently I wanted to stop over here.",
+      "theme": "appetite and self-deception",
+      "image": {
+        "catalogId": "commons-0101",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-19.jpg/1280px-Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-19.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Weevil visibly grips the narrow edge of a leaf while its body hangs off the side.",
+        "sceneMatch": "Weevil visibly grips the narrow edge of a leaf while its body hangs off the side.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0101",
+        "subject": "weevil macro",
+        "category": "insect",
+        "identityNameBase": "Evelyn Weevil",
+        "detail": "Green Immigrant Leaf Weevil (Polydrusus formosus) - London, Ontario 2015-06-19",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-19.jpg/1280px-Green_Immigrant_Leaf_Weevil_%28Polydrusus_formosus%29_-_London%2C_Ontario_2015-06-19.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGreen_Immigrant_Leaf_Weevil_(Polydrusus_formosus)_-_London%2C_Ontario_2015-06-19.jpg",
+        "creator": "Ryan Hodnett",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 853,
+        "sha1": "9ded800b7ef66e2ff88b2699f0ba5aea3f8f489d"
+      },
+      "payoff": "Her supposed control of appetite has brought her into a physically ridiculous position.",
+      "editorialStatus": "unreviewed candidate"
+    },
+    {
+      "id": "strange-03-04",
+      "characterId": "lucien-reach",
+      "platform": "rss",
+      "title": "Don't answer yet",
+      "body": "She asked what I liked about her.\n\nI had an answer. It was an excellent answer about the red of her back. Then I remembered that mine was red too, and that I had already spent most of the morning discussing it.\n\nI lowered my head toward her. Tried to look as though I was considering the question deeply. The neck helped. It gives a simple hesitation somewhere to go.\n\n\"Take your time,\" she said.\n\nThis made it worse.\n\nI could have mentioned her feet. I liked them. I liked how she put them exactly where she wanted to go, without any of this.\n\nI told her that.\n\nShe waited.\n\n\"Without any of what?\"\n\nI raised my head again. We were going to need longer.",
+      "theme": "affection obstructed by self-absorption",
+      "image": {
+        "catalogId": "commons-0138",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/96/Giraffe_weevil_%28Trachelophorus_giraffa%29%2C_Ranomafana_National_Park%2C_Madagascar_%2811389093436%29.jpg/1280px-Giraffe_weevil_%28Trachelophorus_giraffa%29%2C_Ranomafana_National_Park%2C_Madagascar_%2811389093436%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Long-necked red giraffe weevil with its head elevated and feet gripping a leaf. Dialogue and partner are fictional; anatomical hesitation is central.",
+        "sceneMatch": "Long-necked red giraffe weevil with its head elevated and feet gripping a leaf. Dialogue and partner are fictional; anatomical hesitation is central.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0138",
+        "subject": "weevil macro",
+        "category": "insect",
+        "identityNameBase": "Evelyn Weevil",
+        "detail": "Giraffe weevil (Trachelophorus giraffa), Ranomafana National Park, Madagascar (11389093436)",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/96/Giraffe_weevil_%28Trachelophorus_giraffa%29%2C_Ranomafana_National_Park%2C_Madagascar_%2811389093436%29.jpg/1280px-Giraffe_weevil_%28Trachelophorus_giraffa%29%2C_Ranomafana_National_Park%2C_Madagascar_%2811389093436%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGiraffe_weevil_(Trachelophorus_giraffa)%2C_Ranomafana_National_Park%2C_Madagascar_(11389093436).jpg",
+        "creator": "Frank Vassen from Brussels, Belgium",
+        "license": "CC BY 2.0",
+        "width": 1280,
+        "height": 960,
+        "sha1": "0c2929f5d218625fed4ef96a94cca8fec5354bb2"
+      },
+      "payoff": "He finds a sincere answer but cannot explain it without revealing his own insecurity.",
+      "editorialStatus": "unreviewed candidate"
+    },
+    {
+      "id": "strange-03-05",
+      "characterId": "ottilie-hook",
+      "platform": "instagram",
+      "title": "An advance",
+      "body": "He asked if I wanted to get closer. I said I already had. He was measuring from my eyes.",
+      "theme": "embodied innuendo",
+      "image": {
+        "catalogId": "commons-0210",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b8/Curculio_Glandium_%28259636219%29.jpeg/1280px-Curculio_Glandium_%28259636219%29.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Acorn weevil's long curved rostrum extends far beyond its eyes. The distance misunderstanding depends on visible anatomy.",
+        "sceneMatch": "Acorn weevil's long curved rostrum extends far beyond its eyes. The distance misunderstanding depends on visible anatomy.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0210",
+        "subject": "weevil macro",
+        "category": "insect",
+        "identityNameBase": "Evelyn Weevil",
+        "detail": "Curculio Glandium (259636219)",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b8/Curculio_Glandium_%28259636219%29.jpeg/1280px-Curculio_Glandium_%28259636219%29.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ACurculio_Glandium_(259636219).jpeg",
+        "creator": "Kees Guequierre",
+        "license": "CC BY 3.0",
+        "width": 1280,
+        "height": 720,
+        "sha1": "7e0e472ff7d4136bc85b17db77be60af69852abd"
+      },
+      "payoff": "The mouth has made an advance the observer has not counted.",
+      "editorialStatus": "unreviewed candidate"
+    },
+    {
+      "id": "strange-03-06",
+      "characterId": "mabel-mouthful",
+      "platform": "rss",
+      "title": "Before you go",
+      "body": "Kit announced that he was old enough to go without a kiss. He had gone almost the width of my body when I called him back.\n\n\"Something on your face.\"\n\nThere wasn't. I kissed him. He endured it with his eyes open, looking past me at the grass.\n\nPip came up from the hole and asked what Kit had done. Nothing, I said. That was the problem. He hadn't done anything yet. All the things he might do were waiting out there and I wanted him to smell like home for a little longer.\n\nKit left again. I did not call him.\n\nHe came back on his own.\n\n\"You've got something on your face.\"\n\nI held still. He picked off an actual seed and ate it.\n\nPip was watching. I kissed him instead.",
+      "theme": "parental attachment and unsentimental children",
+      "image": {
+        "catalogId": "commons-0937",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Prairie_Dog_Kiss.jpg/1280px-Prairie_Dog_Kiss.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Adult prairie dog receives mouth contact from one pup while another is visible below at the burrow entrance. The family configuration and contact directly support the scene.",
+        "sceneMatch": "Adult prairie dog receives mouth contact from one pup while another is visible below at the burrow entrance. The family configuration and contact directly support the scene.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0937",
+        "subject": "prairie dog kiss",
+        "category": "wildlife",
+        "identityNameBase": "Prairie Dawn",
+        "detail": "Prairie Dog Kiss",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Prairie_Dog_Kiss.jpg/1280px-Prairie_Dog_Kiss.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APrairie_Dog_Kiss.jpg",
+        "creator": "NPS",
+        "license": "Public domain",
+        "width": 1280,
+        "height": 853,
+        "sha1": "d763c5488d845761d69418287fb6b79821ad5dcc"
+      },
+      "payoff": "The hoped-for returned affection becomes a literal snack; the parent redirects her surplus affection.",
+      "editorialStatus": "unreviewed candidate",
+      "taxonomyStatus": "genus only; exact species requires source-category verification before admission"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "index": 8,
+  "sourceId": "https://www.fws.gov/media/manatee-mother-and-calf",
+  "sourcePage": "https://www.fws.gov/media/manatee-mother-and-calf",
+  "sourceTitle": "Manatee mother and calf",
+  "sourceCaption": "Manatee mother and calf. Manatees pose for the camera in the warm water springs of Three Sisters Springs, Florida.",
+  "attribution": "Gregory Sweeney",
+  "rightsEvidence": "Exact source page: Public Domain",
+  "imageUrl": "https://www.fws.gov/sites/default/files/2021-11/Manatees_Gregory%20Sweeney2.JPG",
+  "localPath": "/tmp/freed-aquatic-35/source-08.jpg",
+  "width": 3480,
+  "height": 2705,
+  "sha1": "ed73e93acc2eccaee3767036d23ada54ec036247",
+  "sha256": "ae407ba22af64d1081173874e7228c1f7d1aa6debccdf45017604488fc9ee896",
+  "byteLength": 1248367,
+  "decision": "original_below_four_megabytes_no_variant_required",
+  "fullFrameIndividuallyOpened": true,
+  "originalDimensions": [
+    3480,
+    2705
+  ],
+  "license": "Public domain",
+  "licenseUrl": "https://www.fws.gov/media/manatee-mother-and-calf"
+}

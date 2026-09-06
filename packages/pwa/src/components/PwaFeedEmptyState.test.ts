@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
+import { useSamplePopulationProgress } from "../lib/sample-population-progress";
 import { PwaFeedEmptyState } from "./PwaFeedEmptyState";
 
 function createPlatform(overrides: Partial<PlatformConfig> = {}): PlatformConfig {
@@ -54,6 +55,7 @@ describe("PwaFeedEmptyState", () => {
       activeFilter: {},
     });
     useDebugStore.setState({ cloudProviders: null });
+    useSamplePopulationProgress.setState({ active: false, percent: 0 });
   });
 
   afterEach(() => {
@@ -64,8 +66,29 @@ describe("PwaFeedEmptyState", () => {
       activeFilter: {},
     });
     useDebugStore.setState({ cloudProviders: null });
+    useSamplePopulationProgress.setState({ active: false, percent: 0 });
     document.body.innerHTML = "";
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("shows only demo population progress while the empty Library is loading", () => {
+    useAppStore.setState({
+      syncConnected: false,
+      isSyncing: false,
+      activeFilter: {},
+    });
+    useSamplePopulationProgress.setState({ active: true, percent: 40 });
+
+    const { container, root } = renderWithPlatform(createElement(PwaFeedEmptyState));
+
+    expect(container.querySelector("[aria-label='Populating demo']")).toBeTruthy();
+    expect(container.textContent).toBe("Populating your demo40% complete");
+    expect(container.textContent).not.toContain("No content yet");
+    expect(container.textContent).not.toContain("Connect");
+    expect(container.textContent).not.toContain("sample data");
+    expect(container.querySelector("button")).toBeNull();
+
+    act(() => root.unmount());
   });
 
   it("points the blank feed state to Sync settings when cloud sync is blocked", () => {

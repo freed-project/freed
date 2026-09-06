@@ -67,7 +67,7 @@ export function friendsGalaxySemanticColor(
   }
   const kind = scene.kinds[index];
   if (kind === IdentityGalaxyNodeKindCode.FriendPerson) return palette.friend;
-  if (kind === IdentityGalaxyNodeKindCode.ConnectionPerson) return palette.connection;
+  if (kind === IdentityGalaxyNodeKindCode.ConnectionPerson) return palette.friend;
   if (kind === IdentityGalaxyNodeKindCode.Feed) return palette.feed;
   return palette.account;
 }
@@ -85,7 +85,7 @@ export function writeFriendsGalaxyStarPaletteUniforms(
   const lightSurface = friendsGalaxyColorIsLight(palette.background);
   const colors = [
     palette.friend,
-    palette.connection,
+    palette.friend,
     palette.account,
     palette.feed,
     palette.providers.instagram,

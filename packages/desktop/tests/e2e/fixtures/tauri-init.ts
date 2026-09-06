@@ -1359,6 +1359,48 @@ export function tauriInitScript(): string {
           }, 0),
         };
       }
+      if (request.queryId === 'story_wall_candidates_v1') {
+        var storyItems = Object.values(state.items || {}).filter(function(item) {
+          return item && !item.__deleted &&
+            !sqliteItemState(item).hidden && !sqliteItemState(item).archived &&
+            item.content && (item.content.mediaUrls || []).length > 0;
+        }).sort(function(left, right) {
+          return (right.publishedAt || 0) - (left.publishedAt || 0) ||
+            left.globalId.localeCompare(right.globalId);
+        });
+        var storyLimit = request.limit || 100;
+        return {
+          hasMore: storyItems.length > storyLimit,
+          queryId: request.queryId,
+          rows: storyItems.slice(0, storyLimit).map(function(item) {
+            var account = Object.values(state.accounts || {}).find(function(candidate) {
+              return candidate.provider === item.platform &&
+                item.author && candidate.externalId === item.author.id;
+            }) || null;
+            var mediaUrls = item.content.mediaUrls.slice(0, 8);
+            return {
+              authorDisplayName: item.author && item.author.displayName || '',
+              authorHandle: item.author && item.author.handle || '',
+              authorId: item.author && item.author.id || '',
+              capturedAt: item.capturedAt || 0,
+              contentText: item.content.text || null,
+              globalId: item.globalId,
+              linkedAccountId: account && account.id || null,
+              linkedPersonId: account && account.personId || null,
+              locationName: item.location && item.location.name || null,
+              mediaTypes: mediaUrls.map(function(_, index) {
+                return (item.content.mediaTypes || [])[index] || 'unknown';
+              }),
+              mediaUrls: mediaUrls,
+              platform: item.platform,
+              publishedAt: item.publishedAt || 0,
+              sourceUrl: item.sourceUrl || null,
+            };
+          }),
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'map_markers_v1') {
         var mapItems = Object.values(state.items || {}).filter(function(candidate) {
           return candidate && !candidate.__deleted &&

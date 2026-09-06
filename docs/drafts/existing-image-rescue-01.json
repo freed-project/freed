@@ -1,0 +1,167 @@
+{
+  "batchId": "existing-image-rescue-01",
+  "reviewedOn": "2026-09-05",
+  "scope": "Existing text-only character-arc entries paired only where the exact reviewed photograph supports the scene. This is deliberately four candidates, not twelve: the rest of the tempting catalog matches either already illustrate their own episode or fail the visible-action test.",
+  "selectionPolicy": "A photograph must support the entry's central event or its concrete aftermath. Same species alone is insufficient. A reallocation candidate is not an additional binding: the editor must retain either the existing binding or the rescue binding.",
+  "candidates": [
+    {
+      "status": "clean-candidate",
+      "characterId": "manny-tis",
+      "episodeIndex": 6,
+      "episodeOrdinal": 7,
+      "original": {
+        "platform": "instagram",
+        "title": "Tomorrow, definitely",
+        "body": "She turned toward me and I forgot the beautiful approach I had rehearsed. Took one step forward. Took it back. She caught a fly without looking away. I have decided to approach tomorrow."
+      },
+      "media": {
+        "catalogId": "commons-0123",
+        "sha1": "31e1e5639ab0477d2a2466941d5883f6dfe1a57f",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Praying_Mantis_Mating_European-13.jpg/1280px-Praying_Mantis_Mating_European-13.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APraying_Mantis_Mating_European-13.jpg",
+        "creator": "Oliver Koemmerling",
+        "license": "CC BY-SA 3.0",
+        "width": 1280,
+        "height": 853
+      },
+      "inspection": {
+        "verified": true,
+        "localReviewPath": "/private/tmp/freed-mantis-mating-XXXXXX.jpg",
+        "visibleFacts": "Two green praying mantises are closely coupled upright on a green plant."
+      },
+      "proposedBody": "She turned toward me and I forgot the beautiful approach I had rehearsed. Took one step forward. Took it back. She caught a fly without looking away.\n\nThen I took another step. She did not leave. The rehearsed part remained unavailable, but the afternoon became considerably more crowded.",
+      "visibleFit": "The original ending puts the approach off-frame in the future, while the reviewed photograph makes the already-close encounter central. This minimal ending adjustment lets the visible pair be the payoff without claiming a detail the frame cannot show.",
+      "imageAvailability": "unused by the current character arcs"
+    },
+    {
+      "status": "clean-candidate",
+      "characterId": "iris-undertow",
+      "episodeIndex": 4,
+      "episodeOrdinal": 5,
+      "original": {
+        "platform": "rss",
+        "title": "The wrong side showed",
+        "body": "He approached on my left while I was watching another cuttlefish on my right. My skin changed before I had decided which encounter I was having.\n\nI turned toward him. He hesitated. I softened the pattern, then made it stronger, then swam forward much too abruptly.\n\nHe moved with me. We traveled beside each other without touching. It was easier once there was a direction to go."
+      },
+      "media": {
+        "catalogId": "commons-0678",
+        "sha1": "85c250bb29ec4cc7ec577cd90c76ae2a37dcd9e3",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/Pair_Of_Cuttlefish_%28209677575%29.jpeg/1280px-Pair_Of_Cuttlefish_%28209677575%29.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APair_Of_Cuttlefish_(209677575).jpeg",
+        "creator": "Nand Kapadia",
+        "license": "CC BY 3.0",
+        "width": 1280,
+        "height": 1024
+      },
+      "inspection": {
+        "verified": true,
+        "reviewMethod": "Direct image review of the catalog image URL",
+        "visibleFacts": "Two patterned cuttlefish rest close together on pale rubble, angled toward one another; a dark branching structure crosses the foreground."
+      },
+      "proposedBody": null,
+      "visibleFit": "This is not a species portrait. The two-animal composition supports the hesitant, close-quarters courtship beat and the final side-by-side movement. The third cuttlefish remains off-frame rather than falsely asserted visible.",
+      "identityNote": "The catalog's stock label is Cuthbert Chromatic, not a canon arc. It must not be presented as Iris and a named recurring Cuthbert without a separate canon decision.",
+      "imageAvailability": "unused by the current character arcs"
+    },
+    {
+      "status": "requires-reallocation",
+      "characterId": "percy-silt",
+      "episodeIndex": 5,
+      "episodeOrdinal": 6,
+      "original": {
+        "platform": "rss",
+        "title": "The empty place underneath",
+        "body": "The crab left while I was feeding. I noticed when I moved and nothing adjusted beneath me.\n\nI stopped, which was silly. It had spent our entire acquaintance demonstrating that stopping would not persuade it to do anything.\n\nA few steps later it caught up and tucked itself back underneath. I continued at my previous pace. Possibly a little slower where the ground was uneven."
+      },
+      "media": {
+        "catalogId": "commons-percy-passenger-2ef33d25",
+        "sha1": "2ef33d258cd005c86fae0606370699e8720af1ae",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7b/Scotoplanes_globosa_and_crab.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Scotoplanes_globosa_and_crab.jpg",
+        "creator": "NOAA/MBARI",
+        "license": "CC BY-SA 3.0",
+        "width": 1920,
+        "height": 1080
+      },
+      "inspection": {
+        "verified": true,
+        "reviewMethod": "Direct image review of the catalog image URL",
+        "visibleFacts": "A pale sea pig stands on sediment with a small pink crab directly beneath its body."
+      },
+      "proposedBody": null,
+      "visibleFit": "The reviewed frame directly supplies the emotional fact of the rescue: the returning crab has resumed shelter beneath Percy. It is substantially more specific to this entry than a generic sea-pig image would be.",
+      "reallocation": {
+        "originalBoundEpisodeIndex": 1,
+        "originalBoundEpisodeOrdinal": 2,
+        "originalBoundTitle": "Something underneath",
+        "originalBoundBody": "A small crab had tucked itself beneath me. I could feel the difference when it moved. At first I stopped every time, waiting for it to get off.\n\nIt stayed through three stops and one fairly pointed change of direction.\n\nI resumed eating. The crab drew its legs closer underneath me and settled against my belly.",
+        "decision": "Choose one only. The existing bound episode introduces the relationship; this rescue gives its later return a stronger emotional consequence."
+      }
+    },
+    {
+      "status": "requires-reallocation",
+      "characterId": "vera-veil",
+      "episodeIndex": 9,
+      "episodeOrdinal": 10,
+      "original": {
+        "platform": "rss",
+        "title": "What holds me up",
+        "body": "I lifted until my tentacles lost the bottom. For a moment there was no solid thing touching me. Only water against the thin edges of my body and the weight of the meal inside.\n\nI spread myself farther. The water held me. It had been doing that all along, but usually I was too busy trying to get somewhere to feel how much of me it carried.\n\nThen the meal shifted. I folded, sank, and touched down mouth first. I can be moved by an experience and still land badly."
+      },
+      "media": {
+        "catalogId": "commons-vera-transparent-6863cb85",
+        "sha1": "6863cb85d6ef2bdba5e093efc6f3900e93a68977",
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/67/Enypniastes_eximia_Puerto_Rico.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_eximia_Puerto_Rico.jpg",
+        "creator": "NOAA Okeanos Explorer; color adjustment by Togabi",
+        "license": "Public domain",
+        "width": 1920,
+        "height": 1080
+      },
+      "inspection": {
+        "verified": true,
+        "reviewMethod": "Direct image review of the catalog image URL",
+        "visibleFacts": "A translucent red swimming sea cucumber is suspended above a pale seafloor. Its looped gut is conspicuous through the body and thin membrane edges are spread into the water."
+      },
+      "proposedBody": null,
+      "visibleFit": "The photograph visibly makes water support, spread body edges, and the awkwardly carried meal the scene. It is a precise visual counterpart to this entry, not merely a specimen photograph.",
+      "reallocation": {
+        "originalBoundEpisodeIndex": 3,
+        "originalBoundEpisodeOrdinal": 4,
+        "originalBoundTitle": "A little mystery",
+        "originalBoundBody": "Someone said I should leave a little to the imagination. I tried turning sideways. My intestine came with me.",
+        "decision": "Choose one only. The existing micro-post is funny but functions as a caption for the visible gut. This rescue is a fuller scene whose stated lift and visible anatomy meet in the same frame."
+      }
+    }
+  ],
+  "excludedAfterInspection": [
+    {
+      "characterId": "cora-curl",
+      "episodeIndex": 0,
+      "title": "The tail dissents",
+      "catalogId": "commons-cora-avatar-4612536e",
+      "reason": "The reviewed chameleon is on a branch with its tail curled, but the photograph does not show the tail still gripping a previous branch. It is an avatar, not an honest scene match."
+    },
+    {
+      "characterId": "ellis-hook",
+      "episodeIndex": 3,
+      "title": "Useful resemblance",
+      "catalogId": "commons-ellis-avatar-7bc41eec",
+      "reason": "The reviewed leaf-tailed gecko has a remarkable leaf-shaped body on a branch, but no bird or leaf-turning action is visible. The visual premise alone is not enough."
+    },
+    {
+      "characterId": "rue-ribbon",
+      "episodeIndex": 9,
+      "title": "He recognized the mouth",
+      "catalogId": "commons-rue-breathing-8d2a1a7b",
+      "reason": "The reviewed ribbon eel emerges with its mouth open, but no second eel or neighboring opening is visible. It cannot carry the reconciliation scene."
+    },
+    {
+      "characterId": "rhea-return",
+      "episodeIndex": 2,
+      "title": "A passenger with opinions",
+      "catalogId": "commons-0521",
+      "reason": "The reviewed turtle image shows a turtle swimming above reef with small fish, not a visible remora attachment. It would be a generic turtle substitution."
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "avatars": [
+    {
+      "characterId": "dulcie-redleaf",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f16378d2-e935-4f9e-8c32-4455d549c7ee/proxyhires.jpg?",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f16378d2-e935-4f9e-8c32-4455d549c7ee",
+      "mediaSha1": "9784e816c61948816bbb7f113226a4fa0eebdc70",
+      "localFile": "/tmp/botanical43/sundew-hires.jpg",
+      "bytes": 569488,
+      "dimensions": [
+        1824,
+        1216
+      ],
+      "focal": {
+        "x": 0.62,
+        "y": 0.28,
+        "zoom": 2.5
+      },
+      "review220": "PASS: one raised leaf and its attached petiole dominate; red glandular tentacles and dark insect shell are legible. Background leaves remain blurred.",
+      "review48": "PASS: red radiating tentacles around a pale spoon-shaped leaf remain distinctive. The tiny shell is a dark mark; no claim of readable insect anatomy at this size.",
+      "status": "proposal pending independent lead review"
+    }
+  ],
+  "screenshot": "/tmp/botanical43/avatar-review.png",
+  "screenshotSha256": "1674da722640cf5efdcaeb9cfec216cf1134a7dab3c697d423a6ffc5e4257685",
+  "renderer": "Current runtime cropDecodedGalaxyAvatar; actual 256-pixel canvas displayed at 220 and 48 pixels in headless Chromium",
+  "sourceSquarePixels": 486.4
+}

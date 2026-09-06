@@ -1,6 +1,8 @@
 export interface FriendsGalaxyAvatarImageRequest {
   nodeId: string;
   sourceKey: string;
+  /** Ordered, approved alternatives. A working selection stays stable while present. */
+  sourceKeys?: readonly string[];
 }
 
 export interface FriendsGalaxyAvatarImageAdmissionResult {
@@ -40,18 +42,25 @@ export class FriendsGalaxyAvatarImageAdmission {
   private readonly failedSources = new Map<string, number>();
   private readonly inFlight = new Map<string, Promise<CanvasImageSource | null>>();
   private readonly queue: DecodeTask[] = [];
+  private readonly selectedSources = new Map<string, string>();
   private activeDecodeCount = 0;
   private clock = 0;
   private disposed = false;
+  private readonly decoder: FriendsGalaxyAvatarImageDecoder;
+  private readonly maxEntries: number;
+  private readonly maxConcurrent: number;
 
   constructor(
-    private readonly decoder: FriendsGalaxyAvatarImageDecoder,
-    private readonly maxEntries: number,
-    private readonly maxConcurrent: number,
+    decoder: FriendsGalaxyAvatarImageDecoder,
+    maxEntries: number,
+    maxConcurrent: number,
   ) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) {
       throw new Error("Friends Galaxy avatar admission requires a positive cache capacity.");
     }
+    this.decoder = decoder;
+    this.maxEntries = maxEntries;
+    this.maxConcurrent = maxConcurrent;
     if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1) {
       throw new Error("Friends Galaxy avatar admission requires positive decode concurrency.");
     }
@@ -68,24 +77,46 @@ export class FriendsGalaxyAvatarImageAdmission {
       if (requestByNodeId.size >= this.maxEntries) break;
     }
     const admittedRequests = [...requestByNodeId.values()];
-    const sourceKeys = [...new Set(admittedRequests.map((request) => request.sourceKey))];
-    await Promise.all(sourceKeys.map((sourceKey) => this.load(sourceKey)));
+    const attempted = new Set<string>();
+    const selected = await Promise.all(admittedRequests.map(async (request) => {
+      const candidates = [...new Set(request.sourceKeys ?? [request.sourceKey])].filter(Boolean).slice(0, 8);
+      const previous = this.selectedSources.get(request.nodeId);
+      if (previous && candidates.includes(previous)) {
+        candidates.splice(candidates.indexOf(previous), 1);
+        candidates.unshift(previous);
+      }
+      for (const sourceKey of candidates) {
+        if (this.disposed) return null;
+        attempted.add(sourceKey);
+        if (!await this.load(sourceKey)) continue;
+        // Concurrent admissions share decodes and keep whichever valid image
+        // succeeded first, rather than allowing a slower response to replace it.
+        const winner = this.selectedSources.get(request.nodeId);
+        if (winner && candidates.includes(winner) && this.cache.has(winner)) return winner;
+        this.selectedSources.set(request.nodeId, sourceKey);
+        return sourceKey;
+      }
+      return null;
+    }));
     if (this.disposed) return this.emptyResult();
 
-    const retainedSources = new Set(sourceKeys);
+    const retainedSources = new Set(selected.filter((source): source is string => source !== null));
     this.evictToCapacity(retainedSources);
     const images = new Map<string, CanvasImageSource>();
-    for (const request of admittedRequests) {
-      const cached = this.cache.get(request.sourceKey);
+    for (const [index, request] of admittedRequests.entries()) {
+      const cached = this.cache.get(selected[index] ?? "");
       if (!cached) continue;
       cached.lastUsed = ++this.clock;
       images.set(request.nodeId, cached.image);
+    }
+    while (this.selectedSources.size > this.maxEntries * 4) {
+      this.selectedSources.delete(this.selectedSources.keys().next().value!);
     }
     return {
       images,
       requestedNodeCount: admittedRequests.length,
       readyNodeCount: images.size,
-      failedSourceCount: sourceKeys.filter((sourceKey) => this.failedSources.has(sourceKey)).length,
+      failedSourceCount: [...attempted].filter((sourceKey) => this.failedSources.has(sourceKey)).length,
       cachedSourceCount: this.cache.size,
     };
   }
@@ -100,6 +131,7 @@ export class FriendsGalaxyAvatarImageAdmission {
     for (const { image } of this.cache.values()) closeImage(image);
     this.cache.clear();
     this.failedSources.clear();
+    this.selectedSources.clear();
   }
 
   private emptyResult(): FriendsGalaxyAvatarImageAdmissionResult {

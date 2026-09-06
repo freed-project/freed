@@ -180,6 +180,12 @@ export function validateFriendsGalaxyPresentationAtlas(
     if (node.avatarUrl !== undefined && node.avatarUrl !== null) {
       assertText("node avatar URL", node.avatarUrl, 4_096);
     }
+    if (node.avatarUrlCandidates !== undefined) {
+      if (!Array.isArray(node.avatarUrlCandidates) || node.avatarUrlCandidates.length > 8) {
+        throw new Error("Friends Galaxy avatar candidates exceed their metadata bound.");
+      }
+      for (const url of node.avatarUrlCandidates) assertText("node avatar candidate URL", url, 4_096);
+    }
   }
 
   const admittedLabelIds = new Set<string>();

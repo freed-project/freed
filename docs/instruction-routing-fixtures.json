@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "measurement": "UTF-8 bytes in the selected workflow bundle, excluding always-loaded personal/root instructions and task source code. Reviewer-authored expected routes are structural regression fixtures, not automated model-selection results.",
+  "cases": [
+    {
+      "id": "release-build-failure",
+      "prompt": "Diagnose and repair a failed dev release build before installation.",
+      "entry": ".agents/skills/freed-ship-build/SKILL.md",
+      "files": [
+        ".agents/skills/freed-ship-build/SKILL.md",
+        ".agents/skills/freed-ship-build/references/candidate-proof.md",
+        ".agents/skills/freed-ship-build/references/source-and-activation.md",
+        ".agents/skills/freed-ship-build/references/prepare-and-publish.md"
+      ],
+      "excluded": [
+        ".agents/skills/freed-ship-build/references/installed-verification.md",
+        ".agents/skills/freed-library-core/SKILL.md"
+      ],
+      "maxBytes": 17000,
+      "required": [
+        {
+          "file": ".agents/skills/freed-ship-build/SKILL.md",
+          "text": "Never move or reuse a failed tag."
+        }
+      ],
+      "rationale": "Pipeline repair needs candidate proof, exact source and publication controls. Installation details are deferred until that action."
+    },
+    {
+      "id": "release-installed-verification",
+      "prompt": "Verify the installed production build and close out its release.",
+      "entry": ".agents/skills/freed-ship-build/SKILL.md",
+      "files": [
+        ".agents/skills/freed-ship-build/SKILL.md",
+        ".agents/skills/freed-ship-build/references/candidate-proof.md",
+        ".agents/skills/freed-ship-build/references/source-and-activation.md",
+        ".agents/skills/freed-ship-build/references/installed-verification.md"
+      ],
+      "excluded": [
+        ".agents/skills/freed-ship-build/references/prepare-and-publish.md"
+      ],
+      "maxBytes": 10000,
+      "rationale": "Post-install verification retains universal release and activation controls without reloading preparation commands."
+    },
+    {
+      "id": "saved-query-design",
+      "prompt": "Design a correction to Saved feed pagination without changing the schema or storage authority.",
+      "entry": ".agents/skills/freed-library-core/SKILL.md",
+      "files": [
+        ".agents/skills/freed-library-core/SKILL.md",
+        "docs/LIBRARY-CORE-CONTRACT.md",
+        "docs/library-core-contract/queries.md",
+        "docs/library-core-contract/queries/feed-and-secondary.md",
+        ".agents/skills/freed-library-core/references/runtime-authority-invariants.md"
+      ],
+      "excluded": [
+        ".agents/skills/freed-library-core/references/migration-cutover-and-recovery.md",
+        ".agents/skills/freed-ship-build/SKILL.md"
+      ],
+      "maxBytes": 38000,
+      "budgetReason": "The design crosses canonical source fencing and active-reader authority. Keep the universal contract, query bounds, family semantics, and runtime stops even if the complete bundle exceeds 32 KiB.",
+      "required": [
+        {
+          "file": "docs/library-core-contract/queries.md",
+          "text": "No query may scan or sort the full corpus in JavaScript."
+        },
+        {
+          "file": "docs/library-core-contract/queries/feed-and-secondary.md",
+          "text": "saved_feed_page_v2"
+        }
+      ],
+      "rationale": "Active-query design needs the common contract, feed family and active-reader invariants. No migration, schema change, or publication is requested."
+    },
+    {
+      "id": "person-query-design",
+      "prompt": "Review the bounded Person detail query and its source-fenced response, without changing graph catalogs.",
+      "entry": ".agents/skills/freed-library-core/SKILL.md",
+      "files": [
+        ".agents/skills/freed-library-core/SKILL.md",
+        "docs/LIBRARY-CORE-CONTRACT.md",
+        "docs/library-core-contract/queries.md",
+        "docs/library-core-contract/queries/person-and-account.md",
+        ".agents/skills/freed-library-core/references/runtime-authority-invariants.md"
+      ],
+      "excluded": [
+        "docs/library-core-contract/queries/identity-catalogs.md",
+        ".agents/skills/freed-ship-build/SKILL.md"
+      ],
+      "maxBytes": 35000,
+      "budgetReason": "The Person contract and active-reader invariants supplement mandatory universal and query rules. Their combined size is preferable to omitting authority requirements.",
+      "required": [
+        {
+          "file": "docs/library-core-contract/queries/person-and-account.md",
+          "text": "at most 64 closed"
+        }
+      ],
+      "rationale": "Selected identity details use the point-query family, not full graph catalog workflows."
+    },
+    {
+      "id": "website-copy",
+      "prompt": "Change a marketing headline on freed.wtf, with no product roadmap change.",
+      "entry": ".agents/skills/freed-build-www/SKILL.md",
+      "files": [".agents/skills/freed-build-www/SKILL.md"],
+      "excluded": [
+        ".agents/skills/freed-library-core/SKILL.md",
+        ".agents/skills/freed-ship-build/SKILL.md",
+        "docs/roadmap-status.json"
+      ],
+      "maxBytes": 9000,
+      "rationale": "Website copy belongs on www. Roadmap source transfer, durable storage and Desktop releases do not match."
+    },
+    {
+      "id": "provider-cadence-review",
+      "prompt": "Assess a proposed increase in Facebook refresh frequency before implementation.",
+      "entry": ".agents/skills/freed-provider-risk-review/SKILL.md",
+      "files": [".agents/skills/freed-provider-risk-review/SKILL.md"],
+      "excluded": [
+        ".agents/skills/freed-ship-build/SKILL.md",
+        ".agents/skills/freed-library-core/SKILL.md"
+      ],
+      "maxBytes": 16000,
+      "required": [
+        {
+          "file": ".agents/skills/freed-provider-risk-review/SKILL.md",
+          "text": "Preparing a review never grants live provider traffic."
+        }
+      ],
+      "rationale": "Provider timing triggers the pre-implementation behavior gate even without a known changed path."
+    }
+  ]
+}

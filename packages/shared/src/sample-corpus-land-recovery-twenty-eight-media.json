@@ -1,0 +1,50 @@
+[
+  {
+    "id": "land-recovery-28-01",
+    "sha1": "85e52e9105ab6f18f47fe1111c7e8c7c3912096b",
+    "subject": "Taxidea taxus",
+    "identityNameBase": "Mavis Spade",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/88b43bbe-3340-4039-a102-be81c62b69cb/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/88b43bbe-3340-4039-a102-be81c62b69cb",
+    "creator": "NPS/Bryan harry",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/88b43bbe-3340-4039-a102-be81c62b69cb",
+    "width": 1999,
+    "height": 1251,
+    "alt": "A badger crouches on bare ground beside wood and bares its teeth toward the camera.",
+    "detail": "A badger crouches on bare ground beside wood and bares its teeth toward the camera."
+  },
+  {
+    "id": "land-recovery-28-02",
+    "sha1": "b2545a6c76ca1d00b9e26a3511cda596cbc3f608",
+    "subject": "Corvus corax",
+    "identityNameBase": "Maud Overhead",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/707bca95-008b-41b8-9941-1705e98fa582/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/707bca95-008b-41b8-9941-1705e98fa582",
+    "creator": "NPS / Jacob W. Frank",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/707bca95-008b-41b8-9941-1705e98fa582",
+    "width": 7304,
+    "height": 4869,
+    "alt": "A raven stands on a rock with a dead, dirt-covered frog in its bill.",
+    "detail": "A raven stands on a rock with a dead, dirt-covered frog in its bill."
+  },
+  {
+    "id": "land-recovery-28-maud-avatar",
+    "sha1": "b8055d51e56d411f792d9ae15bbfd3ce07cfd694",
+    "subject": "Corvus corax",
+    "identityNameBase": "Maud Overhead",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a567575a-b8a1-476f-a265-ee192d76202f",
+    "creator": "NPS / Jacob W. Frank",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/a567575a-b8a1-476f-a265-ee192d76202f",
+    "width": 7429,
+    "height": 4953,
+    "alt": "A common raven with an open heavy bill and shaggy throat feathers.",
+    "detail": "An adult-looking common raven portrait."
+  }
+]
