@@ -226,6 +226,8 @@ Aquatic44 admits Silas Return under [lead decisions](drafts/AQUATIC-VISUAL-44-AD
 
 Land45 admits Beatrice Bark under [lead decisions](drafts/LAND-REGULAR-45-ADMISSION.md) and [revised canon](drafts/LAND-REGULAR-45-CANON.md). Her first event concerns savoring defeated by appetite; the earlier descent draft is not her history.
 
+Beatrice's [childhood recollection](drafts/BEATRICE-CHILDHOOD-ADMISSION.md) adds a remembered outing with her mother. She climbs expecting a forest view, finds her mother's body blocking it, and falls asleep. This is a memory told by the adult narrator, not present motherhood or a replacement avatar. The obstructed outing and sleeping through its intended pleasure are spent mechanisms.
+
 
 Botanical46 admits Sabine Warmfold under [lead decisions](drafts/BOTANICAL-REGULAR-46-ADMISSION.md) and [stage-specific canon](drafts/BOTANICAL-REGULAR-46-CANON.md). Her close-up shows flowers on the spadix; her profile shows the enclosing spathe. The same flowers cannot return to their earlier receptive stage.
 
