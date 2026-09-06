@@ -1,5 +1,128 @@
+import floraOneHundredSixtySixMedia from "./sample-corpus-flora-one-hundred-sixty-six-media.json" with { type: "json" };
+import botanicalOneHundredSixtyMedia from "./sample-corpus-botanical-one-hundred-sixty-media.json" with { type: "json" };
+import landOneHundredSixtyOneMedia from "./sample-corpus-land-one-hundred-sixty-one-media.json" with { type: "json" };
+import aquaticOneHundredFiftyNineMedia from "./sample-corpus-aquatic-one-hundred-fifty-nine-media.json" with { type: "json" };
+import inesOneHundredFiftyEightMedia from "./sample-corpus-ines-one-hundred-fifty-eight-media.json" with { type: "json" };
+import botanicalOneHundredFiftySixMedia from "./sample-corpus-botanical-one-hundred-fifty-six-media.json" with { type: "json" };
+import landOneHundredFiftyFiveMedia from "./sample-corpus-land-one-hundred-fifty-five-media.json" with { type: "json" };
+import aquaticOneHundredFiftyMedia from "./sample-corpus-aquatic-one-hundred-fifty-media.json" with { type: "json" };
+import botanicalOneHundredFiftyTwoMedia from "./sample-corpus-botanical-one-hundred-fifty-two-media.json" with { type: "json" };
+import larkOneHundredFiftyFourMedia from "./sample-corpus-lark-one-hundred-fifty-four-media.json" with { type: "json" };
+import rheaOneHundredFiftyThreeMedia from "./sample-corpus-rhea-one-hundred-fifty-three-media.json" with { type: "json" };
+import landOneHundredFiftyOneMedia from "./sample-corpus-land-one-hundred-fifty-one-media.json" with { type: "json" };
+import landOneHundredFortyEightMedia from "./sample-corpus-land-one-hundred-forty-eight-media.json" with { type: "json" };
+import botanicalOneHundredFortySixMedia from "./sample-corpus-botanical-one-hundred-forty-six-media.json" with { type: "json" };
+import aquaticOneHundredFortyFourMedia from "./sample-corpus-aquatic-one-hundred-forty-four-media.json" with { type: "json" };
+import fennOneHundredFortyFiveMedia from "./sample-corpus-fenn-one-hundred-forty-five-media.json" with { type: "json" };
+import botanicalOneHundredFortyOneMedia from "./sample-corpus-botanical-one-hundred-forty-one-media.json" with { type: "json" };
+import landOneHundredThirtyEightMedia from "./sample-corpus-land-one-hundred-thirty-eight-media.json" with { type: "json" };
+import mallowOneHundredFortyMedia from "./sample-corpus-mallow-one-hundred-forty-media.json" with { type: "json" };
+import landOneHundredThirtyFourMedia from "./sample-corpus-land-one-hundred-thirty-four-media.json" with { type: "json" };
+import aquaticOneHundredThirtyOneMedia from "./sample-corpus-aquatic-one-hundred-thirty-one-media.json" with { type: "json" };
+import editorialOneHundredThirtyThreeMedia from "./sample-corpus-editorial-one-hundred-thirty-three-media.json" with { type: "json" };
+import landOneHundredThirtyMedia from "./sample-corpus-land-one-hundred-thirty-media.json" with { type: "json" };
+import aquaticOneHundredTwentySixMedia from "./sample-corpus-aquatic-one-hundred-twenty-six-media.json" with { type: "json" };
+import editorialOneHundredTwentyEightMedia from "./sample-corpus-editorial-one-hundred-twenty-eight-media.json" with { type: "json" };
+import aquaticOneHundredTwentyFourMedia from "./sample-corpus-aquatic-one-hundred-twenty-four-media.json" with { type: "json" };
+import editorialOneHundredTwentyOneMedia from "./sample-corpus-editorial-one-hundred-twenty-one-media.json" with { type: "json" };
+import almaOneHundredNineteenMedia from "./sample-corpus-alma-one-hundred-nineteen-media.json" with { type: "json" };
+import aquaticOneHundredSixteenMedia from "./sample-corpus-aquatic-one-hundred-sixteen-media.json" with { type: "json" };
+import editorialOneHundredFourteenMedia from "./sample-corpus-editorial-one-hundred-fourteen-media.json" with { type: "json" };
+import landOneHundredSixMedia from "./sample-corpus-land-one-hundred-six-media.json" with { type: "json" };
+import editorialOneHundredEightMedia from "./sample-corpus-editorial-one-hundred-eight-media.json" with { type: "json" };
+import editorialOneHundredThreeMedia from "./sample-corpus-editorial-one-hundred-three-media.json" with { type: "json" };
+import botanicalOneHundredOneMedia from "./sample-corpus-botanical-one-hundred-one-media.json" with { type: "json" };
+import editorialNinetySevenEightMedia from "./sample-corpus-editorial-ninety-seven-eight-media.json" with { type: "json" };
+import aquaticNinetySixMedia from "./sample-corpus-aquatic-ninety-six-media.json" with { type: "json" };
+import maudNinetyFourMedia from "./sample-corpus-maud-ninety-four-media.json" with { type: "json" };
+import botanicalNinetyFiveMedia from "./sample-corpus-botanical-ninety-five-media.json" with { type: "json" };
+import selaNinetyThreeMedia from "./sample-corpus-sela-ninety-three-media.json" with { type: "json" };
+import aquaticEightySixMedia from "./sample-corpus-aquatic-eighty-six-media.json" with { type: "json" };
+import botanicalEightyEightMedia from "./sample-corpus-botanical-eighty-eight-media.json" with { type: "json" };
+import landEightySevenMedia from "./sample-corpus-land-eighty-seven-media.json" with { type: "json" };
+import landEightyThreeMedia from "./sample-corpus-land-eighty-three-media.json" with { type: "json" };
+import botanicalEightyFiveMedia from "./sample-corpus-botanical-eighty-five-media.json" with { type: "json" };
+import botanicalEightyOneMedia from "./sample-corpus-botanical-eighty-one-media.json" with { type: "json" };
+import landEightyMedia from "./sample-corpus-land-eighty-media.json" with { type: "json" };
+import aquaticSeventyNineMedia from "./sample-corpus-aquatic-seventy-nine-media.json" with { type: "json" };
+import botanicalSeventySevenMedia from "./sample-corpus-botanical-seventy-seven-media.json" with { type: "json" };
+import aquaticSeventyFiveMedia from "./sample-corpus-aquatic-seventy-five-media.json" with { type: "json" };
+import novaSeventyFourMedia from "./sample-corpus-nova-seventy-four-media.json" with { type: "json" };
+import aquaticSeventyOneMedia from "./sample-corpus-aquatic-seventy-one-media.json" with { type: "json" };
+import aquaticSixtySevenMedia from "./sample-corpus-aquatic-sixty-seven-media.json" with { type: "json" };
+import landSixtyFiveMedia from "./sample-corpus-land-sixty-five-media.json" with { type: "json" };
+import landSixtyTwoMedia from "./sample-corpus-land-sixty-two-media.json" with { type: "json" };
+import botanicalSixtyThreeMedia from "./sample-corpus-botanical-sixty-three-media.json" with { type: "json" };
+import aquaticFiftySevenMedia from "./sample-corpus-aquatic-fifty-seven-media.json" with { type: "json" };
+import sylviaDeliveryFiftyThreeMedia from "./sample-corpus-sylvia-delivery-fifty-three-media.json" with { type: "json" };
+import editorialFiftyFiftyTwoMedia from "./sample-corpus-editorial-fifty-fifty-two-media.json" with { type: "json" };
+import landFortyNineMedia from "./sample-corpus-land-forty-nine-media.json" with { type: "json" };
+import botanicalFortySixMedia from "./sample-corpus-botanical-forty-six-media.json" with { type: "json" };
+import landFortyFiveMedia from "./sample-corpus-land-forty-five-media.json" with { type: "json" };
+import aquaticFortyFourMedia from "./sample-corpus-aquatic-forty-four-media.json" with { type: "json" };
+import editorialFortyTwoThreeMedia from "./sample-corpus-editorial-forty-two-three-media.json" with { type: "json" };
+import aquaticFortyOneMedia from "./sample-corpus-aquatic-forty-one-media.json" with { type: "json" };
+import botanicalFortyMedia from "./sample-corpus-botanical-forty-media.json" with { type: "json" };
+import aquaticThirtyFiveMedia from "./sample-corpus-aquatic-thirty-five-media.json" with { type: "json" };
+import landThirtySixMedia from "./sample-corpus-land-thirty-six-media.json" with { type: "json" };
+import botanicalThirtyEightMedia from "./sample-corpus-botanical-thirty-eight-media.json" with { type: "json" };
+import avatarDeliveryThirtySevenMedia from "./sample-corpus-avatar-delivery-thirty-seven-media.json" with { type: "json" };
+import aquaticThirtyMedia from "./sample-corpus-aquatic-thirty-media.json" with { type: "json" };
+import botanicalThirtyTwoMedia from "./sample-corpus-botanical-thirty-two-media.json" with { type: "json" };
+import landThirtyOneMedia from "./sample-corpus-land-thirty-one-media.json" with { type: "json" };
+import avatarDeliveryThirtyFourMedia from "./sample-corpus-avatar-delivery-thirty-four-media.json" with { type: "json" };
+import landRecoveryTwentyEightMedia from "./sample-corpus-land-recovery-twenty-eight-media.json" with { type: "json" };
+import botanicalTwentySevenMedia from "./sample-corpus-botanical-twenty-seven-media.json" with { type: "json" };
+import aquaticTwentySixMedia from "./sample-corpus-aquatic-twenty-six-media.json" with { type: "json" };
+import birdTwentyFiveMedia from "./sample-corpus-bird-twenty-five-media.json" with { type: "json" };
+import botanicalTwentyFourMedia from "./sample-corpus-botanical-twenty-four-media.json" with { type: "json" };
+import oceanVisualTwentyThreeMedia from "./sample-corpus-ocean-visual-twenty-three-media.json" with { type: "json" };
+import landTwentyMedia from "./sample-corpus-land-twenty-media.json" with { type: "json" };
+import oceanTwentyOneMedia from "./sample-corpus-ocean-twenty-one-media.json" with { type: "json" };
+import oceanSeventeenMedia from "./sample-corpus-ocean-seventeen-media.json" with { type: "json" };
+import visualLandThirteenMedia from "./sample-corpus-visual-land-thirteen-media.json" with { type: "json" };
+import landTwelveMedia from "./sample-corpus-land-twelve-media.json" with { type: "json" };
+import oceanTwelveMedia from "./sample-corpus-ocean-twelve-media.json" with { type: "json" };
+import youtubeTenMedia from "./sample-corpus-youtube-ten-media.json" with { type: "json" };
 import generatedCorpus from "./sample-corpus.generated.json" with { type: "json" };
+import airMedia from "./sample-corpus-air-media.json" with { type: "json" };
+import landMedia from "./sample-corpus-land-media.json" with { type: "json" };
+import oceanMedia from "./sample-corpus-ocean-media.json" with { type: "json" };
+import strangeMedia from "./sample-corpus-strange-media.json" with { type: "json" };
+import strangeNextMedia from "./sample-corpus-strange-next-media.json" with { type: "json" };
+import strangeFoundationsMedia from "./sample-corpus-strange-foundations-media.json" with { type: "json" };
+import deepseaNextMedia from "./sample-corpus-deepsea-next-media.json" with { type: "json" };
+import deepseaBondsMedia from "./sample-corpus-deepsea-bonds-media.json" with { type: "json" };
+import strangeWildMedia from "./sample-corpus-strange-wild-media.json" with { type: "json" };
+import strangeEightMedia from "./sample-corpus-strange-eight-media.json" with { type: "json" };
+import deepseaNineMedia from "./sample-corpus-deepsea-nine-media.json" with { type: "json" };
+import legacyOceanTenMedia from "./sample-corpus-legacy-ocean-ten-media.json" with { type: "json" };
+import nellVeraTwelveMedia from "./sample-corpus-nell-vera-twelve-media.json" with { type: "json" };
+import legacyOceanThirteenMedia from "./sample-corpus-legacy-ocean-thirteen-media.json" with { type: "json" };
+import legacyLandNineMedia from "./sample-corpus-legacy-land-nine-media.json" with { type: "json" };
+import strangeTenMedia from "./sample-corpus-strange-ten-media.json" with { type: "json" };
+import strangeElevenMedia from "./sample-corpus-strange-eleven-media.json" with { type: "json" };
+import mediumOneMedia from "./sample-corpus-medium-one-media.json" with { type: "json" };
+import substackOneMedia from "./sample-corpus-substack-one-media.json" with { type: "json" };
+import visualLandTwoMedia from "./sample-corpus-visual-land-two-media.json" with { type: "json" };
+import visualLandThreeMedia from "./sample-corpus-visual-land-three-media.json" with { type: "json" };
+import landRegularFourMedia from "./sample-corpus-land-regular-four-media.json" with { type: "json" };
+import landRegularFiveMedia from "./sample-corpus-land-regular-five-media.json" with { type: "json" };
+import youtubeOneMedia from "./sample-corpus-youtube-one-media.json" with { type: "json" };
+import oceanRegularSixMedia from "./sample-corpus-ocean-regular-six-media.json" with { type: "json" };
+import visualLandSixMedia from "./sample-corpus-visual-land-six-media.json" with { type: "json" };
+import landRegularSevenMedia from "./sample-corpus-land-regular-seven-media.json" with { type: "json" };
+import editorialTwelveMedia from "./sample-corpus-editorial-twelve-media.json" with { type: "json" };
+import visualLandEightMedia from "./sample-corpus-visual-land-eight-media.json" with { type: "json" };
+import novaNineMedia from "./sample-corpus-nova-nine-media.json" with { type: "json" };
+import avatarNineMedia from "./sample-corpus-avatar-nine-media.json" with { type: "json" };
+import avatarEightMedia from "./sample-corpus-avatar-eight-media.json" with { type: "json" };
+import avatarSevenMedia from "./sample-corpus-avatar-seven-media.json" with { type: "json" };
+import frogbertVisualTwoMedia from "./sample-corpus-frogbert-visual-two-media.json" with { type: "json" };
+import oceanRegularThreeMedia from "./sample-corpus-ocean-regular-three-media.json" with { type: "json" };
 import { SAMPLE_CHARACTER_ARCS, type SampleCharacterArc, type SampleCharacterEpisode } from "./sample-character-arcs.js";
+import { SAMPLE_CHARACTER_AVATAR_SHA1, SAMPLE_AVATAR_FOCAL_POINTS, type SampleAvatarFocalPoint } from "./sample-character-avatars.js";
+export type { SampleAvatarFocalPoint } from "./sample-character-avatars.js";
 
 // Editorial contract: docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md
 
@@ -31,6 +154,7 @@ export interface SampleCorpusMediaAsset {
   sourceUrl: string;
   creator: string;
   license: string;
+  licenseUrl?: string;
   width: number;
   height: number;
   sha1: string;
@@ -41,7 +165,7 @@ export interface SampleCorpusMediaAsset {
   placeId?: string;
 }
 
-type GeneratedAsset = Omit<SampleCorpusMediaAsset, "alt" | "baseUrl" | "fieldNote" | "placeId">;
+type GeneratedAsset = Omit<SampleCorpusMediaAsset, "alt" | "baseUrl" | "fieldNote" | "placeId"> & { alt?: string };
 
 interface CuratedEpisodeAssignment {
   arc: SampleCharacterArc;
@@ -49,7 +173,7 @@ interface CuratedEpisodeAssignment {
   sequence: number;
 }
 
-const generatedAssets = generatedCorpus as readonly GeneratedAsset[];
+const generatedAssets = [...generatedCorpus, ...airMedia, ...landMedia, ...oceanMedia, ...strangeMedia, ...strangeNextMedia, ...strangeFoundationsMedia, ...deepseaNextMedia, ...deepseaBondsMedia, ...strangeWildMedia, ...strangeEightMedia, ...deepseaNineMedia, ...legacyOceanTenMedia, ...nellVeraTwelveMedia, ...legacyOceanThirteenMedia, ...legacyLandNineMedia, ...strangeTenMedia, ...strangeElevenMedia, ...mediumOneMedia, ...substackOneMedia, ...visualLandTwoMedia, ...visualLandThreeMedia, ...landRegularFourMedia, ...frogbertVisualTwoMedia, ...oceanRegularThreeMedia, ...landRegularFiveMedia, ...youtubeOneMedia, ...oceanRegularSixMedia, ...visualLandSixMedia, ...avatarSevenMedia, ...avatarEightMedia, ...landRegularSevenMedia, ...avatarNineMedia, ...novaNineMedia, ...visualLandEightMedia, ...editorialTwelveMedia, ...youtubeTenMedia, ...landTwelveMedia, ...oceanTwelveMedia, ...visualLandThirteenMedia, ...oceanSeventeenMedia, ...oceanTwentyOneMedia, ...landTwentyMedia, ...oceanVisualTwentyThreeMedia, ...botanicalTwentyFourMedia, ...birdTwentyFiveMedia, ...aquaticTwentySixMedia, ...botanicalTwentySevenMedia, ...landRecoveryTwentyEightMedia, ...avatarDeliveryThirtyFourMedia, ...botanicalThirtyTwoMedia, ...landThirtyOneMedia, ...aquaticThirtyMedia, ...avatarDeliveryThirtySevenMedia, ...botanicalThirtyEightMedia, ...aquaticThirtyFiveMedia, ...landThirtySixMedia, ...botanicalFortyMedia, ...aquaticFortyOneMedia, ...editorialFortyTwoThreeMedia, ...aquaticFortyFourMedia, ...landFortyFiveMedia, ...botanicalFortySixMedia, ...landFortyNineMedia, ...editorialFiftyFiftyTwoMedia, ...sylviaDeliveryFiftyThreeMedia, ...aquaticFiftySevenMedia, ...botanicalSixtyThreeMedia, ...landSixtyTwoMedia, ...landSixtyFiveMedia, ...aquaticSixtySevenMedia, ...aquaticSeventyOneMedia, ...novaSeventyFourMedia, ...aquaticSeventyFiveMedia, ...botanicalSeventySevenMedia, ...aquaticSeventyNineMedia, ...landEightyMedia, ...botanicalEightyOneMedia, ...botanicalEightyFiveMedia, ...landEightyThreeMedia, ...landEightySevenMedia, ...aquaticEightySixMedia, ...botanicalEightyEightMedia, ...selaNinetyThreeMedia, ...maudNinetyFourMedia, ...botanicalNinetyFiveMedia, ...aquaticNinetySixMedia, ...editorialNinetySevenEightMedia, ...botanicalOneHundredOneMedia, ...editorialOneHundredThreeMedia, ...editorialOneHundredEightMedia, ...landOneHundredSixMedia, ...editorialOneHundredFourteenMedia, ...aquaticOneHundredSixteenMedia, ...almaOneHundredNineteenMedia, ...editorialOneHundredTwentyOneMedia, ...aquaticOneHundredTwentyFourMedia, ...editorialOneHundredTwentyEightMedia, ...aquaticOneHundredTwentySixMedia, ...landOneHundredThirtyMedia, ...editorialOneHundredThirtyThreeMedia, ...aquaticOneHundredThirtyOneMedia, ...landOneHundredThirtyFourMedia, ...mallowOneHundredFortyMedia, ...landOneHundredThirtyEightMedia, ...botanicalOneHundredFortyOneMedia, ...fennOneHundredFortyFiveMedia, ...aquaticOneHundredFortyFourMedia, ...botanicalOneHundredFortySixMedia, ...landOneHundredFortyEightMedia, ...landOneHundredFiftyOneMedia, ...rheaOneHundredFiftyThreeMedia, ...larkOneHundredFiftyFourMedia, ...botanicalOneHundredFiftyTwoMedia, ...aquaticOneHundredFiftyMedia, ...botanicalOneHundredFiftySixMedia, ...landOneHundredFiftyFiveMedia, ...inesOneHundredFiftyEightMedia, ...aquaticOneHundredFiftyNineMedia, ...landOneHundredSixtyOneMedia, ...botanicalOneHundredSixtyMedia, ...floraOneHundredSixtySixMedia] as readonly GeneratedAsset[];
 const generatedAssetsBySha1 = new Map<string, GeneratedAsset>();
 for (const asset of generatedAssets) {
   if (generatedAssetsBySha1.has(asset.sha1)) {
@@ -62,6 +186,7 @@ const curatedAssetSha1s = new Set<string>();
 const curatedAssets: GeneratedAsset[] = [];
 for (const arc of SAMPLE_CHARACTER_ARCS) {
   for (const [sequence, episode] of arc.episodes.entries()) {
+    if (episode.mediaSha1 === null) continue;
     if (!/^[0-9a-f]{40}$/.test(episode.mediaSha1)) {
       throw new Error(`The curated ${arc.identityNameBase} episode ${episode.title} has an invalid media SHA.`);
     }
@@ -77,7 +202,7 @@ for (const arc of SAMPLE_CHARACTER_ARCS) {
     }
     curatedAssetSha1s.add(asset.sha1);
     curatedEpisodeAssignments.set(asset.id, { arc, episode, sequence });
-    curatedAssets.push(asset);
+    curatedAssets.push({ ...asset, identityNameBase: arc.identityNameBase });
   }
 }
 
@@ -722,7 +847,7 @@ export const SAMPLE_CURATED_DEMO_MEDIA: readonly SampleCorpusMediaAsset[] = cura
   return [{
     ...asset,
     baseUrl: asset.imageUrl,
-    alt: `Photograph of ${displaySubject(asset)} in its natural setting.`,
+    alt: asset.alt ?? `Photograph of ${displaySubject(asset)} in its natural setting.`,
     fieldNote: assignment.episode.body,
     ...(asset.coordinates ? { placeId: asset.id } : {}),
   }];
@@ -731,10 +856,28 @@ export const SAMPLE_CURATED_DEMO_MEDIA: readonly SampleCorpusMediaAsset[] = cura
 export const SAMPLE_CORPUS_MEDIA: readonly SampleCorpusMediaAsset[] = generatedAssets.map((asset, index) => ({
   ...asset,
   baseUrl: asset.imageUrl,
-  alt: `Photograph of ${displaySubject(asset)} in its natural setting.`,
+  alt: asset.alt ?? `Photograph of ${displaySubject(asset)} in its natural setting.`,
   fieldNote: curatedEpisodeAssignments.get(asset.id)?.episode.body ?? renderNarrative(asset, "rss", index, 0),
   ...(asset.coordinates ? { placeId: asset.id } : {}),
 }));
+
+/** Explicit portrait review, independent from an episode's scene illustration. */
+export const SAMPLE_CHARACTER_AVATAR_MEDIA: ReadonlyMap<string, SampleCorpusMediaAsset> = new Map(
+  Object.entries(SAMPLE_CHARACTER_AVATAR_SHA1).map(([characterId, sha1]) => {
+    const asset = SAMPLE_CORPUS_MEDIA.find((candidate) => candidate.sha1 === sha1);
+    if (!asset) throw new Error(`Missing reviewed avatar for ${characterId}: ${sha1}`);
+    return [characterId, asset] as const;
+  }),
+);
+
+/** Source URL keys preserve the selected profile image's own reviewed crop. */
+export const SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS: ReadonlyMap<string, SampleAvatarFocalPoint> = new Map(
+  Object.entries(SAMPLE_AVATAR_FOCAL_POINTS).map(([sha1, focalPoint]) => {
+    const asset = SAMPLE_CORPUS_MEDIA.find((candidate) => candidate.sha1 === sha1);
+    if (!asset) throw new Error(`Missing reviewed avatar crop source: ${sha1}`);
+    return [asset.baseUrl, focalPoint] as const;
+  }),
+);
 
 export const SAMPLE_CORPUS_PLACES: readonly SampleCorpusPlace[] = SAMPLE_CORPUS_MEDIA
   .filter((asset): asset is SampleCorpusMediaAsset & { coordinates: { lat: number; lng: number } } =>
@@ -762,7 +905,7 @@ export function sampleCorpusSourceUrl(asset: SampleCorpusMediaAsset): string {
 }
 
 export function sampleCorpusAttribution(asset: SampleCorpusMediaAsset): string {
-  return `Photograph by ${asset.creator}, ${asset.license}, via Wikimedia Commons.`;
+  return `Photograph by ${asset.creator}, ${asset.license}.\nSource: ${asset.sourceUrl}${asset.licenseUrl ? `\nLicense: ${asset.licenseUrl}` : ""}`;
 }
 
 export function sampleCorpusIdentityName(asset: SampleCorpusMediaAsset, _index: number): string {

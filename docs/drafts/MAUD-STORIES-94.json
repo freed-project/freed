@@ -1,0 +1,114 @@
+{
+  "batch": "MAUD-STORIES-94",
+  "status": "one_candidate_pending_independent_prose_review",
+  "candidateCount": 1,
+  "candidate": {
+    "characterId": "maud-overhead",
+    "identityNameBase": "Maud Overhead",
+    "platform": "instagram",
+    "contentType": "story",
+    "subject": "Corvus corax",
+    "theme": "weather",
+    "title": "Before I go",
+    "body": "Picked the roof to make myself heard. Called until the sun had me breathing with my bill open.\n\nA tree below had shade. I could reach it before the next call.\n\nOpened my bill wider for that one. Took another breath instead.\n\nStill up here. I want to leave on a louder noise.",
+    "mediaSha1": "5e222ef4f867ebe5b51081466d98e69c665a69c2",
+    "photoId": 170927098,
+    "canon": {
+      "sexAndAge": "Existing adult female; photographed sex and exact age unrecorded.",
+      "home": "Yellowstone forest and rock country",
+      "coordinates": {
+        "lat": 44.7,
+        "lng": -110.5
+      },
+      "chronology": "Append after The second set, in an unspecified warmer period. Source November date is not fictional episode chronology. No movement to California. Prior two admitted bodies and current avatar unchanged.",
+      "newEvent": "Maud chooses an exposed calling perch, gets warm, and keeps postponing departure because she wants a louder final call.",
+      "noNewCommitments": "No new mate, young, injury, predator, named audience or permanent trait change."
+    },
+    "visibleScene": "A raven stands on a shingled roof ridge beside a rusted pipe, bill open and throat feathers raised. One foot reaches forward along the ridge; no alternating-foot sequence is claimed.",
+    "fictionBoundary": "Roof choice, earlier calls, fictional warm weather, panting, shaded tree outside the frame and desire for a final louder call are invented. The source describes playful clucking while puffing, not observed thermal stress. A bill-open still cannot diagnose panting. This is an illustrative calling posture supporting a fictional sequence, not a factual account of the photographed individual.",
+    "authorAssessment": "Candidate for independent prose review. The payoff is the conflict between wanting to depart and wanting the final call to be bigger; instead of ending, she breathes and remains. No answering voice, echo, imagined recipient or audience embarrassment. No feet alternation, avoiding Finch87. No lesson or aphorism."
+  },
+  "media": {
+    "photoId": 170927098,
+    "observationId": 102274324,
+    "sourcePage": "https://www.inaturalist.org/observations/102274324",
+    "sourceMetadataUrl": "https://www.inaturalist.org/observations/102274324.json",
+    "metadataLocalPath": "/tmp/freed-land91/102274324.json",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/170927098/large.jpg",
+    "localPath": "/tmp/freed-land91/170927098.jpg",
+    "attribution": "(c) James Muehlner, some rights reserved (CC BY-SA), uploaded by James Muehlner",
+    "license": "Creative Commons Attribution-ShareAlike License",
+    "licenseCode": "CC-BY-SA",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "bytes": 174999,
+    "sha1": "5e222ef4f867ebe5b51081466d98e69c665a69c2",
+    "sha256": "d13ad58957140f771165c69b92f8fba2eb014229d1bde5900410cdf7816abde7",
+    "width": 1024,
+    "height": 684,
+    "sourceOriginalDimensions": {
+      "width": 2048,
+      "height": 1367
+    },
+    "originalDownloaded": false,
+    "originalHash": null,
+    "sourceSpeciesGuess": "Common Raven",
+    "sourceTaxonId": 8010,
+    "qualityGrade": "research",
+    "sourcePlace": "Presidio of San Francisco, San Francisco, CA, USA",
+    "observedOn": "2021-11-30",
+    "sourceDescription": "Making playful clucking noises while puffing",
+    "individuallyOpened": true,
+    "changes": "None. Exact source-published large delivery bytes. Local .jpg name does not alter the source JPEG encoding.",
+    "group": "Maud rooftop vocal play",
+    "visibleScene": "A raven stands on a shingled roof ridge beside a rusted pipe, bill open and throat feathers raised.",
+    "status": "candidate_pending_lead_review",
+    "reason": "Exact image independently passed root review in batch91; author reopened for94. Sharp open-billed raven on sunlit roof supports invented calling and heat sequence. The source itself reports playful clucking, not heat."
+  },
+  "biology": [
+    {
+      "url": "https://www.audubon.org/news/the-many-ways-birds-beat-heat",
+      "title": "The Many Ways Birds Beat the Heat, BirdNote / Audubon",
+      "opened": true,
+      "supports": "Ordinary avian panting with open bill and seeking shade in heat; original expert educational transcript uses a crow as example.",
+      "limits": "No claim that this source documents the photographed raven, its weather, a universal call failure, or a specific hot-foot reflex. No detailed air-sac or gular mechanism used."
+    },
+    {
+      "url": "https://www.nps.gov/yell/learn/nature/raven.htm",
+      "title": "Raven, Yellowstone National Park",
+      "opened": true,
+      "supports": "Common raven Corvus corax occurs in Yellowstone and uses areas around people.",
+      "limits": "Does not identify source photograph as Yellowstone."
+    },
+    {
+      "url": "https://www.nps.gov/articles/ravens.htm",
+      "title": "Ravens, NPS Joshua Tree",
+      "opened": true,
+      "supports": "Broad vocal repertoire and exploitation of human habitation.",
+      "limits": "No claim of observed roof strategy, thermal response or learned loudness in this photograph."
+    }
+  ],
+  "privateAlternatives": [
+    {
+      "title": "Hot ridge",
+      "body": "Chose the roof to call from. Felt the warmth through my feet and called louder. Lifted one foot. Called. Changed feet. Called. There was shade in the tree. I could have finished there. Made it halfway through the next call before both feet wanted to leave.",
+      "status": "retired_private_alternative",
+      "assessment": "Too close to Finch87 alternating feet at a shade boundary. Specific hot-roof foot response lacks direct species evidence in the bounded search. Retired, not candidate."
+    },
+    {
+      "title": "An unfinished performance",
+      "body": "I wanted the whole clearing to hear me. Chose the roof. Put everything into the first call. By the fifth, I was hot enough to keep my bill open between them. Tried one more. Had to stop halfway through and breathe. The next one could wait. I stayed where it would come from.",
+      "status": "retired_private_alternative",
+      "assessment": "More solemn and measured than Maud. Closing location statement explains commitment without enough comic appetite. Removed numerical call tally and strengthened the stubborn desire in selected prose."
+    }
+  ],
+  "validation": {
+    "deliveryReopenedIndividually": true,
+    "deliverySha1Reverified": true,
+    "sourceMetadata": "Unchanged photo-specific license and attribution from cached primary observation JSON verified in91. No source or image redownload needed.",
+    "rootImageReview": "Passed91, retained; new prose review pending.",
+    "runtimeEdits": false,
+    "previousLiteralBodiesPreserved": true,
+    "avatarPreserved": true,
+    "otherTaskInspection": false
+  }
+}

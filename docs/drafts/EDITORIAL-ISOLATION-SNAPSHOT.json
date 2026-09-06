@@ -1,0 +1,1039 @@
+{
+  "sourceCheckout": "/Users/aubreyfalconer/dev/freed-demo-500-corpus",
+  "destinationCheckout": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "scope": "Editorial files and transitive referenced draft evidence only; product files and dependencies excluded",
+  "files": [
+    {
+      "path": "docs/SAMPLE-CHARACTER-CANON.md",
+      "sha256": "72a534c0f6cd62e1d4efbafbbab9648da0d944ce4691d15422585c080d98ec62"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-1000-REBUILD.md",
+      "sha256": "021f390a130564e728e816a481128d6bbd772bb65877a95d140659026bb939e9"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-500-EXPANSION.md",
+      "sha256": "5b9df05f377356fdfaa654be623c3abffcf7292db41eb1a02548e0d24324ddca"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-AIR-REVIEW.md",
+      "sha256": "dfee4dac5cf17bdf1991854f0e003083bef03be65baacc901bc0778ff1750ee0"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-AUDIT-70.md",
+      "sha256": "0970300b7a34469e3a0716ac8d09114e5406c52a252128c96af5ec2e1b037c28"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-BATCH-01.md",
+      "sha256": "89ff7585a046dbdf9f5662e628f6f809dc873a62c2c7df8e81d51b0e1f709c93"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md",
+      "sha256": "09d6e88001ac8cd0c3df727a7672a2482b18060647b09e30467f18256f248580"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-LAND-REVIEW.md",
+      "sha256": "fa10cec43555bb273b991a736e70292f91351f1fe63256a9484ebbbab4384b0f"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-MANNY-IMAGE-AUDIT.md",
+      "sha256": "ac41660160f2414ce1608f7b50b446bd93b6c648f6e9a65250ef394112750181"
+    },
+    {
+      "path": "docs/SAMPLE-CORPUS-OCEAN-REVIEW.md",
+      "sha256": "ac3bf77a13e3e2fc104400c1ee08175bebb2cbb434b42792ea0493276150eb5d"
+    },
+    {
+      "path": "docs/drafts/ANSEL-DELIVERY-37.json",
+      "sha256": "bb97cd625d2fe73da3a204ef3d3023927a79b7ce496c01e2ce07bdc21713d2a6"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-26-ADMISSION.md",
+      "sha256": "b844bcdc7b61c993960b8643675d9d1a1002516b5774c9b0f8480b0988f0285e"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-26-CANON.md",
+      "sha256": "3aac311144ac7aec474df1d38d8573e6522ffc35b7334e88209ca7fb93637449"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-26.json",
+      "sha256": "4c4272ffc40373c6b0cc48f8c220bde1473556921346aec5c85d85021056d043"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-35-ADMISSION.md",
+      "sha256": "316046a11d1400c7b95ee2b0abb67cfde4af09be9404eb22c12b02cce808cb76"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-35-CANON.md",
+      "sha256": "23106408d25582a84c49f28f695d3beb54c8cd991471d51568274a897e5656ca"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-41-ADMISSION.md",
+      "sha256": "6e9c57feb050a72dca3511d5ca112e60c792840de9011eba0f95424fed50fa45"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-REGULAR-41-CANON.md",
+      "sha256": "213db9ab34a797f693e1ae07066780b6ac3a9a861de2164621a1aa3f8893a894"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-VISUAL-30-ADMISSION.md",
+      "sha256": "16265b9ca13e08ef81b875ed101d793ec36ddb74312d51f93a98f907382962e2"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-VISUAL-44-ADMISSION.md",
+      "sha256": "3c105cc15ecd593deba2ae40333f7391b040ad4c519aed92d2c2cb2782752c94"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-VISUAL-44-CANON.md",
+      "sha256": "9ff915df34fe6302b15918f538dd90abe019b5e90bfe443a9a5c046c60571d9b"
+    },
+    {
+      "path": "docs/drafts/AQUATIC-VISUAL-44.json",
+      "sha256": "9a2775d2029a782d65062d6f66321c6ec39246eb85f1abb966cb82b5004ecd83"
+    },
+    {
+      "path": "docs/drafts/AVATAR-DELIVERY-34.json",
+      "sha256": "f0594eb825d0d6e927a87149fa6fce6645f9787626c8f7a022e10df905f8c708"
+    },
+    {
+      "path": "docs/drafts/AVATAR-REVIEW-06.md",
+      "sha256": "c7de6c4e83c60c480eca59f5cd835cd7cfbf25aebcaae8807a4ca02a6642e12a"
+    },
+    {
+      "path": "docs/drafts/AVATAR-REVIEW-07.md",
+      "sha256": "1b3540ae29e45048396d66cc33b6dc84db1c28381c97a129c2597230e62f2d8c"
+    },
+    {
+      "path": "docs/drafts/AVATAR-REVIEW-09.md",
+      "sha256": "9ddc74da200690801fef86dbbaae13a31cc555bbcc3ce3cb211a3d8b6f5269aa"
+    },
+    {
+      "path": "docs/drafts/BIRD-REGULAR-25-ADMISSION.md",
+      "sha256": "b506a9bad0c46c4680b8adf2dd62514b4a6d61d055e025e2842b551ad4994a5e"
+    },
+    {
+      "path": "docs/drafts/BIRD-REGULAR-25-AVATARS.json",
+      "sha256": "a6d85ffc178f62509d7e3742358923a68d457becb4e77562e9d426786a7227e8"
+    },
+    {
+      "path": "docs/drafts/BIRD-REGULAR-25-CANON.md",
+      "sha256": "b7f0b9ad02f0d8a71399f2c95bd06280fcf5600e1a8434b772e2afb43a580364"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-24-ADMISSION.md",
+      "sha256": "cde138e0c523d619f05f077218ae6320311d7959291111e92bd86e7f7f8c3c2f"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-24-CANON.md",
+      "sha256": "37c35b0078dcd0df05f62b39c61ddd39a268954d9e7e3549108cda1897c6cd63"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-32-ADMISSION.md",
+      "sha256": "747e9ff9a5e94e30bf1359bb5c06e130090597dc641b119867b852617b882067"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-32-CANON.md",
+      "sha256": "b102ed4951a08cff6a953204e7a7765cbb4a3d73618bb3969e20da915a55cebd"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-32.json",
+      "sha256": "20a916fd55ff0c19ce13463943acef1231845965b166cd0cf51ee4b0fd50bb33"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-38-ADMISSION.md",
+      "sha256": "7e8c89943690a8172a7ed6415aa293ef7f4976d0a2fa66af46893363ed77b65f"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-38-CANON.md",
+      "sha256": "8f45abe28afa18d7f97519b4511deefca6f21fc356162441d06430a3fd945029"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-40-ADMISSION.md",
+      "sha256": "f0eda3decc33bd0784e1a077d8c27c61cec29c5ded1003c2f3c3c2228e2daacd"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-40-AVATARS.json",
+      "sha256": "a73c3259f0752066ac24049ce524f7466026569f80cfce00b2f4ad49a04b1df0"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-40-CANON.md",
+      "sha256": "366fadaa06a0ecba9bf631bd75bc217c5a283908f21ccbec3b5a635c97e4883e"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-46-ADMISSION.md",
+      "sha256": "86377cbb66a37da35c20df0f37680cf51ff9c3dcb4115058fd0db371e5d8b19a"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-46-AVATARS.json",
+      "sha256": "4a3c240d7da89de00d2f004e2197c9df227ea50da1265869b0417586f423d380"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-46-CANON.md",
+      "sha256": "a5337df5a64eed78cf3d735dca4b8c9fbb6d17cb4b3e9cb5baeb4b54637923ab"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-REGULAR-46.json",
+      "sha256": "2f8f226bad84a43d36cbcd44624c43fecac7f555e57372d5433c2491a2394b9c"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-27-ADMISSION.md",
+      "sha256": "59799ab8c8a6c03c15c778858c2ccb67fbe5eeeb449d2c61f915a2ce5f7a5e10"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-27-CANON.md",
+      "sha256": "0e55917a697a8c45a3c5e4f7a3de3f8472c8aa5ff9728a56591a8fd99718fc7a"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-27.json",
+      "sha256": "eeba800b14874657b092e1c37a40979b3e201b97134a3743da6e84a6d1e55eaa"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-43-ADMISSION.md",
+      "sha256": "a44ad40cb01439525dd0a09fbd36191b1b248dc2ff7160ff5c2a6ecde192d5cd"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-43-AVATARS.json",
+      "sha256": "9bbb06841995af29792006a8fb736651cb6668b17d1850d4ab471dc62b14ef16"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-43-CANON.md",
+      "sha256": "afb277236146189292c9732ca7a2c040cb741b874ab06c8341032ced65aa3f9b"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-43.json",
+      "sha256": "2bebbb269a95399f698c9743475599138047b3878c19f68db012c6afe950dc21"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-50-ADMISSION.md",
+      "sha256": "d633a11ec6530985356382d2742bb45b7bf27491ce69a1c62b8d0024c381f71a"
+    },
+    {
+      "path": "docs/drafts/BOTANICAL-VISUAL-50-CANON.md",
+      "sha256": "933e473e59069bb0adce9e60d17a68f6d125ac109d00e28393cd5e51b5b0b7a0"
+    },
+    {
+      "path": "docs/drafts/EDITORIAL-ADMISSION-06.md",
+      "sha256": "85a509bed860483c25ba936fb29004b667c5f2a4421952bace369206b0b63f1e"
+    },
+    {
+      "path": "docs/drafts/EDITORIAL-TASK-HANDOFF.md",
+      "sha256": "76cf0ea6d04f2982a0544e7b4f97daa278ef35ad4f6ee01d22ec91457246ec82"
+    },
+    {
+      "path": "docs/drafts/FROGBERT-STRIATUS-CANON.md",
+      "sha256": "bbba2e5184e4a2c162be3649c7324ed9362c8eded3409dd863b460358870d830"
+    },
+    {
+      "path": "docs/drafts/FROGBERT-VISUAL-CANON-02.md",
+      "sha256": "72eb3974cd132f2bb755e852f0743449a2da2d1b7868e72d348789d2e3307558"
+    },
+    {
+      "path": "docs/drafts/LAND-OCEAN-12-ADMISSION.md",
+      "sha256": "284a4f350f841c89c903be923110dbd2c2adc602df5965ad0f8103b2fbc6b482"
+    },
+    {
+      "path": "docs/drafts/LAND-RECOVERY-28-ADMISSION.md",
+      "sha256": "e3b844741a98119c061018addde987588fb97ee43b0d8d3548cac1b8606a9bee"
+    },
+    {
+      "path": "docs/drafts/LAND-RECOVERY-28.json",
+      "sha256": "db3145f47f82fe492990d2a8ec346ba0c4d3923219e12816dc89c22ff4dacbf0"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-05-ADMISSION.md",
+      "sha256": "798e078c94f82fd39e2370b08dd3fca17be3b2e5bfd828ce3f9101b27febfa56"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-05-MEDIA.json",
+      "sha256": "ee97c05b2906469c25c224292442a74ce224f8d3b6f5893bbbaa2e21dbd3129e"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-05.md",
+      "sha256": "56163de6fa26357ae6dd1d88cd94295ca9dd58b2838f82e1202253c75a6777b3"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-20-ADMISSION.md",
+      "sha256": "dbded1fcafb35878bda6a85f93f6cffc38280d299412865dea7f44aed9e72b61"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-20-AVATARS.json",
+      "sha256": "b662a526f38a4bc804d8b3cca5bd5a253d598d8f13de3750baea20faf9da3c97"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-20-CANON.md",
+      "sha256": "a31c3f18f342f6b32f810a85a755e4ec517242efdaef52e2ff9bbbddbf0f9e40"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-31-ADMISSION.md",
+      "sha256": "14a6e34fa6b76ebe10b697ffb5f120687713a81077899f7236728f84a4c4e705"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-31-CANON.md",
+      "sha256": "6abb7b69c2194ee0d7909c6fa6a7717c1916619b899c4f381d444227e9b10185"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-31-MEDIA.json",
+      "sha256": "6db2366ea1a3c4816a62a1b31b8139dc1cc1ebef799c86b03cb7c485035fb23f"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-36-ADMISSION.md",
+      "sha256": "c4ab26b636f3e8bd48a38a74c29b8924e7cb7442791aa06b6d95818384253c45"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-36-SUPPLEMENT.md",
+      "sha256": "e13f8ad714dd171aac332945029e512b46cb2706e73ec56df0923bdd39235584"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-42-ADMISSION.md",
+      "sha256": "69fc7557b4f7dfb3985c6c6fc619be5a5ff078fa097d02f04223e8b5db38749a"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-42-AVATARS.json",
+      "sha256": "bc54bef11eb06ed75edbc1bb387982b01d1640e6315b1525754b49465a8e156c"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-42-CANON.md",
+      "sha256": "0cdfe232582c6de2696735d7f41eb23c9651cab3a96ada5ec3939c5441bafe79"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-42-MEDIA.json",
+      "sha256": "97c35daf024ff951f7e29a15637cdb6979d01178930ff1f7a4fe82d6c4711bee"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-45-ADMISSION.md",
+      "sha256": "40ae5e86bcf71fdb30d847a218d199bf5894fad1b2d3871d5394234adb6d7ca4"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-45-AVATARS.json",
+      "sha256": "a5b0a3794cc88f6e6a4303ed193835c16925d216dae4eaeedc28c410a4e8509e"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-45-CANON.md",
+      "sha256": "d2b9947e1cd55eaea306d6b87ef76016be36af918bed16056ebebac8af3de76d"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-49-ADMISSION.md",
+      "sha256": "7b15526af4cbd37537932c23c8a5b10c7d05be5d585335e7fa490e9162027b29"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-49-CANON.md",
+      "sha256": "71da686985b7a6885e548042eaa575bf1cece5520465e5fd7275010e9ac3706c"
+    },
+    {
+      "path": "docs/drafts/LAND-REGULAR-49-MEDIA.json",
+      "sha256": "7964680af5fda5be62d74848480c57efd4396a109f38abbdacf2d90c831304ab"
+    },
+    {
+      "path": "docs/drafts/LEAD-REVIEW.md",
+      "sha256": "cdcb0bcca979cfe685002fb6f886580095d041f1fb71d774f17dc66e7dd44740"
+    },
+    {
+      "path": "docs/drafts/LEGACY-AIR-REVIEW-06.md",
+      "sha256": "b83182ba95d7981c4f4f0eba4f33dd8c5419fed4851e6675a170cf3521689d93"
+    },
+    {
+      "path": "docs/drafts/LEGACY-BASE-REVIEW-07.md",
+      "sha256": "b5d951de7d1576f56af9ef881ecf754384dc85316822439e8bdb6915c1e6cd64"
+    },
+    {
+      "path": "docs/drafts/LEGACY-COLM-13.md",
+      "sha256": "43e6c979aa321384f6b33efb93564d12a5c9e8c79a54306e94cc8bd60cc6a869"
+    },
+    {
+      "path": "docs/drafts/LEGACY-FROGBERT-22.md",
+      "sha256": "d57a098cd9f7a252bbaebe954c11b30f172b9584280e3428593a489272af6d01"
+    },
+    {
+      "path": "docs/drafts/LEGACY-MORA-15.md",
+      "sha256": "b37fbf918b1acfc35df8802a44521ccb099db68e4911b2a73e325ce6ebb09c9c"
+    },
+    {
+      "path": "docs/drafts/LEGACY-NUDI-10.md",
+      "sha256": "e0a92cc6e7db1f288e63cbb4b9ce9b190599d91a153de99e419385ff3526b4f6"
+    },
+    {
+      "path": "docs/drafts/LEGACY-RECONCILIATION-19.json",
+      "sha256": "691e897133c382c7753e144a17767f3481d11746f093c3e93949a8d1453144a3"
+    },
+    {
+      "path": "docs/drafts/LEGACY-REVIEW-14.md",
+      "sha256": "05d93b7481b6a987b43cb733f4fceeb46d6b5b669e653c4814a06196b70b8085"
+    },
+    {
+      "path": "docs/drafts/LEGACY-REVIEW-16-ADMISSION.md",
+      "sha256": "0f3fb74c5ac92c18b3cd716ed0610f9b7fb583b8587c3353b3f8bc3c3f1a6ca1"
+    },
+    {
+      "path": "docs/drafts/LEGACY-REVIEW-16.md",
+      "sha256": "50488d83cfaa247c9443a7a233ce91b1d12a0a56a27f873fae94f54d1687fb23"
+    },
+    {
+      "path": "docs/drafts/MANNY-RECOVERY-47.json",
+      "sha256": "ab3c6ff84a63a4d37f6ca19fd5d785107df0213ab586b46d7aa7dbc1d5f50df2"
+    },
+    {
+      "path": "docs/drafts/MANNY-RECOVERY-47.md",
+      "sha256": "dbe14fff538b9a2b71643cdff73521965c4cc9bd2cb66535610376dbeb75e638"
+    },
+    {
+      "path": "docs/drafts/MEDIUM-IMAGE-01-ADMISSION.md",
+      "sha256": "5753f98524339d76848d52acd08ebd83fe96cff9fbe33a1e8d6ebabd404adb8d"
+    },
+    {
+      "path": "docs/drafts/MEDIUM-IMAGE-01.md",
+      "sha256": "7f8f3ff9717e7eba29d016ed7051c3eaffd7f87254f46fe7706b62640af23db8"
+    },
+    {
+      "path": "docs/drafts/MORA-DELIVERY-39.md",
+      "sha256": "50b6003340ae013dd64ffa47baae5b88a5298ecc8c9c8579035bb65e6ae86072"
+    },
+    {
+      "path": "docs/drafts/NUDI-REGULAR-11.md",
+      "sha256": "e4425297cb2fab558235bd0c83c00b3dba7c0c3af74ccc4cec3add12cd788492"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-04-SECOND-REVIEW.md",
+      "sha256": "a860bc3938647fcfd6b1954e42261ae83dbdd391b79a1d567ac76c6ccb78d61c"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-04.md",
+      "sha256": "a2ee1bde140b6f34044888d95ef78544017208859c56a470fbb6e601bbabe080"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-06.md",
+      "sha256": "b07bb54ede2432be2bf6da6294ce573e1a2350ac071ea78ba5777b4367d61378"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-13.md",
+      "sha256": "8c50da570d38b9f3f4f5223b7e557b1a3fc278da99d96ca08571f26eecdb2754"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-17-ADMISSION.md",
+      "sha256": "e14631d1fd3bd43ec6fbb25a7a56b4ebf90cf2a711c28098158b696af6194f3f"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-21-ADMISSION.md",
+      "sha256": "42f2517c54f04c454dbf5ec616e93d627a1e41acf3a11391e4ec8b8296a65187"
+    },
+    {
+      "path": "docs/drafts/OCEAN-REGULAR-21-CANON.md",
+      "sha256": "4ece7b7006ed8002fad13b1b537d3ea9b28379b4d5f238d8d0b54d7d45a15861"
+    },
+    {
+      "path": "docs/drafts/OCEAN-VISUAL-23-ADMISSION.md",
+      "sha256": "139866c9a4f57e34af13b6c03e14571bd944c78c0029ebffb95e8696527b0fdb"
+    },
+    {
+      "path": "docs/drafts/REGULAR-LAND-12-AVATARS.json",
+      "sha256": "61b214fe6d2f0f3b64736ca7c61a24d8b450eba43870ede13bda00cd1eb5de4e"
+    },
+    {
+      "path": "docs/drafts/REGULAR-LAND-12-CANON.md",
+      "sha256": "78865c452f4cf7db129ac874c76ac91d7aba4a7cc5a93e5ce6c778571fbb4b58"
+    },
+    {
+      "path": "docs/drafts/REGULAR-LAND-12-MEDIA.json",
+      "sha256": "52b53265a5ffb37244463938810332c837d252a443d1f96041c3a821a1896aa5"
+    },
+    {
+      "path": "docs/drafts/SEED-DELIVERY-33.json",
+      "sha256": "4bdb384edfda04f4124a7a9f2507452376adc5f9bdb60b565443d66dd93d5e90"
+    },
+    {
+      "path": "docs/drafts/SEED-DELIVERY-33.md",
+      "sha256": "c1df4c4428f59ba0601f3409232a665ac0fd5333f4f580a01db4a932dcb530c9"
+    },
+    {
+      "path": "docs/drafts/SUBSTACK-IMAGE-01-ADMISSION.md",
+      "sha256": "7276318774fa6d49354a52e1b67cabe283aee235945bee23159e32ca099dfe66"
+    },
+    {
+      "path": "docs/drafts/SUBSTACK-IMAGE-01.md",
+      "sha256": "7c38aa24f110df0cdeed8ba790c6fd6671c7b416a9e2b14100689bc601afef04"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-02-ADMISSION.md",
+      "sha256": "795cf41d7b828fcd187882c31f78a033e7253d8083450aca75e2281bedfb7b95"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-02.md",
+      "sha256": "28cce50f83d4b55bd645a1c523ebac2564e912e3daf3ea5e00fc7d67ef8fb5f0"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-06-ADMISSION.md",
+      "sha256": "3d5665adf39bdcf0e6a0849aecdb75bd32b45ea99f79e7cd5ade850e97b5849a"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-13-ADMISSION.md",
+      "sha256": "5fa9d7ae8828bb668ef4772410bd350f45f30e19c7434fea6c0af37918582ceb"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-13-CANON.md",
+      "sha256": "fb4a34149a258672e2207b5b91016f78942e78b79d6edd17927cdd040374124c"
+    },
+    {
+      "path": "docs/drafts/VISUAL-LAND-13-MEDIA.json",
+      "sha256": "011d9eeba6aa0a7128de5ede37411c02b335b6c510984244173f5b77005a44e0"
+    },
+    {
+      "path": "docs/drafts/YOUTUBE-CANDIDATES-03-SECOND-REVIEW.md",
+      "sha256": "ba9c83e07b1447f2dc94b50b50e1edb40d6347efaacc768df80788658230ca2f"
+    },
+    {
+      "path": "docs/drafts/YOUTUBE-CANDIDATES-03.md",
+      "sha256": "a56cd2b20352df87b2d6c8178db8b5f2b967681546a23f8a46168d8c8746c36f"
+    },
+    {
+      "path": "docs/drafts/YOUTUBE-REGULAR-10-ADMISSION.md",
+      "sha256": "872399297c0ab7f14aed3d8ec5dbe306c9a1e5914f715d54da3324a2bb7cc49d"
+    },
+    {
+      "path": "docs/drafts/YOUTUBE-REGULAR-10-canon.md",
+      "sha256": "33be6f8c43b3130143a96363c1d984e1f8089c396b6dfa2830da1e56f5e021f1"
+    },
+    {
+      "path": "docs/drafts/avatar-crops-06.json",
+      "sha256": "6833b67f67244ab42252960c5d7ea2fdfae785982e800fce8ad34fe416ab71d9"
+    },
+    {
+      "path": "docs/drafts/avatar-crops-07.json",
+      "sha256": "b727299965e37eeee7a6e39407ae9439a04b4aee850da4299f09821eb6ea3038"
+    },
+    {
+      "path": "docs/drafts/avatar-crops-09.json",
+      "sha256": "a8774186e5b5da0de53533f5c23ef4b6ad0c57e490dfba67307b88a82a042d24"
+    },
+    {
+      "path": "docs/drafts/avatar-review-01.md",
+      "sha256": "c0ea4e82b9ed58db5807076fc77591da122c91b287a5a2ac99b58b3d629ad619"
+    },
+    {
+      "path": "docs/drafts/avatar-review-02.md",
+      "sha256": "64408b36f6602c4c1a7d2d6effe281b3b5e133c90509e2abfa0b9698d29e146f"
+    },
+    {
+      "path": "docs/drafts/deepsea-canon-07.md",
+      "sha256": "a60ed418fd08b83fef621307f8b2f3be65b13881da69d8902699ec5fd1a70c60"
+    },
+    {
+      "path": "docs/drafts/deepsea-canon-08.md",
+      "sha256": "7f04ba60ddd62f4177cac000116be9e8a0e39699c5456e56954ff689fd8a433a"
+    },
+    {
+      "path": "docs/drafts/deepsea-canon-09.md",
+      "sha256": "f969a7223e03d4fa8136e3161d4228c90fb0e6df97412878b32838ab46f7893f"
+    },
+    {
+      "path": "docs/drafts/deepsea-narratives-09.json",
+      "sha256": "fda72157ba5c44195f4ea6c0d99e25a0c1a6920044594290bb7d65bf4d2416e8"
+    },
+    {
+      "path": "docs/drafts/legacy-land-canon-audit-12.md",
+      "sha256": "6026a56cb21d01d75d3f9fcc2113ab46391ef57a56c167a7a39d225015818767"
+    },
+    {
+      "path": "docs/drafts/legacy-ocean-canon-10.md",
+      "sha256": "3a88a0ea63ad53c6313f2d503ce7ba85602d99cb3f2c1b6a3060a13ecd62300c"
+    },
+    {
+      "path": "docs/drafts/legacy-ocean-canon-13.md",
+      "sha256": "5a6c274561d30e54aaeb3939a38621ef53ea37820a21a90ad2a2f441cc90efe5"
+    },
+    {
+      "path": "docs/drafts/legacy-ocean-narratives-13.json",
+      "sha256": "502204928d904e7308a96f7680c323b1a976bd7b9af8012728ebbf7770384f64"
+    },
+    {
+      "path": "docs/drafts/manny-lead-13.md",
+      "sha256": "a87ce416438c0b05be62ec6597bc50046ef67725431541cb5614167245683d75"
+    },
+    {
+      "path": "docs/drafts/media-health-check-12.json",
+      "sha256": "02637355b42569959452c0632054c9251374587f361a9ebbbfc26c45a5f8ee9c"
+    },
+    {
+      "path": "docs/drafts/nell-vera-canon-12.md",
+      "sha256": "730171482e84e2ed0476781b3607e3c79e5b217d322359d9389bf402a8b23c10"
+    },
+    {
+      "path": "docs/drafts/ocean-canon-05.md",
+      "sha256": "48e0f446c44eb6c52ce310439a4518112790dfdb89fb69dd332b4f5b57cb7d1c"
+    },
+    {
+      "path": "docs/drafts/ocean-image-led-01.json",
+      "sha256": "2993bce9fc49d08aeb1fd9c08123abd3f1342df4c884488338b5189a50fe117f"
+    },
+    {
+      "path": "docs/drafts/ocean-narratives-05.json",
+      "sha256": "154a5193e46d13a9d51ae4a894453331bf37100fec5cce4af8da1a5200277846"
+    },
+    {
+      "path": "docs/drafts/strange-02-lead-review.md",
+      "sha256": "ec5d4c81a1aa1454d9da363b1141a3d64b5d3945db3c81cb1d90161dc68af9f6"
+    },
+    {
+      "path": "docs/drafts/strange-canon-01.md",
+      "sha256": "f5fde8ff222ec72247d59928c432b2fd3f24b6ec783282d5d962ab709a0ffbcb"
+    },
+    {
+      "path": "docs/drafts/strange-canon-02.md",
+      "sha256": "863281df0f988dc5a3fdb47592fd7894f74684ddcb9a0126fcc6c84037d53eea"
+    },
+    {
+      "path": "docs/drafts/strange-canon-03.md",
+      "sha256": "774ab7792c969733ec310a6181a3fdf4d2ef27ea514631232bd5e8edbcd7a6a7"
+    },
+    {
+      "path": "docs/drafts/strange-canon-04.md",
+      "sha256": "79bd394aab609e98ae68e108110949c941ff8e13d635e5c8c16710d0046ca8b3"
+    },
+    {
+      "path": "docs/drafts/strange-canon-05.md",
+      "sha256": "fdbf7539ba7ba70827e0b82b54c8b0a162c827114b332d475fcbf9082c9a86fd"
+    },
+    {
+      "path": "docs/drafts/strange-canon-06.md",
+      "sha256": "f2f9a01fbb171f26b2f367ddca5e51a96294081f44a893de263aaa32c7f440e7"
+    },
+    {
+      "path": "docs/drafts/strange-canon-07.md",
+      "sha256": "a7bd649351e5cbd358bb5ec9741a55803690521d352407dcdc62a6bc503d2797"
+    },
+    {
+      "path": "docs/drafts/strange-canon-08.md",
+      "sha256": "b3646ca3139edc5f7dc71533f6915335625efc352b23091d73d49790f2f29222"
+    },
+    {
+      "path": "docs/drafts/strange-canon-09.md",
+      "sha256": "5afa4cb41f596e39220c5f2b354c8d604f9ee8bc4597a06ea8095fe39285a1c9"
+    },
+    {
+      "path": "docs/drafts/strange-canon-10.md",
+      "sha256": "16c3b7a690c58962e5c4661a1a7aaf4731c01339103d20705224756178385ea9"
+    },
+    {
+      "path": "docs/drafts/strange-canon-11.md",
+      "sha256": "ea981f55fcc4225ac869a95fcb95f9ed32dd48aa9eeb68ef9a45b9172beb3ca6"
+    },
+    {
+      "path": "docs/drafts/strange-image-led-01.json",
+      "sha256": "d59f38f4f42c5af867b13d5ad2ca59462312eb8b3befceaaddeb3a52b2b3b1d9"
+    },
+    {
+      "path": "docs/drafts/strange-image-led-09.json",
+      "sha256": "da1e1b51931ae1bf17ad6be6dfda00c90197b32aa5cfa819aebf1d81c90f9230"
+    },
+    {
+      "path": "docs/drafts/tavi-repair-11.json",
+      "sha256": "36456faeb6fce6dd74c520255e2ba26d253fe72e00e28ac640f7dd1d1b377312"
+    },
+    {
+      "path": "docs/drafts/tavi-repair-11.md",
+      "sha256": "d833fa1c829bbd32f7c37faf861f3ca172e0b040fed341cee66d25e3bdcfa28c"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-air.ts",
+      "sha256": "ef972e4fa20eb152c3c3913e8288b66a9529faf1f74a41bee86015305b5688e4"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-aquatic-forty-four.ts",
+      "sha256": "8f68d3d466d6fec5d3dab1113992a141b93fdaaa4317e301cb4cd0203fa6d483"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-aquatic-forty-one.ts",
+      "sha256": "ec4f0a04bb6ecbcd727d6e01ba5c2dad0b44ef896bc86343c5b2f6f6439b096f"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-aquatic-twenty-six.ts",
+      "sha256": "d913b4e35b7188043f83c36c58cfbc1a8c154649205466d3699a1c6aba50d1fd"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-bird-twenty-five.ts",
+      "sha256": "bcd6880d01cc4e82ded7bccc495ab0cab3d066b55f8bc07a6b962d18b6e4ca7d"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-fifty.ts",
+      "sha256": "b7ce38bee39ade8f95689566604b5668dec4cdfaf3c4bf2ef9666972c53bb4f1"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-forty-six.ts",
+      "sha256": "067ce937df569ad79dc59d486e27dc6785db45bb472eab34446751d9bcb08e2c"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-forty.ts",
+      "sha256": "501a497093d626af4ee0184035e8d205869b4e62890b6de0944ce742f1065c03"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-thirty-two.ts",
+      "sha256": "d6f2fcc19b9fb5a264949da5876c3faf577d72d08f363cd5f9962a385ff534d9"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-twenty-four.ts",
+      "sha256": "6777fafa22767fce1ab254e6be6cd1ed35a44d696b3bfa7ad6f02f4f45f87f63"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-botanical-twenty-seven.ts",
+      "sha256": "3f25d089ee941795db2a101b72e308c0bbba33c74645aa33ebf9297a90cb6ce3"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-deepsea-bonds.ts",
+      "sha256": "a7c81fdb59956de0a557a395207d4b686fd8d1870ec545d76bc8fbb4d864b30e"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-deepsea-next.ts",
+      "sha256": "e0f52ccf35288af4a32fc19ce4c0c39001ef7f242c609773e27347b94e9fe067"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-deepsea-nine.ts",
+      "sha256": "aa1ed30d3809a9df9f7625b8ce1d82c1a90b47a3cdbce4accb8764d4c5f88564"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-editorial-forty-two-three.ts",
+      "sha256": "3835254e8533901da8de0bee2479d57a9e8d221598ac6ee84e9e31f75ad1cf4f"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-land-forty-five.ts",
+      "sha256": "8d894dd32e0b1aeabb332963858a801fe345c7edddd37d6046ae1dabdfcaf86f"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-land-forty-nine.ts",
+      "sha256": "d2f9387ab80ee1b789d2e5b04fefe2366aaf68f07f65af9e836b5a893e04be00"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-land-twelve.ts",
+      "sha256": "28064cd0826f616813b2d6cd9be466c49604825edfe5609265f02634665405b6"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-land-twenty.ts",
+      "sha256": "fa87f1acb94a493f545284fc12f4ae4e43c182b33cf4f51c22b0099a05f0c5cb"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-land.ts",
+      "sha256": "478d1554b99e8765f57e08acfcffc412275ca5aaacf45ddae4dd389f44c90a63"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-ocean-new.ts",
+      "sha256": "25a5a7b89ef0d24547dfd8e10e66bd99d9797781f9158e9cc1dd246d75f1f1c4"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-ocean-twenty-one.ts",
+      "sha256": "b00fa38fcfe4dcdf736397f1094d80974d9ddfdde214f16789984d5da449c1f2"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-ocean.ts",
+      "sha256": "1305167926d8844d186708a6d1a5cccfcf4f786ef0f807173374143ff1cb784c"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-strange-eight.ts",
+      "sha256": "eca7ba1a496b5a1709fa922445b8374e2a32201b45f99dd290236e1f956420bd"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-strange-foundations.ts",
+      "sha256": "aa4afc1e6008223507ec75cffdaa3c7ed881a6c1f976f22c54153ec2c489ec4a"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-strange-next.ts",
+      "sha256": "765f53fb7b76cbf56fa22d6bf8060b7dd3d827322e159a8c78e36d458f9dc82f"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-strange-wild.ts",
+      "sha256": "9f8fcc2bcdf3b37c83bf1b142988dec5d55727902a0fe58bdbf69f90618a7428"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-strange.ts",
+      "sha256": "4a7ceb271f24f8de334b559f567ed769f0eee5c5f87da3488384dfa8997bd274"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs-youtube-ten.ts",
+      "sha256": "90913dc77c48ffeaad19beee392e3d9e8e3ba52eb69ae0308f4d93b1961f1e94"
+    },
+    {
+      "path": "packages/shared/src/sample-character-arcs.ts",
+      "sha256": "c9ea786da0dff455e8d606383b652b8204c40a43e8bffb69a5be4944f36cebd1"
+    },
+    {
+      "path": "packages/shared/src/sample-character-avatars.ts",
+      "sha256": "4bf3d4c06c042e18d22243d9c153d33e82b8d3f877771880a2fd7e3a73b139d0"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-air-media.json",
+      "sha256": "9feb89e0a9aa91f4e4f3d46cd0aeb1c605dd68e805cfce94e1a3abc6349a6d0e"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-aquatic-forty-four-media.json",
+      "sha256": "4a917097369e02e4c32fd0abc320e6b4d5e7b79b84ee20cfa331324eb72d41a6"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-aquatic-forty-one-media.json",
+      "sha256": "f03fe6b25c20e92b2988abf737e1bc871ea9d4467ea48a19fc3d899d21a5787a"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-aquatic-thirty-five-media.json",
+      "sha256": "9d8129237bfd0357726d622db473ccaefd68be7d42778eb5e1666e1420bf6e1d"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-aquatic-thirty-media.json",
+      "sha256": "3675047766c36760f22ce0e966466c14cef2f443e8cd632cc4f32e64929995d1"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-aquatic-twenty-six-media.json",
+      "sha256": "d47766ff42d0474e4fc45bd451f21380702396c4f674e86c1f54908c53b5cb38"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-avatar-delivery-thirty-four-media.json",
+      "sha256": "5bcf9a10c3150602b5d8ecedee0c08171c65b5eb75af8ce3ef9bed53253c959c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-avatar-delivery-thirty-seven-media.json",
+      "sha256": "4aaa244f39eb2f3c4eedc1155b6db5e24cca205aa0c021b72e3b73f02588fec0"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-avatar-eight-media.json",
+      "sha256": "0d92d441773b1c39055993d2dac9cbd10d722211b6de49eea3cd1e847f23ced8"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-avatar-nine-media.json",
+      "sha256": "4e740e0f2be384c68e6c06bf4510a4efd1cd5bee45241f88b0a905cc6ef4d23a"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-avatar-seven-media.json",
+      "sha256": "a7cafcabf14f7b6527120b6118d01a5f7ba4a10ac81042aff8395ca160fa910f"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-bird-twenty-five-media.json",
+      "sha256": "bf5ea081b077b3d60937718855bf2074fa67430753720bf45fe21b95da6930f0"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-forty-media.json",
+      "sha256": "560b4eaf39b4d615eba63c6825c13935042ceed161cb47a37d881e51606b5990"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-forty-six-media.json",
+      "sha256": "7bcc2c0b8a5b42174f84479fe26d525bab75260220e5e25415d0f10d22f0d15e"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-thirty-eight-media.json",
+      "sha256": "fe72abf00d0ac470a92958ab8662ab78b97cbb4535f893689820d9d2b8ca66f2"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-thirty-two-media.json",
+      "sha256": "7234854d7f63cc03c7b997329fb8435fa9161d66bc798e708950e55bfcf0dd31"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-twenty-four-media.json",
+      "sha256": "146733895d74ab4c41fa837b68ab7ee050180954dcb3dcb7d51653db397dafa9"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-botanical-twenty-seven-media.json",
+      "sha256": "16d9a0a9bef0309398988a32d7dd04bf97ba225188a191ea28130a4bca0f885d"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-deepsea-bonds-media.json",
+      "sha256": "1d94295d7921a7062eae760a05a11db2f4d0fe27e3dc3cf3fc940ed2e0d7d9f4"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-deepsea-next-media.json",
+      "sha256": "be5878dda08aef4ccf77f0267a38ad854cb32b65775c85fe89ffa5dcccd4ce6f"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-deepsea-nine-media.json",
+      "sha256": "b24fe99a6472f1e9a527676da971e80764c7da282db95c875eb295716dd4fd4b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-editorial-fifty-fifty-two-media.json",
+      "sha256": "d8c734bf4f0b4d216ac4eacb911cba1cebff70bf5aa4f2dc89c331c24d379635"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-editorial-forty-two-three-media.json",
+      "sha256": "b32eb0fcf87fff6d2c2691a1147484b829a62f9aa48ceda801cd218e7686766c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-editorial-twelve-media.json",
+      "sha256": "5b092887c605b2e1b24c78727537a3361198173eb662e8dd87e64740e7616b7e"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-frogbert-visual-two-media.json",
+      "sha256": "de2a28c4d8315943c5b8852fd3a0430af3c6f45216c30a4175764a374d1da24a"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-forty-five-media.json",
+      "sha256": "6f7e1dda21aca710c669ad1a041c3a56e179b88a3b29bb1b27e3aa04a5d9255d"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-forty-nine-media.json",
+      "sha256": "17bf75eede556e409597a68db03b5752d3a7ef450ddbec148116a65aa5dc1be0"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-media.json",
+      "sha256": "ce16319d40ee6d77aa5a87e7fc82fccc102538daa3f3459bdd772520f82029e3"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-recovery-twenty-eight-media.json",
+      "sha256": "fcbb5f6009653320d24f6b1543f0b29d53fe867fcf8ac0270a7544b61740c8da"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-regular-five-media.json",
+      "sha256": "591000d0f9dee849cd314c21a88f82d1becc25229ad4f1bda181a695572ae797"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-regular-four-media.json",
+      "sha256": "d2d9e7d8c783f8d0f571b389188b0859961eadda9bd769b513bdea547461beea"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-regular-seven-media.json",
+      "sha256": "846e559d18b8c1c996131684f316dd36b09f1e4e026f724b8b4bf5f7f1627b1c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-thirty-one-media.json",
+      "sha256": "a56902c6bbad4d0cc4161fcf32c8599b28dfbd1631874ece5c6ad16c6eccecec"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-thirty-six-media.json",
+      "sha256": "a9e2fc2808b9be2afe1062aa6e26732f4b86235cd57751bf58c2cc8a2930d34d"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-twelve-media.json",
+      "sha256": "04bd647aa370766f4ffd70c80bee6726e47c606af98bd5784401436ff3ac329c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-land-twenty-media.json",
+      "sha256": "fa3ea332ed6f9d46054ce9deab266a0c3efc3efbf964a9a72dcd97d8cd4f4e0b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-legacy-land-nine-media.json",
+      "sha256": "bbe986af62aeb541fe194c2421e2b82a3bcd4948d2b980fb957aa2da75f61b62"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-legacy-ocean-ten-media.json",
+      "sha256": "fbc2c20fa2b7e6739078577a061b779488165b2a968cf5783b4a5ede7d34efc2"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-legacy-ocean-thirteen-media.json",
+      "sha256": "10706d1833594001e40d0f0dab5e0bea30d027fa5305768f8218402ff0ec64dd"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-medium-one-media.json",
+      "sha256": "b887b596829168156ae6670c0d9b3e61c886d753c65760c63788c9cb921fa9f5"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-nell-vera-twelve-media.json",
+      "sha256": "259acaffd9d31cf427e41d32d53ce01d43d59815c00155f670bc666592db84e7"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-nova-nine-media.json",
+      "sha256": "0c4513dfca16d34fe35322860f9472c46da9a0966c66626b77d80bb722775672"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-media.json",
+      "sha256": "9a82b13726bed7ff9b60d414f8b270aa1a3d85527a6979250411b6bf6586df22"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-regular-six-media.json",
+      "sha256": "5097095359034e89497c60c8abfb2bb8cdf32a8e3707faf360b5154cd596dadc"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-regular-three-media.json",
+      "sha256": "7a555061c3203a8281c7449f81b00295b2638378dffd9ea166fba3e264de7d1d"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-seventeen-media.json",
+      "sha256": "7fb32027541953c5b467702321b0b2d624b552ef475f00dfeea2bacc4b21a35c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-twelve-media.json",
+      "sha256": "3aad28106dc75e071b933b6ec9cadcae6f7a4ddf14c985f6cc0ccb6759e7ef72"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-twenty-one-media.json",
+      "sha256": "63f94b5172933e6df7b61ccf8f9a5296b0e144117f5bf404fa316645dd85de98"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-ocean-visual-twenty-three-media.json",
+      "sha256": "c475963e6215edf4eb6c00de76287f533c3033fa1e4e73a4cd5db54495d29d65"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-eight-media.json",
+      "sha256": "b9dceb8a63345fa7b69fcef09e00ad9f0d709c70f9a0fceb6bef51dc7e6fd69b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-eleven-media.json",
+      "sha256": "1103bdad02b22b621c13c40fd5e3551399547c0984906847d47d3a825efdedb8"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-foundations-media.json",
+      "sha256": "e35084d94e97205b17ba02a555e985f7ed87ad14ea6b520f163c25185c32f793"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-media.json",
+      "sha256": "8661cdeaf11bba08689c5e14dad07cf7edf81fdc9cf70eb81734128ed26ca1d9"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-next-media.json",
+      "sha256": "31f82c0b9a7d02986a5791c5324eb68bc18215c8619ebc45440fc833a874e05b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-ten-media.json",
+      "sha256": "7ce94ff51f28986430724cc1ebb70952972fe2d8dc3963fb6948f878c86dfb3c"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-strange-wild-media.json",
+      "sha256": "66e58e26d1f9687c09cdfe343af3ef51da020d4380c2363b6f7adc25d69d582a"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-substack-one-media.json",
+      "sha256": "1ac12a4287cb758b085f93f7e7924d95668bf38613551776c7f5d51e9b9b5795"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-sylvia-delivery-fifty-three-media.json",
+      "sha256": "3e7c32b8f808c01dbca7cc30a0d97afa7feb4d7a0f272b66f23efc8ccfbba422"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-visual-land-eight-media.json",
+      "sha256": "aea55ad9b5e43f1590330f993259674b2db39dabbb15b90b1dbbeff4e4828ff1"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-visual-land-six-media.json",
+      "sha256": "3ae1f04494b10104978385c2e53f109bc0299faa3ca0801b6577f46bf7a6fe15"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-visual-land-thirteen-media.json",
+      "sha256": "07b020853667a69973c444ff0e781f86e778be2239f1cec22c72030b7e9816b3"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-visual-land-three-media.json",
+      "sha256": "70a51fb5c2378387d3264e488f6117ff5107877ce338245a75a6ee4f315ce82b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-visual-land-two-media.json",
+      "sha256": "9dea02528a3a1891d00d599ac1259ea43dea96508b6ead2b0bcab1c1d834a00b"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-youtube-one-media.json",
+      "sha256": "3809757b7ffda1627664e1269b14389b0c6b18988071d9fae486fc5bae5d573a"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus-youtube-ten-media.json",
+      "sha256": "7c17c732c71a0e382df4d85456a68a53c96e1dabba85ace58cee8d3a9a4f4670"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus.generated.json",
+      "sha256": "c2aea07c5b42e3f107db133d7a8e6ae9069ce9bd207ecbbae704f0313ba677fa"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus.test.ts",
+      "sha256": "1ff55dc829faf47677e9dc4fee73a26f149d89573233539efdc32ad331b7c2be"
+    },
+    {
+      "path": "packages/shared/src/sample-corpus.ts",
+      "sha256": "81d4f85ed234cdc129f7d08a2ddaec794ea6486b7e19e3d2ed3feeccac254fe0"
+    },
+    {
+      "path": "packages/shared/src/sample-youtube.test.ts",
+      "sha256": "39aa42fd029bc44b7014edc2382520cd6655d2a4176f0ad96b2959e01853bb6e"
+    },
+    {
+      "path": "packages/shared/src/sample-youtube.ts",
+      "sha256": "d2f732e825ed93182f68430dd57c1b3cadfcff2dae4eef4e57741f0560378a86"
+    }
+  ]
+}

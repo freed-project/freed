@@ -1,0 +1,125 @@
+{
+  "status": "Held after independent lead review; no admissions or runtime changes",
+  "exactOriginalsOpened": 3,
+  "publishedVariantsOpened": 2,
+  "proposals": [
+    {
+      "candidateId": "59-01",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "family",
+        "title": "The next mouth",
+        "body": "One of the aphids had a daughter without leaving my stem. The daughter put her mouth down beside her mother's.\n\nI kept sending sap toward the new leaves.\n\nIt was becoming difficult to tell whose family I was raising.",
+        "mediaSha1": "42eef8500a94593f4478a1b3f8933813ae8a9f3f"
+      },
+      "admission": "Held for prose and overlap",
+      "visualReview": "Opened original and exact published display individually. Clear yellow aphid colony with small and larger bodies, central young folded leaf sharp, lateral stems soften toward frame edges. Leaf veins and insect legs remain legible in display. No birth itself is visible. No taxon is asserted for the aphids and no brown body is interpreted as a predator.",
+      "fictionBoundary": "Birth and mother-daughter relationship are remembered fictional context compatible with aphid summer viviparity, not a photographed event. No deliberate sap control, poison resistance, infestation lethality or measured growth rate is claimed.",
+      "canon": "Established Asclepias syriaca perennial, Minnesota meadow home unchanged. Seasonal recollection before seed maturation; no reversal of opened pods. Her wish to direct generosity becomes uncertainty about which family her sap supports. Distinct from held pod/welcome-mat defense joke; possible conceptual overlap with admitted caterpillar consumption remains for lead judgment. No new identity/avatar.",
+      "leadReview": "Exact display image quality and taxonomy-source framing pass as a colony on common milkweed. Prose held: final maternal interpretation explains the point; birth and feeding do not produce a changed relationship beyond established caterpillar generosity. Preserve source for a future distinct scene; do not force revision or add biology to rescue this body."
+    }
+  ],
+  "media": [
+    {
+      "name": "milkweed-display",
+      "imageUrl": "https://live.staticflickr.com/1897/44199215321_da4ebf5555_b.jpg",
+      "localFile": "/tmp/botanical59/milkweed-display.jpg",
+      "sha1": "42eef8500a94593f4478a1b3f8933813ae8a9f3f",
+      "sha256": "604bfb69b9d33ef36cc4ca5fe31a1553dd544f0bd6f56483456dcddf021a743f",
+      "bytes": 107486,
+      "dimensions": [
+        1024,
+        678
+      ],
+      "seconds": 0.435,
+      "status": 200,
+      "id": "botanical59-common-milkweed-aphids",
+      "sourceUrl": "https://www.flickr.com/photos/usfwsmidwest/44199215321/",
+      "sourceLocal": "/tmp/botanical59/usfws.html",
+      "creator": "Mara Koenig / USFWS Midwest Region",
+      "license": "Public domain",
+      "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "rightsEvidence": "Primary Flickr JSON-LD and visible license link explicitly Public Domain Work; title Common milkweed aphid infestation; caption credits Mara Koenig/USFWS.",
+      "category": "wildlife",
+      "subject": "common milkweed",
+      "alt": "Yellow aphids of different sizes crowd the stems and central young leaf of common milkweed.",
+      "aggregated": false,
+      "original": {
+        "name": "milkweed-original",
+        "imageUrl": "https://live.staticflickr.com/1897/44199215321_2e55d7ed6d_o.jpg",
+        "localFile": "/tmp/botanical59/milkweed-original.jpg",
+        "sha1": "3f2571aa2e3445be4719fbdf077c636a1f16b4bd",
+        "sha256": "2b937f5a0fa7e107bcb68d29e7aad2f74bf4530e98b1a4c6f923cb303af66808",
+        "bytes": 5960477,
+        "dimensions": [
+          4928,
+          3264
+        ],
+        "seconds": 0.97,
+        "status": 200
+      }
+    }
+  ],
+  "primaryBiology": [
+    "https://www.ars.usda.gov/oc/images/photos/apr12/d2491-1/",
+    "https://www.flickr.com/photos/usfwsmidwest/44199215321/"
+  ],
+  "holds": [
+    {
+      "source": "d0458fc7-155d-451f-6785-51be57482110",
+      "reason": "Same original exposure held in32, heavy grain and soft seed detail persist in small variant. No new prose proposed.",
+      "evidence": [
+        {
+          "name": "fruit-original",
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/D0458FC7-155D-451F-678551BE57482110/original.jpg?",
+          "localFile": "/tmp/botanical59/fruit-original.jpg",
+          "sha1": "ee52e59859907052be39c56107607fb73c526ca4",
+          "sha256": "ba8cbd8a730ec7dbfddd1a68e697b4e83463b6969c41455673a9a536c81cb63c",
+          "bytes": 3082280,
+          "seconds": 4.112,
+          "status": 200,
+          "dimensions": [
+            3869,
+            2560
+          ]
+        },
+        {
+          "name": "fruit-display",
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/D0458FC7-155D-451F-678551BE57482110/proxyhires.jpg?",
+          "localFile": "/tmp/botanical59/fruit-display.jpg",
+          "sha1": "71c13211fb075c7aaff19d327a6a7c6861d728ea",
+          "sha256": "249d50d2196a14d9130d5f35b57dba9f87f0f89496eb2946986087210050a60e",
+          "bytes": 165755,
+          "seconds": 0.721,
+          "status": 200,
+          "dimensions": [
+            999,
+            661
+          ]
+        }
+      ]
+    },
+    {
+      "source": "2f40c8cd-1dd8-b71c-07650329b5c5401c",
+      "reason": "Sharp net-winged beetle on honeydew-coated leaf, but primary caption identifies only milkweed, not Asclepias syriaca. Aphids mostly outside image. No Delphine binding proposed.",
+      "evidence": {
+        "name": "aphid-original",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/2F40C8CD-1DD8-B71C-07650329B5C5401C/original.jpg?",
+        "localFile": "/tmp/botanical59/aphid-original.jpg",
+        "sha1": "73749b44aa0940e9003270f68268c5f0d07642b8",
+        "sha256": "a4f39ed53c1b28fc3d67de5c1d23c420977f42adb2c77b3e1430b5c5f7406469",
+        "bytes": 646481,
+        "seconds": 1.237,
+        "status": 200,
+        "dimensions": [
+          822,
+          710
+        ]
+      }
+    }
+  ]
+}

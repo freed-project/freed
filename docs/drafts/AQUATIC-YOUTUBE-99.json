@@ -1,0 +1,68 @@
+{
+  "batch": "AQUATIC-YOUTUBE-99",
+  "status": "held_no_verified_youtube_pair",
+  "proposals": [],
+  "videoReviews": [
+    {
+      "primarySourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-express-ex2301-gallery-media-ex2301-dive07-octopus1/",
+      "sourceTitle": "Unimpressed",
+      "credit": "NOAA Ocean Exploration, 2023 Shakedown + EXPRESS West Coast Exploration",
+      "sourcePublishedVideoUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/04/ex2301-dive07-octopus1-1280x720-1.mp4",
+      "localVideoPath": "/tmp/freed-aquatic-youtube-99/unimpressed.mp4",
+      "bytes": 39964304,
+      "width": 1280,
+      "height": 720,
+      "durationSeconds": 59.092375,
+      "sha1": "7c759283323e097df7ad2f3e87cbf779fa41aa92",
+      "sha256": "1de20112e40f8c71b566cadfd7b4d981da253ee4e29b6b39c7a85d8eb2595d97",
+      "inspectionMethod": "Six individually opened source frames sampled at roughly 5,15,25,35,45,55 seconds. No claim of continuous playback or audio review.",
+      "framePaths": [
+        "/tmp/freed-aquatic-youtube-99/frame-01.jpg",
+        "/tmp/freed-aquatic-youtube-99/frame-02.jpg",
+        "/tmp/freed-aquatic-youtube-99/frame-03.jpg",
+        "/tmp/freed-aquatic-youtube-99/frame-04.jpg",
+        "/tmp/freed-aquatic-youtube-99/frame-05.jpg",
+        "/tmp/freed-aquatic-youtube-99/frame-06.jpg"
+      ],
+      "observedSequence": [
+        "Wide rocky steps with an octopus left of a pink coral colony and several pale attached animals. Opening slate identifies Quinault Canyon off Washington, 1612m.",
+        "Closer octopus spreads several arms over rock ledges.",
+        "Octopus remains spread across steps; arm tips curl upward.",
+        "Closer view as mantle and arms shift toward lower-right rock gap.",
+        "Mantle lower near edge; arms curled and extended around the rock.",
+        "Octopus lower/right partly behind rock lip while credits appear."
+      ],
+      "primaryCaption": "Muusoctopus at 1650m with moving brittle stars on surrounding seafloor.",
+      "decision": "hold",
+      "reason": "Published clip differs materially from the page's sandy-seafloor scene and depth. Do not adopt caption as exact identification proof until source mapping is resolved. No YouTube watch identity was found on the page or bounded searches.",
+      "rights": "NOAA credit and FAQ support public-domain footage absent an exception; no exception visible. Rights do not resolve source-caption identity mismatch.",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "thumbnailDecision": "No new thumbnail admitted. Existing 640x360 poster from prior source34 has not been relabeled to match this different rocky sequence."
+    },
+    {
+      "primarySourceUrl": "https://nautiluslive.org/video/2022/04/19/yawning-chaunacops-anglerfish-shows-amazing-morphology",
+      "sourceTitle": "Yawning Chaunacops Anglerfish Shows off Amazing Morphology",
+      "watchUrl": "https://www.youtube.com/watch?v=MUnYX3ZeKac",
+      "videoId": "MUnYX3ZeKac",
+      "sourceLinkedChannelUrl": "https://youtube.com/evnautilus",
+      "taxonFromPrimaryPage": "Chaunacops",
+      "sourceRegion": "Lili\u02bbuokalani Ridge, central Pacific",
+      "decision": "hold",
+      "actuallyWatched": false,
+      "reason": "Primary HTML links an actual YouTube video, but the watch-page fetch failed. Exact YouTube title/uploader/playback not independently verified. No footage or separately licensed matching thumbnail inspected. Did not retry or bypass.",
+      "rights": "Primary page footer reserves Ocean Exploration Trust copyright. No image-specific reuse grant verified. Embedding a video and reusing a downloaded thumbnail remain separate questions."
+    }
+  ],
+  "retiredDrafts": [
+    {
+      "characterId": "elspeth-reach",
+      "title": "I was still holding on",
+      "body": "One arm went down the crack. I kept the others on top while it investigated.\n\nThen I followed it.\n\nThere was still something holding me back. It took a while to persuade that arm that the rest of us had made a decision.",
+      "decision": "hold_not_proposal",
+      "reason": "Concrete draft based on rock-gap sequence, but its hesitation and distributed-grip device are too close to Elspeth's existing holding-ground episode and newly admitted Mina movement problem. Source mismatch independently blocks admission."
+    }
+  ],
+  "canon": "Read Elspeth's current Muusoctopus arc, Dorian's current Chaunacops arc and Gilda's full Graneledone arc. Gilda brood remains last. No species, home, portrait, prior prose or chronology changed.",
+  "nextEvidenceNeeded": "For Nautilus, actual permitted sequence inspection, verified upload metadata and a separately licensed matching thumbnail. For NOAA, a primary source mapping that matches the exact rocky clip and an actual matching YouTube upload.",
+  "runtimeChanges": false
+}

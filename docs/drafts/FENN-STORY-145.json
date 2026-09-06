@@ -1,0 +1,30 @@
+{
+  "status": "pending_independent_review",
+  "characterId": "fenn-lowtide",
+  "episode": {
+    "subject": "harbor seal",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "social",
+    "title": "The end without teeth",
+    "body": "Something pinched my back. I turned. The bird had its head down, examining the sand.\n\nI settled again. Another pinch.\n\nThis time I turned until my nose was where my tail had been. The bird walked around me.\n\nI watched it go, and began turning again.",
+    "mediaSha1": "4fbf56a88dea37d1ed11710a36b82f47b84d9609"
+  },
+  "media": {
+    "observationId": 100879811,
+    "photoId": 168417224,
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/168417224/large.jpeg",
+    "sourceUrl": "https://www.inaturalist.org/observations/100879811",
+    "attribution": "(c) Millie Basden, some rights reserved (CC BY)",
+    "licenseCode": "cc-by",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "width": 1024,
+    "height": 597,
+    "localPath": "/tmp/freed-fenn145/168417224.jpg",
+    "sha1": "4fbf56a88dea37d1ed11710a36b82f47b84d9609",
+    "sha256": "f1003b423a5b75f0010dd87701212ae504aed96a3a171ebc6616192983deb3e9"
+  },
+  "imageReview": "Exact full image opened individually. Clearly resolved spotted seal lies on sand with face raised, foreflipper and hind flippers legible. Juvenile gull stands just behind its back with bill open. No contact shown in this frame; observer independently says the gull repeatedly tried to peck the seal back. Physical interaction is illustrated by the two actors and proximity, not merely a species portrait.",
+  "fictionBoundary": "Pinches, feigned sand examination, repeated settling and the turning sequence are fiction. No injury, mutualistic grooming or food is claimed. Do not portray photograph as a sequence. Source La Jolla is provenance, not a journey from Kenai Fjords. No gull species or seal sex assertion.",
+  "continuity": "Full two-entry Fenn arc read. After childhood buoy play and adult group ice-resting. New active attempt to keep a bothersome bird in front differs from passively waking on rotated ice. Reviewer should assess whether turning repeats that episode too closely. Preserve avatar and both existing bodies."
+}

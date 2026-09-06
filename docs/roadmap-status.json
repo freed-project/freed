@@ -31,7 +31,7 @@
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-05",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
@@ -43,7 +43,8 @@
     {
       "id": 8,
       "status": "current",
-      "source": "docs/PHASE-8-FRIENDS.md"
+      "source": "docs/PHASE-8-FRIENDS.md",
+      "reviewedAt": "2026-09-06"
     },
     {
       "id": 9,

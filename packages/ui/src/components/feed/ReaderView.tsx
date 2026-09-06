@@ -415,6 +415,11 @@ export function ReaderView({
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
+  // Demo attribution is separate metadata, never part of the character voice.
+  const sampleImageCredit = item.sampleDataFingerprint &&
+    item.content.linkPreview?.description?.startsWith("Photograph by ")
+    ? item.content.linkPreview.description
+    : null;
   const canOpenSource = Boolean(onOpenUrl && item.sourceUrl);
   const handleOpenSource = useCallback(() => {
     if (!onOpenUrl || !item.sourceUrl) return;
@@ -838,7 +843,7 @@ export function ReaderView({
                 </span>
               </Tooltip>
             )}
-            {contentSource === "text" && (
+            {contentSource === "text" && !item.sampleDataFingerprint && (
               <Tooltip label="Full content will load when online">
                 <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
                   Summary
@@ -1090,7 +1095,7 @@ export function ReaderView({
         {/* Content */}
         {youtubeReference ? (
           item.content.text ? (
-            <p className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
+            <p className="whitespace-pre-wrap break-words text-lg leading-relaxed text-[var(--theme-text-secondary)]">
               {item.content.text}
             </p>
           ) : null
@@ -1114,6 +1119,14 @@ export function ReaderView({
               </span>
             )}
           </div>
+        )}
+
+        {!youtubeReference && sampleImageCredit && (
+          <aside aria-label="Image credit" className="mt-8 border-t border-[var(--theme-border-subtle)] pt-4">
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--theme-text-muted)]">
+              {sampleImageCredit}
+            </p>
+          </aside>
         )}
 
         {supportsThreadHydration && (

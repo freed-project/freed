@@ -1,11 +1,5 @@
 import {
   generateSampleLibraryData,
-  SAMPLE_CHARACTER_ARCS,
-  SAMPLE_CURATED_DEMO_MEDIA,
-  sampleCorpusAttribution,
-  sampleCorpusDisplayTitle,
-  sampleCorpusMediaUrl,
-  sampleCorpusSourceUrl,
   type Account,
   type FeedItem,
   type Person,
@@ -35,15 +29,6 @@ const DEMO_PUBLIC_KEY = "4".repeat(64);
 const DEMO_CHAIN_DIGEST = "5".repeat(64);
 const DEMO_PAGE_RECORDS = 512;
 const DEMO_LAST_TOP_ITEM_KEY = "freed.demo.last-top-item.v1";
-const DEMO_CHARACTER_CARE_LEVELS = {
-  "manny-tis": 5,
-  "cygnus-shy": 4,
-  "nudi-branch-manager": 3,
-  "frogbert-angler": 3,
-  "flora-mingo": 2,
-  "nova-remains": 1,
-} as const satisfies Readonly<Record<string, Person["careLevel"]>>;
-
 interface FreedDemoCheckpointOptions {
   generatedAt?: number;
   presentationSeed?: number;
@@ -70,168 +55,6 @@ function writePreviousDemoTopItemId(globalId: string): void {
   } catch {
     // A fresh randomized seed still provides variety when storage is unavailable.
   }
-}
-
-function stablePresentationNumber(value: string, seed: number): number {
-  let hash = seed >>> 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = Math.imul(hash ^ value.charCodeAt(index), 16_777_619) >>> 0;
-  }
-  return hash;
-}
-
-function curatedDemoSample(
-  sample: ReturnType<typeof generateSampleLibraryData>,
-  generatedAt: number,
-  presentationSeed: number,
-  previousTopItemId: string | null | undefined,
-) {
-  const mediaByCharacter = new Map<string, typeof SAMPLE_CURATED_DEMO_MEDIA>();
-  for (const arc of SAMPLE_CHARACTER_ARCS) {
-    mediaByCharacter.set(
-      arc.characterId,
-      SAMPLE_CURATED_DEMO_MEDIA.filter((asset) => asset.identityNameBase === arc.identityNameBase),
-    );
-  }
-  const characterItems = new Map<string, FeedItem[]>();
-  let templateIndex = 0;
-  for (const arc of SAMPLE_CHARACTER_ARCS) {
-    const assets = mediaByCharacter.get(arc.characterId) ?? [];
-    const externalId = `${DEMO_BATCH_ID}:sample-character-${arc.characterId}`;
-    const items = assets.map((asset, sequence) => {
-      const template = sample.items[templateIndex++]!;
-      const title = sampleCorpusDisplayTitle(asset, arc.platform, sequence);
-      return {
-        ...template,
-        globalId: `${DEMO_BATCH_ID}:sample-character:${arc.characterId}:${sequence}`,
-        platform: arc.platform,
-        contentType: arc.platform === "rss" ? "article" as const : "post" as const,
-        sourceUrl: sampleCorpusSourceUrl(asset),
-        author: {
-          id: externalId,
-          displayName: arc.identityNameBase,
-          handle: arc.characterId,
-          avatarUrl: sampleCorpusMediaUrl(assets[0] ?? asset),
-        },
-        content: {
-          text: asset.fieldNote,
-          mediaUrls: [sampleCorpusMediaUrl(asset)],
-          mediaTypes: ["image" as const],
-          linkPreview: {
-            url: sampleCorpusSourceUrl(asset),
-            title,
-            description: sampleCorpusAttribution(asset),
-          },
-        },
-        ...(arc.platform === "rss"
-          ? {
-              rssSource: {
-                feedUrl: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${arc.characterId}`,
-                feedTitle: `${arc.identityNameBase} Field Notes`,
-                siteUrl: "https://sample.freed.wtf",
-              },
-            }
-          : { rssSource: undefined }),
-        ...(asset.coordinates
-          ? {
-              location: {
-                name: asset.detail,
-                coordinates: asset.coordinates,
-                source: "text_extraction" as const,
-              },
-            }
-          : { location: undefined }),
-        preservedContent: arc.platform === "rss"
-          ? {
-              preservedAt: generatedAt,
-              publishedAt: generatedAt,
-              author: arc.identityNameBase,
-              text: asset.fieldNote,
-              wordCount: asset.fieldNote.trim().split(/\s+/).length,
-              readingTime: 1,
-            }
-          : undefined,
-        userState: {
-          ...template.userState,
-          archived: false,
-          hidden: false,
-        },
-      } satisfies FeedItem;
-    });
-    characterItems.set(arc.characterId, items);
-  }
-
-  const newestFirst: FeedItem[] = [];
-  const maximumEpisodes = Math.max(...[...characterItems.values()].map((items) => items.length));
-  for (let round = 0; round < maximumEpisodes; round += 1) {
-    const activeArcs = SAMPLE_CHARACTER_ARCS
-      .filter((arc) => round < (characterItems.get(arc.characterId)?.length ?? 0))
-      .sort((left, right) =>
-        stablePresentationNumber(`${round}:${left.characterId}`, presentationSeed) -
-        stablePresentationNumber(`${round}:${right.characterId}`, presentationSeed)
-      );
-    for (const arc of activeArcs) {
-      const episodes = characterItems.get(arc.characterId)!;
-      newestFirst.push(episodes[episodes.length - 1 - round]!);
-    }
-  }
-  if (newestFirst.length > 1 && newestFirst[0]?.globalId === previousTopItemId) {
-    const replacementIndex = newestFirst.findIndex((item) => item.author.id !== newestFirst[0]!.author.id);
-    if (replacementIndex > 0) {
-      [newestFirst[0], newestFirst[replacementIndex]] = [newestFirst[replacementIndex]!, newestFirst[0]!];
-    }
-  }
-  const timelineSlots = sample.items
-    .slice(0, newestFirst.length)
-    .map((item) => item.publishedAt)
-    .sort((left, right) => right - left);
-  const items = newestFirst.map((item, index) => {
-    const publishedAt = timelineSlots[index] ?? generatedAt - index * 60_000;
-    const delta = publishedAt - item.publishedAt;
-    return {
-      ...item,
-      publishedAt,
-      capturedAt: item.capturedAt + delta,
-    };
-  });
-
-  const persons = SAMPLE_CHARACTER_ARCS.map((arc, index) => {
-    const template = sample.persons[index]!;
-    const assets = mediaByCharacter.get(arc.characterId) ?? [];
-    return {
-      ...template,
-      id: `${DEMO_BATCH_ID}:sample-person-${arc.characterId}`,
-      name: arc.identityNameBase,
-      bio: arc.bio,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : template.avatarUrl,
-      careLevel: DEMO_CHARACTER_CARE_LEVELS[arc.characterId as keyof typeof DEMO_CHARACTER_CARE_LEVELS],
-      relationshipStatus: "friend",
-    } satisfies Person;
-  });
-  const accounts = SAMPLE_CHARACTER_ARCS.map((arc, index) => {
-    const template = sample.accounts[index]!;
-    const assets = mediaByCharacter.get(arc.characterId) ?? [];
-    const externalId = `${DEMO_BATCH_ID}:sample-character-${arc.characterId}`;
-    return {
-      ...template,
-      id: `social:${arc.platform}:${externalId}`,
-      provider: arc.platform,
-      externalId,
-      handle: arc.characterId,
-      displayName: arc.identityNameBase,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : template.avatarUrl,
-      personId: persons[index]!.id,
-    } satisfies Account;
-  });
-  const nova = SAMPLE_CHARACTER_ARCS.find((arc) => arc.characterId === "nova-remains")!;
-  const feedTemplate = sample.feeds[0]!;
-  const feeds: RssFeed[] = [{
-    ...feedTemplate,
-    url: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${nova.characterId}`,
-    title: `${nova.identityNameBase} Field Notes`,
-    siteUrl: "https://sample.freed.wtf",
-  }];
-  return { accounts, feeds, items, persons };
 }
 
 function demoTopItemId(
@@ -448,17 +271,14 @@ export function createFreedDemoCheckpointRecords(
   const generatedAt = options.generatedAt ?? Date.now();
   const presentationSeed = options.presentationSeed ?? demoPresentationSeed();
   const previousTopItemId = options.previousTopItemId ?? undefined;
-  const sample = generateSampleLibraryData({
+  const curated = generateSampleLibraryData({
     batchId: DEMO_BATCH_ID,
-    friendCount: 80,
+    scale: "showcase",
     generatedAt,
-    identitiesPerFriend: 2,
     presentationSeed,
     previousTopItemId,
     seed: 20260831,
-    unlinkedIdentityRatio: 1,
   });
-  const curated = curatedDemoSample(sample, generatedAt, presentationSeed, previousTopItemId);
   return [
     record("00_checkpoint_header", "checkpoint", {
       authorityEpoch: DEMO_EPOCH_ID,

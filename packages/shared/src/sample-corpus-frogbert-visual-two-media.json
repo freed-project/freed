@@ -1,0 +1,47 @@
+[
+  {
+    "id": "commons-frogbert-visual-two-01",
+    "subject": "frogfish underwater",
+    "category": "undersea",
+    "identityNameBase": "Frogbert Angler",
+    "detail": "Antennarius striatus (19815990372).jpg",
+    "alt": "A hairy frogfish's pale wormlike lure extends toward the camera, with its orange face behind it.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/Antennarius_striatus_%2819815990372%29.jpg/1280px-Antennarius_striatus_%2819815990372%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Antennarius_striatus_(19815990372).jpg",
+    "creator": "Christian Gloor from Wakatobi Dive Resort, Indonesia",
+    "license": "CC BY 2.0",
+    "width": 1280,
+    "height": 1707,
+    "sha1": "3c0d019158c7d78248e12b1151b0a462cea627b3"
+  },
+  {
+    "id": "commons-frogbert-visual-two-02",
+    "subject": "frogfish underwater",
+    "category": "undersea",
+    "identityNameBase": "Frogbert Angler",
+    "detail": "Hairy frogfish (Antennarius striatus) (16057843108).jpg",
+    "alt": "A dark hairy frogfish rests in grey sediment, with grains on its lips and face.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ac/Hairy_frogfish_%28Antennarius_striatus%29_%2816057843108%29.jpg/1280px-Hairy_frogfish_%28Antennarius_striatus%29_%2816057843108%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hairy_frogfish_(Antennarius_striatus)_(16057843108).jpg",
+    "creator": "Rickard Zerpe",
+    "license": "CC BY-SA 2.0",
+    "width": 1280,
+    "height": 960,
+    "sha1": "708922c5bacfa31a2ed33f2b068c1837fe027b8b"
+  },
+  {
+    "id": "commons-frogbert-visual-two-03",
+    "subject": "frogfish underwater",
+    "category": "undersea",
+    "identityNameBase": "Frogbert Angler",
+    "detail": "Antennarius striatus (24783944856).jpg",
+    "alt": "A pale hairy frogfish faces the camera with its mouth wide open above the seabed.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e6/Antennarius_striatus_%2824783944856%29.jpg/1280px-Antennarius_striatus_%2824783944856%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Antennarius_striatus_(24783944856).jpg",
+    "creator": "Christian Gloor from Wakatobi Dive Resort, Indonesia",
+    "license": "CC BY 2.0",
+    "width": 1280,
+    "height": 1707,
+    "sha1": "215028f2956ac61b9567ca0ac7d45450cf451bae"
+  }
+]

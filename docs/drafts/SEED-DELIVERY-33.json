@@ -1,0 +1,90 @@
+[
+  {
+    "original": {
+      "id": "botanical27-fws-seed-pod",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "Packed carefully",
+      "alt": "Open common-milkweed pod exposes densely overlapping brown seeds in ordered rows, with pale silk still compact",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2014-10/16258.jpg",
+      "sourceUrl": "https://www.fws.gov/media/milkweed-seeds-pod",
+      "creator": "Ryan Hagerty/USFWS",
+      "license": "Public domain",
+      "width": 5760,
+      "height": 3840,
+      "sha1": "ca31302fd2a8d2f2efcaff6001a6ca9cb2dcf952",
+      "licenseUrl": "https://www.fws.gov/media/milkweed-seeds-pod"
+    },
+    "display": {
+      "id": "botanical27-fws-seed-pod-display",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "Packed carefully",
+      "alt": "Open common-milkweed pod exposes densely overlapping brown seeds in ordered rows, with pale silk still compact",
+      "imageUrl": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2014-10/16258.jpg?itok=ePGQUfrb",
+      "sourceUrl": "https://www.fws.gov/media/milkweed-seeds-pod",
+      "creator": "Ryan Hagerty/USFWS",
+      "license": "Public domain",
+      "width": 1300,
+      "height": 867,
+      "sha1": "0191b63c70c956b6d34dd481cdd4f92c820de2e0",
+      "licenseUrl": "https://www.fws.gov/media/milkweed-seeds-pod"
+    },
+    "download": {
+      "name": "packed",
+      "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2014-10/16258.jpg?itok=ePGQUfrb",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 663578,
+      "sha1": "0191b63c70c956b6d34dd481cdd4f92c820de2e0",
+      "sha256": "b03b43b80633222c9214c7547696c98fc18f183d262b20ad2c09de40f6bef029"
+    },
+    "review": "Lead individually opened original and published large derivative; framing, seed detail and narrative match preserved. Author independent scene approval remains valid for the same photograph."
+  },
+  {
+    "original": {
+      "id": "botanical27-fws-common-seed",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "One at a time",
+      "alt": "Open brown pods on standing common-milkweed stems have loose white silky seed tufts protruding in masses",
+      "imageUrl": "https://www.fws.gov/sites/default/files/2021-06/49018093678_8725de4bc8_o.jpg",
+      "sourceUrl": "https://www.fws.gov/media/common-milkweed-gone-seed",
+      "creator": "Courtney Celley/USFWS",
+      "license": "Public domain",
+      "width": 6016,
+      "height": 4016,
+      "sha1": "aec50bd3638ecf4244338472ee6aca4fdcd8c14f",
+      "licenseUrl": "https://www.fws.gov/media/common-milkweed-gone-seed"
+    },
+    "display": {
+      "id": "botanical27-fws-common-seed-display",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "One at a time",
+      "alt": "Open brown pods on standing common-milkweed stems have loose white silky seed tufts protruding in masses",
+      "imageUrl": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2021-06/49018093678_8725de4bc8_o.jpg?itok=Hr0CRxL1",
+      "sourceUrl": "https://www.fws.gov/media/common-milkweed-gone-seed",
+      "creator": "Courtney Celley/USFWS",
+      "license": "Public domain",
+      "width": 1300,
+      "height": 868,
+      "sha1": "7e924d9885ef89e23272fe59cc8e716fbcbee4bd",
+      "licenseUrl": "https://www.fws.gov/media/common-milkweed-gone-seed"
+    },
+    "download": {
+      "name": "silk",
+      "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2021-06/49018093678_8725de4bc8_o.jpg?itok=Hr0CRxL1",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 702968,
+      "sha1": "7e924d9885ef89e23272fe59cc8e716fbcbee4bd",
+      "sha256": "b605e77674127b50e66cf5db7d02e6614d80fcaf1de41869c7698d97d6e780c8"
+    },
+    "review": "Lead individually opened original and published large derivative; framing, seed detail and narrative match preserved. Author independent scene approval remains valid for the same photograph."
+  }
+]

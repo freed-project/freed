@@ -1,0 +1,17 @@
+# Aquatic visual 44: conditional canon
+
+## Silas Return
+
+ID silas-return. Facebook. Sockeye salmon, Oncorhynchus nerka, anadromous Lake Clark watershed population, not landlocked kokanee. Adult male in his sole spawning return. Red flank, green head, teeth and hooked jaw are source-compatible spawning morphology. Exact age and photographed sex are unrecorded; male is the fictional assignment supported by the kype. Proposed public bio: I remember being smaller.
+
+Home is natal spawning water within the Lake Clark watershed, Alaska, approximate fictional anchor 60.2, -154.3. The NPS album identifies Lake Clark spawning fish but does not identify the exact stream for source11. Do not turn the coordinate into a claimed camera location, assign Kijik to this frame, or merge a Brooks River history into his own.
+
+Silas wants the familiar water to receive the body he has become. He notices current against his gills, stones under his belly, pressure from his tail and nearby backs rising into air. He is stubborn about continuing, but his expectations were formed when he occupied much less water. His fear is losing the way while still recognizing it. His voice is plain and intimate, with a small dry complaint after an immense journey. The tension between recognition and bodily change belongs inside events, not a final lesson about home.
+
+History: born in this watershed, juvenile freshwater life, ocean growth, then the current adult return. Candidate01 is placed during that return, before his personal spawning, offspring or death, as fictional chronology. The exact caption records spawning salmon in shallow water; it does not document this individual migration stage or prove that a photographed fish has not already spawned. The remembered turning room is invented individual memory. No already-born offspring, established mate, named friend or previous adult return. Sockeye die after spawning; future additions must respect that terminal chronology. A later ordinary ocean feeding trip or another spawning year would contradict it. Earlier silver-bodied or fry scenes must be explicit memories and independently sourced. Gilda's separate brood remains latest in her own arc.
+
+Spent if admitted: remembered juvenile water meets a larger returning body; brief progress among exposed red backs changes reunion-longing into a desire for more water. Do not repeat shallow-channel fit, home getting smaller, another school-as-arrival or a second companion pushing onward.
+
+[NPS Lake Clark sockeye account](https://home.nps.gov/lacl/learn/nature/sockeye_salmon.htm) establishes this watershed's anadromous sockeye and spawning habitats. [NOAA Fisheries sockeye profile](https://www.fisheries.noaa.gov/species/sockeye-salmon) supports the species, adult return from sea to natal spawning water and death after spawning. [NPS Katmai FAQ](https://home.nps.gov/katm/learn/photosmultimedia/sockeye-salmon-frequently-asked-questions.htm) supports homing and spawning morphology as species biology, not Silas's geography. [NPS Short Life of Sockeye Salmon](https://home.nps.gov/katm/blogs/short-life-of-sockeye-salmon.htm) describes streams shallow enough for backs to protrude. Exact image11 independently documents Lake Clark spawning fish half exposed.
+
+No attributed cognition or universal salmon memory is claimed. The biography and narrated movements are personification around sourced body, habitat and life cycle.

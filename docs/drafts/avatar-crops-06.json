@@ -1,0 +1,114 @@
+[
+  {
+    "characterId": "nessa-whisker",
+    "id": "commons-land-regular-five-02",
+    "subject": "Arctic fox",
+    "category": "wildlife",
+    "identityNameBase": "Nessa Whisker",
+    "detail": "A summer-coated Arctic fox lifts its head with its mouth open on a grassy rise, with small flying specks nearby",
+    "alt": "A summer-coated Arctic fox lifts its head with its mouth open on a grassy rise, with small flying specks nearby",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Arctic_Fox_on_Banks_Island_04.jpg/960px-Arctic_Fox_on_Banks_Island_04.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_Fox_on_Banks_Island_04.jpg",
+    "creator": "Stephan Sprinz",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "width": 2967,
+    "height": 2967,
+    "sha1": "9e24b0348fd09652399ecf64d61b561f06217d3f",
+    "focal": {
+      "x": 0.515,
+      "y": 0.43,
+      "zoom": 4
+    },
+    "decision": "recommend",
+    "review": "AVATAR-REVIEW-06.md"
+  },
+  {
+    "characterId": "pella-wideawake",
+    "id": "commons-strange-eleven-8d005d86",
+    "subject": "Philippine tarsier",
+    "category": "wildlife",
+    "identityNameBase": "Pella Wideawake",
+    "detail": "Close tarsier face with large eyes supports the failed attempt to look casually at another; that animal is unpictured.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Philippine_Tarsier_Bohol.jpg/960px-Philippine_Tarsier_Bohol.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Philippine_Tarsier_Bohol.jpg",
+    "creator": "John Martin PERRY",
+    "license": "CC BY-SA 4.0",
+    "width": 3888,
+    "height": 2592,
+    "sha1": "8d005d86f17c1c8293041d4b2997700b7663b1f8",
+    "focal": {
+      "x": 0.38,
+      "y": 0.5,
+      "zoom": 1.1
+    },
+    "decision": "recommend",
+    "review": "AVATAR-REVIEW-06.md"
+  },
+  {
+    "characterId": "finch-fidget",
+    "id": "commons-land-regular-four-finch-48d1f523",
+    "subject": "quokka",
+    "category": "wildlife",
+    "identityNameBase": "Finch Fidget",
+    "detail": "Seated quokka holds a slender leafy shoot between its forepaws, with the stem reaching ground vegetation. The bend and spring-back sequence is fictional; roots are not visible.",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/4/40/Quokka_%28Setonix_brachyurus%29_%2827725086285%29.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Quokka_(Setonix_brachyurus)_(27725086285).jpg",
+    "creator": "patrickkavanagh",
+    "license": "CC BY 2.0",
+    "width": 879,
+    "height": 1200,
+    "sha1": "48d1f523316f5c6e88284e388cd209e2d5aad301",
+    "focal": {
+      "x": 0.44,
+      "y": 0.37,
+      "zoom": 2
+    },
+    "decision": "recommend",
+    "review": "AVATAR-REVIEW-06.md"
+  },
+  {
+    "characterId": "willa-drift",
+    "id": "commons-0447",
+    "subject": "leafy seadragon underwater",
+    "category": "undersea",
+    "identityNameBase": "Leaf Erickson",
+    "detail": "Leafy Seadragon on Kangaroo Island",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Leafy_Seadragon_on_Kangaroo_Island.jpg/1280px-Leafy_Seadragon_on_Kangaroo_Island.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ALeafy_Seadragon_on_Kangaroo_Island.jpg",
+    "creator": "James Rosindell",
+    "license": "CC BY-SA 4.0",
+    "width": 1280,
+    "height": 852,
+    "sha1": "94af8624565c4a94c21bf13f61bf19720f4e6024",
+    "focal": {
+      "x": 0.25,
+      "y": 0.59,
+      "zoom": 2.5
+    },
+    "decision": "recommend",
+    "review": "AVATAR-REVIEW-06.md"
+  },
+  {
+    "characterId": "rollo-round",
+    "id": "legacy-ocean-13-13",
+    "subject": "blackspotted pufferfish",
+    "category": "undersea",
+    "identityNameBase": "Rollo Round",
+    "detail": "The puffer is settled tightly against rough reef and weed, with a visible yellow pectoral fin. Scratching is a fictional plausible bodily scene, not a documented act or medical claim.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Arothron_nigropunctatus_1.jpg/1280px-Arothron_nigropunctatus_1.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arothron_nigropunctatus_1.jpg",
+    "creator": "Dr. Dwayne Meadows, NOAA/NMFS/OPR",
+    "license": "Public domain",
+    "width": 1280,
+    "height": 960,
+    "sha1": "ba6000625ba4db870dc40fd30c019038bf6430c4",
+    "focal": {
+      "x": 0.65,
+      "y": 0.48,
+      "zoom": 1.5
+    },
+    "decision": "recommend",
+    "review": "AVATAR-REVIEW-06.md"
+  }
+]

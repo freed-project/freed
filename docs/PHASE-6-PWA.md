@@ -779,3 +779,10 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 ## Deliverable
 
 Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article, image, and pinned saved-reader support.
+
+
+### Isolated editorial showcase correction, September 6, 2026
+
+The shared showcase generator now projects admitted character episodes, reviewed portraits and authored platform identities directly. Null-media drafts and synthetic stress fixtures are excluded from showcase counts. YouTube uses verified video sources and preserves narrative paragraphs and separate credit lines. Sample feed URLs retain the non-fetching sentinel domain. The explicit stress mode remains separate, with bounded text-collision fallback. This is an isolated source implementation; rendered preview and full repository verification remain outstanding, and no deployment or merge is claimed. See [integration evidence](drafts/EDITORIAL-GENERATOR-INTEGRATION.md).
+
+Isolated editorial follow-up on September 6: accepted sample Stories now carry complete local preserved text and display separate photo credits in the reader. The shared reader omits the misleading Summary label for complete sample entries. Focused tests and offline mobile rendering pass; deployment and full integration remain unverified.

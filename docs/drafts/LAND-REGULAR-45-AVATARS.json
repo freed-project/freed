@@ -1,0 +1,113 @@
+{
+  "batch": "land-regular-45",
+  "avatars": [
+    {
+      "characterName": "Beatrice Bark",
+      "characterId": "beatrice-bark",
+      "fullSpecies": "Ursus americanus",
+      "ageSexEvidence": "Independent adult-sized female in fiction; source does not record sex or exact age. No pregnancy or motherhood claim.",
+      "source": {
+        "index": 8,
+        "query": "black bear",
+        "item": 42,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+        "sourceCachePath": "/tmp/freed-land45/8.html",
+        "record": {
+          "AltText": "Black bear head peeking out from behind a tree.",
+          "AssetBaseType": "File",
+          "AssetID": "5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "Black bears hang out in trees.",
+          "ImageCreateDate": {
+            "Date": "08/31/2023"
+          },
+          "ImageCreateDateTime": "08/31/2023 07:54:46 AM",
+          "Keywords": [
+            "wildlife",
+            "animal",
+            "Smokies",
+            "Great Smoky Mountains",
+            "mammal",
+            "bear",
+            "black bear",
+            "American black bear"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Great Smoky Mountains National Park",
+              "Type": "National Park",
+              "Code": "GRSM"
+            }
+          ],
+          "PhotoCredit": "NPS / Betty Blanton",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "meconnor",
+          "SubType": "jpeg",
+          "Title": "Black Bear in Tree"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/5a12c90d-24e8-4a98-ae10-63173fd47ed6/original.jpg?",
+          "publishedLabel": "174.7 KB, 772x954",
+          "localPath": "/tmp/freed-land45/8-original.jpg",
+          "bytes": 221778,
+          "width": 772,
+          "height": 954,
+          "sha1": "2fdcc7f0e69f5a4bf8ead5a2f6933700eec7c5d8",
+          "sha256": "70dadbb052c10dc4ea9d21e2fa35b4c2dc3f06cdd339da10e680ebc2c5b99e34"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/5a12c90d-24e8-4a98-ae10-63173fd47ed6/original.jpg?",
+          "publishedLabel": "174.7 KB, 772x954",
+          "localPath": "/tmp/freed-land45/8-delivery.jpg",
+          "bytes": 221778,
+          "width": 772,
+          "height": 954,
+          "sha1": "2fdcc7f0e69f5a4bf8ead5a2f6933700eec7c5d8",
+          "sha256": "70dadbb052c10dc4ea9d21e2fa35b4c2dc3f06cdd339da10e680ebc2c5b99e34"
+        }
+      },
+      "cropOriginalPixels": {
+        "x": 25,
+        "y": 35,
+        "width": 720,
+        "height": 720
+      },
+      "focal": {
+        "x": 0.49870466321243523,
+        "y": 0.4140461215932914,
+        "zoom": 1.0722222222222222
+      },
+      "alt": "Black bear with rounded ears and a brown muzzle looks around a leafy tree trunk.",
+      "review": "Actual 220 and 48 pixel circular crops independently opened. Brown muzzle, two eyes and round ears remain legible; trunk gives context. Source does not establish exact age/sex. This is illustrative casting, not a claim the photographed bear is a known individual.",
+      "previews": [
+        {
+          "size": 220,
+          "localPath": "/tmp/freed-land45/beatrice-bark-220-circle.png",
+          "bytes": 118280,
+          "sha256": "2344e8bd6b659afd3c4146224bf8afe6bd67abd296b7078a6d466ef8a5e32665"
+        },
+        {
+          "size": 48,
+          "localPath": "/tmp/freed-land45/beatrice-bark-48-circle.png",
+          "bytes": 9605,
+          "sha256": "cc67d2e1f02efa64d280d7faae3f16672a806e28d9ae4bd85d0212cb984b6366"
+        }
+      ]
+    }
+  ]
+}

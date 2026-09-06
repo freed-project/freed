@@ -1,0 +1,134 @@
+{
+  "status": "one proposed visual Story; no runtime edits or admission",
+  "counts": {
+    "exactOriginalsOpened": 3,
+    "publishedDeliveryVariantsOpened": 1,
+    "visualStoryCandidates": 1,
+    "newIdentities": 1
+  },
+  "characters": [
+    {
+      "characterId": "dulcie-redleaf",
+      "identityNameBase": "Dulcie Redleaf",
+      "subject": "pink sundew",
+      "species": "Drosera capillaris",
+      "platform": "instagram",
+      "bio": "Small leaves. An appetite with consequences.",
+      "location": {
+        "name": "Wet pine savanna in the Big Thicket region, southeast Texas",
+        "coordinates": {
+          "lat": 30.5,
+          "lng": -94.4
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "43-01",
+      "characterId": "dulcie-redleaf",
+      "identityNameBase": "Dulcie Redleaf",
+      "episode": {
+        "subject": "pink sundew",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "9784e816c61948816bbb7f113226a4fa0eebdc70",
+        "theme": "feeding",
+        "title": "What stayed outside",
+        "body": "I thought he would disappear when I finished eating.\n\nThe soft parts went into me. His shell stayed on my leaf.\n\nI am fed, and still holding the shape of someone else."
+      },
+      "sourceAssetId": "f16378d2-e935-4f9e-8c32-4455d549c7ee",
+      "localFile": "/tmp/botanical43/sundew-hires.jpg",
+      "localBytes": 569488,
+      "visualReview": "Exact original and published hires opened individually. The raised central-right leaf has a dark insect remnant among sharp red adhesive tentacles. The source alt text explicitly calls it an insect exoskeleton. Hires preserves the original framing and central shell. The consumption sequence and emotional aftermath are fictional reconstruction; the photograph does not document the meal over time.",
+      "admission": "proposed; independent lead image and prose decisions required"
+    }
+  ],
+  "media": [
+    {
+      "id": "botanical43-sundew",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f16378d2-e935-4f9e-8c32-4455d549c7ee/proxyhires.jpg?",
+      "localFile": "/tmp/botanical43/sundew-hires.jpg",
+      "bytes": 569488,
+      "sha1": "9784e816c61948816bbb7f113226a4fa0eebdc70",
+      "sha256": "1ed7396c824da5b2b914ab657402892ac1f23dd2358daed30e8122e9cac0c246",
+      "status": 200,
+      "seconds": 1.394,
+      "dimensions": [
+        1824,
+        1216
+      ],
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f16378d2-e935-4f9e-8c32-4455d549c7ee",
+      "creator": "NPS / Scott Sharaga",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/f16378d2-e935-4f9e-8c32-4455d549c7ee",
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "sourceLocal": "/tmp/botanical43/sundew-asset.html",
+      "category": "wildlife",
+      "aggregated": false,
+      "subject": "pink sundew",
+      "original": {
+        "id": "sundew-original",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/f16378d2-e935-4f9e-8c32-4455d549c7ee/original.jpg?",
+        "localFile": "/tmp/botanical43/sundew-original.jpg",
+        "bytes": 1853315,
+        "sha1": "33f93886b40cb57b86caf0b427f4e81b1e6ab0ed",
+        "sha256": "a797865f00850f35d9884440377d314b322134d818bf1497b073d8c181c6975e",
+        "status": 200,
+        "seconds": 4.621,
+        "dimensions": [
+          3988,
+          2659
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f16378d2-e935-4f9e-8c32-4455d549c7ee",
+        "creator": "NPS / Scott Sharaga",
+        "license": "Public domain",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/f16378d2-e935-4f9e-8c32-4455d549c7ee",
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "sourceLocal": "/tmp/botanical43/sundew-asset.html",
+        "category": "wildlife",
+        "aggregated": false
+      },
+      "alt": "A red pink-sundew leaf bears a dark insect exoskeleton among glistening adhesive tentacles.",
+      "detail": "Drosera capillaris rosette with an attached insect exoskeleton on the raised leaf. Photograph by NPS / Scott Sharaga."
+    }
+  ],
+  "holds": [
+    {
+      "source": {
+        "id": "dodder-wrap",
+        "imageUrl": "https://www.nps.gov/bibe/learn/nature/images/BIBE_Route13_Dodder_2020_NPS_CAHoyt-7329.jpg",
+        "localFile": "/tmp/botanical43/dodder-wrap.jpg",
+        "bytes": 321244,
+        "sha1": "427d773ae13ac18c7f571d2b179424697e4583cf",
+        "sha256": "92747cd9c6365a2d30947604afee0ce067162a1a671a843b4bdc8448a59d51d1",
+        "status": 200,
+        "seconds": 0.381,
+        "dimensions": [
+          313,
+          470
+        ]
+      },
+      "reason": "Exact 313 x 470 original opened. Orange tangles obscure the relevant host contact; insufficient sharp scene for a visual Story or a new avatar. No draft."
+    },
+    {
+      "source": {
+        "id": "earthstar",
+        "imageUrl": "https://www.nps.gov/gate/learn/nature/images/Astraeus_hygrometricus_WS.JPG",
+        "localFile": "/tmp/botanical43/earthstar.jpg",
+        "bytes": 86339,
+        "sha1": "47b4fe772f5eed2c926f26ab07a88ab607c41a77",
+        "sha256": "9e65e9833020a2b88e649d10e3bd5c020aa4bb872b31e6bb89076bc223cced2a",
+        "status": 200,
+        "seconds": 0.303,
+        "dimensions": [
+          448,
+          336
+        ]
+      },
+      "reason": "Exact 448 x 336 original opened. Low-resolution grey fruitbody on busy litter, with ambiguous damaged/abraded surface. No sharp weather sequence or distinctive incident; no draft."
+    }
+  ],
+  "canonFile": "BOTANICAL-VISUAL-43-CANON.md",
+  "avatarFile": "BOTANICAL-VISUAL-43-AVATARS.json"
+}

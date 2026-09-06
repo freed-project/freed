@@ -1,0 +1,478 @@
+{
+  "targetCount": 16,
+  "completedCount": 16,
+  "status": "Eight lead-approved null-to-image replacements integrated, eight held and excluded. Episode count unchanged; RSS delta +2. No publication.",
+  "entries": [
+    {
+      "id": "legacy-ocean-13-01",
+      "characterId": "dot-thimble",
+      "identityName": "Dot Thimble",
+      "replacement": {
+        "episodeNumber": 1,
+        "oldTitle": "An ambitious mouthful",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "social",
+      "title": "I said that",
+      "body": "I introduced myself to a passing fish. It said hello to the branch above me. I corrected it. It tried the branch below. By the time it found my face, I wasn't feeling very welcoming.",
+      "image": {
+        "title": "File:Pygmy Seahorse - Hippocampus bargibanti.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/4/41/Pygmy_Seahorse_-_Hippocampus_bargibanti.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Pygmy_Seahorse_-_Hippocampus_bargibanti.jpg",
+        "sha1": "6dd8b39047d8eee69e3116b9b2f5853e53bccceb",
+        "width": 1115,
+        "height": 1224,
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/photos/11076453@N00\">Steve Childs</a>",
+        "description": "A Pygmy Seahorse (<i><a href=\"//commons.wikimedia.org/wiki/Hippocampus_bargibanti\" title=\"Hippocampus bargibanti\">Hippocampus bargibanti</a></i>)",
+        "visuallyInspected": true,
+        "sceneMatch": "The seahorse's face and body nearly merge with the red-knobbed coral. Mistakenly addressing branches is fictional dialogue grounded in the actual concealment."
+      },
+      "status": "Lead held: branch introductions repeat Vera."
+    },
+    {
+      "id": "legacy-ocean-13-02",
+      "characterId": "dot-thimble",
+      "identityName": "Dot Thimble",
+      "replacement": {
+        "episodeNumber": 2,
+        "oldTitle": "The next branch over",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "social",
+      "title": "A little too secure",
+      "body": "I told him I was relaxed. He glanced at my tail. I loosened it one turn. The branch moved. I put the turn back before either of us could form an opinion.",
+      "image": {
+        "title": "File:Pygmy Seahorse (Hippocampus bargibanti) (6079487627).jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/0e/Pygmy_Seahorse_%28Hippocampus_bargibanti%29_%286079487627%29.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Pygmy_Seahorse_(Hippocampus_bargibanti)_(6079487627).jpg",
+        "sha1": "60b71bfd616cf7c294da7eec8898ab642f31ebc1",
+        "width": 4416,
+        "height": 2649,
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/people/65695019@N07\">Bernard DUPONT</a> from FRANCE",
+        "description": "Nudi Retreat II, Lembeh Strait, Sulawesi, INDONESIA",
+        "visuallyInspected": true,
+        "sceneMatch": "Tail is visibly wound tightly around a coral branch. The claim of relaxation is contradicted by that exact bodily grip."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-03",
+      "characterId": "dot-thimble",
+      "identityName": "Dot Thimble",
+      "replacement": {
+        "episodeNumber": 4,
+        "oldTitle": "Hold the whole view",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "rss",
+      "theme": "social",
+      "title": "You first",
+      "body": "He asked me to let go of the branch for a moment. He would stay beside me.\n\nI asked why.\n\nHe said there wasn't a reason. We could just float a little.\n\nI unwound my tail halfway. Then I thought of a reason to keep the rest wrapped. Then several.\n\nHe waited. I asked whether he was still holding on.\n\nVery tightly, he said.\n\nWe stayed like that for a while, each considering the other's excellent support.\n\nEventually I suggested we begin by being slightly less attached to the idea.",
+      "image": {
+        "title": "File:Pygmy seahorse (Hippocampus bargibanti) (24352432121).jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/2/2d/Pygmy_seahorse_%28Hippocampus_bargibanti%29_%2824352432121%29.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Pygmy_seahorse_(Hippocampus_bargibanti)_(24352432121).jpg",
+        "sha1": "7aa1fbf0ef07828cd727e2fc88729f2248bf2cab",
+        "width": 3059,
+        "height": 2294,
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/people/125265709@N08\">Rickard Zerpe</a>",
+        "description": "Diving Lembeh with Divers Lodge Lembeh over new years 2015/2016 / Indonesia - Pygmy seahorse (Hippocampus bargibanti)",
+        "visuallyInspected": true,
+        "sceneMatch": "Seahorse holds within a branching coral frame, its small body surrounded by empty water. The companion is offscreen; the shared inability to release a grip is fictional."
+      },
+      "status": "Lead held: weak abstract attachment payoff."
+    },
+    {
+      "id": "legacy-ocean-13-04",
+      "characterId": "dot-thimble",
+      "identityName": "Dot Thimble",
+      "replacement": {
+        "episodeNumber": 5,
+        "oldTitle": "The passing place",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "wonder",
+      "title": "The full distance",
+      "body": "A fish asked how far away the other side of the fan was. I told her it depended how many places she intended to panic. She said she meant in a straight line. I don't know anyone who lives like that.",
+      "image": {
+        "title": "File:Hippocampus bargibanti (16244523652).jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/35/Hippocampus_bargibanti_%2816244523652%29.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Hippocampus_bargibanti_(16244523652).jpg",
+        "sha1": "3d8b38d0e27f10c98ad4067c1ab7a0557565374c",
+        "width": 3456,
+        "height": 2592,
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/people/125265709@N08\">Rickard Zerpe</a>",
+        "description": "Lembeh, Indonesia - Pygmy seahorse (Hippocampus bargibanti)",
+        "visuallyInspected": true,
+        "sceneMatch": "Close seahorse face among dense forked coral branches supports a small resident's grip-by-grip account of distance. No actual travel distance is asserted."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-05",
+      "characterId": "rue-ribbon",
+      "identityName": "Rue Ribbon",
+      "replacement": {
+        "episodeNumber": 2,
+        "oldTitle": "Too much preparation",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "facebook",
+      "theme": "movement",
+      "title": "Still arriving",
+      "body": "I meant to make a brief appearance. Someone said it was nice to see all of me. I had not realised how much of me had joined in.",
+      "image": {
+        "title": "File:Anguila listón azul (Rhinomuraena quaesita), Anilao, Filipinas, 2023-08-23, DD 59.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/0d/Anguila_list%C3%B3n_azul_%28Rhinomuraena_quaesita%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_59.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Anguila_list%C3%B3n_azul_(Rhinomuraena_quaesita),_Anilao,_Filipinas,_2023-08-23,_DD_59.jpg",
+        "sha1": "01547ba033a4071feb54514274d95644de11832e",
+        "width": 5972,
+        "height": 3981,
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "creator": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+        "description": "Ribbon eel (<i>Rhinomuraena quaesita</i>), Anilao, Philippines",
+        "visuallyInspected": true,
+        "sceneMatch": "Long blue eel body extends well beyond its shelter across the image. The surprise concerns the substantial visible length, not a move between burrows."
+      },
+      "status": "Lead held: repeated body-arrival mechanism."
+    },
+    {
+      "id": "legacy-ocean-13-06",
+      "characterId": "rue-ribbon",
+      "identityName": "Rue Ribbon",
+      "replacement": {
+        "episodeNumber": 3,
+        "oldTitle": "The rest of me",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "rss",
+      "theme": "transformation",
+      "title": "Before the blue",
+      "body": "When I was black, I thought the blue ones knew where they were going. They came out of the reef so slowly that it looked as though the water had been waiting for them.\n\nI tried swimming like that. I was still small enough for the current to have a different idea. Half of me went where I intended. The other half described what I thought of it.\n\nI am blue now. Yesterday a young eel watched me emerge.\n\nI took my time.\n\nThere was a small bit of me caught on something behind the rock. I have no intention of telling him.",
+      "image": {
+        "title": "File:Rhinomuraena quaesita 63796184.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/7e/Rhinomuraena_quaesita_63796184.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Rhinomuraena_quaesita_63796184.jpg",
+        "sha1": "c77cca2eecd8d750828bbc83d3c3d9d1f42d1c1e",
+        "width": 2048,
+        "height": 1536,
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/2499978\">Kai Squires</a>",
+        "description": "Ribbon Eel (<i>Rhinomuraena quaesita</i>) in Indonesia",
+        "visuallyInspected": true,
+        "sceneMatch": "The exact photograph shows a black-and-yellow juvenile ribbon eel with its whole body undulating over sand. It illustrates Rue's explicitly remembered juvenile state, not his present adult blue colour."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-07",
+      "characterId": "rue-ribbon",
+      "identityName": "Rue Ribbon",
+      "replacement": {
+        "episodeNumber": 5,
+        "oldTitle": "The neighbor came close",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "facebook",
+      "theme": "social",
+      "title": "Much better for the current",
+      "body": "I said I needed more space. He withdrew. A little too far, I thought. I told him the current felt different now. He came back up. I said that was much better for the current.",
+      "image": {
+        "title": "File:Rhinomuraena quaesita (Garman, 1888).jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/1/13/Rhinomuraena_quaesita_%28Garman%2C_1888%29.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Rhinomuraena_quaesita_(Garman,_1888).jpg",
+        "sha1": "ce7f7d25d8f5f995bd4ca86bafe420ff705db60c",
+        "width": 640,
+        "height": 448,
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "creator": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:Babebu&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Babebu (page does not exist)\">BEDO (Thailand)</a>",
+        "description": "Rhinomuraena quaesita",
+        "visuallyInspected": true,
+        "sceneMatch": "Two blue ribbon eels genuinely occupy the same small rocky area, their heads close and parallel. The negotiated closeness is fictional but uses the actual pair."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-08",
+      "characterId": "rue-ribbon",
+      "identityName": "Rue Ribbon",
+      "replacement": {
+        "episodeNumber": 6,
+        "oldTitle": "Shorter decisions",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "facebook",
+      "theme": "social",
+      "title": "She knew already",
+      "body": "She recognised me before I came out. I had been blue for a week and was hoping for a much more complicated reunion.",
+      "image": {
+        "title": "File:Rhinomuraena quaesita 64219021.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/cc/Rhinomuraena_quaesita_64219021.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Rhinomuraena_quaesita_64219021.jpg",
+        "sha1": "170e022be72fd8a047248de87e273075ef05937b",
+        "width": 1534,
+        "height": 2048,
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/2499978\">Kai Squires</a>",
+        "description": "Ribbon Eel (<i>Rhinomuraena quaesita</i>) in Indonesia",
+        "visuallyInspected": true,
+        "sceneMatch": "Close blue-and-yellow adult portrait shows prominent nostril flaps. Recognition is fictional; no particular sense is claimed to establish the friend's identity."
+      },
+      "status": "Lead held: no sufficient payoff."
+    },
+    {
+      "id": "legacy-ocean-13-09",
+      "characterId": "willa-drift",
+      "identityName": "Willa Drift",
+      "replacement": {
+        "episodeNumber": 1,
+        "oldTitle": "A leaf with intentions",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "movement",
+      "title": "Still shaking",
+      "body": "I tried to shake a bit of weed off. Everything shook. I stopped to see which bit was the weed. Everything stopped. This could take the rest of my life.",
+      "image": {
+        "title": "File:Phycodurus eques P2023150.JPG",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/85/Phycodurus_eques_P2023150.JPG",
+        "source": "https://commons.wikimedia.org/wiki/File:Phycodurus_eques_P2023150.JPG",
+        "sha1": "12e32e9ef5a59292bd7b172796d156545102d495",
+        "width": 3648,
+        "height": 2736,
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "creator": "<a href=\"//commons.wikimedia.org/wiki/User:Pbsouthwood\" title=\"User:Pbsouthwood\">Peter Southwood</a>",
+        "description": "Leafy sea dragon <i>Phycodurus eques</i> at Rapid Bay Jetty, Gulf St Vincent, South Australia",
+        "caption": "0:4 File:Phycodurus eques P2023150.JPG",
+        "visuallyInspected": true,
+        "sceneMatch": "The living leafy seadragon is suspended amid genuine weed; its own frills resemble the surrounding material. The shake-and-inspect sequence is fiction grounded in that visual ambiguity."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-10",
+      "characterId": "willa-drift",
+      "identityName": "Willa Drift",
+      "replacement": {
+        "episodeNumber": 2,
+        "oldTitle": "Small enough to miss",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "feeding",
+      "title": "The last millimetre",
+      "body": "A shrimp landed on my snout. I bent toward it. So did my snout. I tried from the other side. We went round together. Eventually lunch got bored with me and left.",
+      "image": {
+        "title": "File:Phycodurus eques P2023167.JPG",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/d/da/Phycodurus_eques_P2023167.JPG",
+        "source": "https://commons.wikimedia.org/wiki/File:Phycodurus_eques_P2023167.JPG",
+        "sha1": "da7d71889cba543a2cab3eaae73866e2e2b83b33",
+        "width": 3648,
+        "height": 2736,
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "creator": "<a href=\"//commons.wikimedia.org/wiki/User:Pbsouthwood\" title=\"User:Pbsouthwood\">Peter Southwood</a>",
+        "description": "Leafy sea dragon <i>Phycodurus eques</i> at Rapid Bay Jetty, Gulf St Vincent, South Australia",
+        "caption": "0:9 File:Phycodurus eques P2023167.JPG",
+        "visuallyInspected": true,
+        "sceneMatch": "The close side portrait clearly shows the rigid projecting snout. The temporary shrimp visitor is offscreen fiction; do not claim the photograph documents a shrimp."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-11",
+      "characterId": "willa-drift",
+      "identityName": "Willa Drift",
+      "replacement": {
+        "episodeNumber": 4,
+        "oldTitle": "Swaying was compulsory",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "rss",
+      "theme": "social",
+      "title": "Something in my eye",
+      "body": "A frill kept passing in front of my eye. My own frill. I would wait for a clear view, start toward the grass, and lose the grass again.\n\nHe found me turning in little circles. I told him I was looking for a route.\n\nHe stayed on the side where I could see. When the frill covered him, he moved a little farther out. I followed his snout through the tangle.\n\nIt was such a small thing to notice about someone. I wanted to tell him that.\n\nI opened my mouth and sucked in a shrimp between us.\n\nHe waited. I swallowed. By then it seemed best to keep following.",
+      "image": {
+        "title": "File:Phycodurus eques P2023182.JPG",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/04/Phycodurus_eques_P2023182.JPG",
+        "source": "https://commons.wikimedia.org/wiki/File:Phycodurus_eques_P2023182.JPG",
+        "sha1": "105990ac9b0473363eb747d328caf9705cce3462",
+        "width": 3648,
+        "height": 2736,
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "creator": "<a href=\"//commons.wikimedia.org/wiki/User:Pbsouthwood\" title=\"User:Pbsouthwood\">Peter Southwood</a>",
+        "description": "Leafy sea dragon <i>Phycodurus eques</i> at Rapid Bay Jetty, Gulf St Vincent, South Australia",
+        "caption": "0:11 File:Phycodurus eques P2023182.JPG",
+        "visuallyInspected": true,
+        "sceneMatch": "The close portrait places branching frills beside the eye and snout. Companion and incidental feeding are fictional, not claimed visible. Candidate needs lead judgment on whether the visible overlap sufficiently supports the eye obstruction."
+      },
+      "status": "Lead held: actual photograph does not establish own frill obstructing vision."
+    },
+    {
+      "id": "legacy-ocean-13-12",
+      "characterId": "willa-drift",
+      "identityName": "Willa Drift",
+      "replacement": {
+        "episodeNumber": 9,
+        "oldTitle": "The leaves kept growing",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "wonder",
+      "title": "One more place",
+      "body": "Somewhere between the grass and the rock, I lost a piece of weed that had been caught in my frills. I went back to look for it. I know. I spent the whole morning trying to get it off.",
+      "image": {
+        "title": "File:Phycodurus eques P2023181.JPG",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/b/b3/Phycodurus_eques_P2023181.JPG",
+        "source": "https://commons.wikimedia.org/wiki/File:Phycodurus_eques_P2023181.JPG",
+        "sha1": "7f59dc16ff8810c1ef151bf0aa3c998d7ad39329",
+        "width": 3648,
+        "height": 2736,
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "creator": "<a href=\"//commons.wikimedia.org/wiki/User:Pbsouthwood\" title=\"User:Pbsouthwood\">Peter Southwood</a>",
+        "description": "Leafy sea dragon <i>Phycodurus eques</i> at Rapid Bay Jetty, Gulf St Vincent, South Australia",
+        "caption": "0:12 File:Phycodurus eques P2023181.JPG",
+        "visuallyInspected": true,
+        "sceneMatch": "Whole animal among branching vegetation supports a small caught weed, not a photographed loss. Intentionally ambivalent attachment to an irritant; no house or habitat move."
+      },
+      "status": "Lead held: weak nostalgia for weed."
+    },
+    {
+      "id": "legacy-ocean-13-13",
+      "characterId": "rollo-round",
+      "identityName": "Rollo Round",
+      "replacement": {
+        "episodeNumber": 2,
+        "oldTitle": "A suspicious opening",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "rss",
+      "theme": "wonder",
+      "title": "A decent scratch",
+      "body": "The rough bit fitted just behind my fin. I leaned into it and nearly stopped swimming altogether.\n\nI went past again. Slower. There was one point where I could get the itch exactly, but only if I stuck my face into the weed and lifted my tail.\n\nI had been doing this for some time when a little fish came round the corner. I straightened so fast I lost the spot.\n\nIt waited. I waited. It nibbled something. I tried to look like a fish with somewhere else to go.\n\nThen the itch started again.\n\nI put my face back in the weed. The little fish could tell whoever it wanted.",
+      "image": {
+        "title": "File:Arothron nigropunctatus 1.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/a/a8/Arothron_nigropunctatus_1.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Arothron_nigropunctatus_1.jpg",
+        "sha1": "ba6000625ba4db870dc40fd30c019038bf6430c4",
+        "width": 2272,
+        "height": 1704,
+        "license": "Public domain",
+        "creator": "Dr. Dwayne Meadows, NOAA/NMFS/OPR",
+        "description": "<p><i>Arothron nigropunctatus</i>\n</p>\n<ul><li>Image ID: reef0580, NOAA's Coral Kingdom Collection</li>\n<li>Location: Chuuk, Federated States of Micronesia</li></ul>",
+        "caption": "1:0 File:Arothron nigropunctatus 1.jpg",
+        "visuallyInspected": true,
+        "sceneMatch": "The puffer is settled tightly against rough reef and weed, with a visible yellow pectoral fin. Scratching is a fictional plausible bodily scene, not a documented act or medical claim."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-14",
+      "characterId": "rollo-round",
+      "identityName": "Rollo Round",
+      "replacement": {
+        "episodeNumber": 3,
+        "oldTitle": "Reverse requires patience",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "x",
+      "theme": "wonder",
+      "title": "The one underneath",
+      "body": "My shadow got thin as I rose off the sand. Came down: fat again. Up. Down. I did this until I was tired, then rested on the sand looking exactly the way I had been trying not to.",
+      "image": {
+        "title": "File:Arothron nigropunctatus (26701301076).jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/04/Arothron_nigropunctatus_%2826701301076%29.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Arothron_nigropunctatus_(26701301076).jpg",
+        "sha1": "1448f5d76905360a4b463d8bd1071b7a7b6fc523",
+        "width": 5472,
+        "height": 3648,
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "creator": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/people/141807391@N07\">Paul Kli</a>",
+        "description": "Arothron nigropunctatus",
+        "caption": "1:3 File:Arothron nigropunctatus (26701301076).jpg",
+        "visuallyInspected": true,
+        "sceneMatch": "The overhead photo shows a puffer above sandy bottom with a strong adjacent shadow, anchoring the height and silhouette experiment."
+      },
+      "status": "Lead approved exact prose and image; integrated at the specified stable runtime slot."
+    },
+    {
+      "id": "legacy-ocean-13-15",
+      "characterId": "rollo-round",
+      "identityName": "Rollo Round",
+      "replacement": {
+        "episodeNumber": 7,
+        "oldTitle": "Into the mild current",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "x",
+      "theme": "weather",
+      "title": "A smaller target",
+      "body": "I turned sideways to let the current past. It found the other side. Tried facing it. Mouthful of water. I am running out of arrangements of fish.",
+      "image": {
+        "title": "File:Botete cara de perro (Arothron nigropunctatus), Anilao, Filipinas, 2023-08-25, DD 64.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/9/9f/Botete_cara_de_perro_%28Arothron_nigropunctatus%29%2C_Anilao%2C_Filipinas%2C_2023-08-25%2C_DD_64.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Botete_cara_de_perro_(Arothron_nigropunctatus),_Anilao,_Filipinas,_2023-08-25,_DD_64.jpg",
+        "sha1": "a2fd1336a45ff3371fffa65b28e2c538331ffa83",
+        "width": 2992,
+        "height": 2992,
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "creator": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+        "description": "<a href=\"https://en.wikipedia.org/wiki/Blackspotted_puffer\" class=\"extiw\" title=\"en:Blackspotted puffer\">Blackspotted puffer</a> (<i>Arothron nigropunctatus</i>), Anilao, Philippines",
+        "caption": "1:10 File:Botete cara de perro (Arothron nigropunctatus), Anilao, Filipinas, 2023-08-25, DD 64.jpg",
+        "visuallyInspected": true,
+        "sceneMatch": "The three-quarter puffer portrait shows the rounded body and small exposed mouth. Current experiments are fiction; no photo claim of a specific current speed or direction."
+      },
+      "status": "Lead held: mouthful of water is not a meaningful fish predicament."
+    },
+    {
+      "id": "legacy-ocean-13-16",
+      "characterId": "rollo-round",
+      "identityName": "Rollo Round",
+      "replacement": {
+        "episodeNumber": 9,
+        "oldTitle": "Stay for nothing",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "x",
+      "theme": "social",
+      "title": "Don't get up",
+      "body": "I settled on the sand beside her. Very comfortable. She moved a little. I moved a little. She moved again. I followed. We are resting quite a long way from where we started.",
+      "image": {
+        "title": "File:Botete cara de perro (Arothron nigropunctatus), Nosy Iranja, Madagascar, 2025-09-17, DD 112.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/d/df/Botete_cara_de_perro_%28Arothron_nigropunctatus%29%2C_Nosy_Iranja%2C_Madagascar%2C_2025-09-17%2C_DD_112.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Botete_cara_de_perro_(Arothron_nigropunctatus),_Nosy_Iranja,_Madagascar,_2025-09-17,_DD_112.jpg",
+        "sha1": "0a527ee41769b0976eef07e19a0662b672928993",
+        "width": 6917,
+        "height": 4611,
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "creator": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+        "description": "Blackspotted puffer (<i>Arothron nigropunctatus</i>), Nosy Iranja, Madagascar",
+        "caption": "1:15 File:Botete cara de perro (Arothron nigropunctatus), Nosy Iranja, Madagascar, 2025-09-17, DD 112.jpg",
+        "visuallyInspected": true,
+        "sceneMatch": "The photographed puffer rests low on the sand. Companion is offscreen fiction; candidate self-held because the social following is weaker than the shadow and scratch premises."
+      },
+      "status": "Self and lead held: weak social-following payoff."
+    }
+  ]
+}

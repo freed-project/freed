@@ -1,3 +1,4 @@
+import { generateEditorialSampleData, SAMPLE_EDITORIAL_COUNTS } from "./sample-editorial-data.js";
 /**
  * Sample data generator for regression testing.
  *
@@ -335,27 +336,15 @@ export interface SampleDataOptions {
   unlinkedIdentityRatio?: number;
 }
 
-export const SAMPLE_SHOWCASE_FEED_COUNT = 15;
-export const SAMPLE_SHOWCASE_FRIEND_COUNT = 250;
+export const SAMPLE_SHOWCASE_FEED_COUNT = SAMPLE_EDITORIAL_COUNTS.feeds;
+export const SAMPLE_SHOWCASE_FRIEND_COUNT = SAMPLE_EDITORIAL_COUNTS.persons;
+/** @deprecated Showcase identities follow authored platforms; synthetic custom graphs use five. */
 export const SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND = 5;
-export const SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT =
-  SAMPLE_SHOWCASE_FRIEND_COUNT * SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND;
-export const SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT =
-  Math.round(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT * 0.2);
-export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
-  SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT;
+export const SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT = SAMPLE_EDITORIAL_COUNTS.accounts;
+export const SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT = 0;
+export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT = SAMPLE_EDITORIAL_COUNTS.accounts;
 const SAMPLE_LOCATION_WINDOW_ITEM_COUNT = 6;
-export const SAMPLE_SHOWCASE_ITEM_COUNT =
-  SAMPLE_SHOWCASE_FEED_COUNT * 8 +
-  20 +
-  10 +
-  10 +
-  10 +
-  10 +
-  8 +
-  7 +
-  SAMPLE_LOCATION_WINDOW_ITEM_COUNT +
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
+export const SAMPLE_SHOWCASE_ITEM_COUNT = SAMPLE_EDITORIAL_COUNTS.items;
 export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
 export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
 export const SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT =
@@ -365,10 +354,11 @@ export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 11;
+export const SAMPLE_DATA_GENERATOR_VERSION = 12;
 export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
+  scale: "showcase" | "stress";
   batchId: string;
   generatedAt: number;
   seed: number;
@@ -406,13 +396,15 @@ function makeBatchId(): string {
 
 function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDataOptions {
   const batchId = options?.batchId ?? makeBatchId();
-  const scale = options?.scale ?? "showcase";
+  const customGraph = options?.friendCount !== undefined || options?.identitiesPerFriend !== undefined || options?.unlinkedIdentityRatio !== undefined;
+  const scale = options?.scale ?? (customGraph ? "stress" : "showcase");
   const friendCount = options?.friendCount ??
     (scale === "stress" ? SAMPLE_STRESS_FRIEND_COUNT : SAMPLE_SHOWCASE_FRIEND_COUNT);
   const identitiesPerFriend = options?.identitiesPerFriend ??
     (scale === "stress" ? SAMPLE_STRESS_IDENTITIES_PER_FRIEND : SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND);
   const unlinkedIdentityRatio = Math.max(0, Math.min(1, options?.unlinkedIdentityRatio ?? 0.2));
   return {
+    scale,
     batchId,
     generatedAt: options?.generatedAt ?? Date.now(),
     seed: options?.seed ?? hashSeed(batchId),
@@ -431,6 +423,16 @@ function sampleDataFingerprint(options: ResolvedSampleDataOptions): SampleDataFi
     generatedAt: options.generatedAt,
     generatorVersion: SAMPLE_DATA_GENERATOR_VERSION,
   };
+}
+
+function editorialData(options: ResolvedSampleDataOptions): SampleLibraryData {
+  return generateEditorialSampleData({
+    batchId: options.batchId,
+    generatedAt: options.generatedAt,
+    seed: options.presentationSeed ?? options.seed,
+    fingerprint: sampleDataFingerprint(options),
+    ...(options.previousTopItemId ? { previousTopItemId: options.previousTopItemId } : {}),
+  });
 }
 
 export function hasSampleDataFingerprint(
@@ -652,10 +654,13 @@ function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
     const platform = sampleNarrativePlatform(item);
     let variant = 0;
     let text = sampleCorpusGeneratedText(asset, platform, index, variant);
-    while (usedText.has(text)) {
+    // The synthetic stress template pool is finite. Never spin indefinitely
+    // after exhausting its alternatives; showcase prose never enters this path.
+    while (usedText.has(text) && variant < 8) {
       variant += 1;
       text = sampleCorpusGeneratedText(asset, platform, index, variant);
     }
+    if (usedText.has(text)) text += `\n\n[Sample stress entry ${(index + 1).toLocaleString()}]`;
     usedText.add(text);
     const displayName = sampleCorpusIdentityName(asset, index);
     const portrait = item.contentType === "story";
@@ -806,6 +811,7 @@ const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
  */
 export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions).feeds;
   const { batchId, seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
   const batchLabel = batchId.slice(-4).toUpperCase();
@@ -865,7 +871,10 @@ function generateSamplePeopleGraph(
 }
 
 export function generateSampleAccounts(options?: SampleDataOptions): Account[] {
-  return generateSamplePeopleGraph(resolveSampleDataOptions(options)).accounts;
+  const resolvedOptions = resolveSampleDataOptions(options);
+  return resolvedOptions.scale === "showcase"
+    ? editorialData(resolvedOptions).accounts
+    : generateSamplePeopleGraph(resolvedOptions).accounts;
 }
 
 export interface SampleLibraryData {
@@ -877,6 +886,7 @@ export interface SampleLibraryData {
 
 export function generateSampleLibraryData(options?: SampleDataOptions): SampleLibraryData {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions);
   const people = generateSamplePeopleGraph(resolvedOptions);
   return {
     feeds: generateSampleFeeds(resolvedOptions),
@@ -900,6 +910,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
  */
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions).items;
   const { batchId, seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
   const rand = mulberry32(seed);

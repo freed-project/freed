@@ -1,0 +1,36 @@
+{
+  "scope": "Actual ReaderView DOM rendered in jsdom with generated Giles content, then offline Chromium with compiled repository CSS; no active React browser hydration or playback",
+  "desktop": {
+    "viewport": [
+      1280,
+      720
+    ],
+    "paragraphWidth": 720,
+    "scrollWidth": 720,
+    "whiteSpace": "pre-wrap",
+    "overflowWrap": "break-word",
+    "lineHeight": 29.25,
+    "creditStartDistanceFromPreviousLine": 58.5,
+    "blankBeforeCredits": "\n\n",
+    "creditLines": 5
+  },
+  "mobile": {
+    "viewport": [
+      390,
+      844
+    ],
+    "paragraphWidth": 350,
+    "scrollWidth": 350,
+    "whiteSpace": "pre-wrap",
+    "overflowWrap": "break-word",
+    "creditLines": 5
+  },
+  "requests": [
+    "http://127.0.0.1:18793/",
+    "http://127.0.0.1:18793/reader.css"
+  ],
+  "tests": {
+    "passed": 45,
+    "suites": 6
+  }
+}

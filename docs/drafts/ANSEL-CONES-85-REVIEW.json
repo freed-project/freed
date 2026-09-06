@@ -1,0 +1,30 @@
+{
+  "verdict": "hold_exact_package_title_only",
+  "bodyVerdict": "pass_unchanged",
+  "imageVerdict": "pass",
+  "canonVerdict": "pass",
+  "biologyVerdict": "pass_with_existing_fiction_boundary",
+  "reviewedTitle": "The last seed",
+  "reviewedBody": "I had expected the cone to feel lighter when it opened. After two summers of holding the seeds, I thought I would notice them leaving.\n\nThe wind moved the whole branch. Needles rubbed together. The cone tapped the twig beside it.\n\nWhen everything settled, its scales were still open.\n\nI cannot tell you which gust carried the last seed. This bothers me more than I expected. I had been there for all the waiting.\n\nThe younger cones are still shut. I keep hoping one of them will make a sound when it is time.",
+  "reviewedBodySha256": "5da9c094bc3ff6eb606333a83f547cccae93ec5b9383f3f9139ce1be638786db",
+  "blockingFinding": "Title 'The last seed' occurs verbatim, case-insensitively, in 'which gust carried the last seed'. Editorial guide lines156 and393 prohibit title text in its own body.",
+  "suggestedTitle": "Without a signal",
+  "suggestionStatus": "No exact runtime title match found; root may choose metadata replacement. Do not alter body to fix title.",
+  "image": {
+    "localFile": "/tmp/botanical81/9866319.jpg",
+    "sha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7",
+    "sha256": "a49fbc852aa5bcb2c037c7cafcd506ef33ad7001fcb1b6c5e5a5c461cac8aea3",
+    "bytes": 620622,
+    "dimensions": [
+      1024,
+      768
+    ],
+    "verdict": "Individually reopened exact published delivery file; hash and byte count verified. Large open brown cone in lower center is sharp, with closed purple cones above and dense living needles. The contrast between open and closed cones supplies the physical situation. No seed departure or sound is claimed as photographed evidence."
+  },
+  "proseReason": "The scene gives Ansel a precise disappointment: long attendance did not let him perceive the moment of departure. Ordinary branch sounds fail to identify it, and he transfers the unresolved wish to younger cones. His desire for a detectable change fits his established meticulous, mildly aggrieved voice without repeating the dead-wood support realization. Last paragraph is a concrete renewed expectation, not a general moral.",
+  "canonReason": "Read full accepted The part that stayed. That article concerns a living sector relying on bare wood; this concerns a missed transition in reproduction. Seed dispersal does not assert travel by the rooted tree, new offspring identity, total recovery or changed fictional home. White Mountains source location remains distinct from southern Snake Range fictional home.",
+  "biologyReason": "Independently opened NPS source; lines39-40 describe needle tufts and purple cones becoming brown after two years. Lines32 treats wind as a possible dispersal mechanism. The prose does not assert a particular photographed seed count or observed release. Two summers is ordinary cone-development shorthand, not a claim of two full years of mature seeds or measured gestation. Auditory awareness and rubbing/tapping sequence remain explicit fiction.",
+  "biologySource": "https://www.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm",
+  "rightsReview": "Original cached primary photo record previously independently inspected in81; parent reports fresh verification of the same explicit CC BY4.0/photo and taxon. No new rights fetch performed here.",
+  "scope": "Only85 review documents written; original prose and runtime unchanged."
+}

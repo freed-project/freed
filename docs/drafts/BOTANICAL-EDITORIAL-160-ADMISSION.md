@@ -1,0 +1,3 @@
+# BOTANICAL-EDITORIAL-160 admission
+
+Violence, and better lighting. is recovered by binding its original index1 to the reviewed brown European mantis image. Title, body, chronology and Instagram regular format remain unchanged. Root read all nine Manny episodes and opened the exact vertical photograph. Warm rim light, shaded torso, leafy cover, bee remains and feeding contact provide a clear matching composition. The photo shows mixed light, not total darkness; bird arrival and carrying are fictional. Root verified photo-specific Bryn CC BY 4.0 permission and exact SHA1 against primary metadata. No green-mantis substitution, avatar change or Story relabeling. Adds one accepted regular post and removes one excluded null binding.

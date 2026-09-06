@@ -1,5 +1,33 @@
 [
   {
+    "id": "commons-nell-curled-93eaea49",
+    "subject": "dumbo octopus",
+    "category": "undersea",
+    "identityNameBase": "Nell Pelagic",
+    "detail": "A live dumbo octopus floats in dark water with curled arms and extended ear-like fins under exploration lights",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6b/Dumbo-hires.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Dumbo-hires.jpg",
+    "creator": "NOAA Okeanos Explorer",
+    "license": "Public domain",
+    "width": 1920,
+    "height": 1080,
+    "sha1": "93eaea49a5ea54cfbe91c1004ac9a24a66e271b0"
+  },
+  {
+    "id": "commons-manny-bee-27b7ebe2",
+    "subject": "praying mantis",
+    "category": "insect",
+    "identityNameBase": "Manny Tis",
+    "detail": "Mantis holding and eating a bee among leaves",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/23/Chinese-mantis-bee.JPG",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chinese-mantis-bee.JPG",
+    "creator": "Jot Powers",
+    "license": "CC BY-SA 2.0",
+    "width": 1136,
+    "height": 1431,
+    "sha1": "27b7ebe285129ff07853aa2d19185414fffd682c"
+  },
+  {
     "id": "commons-0001",
     "subject": "praying mantis",
     "category": "insect",
@@ -9443,9 +9471,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-23%2C_DD_20.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 1280,
-    "sha1": "e424873ed88757f40bea550f9c8d8c92fb893193"
+    "width": 3234,
+    "height": 3234,
+    "sha1": "e424873ed88757f40bea550f9c8d8c92fb893193",
+    "alt": "A pale spiny starfish lies among long anemone tentacles that overlap several of its arms."
   },
   {
     "id": "commons-0611",
@@ -12467,8 +12496,8 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMorena_de_cabeza_negra_(Gymnothorax_thyrsoideus)%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_49.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 853,
+    "width": 4194,
+    "height": 2796,
     "sha1": "69768a771ef6aa522927343b39e820d69f089e2d"
   },
   {
@@ -12533,6 +12562,7 @@
     "category": "undersea",
     "identityNameBase": "Cuthbert Chromatic",
     "detail": "A Cuttlefish on a night hunt",
+    "alt": "A common cuttlefish hovers above weed at night with its arms spread and suckers visible; no gift or other fish is pictured",
     "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/A_Cuttlefish_on_a_night_hunt.jpg/1280px-A_Cuttlefish_on_a_night_hunt.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AA_Cuttlefish_on_a_night_hunt.jpg",
     "creator": "AlessioMarrone",
@@ -12629,8 +12659,8 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMorena_de_cabeza_negra_(Gymnothorax_thyrsoideus)%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_50.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 1280,
+    "width": 4088,
+    "height": 4088,
     "sha1": "45bb50db85ebfb51c8f184a12cf8f09b599b734b"
   },
   {
@@ -12695,6 +12725,7 @@
     "category": "undersea",
     "identityNameBase": "Cuthbert Chromatic",
     "detail": "Mating cuttlefish",
+    "alt": "Two common cuttlefish face one another with their arms in contact above seagrass",
     "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2a/Mating_cuttlefish.jpg/1280px-Mating_cuttlefish.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMating_cuttlefish.jpg",
     "creator": "Vicmicallef",
@@ -12787,8 +12818,8 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMorena_de_cabeza_negra_(Gymnothorax_thyrsoideus)%2C_Anilao%2C_Filipinas%2C_2023-08-22%2C_DD_129.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 853,
+    "width": 8688,
+    "height": 5792,
     "sha1": "82c7e06d9c1a1a5062b35af29764e100024bced0"
   },
   {
@@ -12945,8 +12976,8 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMorena_de_cabeza_negra_(Gymnothorax_thyrsoideus)%2C_Anilao%2C_Filipinas%2C_2023-08-25%2C_DD_01.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 1280,
+    "width": 4287,
+    "height": 4287,
     "sha1": "049d2dd8430d88fc72510d0f8815aaacf9659435"
   },
   {
@@ -13107,9 +13138,10 @@
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AMorena_de_cabeza_negra_(Gymnothorax_thyrsoideus)%2C_Anilao%2C_Filipinas%2C_2023-08-25%2C_DD_02.jpg",
     "creator": "Diego Delso",
     "license": "CC BY-SA 4.0",
-    "width": 1280,
-    "height": 1280,
-    "sha1": "591383436276e3a2ce2539a8d71b2ed7bab14c6d"
+    "width": 4297,
+    "height": 4297,
+    "sha1": "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
+    "alt": "A greyface moray looks out from a coral crevice with its mouth partly open and small teeth visible."
   },
   {
     "id": "commons-0861",
@@ -14765,12 +14797,13 @@
     "category": "geology",
     "identityNameBase": "Basil T. Column",
     "detail": "Basalt columns 22897",
+    "alt": "Closely spaced grey basalt columns rise above loose angular rock at Meany Crest, Mount Rainier.",
     "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Basalt_columns_22897.JPG/1280px-Basalt_columns_22897.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABasalt_columns_22897.JPG",
     "creator": "Walter Siegmund",
     "license": "CC BY 2.5",
-    "width": 1280,
-    "height": 960,
+    "width": 2560,
+    "height": 1920,
     "sha1": "e79a752849690cedabe3da27bb875d7e8072fe36",
     "coordinates": {
       "lat": 46.8586,
@@ -15249,12 +15282,13 @@
     "category": "geology",
     "identityNameBase": "Basil T. Column",
     "detail": "Basalt columns 23125",
+    "alt": "A mountain wall of basalt columns stands above a broad slope of fallen angular stones.",
     "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/Basalt_columns_23125.JPG/1280px-Basalt_columns_23125.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABasalt_columns_23125.JPG",
     "creator": "Walter Siegmund",
     "license": "CC BY 2.5",
-    "width": 1280,
-    "height": 960,
+    "width": 2560,
+    "height": 1920,
     "sha1": "4bfa89fc6b9b8721976b3cfdb59ce7b0b9493d06",
     "coordinates": {
       "lat": 46.8553,
