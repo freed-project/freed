@@ -2430,7 +2430,12 @@ fn dev_sync_trigger_keepalive_timeout(provider: &str) -> Duration {
     }
 }
 
-fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String, provider: String) {
+fn start_dev_sync_trigger_keepalive(
+    app: tauri::AppHandle,
+    data_dir: PathBuf,
+    request_id: String,
+    provider: String,
+) {
     tauri::async_runtime::spawn(async move {
         let started_at = Instant::now();
         let keepalive_script = dev_sync_trigger_keepalive_script(&request_id);
@@ -15593,9 +15598,15 @@ mod tests {
 
     #[test]
     fn dev_sync_trigger_recovers_stale_started_result_only_when_work_is_idle() {
-        assert_eq!(dev_sync_trigger_keepalive_timeout("gdrive"), Duration::from_secs(7_260));
+        assert_eq!(
+            dev_sync_trigger_keepalive_timeout("gdrive"),
+            Duration::from_secs(7_260)
+        );
         for provider in ["x", "facebook", "instagram", "linkedin", "unknown"] {
-            assert_eq!(dev_sync_trigger_keepalive_timeout(provider), Duration::from_secs(600));
+            assert_eq!(
+                dev_sync_trigger_keepalive_timeout(provider),
+                Duration::from_secs(600)
+            );
         }
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
