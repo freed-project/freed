@@ -6,6 +6,7 @@ import {
 } from "./identity-graph-atlas.js";
 import type { IdentityGraphActivitySummaries } from "./identity-graph-activity-summary.js";
 import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
+import { galaxyIconGlyph } from "./galaxy-label-icons.js";
 
 function buildIdentityGraphAtlas(
   input: Parameters<typeof buildIdentityGraphAtlasModel>[0] &
@@ -45,6 +46,50 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it("uses the same care-level radius and rendered size for friends and connections", () => {
+    for (const careLevel of [1, 2, 3, 4, 5] as const) {
+      const persons = [
+        { ...person(1), id: "friend", careLevel, relationshipStatus: "friend" as const },
+        { ...person(2), id: "connection", careLevel, relationshipStatus: "connection" as const },
+      ];
+      const model = buildIdentityGraphAtlasModel({ persons, accounts: {}, feeds: {},
+        activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+        mode: "all_content", width: 1_000, height: 800 });
+      const scene = compileIdentityGalaxyScene(model, { quality: "settled", now: 1_000 });
+      expect(scene.radii[0]).toBe(40 + careLevel * 8);
+      expect(scene.radii[0]).toBe(scene.radii[1]);
+      expect(scene.pointSizes[0]).toBe(scene.pointSizes[1]);
+      expect(scene.prominence[0]).toBe(scene.prominence[1]);
+    }
+  });
+  it("fills one equal-area cluster with four- and five-star friends in the central slots", () => {
+    const persons = Array.from({ length: 40 }, (_, index) => person(index));
+    const model = buildIdentityGraphAtlasModel({ persons, accounts: {}, feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content", width: 1_000, height: 800 });
+    const ranked = model.nodes.filter(n => n.personId).map(n => ({
+      node: n, area: (n.x - 500) ** 2 + ((n.y - 400) / 0.74) ** 2,
+    })).sort((a, b) => a.area - b.area);
+    const step = ranked[1]!.area - ranked[0]!.area;
+    for (let i = 2; i < ranked.length; i++) expect(ranked[i]!.area - ranked[i - 1]!.area).toBeCloseTo(step, 6);
+    const central = persons.filter(p => p.relationshipStatus === "friend" && p.careLevel >= 4);
+    expect(new Set(ranked.slice(0, central.length).map(n => n.node.personId))).toEqual(new Set(central.map(p => p.id)));
+  });
+  it("uses only linked social profile portraits as identity avatar candidates", () => {
+    const identity = { ...person(1), avatarUrl: "https://example.test/unrelated.jpg" };
+    const first = { ...account(1), personId: identity.id, avatarUrl: "https://example.test/first.jpg" };
+    const second = { ...account(2), personId: identity.id, avatarUrl: "https://example.test/second.jpg" };
+    const unrelated = { ...account(3), personId: "someone-else", avatarUrl: "https://example.test/other.jpg" };
+    const model = buildIdentityGraphAtlasModel({
+      persons: [identity],
+      accounts: { [first.id]: first, [second.id]: second, [unrelated.id]: unrelated },
+      feeds: {}, activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content", width: 1_000, height: 800,
+    });
+    const node = model.nodes.find((entry) => entry.id === `person:${identity.id}`)!;
+    expect(node.avatarUrlCandidates).toEqual([first.avatarUrl, second.avatarUrl]);
+    expect(node.avatarUrl).toBe(first.avatarUrl);
+  });
   it("places higher-care friends closer to the center with a larger radius", () => {
     const persons = Array.from({ length: 5 }, (_, index) => ({
       id: `care-${index + 1}`,
@@ -301,7 +346,7 @@ describe("buildIdentityGraphAtlas", () => {
     const maxAccountDistance = Math.max(
       ...accountNodes.map((node) => Math.hypot(node.x - personNode!.x, node.y - personNode!.y)),
     );
-    expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 26);
+    expect(maxAccountDistance).toBeLessThan(personNode!.radius);
   });
 
   it("distributes a sparse set of linked accounts around a complete local orbit", () => {
@@ -334,6 +379,40 @@ describe("buildIdentityGraphAtlas", () => {
     );
 
     expect(occupiedQuadrants.size).toBe(4);
+  });
+
+  it("labels every admitted detail node without selection, including low-priority feeds", () => {
+    const model = buildIdentityGraphAtlasModel({
+      persons: [person(1)],
+      accounts: {},
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 390,
+      height: 760,
+    });
+    const template = model.nodes[0]!;
+    model.nodes = Array.from({ length: 100 }, (_, index) => ({
+      ...template,
+      id: `feed:detail-${index}`,
+      kind: "feed" as const,
+      personId: undefined,
+      x: 100 + index % 10,
+      y: 100 + Math.floor(index / 10),
+      priority: 100,
+    }));
+    model.regions = [];
+    const atlas = sliceIdentityGraphAtlas({
+      model,
+      transform: { x: 0, y: 0, scale: 1 },
+      width: 390,
+      height: 760,
+      quality: "settled",
+    });
+    expect(atlas.nodes).toHaveLength(100);
+    expect(atlas.labels.map((label) => label.nodeId).sort()).toEqual(
+      atlas.nodes.map((node) => node.id).sort(),
+    );
   });
 
   it("distributes unlinked provider accounts through bounded spiral arms", () => {
@@ -400,7 +479,7 @@ describe("buildIdentityGraphAtlas", () => {
     });
     expect(providerAtlas.labels).toContainEqual(expect.objectContaining({
       nodeId: "provider:instagram",
-      text: "Instagram 48",
+      text: `Instagram 48 ${galaxyIconGlyph("instagram")}`,
     }));
     expect(providerAccounts.every((account) => providerAtlas.labels.some((label) =>
       label.nodeId === `account:${account.id}`

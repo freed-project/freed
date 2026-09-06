@@ -1,0 +1,467 @@
+{
+  "status": "draft_not_admitted",
+  "scope": "Two new regular candidates and two proposed identities, ten exact image reviews. No runtime edits, publication or video mutation.",
+  "reviewedNewExactImages": 5,
+  "reopenedCachedImages": 5,
+  "proposals": [
+    {
+      "id": "aquatic-regular-41-01",
+      "characterId": "edgar-prong",
+      "identityNameBase": "Edgar Prong",
+      "subject": "Atlantic armored searobin",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "social",
+      "title": "The third return",
+      "content": "I thought he was stuck. Shook him off very carefully. He climbed back on. The third time I understood I was the place he was trying to get to.",
+      "sourceIndex": 6,
+      "decision": "propose_for_independent_review",
+      "review": "NOAA explicitly reports the brittle star climbing onto the fish three times and the fish dislodging it. Careful intent and belated understanding are fictional. The exact frame shows the brittle star beside the long prongs; the documented sequence supplies the repeated contact. Do not claim the fish subsequently carried the star or that its behavior scientifically proves affection.",
+      "media": {
+        "sourceId": 15510,
+        "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1502-searobin/",
+        "sourceTitle": "The Armored Searobin and the Brittle Star",
+        "sourceCaption": "During the Océano Profundo 2015: Exploring Puerto Rico’s Seamounts, Trenches, and Troughs expedition, while exploring the top of a Late Oligocene to Pilocene platform carbonate sequence and traversed a relatively minor fault scarp. This fault is the easterly extension of an approximately 100-kilometer-long fault system that forms the northern wall of the rift between the Dominican Republic and Puerto Rico, when witnessed an unusual encounter.\nSeeing two deep-sea animals interacting with each other is rare. What is particularly rare is when they behave the opposite of how we expect them to. As we approached this armored searobin, a brittle star climbed on top of it. We watched to see if the fish would try to eat the brittle star, but as it turns out, it just wanted to dislodge the extra baggage. The brittle star then proceeded to climb on top of the sea robin two more times…persistent little guy!\n",
+        "attribution": "NOAA Ocean Exploration, Exploring Puerto Rico’s Seamounts, Trenches, and Troughs",
+        "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/03/ex1502-searobin-poster.jpg",
+        "index": 6,
+        "localPath": "/tmp/freed-aquatic-30/source-20.jpg",
+        "width": 1084,
+        "height": 609,
+        "sha1": "07f2e91586f2ecb2fef8cce9068f0999d7018970",
+        "sha256": "0bfb6020758b42a35b003b0ddb6f568b9ba288a33c2b98bf507695204ed034f0",
+        "cachedSourceIndex": 20,
+        "decision": "propose",
+        "visibleScene": "Red armored searobin face at right with very long paired rostral prongs extending left beside a pink brittle star on tan sediment. Large dark eye, bony ridges and modified fin rays clear.",
+        "individuallyOpened": true,
+        "originalDimensions": [
+          1084,
+          609
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+        "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred.",
+        "src": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/03/ex1502-searobin-poster.jpg",
+        "alt": "Red armored searobin face at right with very long paired rostral prongs extending left beside a pink brittle star on tan sediment. Large dark eye, bony ridges and modified fin rays clear."
+      }
+    },
+    {
+      "id": "aquatic-regular-41-02",
+      "characterId": "nestor-clasp",
+      "identityNameBase": "Nestor Clasp",
+      "subject": "Alaskan lithodid king crab",
+      "platform": "instagram",
+      "contentType": "post",
+      "theme": "courtship",
+      "title": "The next grip",
+      "content": "Every time I loosened my claw, theirs moved with it. I thought we were about to let go. Then I felt the new grip. It took me several changes of position to stop treating each one as the end.",
+      "sourceIndex": 7,
+      "decision": "propose_for_independent_review",
+      "review": "NOAA explicitly identifies mating. Overlapping limbs and claws are visible; the changing grips and emotional interpretation are fiction. No sex assignment, injury, fear diagnosis or physiological mating mechanism beyond source evidence. Nestor is the foreground left animal used for the avatar.",
+      "media": {
+        "sourceId": 14121,
+        "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-seascape-alaska-ex2306-gallery-media-dive08-crabs/",
+        "sourceTitle": "Mating Crabs",
+        "sourceCaption": "This close up shows two lithodid crabs engaged in mating behavior. This crab couple was seen during Dive 08 of the Seascape Alaska 5 expedition. These crabs were perched on top of a basaltic rocky outcrop with an anemone (Liponema sp.) and a white sponge in the background.\n",
+        "attribution": "NOAA Ocean Exploration, Seascape Alaska",
+        "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires.jpg",
+        "subjectGroup": "crab",
+        "index": 7,
+        "localPath": "/tmp/freed-aquatic-26/source-09.jpg",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "70f1d24b8f2edc6f34b9b4c8a44f79bef80a0f0b",
+        "sha256": "27c25353cb58fdc964c3161ad601b1f26fd881c2767ad681ec670aac7a340480",
+        "cachedSourceIndex": 9,
+        "decision": "propose",
+        "visibleScene": "Two red spiny king crabs with limbs and claws overlapping on dark rock. Foreground left animal has a speckled pink-red carapace and visible black eye. Brown Liponema anemone at left and white sponge at right.",
+        "individuallyOpened": true,
+        "originalDimensions": [
+          1920,
+          1080
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+        "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred.",
+        "src": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires.jpg",
+        "alt": "Two red spiny king crabs with limbs and claws overlapping on dark rock. Foreground left animal has a speckled pink-red carapace and visible black eye. Brown Liponema anemone at left and white sponge at right."
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "characterId": "edgar-prong",
+      "identityNameBase": "Edgar Prong",
+      "subject": "Atlantic armored searobin",
+      "platform": "facebook",
+      "bio": "An armored searobin. My visitors have their own ideas.",
+      "location": {
+        "name": "Deep seafloor near Mona Passage, northern Caribbean",
+        "coordinates": {
+          "lat": 18.5,
+          "lng": -67.7
+        }
+      },
+      "body": "Adult-sized red armored searobin with exceptionally long narrow paired rostral prongs, a large dark eye, bony head ridges and modified free fin rays. Species and reproductive sex unresolved. Do not substitute short-pronged Florida fish or Pacific Scalicus.",
+      "want": "To help smaller neighbors while retaining a little room around himself.",
+      "fear": "Mistaking a request for company for a creature in trouble.",
+      "flaw": "Acts on an interpretation before waiting to see what the other animal does.",
+      "voice": "Plain first-person Facebook accounts. Quick physical action followed by a belated correction; no species lectures.",
+      "history": "First encounter is the repeatedly climbing brittle star. No youth, breeding, injury or death invented.",
+      "sourceIndex": 6,
+      "avatarCrop": {
+        "x": 0.76,
+        "y": 0.52,
+        "zoom": 1.1
+      },
+      "avatar": {
+        "sourceId": 15510,
+        "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1502-searobin/",
+        "sourceTitle": "The Armored Searobin and the Brittle Star",
+        "sourceCaption": "During the Océano Profundo 2015: Exploring Puerto Rico’s Seamounts, Trenches, and Troughs expedition, while exploring the top of a Late Oligocene to Pilocene platform carbonate sequence and traversed a relatively minor fault scarp. This fault is the easterly extension of an approximately 100-kilometer-long fault system that forms the northern wall of the rift between the Dominican Republic and Puerto Rico, when witnessed an unusual encounter.\nSeeing two deep-sea animals interacting with each other is rare. What is particularly rare is when they behave the opposite of how we expect them to. As we approached this armored searobin, a brittle star climbed on top of it. We watched to see if the fish would try to eat the brittle star, but as it turns out, it just wanted to dislodge the extra baggage. The brittle star then proceeded to climb on top of the sea robin two more times…persistent little guy!\n",
+        "attribution": "NOAA Ocean Exploration, Exploring Puerto Rico’s Seamounts, Trenches, and Troughs",
+        "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/03/ex1502-searobin-poster.jpg",
+        "index": 6,
+        "localPath": "/tmp/freed-aquatic-30/source-20.jpg",
+        "width": 1084,
+        "height": 609,
+        "sha1": "07f2e91586f2ecb2fef8cce9068f0999d7018970",
+        "sha256": "0bfb6020758b42a35b003b0ddb6f568b9ba288a33c2b98bf507695204ed034f0",
+        "cachedSourceIndex": 20,
+        "decision": "propose_for_independent_review",
+        "visibleScene": "Red armored searobin face at right with very long paired rostral prongs extending left beside a pink brittle star on tan sediment. Large dark eye, bony ridges and modified fin rays clear.",
+        "individuallyOpened": true,
+        "originalDimensions": [
+          1084,
+          609
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+        "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred.",
+        "crop": {
+          "x": 0.76,
+          "y": 0.52,
+          "zoom": 1.1
+        },
+        "renderedSizes": [
+          220,
+          48
+        ],
+        "localReviewPath": "/tmp/freed-aquatic-41/avatar-circles.png"
+      }
+    },
+    {
+      "characterId": "nestor-clasp",
+      "identityNameBase": "Nestor Clasp",
+      "subject": "Alaskan lithodid king crab",
+      "platform": "instagram",
+      "bio": "A deep-sea king crab. Taking small changes personally.",
+      "location": {
+        "name": "Rocky deep slope in the Gulf of Alaska",
+        "coordinates": {
+          "lat": 57.5,
+          "lng": -145
+        }
+      },
+      "body": "Adult red spiny lithodid crab, compact oval speckled carapace, stout jointed spiny legs, small visible dark eyes and grasping claws. Source resolves Lithodidae only. Species and which photographed animal is male or female remain unresolved.",
+      "want": "Close contact that survives an awkward adjustment.",
+      "fear": "A loosening grip means the other animal is leaving.",
+      "flaw": "Holds too firmly when uncertain, making the next movement harder for both.",
+      "voice": "Short tactile admissions on Instagram; no armor/vulnerability stock joke or human anatomical substitution.",
+      "history": "Mating encounter first. Nestor is the foreground left crab; partner is unnamed and ungendered. No eggs, parenthood or post-molt softness inferred.",
+      "sourceIndex": 7,
+      "avatarCrop": {
+        "x": 0.34,
+        "y": 0.55,
+        "zoom": 1.3
+      },
+      "avatar": {
+        "sourceId": 14121,
+        "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-seascape-alaska-ex2306-gallery-media-dive08-crabs/",
+        "sourceTitle": "Mating Crabs",
+        "sourceCaption": "This close up shows two lithodid crabs engaged in mating behavior. This crab couple was seen during Dive 08 of the Seascape Alaska 5 expedition. These crabs were perched on top of a basaltic rocky outcrop with an anemone (Liponema sp.) and a white sponge in the background.\n",
+        "attribution": "NOAA Ocean Exploration, Seascape Alaska",
+        "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires.jpg",
+        "subjectGroup": "crab",
+        "index": 7,
+        "localPath": "/tmp/freed-aquatic-26/source-09.jpg",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "70f1d24b8f2edc6f34b9b4c8a44f79bef80a0f0b",
+        "sha256": "27c25353cb58fdc964c3161ad601b1f26fd881c2767ad681ec670aac7a340480",
+        "cachedSourceIndex": 9,
+        "decision": "propose_for_independent_review",
+        "visibleScene": "Two red spiny king crabs with limbs and claws overlapping on dark rock. Foreground left animal has a speckled pink-red carapace and visible black eye. Brown Liponema anemone at left and white sponge at right.",
+        "individuallyOpened": true,
+        "originalDimensions": [
+          1920,
+          1080
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+        "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred.",
+        "crop": {
+          "x": 0.34,
+          "y": 0.55,
+          "zoom": 1.3
+        },
+        "renderedSizes": [
+          220,
+          48
+        ],
+        "localReviewPath": "/tmp/freed-aquatic-41/avatar-circles.png"
+      }
+    }
+  ],
+  "sourceReview": [
+    {
+      "sourceId": 13117,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-express-ex2301-gallery-media-ex2301-dive06-crab/",
+      "sourceTitle": "Lithodid Crab",
+      "sourceCaption": " This lithodid crab was observed moving its body back and forth through the sediment, though the on-ship team was not sure exactly why it was doing so. Seen at a depth of 2,240 meters (7,349 feet) during the sixth dive of the 2023 Shakedown + EXPRESS West Coast Exploration expedition. \n",
+      "attribution": "NOAA Ocean Exploration, 2023 Shakedown + EXPRESS West Coast Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/04/ex2301-dive06-crab-poster.jpg",
+      "index": 1,
+      "localPath": "/tmp/freed-aquatic-41/source-01.jpg",
+      "width": 640,
+      "height": 360,
+      "sha1": "0627ba67f1d52a4ab91ced050984b3783d26f1de",
+      "sha256": "b97aa1f63a6364999e348e180c1fd91dc37955f2f2ae5d498c27a884b50a2a0b",
+      "decision": "hold_body",
+      "visibleScene": "Pale orange lithodid face over sediment, very long slender claw tips and raised dark eyes. Source observed back-and-forth sediment movement; shape differs from the red compact mating pair.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        640,
+        360
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 14598,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-express-ex2301-gallery-media-ex2301-dive04-king-crab/",
+      "sourceTitle": "King Crab",
+      "sourceCaption": " The king of Trinidad Slump? The focus of the fourth dive of the 2023 Shakedown + EXPRESS West Coast Exploration expedition was testing remotely operated vehicle systems by the Global Foundation for Ocean Exploration team. Part of the testing included flexing the zoom capabilities of vehicle cameras, giving us a close look at this king crab in the family Lithodidae at a depth of 2,413 meters (7,917 feet). \n",
+      "attribution": "NOAA Ocean Exploration, 2023 Shakedown + EXPRESS West Coast Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/04/ex2301-dive04-king-crab-hires.jpg",
+      "index": 2,
+      "localPath": "/tmp/freed-aquatic-41/source-02.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "30c9bb25a2cf5f5f84c3d412c538de8f37171381",
+      "sha256": "6fa47b5b55fd91e0a1b3a391df55998811d195d949e938fd0352fac6afe97270",
+      "decision": "hold_body_and_scene",
+      "visibleScene": "Sediment-coated dark red king crab with strong spikes and long antennae, California Trinidad Slump. Similar family does not prove same kind as the Alaskan mating pair; no distinct action in this portrait.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 14161,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex1907-dailyupdates-nov16-media-searobin-2/",
+      "sourceTitle": "Armored Searobin",
+      "sourceCaption": " A number of these unusual looking creatures were seen on the seafloor during Dive 09 of the 2019 Southeastern U.S. Deep-sea Exploration. These armored searobins (Triglidae) use modified fins to move across the seafloor and branched “whiskers” in front of their mouths to help them sense food. \n  Learn more  \n",
+      "attribution": "NOAA Ocean Exploration, 2019 Southeastern U.S. Deep-sea Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/searobin-hires.jpg",
+      "index": 3,
+      "localPath": "/tmp/freed-aquatic-41/source-03.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "98cef282b80748eff62dd3b5e0d72b5acbcb99c3",
+      "sha256": "eafbf88710fb417d77b83ade8b53f005cc9fef8853d8bac4c5dd28afa53e97c1",
+      "decision": "hold_body",
+      "visibleScene": "Pink armored searobin with short broad rostral projections, many long branched barbels and fins on sediment south of Florida Keys. Does not match Edgar narrow very long paired prongs.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 15737,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1907-searobin/",
+      "sourceTitle": "Armored Searobin",
+      "sourceCaption": " For today’s daily dose of deep-sea weird, meet the armored searobin! These unusual fish use modified fins to move across the seafloor and branched “whiskers” in front of their mouths to help them sense food. \n This one was seen at 600 meters (1,970 feet) depth  during a dive  to explore an area south of the Florida Keys in the Straits of Florida. \n",
+      "attribution": "NOAA Ocean Exploration, 2019 Southeastern U.S. Deep-sea Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/02/ex1907-searobin-poster.jpg",
+      "index": 4,
+      "localPath": "/tmp/freed-aquatic-41/source-04.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "29f46f01a14f03638a5086ca90443e6cc59b34fe",
+      "sha256": "1241e9b06098e156864f244ebbec47432e50fd4e32f4438efe1ff89d804661fc",
+      "decision": "hold_body_and_duplicate_event",
+      "visibleScene": "Another frontal view of the short-pronged Florida armored searobin on sediment. Same body incompatibility and no second event.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 10753,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-gallery-media-ex2206-dive08-victorian-hat-party/",
+      "sourceTitle": "Victorian Hat Party",
+      "sourceCaption": " During Dive 08 of the third Voyage to the Ridge 2022 expedition, a rarely observed aggregation of sea urchins ( Conolampas sigsbei ) was seen, much to the delight of scientists onboard and onshore. The urchins each appeared to have a cluster of debris on the apex of its body, leading scientists to liken them to “hats.” \n  Learn more  \n",
+      "attribution": "NOAA Ocean Exploration, Voyage to the Ridge 2022",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/04/ex2206-dive08-victorian-hat-party-poster.jpg",
+      "index": 5,
+      "localPath": "/tmp/freed-aquatic-41/source-05.jpg",
+      "width": 800,
+      "height": 450,
+      "sha1": "f4c86cc2992d36596f3b598fe213b5e630942829",
+      "sha256": "37fbf694e525050659b21bbfd9a0b67c7ce305f0b8adca7941c33b84f76c829e",
+      "decision": "hold_overlay",
+      "visibleScene": "Small urchin aggregation behind a large Victorian Hat Party title overlay. Poster cannot be treated as an unmarked photograph.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        800,
+        450
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 15510,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1502-searobin/",
+      "sourceTitle": "The Armored Searobin and the Brittle Star",
+      "sourceCaption": "During the Océano Profundo 2015: Exploring Puerto Rico’s Seamounts, Trenches, and Troughs expedition, while exploring the top of a Late Oligocene to Pilocene platform carbonate sequence and traversed a relatively minor fault scarp. This fault is the easterly extension of an approximately 100-kilometer-long fault system that forms the northern wall of the rift between the Dominican Republic and Puerto Rico, when witnessed an unusual encounter.\nSeeing two deep-sea animals interacting with each other is rare. What is particularly rare is when they behave the opposite of how we expect them to. As we approached this armored searobin, a brittle star climbed on top of it. We watched to see if the fish would try to eat the brittle star, but as it turns out, it just wanted to dislodge the extra baggage. The brittle star then proceeded to climb on top of the sea robin two more times…persistent little guy!\n",
+      "attribution": "NOAA Ocean Exploration, Exploring Puerto Rico’s Seamounts, Trenches, and Troughs",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/03/ex1502-searobin-poster.jpg",
+      "index": 6,
+      "localPath": "/tmp/freed-aquatic-30/source-20.jpg",
+      "width": 1084,
+      "height": 609,
+      "sha1": "07f2e91586f2ecb2fef8cce9068f0999d7018970",
+      "sha256": "0bfb6020758b42a35b003b0ddb6f568b9ba288a33c2b98bf507695204ed034f0",
+      "cachedSourceIndex": 20,
+      "decision": "propose",
+      "visibleScene": "Red armored searobin face at right with very long paired rostral prongs extending left beside a pink brittle star on tan sediment. Large dark eye, bony ridges and modified fin rays clear.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1084,
+        609
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 14121,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-seascape-alaska-ex2306-gallery-media-dive08-crabs/",
+      "sourceTitle": "Mating Crabs",
+      "sourceCaption": "This close up shows two lithodid crabs engaged in mating behavior. This crab couple was seen during Dive 08 of the Seascape Alaska 5 expedition. These crabs were perched on top of a basaltic rocky outcrop with an anemone (Liponema sp.) and a white sponge in the background.\n",
+      "attribution": "NOAA Ocean Exploration, Seascape Alaska",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires.jpg",
+      "subjectGroup": "crab",
+      "index": 7,
+      "localPath": "/tmp/freed-aquatic-26/source-09.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "70f1d24b8f2edc6f34b9b4c8a44f79bef80a0f0b",
+      "sha256": "27c25353cb58fdc964c3161ad601b1f26fd881c2767ad681ec670aac7a340480",
+      "cachedSourceIndex": 9,
+      "decision": "propose",
+      "visibleScene": "Two red spiny king crabs with limbs and claws overlapping on dark rock. Foreground left animal has a speckled pink-red carapace and visible black eye. Brown Liponema anemone at left and white sponge at right.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 13374,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-features-urchins-media-trio/",
+      "sourceTitle": "Trio of Sea Urchins",
+      "sourceCaption": "Three individuals of a large group of sea urchins seen during Dive 08 of the third Voyage to the Ridge 2022 expedition. Note the debris “hats” directly on top of the body. Scientists commented that since each individual had debris in exactly this place, it was too consistent to be incidental.\nLearn more\n",
+      "attribution": "NOAA Ocean Exploration, Voyage to the Ridge 2022",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/09/trio-hires.jpg",
+      "subjectGroup": "urchin",
+      "index": 8,
+      "localPath": "/tmp/freed-aquatic-26/source-38.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "cb83494ffb752b8419c7f9291d2546c2a92f74b9",
+      "sha256": "9e2a93c580d8038167d99900c97baf8fd630064ddfc7cd86308b1300439a9728",
+      "cachedSourceIndex": 38,
+      "decision": "hold_no_distinct_event",
+      "visibleScene": "Three dome-shaped Conolampas urchins carry small debris piles at their apices on gray mud. Distinct anatomy, but a hats/costume joke would merely follow the source pun.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 10084,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-features-urchins-media-trails/",
+      "sourceTitle": "Sea Urchin Trails",
+      "sourceCaption": "An image of a rarely observed gathering of the deep-sea urchin Conolampas sigsbei, as seen during Dive 08 of the third Voyage to the Ridge 2022 expedition. The black-and-white photo was edited with increased contrast to highlight the trails the sea urchins have made in the soft sediment.\nLearn more\n",
+      "attribution": "NOAA Ocean Exploration, Voyage to the Ridge 2022",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/09/trails-hires-1024x288.jpg",
+      "subjectGroup": "urchin",
+      "index": 9,
+      "localPath": "/tmp/freed-aquatic-26/source-39.jpg",
+      "width": 1024,
+      "height": 288,
+      "sha1": "74999b2f6e31cadb672fb6f504dd951f41424009",
+      "sha256": "ada599c4beda9e8813dc1ed473389162e42b4df6dafa0994bc111d55693a1cb6",
+      "cachedSourceIndex": 39,
+      "decision": "hold_presentation",
+      "visibleScene": "Side-by-side original-color and enhanced black-and-white urchin-trail panels, only 1024 by 288 total. Comparison figure, not a gorgeous feed photograph.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1024,
+        288
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    },
+    {
+      "sourceId": 14241,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/explorations-22puerto-rico-deepwaters-features-fishing-grounds-media-stony-coral/",
+      "sourceTitle": "Stony Coral",
+      "sourceCaption": "Fishing line visible across stony coral and a pencil urchin. Observed during an Illuminating Biodiversity in Deep Waters of Puerto Rico 2022 expedition dive.\nLearn more\n",
+      "attribution": "Illuminating Biodiversity in Deep Waters of Puerto Rico 2022",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/04/stony-coral-hires.jpg",
+      "subjectGroup": "urchin",
+      "index": 10,
+      "localPath": "/tmp/freed-aquatic-26/source-40.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "408ef80f2054daa5691f3003824c9000488712fc",
+      "sha256": "74ec0c2ba235149f929c099c59601f6d8c41f84624b10075b524eaef4e778ce6",
+      "cachedSourceIndex": 40,
+      "decision": "hold_visibility",
+      "visibleScene": "Fine fishing line crosses pale corals with a tiny pencil urchin on the upper-right colony. Urchin too small and no verified species profile or physical entanglement event.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "dimensionsMeaning": "Exact published image or video-poster asset dimensions measured from source bytes; no camera-original dimensions inferred."
+    }
+  ]
+}

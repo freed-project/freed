@@ -31,6 +31,7 @@ export interface FriendsGalaxyProductWorkerSelection {
 
 export interface FriendsGalaxyProductWorkerViewport extends
   FriendsGalaxyProductWorkerSelection {
+  hoveredNodeId?: string | null;
   width: number;
   height: number;
   transform: FriendsGalaxyTransform;

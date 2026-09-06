@@ -29,7 +29,9 @@ import {
 import type { ReactNode } from "react";
 import { MiniFriendMapCard } from "../map/MiniFriendMapCard.js";
 import { FriendAvatar } from "./FriendAvatar.js";
+import { CareRating, type CareLevel } from "./CareRating.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
+import { providerLabel } from "../../lib/account-labels.js";
 
 // ---------------------------------------------------------------------------
 // Platform icon map
@@ -59,68 +61,8 @@ function safeText(value: unknown, fallback = ""): string {
 // Care level indicator
 // ---------------------------------------------------------------------------
 
-function CareStars({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
-  return (
-    <div
-      className="flex gap-0.5"
-      title={`Care level ${level} of 5`}
-      aria-label={`Care level ${level} of 5`}
-    >
-      {[1, 2, 3, 4, 5].map((i) => (
-        <svg
-          key={i}
-          viewBox="0 0 12 12"
-          className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-[color:var(--theme-border-subtle)]"}`}
-          fill="currentColor"
-          aria-hidden
-        >
-          <path d="M6 1l1.5 3H11L8.5 6l1 3L6 7.5 2.5 9l1-3L1 4h3.5z" />
-        </svg>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Mini FeedItem row (compact, no full card chrome)
 // ---------------------------------------------------------------------------
 
-function TimelineItem({
-  item,
-  onClick,
-}: {
-  item: FeedItem;
-  onClick?: () => void;
-}) {
-  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
-  const icon = platformIcons[item.platform] ?? (
-    <span className="text-xs">📄</span>
-  );
-
-  return (
-    <button
-      className="group w-full border-b border-[color:color-mix(in_oklab,var(--theme-border-subtle)_72%,transparent)] px-4 py-3 text-left transition-colors hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.08)] last:border-0"
-      onClick={onClick}
-    >
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 text-text-secondary shrink-0">{icon}</span>
-        <div className="min-w-0 flex-1">
-          {item.content.text && (
-            <p className="text-sm text-text-primary line-clamp-3 leading-snug">
-              {item.content.text}
-            </p>
-          )}
-          {item.content.linkPreview?.title && !item.content.text && (
-            <p className="text-sm text-text-primary line-clamp-2 font-medium">
-              {item.content.linkPreview.title}
-            </p>
-          )}
-          <p className="text-xs text-text-secondary mt-1">{timeAgo}</p>
-        </div>
-      </div>
-    </button>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Reach-out logger popover
@@ -212,7 +154,9 @@ interface FriendDetailPanelProps {
   onShowNewestTimeline: () => void;
   onLogReachOut: (entry: ReachOutLog) => void;
   onOpenMap: () => void;
+  onSelectSource: (source: Friend["sources"][number]) => void;
   readOnly?: boolean;
+  onCareLevelChange?: (level: CareLevel) => void | Promise<void>;
 }
 
 export function FriendDetailPanel({
@@ -226,12 +170,13 @@ export function FriendDetailPanel({
   timelineLoadingMore,
   timelineHasMore,
   timelineAwayFromNewest,
-  timelineTotalCount,
   onLoadMoreTimeline,
   onShowNewestTimeline,
   onLogReachOut,
   onOpenMap,
+  onSelectSource,
   readOnly = false,
+  onCareLevelChange,
 }: FriendDetailPanelProps) {
   const [showReachOut, setShowReachOut] = useState(false);
   const items = [...feedItems];
@@ -262,7 +207,7 @@ export function FriendDetailPanel({
             <p className="text-base font-semibold text-text-primary truncate">
               {safeText(friend.name, "Unnamed friend")}
             </p>
-            <CareStars level={friend.careLevel} />
+            <CareRating level={friend.careLevel} onChange={onCareLevelChange} />
             {friend.bio && (
               <p className="text-xs text-text-secondary mt-1 line-clamp-2">
                 {friend.bio}
@@ -275,19 +220,18 @@ export function FriendDetailPanel({
         {friend.sources.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {friend.sources.map((src) => (
-              <a
+              <button
                 key={`${src.platform}-${src.authorId}`}
-                href={src.profileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="theme-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                title={src.displayName ?? src.handle}
+                type="button"
+                onClick={() => onSelectSource(src)}
+                className="theme-chip inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 py-1 text-xs text-[color:var(--theme-accent-primary)] transition-colors hover:bg-[color:var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
+                title={`Select ${providerLabel(src.platform)} profile: ${src.handle ?? src.displayName ?? friend.name}`}
               >
                 {platformIcons[src.platform]}
-                <span className="truncate max-w-[80px]">
-                  {src.handle ?? src.displayName ?? src.authorId}
+                <span>
+                  {providerLabel(src.platform)}
                 </span>
-              </a>
+              </button>
             ))}
           </div>
         )}
@@ -338,12 +282,6 @@ export function FriendDetailPanel({
           </span>
         </div>
 
-        <MiniFriendMapCard
-          friend={friend}
-          feedItems={locationItems}
-          onOpenMap={onOpenMap}
-          resolveNamedLocations={!readOnly}
-        />
       </div>
 
       {/* Reach out button / popover */}
@@ -365,7 +303,8 @@ export function FriendDetailPanel({
       </div> : null}
 
       {/* Timeline */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Recent activity</p>
         {timelineLoading ? (
           <div className="flex h-full items-center justify-center px-6 py-12 text-center">
             <p className="text-sm text-text-secondary">
@@ -393,13 +332,9 @@ export function FriendDetailPanel({
           </div>
         ) : (
           <>
-            <div className="px-4 py-2 text-xs text-text-secondary">
-              {timelineTotalCount.toLocaleString()} captured post
-              {timelineTotalCount === 1 ? "" : "s"}
-            </div>
-            {items.map((item) => (
-              <TimelineItem key={item.globalId} item={item} />
-            ))}
+            <div className="space-y-2">{items.map((item) => (
+              <RecentActivityCard key={item.globalId} item={item} />
+            ))}</div>
             {timelineHasMore || timelineAwayFromNewest ? (
               <div className="flex gap-2 px-4 py-3">
                 {timelineAwayFromNewest ? (
@@ -427,6 +362,8 @@ export function FriendDetailPanel({
           </>
         )}
       </div>
+      <MiniFriendMapCard friend={friend} feedItems={locationItems.length ? locationItems : feedItems} onOpenMap={onOpenMap} />
     </div>
   );
 }
+import { RecentActivityCard } from "./RecentActivityCard.js";

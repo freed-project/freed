@@ -45,6 +45,8 @@ import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLi
 import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
+import { FriendOverview } from "./FriendOverview.js";
+import { CareRating, careLevelLabel, type CareLevel } from "./CareRating.js";
 import { FriendGraph } from "./FriendGraph.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { AccountDetailPanel } from "./AccountDetailPanel.js";
@@ -112,8 +114,8 @@ const RELATIONSHIP_TIER_OPTIONS: Array<{
   level: RelationshipTierLevel;
   label: string;
 }> = [
-  { level: 1, label: "Followed" },
-  { level: 3, label: "Friends" },
+  { level: 1, label: "Connection" },
+  { level: 3, label: "Friend" },
   { level: 5, label: "Fam" },
 ];
 
@@ -136,55 +138,27 @@ interface FriendsViewProps {
   mobileSurface: "graph" | "details";
 }
 
-function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((value) => (
-        <span
-          key={value}
-          className={`h-1.5 w-1.5 rounded-full ${value <= level ? "bg-[color:var(--theme-accent-secondary)]" : "bg-[color:var(--theme-border-subtle)]"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
 function relationshipTierLevelForPerson(
   person: Pick<Person, "relationshipStatus" | "careLevel">,
 ): RelationshipTierLevel {
-  if (person.relationshipStatus !== "friend") return 1;
-  return person.careLevel >= 5 ? 5 : 3;
+  return person.careLevel <= 2 ? 1 : person.careLevel <= 4 ? 3 : 5;
 }
 
 function relationshipTierLabelForPerson(
   person: Pick<Person, "relationshipStatus" | "careLevel">,
 ): string {
   return (
-    RELATIONSHIP_TIER_OPTIONS.find(
-      (option) => option.level === relationshipTierLevelForPerson(person),
-    )?.label ?? "Followed"
+    careLevelLabel(person.careLevel)
   );
 }
 
 function relationshipPatchForLevel(
-  level: RelationshipTierLevel,
+  level: CareLevel,
 ): Pick<Person, "relationshipStatus" | "careLevel"> {
-  if (level === 1) {
-    return { relationshipStatus: "connection", careLevel: 1 };
+  if (level <= 2) {
+    return { relationshipStatus: "connection", careLevel: level };
   }
   return { relationshipStatus: "friend", careLevel: level };
-}
-
-function RelationshipTierBadge({
-  person,
-}: {
-  person: Pick<Person, "relationshipStatus" | "careLevel">;
-}) {
-  return (
-    <span className="theme-chip rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
-      {relationshipTierLabelForPerson(person)}
-    </span>
-  );
 }
 
 function RelationshipTierControl({
@@ -252,76 +226,20 @@ function FriendListRow({
   row,
   selected,
   onSelect,
+  onCareLevelChange,
 }: {
   row: LibraryCoreFriendsDirectoryRowV1;
   selected: boolean;
   onSelect: () => void;
+  onCareLevelChange?: (level: CareLevel) => void | Promise<void>;
 }) {
-  const lastPost = row.latestActivityAt
-    ? formatDistanceToNow(row.latestActivityAt, { addSuffix: true })
-    : "No posts yet";
-  const lastContact = row.lastContactAt
-    ? formatDistanceToNow(row.lastContactAt, { addSuffix: true })
-    : "Never contacted";
-  const avatarUrl = row.latestAvatarUrl ?? row.avatarUrl;
-
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`theme-card-soft w-full rounded-2xl p-3 text-left transition-colors ${
-        selected
-          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)] shadow-[var(--theme-glow-sm)]"
-          : "hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <FriendAvatar
-          name={safeText(row.name, "Unnamed friend")}
-          avatarUrl={avatarUrl}
-          size={40}
-        />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {safeText(row.name, "Unnamed friend")}
-            </p>
-            <div className="flex shrink-0 items-center gap-2">
-              <RelationshipTierBadge person={row} />
-              <CareDots level={row.careLevel as 1 | 2 | 3 | 4 | 5} />
-            </div>
-          </div>
-          {row.bio && (
-            <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
-              {row.bio}
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
-            <span>{lastPost}</span>
-            <span className="text-[color:var(--theme-text-soft)]">•</span>
-            <span>{lastContact}</span>
-            {row.hasLocation && (
-              <>
-                <span className="text-[color:var(--theme-text-soft)]">•</span>
-                <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
-                  <MapPinIcon className="h-3 w-3" />
-                  Has location
-                </span>
-              </>
-            )}
-            {row.needsOutreach && (
-              <>
-                <span className="text-[color:var(--theme-text-soft)]">•</span>
-                <span className="theme-feedback-text-warning">
-                  Needs outreach
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </button>
+    <div role="button" tabIndex={0} onClick={onSelect} onKeyDown={event => {
+      if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(); }
+    }}
+      className={`theme-card-soft w-full rounded-2xl p-3 text-left transition-colors ${selected ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)] shadow-[var(--theme-glow-sm)]" : "hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"}`}>
+      <FriendOverview {...row} name={safeText(row.name, "Unnamed friend")} avatarUrl={row.latestAvatarUrl ?? row.avatarUrl} onCareLevelChange={onCareLevelChange} />
+    </div>
   );
 }
 
@@ -606,6 +524,7 @@ export function FriendsView({
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedPersonId = useAppStore((s) => s.selectedPersonId);
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
+  const [selectedFeedUrl, setSelectedFeedUrl] = useState<string | null>(null);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -678,7 +597,12 @@ export function FriendsView({
     removeLibraryPerson,
     replaceLibraryFriend,
     upsertLibraryPerson,
+    onReadOnlyPersonCareChange,
     interactionMode,
+    approvedDemoAvatarUrls,
+    approvedDemoAvatarDeliveryUrls,
+    approvedDemoAvatarFocalPoints,
+    resolveAvatarUrl,
   } = usePlatform();
   const readOnly = interactionMode === "read-only";
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
@@ -732,8 +656,8 @@ export function FriendsView({
     [timelineSources],
   );
   const locationSources = useMemo<LibraryFriendsSource[]>(
-    () => (selectedFriend ? timelineSources : []),
-    [selectedFriend, timelineSources],
+    () => (selectedFriend || selectedAccount ? timelineSources : []),
+    [selectedFriend, selectedAccount, timelineSources],
   );
   const timelineIdentity = useMemo<LibraryPersonTimelineRequest | null>(() => {
     if (selectedFriend) return { personId: selectedFriend.id };
@@ -878,6 +802,7 @@ export function FriendsView({
   );
 
   const handleClearSelection = useCallback(() => {
+    setSelectedFeedUrl(null);
     setSelectedPerson(null);
     setSelectedAccount(null);
   }, [setSelectedAccount, setSelectedPerson]);
@@ -1073,7 +998,13 @@ export function FriendsView({
   );
 
   const handleSetPersonRelationshipLevel = useCallback(
-    async (person: Person, level: RelationshipTierLevel) => {
+    async (person: Person, level: CareLevel) => {
+      if (readOnly && onReadOnlyPersonCareChange) {
+        await onReadOnlyPersonCareChange(person.id, level);
+        setLibraryMutationNonce((value) => value + 1);
+        setSelectedPerson(person.id);
+        return;
+      }
       if (!upsertLibraryPerson) {
         throw new Error("The Person SQLite mutation is unavailable.");
       }
@@ -1085,7 +1016,7 @@ export function FriendsView({
       setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(person.id);
     },
-    [setSelectedPerson, upsertLibraryPerson],
+    [setSelectedPerson, upsertLibraryPerson, readOnly, onReadOnlyPersonCareChange],
   );
 
   const handlePromoteSelectedAccount = useCallback(
@@ -1557,6 +1488,11 @@ export function FriendsView({
                 >
                   <FriendListRow
                     row={row}
+                    onCareLevelChange={(readOnly ? onReadOnlyPersonCareChange : upsertLibraryPerson) ? async level => {
+                      const person = await readLibraryPersonDetail?.(row.id);
+                      if (!person) throw new Error("Identity unavailable");
+                      await handleSetPersonRelationshipLevel(person, level);
+                    } : undefined}
                     selected={row.id === selectedPerson?.id}
                     onSelect={() => {
                       setSelectedPerson(row.id);
@@ -1748,10 +1684,23 @@ export function FriendsView({
             onLoadMoreTimeline={friendsRows.loadMoreTimeline}
             onShowNewestTimeline={friendsRows.showNewestTimeline}
             onLogReachOut={handleLogReachOut}
+            onSelectSource={async (source) => {
+              try {
+                if (!queryLibraryCore) throw new Error("Library query unavailable");
+                const scope = await queryLibraryCore({ queryId: "filter_scope_summary_v1", schemaVersion: 1,
+                  platform: source.platform, authorId: source.authorId, feedUrl: null });
+                if (!scope.accountId) throw new Error("Linked profile missing from the Library");
+                setSelectedFeedUrl(null);
+                setSelectedAccount(scope.accountId);
+              } catch {
+                toast.error("Freed could not open this linked profile. Please try again.");
+              }
+            }}
             onOpenMap={() => {
               handleOpenMapForPerson(selectedPerson.id);
             }}
             readOnly={readOnly}
+            onCareLevelChange={(readOnly ? onReadOnlyPersonCareChange : upsertLibraryPerson) ? level => handleSetPersonRelationshipLevel(selectedPerson, level) : undefined}
           />
         </div>
       ) : null}
@@ -1763,6 +1712,8 @@ export function FriendsView({
     const linkedPerson = selectedAccountLinkedPersonDetail.value;
     return (
       <AccountDetailPanel
+        onOpenMap={handleOpenMapForPerson}
+        locationItems={friendsRows.locationItems}
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
@@ -1986,7 +1937,7 @@ export function FriendsView({
                 </button>
               </div>
               <div className="mt-2">
-                <CareDots level={selectedFriend.careLevel} />
+                <CareRating level={selectedFriend.careLevel} onChange={(readOnly ? onReadOnlyPersonCareChange : upsertLibraryPerson) ? level => handleSetPersonRelationshipLevel(selectedPerson, level) : undefined} />
               </div>
               {selectedFriend.bio ? (
                 <p className="mt-2 line-clamp-2 text-sm text-[color:var(--theme-text-secondary)]">
@@ -2039,14 +1990,16 @@ export function FriendsView({
     return null;
   };
 
-  const activeSidebar = selectedAccount
+  const activeSidebar = selectedFeedUrl
+    ? <RssPlanetDetail url={selectedFeedUrl} sourceVersion={friendsReadVersion} onBack={handleClearSelection} />
+    : selectedAccount
     ? renderSelectedAccountSidebar()
     : selectedPerson
       ? renderSelectedPersonSidebar()
       : renderOverviewSidebar();
   const showGraphSurface = !isMobile || mobileSurface === "graph";
   const showDesktopSidebar = !isMobile && friendsSidebarOpen;
-  const showMobileSidebar = isMobile && mobileSurface === "details";
+  const showMobileSidebar = isMobile && (mobileSurface === "details" || selectedFeedUrl !== null);
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
   const graphIsEmpty =
@@ -2080,13 +2033,19 @@ export function FriendsView({
         >
           <FriendGraph
             ref={graphRef}
+            approvedDemoAvatarUrls={approvedDemoAvatarUrls}
+            approvedDemoAvatarDeliveryUrls={approvedDemoAvatarDeliveryUrls}
+            approvedDemoAvatarFocalPoints={approvedDemoAvatarFocalPoints}
+            resolveAvatarUrl={resolveAvatarUrl}
             sqliteGraphQuery={graphSqliteQuery}
             sourceVersion={friendsReadVersion}
             mode={effectiveMode}
             selectedPersonId={selectedPerson?.id ?? null}
             selectedAccountId={selectedAccount?.id ?? null}
-            onSelectPersonId={(personId) => setSelectedPerson(personId)}
-            onSelectAccountId={(accountId) => setSelectedAccount(accountId)}
+            selectedFeedUrl={selectedFeedUrl}
+            onSelectFeedUrl={(url) => { setSelectedPerson(null); setSelectedAccount(null); setSelectedFeedUrl(url); onFriendsSidebarOpenChange(true); }}
+            onSelectPersonId={(personId) => { setSelectedFeedUrl(null); setSelectedPerson(personId); }}
+            onSelectAccountId={(accountId) => { setSelectedFeedUrl(null); setSelectedAccount(accountId); }}
             onSourceCounts={(counts) => {
               setGraphSourceCounts({ ...counts, mode: effectiveMode });
             }}
@@ -2240,3 +2199,4 @@ export function FriendsView({
     </div>
   );
 }
+import { RssPlanetDetail } from "./RssPlanetDetail.js";

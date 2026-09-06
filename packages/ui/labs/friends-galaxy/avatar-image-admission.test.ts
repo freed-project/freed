@@ -18,6 +18,40 @@ function asCanvasSource(image: FakeImage): CanvasImageSource {
 }
 
 describe("Friends Galaxy avatar image admission", () => {
+  it("tries failed candidates once and preserves a loaded profile after reordering", async () => {
+    const calls: string[] = [];
+    const admission = new FriendsGalaxyAvatarImageAdmission(async (sourceKey) => {
+      calls.push(sourceKey);
+      if (sourceKey === "broken") throw new Error("fixture failure");
+      return asCanvasSource({ sourceKey, close: () => undefined });
+    }, 8, 2);
+    const first = await admission.admit([{ nodeId: "person:1", sourceKey: "broken", sourceKeys: ["broken", "good", "unused"] }]);
+    const second = await admission.admit([{ nodeId: "person:1", sourceKey: "unused", sourceKeys: ["unused", "good", "broken"] }]);
+    expect(calls).toEqual(["broken", "good"]);
+    expect(second.images.get("person:1")).toBe(first.images.get("person:1"));
+    const replaced = await admission.admit([{ nodeId: "person:1", sourceKey: "replacement", sourceKeys: ["replacement"] }]);
+    expect(replaced.images.get("person:1")).not.toBe(first.images.get("person:1"));
+    admission.dispose();
+  });
+
+  it("deduplicates overlapping candidate admissions and rejects late results after disposal", async () => {
+    let resolve!: (image: CanvasImageSource) => void;
+    let calls = 0;
+    let closed = 0;
+    const admission = new FriendsGalaxyAvatarImageAdmission(() => {
+      calls += 1;
+      return new Promise((done) => { resolve = done; });
+    }, 8, 2);
+    const requests = [{ nodeId: "person:1", sourceKey: "shared", sourceKeys: ["shared", "unused"] }];
+    const first = admission.admit(requests);
+    const second = admission.admit(requests);
+    expect(calls).toBe(1);
+    admission.dispose();
+    resolve(asCanvasSource({ sourceKey: "shared", close: () => { closed += 1; } }));
+    expect((await first).images.size).toBe(0);
+    expect((await second).images.size).toBe(0);
+    expect(closed).toBe(1);
+  });
   it("deduplicates sources and holds decode concurrency below its bound", async () => {
     let activeDecodes = 0;
     let maximumActiveDecodes = 0;

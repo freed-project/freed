@@ -1,0 +1,204 @@
+{
+  "status": "seven admitted and integrated; three rejected",
+  "targetCount": 10,
+  "completedCount": 10,
+  "entries": [
+    {
+      "id": "deepsea-07-01",
+      "characterId": "gilda-grip",
+      "platform": "instagram",
+      "title": "Still on me",
+      "body": "There was a red speck on the bottom. I put an arm over it. Now there was a red speck on my arm. I lifted the arm. The speck went back to the bottom.\n\nI have been putting it down and picking it up for some time. I would like whoever is doing this to develop another interest.",
+      "theme": "curiosity becoming a small obsession",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/1/1e/Graneledone_boreopacifica_2.jpg",
+        "alt": "Pink bumpy octopus spreads its arms over dark sediment; a small red laser spot is visible at upper left.",
+        "sceneMatch": "Visible laser spot supplies the object of the fictional investigation. The photo does not show the preceding arm movements.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-exact-five.png"
+      },
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica_2.jpg",
+      "payoff": "The failed attempt to handle light becomes irritation at the unseen operator.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-02",
+      "characterId": "gilda-grip",
+      "platform": "facebook",
+      "title": "Hold this",
+      "body": "I put a pebble under an arm so I wouldn't forget to tell her something. I've still got the pebble. No idea what I was going to say.\n\nShe asked what I was holding. I said it was important. She settled beside me to wait.\n\nI cannot put it down now.",
+      "theme": "a memory aid becoming a social commitment",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/09/Graneledone_boreopacifica2.jpg",
+        "alt": "Pale bumpy octopus rests on rough substrate with several arm tips curled inward.",
+        "sceneMatch": "Curled arms on pebbly substrate support the concealed small object. The pebble under an arm and the visitor are fictional, not claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-exact-five.png"
+      },
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica2.jpg",
+      "payoff": "She has forgotten the message but committed herself to making it worth the listener's wait.",
+      "reviewRisk": "Lead must judge the concealed-object fit; reject if the pictured posture is insufficient for this story.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-03",
+      "characterId": "gilda-grip",
+      "platform": "rss",
+      "title": "Everybody was listening",
+      "body": "I told the coral what had happened with the light. The whole thing. How I'd caught it, how it had got under me, how I was beginning to suspect I had not caught it.\n\nShe didn't interrupt. I told her something worse: I had gone back to look for it after it left.\n\nThen I noticed all the little mouths.\n\nI had thought I was confiding in one person. There were hundreds of her. Some were eating while I spoke.\n\nI asked whether everybody had heard. Nothing moved except a few small tentacles. I tried addressing the branch nearest me. That did not make the rest of her any less present.\n\nI nearly left. But she had listened to the embarrassing part, too, and not one of her had suggested I should have known better.\n\nI stayed for the part I had been planning to leave out.",
+      "theme": "shame meeting an unfamiliar kind of listener",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Octopus_%28Graneledone_boreopacifica%29_Monterey_Bay_National_Marine_Sanctuary_%2843101889980%29.jpg",
+        "alt": "Pink octopus faces a densely branched coral colony on the seafloor.",
+        "sceneMatch": "Octopus beside a visibly many-branched colony supports a fictional confidence addressed to a collective neighbor. No actual conversation or hearing ability is claimed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-exact-five.png"
+      },
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Octopus_(Graneledone_boreopacifica)_Monterey_Bay_National_Marine_Sanctuary_(43101889980).jpg",
+      "payoff": "Her embarrassment about confiding in a crowd gives way to choosing an audience that has not shamed her.",
+      "reviewRisk": "Fictional coral listening is personification, not a sensory claim. Check collective-consciousness premise against existing coral cast.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-04",
+      "characterId": "etta-after",
+      "platform": "x",
+      "title": "The rest of goodbye",
+      "body": "i left before saying something cruel. very proud of that. unfortunately the end of me is still over there, touching him.",
+      "theme": "restraint complicated by a long body",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/e/e3/Coronate_of_the_genus_Atolla_Puerto_Rico_28_April_2015.png",
+        "alt": "Small orange Atolla jellyfish trails one exceptionally long thin tentacle into dark water.",
+        "sceneMatch": "The unusually long trailing tentacle makes physical separation incomplete; the other creature and argument are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-exact-five.png"
+      },
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Coronate_of_the_genus_Atolla_Puerto_Rico_28_April_2015.png",
+      "payoff": "Her dignified withdrawal is undermined by an affectionate contact she cannot yet take back.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-05",
+      "characterId": "tess-near",
+      "platform": "rss",
+      "title": "That bit of my face",
+      "body": "He put an arm across my face. I went very still.\n\nIt had been a long time since anybody had touched me without wanting me to move. I tried not to make a whole life out of it. Another arm came over. I made a small life.\n\nThen he began working his way past my eye, and I understood that I was in the route he had chosen.\n\nI could have moved. I lifted an arm instead, so he wouldn't have to go around it. He kept coming. There was a surprising amount of him.\n\nAt one point he stopped with an arm resting beside my eye. I don't know why. I didn't ask. I stayed with him until he was ready.\n\nAfterward I went to eat. Something brushed that same bit of my face and I turned toward it much too quickly.\n\nA piece of weed. I let it go without explaining.",
+      "theme": "loneliness, accidental tenderness, and an honest aftermath",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-octopus.jpg",
+        "alt": "Orange octopus's golden eye and curled arm are surrounded by branching pink brittle-star arms.",
+        "sceneMatch": "Actual close arm-to-face proximity anchors the fictional experience of touch. The photo does not establish transit, intention, or mutual affection.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-exact-five.png"
+      },
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/octopus/",
+      "payoff": "She recognizes the contact may be incidental, accepts it anyway, then discovers how much it mattered.",
+      "reviewRisk": "Tender rather than a hard punchline. Do not misstate the branched arms as several different brittle stars.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-06",
+      "characterId": "gilda-grip",
+      "platform": "instagram",
+      "title": "An enthusiastic hello",
+      "body": "I waved with one arm. He didn't notice. I added another, and another.\n\nBy the time he looked up I was sliding off the ledge.\n\nHe came back to ask if I was all right. I had wanted a conversation, although I would have preferred to begin it slightly higher.",
+      "theme": "an eager greeting defeats its own grip",
+      "image": {
+        "url": "https://www.ncei.noaa.gov/waf/okeanos-animal-guide/images/Alaska/Alaska_2023_Octopoda008.jpg",
+        "alt": "Pink bumpy octopus grips a broken rocky ledge with several arm tips curling upward.",
+        "sceneMatch": "Arms curled above a body hanging over the ledge support the fictional overcommitted wave; no fall is claimed photographed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-noaa-six.png"
+      },
+      "sourceUrl": "https://oceanexplorer.noaa.gov/data/animal-guide/",
+      "payoff": "The accidental slip gets her the conversation she wanted, but with an unplanned opening.",
+      "reviewRisk": "The NOAA guide image includes a scientific title and logo strip. Source identity is confirmed; presentation admission requires lead review.",
+      "status": "rejected, not runtime"
+    },
+    {
+      "id": "deepsea-07-07",
+      "characterId": "gilda-grip",
+      "platform": "facebook",
+      "title": "From above",
+      "body": "I leaned down to see what he was doing. He recoiled. I apologized and leaned closer so he could tell I meant it.\n\nHe recoiled further.\n\nI am beginning to understand what it is like when I try to help.",
+      "theme": "good intentions failing to account for another creature's scale",
+      "image": {
+        "url": "https://www.ncei.noaa.gov/sites/default/files/sites/default/files/octopus-nurseries-ex2306-hires_Webstory.jpg",
+        "alt": "Large pink octopus hangs head-down beneath an overhang, above thin brittle-star arms at lower right.",
+        "sceneMatch": "The huge downward-facing body above small arms supplies the scale and looming posture. Reactions are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-upside.png"
+      },
+      "sourceUrl": "https://www.ncei.noaa.gov/news/life-benthic-zone",
+      "payoff": "Making the apology more emphatic repeats the original problem without a lecture.",
+      "status": "rejected, not runtime"
+    },
+    {
+      "id": "deepsea-07-08",
+      "characterId": "etta-after",
+      "platform": "instagram",
+      "title": "Don't pull",
+      "body": "i tried to gather myself before replying. got most of me in. one long bit wouldn't come.\n\nhe was still holding it.\n\nwe have been very angry and very careful with each other for a while now.",
+      "theme": "a disagreement that does not erase care",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/07/dive03-atolla-jelly-1280x720-poster.jpg",
+        "alt": "Red Atolla curls its shorter tentacles close around its bell while a much longer filament extends upward.",
+        "sceneMatch": "Contracted short tentacles and one extended filament support an incomplete gathering-in. The partner is fictional and off frame.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-additional-five.png"
+      },
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-gallery-media-dive03-atolla-jelly/",
+      "payoff": "Their bodies preserve a gentleness their argument temporarily cannot express.",
+      "reviewRisk": "Intentional continuation of 04, not an independent second long-tentacle joke.",
+      "status": "rejected, not runtime"
+    },
+    {
+      "id": "deepsea-07-09",
+      "characterId": "miri-faint",
+      "platform": "rss",
+      "title": "What fell between us",
+      "body": "We stopped arguing because something soft came down between us.\n\nI thought it was a bit of him. He thought it was a bit of me. We both did a small, private check.\n\nMore came. Scraps, specks, little pale things turning over as they sank. None of them had been ours. All of them had been something.\n\nHe said there was a whole other world above us.\n\nI wanted to ask how he knew. I wanted to ask whether it was always falling apart like this. Mostly I wanted to keep the bit that had landed against me, although it was already coming to pieces.\n\nWe stayed while it fell. I'd forgotten what I'd been so angry about. Then I remembered, quite clearly.\n\nI told him. He said yes, that had been a shitty thing to do.",
+      "theme": "wonder making room for an ordinary apology",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/03/20210319-hires.jpg",
+        "alt": "Pale translucent Atolla floats among bright suspended particles in deep blue water.",
+        "sceneMatch": "The documented dense marine snow supplies the interruption and shared wonder. Dialogue, self-checks, and apology are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-additional-five.png"
+      },
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210319/",
+      "payoff": "Wonder interrupts the argument long enough for an actual acknowledgment.",
+      "status": "lead admitted, integrated in deepsea-next"
+    },
+    {
+      "id": "deepsea-07-10",
+      "characterId": "iona-rouge",
+      "platform": "x",
+      "title": "Since when",
+      "body": "apparently i am bright red. i had pictured something more discreet. i need everybody who has ever seen me to explain why they let me carry on.",
+      "theme": "a startling discovery about one's appearance",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/01/20210117-hires.jpg",
+        "alt": "Red-orange Atolla with a dark clear bell cap and curling orange tentacles against black.",
+        "sceneMatch": "Striking red coloration is the whole premise; no invented visible companion or action is required.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-07-additional-five.png"
+      },
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210117/",
+      "payoff": "Information about her own body feels like a social betrayal.",
+      "reviewRisk": "Source photographed a collected specimen. Private canon preserves capture context; no specific species or wild encounter asserted.",
+      "status": "lead admitted, integrated in deepsea-next"
+    }
+  ],
+  "admittedCount": 7
+}

@@ -9,6 +9,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -30,6 +31,12 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement | 
 }
 
 describe("DemoWelcomeBanner", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      disconnect() {}
+    });
+  });
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
@@ -73,7 +80,7 @@ describe("DemoWelcomeBanner", () => {
     container.remove();
   });
 
-  it("transforms into a draggable Field Guide with a mobile bottom tab", async () => {
+  it("minimizes the draggable guide into a fixed tab and restores its newsletter state", async () => {
     vi.useFakeTimers();
     window.history.replaceState(null, "", "/");
     const container = document.createElement("div");
@@ -112,16 +119,46 @@ describe("DemoWelcomeBanner", () => {
     expect(container.querySelector('input[type="email"]')).not.toBeNull();
     expect(container.querySelector('a[href="https://freed.wtf/get"]')).not.toBeNull();
 
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="Minimize Freed Demo"]')?.click();
-    });
-    const reopen = container.querySelector('[data-testid="demo-welcome-reopen"]');
-    expect(reopen).not.toBeNull();
-    expect(reopen?.textContent).toContain("Freed Demo");
+    const minimize = container.querySelector<HTMLButtonElement>('[aria-label="Minimize demo banner"]')!;
+    await act(async () => minimize.click());
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("minimized");
+    expect(container.querySelector('[data-testid="demo-welcome-desktop"]')?.hasAttribute("inert")).toBe(true);
+    const tab = container.querySelector<HTMLElement>('[data-testid="demo-welcome-tab"]');
+    expect(tab?.textContent).toContain("Freed Demo");
+    const restore = tab as HTMLButtonElement;
+    expect(document.activeElement).toBe(restore);
+    // Keep the actual form mounted so minimizing cannot discard an email draft.
+    expect(container.querySelector('input[type="email"]')).not.toBeNull();
+    await act(async () => restore.click());
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("banner");
+    expect(container.querySelector('[data-testid="demo-welcome-tab"]')?.hasAttribute("inert")).toBe(true);
+    expect(container.querySelector('[data-testid="demo-welcome-desktop"]')?.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(minimize);
+    expect(container.textContent).toContain("Freed Newsletter");
+    expect(container.textContent).not.toContain("Social media that respects you");
+    await act(async () => findButton(container, "Skip the newsletter")?.click());
+    expect(container.textContent).toContain("Freed Demo");
+    expect(container.textContent).toContain("Social media that respects you, and your friends.");
+    expect(container.textContent).toContain("Ready to make it your own?");
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open demo welcome modal"]')!.click());
+    expect(container.textContent).toContain("Take back your feed.");
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("modal");
 
     await act(async () => root.unmount());
     container.remove();
     vi.useRealTimers();
+  });
+
+  it("restores a minimized tab immediately without the welcome modal", async () => {
+    localStorage.setItem("freed.demo.welcome-state.v1", "minimized");
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(DemoWelcomeBanner, { downloadUrl: "https://freed.wtf/get" })));
+    expect(container.textContent).not.toContain("Take back your feed.");
+    expect(container.querySelector('[data-testid="demo-welcome-tab"]')?.hasAttribute("inert")).toBe(false);
+    expect(container.querySelector('[data-testid="demo-welcome-desktop"]')?.hasAttribute("inert")).toBe(true);
+    await act(async () => root.unmount());
   });
 
   it("keeps the Field Guide newsletter inert on Vercel previews", async () => {

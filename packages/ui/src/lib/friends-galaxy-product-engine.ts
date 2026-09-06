@@ -42,6 +42,27 @@ import type {
   FriendsGalaxyViewportInsets,
 } from "./friends-galaxy-viewport.js";
 import type { IdentityGraphAtlasNode } from "./identity-graph-atlas.js";
+import { FriendsGalaxyAvatarImageAdmission } from "./friends-galaxy-avatar-image-admission.js";
+import { cropDecodedGalaxyAvatar } from "./friends-galaxy-avatar-crop.js";
+import type { SampleAvatarFocalPoint } from "@freed/shared";
+import { selectFriendsGalaxyAvatars } from "./friends-galaxy-presentation.js";
+import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
+
+function decodePublicAvatar(url: string, focal?: SampleAvatarFocalPoint): Promise<CanvasImageSource> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.referrerPolicy = "no-referrer";
+    const timeout = setTimeout(() => { image.src = ""; reject(new Error("Avatar load timed out")); }, 10_000);
+    image.onload = () => {
+      clearTimeout(timeout);
+      try { resolve(cropDecodedGalaxyAvatar(image, image.naturalWidth, image.naturalHeight, focal)); }
+      catch (error) { reject(error); }
+    };
+    image.onerror = () => { clearTimeout(timeout); reject(new Error("Avatar load failed")); };
+    image.src = url;
+  });
+}
 
 export interface FriendsGalaxyProductEngineOptions extends Omit<
   FriendsGalaxyRendererHostOptions,
@@ -58,6 +79,11 @@ export interface FriendsGalaxyProductEngineOptions extends Omit<
     response: FriendsGalaxyProductWorkerPresentationResponse,
   ): void;
   onActivityReady?(response: FriendsGalaxyProductWorkerActivityResponse): void;
+  /** Demo-only exact reviewed URL allowlist. Real libraries use the platform cache resolver. */
+  approvedDemoAvatarUrls?: ReadonlySet<string>;
+  approvedDemoAvatarDeliveryUrls?: ReadonlyMap<string, string>;
+  approvedDemoAvatarFocalPoints?: ReadonlyMap<string, SampleAvatarFocalPoint>;
+  resolveAvatarUrl?: (sourceUrl: string) => string;
 }
 
 interface FriendsGalaxyPresentationRequestState {
@@ -66,6 +92,16 @@ interface FriendsGalaxyPresentationRequestState {
 }
 
 export class FriendsGalaxyProductEngine {
+  private readonly avatarAdmission: FriendsGalaxyAvatarImageAdmission;
+  private avatarScene: FriendsGalaxyRendererScene | null = null;
+  private avatarAdmissionKey = "";
+  private avatarBackend: FriendsGalaxyRendererBackend | null = null;
+  private avatarGeneration = 0;
+  private avatarPending = false;
+  private avatarViewKey = "";
+  private avatarViewScene: FriendsGalaxyRendererScene | null = null;
+  private readonly approvedDemoAvatarUrls: ReadonlySet<string>;
+  private readonly resolveAvatarUrl?: (sourceUrl: string) => string;
   private readonly presentation = new FriendsGalaxyProductPresentationIndex();
   private readonly sourceMetadataByNodeId = new Map<
     string,
@@ -120,8 +156,20 @@ export class FriendsGalaxyProductEngine {
       onSourceSceneReady,
       onPresentationReady,
       onActivityReady,
+      approvedDemoAvatarUrls,
+      approvedDemoAvatarDeliveryUrls,
+      approvedDemoAvatarFocalPoints,
+      resolveAvatarUrl,
       ...rendererOptions
     } = options;
+    this.approvedDemoAvatarUrls = new Set(approvedDemoAvatarUrls ?? []);
+    this.resolveAvatarUrl = resolveAvatarUrl;
+    // The same exact URL allowlist controls requests. Crop metadata grants no admission.
+    const focalPoints = new Map(approvedDemoAvatarFocalPoints ?? []);
+    const deliveryUrls = new Map(approvedDemoAvatarDeliveryUrls ?? []);
+    this.avatarAdmission = new FriendsGalaxyAvatarImageAdmission(
+      (url) => decodePublicAvatar(deliveryUrls.get(url) ?? resolveAvatarUrl?.(url) ?? url, focalPoints.get(url)), 64, 3,
+    );
     this.palette = palette;
     this.rendererId = rendererId;
     this.rendererOptions = rendererOptions;
@@ -281,6 +329,7 @@ export class FriendsGalaxyProductEngine {
         height: this.height,
         transform: { ...navigation.transform },
         ...selection,
+        hoveredNodeId: this.interaction.hoveredNodeId,
       },
     }, this.cameraMotion);
   }
@@ -458,12 +507,13 @@ export class FriendsGalaxyProductEngine {
   }
 
   render(transform: FriendsGalaxyTransform, timeMs: number): void {
+    this.admitVisibleAvatars(transform);
     this.renderer?.render(transform, timeMs);
   }
 
   renderCamera(timeMs: number): void {
     const navigation = this.navigation;
-    if (navigation) this.renderer?.render(navigation.transform, timeMs);
+    if (navigation) this.render(navigation.transform, timeMs);
   }
 
   metrics(): FriendsGalaxyRendererMetrics | null {
@@ -471,7 +521,7 @@ export class FriendsGalaxyProductEngine {
   }
 
   hasActivePresentationTransition(): boolean {
-    return this.renderer?.activeBackend?.hasActivePresentationTransition?.() ?? false;
+    return this.avatarPending || (this.renderer?.activeBackend?.hasActivePresentationTransition?.() ?? false);
   }
 
   pollHealth(): void {
@@ -493,6 +543,8 @@ export class FriendsGalaxyProductEngine {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.avatarGeneration += 1;
+    this.avatarAdmission.dispose();
     this.worker.dispose();
     this.renderer?.dispose();
     this.renderer = null;
@@ -519,6 +571,10 @@ export class FriendsGalaxyProductEngine {
   }
 
   private admitSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
+    this.avatarScene = response.rendererScene;
+    this.avatarAdmissionKey = "";
+    this.avatarGeneration += 1;
+    this.avatarPending = false;
     this.sourceMetadataByNodeId.clear();
     for (const node of response.rendererScene.atlas.nodes) {
       this.sourceMetadataByNodeId.set(node.id, node);
@@ -570,6 +626,7 @@ export class FriendsGalaxyProductEngine {
       request.presentationRevision !== response.presentationRevision
     ) return;
     this.presentation.replace(response.atlas);
+    if (this.avatarScene) this.avatarScene = { ...this.avatarScene, atlas: response.atlas };
     const detail = friendsGalaxyViewDetailForScale(request.viewport.transform.scale);
     if (requestState.cameraMotion || this.cameraMotion) {
       this.renderer?.setPresentationAtlas(response.atlas);
@@ -583,6 +640,48 @@ export class FriendsGalaxyProductEngine {
       );
     }
     this.onPresentationReady?.(response);
+  }
+
+  private admitVisibleAvatars(transform: FriendsGalaxyTransform): void {
+    const backend = this.renderer?.activeBackend;
+    const scene = this.avatarScene;
+    if (this.avatarPending && backend !== this.avatarBackend) {
+      this.avatarGeneration += 1;
+      this.avatarPending = false;
+    }
+    if ((!this.resolveAvatarUrl && this.approvedDemoAvatarUrls.size === 0) || this.disposed || !backend?.setAvatarImages || !scene) return;
+    const viewKey = `${transform.x}:${transform.y}:${transform.scale}:${this.width}:${this.height}:${this.interaction.selectedNodeId}`;
+    if (this.avatarAdmissionKey && backend === this.avatarBackend && scene === this.avatarViewScene && viewKey === this.avatarViewKey) return;
+    this.avatarViewKey = viewKey;
+    this.avatarViewScene = scene;
+    const detail = friendsGalaxyViewDetailForScale(transform.scale);
+    // Retain outgoing avatars until their time-based fade has completed.
+    if (detail !== "close") return;
+    writeFriendsGalaxyWebGpuViewProjection(this.pickViewProjection, transform, this.width, this.height);
+    const avatars = selectFriendsGalaxyAvatars(scene, this.palette, this.presentation.resolve,
+      this.interaction.selectedNodeId, this.width < 720, detail,
+      { viewProjection: this.pickViewProjection, width: this.width, height: this.height });
+    const requests = avatars.flatMap(({ nodeId }) => {
+      const node = this.presentation.node(nodeId);
+      // Identity candidates are populated exclusively from linked social accounts.
+      const sourceKeys = (node?.avatarUrlCandidates ?? []).filter((url) => (this.resolveAvatarUrl || this.approvedDemoAvatarUrls.has(url)) && /^https:\/\//i.test(url));
+      return sourceKeys.length ? [{ nodeId, sourceKey: sourceKeys[0]!, sourceKeys }] : [];
+    });
+    const key = JSON.stringify(requests);
+    if (backend === this.avatarBackend && key === this.avatarAdmissionKey) return;
+    if (backend !== this.avatarBackend) backend.setAvatarImages(new Map(), true);
+    this.avatarBackend = backend;
+    this.avatarAdmissionKey = key;
+    const generation = ++this.avatarGeneration;
+    this.avatarPending = true;
+    void this.avatarAdmission.admit(requests).then(({ images }) => {
+      if (this.disposed || generation !== this.avatarGeneration || backend !== this.renderer?.activeBackend) return;
+      this.avatarPending = false;
+      // Image readiness must not depend on the user ending a zoom gesture.
+      backend.setAvatarImages?.(images, true);
+    }).catch(() => {
+      if (generation === this.avatarGeneration) this.avatarPending = false;
+    });
   }
 
   private receiveActivity(

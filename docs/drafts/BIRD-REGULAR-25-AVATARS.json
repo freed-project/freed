@@ -1,0 +1,116 @@
+{
+  "batch": "bird-regular-25",
+  "avatars": [
+    {
+      "characterId": "agnes-splinter",
+      "reviewIndex": 15,
+      "crop": {
+        "x": 30,
+        "y": 200,
+        "side": 1150
+      },
+      "focal": {
+        "x": 0.3673345476624165,
+        "y": 0.28950317519611507,
+        "zoom": 1.4321739130434783
+      },
+      "characterName": "Agnes Splinter",
+      "fullSpecies": "Dryocopus pileatus",
+      "ageSex": "Adult female. Dark forecrown and black malar stripe support female identification in sources15 and31. Exact age unrecorded.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9f25eeeb-6505-4a2f-89c3-2c2c484f176f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/9f25eeeb-6505-4a2f-89c3-2c2c484f176f/original.jpg",
+      "sourceLocalPath": "/tmp/freed-bird25/15.jpg",
+      "creator": "NPS/Christopher Vuille-Kowing",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 1647,
+      "originalHeight": 2677,
+      "originalSha1": "23085b9af00af92ff22de5f2e9a5d531a631e70c",
+      "originalSha256": "3ac3bfebdbcdd55449a9b213229420656162ce445f07d5303ef5a83e073833a4",
+      "review220Path": "/tmp/freed-bird25/agnes-splinter-220-circle.png",
+      "review48Path": "/tmp/freed-bird25/agnes-splinter-48-circle.png",
+      "cropPath": "/tmp/freed-bird25/agnes-splinter-crop.png",
+      "status": "proposed; lead review required",
+      "visualReview": "Actual 220 and 48 circular files independently opened. Species silhouette and face remain recognizable. Agnes retains red crest and striped face; Otis has one head and open orange bill; Maud retains the heavy bill and shaggy throat.",
+      "review220Sha256": "468b65f2e74d4d5f1f946d856b3f9f6a3d27242d55f96f2d0286526e12920595",
+      "review48Sha256": "2eb745488ddfeef3b27e9d7de92cda2ffcbbaea9de5ae40e3e0859ceed5c1b5c"
+    },
+    {
+      "characterId": "otis-gulp",
+      "reviewIndex": 7,
+      "crop": {
+        "x": 2600,
+        "y": 650,
+        "side": 2000
+      },
+      "focal": {
+        "x": 0.6944444444444444,
+        "y": 0.4774305555555556,
+        "zoom": 1.728
+      },
+      "characterName": "Otis Gulp",
+      "fullSpecies": "Pelecanus erythrorhynchos",
+      "ageSex": "Adult male in fiction. Adult appearance is supported; sex is unrecorded in all source photographs.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83/original.jpg",
+      "sourceLocalPath": "/tmp/freed-bird25/7.jpg",
+      "creator": "NPS/Diane Renkin",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 5184,
+      "originalHeight": 3456,
+      "originalSha1": "9147e5e5ddf4d688143959a60c44a97f8982ad56",
+      "originalSha256": "68672b0350e1393a55701662b541804a56ed25c9654bc44c74274a81caaad018",
+      "review220Path": "/tmp/freed-bird25/otis-gulp-220-circle.png",
+      "review48Path": "/tmp/freed-bird25/otis-gulp-48-circle.png",
+      "cropPath": "/tmp/freed-bird25/otis-gulp-crop.png",
+      "status": "proposed; lead review required",
+      "visualReview": "Actual 220 and 48 circular files independently opened. Species silhouette and face remain recognizable. Agnes retains red crest and striped face; Otis has one head and open orange bill; Maud retains the heavy bill and shaggy throat.",
+      "review220Sha256": "1ae284289f967d3f61d347840373c64de3adaf8694bede30bd02e1c27cbebf27",
+      "review48Sha256": "f1d64acc07cd36275470aa7daa492f06af556774c38a95ad935386ad10d22ecf"
+    },
+    {
+      "characterId": "maud-overhead",
+      "reviewIndex": 27,
+      "crop": {
+        "x": 2900,
+        "y": 300,
+        "side": 4000
+      },
+      "focal": {
+        "x": 0.6595773320769955,
+        "y": 0.4643650312941652,
+        "zoom": 1.23825
+      },
+      "characterName": "Maud Overhead",
+      "fullSpecies": "Corvus corax",
+      "ageSex": "Adult female in fiction. Photograph records do not establish sex or exact adult age.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a567575a-b8a1-476f-a265-ee192d76202f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/original.jpg",
+      "sourceLocalPath": "/tmp/freed-bird25/27.jpg",
+      "creator": "NPS / Jacob W. Frank",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 7429,
+      "originalHeight": 4953,
+      "originalSha1": "b8055d51e56d411f792d9ae15bbfd3ce07cfd694",
+      "originalSha256": "d37942d55afa6da711799d1def2ba518b41cee431d9129d9c92958c914fcad9e",
+      "review220Path": "/tmp/freed-bird25/maud-overhead-220-circle.png",
+      "review48Path": "/tmp/freed-bird25/maud-overhead-48-circle.png",
+      "cropPath": "/tmp/freed-bird25/maud-overhead-crop.png",
+      "status": "proposed; lead review required",
+      "visualReview": "Actual 220 and 48 circular files independently opened. Species silhouette and face remain recognizable. Agnes retains red crest and striped face; Otis has one head and open orange bill; Maud retains the heavy bill and shaggy throat.",
+      "review220Sha256": "e439831e05f3928a6c3a09a55e0acf5866cfabf389c8d8fb07931862bab1bec5",
+      "review48Sha256": "6c99b475b119e20f364f51614ef6129a4a04faf49c03fa671bb1d76664bc0efc"
+    }
+  ]
+}

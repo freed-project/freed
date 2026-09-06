@@ -2,6 +2,7 @@
 //!
 //! Native desktop app that bundles capture and the reader UI.
 
+mod avatar_cache;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
@@ -13070,7 +13071,56 @@ pub fn run() {
         builder.build()
     };
 
+    let avatar_cache = Arc::new(avatar_cache::AvatarCache::default());
     let builder = tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol(
+            "freed-avatar",
+            move |context, request, responder| {
+                let cache = avatar_cache.clone();
+                let head = request.method() == tauri::http::Method::HEAD;
+                let allowed = context.webview_label() == "main"
+                    && (head || request.method() == tauri::http::Method::GET)
+                    && request.uri().path() == "/avatar"
+                    && request
+                        .uri()
+                        .path_and_query()
+                        .is_some_and(|path| path.as_str().len() <= 32768);
+                let root = context
+                    .app_handle()
+                    .path()
+                    .app_local_data_dir()
+                    .map(|path| path.join("avatars-v1"));
+                let source = url::Url::parse(&request.uri().to_string())
+                    .ok()
+                    .and_then(|url| {
+                        url.query_pairs()
+                            .find(|(key, _)| key == "source")
+                            .map(|(_, value)| value.into_owned())
+                    });
+                tauri::async_runtime::spawn(async move {
+                    let result = match (allowed, root, source) {
+                        (true, Ok(root), Some(source)) => cache.get(root, &source).await,
+                        _ => Err("avatar_request_denied"),
+                    };
+                    let response = match result {
+                        Ok((bytes, kind)) => tauri::http::Response::builder()
+                            .status(200)
+                            .header("Content-Type", kind)
+                            .header("X-Content-Type-Options", "nosniff")
+                            .header("Access-Control-Allow-Origin", "*")
+                            .header("Cache-Control", "private, max-age=86400")
+                            .body(if head { Vec::new() } else { bytes }),
+                        Err(_) => tauri::http::Response::builder()
+                            .status(404)
+                            .header("Cache-Control", "no-store")
+                            .body(Vec::new()),
+                    };
+                    if let Ok(response) = response {
+                        responder.respond(response);
+                    }
+                });
+            },
+        )
         // Debug builds log to stdout and the webview so local startup is not
         // blocked by host filesystem permissions. Release builds keep
         // structured rotating file logs in the OS log directory.

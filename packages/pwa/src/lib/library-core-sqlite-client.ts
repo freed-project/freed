@@ -1,3 +1,4 @@
+import { isFreedDemoMode } from "./demo-mode";
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
@@ -263,7 +264,14 @@ export class PwaLibraryCoreSqliteClient {
     const useMemoryE2eWorker =
       import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
       memoryE2eRequested;
-    this.#worker = useMemoryE2eWorker
+    const useDemoWorker = typeof location !== "undefined" &&
+      isFreedDemoMode(location.hostname, undefined, location.search);
+    this.#worker = useDemoWorker
+      ? new Worker(
+          new URL("./library-core-sqlite-worker.ts", import.meta.url),
+          { name: "freed-library-core-sqlite-demo", type: "module" },
+        )
+      : useMemoryE2eWorker
       ? new Worker(
           new URL("./library-core-sqlite-worker.ts", import.meta.url),
           { name: "freed-library-core-sqlite-memory-e2e", type: "module" },

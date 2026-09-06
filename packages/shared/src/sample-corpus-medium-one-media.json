@@ -1,0 +1,49 @@
+[
+  {
+    "id": "commons-strange-01-04",
+    "subject": "river",
+    "category": "geology",
+    "identityNameBase": "Sela Current",
+    "detail": "Clear water against pale sculpted rock, a dark undercut, and a bed of pebbles",
+    "alt": "Clear water against pale sculpted rock, a dark undercut, and a bed of pebbles",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Bovec_Spodnja_Trenta_So%C4%8Da_10032015_0684.jpg/960px-Bovec_Spodnja_Trenta_So%C4%8Da_10032015_0684.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bovec_Spodnja_Trenta_So%C4%8Da_10032015_0684.jpg",
+    "creator": "Johann Jaritz",
+    "license": "CC BY-SA 4.0",
+    "width": 7360,
+    "height": 4912,
+    "sha1": "00cb21fba0c77d47fdf3f23d282ee8a570d00504",
+    "coordinates": { "lat": 46.341586, "lng": 13.684232 }
+  },
+  {
+    "id": "commons-strange-02-03",
+    "subject": "peacock butterfly larva",
+    "category": "insect",
+    "identityNameBase": "Peri Bracken",
+    "detail": "A black, white-spotted, spiny caterpillar curves along the edge of a green nettle leaf",
+    "alt": "A black, white-spotted, spiny caterpillar curves along the edge of a green nettle leaf",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Inachis_io_qtl4.jpg/960px-Inachis_io_qtl4.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Inachis_io_qtl4.jpg",
+    "creator": "Quartl",
+    "license": "CC BY-SA 3.0",
+    "width": 3262,
+    "height": 2340,
+    "sha1": "c6270ba8717745147c5127ae5b1ce35f555092eb",
+    "coordinates": { "lat": 50.196796, "lng": 8.611647 }
+  },
+  {
+    "id": "commons-strange-02-23",
+    "subject": "pixie's parasol fungus",
+    "category": "microfauna",
+    "identityNameBase": "Ludo Bluecap",
+    "detail": "A pale blue mushroom cap on a curved stem attached to a dark vertical wood surface",
+    "alt": "A pale blue mushroom cap on a curved stem attached to a dark vertical wood surface",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/84/Mycena_interrupta_NZ.jpg/960px-Mycena_interrupta_NZ.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mycena_interrupta_NZ.jpg",
+    "creator": "Haydenrjones",
+    "license": "CC BY 4.0",
+    "width": 5623,
+    "height": 3749,
+    "sha1": "7f791d06536fffcdede266b60116fdf992d157ed"
+  }
+]

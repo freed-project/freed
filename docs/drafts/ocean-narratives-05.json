@@ -1,0 +1,135 @@
+{
+  "status": "partial draft, not runtime",
+  "targetCount": 30,
+  "completedCount": 4,
+  "entries": [
+    {
+      "id": "ocean-05-01",
+      "characterId": "mina-tangle",
+      "platform": "instagram",
+      "title": "Our lunch",
+      "body": "She caught it. I ate it. She curled the arm away. I said I thought we shared everything. She has since become very specific about what everything means.",
+      "theme": "entitlement inside cooperation",
+      "image": {
+        "catalogId": "commons-0794",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_118.jpg/1280px-Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_118.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Striped squat lobster stands across its crinoid host's arms. The fictional food dispute uses that actual contact, not a photographed feeding claim.",
+        "sceneMatch": "Striped squat lobster stands across its crinoid host's arms. The fictional food dispute uses that actual contact, not a photographed feeding claim.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0794",
+        "subject": "feather star underwater",
+        "category": "undersea",
+        "identityNameBase": "Feather Current",
+        "detail": "Galatea del crinoide (Allogalathea elegans), Anilao, Filipinas, 2023-08-23, DD 118",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_118.jpg/1280px-Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_118.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGalatea_del_crinoide_(Allogalathea_elegans)%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_118.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 1280,
+        "sha1": "6a7f48a0dc62505cae9b8074fbebada1322a3aa5"
+      },
+      "payoff": "Her expansive definition of sharing shrinks when the host controls access.",
+      "status": "prose checkpoint passed; runtime admission pending"
+    },
+    {
+      "id": "ocean-05-02",
+      "characterId": "mina-tangle",
+      "platform": "x",
+      "title": "Attached",
+      "body": "He asked if I came here often. I said I lived on her. He went very quiet. I had meant the feather star. I let him remain impressed.",
+      "theme": "sexual misunderstanding",
+      "image": {
+        "catalogId": "commons-0818",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_123.jpg/1280px-Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_123.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Close squat lobster physically perched on crinoid arms makes 'lived on her' literal. The suitor is fictional and not claimed visible.",
+        "sceneMatch": "Close squat lobster physically perched on crinoid arms makes 'lived on her' literal. The suitor is fictional and not claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0818",
+        "subject": "feather star underwater",
+        "category": "undersea",
+        "identityNameBase": "Feather Current",
+        "detail": "Galatea del crinoide (Allogalathea elegans), Anilao, Filipinas, 2023-08-23, DD 123",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_123.jpg/1280px-Galatea_del_crinoide_%28Allogalathea_elegans%29%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_123.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AGalatea_del_crinoide_(Allogalathea_elegans)%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_123.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 1280,
+        "sha1": "b1df4fa47ce47bb07926f27c65347de5cc8d88c6"
+      },
+      "payoff": "She knowingly lets the double meaning improve her reputation.",
+      "status": "prose checkpoint passed; runtime admission pending"
+    },
+    {
+      "id": "ocean-05-03",
+      "characterId": "ada-spine",
+      "platform": "facebook",
+      "title": "A type",
+      "body": "He said he wasn't good at being vulnerable. Every inch of him was a spike. I said I'd gathered.",
+      "theme": "romantic bluntness",
+      "image": {
+        "catalogId": "commons-0594",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/Estrella_espinosa_com%C3%BAn_%28Marthasterias_glacialis%29_y_erizo_de_mar_viol%C3%A1ceo_%28Sphaerechinus_granularis%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-31%2C_DD_96.jpg/1280px-thumbnail.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Spiny starfish directly beside a purple spiny sea urchin. Both parties and his literal defenses are visible.",
+        "sceneMatch": "Spiny starfish directly beside a purple spiny sea urchin. Both parties and his literal defenses are visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0594",
+        "subject": "starfish underwater",
+        "category": "undersea",
+        "identityNameBase": "Stella Fivearms",
+        "detail": "Estrella espinosa común (Marthasterias glacialis) y erizo de mar violáceo (Sphaerechinus granularis), Parque natural de la Arrábida, Portugal, 2020-07-31, DD 96",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/Estrella_espinosa_com%C3%BAn_%28Marthasterias_glacialis%29_y_erizo_de_mar_viol%C3%A1ceo_%28Sphaerechinus_granularis%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-31%2C_DD_96.jpg/1280px-thumbnail.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)_y_erizo_de_mar_viol%C3%A1ceo_(Sphaerechinus_granularis)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-31%2C_DD_96.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 853,
+        "sha1": "415234706fa3c535ec8b8dedcd0d750e7e6782cb"
+      },
+      "payoff": "The defensive confession is information her body already has.",
+      "status": "prose checkpoint passed; runtime admission pending"
+    },
+    {
+      "id": "ocean-05-04",
+      "characterId": "orin-clear",
+      "platform": "x",
+      "title": "Mostly water",
+      "body": "He called me mostly water. Then he ran out of air and had to leave.",
+      "theme": "gelatinous arrogance",
+      "image": {
+        "catalogId": "commons-0444",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/05/Cten%C3%B3foro_%28Beroe_cucumis%29%2C_San_Jos%C3%A9_del_Cabo%2C_Baja_California%2C_M%C3%A9xico%2C_2024-12-21%2C_DD_21.jpg/1280px-Cten%C3%B3foro_%28Beroe_cucumis%29%2C_San_Jos%C3%A9_del_Cabo%2C_Baja_California%2C_M%C3%A9xico%2C_2024-12-21%2C_DD_21.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Transparent pink-edged comb jelly suspended in open blue water",
+        "sceneMatch": "Visible transparency and surrounding water support the narrator's material composition. The diver encounter is fiction; no diver is claimed in frame.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0444",
+        "subject": "comb jelly underwater",
+        "category": "undersea",
+        "identityNameBase": "Comb Overboard",
+        "detail": "Ctenóforo (Beroe cucumis), San José del Cabo, Baja California, México, 2024-12-21, DD 21",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/05/Cten%C3%B3foro_%28Beroe_cucumis%29%2C_San_Jos%C3%A9_del_Cabo%2C_Baja_California%2C_M%C3%A9xico%2C_2024-12-21%2C_DD_21.jpg/1280px-Cten%C3%B3foro_%28Beroe_cucumis%29%2C_San_Jos%C3%A9_del_Cabo%2C_Baja_California%2C_M%C3%A9xico%2C_2024-12-21%2C_DD_21.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ACten%C3%B3foro_(Beroe_cucumis)%2C_San_Jos%C3%A9_del_Cabo%2C_Baja_California%2C_M%C3%A9xico%2C_2024-12-21%2C_DD_21.jpg",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 1920,
+        "sha1": "62c3eb852eb1b7393e2eb13fff034b9abe009387"
+      },
+      "payoff": "The supposedly insubstantial animal remains at ease where its dismissive visitor cannot remain.",
+      "status": "prose checkpoint passed; runtime admission pending"
+    }
+  ]
+}

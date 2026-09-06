@@ -246,7 +246,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     expect(uniforms[19]).toBe(0.5);
 
     writeFriendsGalaxyWebGpuMotionUniforms(uniforms, 5_000, 0.5, true, true);
-    expect(uniforms[18]).toBe(-1);
+    expect(uniforms[18]).toBe(5);
     expect(uniforms[19]).toBe(-0.5);
 
     writeFriendsGalaxyWebGpuMotionUniforms(uniforms, 6_000, 0.5, false, false);

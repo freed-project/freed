@@ -135,6 +135,24 @@ describe("ReaderView cache-first hydration", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([true, false])("keeps demo text local with native hydrator available: %s", async (nativeHydrator) => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const hydrateReaderItem = vi.fn();
+    const getLocalContent = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { container, root } = await renderReaderView({
+      ...basePlatformConfig,
+      interactionMode: "read-only",
+      getLocalContent,
+      hydrateReaderItem: nativeHydrator ? hydrateReaderItem : undefined,
+    }, makeArticleItem({ globalId: "freed-demo-showcase-v11:sample-character:nell-pelagic:4" }));
+    expect(container.textContent).toContain("Cached preview");
+    expect(hydrateReaderItem).not.toHaveBeenCalled();
+    expect(getLocalContent).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
   it("does not run live hydration when full cached content is already available", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const hydrateReaderItem = vi.fn(async () => ({
@@ -270,7 +288,7 @@ describe("ReaderView cache-first hydration", () => {
       platform: "youtube",
       contentType: "video",
       content: {
-        text: "A deliberate course lesson.",
+        text: "A deliberate course lesson.\n\nA second paragraph.\n\nOriginal video: Focused lesson\nUploaded by: Teacher\nSource: https://example.com/lesson\nThumbnail: Source credit",
         mediaUrls: ["https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
         mediaTypes: ["image"],
         linkPreview: {
@@ -288,6 +306,12 @@ describe("ReaderView cache-first hydration", () => {
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.textContent).toContain("Watch here in Focus Mode");
     expect(container.querySelector("img[src*='i.ytimg.com']")).toBeNull();
+    const description = Array.from(container.querySelectorAll("p")).find(
+      (paragraph) => paragraph.textContent === item.content.text,
+    );
+    expect(description).toBeDefined();
+    expect(description?.classList.contains("whitespace-pre-wrap")).toBe(true);
+    expect(description?.classList.contains("break-words")).toBe(true);
 
     const playButton = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent?.trim() === "Play in YouTube",

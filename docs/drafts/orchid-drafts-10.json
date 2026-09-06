@@ -1,0 +1,61 @@
+{
+  "status": "prose drafts for editorial review; image bindings supplied by root review",
+  "character": {
+    "characterId": "pallas-bloom",
+    "identityNameBase": "Pallas Bloom",
+    "subject": "adult female orchid mantis, Hymenopus coronatus",
+    "publicBio": "I have heard your theory. It remains yours.",
+    "privateContinuity": "Pallas likes a considered entrance and can mistake another creature's practical pause for interest in her arrangement. A correction embarrasses her into generosity. She keeps her raptorial forelegs raised longer than comfort requires when she feels exposed, but she is capable of being warm before she has decided it is safe.",
+    "fictionalHome": {
+      "name": "Ulu Gombak forest, Selangor, Malaysia",
+      "coordinates": {
+        "lat": 3.32,
+        "lng": 101.75
+      },
+      "coordinateStatus": "fictional approximate coordinate",
+      "rangeEvidence": {
+        "sourceUrl": "https://sciences.ucf.edu/biology/d4lab/wp-content/uploads/sites/23/2017/02/OHanlon_etal2014.pdf",
+        "source": "O'Hanlon, Holwell, and Herberstein, Pollinator Deception in the Orchid Mantis, The American Naturalist 183 (2014)",
+        "basis": "The primary study reports field observations of live H. coronatus in forested Peninsular Malaysian areas where the species occurs naturally and identifies Ulu Gombak as its field setting."
+      }
+    }
+  },
+  "entries": [
+    {
+      "id": "orchid-10-01",
+      "platform": "rss",
+      "imageSha1": "2744794d334cddd24e42de6b5b4a60b31dcec67a",
+      "title": "Courtesy",
+      "body": "A green beetle stopped below me on the purple bloom. I arranged my forelegs and waited for the moment when it would understand what it was looking at.\n\nIt stood still for a long time. I had begun to enjoy this.\n\nThen the wind pushed the flower sideways. The beetle lost one foot, then another. It had not been admiring me. It had been waiting for the stem to stop moving.\n\nI caught it before it went down. It clung to the inside of my foreleg, very small and very offended.\n\n\"You could have warned me,\" it said.\n\nI said I had assumed it knew.\n\nThat was not the same thing as an apology, so I held it there until the wind passed.\n\nWhen it left, it climbed past me without looking up. I kept my legs raised anyway. The flower had become noticeably empty.",
+      "theme": "vanity corrected by an unwanted opportunity for care",
+      "proseReview": "pending"
+    },
+    {
+      "id": "orchid-10-02",
+      "platform": "x",
+      "imageSha1": "2e683d7c267f4d08269e2eb48d274eb25c68f0df",
+      "title": "Unmoved",
+      "body": "He said I would change my mind when I grew up. I've shed my entire skin since then. Still no.",
+      "theme": "an old dismissal meeting a body that has changed without yielding",
+      "proseReview": "pending"
+    },
+    {
+      "id": "orchid-10-03",
+      "platform": "instagram",
+      "imageSha1": "7526478d0cf47747c52a9c5e648d53f2b7569a50",
+      "title": "The posture",
+      "body": "I tilted my head because one antenna looked better against the green that way. A stranger asked whether I was hurt.\n\nI said no too quickly. She stayed until I moved it.\n\nThe antenna became ordinary again. I put it back where it was after she left.",
+      "theme": "a vain pose becoming an excuse to keep someone near",
+      "proseReview": "pending"
+    },
+    {
+      "id": "orchid-10-04",
+      "platform": "facebook",
+      "imageSha1": "a42f2dd148a39c8c157f66a5b3c509898ff8a2a8",
+      "title": "Both versions",
+      "body": "I let my front legs rest for a minute while she examined her wings. She looked up and said, \"Oh. You're soft.\"\n\nI raised them again.\n\n\"There you are,\" she said.\n\nI did not ask which one she had meant.",
+      "theme": "wanting tenderness while retaining a defensive posture",
+      "proseReview": "pending"
+    }
+  ]
+}

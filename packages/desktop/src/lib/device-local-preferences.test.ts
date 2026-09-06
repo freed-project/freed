@@ -67,12 +67,22 @@ describe("device-local preferences", () => {
       friendsSidebarWidth: 388,
       friendsSidebarOpen: false,
       friendsMode: "friends",
-      mapMode: "all_content",
+      mapMode: "friends",
       feedSignalModes: ["events", "personal"],
       savedContentSortMode: "shortest_read",
       dualColumnMode: false,
     });
     expect(window.localStorage.getItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("shares the content scope across views and persists it across hydration", () => {
+    expect(getDeviceDisplayPreferences()).toMatchObject({ friendsMode: "all_content", mapMode: "all_content" });
+    setDeviceDisplayPreferences({ mapMode: "friends" });
+    expect(getDeviceDisplayPreferences()).toMatchObject({ friendsMode: "friends", mapMode: "friends" });
+    resetDeviceDisplayPreferencesForTests();
+    expect(getDeviceDisplayPreferences()).toMatchObject({ friendsMode: "friends", mapMode: "friends" });
+    setDeviceDisplayPreferences({ friendsMode: "all_content" });
+    expect(getDeviceDisplayPreferences()).toMatchObject({ friendsMode: "all_content", mapMode: "all_content" });
   });
 
   it("never lets a later synced snapshot overwrite local display state", () => {
@@ -243,7 +253,7 @@ describe("device-local preferences", () => {
     clearDeviceAIPreferences();
 
     expect(getDeviceDisplayPreferences().sidebarMode).toBe("expanded");
-    expect(getDeviceDisplayPreferences().mapMode).toBeUndefined();
+    expect(getDeviceDisplayPreferences().mapMode).toBe("all_content");
     expect(getDeviceAIPreferences()).toEqual({
       provider: "none",
       model: "",

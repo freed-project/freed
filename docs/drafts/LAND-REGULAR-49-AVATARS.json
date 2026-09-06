@@ -1,0 +1,109 @@
+{
+  "batch": "land-regular-49",
+  "avatars": [
+    {
+      "characterName": "Eustace Peel",
+      "characterId": "eustace-peel",
+      "fullSpecies": "Erethizon dorsatum",
+      "ageSexEvidence": "Adult-sized male in fiction; source does not record exact age or sex. No offspring or mating claim.",
+      "source": {
+        "index": 5,
+        "query": "porcupine",
+        "item": 4,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+        "sourceCachePath": "/tmp/freed-land49/5.html",
+        "record": {
+          "AltText": "Porcupine chewing on wood inside an outhouse.",
+          "AssetBaseType": "File",
+          "AssetID": "93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "Porcupines are great except when they take a liking to the glue used to make plywood. Backcountry outhouses frequently suffer from their affection for the construction materials. Porcupine chewing on wood inside an outhouse.",
+          "ImageCreateDate": {
+            "Text": "6/9/2007 10:40:55 AM"
+          },
+          "Keywords": [
+            "porcupine",
+            "giddings cabin",
+            "kova",
+            "wear"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Noatak National Preserve",
+              "Type": "National Preserve",
+              "Code": "NOAT"
+            }
+          ],
+          "PhotoCredit": "NPS Photo",
+          "PrimaryType": "image",
+          "Publisher": "U.S. National Park Service",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "alindeman",
+          "SubType": "jpeg",
+          "Title": "Critter Damage"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/original.jpg?",
+          "publishedLabel": "2.1 MB, 3072x2304",
+          "localPath": "/tmp/freed-land49/5-original.jpg",
+          "bytes": 2240998,
+          "width": 3072,
+          "height": 2304,
+          "sha1": "5cf5b6d7131260512a8aff26cb0c9dba4edb2b6e",
+          "sha256": "797409638abf903aeb703407a85b65842ba317c74d07270e281ee01120ee89d2"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/proxyhires.jpg?",
+          "publishedLabel": "219.3 KB, 1000x750",
+          "localPath": "/tmp/freed-land49/5-delivery.jpg",
+          "bytes": 224613,
+          "width": 1000,
+          "height": 750,
+          "sha1": "eed7d64fb2b438802020abcb800306e14c715ef8",
+          "sha256": "eb04196e9d44a7a6e80852a89ed29a8419d106ee5a7d5a743d7250feabef2951"
+        }
+      },
+      "cropOriginalPixels": {
+        "x": 850,
+        "y": 750,
+        "width": 1200,
+        "height": 1200
+      },
+      "focal": {
+        "x": 0.4720052083333333,
+        "y": 0.5859375,
+        "zoom": 1.92
+      },
+      "alt": "Porcupine in side profile, with a dark eye, rounded ear, pale cheek fur and densely quilled back beside gnawed wood.",
+      "review": "Actual220/48 circles individually opened. Profile eye and muzzle remain legible, pale cheek separates from brown wood, quilled back fills lower left. Both narrative and avatar illustrate the same source subject; no age/sex documentation invented.",
+      "previews": [
+        {
+          "size": 220,
+          "localPath": "/tmp/freed-land49/eustace-peel-220-circle.png",
+          "bytes": 125432,
+          "sha256": "a6b6b45ea5a252d175fd297e3349bf2fa78d7f2704a9c0b740a5ea9640b1f170"
+        },
+        {
+          "size": 48,
+          "localPath": "/tmp/freed-land49/eustace-peel-48-circle.png",
+          "bytes": 6337,
+          "sha256": "d8b70df601b48d1a69f6375d618e91ca22dcbdbc97b2f583b83d1e4d1ca8ef78"
+        }
+      ]
+    }
+  ]
+}

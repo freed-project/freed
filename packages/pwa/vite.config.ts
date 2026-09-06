@@ -1,10 +1,12 @@
 import { defineConfig } from "vitest/config";
+import type { ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { VitePWA } from "vite-plugin-pwa";
 import { realpathSync } from "fs";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
+import demoAvatarHandler from "./api/demo-avatar.ts";
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
 import {
@@ -35,6 +37,35 @@ const fsAllow = [
 ];
 
 const buildMetadata = getBuildMetadata(pkg.version);
+
+// Both local surfaces use the production handler and its unchanged closed registry.
+function configureDemoAvatarRoute(server: Pick<ViteDevServer, "middlewares">) {
+  server.middlewares.use((req, res, next) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname !== "/api/demo-avatar") return next();
+    const query = Object.fromEntries([...new Set(url.searchParams.keys())].map((key) => {
+      const values = url.searchParams.getAll(key);
+      return [key, values.length === 1 ? values[0] : values];
+    }));
+    const response = {
+      setHeader: (name: string, value: string) => { res.setHeader(name, value); },
+      status: (code: number) => { res.statusCode = code; return response; },
+      send: (body: Uint8Array) => { res.end(body); },
+      end: () => { res.end(); },
+    };
+    // Run the same closed registry and bounded reader as production.
+    void demoAvatarHandler({
+      method: req.method,
+      query,
+    }, response).catch(() => {
+      if (!res.headersSent) {
+        res.statusCode = 502;
+        res.setHeader("Cache-Control", "no-store");
+      }
+      res.end();
+    });
+  });
+}
 
 export default defineConfig({
   define: {
@@ -79,6 +110,11 @@ export default defineConfig({
   },
 
   plugins: [
+    {
+      name: "local-demo-avatar-route",
+      configureServer: configureDemoAvatarRoute,
+      configurePreviewServer: configureDemoAvatarRoute,
+    },
     {
       name: "reject-retired-automerge-assets",
       generateBundle(_options, bundle) {

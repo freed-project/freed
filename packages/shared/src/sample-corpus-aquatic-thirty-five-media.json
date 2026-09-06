@@ -1,0 +1,34 @@
+[
+  {
+    "id": "aquatic-regular-35-01",
+    "subject": "Florida manatee",
+    "identityNameBase": "Nellie Nudge",
+    "category": "undersea",
+    "sha1": "ed73e93acc2eccaee3767036d23ada54ec036247",
+    "imageUrl": "https://www.fws.gov/sites/default/files/2021-11/Manatees_Gregory%20Sweeney2.JPG",
+    "sourceUrl": "https://www.fws.gov/media/manatee-mother-and-calf",
+    "creator": "Gregory Sweeney",
+    "license": "Public domain",
+    "licenseUrl": "https://www.fws.gov/media/manatee-mother-and-calf",
+    "width": 3480,
+    "height": 2705,
+    "alt": "Split-level photograph: broad adult manatee at lower left, calf at right with nose touching adult side. Clear turquoise spring water, sandy bottom and forest above the waterline.",
+    "detail": "Split-level photograph: broad adult manatee at lower left, calf at right with nose touching adult side. Clear turquoise spring water, sandy bottom and forest above the waterline."
+  },
+  {
+    "id": "aquatic-regular-35-02",
+    "subject": "California sea lion",
+    "identityNameBase": "Selma Shore",
+    "category": "undersea",
+    "sha1": "ecf7b37624aa6a1a2d13ba1a24ac9ef8dc4e93f3",
+    "imageUrl": "https://www.nps.gov/npgallery/GetAsset/5fce9c67-a78e-4dac-98ee-83701510ffbf",
+    "sourceUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=59e8cd21-3866-4ab0-a57d-5367643a50c2&id=5fce9c67-a78e-4dac-98ee-83701510ffbf",
+    "creator": "Helen Huang",
+    "license": "Public domain",
+    "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+    "width": 1080,
+    "height": 608,
+    "alt": "Slim brown California sea lion faces camera in shallow kelp with one foreflipper extended across a stalk. Several sea lions swim behind. Golden blades lie between foreground animal and companions.",
+    "detail": "Slim brown California sea lion faces camera in shallow kelp with one foreflipper extended across a stalk. Several sea lions swim behind. Golden blades lie between foreground animal and companions."
+  }
+]

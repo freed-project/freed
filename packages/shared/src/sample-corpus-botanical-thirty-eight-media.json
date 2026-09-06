@@ -1,0 +1,34 @@
+[
+  {
+    "id": "botanical38-01",
+    "subject": "saguaro cactus",
+    "identityNameBase": "Ambrose Armful",
+    "category": "wildlife",
+    "sha1": "7d7f8371da22478535bbe2fd10f1c6fb82d95d8f",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/cbad1d05-4007-453b-aa9f-54e1d1b6c047/original.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cbad1d05-4007-453b-aa9f-54e1d1b6c047",
+    "creator": "National Park Service/Alice Wondrak Biel",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/cbad1d05-4007-453b-aa9f-54e1d1b6c047",
+    "width": 900,
+    "height": 1200,
+    "alt": "A branched adult saguaro supports a large stick nest wedged among its arms against a blue sky.",
+    "detail": "A substantial crossed-stick nest is visibly wedged between adult arms. No bird, egg or chick is visible."
+  },
+  {
+    "id": "botanical38-02",
+    "subject": "saguaro cactus",
+    "identityNameBase": "Ambrose Armful",
+    "category": "wildlife",
+    "sha1": "8c88cdf3e67ea0eaf9af4aaa660c2f45a9354a2c",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/38a0095e-6821-44ce-b016-a839e120d941/proxyhires.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/38a0095e-6821-44ce-b016-a839e120d941",
+    "creator": "NPS/E. SCHNAUBELT",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/38a0095e-6821-44ce-b016-a839e120d941",
+    "width": 2000,
+    "height": 1500,
+    "alt": "Mesquite branches and green compound leaves cross between the ribbed arms and nubs of a mature saguaro.",
+    "detail": "Mesquite leaves and woody branches visibly intersect the cactus arms, ribs and nubs. No fused tissue or fresh injury is claimed."
+  }
+]

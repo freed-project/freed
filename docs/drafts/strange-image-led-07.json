@@ -1,0 +1,550 @@
+{
+  "status": "Seven root-approved entries prepared for separate runtime admission; five candidates remain unadmitted.",
+  "batchCount": 12,
+  "longStoryCount": 3,
+  "photoCount": 12,
+  "characters": [
+    {
+      "id": "pippa-fold",
+      "name": "Pippa Fold",
+      "species": "Galeopterus variegatus",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      }
+    },
+    {
+      "id": "mireille-tap",
+      "name": "Mireille Tap",
+      "species": "Daubentonia madagascariensis",
+      "location": {
+        "name": "Forest edge near Mananara, Madagascar",
+        "coordinates": {
+          "lat": -16.25,
+          "lng": 49.73
+        }
+      }
+    },
+    {
+      "id": "rudi-glide",
+      "name": "Rudi Glide",
+      "species": "Galeopterus variegatus",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      }
+    },
+    {
+      "id": "yuri-thaw",
+      "name": "Yuri Thaw",
+      "species": "Saiga tatarica tatarica",
+      "location": {
+        "name": "Stepnoi Sanctuary steppe, Russia",
+        "coordinates": {
+          "lat": 46.15,
+          "lng": 46.7
+        }
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "strange-07-01",
+      "characterId": "pippa-fold",
+      "characterName": "Pippa Fold",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Galeopterus variegatus",
+      "title": "A small wave",
+      "body": "I tried to give a discreet little wave. Opened an entire side of myself. The neighbor thought I was leaving.",
+      "theme": "social",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8e/Kaguaani_02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/1.jpg",
+        "downloadedSha256": "efd5be34dfae53e65918311d661d568fe3b0d17a038fc8b5b593a2aeddcf8564",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Colugo clings to a trunk with one forelimb extended and the membrane visibly folded along its side. The little wave is fictional, using that exact anatomy.",
+      "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Kaguaani 02.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Kaguaani_02.jpg",
+        "creator": "Nina Holopainen",
+        "license": "CC BY 2.5",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+        "width": 516,
+        "height": 750,
+        "sha1": "66f413e28dcd1fc172084d8128ae086916b5c47d",
+        "sourceDescription": "<i>Cynocephalus variegatus</i>. Colugo is the other name. And kaguan. Malayan flying lemur.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Small social gesture accidentally opens a large gliding surface."
+    },
+    {
+      "id": "strange-07-02",
+      "characterId": "pippa-fold",
+      "characterName": "Pippa Fold",
+      "sequence": 2,
+      "platform": "x",
+      "subject": "Galeopterus variegatus",
+      "title": "A dream",
+      "body": "I dreamed I was falling. Woke up gripping bark with every claw. Then remembered that later I would have to do the falling on purpose.",
+      "theme": "danger",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Sunda_Flying_Lemur_%28Galeopterus_variegatus%29_%2815503712798%29.jpg/960px-Sunda_Flying_Lemur_%28Galeopterus_variegatus%29_%2815503712798%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/2.jpg",
+        "downloadedSha256": "220a1b9aa2059208d3fb901882bd82cf20d328638571459d39bbf62b27c08771",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Close portrait shows spread claws firmly gripping a trunk. Dream and waking memory are fiction; red eye shine is photographic flash, not the character's natural eye color.",
+      "reviewDecision": "pending_independent_review"
+      },
+      "provenance": {
+        "title": "File:Sunda Flying Lemur (Galeopterus variegatus) (15503712798).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sunda_Flying_Lemur_(Galeopterus_variegatus)_(15503712798).jpg",
+        "creator": "Bernard DUPONT from FRANCE",
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "width": 3000,
+        "height": 3597,
+        "sha1": "7ed862b12de0299b5ba39d095c0f1d7ac5cfecef",
+        "sourceDescription": "Permai Rainforest Resort, Santubong Peninsula North of Kuching, Sarawak, MALAYSIA",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Sleep treats as danger what waking life deliberately requires."
+    },
+    {
+      "id": "strange-07-03",
+      "characterId": "rudi-glide",
+      "characterName": "Rudi Glide",
+      "sequence": 3,
+      "platform": "rss",
+      "subject": "Galeopterus variegatus",
+      "title": "The extra journey",
+      "body": "There was no reason to cross back. I had eaten. The bark was good. Nobody was bothering me.\n\nI climbed anyway.\n\nAt the top I spread myself and left. The air pulled tight beneath me. For a little while I had no weight against my feet and no leaf in my mouth and nothing to hold.\n\nI reached the other trunk much too pleased with myself. Clung there, pretending I had come to inspect something.\n\nThere was a leaf. I inspected it. Entirely ordinary.\n\nThen I climbed that tree and went back.\n\nI used to think all the gaps in the forest were an inconvenience. Tonight I crossed the same one six times. Ate the leaf on the fifth trip so that I would have an explanation.",
+      "theme": "movement",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Galeopterus_variegatus_132071386.jpg/960px-Galeopterus_variegatus_132071386.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/3.jpg",
+        "downloadedSha256": "5f20feb9be98c3e5779c0f053b8a9e2a227cb789466862f71aa93df226c58470",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Colugo holds a trunk with its large folded gliding membrane visible. Repeated pleasure glides are recalled action, not claimed airborne footage.",
+      "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Galeopterus variegatus 132071386.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Galeopterus_variegatus_132071386.jpg",
+        "creator": "Samuel Lee",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 1536,
+        "height": 2048,
+        "sha1": "55ffd1d7f455bf3169a24ceef7e4dbc88f355915",
+        "sourceDescription": "Sunda Colugo (<i>Galeopterus variegatus</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Repeated unnecessary gliding becomes pleasure with a flimsy dietary excuse."
+    },
+    {
+      "id": "strange-07-04",
+      "characterId": "pippa-fold",
+      "characterName": "Pippa Fold",
+      "sequence": 4,
+      "platform": "x",
+      "subject": "Galeopterus variegatus",
+      "title": "Please don't",
+      "body": "I am not stuck. I live vertically. Please stop offering me help from the ground.",
+      "theme": "social",
+      "location": {
+        "name": "Bukit Timah forest, Singapore",
+        "coordinates": {
+          "lat": 1.354,
+          "lng": 103.776
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/14/Galeopterus_variegatus_59658350.jpg/960px-Galeopterus_variegatus_59658350.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/4.jpg",
+        "downloadedSha256": "6657b76400e48bd6aa83e5bc19b4ba04738cdd2dc0491c2b0bb38bd385662ec8",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Colugo clings vertically to a large trunk, directly supporting the misunderstanding about being stuck.",
+      "reviewDecision": "pending_independent_review"
+      },
+      "provenance": {
+        "title": "File:Galeopterus variegatus 59658350.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Galeopterus_variegatus_59658350.jpg",
+        "creator": "Nasser Halaweh",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 1536,
+        "height": 2048,
+        "sha1": "4ba13b93a0083233117f3e84e94924d27978be95",
+        "sourceDescription": "Sunda Colugo (<i>Galeopterus variegatus</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Ground-dweller misreads a successful vertical life as a rescue situation."
+    },
+    {
+      "id": "strange-07-05",
+      "characterId": "mireille-tap",
+      "characterName": "Mireille Tap",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Daubentonia madagascariensis",
+      "title": "Reach",
+      "body": "Someone asked why I needed such a long finger. I was halfway inside a flower. I let them work it out.",
+      "theme": "feeding",
+      "location": {
+        "name": "Forest edge near Mananara, Madagascar",
+        "coordinates": {
+          "lat": -16.25,
+          "lng": 49.73
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/b/ba/Aye-aye_%28Daubentonia_madagascariensis%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/5.jpg",
+        "downloadedSha256": "2501d786ecceebc6f0c65e49dbc4bdf2c6ac3ea27b1bfc9aaa90a32484d36b53",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Aye-aye holds and reaches into a banana inflorescence. The gesture and specialized finger are central; no grubs or prey are shown or invented.",
+      "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Aye-aye (Daubentonia madagascariensis).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aye-aye_(Daubentonia_madagascariensis).jpg",
+        "creator": "Tom Junek",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 600,
+        "height": 445,
+        "sha1": "7da4a4206ac49800bd46353893b059b839b6ca29",
+        "sourceDescription": "Aye-aye (Daubentonia madagascariensis)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Specialized reach makes the intrusive anatomical question answer itself."
+    },
+    {
+      "id": "strange-07-06",
+      "characterId": "mireille-tap",
+      "characterName": "Mireille Tap",
+      "sequence": 2,
+      "platform": "rss",
+      "subject": "Daubentonia madagascariensis",
+      "title": "The other tapping",
+      "body": "Something was tapping farther along the branch. I stopped. It stopped.\n\nI tapped twice. Two taps came back. I went around the trunk. Nobody there. Returned to my branch. Three taps this time. Three back.\n\nI was beginning to feel rather good about having invented a conversation.\n\nThen the other aye-aye came into view. He had been going around the tree the other way.\n\nWe stared at each other. He tapped once. I tapped once.\n\nHe climbed down. I stayed.\n\nA little later the tapping started below me. Not an answer this time. His own uneven rhythm. I could hear him getting farther away.\n\nI did not follow. But I stopped eating until I couldn't hear it anymore.",
+      "theme": "social",
+      "location": {
+        "name": "Forest edge near Mananara, Madagascar",
+        "coordinates": {
+          "lat": -16.25,
+          "lng": 49.73
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/f/ff/Aye-aye_%28Daubentonia_madagascariensis%29_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/7.jpg",
+        "downloadedSha256": "1bdc0521498a50f4d7601241948baaea0f32b963026b4a2075ac3d478e621804",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Aye-aye sits among branching limbs with its hands visible. The second aye-aye and tapping encounter are remembered fiction, not visibly documented.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Aye-aye (Daubentonia madagascariensis) 2.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aye-aye_(Daubentonia_madagascariensis)_2.jpg",
+        "creator": "Tom Junek",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 600,
+        "height": 460,
+        "sha1": "49907b5b38094f7b79791abdf17cea305094243d",
+        "sourceDescription": "Aye-aye (Daubentonia madagascariensis)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An imagined dialogue becomes a real meeting, then attentive listening without pursuit."
+    },
+    {
+      "id": "strange-07-07",
+      "characterId": "mireille-tap",
+      "characterName": "Mireille Tap",
+      "sequence": 3,
+      "platform": "instagram",
+      "subject": "Daubentonia madagascariensis",
+      "title": "The forest at night",
+      "body": "I was trying to listen to the forest. My own chewing was in the way. I stopped. The forest turned out to be mostly other people chewing.",
+      "theme": "wonder",
+      "location": {
+        "name": "Forest edge near Mananara, Madagascar",
+        "coordinates": {
+          "lat": -16.25,
+          "lng": 49.73
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/e/ef/Aye-aye_%28Daubentonia_madagascariensis%29_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/6.jpg",
+        "downloadedSha256": "95b16ea4a80ca9dd5d6b53adff90d5ae2a26557779c6338dcae9433000ec8468",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Aye-aye handles a banana inflorescence; feeding, large ears and night surroundings support the listening-versus-chewing scene.",
+      "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Aye-aye (Daubentonia madagascariensis) 1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aye-aye_(Daubentonia_madagascariensis)_1.jpg",
+        "creator": "Tom Junek",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 375,
+        "height": 600,
+        "sha1": "06385ff2c5463afc8b270f872917b448f0ff8b75",
+        "sourceDescription": "Aye-aye (Daubentonia madagascariensis)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Quiet reveals a shared bodily occupation rather than majestic silence."
+    },
+    {
+      "id": "strange-07-08",
+      "characterId": "mireille-tap",
+      "characterName": "Mireille Tap",
+      "sequence": 4,
+      "platform": "x",
+      "subject": "Daubentonia madagascariensis",
+      "title": "Anybody in?",
+      "body": "I knocked. Nobody answered. This has never stopped me.",
+      "theme": "feeding",
+      "location": {
+        "name": "Forest edge near Mananara, Madagascar",
+        "coordinates": {
+          "lat": -16.25,
+          "lng": 49.73
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/4/46/Aye-aye_%28Daubentonia_madagascariensis%29_3.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/8.jpg",
+        "downloadedSha256": "cbc38c93b60d8d2f598e22cdb8516defb1b6a787be8109d996a36e990540d24a",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Aye-aye clings beside large jackfruit. Knocking is fictional exploratory behavior; no hollow cavity or insect is asserted to be visible.",
+      "reviewDecision": "pending_independent_review"
+      },
+      "provenance": {
+        "title": "File:Aye-aye (Daubentonia madagascariensis) 3.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aye-aye_(Daubentonia_madagascariensis)_3.jpg",
+        "creator": "Tom Junek",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 396,
+        "height": 600,
+        "sha1": "79494d4a5360cb5910dc709a0714d5402e3c8199",
+        "sourceDescription": "Aye-aye (Daubentonia madagascariensis)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A polite gesture cannot conceal the intention to investigate the fruit."
+    },
+    {
+      "id": "strange-07-09",
+      "characterId": "yuri-thaw",
+      "characterName": "Yuri Thaw",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Saiga tatarica tatarica",
+      "title": "At the water",
+      "body": "I lowered my face to drink and watched my reflection turn into a nose with horns. Lifted my head. Tried a different angle. The water is being very consistent about this.",
+      "theme": "social",
+      "location": {
+        "name": "Stepnoi Sanctuary steppe, Russia",
+        "coordinates": {
+          "lat": 46.15,
+          "lng": 46.7
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/Saiga_antelope_at_the_Stepnoi_Sanctuary.jpg/960px-Saiga_antelope_at_the_Stepnoi_Sanctuary.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/9.jpg",
+        "downloadedSha256": "842230bd871eea1a9ee2c1606ca4f8269b6f37c1d84511cb12bff12fee3e31a7",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult horned male saiga wades in shallow water with its distinctive nose visible. The imagined reflection is not resolved in this image.",
+        "reviewDecision": "pending_independent_review"
+      },
+      "provenance": {
+        "title": "File:Saiga antelope at the Stepnoi Sanctuary.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Saiga_antelope_at_the_Stepnoi_Sanctuary.jpg",
+        "creator": "Andrey Giljov",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2449,
+        "height": 2076,
+        "sha1": "f58bdc57b1ad250c6c480a91e6608065e5fc52ab",
+        "sourceDescription": "Wild saiga antelope, Saiga tatarica tatarica visiting a waterhole at the Stepnoi Sanctuary, Astrakhan Oblast, Russia.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Repeated angles cannot escape the nose that defines the face."
+    },
+    {
+      "id": "strange-07-10",
+      "characterId": "yuri-thaw",
+      "characterName": "Yuri Thaw",
+      "sequence": 2,
+      "platform": "x",
+      "subject": "Saiga tatarica tatarica",
+      "title": "Winter face",
+      "body": "My winter coat is coming in. I tried to look windswept. I look recently excavated.",
+      "theme": "weather",
+      "location": {
+        "name": "Stepnoi Sanctuary steppe, Russia",
+        "coordinates": {
+          "lat": 46.15,
+          "lng": 46.7
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b6/Saiga_tatarica_tatarica_81831106.jpg/960px-Saiga_tatarica_tatarica_81831106.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/10.jpg",
+        "downloadedSha256": "0c35bbdcb12b30779c3bb07a817f802d4013b3fc581c3edfa80d563711d65efa",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult horned male saiga wears a pale thick coat and dark neck hair in an open sparse landscape, supporting the winter appearance.",
+        "reviewDecision": "pending_independent_review"
+      },
+      "provenance": {
+        "title": "File:Saiga tatarica tatarica 81831106.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Saiga_tatarica_tatarica_81831106.jpg",
+        "creator": "Лариса Артемьева",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 2048,
+        "height": 1366,
+        "sha1": "a9e07e1dbbe6ca26ef871ea6ab3a7bbb9e12a19c",
+        "sourceDescription": "Russian Saiga (<i>Saiga tatarica tatarica</i>) in Russia",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Attempted windswept elegance becomes an unearthed appearance."
+    },
+    {
+      "id": "strange-07-11",
+      "characterId": "yuri-thaw",
+      "characterName": "Yuri Thaw",
+      "sequence": 4,
+      "platform": "instagram",
+      "subject": "Saiga tatarica tatarica",
+      "title": "Excellent concealment",
+      "body": "Mother walked straight past me. I had never hidden so well. For one glorious moment I was invisible. Then I squeaked.",
+      "theme": "family",
+      "location": {
+        "name": "Stepnoi Sanctuary steppe, Russia",
+        "coordinates": {
+          "lat": 46.15,
+          "lng": 46.7
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Saiga_tatarica_tatarica_128448849.jpg/960px-Saiga_tatarica_tatarica_128448849.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/saiga-extra.jpg",
+        "downloadedSha256": "5fe31eb4dc7a60e225b3dd52d95954d882c8efc8a6c7f71bcba9d727a436c710",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Very young saiga lies folded against the ground with its legs tucked near its face. Mother and the squeak are fictional remembered events.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Saiga tatarica tatarica 128448849.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Saiga_tatarica_tatarica_128448849.jpg",
+        "creator": "Лариса Артемьева",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 2048,
+        "height": 1365,
+        "sha1": "53ec7831697a3718c9997e03d364575127b51f09",
+        "sourceDescription": "Russian Saiga (<i>Saiga tatarica tatarica</i>) in Russia",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Pride in concealment lasts only until attachment becomes urgent."
+    },
+    {
+      "id": "strange-07-12",
+      "characterId": "yuri-thaw",
+      "characterName": "Yuri Thaw",
+      "sequence": 3,
+      "platform": "rss",
+      "subject": "Saiga tatarica tatarica",
+      "title": "The waiting",
+      "body": "Mother told me to stay down. I put my legs under me. There seemed to be too many, but eventually they fitted.\n\nShe went away through the grass. I kept my head low. An insect climbed over my foot. I let it. I was doing this properly.\n\nI could hear the others moving. Then only the grass.\n\nI had several questions. Whether she knew which patch I was in. Whether I would know her when she came back. Whether the insect had gone or was now somewhere more important.\n\nI waited until I could not possibly wait any longer.\n\nWhen I opened my eyes, her nose was against my ear. I had slept through being brave.\n\nI stood up too quickly and had to find my legs again. She waited.",
+      "theme": "family",
+      "location": {
+        "name": "Stepnoi Sanctuary steppe, Russia",
+        "coordinates": {
+          "lat": 46.15,
+          "lng": 46.7
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9f/Saiga_tatarica_tatarica_127195486.jpg/960px-Saiga_tatarica_tatarica_127195486.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange07-review.Z1IsPu/12.jpg",
+        "downloadedSha256": "a8bb72376fcfa07005cb211ea06a146282d88a54d3d2678f38433f6515925f6d",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Young saiga lies low with folded legs in sparse grass. The source does not establish its sex; it illustrates an adult male narrator's invented early memory.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Saiga tatarica tatarica 127195486.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Saiga_tatarica_tatarica_127195486.jpg",
+        "creator": "Лариса Артемьева",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 1440,
+        "height": 1080,
+        "sha1": "2afe33f36ad8c104bbe503e123512af517df9a45",
+        "sourceDescription": "Russian Saiga (<i>Saiga tatarica tatarica</i>) in Russia",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The frightening vigil passes in sleep; the mother's patient return lets the calf unfold."
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
 import {
   useAppStore,
@@ -329,7 +330,6 @@ const HEADING_CLASSES: Record<number, string> = {
 };
 
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
-const FRIENDS_AUTHOR_PLATFORMS = new Set(["x", "facebook", "instagram", "linkedin", "substack", "medium"]);
 const REPLY_PLATFORM_LABELS: Partial<Record<FeedItemType["platform"], string>> = {
   x: "X",
   facebook: "Facebook",
@@ -355,6 +355,7 @@ export function ReaderView({
     openUrl: platformOpenUrl,
     updateSavedContent,
     youtube,
+    interactionMode,
   } = usePlatform();
   const openSavedContentEditor = useCommandSurfaceStore((state) => state.openSavedContentEditor);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
@@ -454,13 +455,6 @@ export function ReaderView({
       });
     }
   }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
-  const canOpenAuthorInFriends = Boolean(
-    onOpenAuthorInFriends && FRIENDS_AUTHOR_PLATFORMS.has(item.platform),
-  );
-  const handleOpenAuthorInFriends = useCallback(() => {
-    if (!onOpenAuthorInFriends) return;
-    void onOpenAuthorInFriends(item);
-  }, [item, onOpenAuthorInFriends]);
   const supportsThreadHydration =
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
@@ -489,6 +483,16 @@ export function ReaderView({
       setHasRequestedThreadReplies(false);
       setThreadReplyMessage(null);
       setPreservedText(item.preservedContent?.text ?? null);
+
+      // Demo copy is complete authored content, not an article teaser. Its
+      // attribution URL must never become a hydration or article-cache target.
+      if (interactionMode === "read-only") {
+        setHtml(null);
+        setPreservedText(item.preservedContent?.text ?? item.content.text ?? null);
+        setContentSource("text");
+        setIsLoading(false);
+        return;
+      }
 
       if (item.userState.saved && pinReaderItem && !youtubeReference) {
         void pinReaderItem(item);
@@ -650,6 +654,7 @@ export function ReaderView({
     };
   }, [
     item.globalId,
+    interactionMode,
     articleUrl,
     getLocalContent,
     getLocalPreservedText,
@@ -662,7 +667,7 @@ export function ReaderView({
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
-    if (!hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
+    if (interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
 
     setHasRequestedThreadReplies(true);
     setThreadReplyMessage(null);
@@ -704,7 +709,7 @@ export function ReaderView({
     } finally {
       setIsThreadLoading(false);
     }
-  }, [hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
+  }, [interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
@@ -819,10 +824,10 @@ export function ReaderView({
 
             <span
               data-testid="reader-view-toolbar-title"
-              className="min-w-0 max-w-[50%] cursor-default select-none truncate text-sm text-[var(--theme-text-muted)]"
-              {...getPassiveDragRegionProps(headerDragRegion)}
+              className="min-w-0 max-w-[50%] truncate text-sm text-[var(--theme-text-muted)]"
+              style={headerDragRegion ? noDrag : undefined}
             >
-              {item.author.displayName}
+              <AuthorIdentityLink item={item} onOpen={onOpenAuthorInFriends} />
             </span>
 
             <div
@@ -948,18 +953,7 @@ export function ReaderView({
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
-            {canOpenAuthorInFriends ? (
-              <button
-                type="button"
-                data-testid="reader-author-friends-link"
-                onClick={handleOpenAuthorInFriends}
-                className="rounded-md font-medium text-[var(--theme-text-secondary)] underline decoration-[var(--theme-border-strong)] underline-offset-4 transition-colors hover:text-[var(--theme-text-primary)] hover:decoration-[var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.45)]"
-              >
-                {item.author.displayName}
-              </button>
-            ) : (
-              <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
-            )}
+            <AuthorIdentityLink item={item} onOpen={onOpenAuthorInFriends} testId="reader-author-friends-link" className="font-medium text-[var(--theme-text-secondary)]" />
             <span>•</span>
             <span>{timeAgo}</span>
             {item.preservedContent?.readingTime && (
@@ -1090,7 +1084,7 @@ export function ReaderView({
         {/* Content */}
         {youtubeReference ? (
           item.content.text ? (
-            <p className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
+            <p className="whitespace-pre-wrap break-words text-lg leading-relaxed text-[var(--theme-text-secondary)]">
               {item.content.text}
             </p>
           ) : null

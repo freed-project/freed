@@ -436,6 +436,10 @@ export class FriendsGalaxyInputController {
       selectedNodeId: this.selectedNodeId,
       hoveredNodeId: this.hoveredNodeId,
     });
+    // A visible dot may not yet have bounded presentation metadata. Request
+    // the hovered identity without changing the owner's selected identity.
+    this.presentationRevision += 1;
+    this.engine.requestCameraPresentation(this.presentationRevision, this.workerSelection);
     this.markDirty();
   }
 
@@ -773,12 +777,13 @@ export class FriendsGalaxyInputController {
 
     this.notifyStateChange();
     this.frameRequest = 0;
+    // Rendering can start a label fade even when ambient animation is disabled.
     if (shouldContinueFriendsGalaxyFrame(
       renderable && ambientMotion,
       renderable && this.dirty,
       this.settleScheduler.isPending || this.inertialPan.isActive ||
         this.inertialZoom.isActive || this.wheelZoomReleaseAt > 0 ||
-        this.fitAnimation.isActive || transition,
+        this.fitAnimation.isActive || this.engine.hasActivePresentationTransition(),
       this.canPresent(),
     )) {
       this.requestFrame();

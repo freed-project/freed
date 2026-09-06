@@ -1,0 +1,172 @@
+{
+  "status": "Romy is root-approved and mapped. Oswald, Severin, Dorian, and Cato have revised crops pending root visual review.",
+  "sourceManifest": "packages/shared/src/sample-corpus-deepsea-nine-media.json",
+  "contactSheetPath": "/Users/aubreyfalconer/dev/freed-demo-500-corpus/output/playwright/deepsea-nine-avatar-crops-revised.png",
+  "contactSheetDimensions": {
+    "width": 960,
+    "height": 236
+  },
+  "cropMethod": "Faithful implementation of cropDecodedGalaxyAvatar: square side=min(width,height)/zoom; focal center clamped to source bounds; 184px circular mask for review presentation.",
+  "records": [
+    {
+      "identityNameBase": "Romy Helix",
+      "characterId": "romy-helix",
+      "id": "deepsea-09-23",
+      "sha1": "e3b07ab5deea88354b978eaf7703b08765858985",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/ex2503-iridogorgia.jpg",
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/iridogorgia-coral/",
+      "downloadPath": "/tmp/deepsea-nine-avatar-crops/deepsea-09-23-e3b07ab5.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 1673563,
+        "actualSha1": "e3b07ab5deea88354b978eaf7703b08765858985",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "proposedFocalPoint": {
+        "x": 0.5,
+        "y": 0.5,
+        "zoom": 1.25
+      },
+      "cropPixels": {
+        "left": 528,
+        "top": 108,
+        "side": 864
+      },
+      "visibleFraming": "Near-complete spiral colony centered as a distinct whole form.",
+      "reviewStatus": "root-approved mapping and registry added"
+    },
+    {
+      "identityNameBase": "Oswald Cup",
+      "characterId": "oswald-cup",
+      "id": "deepsea-09-06",
+      "sha1": "6e11b2847fa18b6636ed8ded872d4d920760422d",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive13-caulophacus.jpg",
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/caulophacus-sponge/",
+      "downloadPath": "/tmp/deepsea-nine-avatar-crops/deepsea-09-06-6e11b284.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 575021,
+        "actualSha1": "6e11b2847fa18b6636ed8ded872d4d920760422d",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "proposedFocalPoint": {
+        "x": 0.27,
+        "y": 0.39,
+        "zoom": 4
+      },
+      "cropPixels": {
+        "left": 383,
+        "top": 286,
+        "side": 270
+      },
+      "visibleFraming": "Pale glass-sponge cup and upper stalk, enlarged to make its form legible.",
+      "reviewStatus": "revised crop pending root visual review"
+    },
+    {
+      "identityNameBase": "Severin Quiet",
+      "characterId": "severin-quiet",
+      "id": "deepsea-09-09",
+      "sha1": "50f734b1bfe9c388c6c7339da6d1107a05f80924",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/12/20210107-hires.jpg",
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210107/",
+      "downloadPath": "/tmp/deepsea-nine-avatar-crops/deepsea-09-09-50f734b1.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 1522162,
+        "actualSha1": "50f734b1bfe9c388c6c7339da6d1107a05f80924",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "proposedFocalPoint": {
+        "x": 0.8,
+        "y": 0.35,
+        "zoom": 2
+      },
+      "cropPixels": {
+        "left": 1266,
+        "top": 108,
+        "side": 540
+      },
+      "visibleFraming": "Lizardfish head centered on the yellow eye and closed mouth.",
+      "reviewStatus": "revised crop pending root visual review"
+    },
+    {
+      "identityNameBase": "Dorian Sulk",
+      "characterId": "dorian-sulk",
+      "id": "deepsea-09-11",
+      "sha1": "a194ac5fbb072a77dc62802900d4eb985c0a4d34",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive10-sea-toad.jpg",
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/sea-toad/",
+      "downloadPath": "/tmp/deepsea-nine-avatar-crops/deepsea-09-11-a194ac5f.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 1344880,
+        "actualSha1": "a194ac5fbb072a77dc62802900d4eb985c0a4d34",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "proposedFocalPoint": {
+        "x": 0.27,
+        "y": 0.55,
+        "zoom": 1.8
+      },
+      "cropPixels": {
+        "left": 218,
+        "top": 294,
+        "side": 600
+      },
+      "visibleFraming": "Whole sea-toad face, including both eyes and downturned mouth.",
+      "reviewStatus": "revised crop pending root visual review"
+    },
+    {
+      "identityNameBase": "Cato Many",
+      "characterId": "cato-many",
+      "id": "deepsea-09-21",
+      "sha1": "1c2f2948fdbf975f4f1f7f74390446e5963e543f",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/pillow-lava-crinoids-hires.jpg",
+      "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive06-media-pillow-lava-crinoids/",
+      "downloadPath": "/tmp/deepsea-nine-avatar-crops/deepsea-09-21-1c2f2948.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 1656159,
+        "actualSha1": "1c2f2948fdbf975f4f1f7f74390446e5963e543f",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "proposedFocalPoint": {
+        "x": 0.41,
+        "y": 0.24,
+        "zoom": 4
+      },
+      "cropPixels": {
+        "left": 652,
+        "top": 124,
+        "side": 270
+      },
+      "visibleFraming": "One yellow stalked crinoid enlarged from the upper-left group.",
+      "reviewStatus": "revised crop pending root visual review"
+    }
+  ]
+}

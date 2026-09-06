@@ -1,0 +1,35 @@
+{
+  "raccoonCorrection": {
+    "candidateId": "land-regular-36-01",
+    "status": "hold-anatomy",
+    "originalPath": "/tmp/freed-land36/1.jpg",
+    "finding": "The upper exposed paw has an elongated plantar surface and apparent heel consistent with a hind foot. Limb continuity is obscured. Neither pixels nor exact NPS caption establish two forepaws.",
+    "correction": "Withdraw the specific both-forepaws claim and withhold the dependent prose. No replacement limb-specific prose proposed.",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ba2374c4-936a-440f-bb0f-39afead80f86",
+    "safeAlt": "A raccoon reclines in a tree fork with its cheek against bark and paws gathered near its face."
+  },
+  "pelicanVariant": {
+    "candidateId": "land-regular-36-03",
+    "sourceUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+    "imageUrl": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2024-03-6/28909.jpg?itok=rvl2TUD0",
+    "sourcePublishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2024-03-6/28909.jpg?itok=rvl2TUD0\" download=\"usfws-american-white-pelican-outstretched-wings-large\">Large (1300 x 742)</a>",
+    "sourceCachePath": "/tmp/freed-land36/fws-pelican.html",
+    "localReviewPath": "/tmp/freed-land36/fws-pelican-large.jpg",
+    "width": 1300,
+    "height": 742,
+    "bytes": 731543,
+    "sha1": "0f25dd7d67722c4aed6337242b0fdb71d8740f86",
+    "sha256": "dab9a9fd7cbebe91e4de3a824c63b514478dc29500f9c527b1c150df3e8701d8",
+    "mimeType": "image/jpeg",
+    "creator": "Koerner, Tom/USFWS",
+    "license": "Public domain",
+    "rightsEvidence": "Same exact primary FWS image page, Media Usage Rights/License: Public Domain. Large variant explicitly linked by source.",
+    "originalUrl": "https://www.fws.gov/sites/default/files/images/2024-03-6/28909.jpg",
+    "originalWidth": 3450,
+    "originalHeight": 1970,
+    "originalSha256": "54c82e52930e596b223ae78d3d941adb6250de8eaf87e973d2393cba3e6e458c",
+    "originalLocalPath": "/tmp/freed-land36/fws-pelican.jpg",
+    "visualReview": "Exact source-published 1300 × 742 JPEG individually opened. Same full frame as reviewed original; wing tips, surrounding pelicans and central body remain legible. Author pass pending independent lead review."
+  },
+  "runtimeChanges": false
+}

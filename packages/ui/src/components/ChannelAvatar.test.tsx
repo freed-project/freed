@@ -6,6 +6,7 @@ import type { ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ChannelAvatar } from "./ChannelAvatar";
+import { PlatformProvider, type PlatformConfig } from "../context/PlatformContext";
 
 async function renderAvatar(element: ReactElement): Promise<{
   container: HTMLDivElement;
@@ -23,6 +24,16 @@ async function renderAvatar(element: ReactElement): Promise<{
 }
 
 describe("ChannelAvatar", () => {
+  it("uses platform cache delivery without altering the source profile URL", async () => {
+    const source = "https://images.example/avatar";
+    const platform = { resolveAvatarUrl: (url: string) => `freed-avatar://localhost/avatar?source=${encodeURIComponent(url)}` } as PlatformConfig;
+    const { container, root } = await renderAvatar(
+      <PlatformProvider value={platform}><ChannelAvatar name="Lotus" avatarUrl={source} size={28} /></PlatformProvider>,
+    );
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(platform.resolveAvatarUrl!(source));
+    await act(async () => root.unmount());
+    container.remove();
+  });
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });

@@ -1,0 +1,28 @@
+{
+  "avatars": [
+    {
+      "characterId": "lucille-loop",
+      "mediaSha1": "6206ed56478487503810b5afa05d8d8eadd01655",
+      "imageUrl": "https://www.nps.gov/cabr/blogs/images/Male-Flowers.JPG",
+      "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+      "localFile": "/tmp/botanical50/cucumber-profile.jpg",
+      "bytes": 212918,
+      "dimensions": [
+        1000,
+        1000
+      ],
+      "focal": {
+        "x": 0.5,
+        "y": 0.755,
+        "zoom": 2.2
+      },
+      "review220": "PASS: full lower white star-shaped male flower, pale hairs and yellow center are clear; attached stem and some neighboring flower remain background.",
+      "review48": "PASS: pale radial flower silhouette and yellow-green center remain distinctive. Fine hairs and individual pollen are not readable at this size.",
+      "status": "proposal; independent lead review required"
+    }
+  ],
+  "screenshot": "/tmp/botanical50/avatar-review.png",
+  "screenshotSha256": "1d882fe0914792ad4fa579bba86fed890d3f1928c204bf850b7b47c7e53126c0",
+  "renderer": "Current cropDecodedGalaxyAvatar; 256-pixel runtime canvas displayed at 220 and 48 pixels in headless Chromium",
+  "sourceSquarePixels": 454.5454545454545
+}

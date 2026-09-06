@@ -19,3 +19,19 @@ The supported iPhone floor must prove:
 If OPFS or the required SQLite persistence primitive is unavailable, the PWA
 reports an unsupported storage capability. It does not fall back to Library
 rows in IndexedDB.
+
+The explicitly selected anonymous demo is not a persistent Library. Each demo
+document owns an isolated in-memory SQLite database seeded from the curated
+checkpoint. Its worker never opens the OPFS database or content vault and does
+not acquire the persistent Library's origin-wide lock. This is not an OPFS
+failure fallback: ordinary app workers retain persistent storage and exclusion
+even when a caller supplies a demo-like query on the app hostname. Schema,
+checkpoint parsing, bounded queries, and worker message validation are unchanged.
+
+The demo may simulate care edits by regenerating its fixed, at-most-1,000-entry
+fixture and activating a validated replacement checkpoint in that same memory
+database. The session retains only care overrides and the original timeline
+seed, not a resident Library copy. This path has no durable writer, follower
+intent, OPFS write, schema change, or synchronization side effect. Checkpoint
+digests continue to fence query cursors. Replacement failure ends further care
+edits until document reload; reload discards all overrides.

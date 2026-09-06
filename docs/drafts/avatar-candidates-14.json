@@ -1,0 +1,46 @@
+{
+  "status": "Nib, Orla, and Nell were root-approved and mapped.",
+  "contactSheetPath": "/Users/aubreyfalconer/dev/freed-demo-500-corpus/output/playwright/avatar-candidates-14-nell-revised.png",
+  "cropMethod": "packages/ui/src/lib/friends-galaxy-avatar-crop.ts bundled and invoked in headless Chromium; 256px crop then circular presentation mask.",
+  "records": [
+    {
+      "width": 960,
+      "height": 633,
+      "id": "nib-willow",
+      "sha": "2843095a7583d16b1e021d507f4f12d9094a2bd7",
+      "focal": {
+        "x": 0.78,
+        "y": 0.58,
+        "zoom": 2.4
+      },
+      "reviewStatus": "root-approved mapping added",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/RedPanda_at_SingalilaNationalPark.jpg/960px-RedPanda_at_SingalilaNationalPark.jpg"
+    },
+    {
+      "width": 960,
+      "height": 720,
+      "id": "orla-reach",
+      "sha": "bcc73f07ce173acf2dcb230ed46ea7398fb3e315",
+      "focal": {
+        "x": 0.2,
+        "y": 0.55,
+        "zoom": 1.8
+      },
+      "reviewStatus": "root-approved mapping added",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/70/Echidna_burningwell.jpg/960px-Echidna_burningwell.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "id": "nell-pelagic",
+      "sha": "93eaea49a5ea54cfbe91c1004ac9a24a66e271b0",
+      "focal": {
+        "x": 0.65,
+        "y": 0.5,
+        "zoom": 1
+      },
+      "reviewStatus": "root-approved mapping added",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6b/Dumbo-hires.jpg"
+    }
+  ]
+}

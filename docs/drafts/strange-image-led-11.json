@@ -1,0 +1,795 @@
+{
+  "status": "Eleven lead-approved replacements integrated in existing land slots with eleven new media assets. Five candidates held. No publication.",
+  "batchCount": 16,
+  "longStoryCount": 2,
+  "newCharacterCount": 0,
+  "netCorpusGrowthIfAllAccepted": 0,
+  "entries": [
+    {
+      "id": "strange-11-01",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "facebook",
+      "subject": "fennec fox",
+      "title": "To my face",
+      "body": "Say it to my face. It makes very little difference acoustically.",
+      "theme": "social",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 1,
+        "oldTitle": "Excellent hearing",
+        "oldBody": "Something scratched beneath the sand. I dug until my ears were full of it. The scratching stopped. Now I can hear one grain moving inside my left ear and nothing else worth eating.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/96/Fennec_Fox_%40_Africa_Alive%2C_Lowestoft.jpg/960px-Fennec_Fox_%40_Africa_Alive%2C_Lowestoft.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/1.jpg",
+        "downloadedSha256": "537accecc4fbd28091fa479df07aaa0d50b88c19fdf8de9ced299e7364ab0756",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Curled fennec with upright oversized ears. The terse challenge depends on visible ear scale.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Fox @ Africa Alive, Lowestoft.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Fox_@_Africa_Alive,_Lowestoft.jpg",
+        "creator": "Tim Parkinson from Sheffield, UK",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 2592,
+        "height": 1944,
+        "sha1": "9929b06571f26148ceb5befc0b5d6bf28e1f8037",
+        "sourceDescription": "Fennec Fox at Africa Alive!, Kessingland, near Lowestoft, Suffolk, England.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Excellent hearing makes the conventional demand acoustically unnecessary."
+    },
+    {
+      "id": "strange-11-02",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "instagram",
+      "subject": "fennec fox",
+      "title": "Together",
+      "body": "We slept together. Sleep was the part we were bad at.",
+      "theme": "courtship",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 2,
+        "oldTitle": "Too near to ignore",
+        "oldBody": "My neighbor chews with his mouth open at the entrance of his burrow. I went over to object and he offered me the last bit. It was very good. I will object again tomorrow.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1a/Fennec_Foxes.jpg/960px-Fennec_Foxes.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/2.jpg",
+        "downloadedSha256": "c3aa322a7c89bf51080b454fa4363a0b9cef8c10cb419cd6c656c58b460a7c21",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Two fennecs with tousled coats stand together. Intimacy is fictional, not a claim of observed mating.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Foxes.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Foxes.jpg",
+        "creator": "Umberto Salvagnin",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 1280,
+        "height": 800,
+        "sha1": "5b4828aac999d471be601a93426acfe71a4a5373",
+        "sourceDescription": "Vulpes zerda",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Physical dishevelment supports a compact double meaning."
+    },
+    {
+      "id": "strange-11-03",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "rss",
+      "subject": "fennec fox",
+      "title": "In her footsteps",
+      "body": "My mother used to catch one claw on stone. Three soft steps, then a tiny drag.\n\nI heard it this morning. I was on my feet before I remembered how long it had been.\n\nMy daughter came around the rock. She had something stuck between her toes. Stopped to pull at it, then came on. Three steps. The little drag.\n\nI told her she was making a terrible noise.\n\nShe looked at the open space around us. Looked at me. Put her paw down very carefully.\n\nI went over and got the burr out.\n\nShe bounded away without it. I stood there with the burr in my mouth.",
+      "theme": "family",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 4,
+        "oldTitle": "The loud root",
+        "oldBody": "A dry root tapped against the sand all night. I pounced on it twice before the wind stopped and showed me what I had been hunting. I carried it away anyway. I need sleep.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9f/Fennec_Fox_Vulpes_zerda.jpg/960px-Fennec_Fox_Vulpes_zerda.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/3.jpg",
+        "downloadedSha256": "3dcbb2aba2ba18aad487a3bbb60fba9514c1e35acb383bcd1c52d57f137b75c3",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Standing adult fennec with visible paws and alert ears. The burr and relatives are a remembered fictional encounter, not pictured.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Fox Vulpes zerda.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Fox_Vulpes_zerda.jpg",
+        "creator": "Drew Avery",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 3197,
+        "height": 2477,
+        "sha1": "4c5b5b93f12d4633fc8734a43a8c3b9d7029072b",
+        "sourceDescription": "Fennec (Vulpes zerda), Norfolk Zoo",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A familiar sound briefly restores a lost relationship, then the burr remains after the practical problem is solved."
+    },
+    {
+      "id": "strange-11-04",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "facebook",
+      "subject": "fennec fox",
+      "title": "A little space",
+      "body": "I asked for a little space. They each found a different little space to disappear into. I have withdrawn the request.",
+      "theme": "family",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 5,
+        "oldTitle": "Buried too well",
+        "oldBody": "I hid a scrap beside a small bush. The wind buried the bush. Found the scrap by smell, but had to dig through a disappointing amount of yesterday to get it.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Fennec_Fox_Family.jpg/960px-Fennec_Fox_Family.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/4.jpg",
+        "downloadedSha256": "a1931dc38e915768912050ca5cf4992d947d1977263f0f9286ebf2a9f91078e9",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult and three smaller foxes occupy separate openings around a log. Captive setting retained in provenance; family roles are fictional.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Fox Family.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Fox_Family.jpg",
+        "creator": "Mark Dumont",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 4336,
+        "height": 2890,
+        "sha1": "1f2d789bbedb6679847aa97e3179d2270fe495ed",
+        "sourceDescription": "Family of Fennec foxes (Vulpes zerda) at the Cincinnati Zoo. This photo was taken on April 29, 2013 using a Canon EOS 7D.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The desired privacy becomes several simultaneous parental worries."
+    },
+    {
+      "id": "strange-11-05",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "instagram",
+      "subject": "fennec fox",
+      "title": "Right here",
+      "body": "He licked my nose and went away. I have been sitting with my nose out ever since. Ridiculous part of the body to miss somebody in.",
+      "theme": "courtship",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 6,
+        "oldTitle": "A shadow at dawn",
+        "oldBody": "The sky darkened over my back and I reached the burrow before I had decided to run. Stayed inside until dusk. Spent most of the day pretending I had meant to come home early.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Fennec_Fox_%289163009503%29.jpg/960px-Fennec_Fox_%289163009503%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/5.jpg",
+        "downloadedSha256": "7bd9a3fa63d044e06a8ded453c14daf8b32f29fb01c7b50c3795a7937ccb0d12",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Close face and nose illustrate where remembered affectionate contact lingers. The other fox is unpictured.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Fox (9163009503).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Fox_(9163009503).jpg",
+        "creator": "Daniel Ramirez from Honolulu, USA",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 5509,
+        "height": 3673,
+        "sha1": "1debf397deba490fd3ef45d5e27c381b09a87b70",
+        "sourceDescription": "Fennec Fox",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Separation registers in an unexpectedly specific part of the body."
+    },
+    {
+      "id": "strange-11-06",
+      "characterId": "juniper-ears",
+      "characterName": "Juniper Ears",
+      "platform": "instagram",
+      "subject": "fennec fox",
+      "title": "The middle",
+      "body": "Someone's paw is under my ribs. I could move. Then I'd have to find out whether they would move with me.",
+      "theme": "social",
+      "location": {
+        "name": "Erg Chebbi dune margin",
+        "coordinates": {
+          "lat": 31.17,
+          "lng": -4
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "juniper-ears",
+        "episodeNumber": 8,
+        "oldTitle": "Under the quiet",
+        "oldBody": "Lay with my chin on the sand after everyone settled. Tiny feet kept moving underneath. All that dark, full of errands. Then my stomach growled and ruined the small ones.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Fennec_Fox_Peek.jpg/960px-Fennec_Fox_Peek.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/6.jpg",
+        "downloadedSha256": "07b6af213089e6f903e8633db759231368aceaaa63b6fabe3fa14bd0d8b88474",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Several foxes rest tightly against each other. Contact and crowding are visible; a particular hidden paw is fictional.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Fennec Fox Peek.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fennec_Fox_Peek.jpg",
+        "creator": "Anass ERRIHANI",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 3709,
+        "height": 2483,
+        "sha1": "54e7d5c913294b207124681f59e38dfbe8aa3f0a",
+        "sourceDescription": "Peek to lens the photographer (The fennec fox or fennec is a small nocturnal fox found in the Sahara of North Africa)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The discomfort protects her from a more frightening question about affection."
+    },
+    {
+      "id": "strange-11-07",
+      "characterId": "pella-wideawake",
+      "characterName": "Pella Wideawake",
+      "platform": "x",
+      "subject": "Philippine tarsier",
+      "title": "Nearly concealed",
+      "body": "I can put the trunk between us. I cannot get both eyes behind it without becoming someone considerably narrower.",
+      "theme": "social",
+      "location": {
+        "name": "Bohol forest understory",
+        "coordinates": {
+          "lat": 9.72,
+          "lng": 124.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "pella-wideawake",
+        "episodeNumber": 1,
+        "oldTitle": "Nowhere to put the speed",
+        "oldBody": "Leapt to a very thin trunk. It bent, returned, and sent me partway back. I held on through the second opinion.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Philippine_Tarsier.jpg/960px-Philippine_Tarsier.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/7.jpg",
+        "downloadedSha256": "fee36ab735ca9fb0a5475b3905ea9552415b3a4f45e56745364e388f41ee1798",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Tarsier grips a thin stem, with enormous eyes extending widely beside it.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Philippine Tarsier.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Philippine_Tarsier.jpg",
+        "creator": "Magalhães",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 1704,
+        "height": 2272,
+        "sha1": "89d806673889ab0a8d2f37592dd53fa65080dbe4",
+        "sourceDescription": "A Philippine Tarsier (Carlito syrichta) in the Philippine Tarsier Sanctuary at Corella, Bohol, Philippines.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The usual hiding strategy cannot accommodate her visible eye width."
+    },
+    {
+      "id": "strange-11-08",
+      "characterId": "pella-wideawake",
+      "characterName": "Pella Wideawake",
+      "platform": "x",
+      "subject": "Philippine tarsier",
+      "title": "Potential",
+      "body": "I can jump a very long way. This has given people entirely the wrong idea about my willingness to let go.",
+      "theme": "movement",
+      "location": {
+        "name": "Bohol forest understory",
+        "coordinates": {
+          "lat": 9.72,
+          "lng": 124.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "pella-wideawake",
+        "episodeNumber": 3,
+        "oldTitle": "Insufficient darkness",
+        "oldBody": "The moon came through a gap and lit the leaf I was watching. I could see every vein, every nick, every empty place where a beetle was failing to be.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Tarsier_Hugs_Mossy_Branch.jpg/960px-Tarsier_Hugs_Mossy_Branch.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/8.jpg",
+        "downloadedSha256": "ac31df3da4c3dd68698abc49c3b2298121ff3076b6a76acdfcfcf68f0bf36a5d",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Fingers and toes grip a narrow branch with textured bark. The apparent reluctance is imagined; moss is not asserted.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Tarsier Hugs Mossy Branch.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tarsier_Hugs_Mossy_Branch.jpg",
+        "creator": "Kok Leng Yeo",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 2304,
+        "height": 3072,
+        "sha1": "ea4ffa3040df2eb8f1035d37fde3c89decf07ca9",
+        "sourceDescription": "Philippine Tarsier (Carlito syrichta) hugging a mossy branch. Photo taken at the Tarsier Sanctuary, Corella, Bohol",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Athletic capability does not imply emotional readiness."
+    },
+    {
+      "id": "strange-11-09",
+      "characterId": "pella-wideawake",
+      "characterName": "Pella Wideawake",
+      "platform": "instagram",
+      "subject": "Philippine tarsier",
+      "title": "Casually",
+      "body": "I tried to look at him casually. These are the smallest eyes I could do.",
+      "theme": "courtship",
+      "location": {
+        "name": "Bohol forest understory",
+        "coordinates": {
+          "lat": 9.72,
+          "lng": 124.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "pella-wideawake",
+        "episodeNumber": 6,
+        "oldTitle": "The branch shook first",
+        "oldBody": "Felt somebody land before I saw him. He was clinging to the other side of my trunk. We each leaned around to inspect the other and continued seeing only bark.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Philippine_Tarsier_Bohol.jpg/960px-Philippine_Tarsier_Bohol.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/9.jpg",
+        "downloadedSha256": "ba060ffe01f5e4d401f6a9304d184e0a4999ef2df4519ec43b35e7bc7ffd5276",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Close tarsier face with large eyes supports the failed attempt to look casually at another; that animal is unpictured.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Philippine Tarsier Bohol.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Philippine_Tarsier_Bohol.jpg",
+        "creator": "John Martin PERRY",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 3888,
+        "height": 2592,
+        "sha1": "8d005d86f17c1c8293041d4b2997700b7663b1f8",
+        "sourceDescription": "Philippine Tarsier",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Her anatomy defeats the attempted casual glance."
+    },
+    {
+      "id": "strange-11-10",
+      "characterId": "pella-wideawake",
+      "characterName": "Pella Wideawake",
+      "platform": "instagram",
+      "subject": "Philippine tarsier",
+      "title": "Read ahead",
+      "body": "I dreamed I had wings. Woke up biting the branch. Apparently some part of me had read ahead.",
+      "theme": "wonder",
+      "location": {
+        "name": "Bohol forest understory",
+        "coordinates": {
+          "lat": 9.72,
+          "lng": 124.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "pella-wideawake",
+        "episodeNumber": 7,
+        "oldTitle": "Reduced ambition",
+        "oldBody": "Picked a closer trunk for my next leap. Landed exactly where I meant to. Nobody was there to appreciate the improvement, so I stayed awhile appreciating it myself.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b3/Philippine_tarsier_%28Carlito_syrichta_fraterculus%29_Bohol_3.jpg/960px-Philippine_tarsier_%28Carlito_syrichta_fraterculus%29_Bohol_3.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/10.jpg",
+        "downloadedSha256": "09911b97a7591e42eba5447918ff69df3589417f2773e28f9c5ee995c24fc0da",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Tarsier rests its mouth against a branch under foliage. Biting on waking is fictional remembered action, not a claim that teeth are visible.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Philippine tarsier (Carlito syrichta fraterculus) Bohol 3.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Philippine_tarsier_(Carlito_syrichta_fraterculus)_Bohol_3.jpg",
+        "creator": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 6078,
+        "height": 4558,
+        "sha1": "1dcc4b43ebcfa8dca4d1ae9ef2fa2d6322ce07e9",
+        "sourceDescription": "Philippine tarsier (Carlito syrichta fraterculus), Bohol, Philippines",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The dream's pleasure and the sleeping grip have incompatible expectations."
+    },
+    {
+      "id": "strange-11-11",
+      "characterId": "pella-wideawake",
+      "characterName": "Pella Wideawake",
+      "platform": "x",
+      "subject": "Philippine tarsier",
+      "title": "Introductions",
+      "body": "The leaf keeps touching my ear. I turn to see who's there. Leaf. I turn back. We have been introduced five times.",
+      "theme": "social",
+      "location": {
+        "name": "Bohol forest understory",
+        "coordinates": {
+          "lat": 9.72,
+          "lng": 124.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "pella-wideawake",
+        "episodeNumber": 8,
+        "oldTitle": "Everywhere at once",
+        "oldBody": "Rain started on the leaves around me. I turned toward the first noise, then the second, then gave the entire forest a very hard stare.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Philippine_tarsier_%28Carlito_syrichta_fraterculus%29_Bohol.jpg/960px-Philippine_tarsier_%28Carlito_syrichta_fraterculus%29_Bohol.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/11.jpg",
+        "downloadedSha256": "2b72eff6d2aa7e47cf9985592afe140330f3f555ab06507f3f519f4c3587e2a5",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "A broad green leaf hangs close over the tarsier's ear. Repeated contact is fiction, not a recorded movement sequence.",
+        "reviewDecision": "lead_reviewed_held"
+      },
+      "provenance": {
+        "title": "File:Philippine tarsier (Carlito syrichta fraterculus) Bohol.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Philippine_tarsier_(Carlito_syrichta_fraterculus)_Bohol.jpg",
+        "creator": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 6276,
+        "height": 4184,
+        "sha1": "c668dcd77df4c6f65f61dd92ee8234253569752d",
+        "sourceDescription": "Philippine tarsier (Carlito syrichta fraterculus), Bohol, Philippines",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The repeated social response is elicited by an unchanging leaf."
+    },
+    {
+      "id": "strange-11-12",
+      "characterId": "finch-fidget",
+      "characterName": "Finch Fidget",
+      "platform": "instagram",
+      "subject": "quokka",
+      "title": "My contribution",
+      "body": "I have brought nothing to this argument except my whole body. It is blocking the way quite well.",
+      "theme": "social",
+      "location": {
+        "name": "Rottnest Island scrub",
+        "coordinates": {
+          "lat": -32,
+          "lng": 115.5
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "finch-fidget",
+        "episodeNumber": 1,
+        "oldTitle": "This is my chewing face",
+        "oldBody": "The other quokka took the leaf I was reaching for. I chewed what I had and watched her. My face may have looked friendly. The chewing was extremely pointed.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a0/Rottnest_Quokka_2004_SeanMcClean.jpg/960px-Rottnest_Quokka_2004_SeanMcClean.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/12.jpg",
+        "downloadedSha256": "423a1e7c233d514197f9f38643cafc323b9563b52ce1dce69750caace4afb26b",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Quokka stands on bare ground with its rounded body across the view. The argument is fictional and unpictured.",
+        "reviewDecision": "lead_reviewed_held"
+      },
+      "provenance": {
+        "title": "File:Rottnest Quokka 2004 SeanMcClean.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rottnest_Quokka_2004_SeanMcClean.jpg",
+        "creator": "en:User:SeanMack",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 2476,
+        "height": 2272,
+        "sha1": "f99774c1eeb4be882d1e081f03c99f75b02acc3a",
+        "sourceDescription": "Quokka on Rottnest Island.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A soft-looking body is an effective obstruction."
+    },
+    {
+      "id": "strange-11-13",
+      "characterId": "finch-fidget",
+      "characterName": "Finch Fidget",
+      "platform": "facebook",
+      "subject": "quokka",
+      "title": "The grass afterward",
+      "body": "I got up and looked at the flattened grass. That cannot all have been underneath me. There must have been someone else.",
+      "theme": "wonder",
+      "location": {
+        "name": "Rottnest Island scrub",
+        "coordinates": {
+          "lat": -32,
+          "lng": 115.5
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "finch-fidget",
+        "episodeNumber": 2,
+        "oldTitle": "Higher than breakfast",
+        "oldBody": "Climbed into a shrub for a fresh shoot. Ate it, looked down, and discovered that the shoot had been the only part of my plan involving that height.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Setonix_brachyurus_1.jpg/960px-Setonix_brachyurus_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/13.jpg",
+        "downloadedSha256": "73f77aa04ff1fa13ca732980d75aaaae66775f72e163156121c67035861ff23a",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Round quokka sits in grass. Remembered flattened grass after rising is fictional, not a measured footprint in the picture.",
+        "reviewDecision": "lead_reviewed_held"
+      },
+      "provenance": {
+        "title": "File:Setonix brachyurus 1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Setonix_brachyurus_1.jpg",
+        "creator": "May Wong",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 3864,
+        "height": 2306,
+        "sha1": "077b96458fae8af3100bab1709d66d3e06381f7d",
+        "sourceDescription": "Setonix brachyurus Featherdale Wildlife Park, Australia",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Finch refuses the spatial evidence of her own size."
+    },
+    {
+      "id": "strange-11-14",
+      "characterId": "finch-fidget",
+      "characterName": "Finch Fidget",
+      "platform": "instagram",
+      "subject": "quokka",
+      "title": "A minute",
+      "body": "She asked whether I had a minute. I had a leaf. I finished it slowly so I could give her a better answer.",
+      "theme": "social",
+      "location": {
+        "name": "Rottnest Island scrub",
+        "coordinates": {
+          "lat": -32,
+          "lng": 115.5
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "finch-fidget",
+        "episodeNumber": 3,
+        "oldTitle": "One foot outside",
+        "oldBody": "The shade was just wide enough until the sun moved. Pulled my foot in. The other foot went out. I am beginning to understand why the larger quokka arrived before me.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8f/Setonix_brachyurus_3.jpg/960px-Setonix_brachyurus_3.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/14.jpg",
+        "downloadedSha256": "32f5c4396c1b70e8790aae65948292428c07ffab23cc7d12bebab28377bf5ef0",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Quokka has an actual green leaf at its mouth amid dry litter. A visitor's question is invented.",
+        "reviewDecision": "lead_reviewed_held"
+      },
+      "provenance": {
+        "title": "File:Setonix brachyurus 3.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Setonix_brachyurus_3.jpg",
+        "creator": "David Hearle",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 2848,
+        "height": 2136,
+        "sha1": "f413e7789f69e48901297094bd28c4a19dc9a052",
+        "sourceDescription": "Setonix brachyurus Perth eGuide for Perth images. Perth is in Western Australia. Have a look at PertheGuide.com for Perth travel information.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Finch postpones courtesy until she has finished eating."
+    },
+    {
+      "id": "strange-11-15",
+      "characterId": "finch-fidget",
+      "characterName": "Finch Fidget",
+      "platform": "facebook",
+      "subject": "quokka",
+      "title": "Ready",
+      "body": "He said come as you are. I am standing here as I am. It has taken longer than I expected.",
+      "theme": "courtship",
+      "location": {
+        "name": "Rottnest Island scrub",
+        "coordinates": {
+          "lat": -32,
+          "lng": 115.5
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "finch-fidget",
+        "episodeNumber": 5,
+        "oldTitle": "The tough end",
+        "oldBody": "Started a stem from the wrong end and kept chewing because I had started. My jaw got tired. Put it down with the good end facing me for when I become sensible.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Setonix_brachyurus_%2825121540707%29.jpg/960px-Setonix_brachyurus_%2825121540707%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/15.jpg",
+        "downloadedSha256": "c8b4c9226c06d8cce51882bd188c3ce12c08b4436448e06ef6beba646e489f0e",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Quokka stands facing outward beneath a shrub, forepaws gathered at its chest. The invitation is fictional.",
+        "reviewDecision": "lead_reviewed_held"
+      },
+      "provenance": {
+        "title": "File:Setonix brachyurus (25121540707).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Setonix_brachyurus_(25121540707).jpg",
+        "creator": "Donald Hobern from Copenhagen, Denmark",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 3651,
+        "height": 2738,
+        "sha1": "910342a333d69e1756b34027551085acebeae57a",
+        "sourceDescription": "Setonix brachyurus (Quoy &amp; Gaimard, 1830), Quokka, Rottnest Island, WA, Australia, 12 January 2018",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An uncomplicated invitation creates awkward anticipation."
+    },
+    {
+      "id": "strange-11-16",
+      "characterId": "finch-fidget",
+      "characterName": "Finch Fidget",
+      "platform": "rss",
+      "subject": "quokka",
+      "title": "Across my face",
+      "body": "She used to fit underneath my chin.\n\nNow she climbs across my face on the way to things. Puts a foot on my cheek, hauls the rest of herself over, and leaves me to work out which way my whiskers used to point.\n\nI could get up. There is plenty of room under the tree. I think about that every time she crosses me.\n\nThis afternoon she went around instead. She had found another place to lie down, a little farther into the shade. I stretched out. Put my head where I wanted it. Nobody stepped on anything.\n\nAfter a while I got up and went to her.\n\nI was aiming to lie alongside. Misjudged the gap. Put my foot on her face.\n\nShe made exactly the noise I make.",
+      "theme": "family",
+      "location": {
+        "name": "Rottnest Island scrub",
+        "coordinates": {
+          "lat": -32,
+          "lng": 115.5
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "finch-fidget",
+        "episodeNumber": 8,
+        "oldTitle": "Coming down backward",
+        "oldBody": "Found another excellent shoot above my head. Climbed, ate, and came down backward this time. Stood at the bottom chewing very slowly in case anyone wanted to ask about my technique.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Setonix_brachyurus_%2839991868901%29.jpg/960px-Setonix_brachyurus_%2839991868901%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange11-review.ocOx7f/16.jpg",
+        "downloadedSha256": "5b31e909d743475eee323a174d2174fe0332a737c395e928af33e35d1e4c2420",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Young quokka leans across a reclining adult beneath a tree. Maternal roles and remembered reciprocal foot contact are fictional.",
+        "reviewDecision": "lead_approved_integrated"
+      },
+      "provenance": {
+        "title": "File:Setonix brachyurus (39991868901).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Setonix_brachyurus_(39991868901).jpg",
+        "creator": "Donald Hobern from Copenhagen, Denmark",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 3791,
+        "height": 2843,
+        "sha1": "9eb3ca7e637dd9840aea52ff562ee007bf29be5b",
+        "sourceDescription": "Setonix brachyurus (Quoy &amp; Gaimard, 1830), Quokka, Rottnest Island, WA, Australia, 12 January 2018",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An irritated mother repeats the very clumsiness she resented in her child."
+    }
+  ],
+  "integratedCount": 11,
+  "rssDelta": 2
+}

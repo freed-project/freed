@@ -1,0 +1,76 @@
+{
+  "status": "proposal-only",
+  "reviewedImages": 14,
+  "unviewedSourceHolds": 10,
+  "proposals": [
+    {
+      "proposalId": "ocean-12-07",
+      "characterId": "rhea-return",
+      "title": "In the middle",
+      "body": "A school came past while I was swimming. I kept going at my speed. Now I am inside the school, and everyone is making a great many adjustments.",
+      "theme": "social",
+      "status": "recommend-for-independent-review",
+      "existingUnboundSlot": null,
+      "localReviewPath": "/tmp/freed-ocean-12/ocean-07.jpg",
+      "media": {
+        "sha1": "1c3804062cbb495ea41d38e36f248690dcedf3ec",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tortuga_carey_(Eretmochelys_imbricata),_islas_Ad_Dimaniyat,_Om%C3%A1n,_2024-08-13,_DD_69.jpg",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_islas_Ad_Dimaniyat%2C_Om%C3%A1n%2C_2024-08-13%2C_DD_69.jpg/1280px-Tortuga_carey_%28Eretmochelys_imbricata%29%2C_islas_Ad_Dimaniyat%2C_Om%C3%A1n%2C_2024-08-13%2C_DD_69.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7d/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_islas_Ad_Dimaniyat%2C_Om%C3%A1n%2C_2024-08-13%2C_DD_69.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "width": 8078,
+        "height": 5385,
+        "attribution": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "alt": "A hawksbill turtle swims toward the camera with both front flippers extended and numerous small fish behind and around it."
+      },
+      "review": "The surrounding school supplies a physical social situation. The imagined overtaking sequence is fiction, not a claim that the photograph records motion over time. Rhea keeps her own pace while the smaller bodies accommodate her. Unlike Nellie holding a flipper for small fish, she has made no deliberate concession."
+    },
+    {
+      "proposalId": "ocean-12-08",
+      "characterId": "rhea-return",
+      "title": "The ledge is smaller",
+      "body": "Found the ledge I used to sleep under. Put my head in. Tried the shell. Put my head in again, in case that had been the problem.",
+      "theme": "movement",
+      "status": "recommend-for-independent-review",
+      "existingUnboundSlot": 8,
+      "localReviewPath": "/tmp/freed-ocean-12/ocean-08.jpg",
+      "media": {
+        "sha1": "7498e6b091e1fdce2007614aac50224c0b7df17b",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tortuga_carey_(Eretmochelys_imbricata),_Anilao,_Filipinas,_2023-08-22,_DD_11.jpg",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/51/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-22%2C_DD_11.jpg/1280px-Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-22%2C_DD_11.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/5/51/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-22%2C_DD_11.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "width": 8688,
+        "height": 5792,
+        "attribution": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "alt": "A hawksbill turtle faces a dark reef recess beneath branching coral, with one front flipper extended against the reef."
+      },
+      "review": "A small overhang is directly above the head, and the shell remains outside. The photograph supports investigating a tight shelter. Past fit and repeated attempts are an invented memory sequence consistent with the existing draft. This is an optional replacement draft for unbound slot 8, not permission to alter a protected passage."
+    },
+    {
+      "proposalId": "ocean-12-10",
+      "characterId": "rhea-return",
+      "title": "A fish at the scrape",
+      "body": "One fish worked along my neck while the others searched my shell. I have never had so much company insist I do absolutely nothing.",
+      "theme": "social",
+      "status": "recommend-for-independent-review",
+      "existingUnboundSlot": 9,
+      "localReviewPath": "/tmp/freed-ocean-12/ocean-10.jpg",
+      "media": {
+        "sha1": "6876c73fb6535112bc8910c48260acee234ab068",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tortuga_carey_(Eretmochelys_imbricata),_Anilao,_Filipinas,_2023-08-21,_DD_27.jpg",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-21%2C_DD_27.jpg/1280px-Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-21%2C_DD_27.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/0/07/Tortuga_carey_%28Eretmochelys_imbricata%29%2C_Anilao%2C_Filipinas%2C_2023-08-21%2C_DD_27.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "width": 6986,
+        "height": 4657,
+        "attribution": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "alt": "A hawksbill turtle holds its head raised beside rounded coral while small fish gather near its neck, shell and underside."
+      },
+      "review": "Small fish are visibly adjacent to the neck and shell, with the neck extended. Cleaning is a biologically grounded interpretation; individual bites and the identities of all the fish cannot be resolved. No remora is asserted. This revises the unbound slot 9 scene to fit the pictured gathering and gives Rhea an inconvenient obligation to remain still."
+    }
+  ]
+}

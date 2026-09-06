@@ -687,3 +687,7 @@ tauriInternals.invoke = async <T = unknown>(
 export function isTauri(): boolean {
   return false;
 }
+
+export function convertFileSrc(filePath: string, protocol = "asset"): string {
+  return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+}

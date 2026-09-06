@@ -1,0 +1,35 @@
+{
+  "status": "prose-reviewed-image-inspected-pending-canon-integration",
+  "entries": [
+    {
+      "characterId": "tavi-tilt",
+      "catalogId": "commons-tavi-eyes-c95e9c93",
+      "title": "Both, unfortunately",
+      "platform": "x",
+      "body": "She asked whether I was looking at her or her sister. I said I could explain. One eye followed the sister out. I have never needed so urgently to possess a simpler face.",
+      "imageFit": "The independently angled compound eyes dominate the inspected photograph. The fictional conversation concerns this visible anatomy; it does not claim the sisters are in the frame.",
+      "factSource": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5399772/",
+      "canonConsequence": "Tavi's confidence in his superior perception becomes a liability in an intimate conversation. Do not reuse divided-eye attraction as a generic joke for other entries."
+    },
+    {
+      "characterId": "vera-veil",
+      "catalogId": "commons-vera-transparent-6863cb85",
+      "title": "A little mystery",
+      "platform": "x",
+      "body": "Someone said I should leave a little to the imagination. I tried turning sideways. My intestine came with me.",
+      "imageFit": "The inspected transparent swimming sea cucumber has a conspicuous loop of gut. The punchline depends on that immediately visible feature.",
+      "factSource": "https://repository.si.edu/bitstream/handle/10088/1130/SCMS-0035-Lo_res.pdf",
+      "canonConsequence": "Vera is willing to flirt but cannot perform physical secrecy. Avoid making all her entries variations on transparency."
+    },
+    {
+      "characterId": "nell-pelagic",
+      "catalogId": "commons-nell-curled-93eaea49",
+      "title": "I stayed with the light",
+      "platform": "rss",
+      "body": "The light followed me. I went left. It went left. I stopped, and the enormous thing behind it stopped too.\n\nI had tucked all my arms underneath me. Nothing down here had ever wanted such a thorough look. After a while I opened them a little. The thing held still.\n\nPerhaps it was frightened. It had brought so much light.\n\nI swam beside it until it began to rise. It was very slow, and kept looking back. I went a little way up with it, then turned toward the bottom.\n\nFor the rest of the night I kept checking behind me. I hope it found whatever it had come down here to find. It seemed terribly poorly equipped to be alone.",
+      "imageFit": "The inspected photograph shows a dumbo octopus illuminated against deep black water, fins extended and arms gathered beneath it. The observer becomes an imagined vulnerable visitor, not a predator asserted by the image.",
+      "factSource": "https://ocean.si.edu/ocean-life/invertebrates/octopuses-squids-and-relatives",
+      "canonConsequence": "Nell interprets an intrusive research vehicle as a nervous stranger. The scene is explicitly fictional, not a claim about the photographed expedition or measured octopus cognition. Later stories may remember the visitor without making every encounter a light metaphor."
+    }
+  ]
+}
