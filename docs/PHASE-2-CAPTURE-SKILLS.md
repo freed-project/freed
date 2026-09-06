@@ -9,6 +9,10 @@
 
 First capture layers for X/Twitter and RSS feeds, with OpenClaw skill wrappers for CLI access.
 
+X normalization pairs each media URL with its type before Library capture.
+Link cards remain in `linkPreview`; unavailable video variants add neither a
+URL nor a type. Existing URL selection and provider requests are unchanged.
+
 ---
 
 ## Packages Delivered

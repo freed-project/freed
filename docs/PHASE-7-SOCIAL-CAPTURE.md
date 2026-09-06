@@ -7,6 +7,12 @@
 
 ## Overview
 
+Facebook normalization emits a video type only for an existing first media
+URL. An unavailable video URL therefore leaves both media arrays empty, and
+duplicate URLs retain their original positional types. Instagram already
+preserves the same empty-media invariant. Both paths are checked against the
+closed Library capture payload without changing extraction or provider timing.
+
 DOM scraping for Facebook and Instagram feeds uses Tauri's native WebView (WKWebView on macOS). Instead of Playwright, posts are captured by injecting extraction scripts into the same WebView that handles authentication. The scheduler does not claim this traffic is indistinguishable from a person.
 
 **Note:** DOM scraping is inherently fragile. These platforms actively fight scrapers and frequently change their DOM structure. This is lower priority than X + RSS.

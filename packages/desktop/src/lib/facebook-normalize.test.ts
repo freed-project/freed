@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RawFbPost } from "@freed/capture-facebook/browser";
 import { fbPostToFeedItem } from "@freed/capture-facebook/browser";
+import { sanitizeFeedItemCaptureWrite } from "@freed/shared";
+import { FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 
 describe("fbPostToFeedItem", () => {
   function rawPost(overrides: Partial<RawFbPost> = {}): RawFbPost {
@@ -44,6 +46,19 @@ describe("fbPostToFeedItem", () => {
       name: "My Group",
       url: "https://www.facebook.com/groups/my-group",
     });
+  });
+
+  it.each([
+    { mediaUrls: [], expectedTypes: [] },
+    { mediaUrls: ["https://cdn.example/poster.jpg", "https://cdn.example/poster.jpg"], expectedTypes: ["video", "image"] },
+  ])("pairs video classification only with existing media: $mediaUrls", ({ mediaUrls, expectedTypes }) => {
+    const item = fbPostToFeedItem(rawPost({ hasVideo: true, mediaUrls }));
+    expect(item).not.toBeNull();
+    expect(item!.content.mediaUrls).toEqual(mediaUrls);
+    expect(item!.content.mediaTypes).toEqual(expectedTypes);
+    expect(FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+      item: sanitizeFeedItemCaptureWrite(item!),
+    })).toMatchObject({ ok: true });
   });
 
   it("rejects Facebook registration UI as an author", () => {
