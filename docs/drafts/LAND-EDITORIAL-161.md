@@ -48,7 +48,7 @@ HOLD prose: fixed-branch beak contact supports tugging, but elastic return is no
 
 ## Exact source evidence
 
-The Raven holding the stick kept trying to offer it to the center Raven, but lower one had offered little pieces of ice! 
+The Raven holding the stick kept trying to offer it to the center Raven, but lower one had offered little pieces of ice!
 
 Pika and Bugnyar2011, The use of referential gestures in ravens (Corvus corax) in the wild: https://www.nature.com/articles/ncomms1567
 Publisher primary abstract independently opened. It reports38social interactions in seven dyads including showing/offering nonfood objects such as moss/twigs. Supports offering behavior, not human gift etiquette or this fictional intention. Full article was not available on publisher page; only abstract and bibliographic material claimed read.

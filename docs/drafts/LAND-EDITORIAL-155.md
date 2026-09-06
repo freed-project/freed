@@ -162,7 +162,7 @@ SHA1 `e2f6d1290efa09506138dfabecbbbe8b5da61759`; SHA256 `9bf8ffce77a6e800978598b
 Loxodonta africana; South Africa; captive=False. Individually opened.
 
 https://www.inaturalist.org/observations/16976649
-I think this Common Raven plans to go as a bat on Halloween. It hung upside down motionless for at least a full minute, then as I got closer, it flew off. Other ravens were either playing on the solar panels or they were looking for bugs or something. 
+I think this Common Raven plans to go as a bat on Halloween. It hung upside down motionless for at least a full minute, then as I got closer, it flew off. Other ravens were either playing on the solar panels or they were looking for bugs or something.
 Direct observer evidence for upside-down hanging. Does not prove fictional wing-assisted swing.
 
 https://www.inaturalist.org/observations/317633319

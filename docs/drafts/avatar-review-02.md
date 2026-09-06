@@ -25,4 +25,3 @@ Rechecked seven difficult candidates and inspected a different catalog asset for
 - Fit: Recognizable live common cuttlefish, suitable as a portrait for Iris's European cuttlefish identity. Do not describe the photo as wild or attach it to an outdoor scene without separate review.
 
 The seven unresolved candidates need either a better existing photo or separately reviewed focal-position support. Their rejected hashes have not been admitted to the avatar map.
-

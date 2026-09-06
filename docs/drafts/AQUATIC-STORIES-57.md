@@ -87,4 +87,3 @@ A second Story was not earned. The mother with hatchling image from source 54-01
 The NOAA hunting-octopus record 11280 duplicates bound Elspeth media. The Alaska crab-feeding record 16074 does not establish compatibility with Rufus and repeats feeding premises. A Point Reyes seal molt image fails Fenn's Kenai geography. These were rejected during metadata review without further image downloads.
 
 Exact hashes, source IDs and Mabel's name were searched against the isolated runtime and drafts before packaging, with no existing binding or identity found. JSON parsing and measured image metadata are checked locally. No admission count is claimed.
-

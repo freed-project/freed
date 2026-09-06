@@ -29,7 +29,7 @@ Hold for image quality. This is an actual encounter, but not a gorgeous Story de
 - SHA-1: `d2d2848f5392527540385955251a5f324778fd04`
 - SHA-256: `fe65862d3ae133c32596d2b78c056293a6275bc9450eedd52b790b64198c1539`
 
-Observer account: In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece. 
+Observer account: In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece.
 
 ### Source 02: hold
 
@@ -50,7 +50,7 @@ Hold for image quality. The action is clearer than source01, but the seal remain
 - SHA-1: `b2e687a530a9a772c219bdb467e31c836ef92efe`
 - SHA-256: `033dfd2c5fb91f93f3742f69b3a251b7c3a9e3b62dc88efcd5f09fe204f274c5`
 
-Observer account: In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece. 
+Observer account: In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece.
 
 ### Source 03: hold
 
@@ -71,7 +71,7 @@ Hold for image quality and setting. The source explicitly documents a Seattle fi
 - SHA-1: `bdaae8423a7dab21838bca8c24b756821198c2a8`
 - SHA-256: `057f5bb1e4621272b6cb4305c0f8dc62afbae73b946a97663f39dc26dbb484c9`
 
-Observer account: Inside fish ladder 
+Observer account: Inside fish ladder
 
 ### Source 04: hold
 

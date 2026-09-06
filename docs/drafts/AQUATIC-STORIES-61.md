@@ -74,4 +74,3 @@ NOAA multimedia API responses are preserved in `/tmp/freed-aquatic-stories-61`. 
 Metadata searches also rejected squid images whose apparent embraces may be predation, already-bound Elspeth and Nestor scenes, and a geographically compatible whale kelping contest photo whose specific reuse rights were not established. No blocked endpoint was retried. None of these metadata-only candidates is claimed as visually reviewed.
 
 The second Story slot stays empty. The lead explicitly held source 04 and advised against forcing another pass from this batch.
-

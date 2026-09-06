@@ -69,9 +69,9 @@ Viewed file: `/tmp/freed-ocean-images.hpi0Iy/17-commons-0731.jpg`; 744,370 bytes
 Original prose preserved:
 
 > Cold water was coming through a crack beside my den. I put two arms through from outside and found the place where I sleep. I had been dragging everything through the narrow entrance when there was a second one beside it.
-> 
+>
 > I moved the loose stones. Twice I pulled rubble onto my own head. By afternoon I could squeeze through. I went out the old entrance and in the new one to be certain.
-> 
+>
 > On the third circuit I found a shrimp and ate it. Went around again. No shrimp. Again, a little slower. Still none. I built an escape route and spent the evening checking whether it made shrimp.
 
 ### Alma Eight 7: Nothing to carry
@@ -91,9 +91,9 @@ Viewed file: `/tmp/freed-ocean-images.hpi0Iy/18-commons-0757.jpg`; 520,944 bytes
 Original prose preserved:
 
 > Went over the ridge with every intention of leaving things where they were. Found a lovely shell. A foot withdrew inside it. I put it back.
-> 
+>
 > Farther down, a smooth stone fitted beautifully into the curl of an arm. I held it, turned it, put it down. Kept moving. I went all the way home without a shell, a stone, or anyone else's house.
-> 
+>
 > At the entrance an arm uncurled and produced a second stone. I do not know when it picked that up. I moved aside to let it bring the stone in.
 
 ### Nib Willow 0: Face first
@@ -155,9 +155,9 @@ Prior evidence: `docs/SAMPLE-CORPUS-LAND-REVIEW.md`.
 Original prose preserved:
 
 > Cut a beautiful mouthful of stems at the meadow edge. Carried them all the way to my haypile. The stems caught across the gap between the rocks.
-> 
+>
 > Pushed harder. They bent. Backed out, dropped them, and took the bundle through in two loads.
-> 
+>
 > It looked smaller afterward. I went out for more, having learned almost the wrong thing from the whole experience.
 
 ### Nessa Whisker 4: White fur, dark stones
@@ -181,9 +181,9 @@ Prior evidence: `docs/SAMPLE-CORPUS-LAND-REVIEW.md`, `docs/drafts/AVATAR-REVIEW-
 Original prose preserved:
 
 > My coat had begun coming loose in pale tufts. Rubbed against a rock and left a little of winter on its edge.
-> 
+>
 > Underneath I was darker. The bare ground no longer made me look like something that had wandered into the wrong season.
-> 
+>
 > Sat in a sunny patch and pulled at another loose tuft. It stuck to my lip. A great deal of looking appropriate involves looking ridiculous first.
 
 ### Nell Pelagic 4: I stayed with the light
@@ -205,13 +205,13 @@ Prior evidence: `docs/SAMPLE-CORPUS-OCEAN-REVIEW.md`, `docs/drafts/YOUTUBE-CANDI
 Original prose preserved:
 
 > The light followed me. I went left. It went left. I stopped, and the enormous thing behind it stopped too.
-> 
+>
 > I had tucked all my arms underneath me. Nothing down here had ever wanted such a thorough look. After a while I opened them a little. The thing held still.
-> 
+>
 > Perhaps it was frightened. It had brought so much light.
-> 
+>
 > I swam beside it until it began to rise. It was very slow, and kept looking back. I went a little way up with it, then turned toward the bottom.
-> 
+>
 > For the rest of the night I kept checking behind me. I hope it found whatever it had come down here to find. It seemed terribly poorly equipped to be alone.
 
 ### Percy Silt 1: Something underneath
@@ -233,9 +233,9 @@ Prior evidence: `docs/SAMPLE-CORPUS-OCEAN-REVIEW.md`.
 Original prose preserved:
 
 > A small crab had tucked itself beneath me. I could feel the difference when it moved. At first I stopped every time, waiting for it to get off.
-> 
+>
 > It stayed through three stops and one fairly pointed change of direction.
-> 
+>
 > I resumed eating. The crab drew its legs closer underneath me and settled against my belly.
 
 ### Vera Veil 3: A little mystery

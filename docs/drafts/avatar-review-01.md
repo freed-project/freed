@@ -69,4 +69,3 @@ The mapping exports SAMPLE_CHARACTER_AVATAR_SHA1. Missing keys mean unresolved, 
 - nellie-nudge: No exact-subject asset in the current catalogs. Related species are not substitutes.
 
 Custom focal positions could recover some off-center images, but this SHA-only mapping does not pretend that capability exists. Do not change a character's species to fit an available image. The target of 30 was not reached because the remaining reviewed crops or species matches did not meet the bar.
-

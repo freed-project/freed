@@ -171,4 +171,3 @@ The breakfast ending offers a reversal, but the central storm and weed/crab arri
 One mottled octopus lies low at the sand-rock boundary. Its eye, siphon and folded arms are visible. No distinct empty shell, arranged pebbles, returning hermit crab or larger occupied shell appears.
 
 The prose is explicitly owner-protected and remains exact. Its premature grief, the returning crab and the retained pebbles are its whole emotional and comic mechanism. None appears here. Excluding the image binding does not reject or rewrite the passage. A future image must support shell/crab/pebble context without manufacturing visible death or claiming a staged funeral as natural history.
-
