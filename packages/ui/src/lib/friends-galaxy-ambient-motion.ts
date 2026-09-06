@@ -7,8 +7,9 @@ export const FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE =
 export function friendsGalaxyAmbientMotionTimeSeconds(
   timeMs: number,
   enabled: boolean,
-  cameraInMotion: boolean,
+  _cameraInMotion: boolean,
 ): number {
-  if (!enabled || cameraInMotion || !Number.isFinite(timeMs)) return -1;
+  // Camera gestures must not reset the stars' drift or scintillation phase.
+  if (!enabled || !Number.isFinite(timeMs)) return -1;
   return Math.max(0, timeMs) / 1_000;
 }

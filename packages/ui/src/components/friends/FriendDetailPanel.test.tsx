@@ -14,6 +14,7 @@ import {
 } from "vitest";
 import type { FeedItem, Friend } from "@freed/shared";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
+vi.mock("../../context/PlatformContext.js", () => ({ usePlatform: () => ({ store: { getState: () => ({}) } }) }));
 
 vi.mock("../map/MiniFriendMapCard.js", () => ({
   MiniFriendMapCard: ({ feedItems }: { feedItems: readonly FeedItem[] }) => (
@@ -28,7 +29,7 @@ const friend: Friend = {
   name: "Ada Lovelace",
   relationshipStatus: "friend",
   careLevel: 5,
-  sources: [],
+  sources: [{ platform: "rss", authorId: "ada", displayName: "Ada", profileUrl: "https://example.test/ada" }],
   createdAt: 1,
   updatedAt: 1,
 };
@@ -87,6 +88,7 @@ describe("FriendDetailPanel timeline paging", () => {
     timelineHasMore,
     onLoadMoreTimeline,
     onShowNewestTimeline,
+    onSelectSource = vi.fn(),
   }: {
     activityLoading?: boolean;
     feedItems?: readonly FeedItem[];
@@ -95,6 +97,7 @@ describe("FriendDetailPanel timeline paging", () => {
     timelineHasMore: boolean;
     onLoadMoreTimeline: () => void;
     onShowNewestTimeline: () => void;
+    onSelectSource?: (source: Friend["sources"][number]) => void;
   }): ReactElement {
     return (
       <FriendDetailPanel
@@ -113,12 +116,14 @@ describe("FriendDetailPanel timeline paging", () => {
         onShowNewestTimeline={onShowNewestTimeline}
         onLogReachOut={() => undefined}
         onOpenMap={() => undefined}
+        onSelectSource={onSelectSource}
       />
     );
   }
 
   it("offers older posts from newest and an explicit return after paging", async () => {
     const onLoadMoreTimeline = vi.fn();
+    const onSelectSource = vi.fn();
     const onShowNewestTimeline = vi.fn();
     container = document.createElement("div");
     document.body.append(container);
@@ -130,12 +135,18 @@ describe("FriendDetailPanel timeline paging", () => {
           timelineAwayFromNewest: false,
           timelineHasMore: true,
           onLoadMoreTimeline,
+          onSelectSource,
           onShowNewestTimeline,
         }),
       );
     });
+    const chip = container.querySelector<HTMLButtonElement>('button[title^="Select RSS profile"]')!;
+    expect(chip).not.toBeNull();
+    await act(async () => chip.click());
+    expect(onSelectSource).toHaveBeenCalledWith(friend.sources[0]);
+    expect(container.querySelector('a[href="https://example.test/ada"]')).toBeNull();
 
-    expect(container.textContent).toContain("130 captured posts");
+    expect(container.textContent).not.toContain("captured posts");
     expect(buttonNamed(container, "Back to newest")).toBeNull();
     buttonNamed(container, "Older posts")?.click();
     expect(onLoadMoreTimeline).toHaveBeenCalledOnce();

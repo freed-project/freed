@@ -31,9 +31,10 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import { discoveredSocialAccountFromItem, type FeedItem } from "@freed/shared";
+import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   animationAwareScrollBehavior,
@@ -386,7 +387,7 @@ export function FeedView() {
     openBoundedSavedFeedReader,
     openUrl,
     queryLibraryCore,
-    upsertLibraryAccount,
+    readLibraryAccountDetail,
   } = platform;
   const readOnly = platform.interactionMode === "read-only";
   const canAddFeeds = !!addRssFeed;
@@ -409,6 +410,7 @@ export function FeedView() {
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setVisibleFeedTotalCount = useAppStore(
     (s) => s.setVisibleFeedTotalCount,
@@ -446,19 +448,15 @@ export function FeedView() {
           queryId: "filter_scope_summary_v1",
           schemaVersion: 1,
         });
-        let accountId = scope.accountId;
+        const accountId = scope.accountId;
         if (!accountId) {
-          const draft = discoveredSocialAccountFromItem(item);
-          if (!draft) return;
-          if (!upsertLibraryAccount) {
-            throw new Error("SQLite Account mutation is unavailable");
-          }
-          await upsertLibraryAccount(draft);
-          accountId = draft.id;
+          throw new Error("No Library account is associated with this author");
         }
-
+        const account = await readLibraryAccountDetail?.(accountId);
         setSelectedItem(null);
-        setSelectedAccount(accountId);
+        // Each selection action clears the other kind of selection.
+        if (account?.personId) setSelectedPerson(account.personId);
+        else setSelectedAccount(accountId);
         setActiveView("friends");
       } catch {
         toast.error("Freed could not open this author from the Library.");
@@ -469,7 +467,8 @@ export function FeedView() {
       setActiveView,
       setSelectedAccount,
       setSelectedItem,
-      upsertLibraryAccount,
+      readLibraryAccountDetail,
+      setSelectedPerson,
     ],
   );
 
@@ -750,9 +749,13 @@ export function FeedView() {
     selectedItemPin.selectedItemId === selectedItemId
       ? selectedItemPin.item
       : null;
+  // A cold deep link can name an item outside the resident feed pages. Read
+  // exactly that row without expanding the bounded feed or selecting a neighbor.
+  const selectedItemDetail = useLibraryItemDetail(selectedItemId, libraryItemVersion);
   const selectedItem =
     residentSelectedItem ??
-    (boundedFeedEligible ? currentSelectedItemPin : null);
+    (boundedFeedEligible ? currentSelectedItemPin : null) ??
+    selectedItemDetail.item;
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
@@ -812,9 +815,9 @@ export function FeedView() {
           ];
     const pinnedSelection =
       boundedFeedEligible &&
-      currentSelectedItemPin?.globalId === selectedItemId &&
+      selectedItem?.globalId === selectedItemId &&
       !residentItems.some((item) => item.globalId === selectedItemId)
-        ? currentSelectedItemPin
+        ? selectedItem
         : null;
     return pinnedSelection
       ? [pinnedSelection, ...residentItems]
@@ -822,7 +825,7 @@ export function FeedView() {
   }, [
     readerWindow,
     boundedFeedEligible,
-    currentSelectedItemPin,
+    selectedItem,
     selectedItemId,
     visibleItems,
   ]);
@@ -842,6 +845,7 @@ export function FeedView() {
           );
         }
         setSelectedItem(item.globalId);
+        if (readOnly) platform.onReadOnlyItemOpened?.(item);
         if (!readOnly) markAsRead(item.globalId);
       };
 
@@ -860,6 +864,7 @@ export function FeedView() {
     [
       markAsRead,
       patchBoundedItems,
+      platform.onReadOnlyItemOpened,
       readOnly,
       runFeedLayoutTransition,
       selectedItemId,

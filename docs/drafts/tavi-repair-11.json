@@ -1,0 +1,65 @@
+{
+  "status": "Both entries lead-approved and integrated into existing Tavi slots 7 and 10, after adding their two catalog records. Slot 9 received only the approved intruder-arrival continuity repair.",
+  "entries": [
+    {
+      "id": "tavi-repair-11-01",
+      "characterId": "tavi-tilt",
+      "replacement": {
+        "episodeNumber": 7,
+        "oldTitle": "The door went first",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "rss",
+      "theme": "wonder",
+      "title": "The sand started it",
+      "body": "The black sand is full of tiny flashes. I chose the brightest one, bent down and lost it. Straightened up. There it was.\n\nI tried approaching from the other side. That flash went out and three others started. I lowered myself very slowly. They all stopped.\n\nI backed up and found a whole patch of them. Down. Gone. Up. There.\n\nI don't know what the sand thinks we're playing. I've stopped trying to pick it up. I'm just going up and down now.",
+      "image": {
+        "title": "File:Odontodactylus scyllarus Réunion.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/1/1e/Odontodactylus_scyllarus_R%C3%A9union.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Odontodactylus_scyllarus_R%C3%A9union.jpg",
+        "sha1": "a91e7465bb4ecc52d9b303bf76e61c0d93e4670a",
+        "width": 5290,
+        "height": 3527,
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "creator": "Cédric Péneau",
+        "description": "<i><a href=\"//commons.wikimedia.org/wiki/Category:Odontodactylus_scyllarus\" title=\"Category:Odontodactylus scyllarus\">Odontodactylus scyllarus</a></i> observed at <a href=\"//commons.wikimedia.org/wiki/La_R%C3%A9union\" class=\"mw-redirect\" title=\"La Réunion\">la Réunion</a> (western Indian ocean).",
+        "categories": "Odontodactylus scyllarus|Taken with Nikon D7200|Sea life of Réunion island lagoons|Items with VRTS permission confirmed|Unassessed QI candidates|Pictures by Cédric Peneau|Files with coordinates missing SDC location of creation",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Exact photograph shows a whole peacock mantis shrimp upright on black sand with many small bright grains. The change in viewing angle and playful response are fictional experience grounded in those actual visible glints.",
+        "contactSheet": "output/playwright/legacy-ocean-10-tavi-selected.png"
+      }
+    },
+    {
+      "id": "tavi-repair-11-02",
+      "characterId": "tavi-tilt",
+      "replacement": {
+        "episodeNumber": 10,
+        "oldTitle": "A better fit",
+        "expectedOldMediaSha1": null
+      },
+      "platform": "instagram",
+      "theme": "courtship",
+      "title": "Within reach",
+      "body": "She said my antennae were lovely. I had been showing her my clubs. I put those away.\n\nI meant to thank her. Instead I described how far my antennae could reach.\n\nShe said she could see that.\n\nI pulled them back. She moved closer.",
+      "image": {
+        "title": "File:Odontodactylus scyllarus1.jpg",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/b/b5/Odontodactylus_scyllarus1.jpg",
+        "source": "https://commons.wikimedia.org/wiki/File:Odontodactylus_scyllarus1.jpg",
+        "sha1": "b05602b8f4c57ca8ef96874a008140cf042fa851",
+        "width": 3264,
+        "height": 2448,
+        "license": "CC BY 2.5",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+        "creator": "Jens Petersen",
+        "description": "Picture of peacock mantis shrimp (<i><a href=\"//commons.wikimedia.org/wiki/Odontodactylus_scyllarus\" title=\"Odontodactylus scyllarus\">Odontodactylus scyllarus</a></i>). Taken at Tasik Ria house reef. Manado, Indonesia.",
+        "categories": "Odontodactylus scyllarus|GFDL|Featured pictures of Indonesia|License migration redundant|Self-published work|Featured pictures on Wikipedia, Persian|Featured pictures of Malacostraca",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Exact front-facing portrait prominently shows long extended antennae and folded striking appendages. The dialogue and partner are fictional offscreen context, not falsely identified image subjects.",
+        "contactSheet": "output/playwright/legacy-ocean-10-tavi-selected.png"
+      }
+    }
+  ]
+}

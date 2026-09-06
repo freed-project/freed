@@ -1,4 +1,5 @@
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+import { isFreedDemoMode } from "./demo-mode";
 import {
   parseLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
@@ -28,6 +29,9 @@ const scope = globalThis as unknown as WorkerScope;
 const useMemoryE2eStorage =
   import.meta.env.VITE_FREED_PWA_SQLITE_MEMORY_E2E === "1" &&
   scope.name === "freed-library-core-sqlite-memory-e2e";
+const useDemoMemoryStorage = scope.name === "freed-library-core-sqlite-demo" &&
+  isFreedDemoMode(scope.location.hostname, undefined, "?freed-demo=1");
+const useMemoryStorage = useMemoryE2eStorage || useDemoMemoryStorage;
 let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
 let releaseOwnership: (() => void) | null = null;
@@ -93,15 +97,17 @@ async function acquireOwnership(): Promise<void> {
 async function open(): Promise<PwaLibraryCoreSqliteEngine> {
   if (engine) return engine;
   let openingStage = "acquire writer ownership";
-  await acquireOwnership();
+  // Anonymous demo databases belong to this worker alone. They never open
+  // OPFS, so they must not acquire the persistent Library's origin-wide lock.
+  if (!useDemoMemoryStorage) await acquireOwnership();
   let openingEngine: PwaLibraryCoreSqliteEngine | null = null;
   try {
     openingStage = "initialize SQLite WebAssembly";
     const sqlite3 = await sqlite3InitModule();
-    openingStage = useMemoryE2eStorage
-      ? "open the test memory database"
+    openingStage = useMemoryStorage
+      ? "open the isolated memory database"
       : "install the OPFS SAH pool VFS";
-    const database = useMemoryE2eStorage
+    const database = useMemoryStorage
       ? new sqlite3.oo1.DB(":memory:", "c")
       : new (
           await installPwaLibraryCoreOpfsSahPool((options) =>
@@ -118,7 +124,7 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     openingStage = "reconcile the OPFS content vault";
     const nextContentVault = new PwaLibraryCoreOpfsContentVault(
       next,
-      useMemoryE2eStorage ? emptyE2eContentRangeStorage : undefined,
+      useMemoryStorage ? emptyE2eContentRangeStorage : undefined,
     );
     await nextContentVault.reconcile();
     engine = next;

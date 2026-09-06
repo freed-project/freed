@@ -1009,6 +1009,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --print-provider-subdiff is a read-only query, so it needs no PR title.
+if ${PRINT_PROVIDER_SUBDIFF}; then
+  # This path never consumes a lease, including when later preflight fails.
+  trap - EXIT
+fi
 if [[ -z "${TITLE}" ]] && ! ${PRINT_PROVIDER_SUBDIFF}; then
   usage
   exit 1
@@ -1072,6 +1076,11 @@ PROVIDER_VISIBLE_FILES="${COMMITTED_PROVIDER_VISIBLE_FILES}"
 
 if [[ "${BASE_BRANCH}" == "main" ]] && has_worktree_changes; then
   echo "Error: main publishing requires a committed, clean branch." >&2
+  exit 1
+fi
+
+if ${PRINT_PROVIDER_SUBDIFF} && has_worktree_changes; then
+  echo "Error: --print-provider-subdiff requires a committed, clean branch; it never stages or commits files." >&2
   exit 1
 fi
 

@@ -1,0 +1,315 @@
+{
+  "status": "Seven root-approved avatar mappings were added. Lucette, Hugo, and Yuri have revised crops pending root visual review.",
+  "sourceManifests": [
+    "packages/shared/src/sample-corpus-strange-eight-media.json",
+    "packages/shared/src/sample-corpus-strange-wild-media.json"
+  ],
+  "contactSheetPath": "/Users/aubreyfalconer/dev/freed-demo-500-corpus/output/playwright/strange-avatar-crops-09-revised.png",
+  "contactSheetDimensions": {
+    "width": 720,
+    "height": 236
+  },
+  "cropMethod": "Faithful implementation of cropDecodedGalaxyAvatar: square side=min(width,height)/zoom; focal center clamped to source bounds; 184px circular mask for review presentation.",
+  "records": [
+    {
+      "identityNameBase": "Akio Sheen",
+      "id": "commons-strange-eight-08-ee5b0a23",
+      "sha1": "ee5b0a2346ffd42485ec7920fef7c8bd7c610040",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/54/W_tamamusi2081.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-ee5b0a23-ee5b0a23.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 127664,
+        "actualSha1": "ee5b0a2346ffd42485ec7920fef7c8bd7c610040",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 800,
+        "height": 600
+      },
+      "proposedFocalPoint": {
+        "x": 0.5,
+        "y": 0.5,
+        "zoom": 1.25
+      },
+      "cropPixels": {
+        "left": 160,
+        "top": 60,
+        "side": 480
+      },
+      "visibleFraming": "Centered beetle head and iridescent wing covers, retaining a little leaf.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Lucette Vein",
+      "id": "commons-strange-eight-08-35274dc1",
+      "sha1": "35274dc188adf8c331cec1f1fa64f5a292cd081c",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Chrysopidae_-_Chrysoperla_carnea_group.jpg/960px-Chrysopidae_-_Chrysoperla_carnea_group.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-35274dc1-a4280394.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 170614,
+        "actualSha1": "a4280394715915bfae842e2bd04c8f6a9c46d4fc",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 718
+      },
+      "proposedFocalPoint": {
+        "x": 0.43,
+        "y": 0.6,
+        "zoom": 2
+      },
+      "cropPixels": {
+        "left": 233,
+        "top": 251,
+        "side": 359
+      },
+      "visibleFraming": "Close green head and forebody, with just enough transparent wing to identify her.",
+      "reviewStatus": "revised crop pending root visual review"
+    },
+    {
+      "identityNameBase": "Greta Blade",
+      "id": "commons-strange-eight-08-61df0e82",
+      "sha1": "61df0e82ddecdc3579fd1f2b4ac8098daafc1929",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Female_Tettigonia_viridissima_on_hand.jpg/960px-Female_Tettigonia_viridissima_on_hand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-61df0e82-f6795b33.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 143457,
+        "actualSha1": "f6795b3312af8c2bd863d0320b72d32b8caa089c",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 720
+      },
+      "proposedFocalPoint": {
+        "x": 0.49,
+        "y": 0.47,
+        "zoom": 1.35
+      },
+      "cropPixels": {
+        "left": 204,
+        "top": 72,
+        "side": 533
+      },
+      "visibleFraming": "Female cricket body, face, legs and visible ovipositor over the supporting palm.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Hugo Plush",
+      "id": "commons-strange-eight-08-864a4039",
+      "sha1": "864a40391372478cb552c4611505c641284c098d",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Peripatoides_novaezealandiae_150609625.jpg/960px-Peripatoides_novaezealandiae_150609625.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-864a4039-07b8b06b.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 271435,
+        "actualSha1": "07b8b06b8aa575a4038dbb19ffc788f6886d381e",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 640
+      },
+      "proposedFocalPoint": {
+        "x": 0.18,
+        "y": 0.73,
+        "zoom": 2
+      },
+      "cropPixels": {
+        "left": 13,
+        "top": 307,
+        "side": 320
+      },
+      "visibleFraming": "Velvet-worm head and the nearest rows of short legs, rather than anonymous body texture.",
+      "reviewStatus": "revised crop pending root visual review"
+    },
+    {
+      "identityNameBase": "Barnaby Many",
+      "id": "commons-strange-eight-08-730c8b9a",
+      "sha1": "730c8b9acda2c3c1d833423c8014e7e0dd4cf08e",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Archispirostreptus_gigas_2009_G1.jpg/960px-Archispirostreptus_gigas_2009_G1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-730c8b9a-98bc776c.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 509300,
+        "actualSha1": "98bc776c67fdb017179a699fa68df5d9ec31a750",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 847
+      },
+      "proposedFocalPoint": {
+        "x": 0.5,
+        "y": 0.5,
+        "zoom": 1.2
+      },
+      "cropPixels": {
+        "left": 127,
+        "top": 71,
+        "side": 706
+      },
+      "visibleFraming": "Tight millipede coil, with the concentric body shape intact.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Penny Focus",
+      "id": "commons-strange-eight-08-1f0d5383",
+      "sha1": "1f0d53836e150a08fd44b1addb8a3d938a5b0759",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Eyes_of_a_Female_Jumping_Spider_-_Phidippus_regius_-_Florida_%288177287529%29.jpg/960px-Eyes_of_a_Female_Jumping_Spider_-_Phidippus_regius_-_Florida_%288177287529%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-eight-08-1f0d5383-bdb4f03b.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 244966,
+        "actualSha1": "bdb4f03beed9bc8b34b1fa042599986652e23e9e",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 638
+      },
+      "proposedFocalPoint": {
+        "x": 0.52,
+        "y": 0.5,
+        "zoom": 1.35
+      },
+      "cropPixels": {
+        "left": 263,
+        "top": 83,
+        "side": 473
+      },
+      "visibleFraming": "Face-on jumping-spider portrait, prioritizing the large forward eyes.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Pippa Fold",
+      "id": "commons-strange-wild-07-66f413e2",
+      "sha1": "66f413e28dcd1fc172084d8128ae086916b5c47d",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/8/8e/Kaguaani_02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-wild-07-66f413e2-66f413e2.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 203746,
+        "actualSha1": "66f413e28dcd1fc172084d8128ae086916b5c47d",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 516,
+        "height": 750
+      },
+      "proposedFocalPoint": {
+        "x": 0.49,
+        "y": 0.45,
+        "zoom": 1.25
+      },
+      "cropPixels": {
+        "left": 46,
+        "top": 131,
+        "side": 413
+      },
+      "visibleFraming": "Colugo face, forelimb and folded membrane against the trunk.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Rudi Glide",
+      "id": "commons-strange-wild-07-55ffd1d7",
+      "sha1": "55ffd1d7f455bf3169a24ceef7e4dbc88f355915",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Galeopterus_variegatus_132071386.jpg/960px-Galeopterus_variegatus_132071386.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-wild-07-55ffd1d7-dbb274c3.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 317931,
+        "actualSha1": "dbb274c32530208c8a43f38f4f647eab33fcd57f",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 1280
+      },
+      "proposedFocalPoint": {
+        "x": 0.48,
+        "y": 0.43,
+        "zoom": 1.35
+      },
+      "cropPixels": {
+        "left": 105,
+        "top": 195,
+        "side": 711
+      },
+      "visibleFraming": "Distinct reddish colugo face and body against the trunk.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Mireille Tap",
+      "id": "commons-strange-wild-07-7da4a420",
+      "sha1": "7da4a4206ac49800bd46353893b059b839b6ca29",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/b/ba/Aye-aye_%28Daubentonia_madagascariensis%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-wild-07-7da4a420-7da4a420.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 163963,
+        "actualSha1": "7da4a4206ac49800bd46353893b059b839b6ca29",
+        "matchesManifestSha1": true
+      },
+      "actualDimensions": {
+        "width": 600,
+        "height": 445
+      },
+      "proposedFocalPoint": {
+        "x": 0.5,
+        "y": 0.5,
+        "zoom": 1.3
+      },
+      "cropPixels": {
+        "left": 129,
+        "top": 51,
+        "side": 342
+      },
+      "visibleFraming": "Aye-aye face, hands and banana inflorescence.",
+      "reviewStatus": "root-approved mapping added"
+    },
+    {
+      "identityNameBase": "Yuri Thaw",
+      "id": "commons-strange-wild-07-53ec7831",
+      "sha1": "53ec7831697a3718c9997e03d364575127b51f09",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Saiga_tatarica_tatarica_128448849.jpg/960px-Saiga_tatarica_tatarica_128448849.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloadPath": "/tmp/strange-avatar-crops/commons-strange-wild-07-53ec7831-8b1d80cc.jpg",
+      "download": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "byteLength": 179510,
+        "actualSha1": "8b1d80cc963ca75b2078029f376c1eb389984a34",
+        "matchesManifestSha1": false
+      },
+      "actualDimensions": {
+        "width": 960,
+        "height": 640
+      },
+      "proposedFocalPoint": {
+        "x": 0.32,
+        "y": 0.59,
+        "zoom": 2
+      },
+      "cropPixels": {
+        "left": 147,
+        "top": 218,
+        "side": 320
+      },
+      "visibleFraming": "Young saiga face and tightly tucked forelegs, without the full reclining body.",
+      "reviewStatus": "revised crop pending root visual review"
+    }
+  ]
+}

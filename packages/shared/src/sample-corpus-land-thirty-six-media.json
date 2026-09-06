@@ -1,0 +1,50 @@
+[
+  {
+    "id": "land-regular-36-02",
+    "subject": "Bison bison",
+    "identityNameBase": "Oswin Broadback",
+    "category": "wildlife",
+    "sha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/b82dc1fa-8348-47e9-9807-b2fe3d406c10/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+    "creator": "NPS Photo",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+    "width": 2592,
+    "height": 1944,
+    "alt": "Two adult bison bulls press lowered heads together in grass; the left bull has one eye visible, with other bison behind.",
+    "detail": "Two adult bison bulls press lowered heads together in grass; the left bull has one eye visible, with other bison behind."
+  },
+  {
+    "id": "land-regular-36-03",
+    "subject": "Pelecanus erythrorhynchos",
+    "identityNameBase": "Otis Gulp",
+    "category": "wildlife",
+    "sha1": "0f25dd7d67722c4aed6337242b0fdb71d8740f86",
+    "imageUrl": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2024-03-6/28909.jpg?itok=rvl2TUD0",
+    "sourceUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+    "creator": "Koerner, Tom/USFWS",
+    "license": "Public domain",
+    "licenseUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+    "width": 1300,
+    "height": 742,
+    "alt": "A white pelican stands or floats upright in shallow water with both wings extended, black flight feathers visible and several other white pelicans nearby.",
+    "detail": "A white pelican stands or floats upright in shallow water with both wings extended, black flight feathers visible and several other white pelicans nearby."
+  },
+  {
+    "id": "land-regular-36-04",
+    "subject": "Corvus corax",
+    "identityNameBase": "Maud Overhead",
+    "category": "wildlife",
+    "sha1": "cd55957448aa58909b54339da17367cc300c6c6b",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/19b6b04f-53f0-40a2-b370-39ea5799776a/original.jpg",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+    "creator": "NPS/Mark Marshall",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+    "width": 1999,
+    "height": 1277,
+    "alt": "A deep bird-shaped depression and clearly separated wing-feather impressions mark snow, with other tracks along the right edge; no bird is present.",
+    "detail": "A deep bird-shaped depression and clearly separated wing-feather impressions mark snow, with other tracks along the right edge; no bird is present."
+  }
+]

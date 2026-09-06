@@ -1,0 +1,36 @@
+{
+  "batchId": "deepsea-media-06",
+  "status": "partial-curation-seven-reuse-cleared-one-quarantined",
+  "reviewRequirement": "Every accepted source image must be individually viewed at its exact URL before this file can contain it.",
+  "blocker": {
+    "kind": "remaining-four-not-curated",
+    "detail": "Eight images are individually viewed. This bounded follow-up did not reach twelve without returning to Commons, which remains rate-limited.",
+    "requiredResolution": "Resume later with a fresh NOAA gallery search or after Commons rate limit clears."
+  },
+  "acceptedImages": [
+    {"species":"Graneledone boreopacifica","group":"deep Pacific octopus","sourceUrl":"https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica_2.jpg","imageUrl":"https://upload.wikimedia.org/wikipedia/commons/1/1e/Graneledone_boreopacifica_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled","creator":"NOAA/MBARI","license":"Public domain","licenseEvidenceUrl":"https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica_2.jpg","width":594,"height":594,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/04.jpg","visibleFacts":"A pink, pebble-textured octopus spreads seven visible arms across dark deep seafloor sediment; several tips curl tightly."},
+    {"species":"Graneledone boreopacifica","group":"deep Pacific octopus","sourceUrl":"https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica2.jpg","imageUrl":"https://upload.wikimedia.org/wikipedia/commons/0/09/Graneledone_boreopacifica2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled","creator":"IchHier--15er","license":"CC BY-SA 4.0","licenseEvidenceUrl":"https://commons.wikimedia.org/wiki/File:Graneledone_boreopacifica2.jpg","width":843,"height":809,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/05.jpg","visibleFacts":"A pale octopus curls its arms tightly among a dark, rough deep-seafloor substrate."},
+    {"species":"Graneledone boreopacifica","group":"deep Pacific octopus","sourceUrl":"https://commons.wikimedia.org/wiki/File:Octopus_(Graneledone_boreopacifica)_Monterey_Bay_National_Marine_Sanctuary_(43101889980).jpg","imageUrl":"https://upload.wikimedia.org/wikipedia/commons/c/c1/Octopus_%28Graneledone_boreopacifica%29_Monterey_Bay_National_Marine_Sanctuary_%2843101889980%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled","creator":"National Marine Sanctuaries, NOAA/MBARI","license":"Public domain","licenseEvidenceUrl":"https://commons.wikimedia.org/wiki/File:Octopus_(Graneledone_boreopacifica)_Monterey_Bay_National_Marine_Sanctuary_(43101889980).jpg","width":1200,"height":900,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/03.jpg","visibleFacts":"A pink octopus extends long arms on sediment beside a large branching deep-sea coral."},
+    {"species":"jellyfish, taxon not asserted by NOAA page","group":"deep-water jellyfish","sourceUrl":"https://oceanexplorer.noaa.gov/multimedia/jellyfish-3/","imageUrl":"https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive06-jellyfish.jpg","creator":"NOAA Ocean Exploration, 2025 Beyond the Blue","license":"Public domain","licenseEvidenceUrl":"https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/","width":1920,"height":1080,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/noaa-jelly-red.jpg","visibleFacts":"A saturated red jellyfish with a thick frilled bell and long pale-orange filaments floats against dark blue water."},
+    {"species":"octopus, taxon not asserted by NOAA page","group":"deep-water octopus","sourceUrl":"https://oceanexplorer.noaa.gov/multimedia/octopus/","imageUrl":"https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-octopus.jpg","creator":"NOAA Ocean Exploration, 2025 Beyond the Blue","license":"Public domain","licenseEvidenceUrl":"https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/","width":1920,"height":1080,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/noaa-octopus-brittle.jpg","visibleFacts":"A brown octopus with a sharply visible gold eye occupies a dense thicket of pink brittle-star arms."},
+    {"species":"Atolla sp.","group":"deep-water jellyfish","sourceUrl":"https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210117/","imageUrl":"https://oceanexplorer.noaa.gov/wp-content/uploads/2021/01/20210117-hires.jpg","creator":"Exploring the Inner Space of the Celebes Sea 2007 Exploration, NOAA Ocean Exploration","license":"Public domain","licenseEvidenceUrl":"https://oceanexplorer.noaa.gov/faqs/","width":600,"height":402,"sha1":null,"temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/noaa-atolla.jpg","visibleFacts":"A red-orange Atolla jellyfish floats against black water, its dark bell cap, thick rim, and long trailing tentacles all visible."}
+  ],
+  "quarantinedImages": [
+    {"sourceUrl":"https://oceanexplorer.noaa.gov/multimedia/casper-octopus/","imageUrl":"https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/NA154-Casper-Octopus-OET.jpg","creator":"Ocean Exploration Trust, NOAA","temporaryInspectionPath":"/tmp/freed-deepsea-media-06.NiU7f1/noaa-casper.jpg","reason":"The credit includes Ocean Exploration Trust and the source page does not state a license for that third-party contribution. NOAA hosting is not reuse authority."},
+    {"sourceUrl":"https://commons.wikimedia.org/wiki/File:Mar22-1-hires.jpg","reason":"Independent reviewer found that the record's local file 11.jpg is the curled Dumbo-hires image, not the exact Mar22 URL. The URL-to-file mapping is therefore unverified; do not use its visual claim."}
+  ],
+  "sourceLeadsNotAccepted": [
+    {
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:2016_Hohonu_Moana,_Exploring_Deepwaters_off_Hawaii_-_Flickr_-_NOAA_Ocean_Exploration_%5E_Research.jpg",
+      "claimedTaxon": "undescribed deep-water octopod, according to the NOAA/Commons description",
+      "attribution": "NOAA Ocean Exploration and Research",
+      "reasonNotAccepted": "Not visually inspected in this task."
+    },
+    {
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Muusoctopus_sp.jpg",
+      "claimedTaxon": "Muusoctopus sp., according to the NOAA/Commons description",
+      "attribution": "NOAA Office of Ocean Exploration and Research",
+      "reasonNotAccepted": "Not visually inspected in this task."
+    }
+  ]
+}

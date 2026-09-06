@@ -63,7 +63,7 @@ When product work changes any `docs/PHASE-*.md` file:
    Missing optional broker provisioning does not block the normal publication
    path. A partial trusted handoff still fails closed.
 2. Confirm the PR targets `dev`, required checks passed for the exact head SHA, and the PR state matches the granted authority.
-3. Do not merge owner-review or provider-visible work autonomously.
+3. Merge only when the active numbered authorization covers that lane and the candidate passes its required checks. Preserve any explicit owner review checkpoint. Provider-visible work also requires its applicable Gate 1 artifact; Library Core activation requires its separate activation decision. A skill does not create a second approval step for an action the owner has already authorized.
 4. For governed stability or control-plane work, record the issue-linked
    operational task ID through the outcome helper after merge while the task is
    in `validated`, using the live actor lease and exact merged-head evidence.

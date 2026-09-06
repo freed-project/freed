@@ -1,0 +1,1038 @@
+{
+  "batch": "land-regular-45",
+  "scope": "Proposal only; no runtime changes or publication",
+  "candidates": [
+    {
+      "id": "land-regular-45-01",
+      "status": "revised-candidate-pending-lead",
+      "characterId": "beatrice-bark",
+      "characterName": "Beatrice Bark",
+      "platform": "facebook",
+      "format": "regular",
+      "title": "Still on the stem",
+      "prose": "I was going to make this cherry last.\n\nThe others had gone down almost before I tasted them. This one I touched with my tongue, still hanging from its stem. Turned my head farther around the trunk. Held it between my lips. Warm skin, then a little split, and the juice came out.\n\nI wanted more of that. Pulled.\n\nSwallowed it.\n\nKept my mouth open against the empty stem for a moment. Licked it. There was still a little sweetness there, so I licked it again, hugging the tree with all four feet.",
+      "mediaIndex": 9,
+      "alt": "A black bear clings around a leafy tree trunk, head tilted sideways, with its tongue extended beneath a dark cherry.",
+      "visibleScene": "Black bear gripping trunk, tilted head, tongue and individual fruit at mouth; foliage and branches. NPS expressly identifies eating a single cherry.",
+      "fictionBoundary": "Intent to prolong the taste, prior cherries, skin splitting, pulling, swallowing and licking the emptied stem are fictional sequence around visible tongue-to-cherry contact. No companion, descent or documented before/after claimed.",
+      "ageSex": "Independent adult-sized female in fiction; source does not record sex or exact age. No pregnancy or motherhood claim.",
+      "source": {
+        "index": 9,
+        "query": "black bear",
+        "item": 43,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+        "sourceCachePath": "/tmp/freed-land45/9.html",
+        "record": {
+          "AltText": "A black bear with an open mouth clinging to a tree eating a single cherry.",
+          "AssetBaseType": "File",
+          "AssetID": "a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "About 85% of a black bears diet in the Smokies consist of plant matter like cherries.",
+          "ImageCreateDate": {
+            "Date": "08/31/2023"
+          },
+          "ImageCreateDateTime": "08/31/2023 07:54:45 AM",
+          "Keywords": [
+            "wildlife",
+            "animal",
+            "Smokies",
+            "Great Smoky Mountains",
+            "mammal",
+            "black bear",
+            "bears",
+            "American black bear"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Great Smoky Mountains National Park",
+              "Type": "National Park",
+              "Code": "GRSM"
+            }
+          ],
+          "PhotoCredit": "NPS / Betty Blanton",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "meconnor",
+          "SubType": "jpeg",
+          "Title": "Black Bear Eating Cherries"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/a63a31a5-2c5c-44db-bc8c-342fd24ac19a/original.jpg?",
+          "publishedLabel": "205.3 KB, 909x954",
+          "localPath": "/tmp/freed-land45/9-original.jpg",
+          "bytes": 261183,
+          "width": 909,
+          "height": 954,
+          "sha1": "b74267db4425c3179ac3b6e7e7bf6d629bf8d5be",
+          "sha256": "2313087c4fa2eb06444749117345b5c1de590a25fcb012f2e17c25573350693f"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/a63a31a5-2c5c-44db-bc8c-342fd24ac19a/original.jpg?",
+          "publishedLabel": "205.3 KB, 909x954",
+          "localPath": "/tmp/freed-land45/9-delivery.jpg",
+          "bytes": 261183,
+          "width": 909,
+          "height": 954,
+          "sha1": "b74267db4425c3179ac3b6e7e7bf6d629bf8d5be",
+          "sha256": "2313087c4fa2eb06444749117345b5c1de590a25fcb012f2e17c25573350693f"
+        }
+      }
+    }
+  ],
+  "holds": [
+    {
+      "id": "land-regular-45-02",
+      "status": "hold",
+      "mediaIndices": [
+        4,
+        5
+      ],
+      "reason": "Beautiful pronghorn mother/fawn contact and reclining doe portrait, but no distinct developed episode earned. No new pronghorn identity or feeding/nursing inference."
+    },
+    {
+      "id": "land-regular-45-03",
+      "status": "hold",
+      "mediaIndices": [
+        11,
+        12
+      ],
+      "reason": "Bear fence investigation and mother/cub tree scene are visually useful, but current inventions would repeat bodily confusion or turn resting contact into an unsupported rescue. No prose proposed; no offspring canon acquired."
+    },
+    {
+      "id": "land-regular-45-04",
+      "status": "hold",
+      "mediaIndices": [
+        6
+      ],
+      "reason": "Kingfisher carries a visible fish, but 765x510 archive image is soft with bright fish detail; insufficient image quality to justify a profile."
+    }
+  ],
+  "discoveryLedger": [
+    {
+      "index": 1,
+      "query": "pronghorn",
+      "item": 15,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/d22bc004-a546-4c76-ac22-36b7212aedcc",
+      "sourceCachePath": "/tmp/freed-land45/1.html",
+      "record": {
+        "AltText": "a young pronghorn cautiously looks on while its mother grazes",
+        "AssetBaseType": "File",
+        "AssetID": "d22bc004-a546-4c76-ac22-36b7212aedcc",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Baby pronghorns only see their mother for about 20 minutes each day and are left safely hidden in the grass or brush to protect them from predators like coyotes.",
+        "ImageCreateDate": {
+          "Date": "06/12/2010"
+        },
+        "ImageCreateDateTime": "06/12/2010 07:19:51 AM",
+        "Keywords": [
+          "pronghorn",
+          "antelope",
+          "pronghorn fawn"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Pronghorn Doe and Fawn"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/d22bc004-a546-4c76-ac22-36b7212aedcc/original.jpg?",
+        "publishedLabel": "1.3 MB, 3872x2592",
+        "localPath": "/tmp/freed-land45/1-original.jpg",
+        "bytes": 1576338,
+        "width": 3872,
+        "height": 2592,
+        "sha1": "c945aa9e5deb90f2863362836f4bc9dbab2a5980",
+        "sha256": "85a887d5abd0ed4287a9d5420c3266c9bb44fa749a81ce8209545c1ead750375"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/d22bc004-a546-4c76-ac22-36b7212aedcc/proxyhires.jpg?",
+        "publishedLabel": "705.8 KB, 2000x1338",
+        "localPath": "/tmp/freed-land45/1-delivery.jpg",
+        "bytes": 722705,
+        "width": 1999,
+        "height": 1338,
+        "sha1": "1d76bcfaa55060c23e03f4666fb06869feed7d21",
+        "sha256": "52a21e62b02867a9b4d11852bfe2b6699182bf5672550284980ab207ec69126f"
+      }
+    },
+    {
+      "index": 2,
+      "query": "pronghorn",
+      "item": 16,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/61355285-ba68-47ed-9c88-be30a2b9df82",
+      "sourceCachePath": "/tmp/freed-land45/2.html",
+      "record": {
+        "AltText": "two baby pronghorns and their mother near the road",
+        "AssetBaseType": "File",
+        "AssetID": "61355285-ba68-47ed-9c88-be30a2b9df82",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "It's common for pronghorns to give birth to twins. Their mother will hide them away from each other while she forages. Fawns do not have a scent to protect them from predators.",
+        "ImageCreateDate": {
+          "Date": "07/08/2016"
+        },
+        "ImageCreateDateTime": "07/08/2016 11:28:01 AM",
+        "Keywords": [
+          "pronghorn",
+          "antelope",
+          "pronghorn fawn"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Pronghorn Twins and Mom"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/61355285-ba68-47ed-9c88-be30a2b9df82/original.jpg?",
+        "publishedLabel": "4.1 MB, 4928x3264",
+        "localPath": "/tmp/freed-land45/2-original.jpg",
+        "bytes": 4072978,
+        "width": 4928,
+        "height": 3264,
+        "sha1": "de17c90f87dd81eea0284c4b0b4b606ea6d0a39b",
+        "sha256": "128550639fe3d7bb94723e5c84b94670245c2922fdae191286e749dbd378ec98"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/61355285-ba68-47ed-9c88-be30a2b9df82/proxyhires.jpg?",
+        "publishedLabel": "971.9 KB, 2000x1324",
+        "localPath": "/tmp/freed-land45/2-delivery.jpg",
+        "bytes": 995226,
+        "width": 1999,
+        "height": 1324,
+        "sha1": "5d619f47893d17507177c307680f1690db0b6b9a",
+        "sha256": "8f2aa4f8c9bf2a718e7d97d7f1c3b163fe0e6626bb2ccaae71c0b4c2cc9696a8"
+      }
+    },
+    {
+      "index": 3,
+      "query": "pronghorn",
+      "item": 24,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1491fe32-2aca-4f07-8910-19fbdf6786cc",
+      "sourceCachePath": "/tmp/freed-land45/3.html",
+      "record": {
+        "AltText": "Doe and fawn are in sagebrush",
+        "AssetBaseType": "File",
+        "AssetID": "1491fe32-2aca-4f07-8910-19fbdf6786cc",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2016-11-18T15:02:21-07:00"
+          }
+        ],
+        "Description": "North American pronghorn doe and fawn",
+        "ImageCreateDate": {
+          "Date": "05/22/2016"
+        },
+        "ImageCreateDateTime": "05/22/2016 11:07:30 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "pronghorn",
+          "antilocapra americana",
+          "fawn",
+          "lamar valley",
+          "20160522_ndh-yell-2221"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Neal Herbert",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "North American pronghorn"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/1491fe32-2aca-4f07-8910-19fbdf6786cc/original.jpg?",
+        "publishedLabel": "8.6 MB, 3405x2270",
+        "localPath": "/tmp/freed-land45/3-original.jpg",
+        "bytes": 8971504,
+        "width": 3405,
+        "height": 2270,
+        "sha1": "d47ab9175478f5e87bffc3e7e93f1d058d8dd441",
+        "sha256": "b8fa7eb2a2c4ba5e5e20bf3eb4823a715e709efd96fb7a2ad36bdd1c963c48e3"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/1491fe32-2aca-4f07-8910-19fbdf6786cc/proxyhires.jpg?",
+        "publishedLabel": "1.7 MB, 2000x1333",
+        "localPath": "/tmp/freed-land45/3-delivery.jpg",
+        "bytes": 1792198,
+        "width": 2000,
+        "height": 1333,
+        "sha1": "b1ea58aa34ff017213eaa8176ef4b7c75ced299c",
+        "sha256": "b9396facbbc0f2fca5a9f9736266970631fb7719269616ae7f626d6ed8165b33"
+      }
+    },
+    {
+      "index": 4,
+      "query": "pronghorn",
+      "item": 26,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/af5edd8c-7676-43be-859f-de32edc1ba37",
+      "sourceCachePath": "/tmp/freed-land45/4.html",
+      "record": {
+        "AltText": "Doe and fawn stand between large boulders in the sagebrush",
+        "AssetBaseType": "File",
+        "AssetID": "af5edd8c-7676-43be-859f-de32edc1ba37",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2016-11-18T15:02:28-07:00"
+          }
+        ],
+        "Description": "North American pronghorn doe and fawn, Lamar Valley",
+        "ImageCreateDate": {
+          "Date": "05/22/2016"
+        },
+        "ImageCreateDateTime": "05/22/2016 11:01:34 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "pronghorn",
+          "antilocapra americana",
+          "fawn",
+          "lamar valley",
+          "20160522_ndh-yell-2084"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Neal Herbert",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "North American pronghorn"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/af5edd8c-7676-43be-859f-de32edc1ba37/original.jpg?",
+        "publishedLabel": "11.5 MB, 4439x2959",
+        "localPath": "/tmp/freed-land45/4-original.jpg",
+        "bytes": 12008859,
+        "width": 4439,
+        "height": 2959,
+        "sha1": "1baac892fae0a957efe24a8be3ac2fd1c296ee0e",
+        "sha256": "7b0141799aa1be09a9c4e719aa00a1f4960d87540bf0a70121e9e71d4f2a26bf"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/af5edd8c-7676-43be-859f-de32edc1ba37/proxyhires.jpg?",
+        "publishedLabel": "1.3 MB, 2000x1333",
+        "localPath": "/tmp/freed-land45/4-delivery.jpg",
+        "bytes": 1406671,
+        "width": 2000,
+        "height": 1333,
+        "sha1": "f6dfcb70626962d462c40f17c82fc893fba1825d",
+        "sha256": "0ef60ba3ddbe842df6de576d27dc3e68d8c5627b0fba52f1cea356489f90adac"
+      }
+    },
+    {
+      "index": 5,
+      "query": "pronghorn",
+      "item": 39,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a3c45219-d365-4018-bcac-8640329fce96",
+      "sourceCachePath": "/tmp/freed-land45/5.html",
+      "record": {
+        "AltText": "Doe is resting in grasses above a pond which shows her reflection.",
+        "AssetBaseType": "File",
+        "AssetID": "a3c45219-d365-4018-bcac-8640329fce96",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2014-08-25T13:04:08-06:00"
+          }
+        ],
+        "Description": "North American pronghorn doe, Lamar Valley",
+        "ImageCreateDate": {
+          "Date": "05/18/2014"
+        },
+        "ImageCreateDateTime": "05/18/2014 07:48:00 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "pronghorn",
+          "antilocapra americana",
+          "19447d"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Neal Herbert",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "North American pronghorn"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a3c45219-d365-4018-bcac-8640329fce96/original.jpg?",
+        "publishedLabel": "15.5 MB, 5617x3745",
+        "localPath": "/tmp/freed-land45/5-original.jpg",
+        "bytes": 16223315,
+        "width": 5617,
+        "height": 3745,
+        "sha1": "50b3e4aeca245c12842edc1f05ec8ff086618070",
+        "sha256": "42e20fb008bee273d493f56bc566532d51c709d608f5927beb76f806b06bbfbf"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a3c45219-d365-4018-bcac-8640329fce96/proxyhires.jpg?",
+        "publishedLabel": "2.0 MB, 2808x1872",
+        "localPath": "/tmp/freed-land45/5-delivery.jpg",
+        "bytes": 2081427,
+        "width": 2808,
+        "height": 1872,
+        "sha1": "9d49658512888d53ad415d531c640770bea4b6db",
+        "sha256": "bedd7503c14a522f613d109662d7821e1be64e16fc5be3292f5e73927886c8a0"
+      }
+    },
+    {
+      "index": 6,
+      "query": "kingfisher",
+      "item": 43,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/fdc45271-155d-451f-673b-f371065a38be",
+      "sourceCachePath": "/tmp/freed-land45/6.html",
+      "record": {
+        "AltText": "Belted Kingfisher, perched, fish in beak",
+        "AssetBaseType": "File",
+        "AssetID": "fdc45271-155d-451f-673b-f371065a38be",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Belted Kingfisher, perched, fish in beak",
+        "ImageCreateDate": {
+          "Text": "7/16/2010 1:18:10 AM"
+        },
+        "Keywords": [
+          "bird",
+          "fish",
+          "kingfisher",
+          "perch"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Grand Teton National Park",
+            "Type": "National Park",
+            "Code": "GRTE"
+          }
+        ],
+        "PrimaryType": "image",
+        "Publisher": "U.S. National Park Service",
+        "Rating": 3,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "amattson",
+        "SubType": "jpeg",
+        "Title": "Belted Kingfisher"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/FDC45271-155D-451F-673BF371065A38BE/original.jpg?",
+        "publishedLabel": "253.5 KB, 765x510",
+        "localPath": "/tmp/freed-land45/6-original.jpg",
+        "bytes": 259570,
+        "width": 765,
+        "height": 510,
+        "sha1": "41afb5d86d09251e49b1433f2f7f09eac5d56896",
+        "sha256": "c1f85d9b0990918ff501becb9b8da1634647cf222c30cfd43bf3d9b866cdb644"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/FDC45271-155D-451F-673BF371065A38BE/original.jpg?",
+        "publishedLabel": "253.5 KB, 765x510",
+        "localPath": "/tmp/freed-land45/6-delivery.jpg",
+        "bytes": 259570,
+        "width": 765,
+        "height": 510,
+        "sha1": "41afb5d86d09251e49b1433f2f7f09eac5d56896",
+        "sha256": "c1f85d9b0990918ff501becb9b8da1634647cf222c30cfd43bf3d9b866cdb644"
+      }
+    },
+    {
+      "index": 7,
+      "query": "black bear",
+      "item": 40,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ff2874cb-6980-4720-a518-372a928a0219",
+      "sourceCachePath": "/tmp/freed-land45/7.html",
+      "record": {
+        "AltText": "A cub walks on a large tree branch.",
+        "AssetBaseType": "File",
+        "AssetID": "ff2874cb-6980-4720-a518-372a928a0219",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "This cub is an example of a 1st year cub and is likely only a few months old.",
+        "ImageCreateDate": {
+          "Date": "06/06/2024"
+        },
+        "ImageCreateDateTime": "06/06/2024 03:04:32 PM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "black bear",
+          "bears",
+          "American black bear",
+          "cub"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "A Cub Walks on a Tree."
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/ff2874cb-6980-4720-a518-372a928a0219/original.jpg?",
+        "publishedLabel": "200.4 KB, 1259x954",
+        "localPath": "/tmp/freed-land45/7-original.jpg",
+        "bytes": 252226,
+        "width": 1259,
+        "height": 954,
+        "sha1": "b1fbca7cd3b9f3cdc44c1a2cc40d1d50ab629eab",
+        "sha256": "7b503b07155ce1e5e6e542163a5cdb1ba20de6ab3d552e5a0d500a89b8a0452e"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/ff2874cb-6980-4720-a518-372a928a0219/original.jpg?",
+        "publishedLabel": "200.4 KB, 1259x954",
+        "localPath": "/tmp/freed-land45/7-delivery.jpg",
+        "bytes": 252226,
+        "width": 1259,
+        "height": 954,
+        "sha1": "b1fbca7cd3b9f3cdc44c1a2cc40d1d50ab629eab",
+        "sha256": "7b503b07155ce1e5e6e542163a5cdb1ba20de6ab3d552e5a0d500a89b8a0452e"
+      }
+    },
+    {
+      "index": 8,
+      "query": "black bear",
+      "item": 42,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+      "sourceCachePath": "/tmp/freed-land45/8.html",
+      "record": {
+        "AltText": "Black bear head peeking out from behind a tree.",
+        "AssetBaseType": "File",
+        "AssetID": "5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Black bears hang out in trees.",
+        "ImageCreateDate": {
+          "Date": "08/31/2023"
+        },
+        "ImageCreateDateTime": "08/31/2023 07:54:46 AM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "bear",
+          "black bear",
+          "American black bear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "Black Bear in Tree"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/5a12c90d-24e8-4a98-ae10-63173fd47ed6/original.jpg?",
+        "publishedLabel": "174.7 KB, 772x954",
+        "localPath": "/tmp/freed-land45/8-original.jpg",
+        "bytes": 221778,
+        "width": 772,
+        "height": 954,
+        "sha1": "2fdcc7f0e69f5a4bf8ead5a2f6933700eec7c5d8",
+        "sha256": "70dadbb052c10dc4ea9d21e2fa35b4c2dc3f06cdd339da10e680ebc2c5b99e34"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/5a12c90d-24e8-4a98-ae10-63173fd47ed6/original.jpg?",
+        "publishedLabel": "174.7 KB, 772x954",
+        "localPath": "/tmp/freed-land45/8-delivery.jpg",
+        "bytes": 221778,
+        "width": 772,
+        "height": 954,
+        "sha1": "2fdcc7f0e69f5a4bf8ead5a2f6933700eec7c5d8",
+        "sha256": "70dadbb052c10dc4ea9d21e2fa35b4c2dc3f06cdd339da10e680ebc2c5b99e34"
+      }
+    },
+    {
+      "index": 9,
+      "query": "black bear",
+      "item": 43,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+      "sourceCachePath": "/tmp/freed-land45/9.html",
+      "record": {
+        "AltText": "A black bear with an open mouth clinging to a tree eating a single cherry.",
+        "AssetBaseType": "File",
+        "AssetID": "a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "About 85% of a black bears diet in the Smokies consist of plant matter like cherries.",
+        "ImageCreateDate": {
+          "Date": "08/31/2023"
+        },
+        "ImageCreateDateTime": "08/31/2023 07:54:45 AM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "black bear",
+          "bears",
+          "American black bear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "Black Bear Eating Cherries"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a63a31a5-2c5c-44db-bc8c-342fd24ac19a/original.jpg?",
+        "publishedLabel": "205.3 KB, 909x954",
+        "localPath": "/tmp/freed-land45/9-original.jpg",
+        "bytes": 261183,
+        "width": 909,
+        "height": 954,
+        "sha1": "b74267db4425c3179ac3b6e7e7bf6d629bf8d5be",
+        "sha256": "2313087c4fa2eb06444749117345b5c1de590a25fcb012f2e17c25573350693f"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a63a31a5-2c5c-44db-bc8c-342fd24ac19a/original.jpg?",
+        "publishedLabel": "205.3 KB, 909x954",
+        "localPath": "/tmp/freed-land45/9-delivery.jpg",
+        "bytes": 261183,
+        "width": 909,
+        "height": 954,
+        "sha1": "b74267db4425c3179ac3b6e7e7bf6d629bf8d5be",
+        "sha256": "2313087c4fa2eb06444749117345b5c1de590a25fcb012f2e17c25573350693f"
+      }
+    },
+    {
+      "index": 10,
+      "query": "black bear",
+      "item": 44,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/d06b9a53-6fe3-422d-a21c-2ecc35a7d6f0",
+      "sourceCachePath": "/tmp/freed-land45/10.html",
+      "record": {
+        "AltText": "A black bear with its mouth open and a cub hidden beside it.",
+        "AssetBaseType": "File",
+        "AssetID": "d06b9a53-6fe3-422d-a21c-2ecc35a7d6f0",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Smokies black bears typically give birth between the end of January and the middle of February. ",
+        "ImageCreateDate": {
+          "Date": "08/01/2023"
+        },
+        "ImageCreateDateTime": "08/01/2023 05:46:27 PM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "bear",
+          "black bear",
+          "American black bear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "Mother and Cub"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/d06b9a53-6fe3-422d-a21c-2ecc35a7d6f0/original.jpg?",
+        "publishedLabel": "188.2 KB, 1417x954",
+        "localPath": "/tmp/freed-land45/10-original.jpg",
+        "bytes": 231439,
+        "width": 1417,
+        "height": 954,
+        "sha1": "cc0167ccd0016be3bc7bff4f99f92e39462099fa",
+        "sha256": "64164a0b1ea22ac5e2bfe5efddac1db7deaf4c2e57a2858ee25d5d673c317184"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/d06b9a53-6fe3-422d-a21c-2ecc35a7d6f0/original.jpg?",
+        "publishedLabel": "188.2 KB, 1417x954",
+        "localPath": "/tmp/freed-land45/10-delivery.jpg",
+        "bytes": 231439,
+        "width": 1417,
+        "height": 954,
+        "sha1": "cc0167ccd0016be3bc7bff4f99f92e39462099fa",
+        "sha256": "64164a0b1ea22ac5e2bfe5efddac1db7deaf4c2e57a2858ee25d5d673c317184"
+      }
+    },
+    {
+      "index": 11,
+      "query": "black bear",
+      "item": 48,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/e8a5bccb-d4f9-434d-bdbd-df66f6c100e6",
+      "sourceCachePath": "/tmp/freed-land45/11.html",
+      "record": {
+        "AltText": "two cubs stand on their hind legs beside a barbed fence.",
+        "AssetBaseType": "File",
+        "AssetID": "e8a5bccb-d4f9-434d-bdbd-df66f6c100e6",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Bear cubs investigate a fence.",
+        "ImageCreateDate": {
+          "Date": "07/06/2023"
+        },
+        "ImageCreateDateTime": "07/06/2023 12:00:00 AM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "cubs",
+          "black bear",
+          "American black bear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "Bear Cubs Investigate a Fence"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/e8a5bccb-d4f9-434d-bdbd-df66f6c100e6/original.jpg?",
+        "publishedLabel": "139.8 KB, 1032x954",
+        "localPath": "/tmp/freed-land45/11-original.jpg",
+        "bytes": 177225,
+        "width": 1032,
+        "height": 954,
+        "sha1": "02208471014e4c75dfafecbcbe78a9fe0741eedb",
+        "sha256": "078218bbb61483c784a54089a1a24c3401c76edc1b18a9f41762b879e5419fbb"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/e8a5bccb-d4f9-434d-bdbd-df66f6c100e6/original.jpg?",
+        "publishedLabel": "139.8 KB, 1032x954",
+        "localPath": "/tmp/freed-land45/11-delivery.jpg",
+        "bytes": 177225,
+        "width": 1032,
+        "height": 954,
+        "sha1": "02208471014e4c75dfafecbcbe78a9fe0741eedb",
+        "sha256": "078218bbb61483c784a54089a1a24c3401c76edc1b18a9f41762b879e5419fbb"
+      }
+    },
+    {
+      "index": 12,
+      "query": "black bear",
+      "item": 50,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ac2502ed-ac46-4b7c-b9c3-63ef10f40be9",
+      "sourceCachePath": "/tmp/freed-land45/12.html",
+      "record": {
+        "AltText": "Two bears in a tree.",
+        "AssetBaseType": "File",
+        "AssetID": "ac2502ed-ac46-4b7c-b9c3-63ef10f40be9",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Cub & mother bear hanging out in a tulip tree.",
+        "ImageCreateDate": {
+          "Date": "06/06/2024"
+        },
+        "ImageCreateDateTime": "06/06/2024 03:09:05 PM",
+        "Keywords": [
+          "wildlife",
+          "animal",
+          "Smokies",
+          "Great Smoky Mountains",
+          "mammal",
+          "bear",
+          "black bear",
+          "American black bear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Smoky Mountains National Park",
+            "Type": "National Park",
+            "Code": "GRSM"
+          }
+        ],
+        "PhotoCredit": "NPS / Betty Blanton",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "meconnor",
+        "SubType": "jpeg",
+        "Title": "Cub & Mother Bear Hanging Out in a Tulip Tree"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/ac2502ed-ac46-4b7c-b9c3-63ef10f40be9/original.jpg?",
+        "publishedLabel": "333.0 KB, 1524x954",
+        "localPath": "/tmp/freed-land45/12-original.jpg",
+        "bytes": 413458,
+        "width": 1524,
+        "height": 954,
+        "sha1": "2afd5a08ea6e9da4e5b42b7c4aa69ac4dc8ca5cf",
+        "sha256": "d968457e71d541468135773044e83e1d57c9f527c500829388152b286ff2f72d"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/ac2502ed-ac46-4b7c-b9c3-63ef10f40be9/proxymdres.jpg?",
+        "publishedLabel": "202.6 KB, 1000x625",
+        "localPath": "/tmp/freed-land45/12-delivery.jpg",
+        "bytes": 207473,
+        "width": 998,
+        "height": 625,
+        "sha1": "b9e7db10d198e48a5be7258742967fd1a6db52fc",
+        "sha256": "c432b9067286e470381c3a83872a659783ef6f6ff7efaa9466cf5e7b3277ff34"
+      }
+    }
+  ],
+  "review": "All 12 exact originals individually opened before writing. Selected narrative 9 and portrait 8 delivery files individually opened. Both are the source-published original link, identical hashes and modest bytes. NPS source download labels differ from measured bytes; measured bytes below are authoritative. Mother/cub12 published medium also opened; held for prose. No blocked-source retries."
+}

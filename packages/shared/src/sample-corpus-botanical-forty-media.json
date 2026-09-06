@@ -1,0 +1,50 @@
+[
+  {
+    "id": "botanical40-01",
+    "subject": "shaggy mane mushroom",
+    "identityNameBase": "Lionel Fringe",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/be83ef40-c506-4589-a8b6-a15bd30cb8a9/proxyhires.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+    "sha1": "3af684f7eb63d02c01cc7672e84e40838756609b",
+    "creator": "NPS",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+    "width": 1500,
+    "height": 2000,
+    "alt": "An open shaggy mane cap has an inky black rim and hanging black strand, with a smaller white closed cap in front.",
+    "detail": "A mature open cap with a black rim, a long black strand descending from its margin, and a younger white cylindrical cap in front. The strand and age contrast remain legible in the published hires file."
+  },
+  {
+    "id": "botanical40-02",
+    "subject": "wrinkled peach mushroom",
+    "identityNameBase": "Sylvia Bead",
+    "category": "wildlife",
+    "imageUrl": "https://www.nps.gov/articles/images/Rhodotus_palmatusE.jpg",
+    "sourceUrl": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+    "sha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+    "creator": "NPS / Sarah Daugherty",
+    "license": "Public domain",
+    "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+    "width": 2313,
+    "height": 1735,
+    "alt": "A pink wrinkled-peach mushroom grows from decaying wood, with large amber droplets along its pale stem.",
+    "detail": "Pink reticulated cap, pale stem with many rounded amber drops and a larger pendant drop low on the stem. The source specifically identifies guttation."
+  },
+  {
+    "id": "botanical40-lionel-avatar",
+    "subject": "shaggy mane mushroom",
+    "identityNameBase": "Lionel Fringe",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/proxymdres.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+    "sha1": "b32628916e16633176a6b3e7fb25c00d2c65f8dd",
+    "creator": "NPS",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+    "width": 750,
+    "height": 1000,
+    "alt": "A single young white shaggy mane mushroom rises from moss and green grass.",
+    "detail": "A single young white shaggy mane mushroom rises from moss and green grass."
+  }
+]

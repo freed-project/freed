@@ -634,7 +634,7 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
     return page.evaluate(() => {
       const graph = document.querySelector('[data-testid="friend-graph-viewport"]');
       const fitAll = Array.from(document.querySelectorAll("button")).find((button) =>
-        button.textContent?.trim() === "Fit all",
+        button.getAttribute("aria-label") === "Fit All",
       );
       const controls = document.querySelector('[data-testid="friend-graph-controls"]');
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');

@@ -188,4 +188,35 @@ describe("useLibraryItemDetail", () => {
       status: "ready",
     });
   });
+
+  it("resolves a cold-linked row independently of feed residency and clears a late selection", async () => {
+    let currentId: string | null = "outside-resident-page";
+    const pending = new Map<string, (value: FeedItem | null) => void>();
+    const readLibraryItemDetail = vi.fn((id: string) =>
+      new Promise<FeedItem | null>((resolve) => pending.set(id, resolve)),
+    );
+    let latest: LibraryItemDetailResult | null = null;
+    function Harness() {
+      latest = useLibraryItemDetail(currentId, 7);
+      return null;
+    }
+    const config = platformConfig(readLibraryItemDetail);
+    render(<Harness />, config);
+    expect(readLibraryItemDetail).toHaveBeenCalledWith("outside-resident-page");
+    await act(async () => {
+      pending.get("outside-resident-page")?.(item("outside-resident-page"));
+    });
+    expect(latest).toMatchObject({ item: { globalId: "outside-resident-page" } });
+
+    currentId = "next-cold-link";
+    await act(async () => {
+      root?.render(<PlatformProvider value={config}><Harness /></PlatformProvider>);
+    });
+    currentId = null;
+    await act(async () => {
+      root?.render(<PlatformProvider value={config}><Harness /></PlatformProvider>);
+      pending.get("next-cold-link")?.(item("next-cold-link"));
+    });
+    expect(latest).toEqual({ item: null, status: "idle" });
+  });
 });

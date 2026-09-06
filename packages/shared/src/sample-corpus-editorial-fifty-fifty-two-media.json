@@ -1,0 +1,50 @@
+[
+  {
+    "id": "botanical50-01",
+    "subject": "Cucamonga manroot",
+    "category": "wildlife",
+    "imageUrl": "https://www.nps.gov/cabr/blogs/images/Tendril.JPG",
+    "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+    "sha1": "1ebfeabf759705dec5bd0852379aeaf53e12e7f2",
+    "creator": "NPS / Andrew Rosales",
+    "license": "Public domain",
+    "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+    "alt": "A green Marah macrocarpa tendril forms a hanging helix below its grip on a small lemonade-berry twig.",
+    "detail": "Source specifically identifies the vine and supporting lemonade berry. Exact JPEG has EXIF orientation 6: encoded 1000 x 750, displayed 750 x 1000. No local rotation was applied.",
+    "identityNameBase": "Lucille Loop",
+    "width": 750,
+    "height": 1000
+  },
+  {
+    "id": "botanical50-lucille-avatar",
+    "subject": "Cucamonga manroot",
+    "category": "wildlife",
+    "imageUrl": "https://www.nps.gov/cabr/blogs/images/Male-Flowers.JPG",
+    "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+    "sha1": "6206ed56478487503810b5afa05d8d8eadd01655",
+    "creator": "NPS / Andrew Rosales",
+    "license": "Public domain",
+    "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+    "alt": "White star-shaped male flowers of wild cucumber grow along a green stalk in front of lobed leaves.",
+    "detail": "Single lower open male flower chosen for the avatar; other flowers belong to the same illustrated plant species. This is a botanical organ portrait, not a whole-body view.",
+    "identityNameBase": "Lucille Loop",
+    "width": 1000,
+    "height": 1000
+  },
+  {
+    "id": "nestor-delivery52",
+    "subject": "Alaskan lithodid king crab",
+    "identityNameBase": "Nestor Clasp",
+    "category": "undersea",
+    "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires-1024x576.jpg",
+    "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-seascape-alaska-ex2306-gallery-media-dive08-crabs/",
+    "sha1": "49106f4e4f269ddf47dd35e521a5a45eef8728a5",
+    "creator": "NOAA Ocean Exploration, Seascape Alaska",
+    "license": "Public domain",
+    "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+    "width": 1024,
+    "height": 576,
+    "alt": "Two red spiny lithodid crabs clasp on a rocky outcrop, with a pink anemone at left and white sponge at right.",
+    "detail": "Two red spiny lithodid crabs clasp on a rocky outcrop, with a pink anemone at left and white sponge at right."
+  }
+]

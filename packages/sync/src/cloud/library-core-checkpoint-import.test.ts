@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLibraryCoreImmutableObjectKey,
   encodeLibraryCoreCanonicalValue,
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT,
   parseLibraryCoreImmutableObjectDescriptorV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectReferenceV1,
@@ -14,6 +15,7 @@ import type {
 import {
   importLibraryCoreCheckpointManifestV1,
   importLibraryCoreCheckpointPagesV1,
+  LIBRARY_CORE_CHECKPOINT_RECORD_LIMIT,
   type LibraryCoreCheckpointPageReferenceV1,
 } from "./library-core-checkpoint-import.js";
 import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
@@ -410,5 +412,22 @@ describe("Library Core checkpoint page import", () => {
         request(input, { totalRecordCount: 3 }).value,
       ),
     ).rejects.toThrow(/record count does not match declaration/u);
+    expect(LIBRARY_CORE_CHECKPOINT_RECORD_LIMIT).toBe(
+      LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT,
+    );
+    // Crossing the old aggregate ceiling reaches exact count verification,
+    // rather than being rejected as an unsupported total before page import.
+    await expect(
+      importLibraryCoreCheckpointPagesV1(
+        request(input, { totalRecordCount: 1_048_577 }).value,
+      ),
+    ).rejects.toThrow(/record count does not match declaration/u);
+    const oversized = request(input, {
+      totalRecordCount: LIBRARY_CORE_CHECKPOINT_RECORD_LIMIT + 1,
+    });
+    await expect(
+      importLibraryCoreCheckpointPagesV1(oversized.value),
+    ).rejects.toThrow(/totalRecordCount/u);
+    expect(oversized.imported).toEqual([]);
   });
 });

@@ -1,0 +1,1227 @@
+{
+  "batch": "AQUATIC-VISUAL-44",
+  "status": "draft_not_admitted",
+  "proposals": [
+    {
+      "id": "aquatic-visual-44-01",
+      "characterId": "silas-return",
+      "identityNameBase": "Silas Return",
+      "subject": "Oncorhynchus nerka",
+      "platform": "facebook",
+      "contentType": "story",
+      "theme": "movement",
+      "title": "What I remembered",
+      "content": "I remembered enough water here to turn in.\n\nMy belly touched stone. I beat my tail and moved half my length. The water closed over my gills, then fell away from my head.\n\nAnother red back broke the surface beside mine. He pushed forward. I pushed with him.\n\nI had come so far to feel this water again. Now I wanted a little more of it.",
+      "sourceIndex": 11,
+      "decision": "propose_for_independent_review",
+      "imageDecision": "pass_author_review",
+      "proseDecision": "pass_author_review",
+      "review": "Propose one visual Story for independent review. Visible exposed bodies and extremely shallow water support the returning adult physical constraint. Emotional history and short movement sequence are fiction. Placement before personal spawning is fictional chronology; source caption records spawning salmon in shallow water, not an individual migration stage.",
+      "media": {
+        "index": 11,
+        "sourceId": "fb05c051-f3f9-41d3-9568-ef5376a5d843",
+        "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=fb05c051-f3f9-41d3-9568-ef5376a5d843",
+        "sourceTitle": "Spawning Sockeye",
+        "sourceCaption": "Sockeye salmon spawning in shallow water, half exposed\n",
+        "sourceAlt": "Sockeye salmon spawning in shallow water, half exposed\n",
+        "attribution": "NPS Photo / T. Quinn",
+        "rightsEvidence": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "sourceFileInfo": {
+          "Original": {
+            "Kind": "Original",
+            "FileType": "jpg",
+            "Size": 1124471,
+            "Width": 2112,
+            "Height": 2816
+          },
+          "ProxyHiRes": {
+            "Kind": "ProxyHiRes",
+            "FileType": "jpg",
+            "Size": 303251,
+            "Width": 750,
+            "Height": 1000
+          },
+          "ProxyLoRes": {
+            "Kind": "ProxyLoRes",
+            "FileType": "jpg",
+            "Size": 88911,
+            "Width": 375,
+            "Height": 500
+          },
+          "ThumbXLarge": {
+            "Kind": "ThumbXLarge",
+            "FileType": "png",
+            "Size": 94255,
+            "Width": 150,
+            "Height": 200
+          },
+          "ThumbLarge": {
+            "Kind": "ThumbLarge",
+            "FileType": "png",
+            "Size": 50182,
+            "Width": 101,
+            "Height": 135
+          },
+          "ThumbMedium": {
+            "Kind": "ThumbMedium",
+            "FileType": "png",
+            "Size": 34054,
+            "Width": 75,
+            "Height": 100
+          },
+          "ThumbSmall": {
+            "Kind": "ThumbSmall",
+            "FileType": "png",
+            "Size": 25160,
+            "Width": 56,
+            "Height": 75
+          }
+        },
+        "imageUrl": "https://www.nps.gov/npgallery/GetAsset/fb05c051-f3f9-41d3-9568-ef5376a5d843",
+        "localPath": "/tmp/freed-aquatic-44/source-11.jpg",
+        "width": 2112,
+        "height": 2816,
+        "byteLength": 1124471,
+        "sha1": "f3410673bd9a816fae2b958bf2c6b0c53e3d13f0",
+        "sha256": "d7ddbbab33c3d08d72f295f435159bb48c2a864ec951be8bae7012c8d218ce42",
+        "visibleScene": "Red sockeye crowd a shallow gravel channel, with green heads, red backs and fins breaking the surface and small splashes among them.",
+        "alt": "Red sockeye crowd a shallow gravel channel, with green heads, red backs and fins breaking the surface and small splashes among them.",
+        "individuallyOpened": true,
+        "decision": "Propose one visual Story for independent review. Visible exposed bodies and extremely shallow water support the returning adult physical constraint. Emotional history and short movement sequence are fiction.",
+        "originalDimensions": [
+          2112,
+          2816
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=fb05c051-f3f9-41d3-9568-ef5376a5d843",
+        "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+        "src": "https://www.nps.gov/npgallery/GetAsset/fb05c051-f3f9-41d3-9568-ef5376a5d843"
+      },
+      "renderReviewPath": "/tmp/freed-aquatic-44/card-1.png",
+      "renderIndividuallyOpened": true
+    }
+  ],
+  "profiles": [
+    {
+      "characterId": "silas-return",
+      "identityNameBase": "Silas Return",
+      "subject": "Oncorhynchus nerka",
+      "platform": "facebook",
+      "bio": "I remember being smaller.",
+      "location": {
+        "name": "Natal spawning waters in the Lake Clark watershed, Alaska",
+        "coordinates": {
+          "lat": 60.2,
+          "lng": -154.3
+        }
+      },
+      "sex": "Adult male in fiction; hooked-jaw spawning male morphology is compatible with portrait; exact source sex unrecorded",
+      "avatarMedia": {
+        "index": 12,
+        "sourceId": "633e9767-af4d-4448-b641-e87ebddd77e5",
+        "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=633e9767-af4d-4448-b641-e87ebddd77e5",
+        "sourceTitle": "Sockeye Salmon",
+        "sourceCaption": "A spawning sockeye salmon finds itself exposed in shallow water.",
+        "sourceAlt": "A spawning sockeye salmon finds itself exposed in shallow water.",
+        "attribution": "NPS Photo / T. Quinn",
+        "rightsEvidence": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "sourceFileInfo": {
+          "Original": {
+            "Kind": "Original",
+            "FileType": "jpg",
+            "Size": 446945,
+            "Width": 1600,
+            "Height": 1200
+          },
+          "ProxyHiRes": {
+            "Kind": "ProxyHiRes",
+            "FileType": "jpg",
+            "Size": 202630,
+            "Width": 1000,
+            "Height": 750
+          },
+          "ProxyLoRes": {
+            "Kind": "ProxyLoRes",
+            "FileType": "jpg",
+            "Size": 84086,
+            "Width": 500,
+            "Height": 375
+          },
+          "ThumbXLarge": {
+            "Kind": "ThumbXLarge",
+            "FileType": "png",
+            "Size": 109425,
+            "Width": 200,
+            "Height": 150
+          },
+          "ThumbLarge": {
+            "Kind": "ThumbLarge",
+            "FileType": "png",
+            "Size": 63414,
+            "Width": 135,
+            "Height": 101
+          },
+          "ThumbMedium": {
+            "Kind": "ThumbMedium",
+            "FileType": "png",
+            "Size": 46190,
+            "Width": 100,
+            "Height": 75
+          },
+          "ThumbSmall": {
+            "Kind": "ThumbSmall",
+            "FileType": "png",
+            "Size": 36827,
+            "Width": 75,
+            "Height": 56
+          }
+        },
+        "imageUrl": "https://www.nps.gov/npgallery/GetAsset/633e9767-af4d-4448-b641-e87ebddd77e5",
+        "localPath": "/tmp/freed-aquatic-44/source-12.jpg",
+        "width": 1600,
+        "height": 1200,
+        "byteLength": 446945,
+        "sha1": "f326890d5227213a00e5ab355af16ebb65019668",
+        "sha256": "4e536e808860b510fe8fc1bf9b7676fae25010422358a6fa089573ee61e6dcda",
+        "visibleScene": "A spawning sockeye head fills the frame, with a gold-rimmed eye, green head, hooked open jaw, teeth and red shoulder refracted by shallow water.",
+        "alt": "A spawning sockeye head fills the frame, with a gold-rimmed eye, green head, hooked open jaw, teeth and red shoulder refracted by shallow water.",
+        "individuallyOpened": true,
+        "decision": "Avatar only for Silas. Hooked jaw is consistent with spawning male morphology; exact photographed sex is not recorded in the caption. No second Story.",
+        "originalDimensions": [
+          1600,
+          1200
+        ],
+        "license": "Public domain",
+        "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=633e9767-af4d-4448-b641-e87ebddd77e5",
+        "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+        "src": "https://www.nps.gov/npgallery/GetAsset/633e9767-af4d-4448-b641-e87ebddd77e5"
+      },
+      "avatarCrop": {
+        "x": 0.53,
+        "y": 0.47,
+        "zoom": 1.1
+      },
+      "avatarReviewPath": "/tmp/freed-aquatic-44/avatar-circles.png",
+      "status": "conditional_on_story_and_avatar_admission"
+    }
+  ],
+  "sourceReview": [
+    {
+      "index": 1,
+      "sourceId": "28854d46-5efd-4d67-a078-45df793c844f",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=28854d46-5efd-4d67-a078-45df793c844f",
+      "sourceTitle": "River otter",
+      "sourceCaption": "Otters at Sedge Bay;\nDiane Renkin;\nJuly 2015;\nCatalog #20234d;\nOriginal #P1070838",
+      "sourceAlt": "Two otter look at camera from on top of a rock.",
+      "attribution": "NPS/Diane Renkin",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 886203,
+          "Width": 3426,
+          "Height": 2477
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 905907,
+          "Width": 2000,
+          "Height": 1446
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 250689,
+          "Width": 1000,
+          "Height": 723
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 86525,
+          "Width": 500,
+          "Height": 361
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 84234,
+          "Width": 200,
+          "Height": 144
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 42166,
+          "Width": 135,
+          "Height": 97
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 26555,
+          "Width": 100,
+          "Height": 72
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 18095,
+          "Width": 75,
+          "Height": 54
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/28854d46-5efd-4d67-a078-45df793c844f",
+      "localPath": "/tmp/freed-aquatic-44/source-01.jpg",
+      "width": 3426,
+      "height": 2477,
+      "byteLength": 886203,
+      "sha1": "6e435d4a78c8c50fad2aa8fd1765c137654800f0",
+      "sha256": "3be7f5b52c9d9ba49f26bc707f110d162e1dd6aa99f4d6cfd5fd56ed6627fb37",
+      "visibleScene": "Two wet brown otters face the camera from a broad sloping rock; one lies at left and one sits at right.",
+      "alt": "Two wet brown otters face the camera from a broad sloping rock; one lies at left and one sits at right.",
+      "individuallyOpened": true,
+      "decision": "Hold prose: handsome pair, but no distinct incident emerged beyond synchronized looking or generic companionship.",
+      "originalDimensions": [
+        3426,
+        2477
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=28854d46-5efd-4d67-a078-45df793c844f",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/28854d46-5efd-4d67-a078-45df793c844f"
+    },
+    {
+      "index": 2,
+      "sourceId": "67039140-61dc-4d2b-affc-1f43f07785c7",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=67039140-61dc-4d2b-affc-1f43f07785c7",
+      "sourceTitle": "River otter",
+      "sourceCaption": "Otter eating a fish;\nJane Olson;\nOctober, 2009;\nCatalog #19225d",
+      "sourceAlt": "Otter is on shore with a fish in its mouth.",
+      "attribution": "NPS/Jane Olson",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 778669,
+          "Width": 1494,
+          "Height": 1026
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 120538,
+          "Width": 500,
+          "Height": 343
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 85320,
+          "Width": 200,
+          "Height": 137
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 42199,
+          "Width": 135,
+          "Height": 92
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 26127,
+          "Width": 100,
+          "Height": 68
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 17650,
+          "Width": 75,
+          "Height": 51
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/67039140-61dc-4d2b-affc-1f43f07785c7",
+      "localPath": "/tmp/freed-aquatic-44/source-02.jpg",
+      "width": 1494,
+      "height": 1026,
+      "byteLength": 778669,
+      "sha1": "ee747b3268b72f2dd4a69ca59e688ffe3b4e5fd9",
+      "sha256": "40789f1a08665d350305be98dc05fce72b2c9f7758ef52843b6e80535221183e",
+      "visibleScene": "A wet river otter on muddy shore holds a fish crosswise by its mouth; image detail is coarse.",
+      "alt": "A wet river otter on muddy shore holds a fish crosswise by its mouth; image detail is coarse.",
+      "individuallyOpened": true,
+      "decision": "Hold image: coarse noisy detail; also duplicates the fish-carrying source held in LAND-REGULAR-42.",
+      "originalDimensions": [
+        1494,
+        1026
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=67039140-61dc-4d2b-affc-1f43f07785c7",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/67039140-61dc-4d2b-affc-1f43f07785c7"
+    },
+    {
+      "index": 3,
+      "sourceId": "0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "sourceTitle": "River otter",
+      "sourceCaption": "River otter preening on snow shelf by Lamar River;\nJim Peaco;\nApril 2013;\nCatalog #19079d;\nOriginal #IMG_9977",
+      "sourceAlt": "Otter is on back, preening.",
+      "attribution": "NPS/Jim Peaco",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 942625,
+          "Width": 3345,
+          "Height": 2281
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 821664,
+          "Width": 2000,
+          "Height": 1363
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 263087,
+          "Width": 1000,
+          "Height": 681
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 87982,
+          "Width": 500,
+          "Height": 340
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 82906,
+          "Width": 200,
+          "Height": 136
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 41529,
+          "Width": 135,
+          "Height": 92
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 26108,
+          "Width": 100,
+          "Height": 68
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 17739,
+          "Width": 75,
+          "Height": 51
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "localPath": "/tmp/freed-aquatic-44/source-03.jpg",
+      "width": 3345,
+      "height": 2281,
+      "byteLength": 942625,
+      "sha1": "4aeaae3b56e1a4fc1301bcaafc78f99166de0dad",
+      "sha256": "fcf3817ab1793d623ce0569d018185b52ca7a7d046aab26969833d73c7dcc117",
+      "visibleScene": "A river otter lies curled on its back on a sloping snow shelf, feet tucked and long tail extended.",
+      "alt": "A river otter lies curled on its back on a sloping snow shelf, feet tucked and long tail extended.",
+      "individuallyOpened": true,
+      "decision": "Hold duplicate: same original composition as Tobias A little farther up, already admitted using its published delivery variant.",
+      "originalDimensions": [
+        3345,
+        2281
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a"
+    },
+    {
+      "index": 4,
+      "sourceId": "e7b6c153-1eb7-4534-8c7f-a03ccfb8e380",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=e7b6c153-1eb7-4534-8c7f-a03ccfb8e380",
+      "sourceTitle": "River otter",
+      "sourceCaption": "Four river otter grooming on Lamar River ice-Lamar Canyon;\nJim Peaco;\nJanuary 2005",
+      "sourceAlt": "Four otter grooming.",
+      "attribution": "NPS/Jim Peaco",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 507939,
+          "Width": 1999,
+          "Height": 1355
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 137106,
+          "Width": 1000,
+          "Height": 677
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 45139,
+          "Width": 500,
+          "Height": 338
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 52939,
+          "Width": 200,
+          "Height": 135
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 27389,
+          "Width": 135,
+          "Height": 91
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 17963,
+          "Width": 100,
+          "Height": 67
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 12877,
+          "Width": 75,
+          "Height": 50
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/e7b6c153-1eb7-4534-8c7f-a03ccfb8e380",
+      "localPath": "/tmp/freed-aquatic-44/source-04.jpg",
+      "width": 1999,
+      "height": 1355,
+      "byteLength": 507939,
+      "sha1": "f3e37100b128e1749f13e6f2915c3bd92a992d14",
+      "sha256": "26c05af8b3039be391428f2d4b31649b58eff9a0ac7aa1db15b79a3eb5126559",
+      "visibleScene": "Four dark otters groom on a snow shelf above an open strip of river; their bodies and tails overlap.",
+      "alt": "Four dark otters groom on a snow shelf above an open strip of river; their bodies and tails overlap.",
+      "individuallyOpened": true,
+      "decision": "Hold prose: group grooming is visible; mutual grooming, assistance and an emotional reconciliation are not established. New attempts repeated grooming pleasure or idle delay.",
+      "originalDimensions": [
+        1999,
+        1355
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=e7b6c153-1eb7-4534-8c7f-a03ccfb8e380",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/e7b6c153-1eb7-4534-8c7f-a03ccfb8e380"
+    },
+    {
+      "index": 5,
+      "sourceId": "e1ae1845-cc18-4617-bba9-ba396a8ced6e",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=e1ae1845-cc18-4617-bba9-ba396a8ced6e",
+      "sourceTitle": "River otter",
+      "sourceCaption": "River otter in winter",
+      "sourceAlt": "Three otter rest by a hole in the ice",
+      "attribution": "NPS/Norm Bishop",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 766317,
+          "Width": 1958,
+          "Height": 1251
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 93789,
+          "Width": 1000,
+          "Height": 638
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 32268,
+          "Width": 500,
+          "Height": 319
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 47629,
+          "Width": 200,
+          "Height": 127
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 25883,
+          "Width": 135,
+          "Height": 86
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 17303,
+          "Width": 100,
+          "Height": 63
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 12588,
+          "Width": 75,
+          "Height": 47
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/e1ae1845-cc18-4617-bba9-ba396a8ced6e",
+      "localPath": "/tmp/freed-aquatic-44/source-05.jpg",
+      "width": 1958,
+      "height": 1251,
+      "byteLength": 766317,
+      "sha1": "f7342cd4dd6003f44daa42c9feae8d205f453d01",
+      "sha256": "432b2a69fa94b3c85e922b1470deb8a4930f4794bcd4f9cfbe8e2e170ad79380",
+      "visibleScene": "Three small dark otters occupy snow beside openings in ice in a distant, purple-tinted frame.",
+      "alt": "Three small dark otters occupy snow beside openings in ice in a distant, purple-tinted frame.",
+      "individuallyOpened": true,
+      "decision": "Hold image: distant dark subjects and strong color cast fail the gorgeous-image bar.",
+      "originalDimensions": [
+        1958,
+        1251
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=e1ae1845-cc18-4617-bba9-ba396a8ced6e",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/e1ae1845-cc18-4617-bba9-ba396a8ced6e"
+    },
+    {
+      "index": 6,
+      "sourceId": "2c34fb4c-d6e8-49e9-99cd-04d34a5197a5",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=2c34fb4c-d6e8-49e9-99cd-04d34a5197a5",
+      "sourceTitle": "River otter slides",
+      "sourceCaption": "River otter slides",
+      "sourceAlt": "Trails in a snow covered river bank lead directly to the river",
+      "attribution": "NPS/Gregory Dimijian",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 939266,
+          "Width": 1999,
+          "Height": 1355
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 214296,
+          "Width": 1000,
+          "Height": 677
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 63980,
+          "Width": 500,
+          "Height": 338
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 77578,
+          "Width": 200,
+          "Height": 135
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 38259,
+          "Width": 135,
+          "Height": 91
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 23467,
+          "Width": 100,
+          "Height": 67
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 15556,
+          "Width": 75,
+          "Height": 50
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/2c34fb4c-d6e8-49e9-99cd-04d34a5197a5",
+      "localPath": "/tmp/freed-aquatic-44/source-06.jpg",
+      "width": 1999,
+      "height": 1355,
+      "byteLength": 939266,
+      "sha1": "02412bb3db71ecf583ab5670d23ec628e6e860c2",
+      "sha256": "97e5056792cefee3e3f4e603ec33be57531d684171c7a7606cd9428bcf0b88b5",
+      "visibleScene": "Intersecting narrow tracks and broader slides cross a snow-covered bank toward open dark water; no animal is present.",
+      "alt": "Intersecting narrow tracks and broader slides cross a snow-covered bank toward open dark water; no animal is present.",
+      "individuallyOpened": true,
+      "decision": "Hold repetition: attractive traces, but proposed slide discovery would reuse Tobias deliberate slide payoff; assigning a new visitor from tracks alone added no earned event.",
+      "originalDimensions": [
+        1999,
+        1355
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=2c34fb4c-d6e8-49e9-99cd-04d34a5197a5",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/2c34fb4c-d6e8-49e9-99cd-04d34a5197a5"
+    },
+    {
+      "index": 7,
+      "sourceId": "1b937ac6-d87a-48e1-8b8c-fa181daba0bb",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=794A077D-8B17-48F7-92E1-ABA56F43FB92&id=1b937ac6-d87a-48e1-8b8c-fa181daba0bb",
+      "sourceTitle": "River otter",
+      "sourceCaption": "River otter swimming in the Swan Lake Flat area.",
+      "sourceAlt": "Close range photo of river otter swimming and looking at camera",
+      "attribution": "NPS/Neal Herbert",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 80460,
+          "Width": 640,
+          "Height": 427
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 63659,
+          "Width": 500,
+          "Height": 333
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 70823,
+          "Width": 200,
+          "Height": 133
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 32660,
+          "Width": 135,
+          "Height": 90
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 17859,
+          "Width": 100,
+          "Height": 66
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 10474,
+          "Width": 75,
+          "Height": 50
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/1b937ac6-d87a-48e1-8b8c-fa181daba0bb",
+      "localPath": "/tmp/freed-aquatic-44/source-07.jpg",
+      "width": 640,
+      "height": 427,
+      "byteLength": 80460,
+      "sha1": "59d92b3d887f4ccf8adb750096869392de3aad92",
+      "sha256": "61bb250afa6ca5dd0d562414fd7c37cd1261de67cc8cf7cfce26401d4a6f81d1",
+      "visibleScene": "A brown river otter swims with one eye, small ear, broad nose and whiskers above the water.",
+      "alt": "A brown river otter swims with one eye, small ear, broad nose and whiskers above the water.",
+      "individuallyOpened": true,
+      "decision": "Hold narrative: portrait only. Existing Tobias has an admitted swimming avatar; no replacement needed.",
+      "originalDimensions": [
+        640,
+        427
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=794A077D-8B17-48F7-92E1-ABA56F43FB92&id=1b937ac6-d87a-48e1-8b8c-fa181daba0bb",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/1b937ac6-d87a-48e1-8b8c-fa181daba0bb"
+    },
+    {
+      "index": 8,
+      "sourceId": "92100eb3-65ce-4ba1-b35d-ecd5c741c7d1",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=92100eb3-65ce-4ba1-b35d-ecd5c741c7d1",
+      "sourceTitle": "River otter",
+      "sourceCaption": "River otter sleeping on log",
+      "sourceAlt": "An otter is curled up on a log in the water.",
+      "attribution": "NPS/Eric Johnston",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 844753,
+          "Width": 5184,
+          "Height": 3456
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 1354881,
+          "Width": 2592,
+          "Height": 1728
+        },
+        "ProxyMdRes": {
+          "Kind": "ProxyMdRes",
+          "FileType": "jpg",
+          "Size": 461543,
+          "Width": 1296,
+          "Height": 864
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 137991,
+          "Width": 648,
+          "Height": 432
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 83353,
+          "Width": 200,
+          "Height": 133
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 42563,
+          "Width": 135,
+          "Height": 90
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 26394,
+          "Width": 100,
+          "Height": 66
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 18211,
+          "Width": 75,
+          "Height": 50
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/92100eb3-65ce-4ba1-b35d-ecd5c741c7d1",
+      "localPath": "/tmp/freed-aquatic-44/source-08.jpg",
+      "width": 5184,
+      "height": 3456,
+      "byteLength": 844753,
+      "sha1": "12d855de9c2434a0fbc4009eaa80094527778eb4",
+      "sha256": "8c9da2b3c18eee662ad7b106bea26bf059c73e594cb45479605bb7d6449a137b",
+      "visibleScene": "A river otter sleeps tightly curled on a rough log over blue water, with its tail around its face.",
+      "alt": "A river otter sleeps tightly curled on a rough log over blue water, with its tail around its face.",
+      "individuallyOpened": true,
+      "decision": "Hold prose: sleeping portrait offers no new event without manufacturing an unseen emergency or repeating rest.",
+      "originalDimensions": [
+        5184,
+        3456
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=43184F42-1DD8-B71B-0B0A9EDD0A681686&id=92100eb3-65ce-4ba1-b35d-ecd5c741c7d1",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/92100eb3-65ce-4ba1-b35d-ecd5c741c7d1"
+    },
+    {
+      "index": 9,
+      "sourceId": "20ae5c48-59e7-488e-9b1f-df840fdad3ce",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=20ae5c48-59e7-488e-9b1f-df840fdad3ce",
+      "sourceTitle": "Salmon Underwater",
+      "sourceCaption": "When it is time to spawn, sockeye salmon turn from silver to a bright red color with a green head, as seen here underwater. \n",
+      "sourceAlt": "When it is time to spawn, sockeye salmon turn from silver to a bright red color with a green head, as seen here underwater. \n",
+      "attribution": "NPS Photo / D. Young",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 2459042,
+          "Width": 1984,
+          "Height": 1488
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 406851,
+          "Width": 1000,
+          "Height": 750
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 135305,
+          "Width": 500,
+          "Height": 375
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 94632,
+          "Width": 200,
+          "Height": 150
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 48521,
+          "Width": 135,
+          "Height": 101
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 31373,
+          "Width": 100,
+          "Height": 75
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 22097,
+          "Width": 75,
+          "Height": 56
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/20ae5c48-59e7-488e-9b1f-df840fdad3ce",
+      "localPath": "/tmp/freed-aquatic-44/source-09.jpg",
+      "width": 1984,
+      "height": 1488,
+      "byteLength": 2459042,
+      "sha1": "dd7c4ee168af743aebdaaa0be3aed3e1af042b70",
+      "sha256": "aa2fcc6c976a1fb03586c0187a9e5d5b4377924eca62e494fc7093597021ebf7",
+      "visibleScene": "Red spawning sockeye with green heads swim above gravel beneath a shimmering reflective water surface.",
+      "alt": "Red spawning sockeye with green heads swim above gravel beneath a shimmering reflective water surface.",
+      "individuallyOpened": true,
+      "decision": "Hold prose: vivid underwater school, but changing color or returning home as description alone is not another event.",
+      "originalDimensions": [
+        1984,
+        1488
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=20ae5c48-59e7-488e-9b1f-df840fdad3ce",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/20ae5c48-59e7-488e-9b1f-df840fdad3ce"
+    },
+    {
+      "index": 10,
+      "sourceId": "1690085c-1e82-4571-ba47-2ad36f7a1205",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=1690085c-1e82-4571-ba47-2ad36f7a1205",
+      "sourceTitle": "Sockeye School",
+      "sourceCaption": "A school of underwater spawning sockeye salmon near Kijik Lake",
+      "sourceAlt": "A school of underwater spawning sockeye salmon near Kijik Lake",
+      "attribution": "NPS Photo / D. Young",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 358691,
+          "Width": 1448,
+          "Height": 1448
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 328252,
+          "Width": 1000,
+          "Height": 1000
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 99050,
+          "Width": 500,
+          "Height": 500
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 115458,
+          "Width": 200,
+          "Height": 200
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 53457,
+          "Width": 135,
+          "Height": 135
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 29871,
+          "Width": 100,
+          "Height": 100
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 17160,
+          "Width": 75,
+          "Height": 75
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/1690085c-1e82-4571-ba47-2ad36f7a1205",
+      "localPath": "/tmp/freed-aquatic-44/source-10.jpg",
+      "width": 1448,
+      "height": 1448,
+      "byteLength": 358691,
+      "sha1": "0a2c1d5464ed0cfd7af8d1c865a4e44daf802eff",
+      "sha256": "95bf864ab563d9b7925181de3d89694fdaf0d46113cd1de3b1f79732ba6c6bb4",
+      "visibleScene": "A split-level view shows red sockeye underwater beneath mountains; fish detail is dark and a photographer credit is visible.",
+      "alt": "A split-level view shows red sockeye underwater beneath mountains; fish detail is dark and a photographer credit is visible.",
+      "individuallyOpened": true,
+      "decision": "Hold image and prose: striking mountains, dark fish; another school must not be counted as a distinct episode.",
+      "originalDimensions": [
+        1448,
+        1448
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=1690085c-1e82-4571-ba47-2ad36f7a1205",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/1690085c-1e82-4571-ba47-2ad36f7a1205"
+    },
+    {
+      "index": 11,
+      "sourceId": "fb05c051-f3f9-41d3-9568-ef5376a5d843",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=fb05c051-f3f9-41d3-9568-ef5376a5d843",
+      "sourceTitle": "Spawning Sockeye",
+      "sourceCaption": "Sockeye salmon spawning in shallow water, half exposed\n",
+      "sourceAlt": "Sockeye salmon spawning in shallow water, half exposed\n",
+      "attribution": "NPS Photo / T. Quinn",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 1124471,
+          "Width": 2112,
+          "Height": 2816
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 303251,
+          "Width": 750,
+          "Height": 1000
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 88911,
+          "Width": 375,
+          "Height": 500
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 94255,
+          "Width": 150,
+          "Height": 200
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 50182,
+          "Width": 101,
+          "Height": 135
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 34054,
+          "Width": 75,
+          "Height": 100
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 25160,
+          "Width": 56,
+          "Height": 75
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/fb05c051-f3f9-41d3-9568-ef5376a5d843",
+      "localPath": "/tmp/freed-aquatic-44/source-11.jpg",
+      "width": 2112,
+      "height": 2816,
+      "byteLength": 1124471,
+      "sha1": "f3410673bd9a816fae2b958bf2c6b0c53e3d13f0",
+      "sha256": "d7ddbbab33c3d08d72f295f435159bb48c2a864ec951be8bae7012c8d218ce42",
+      "visibleScene": "Red sockeye crowd a shallow gravel channel, with green heads, red backs and fins breaking the surface and small splashes among them.",
+      "alt": "Red sockeye crowd a shallow gravel channel, with green heads, red backs and fins breaking the surface and small splashes among them.",
+      "individuallyOpened": true,
+      "decision": "Propose one visual Story for independent review. Visible exposed bodies and extremely shallow water support the returning adult physical constraint. Emotional history and short movement sequence are fiction.",
+      "originalDimensions": [
+        2112,
+        2816
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=fb05c051-f3f9-41d3-9568-ef5376a5d843",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/fb05c051-f3f9-41d3-9568-ef5376a5d843"
+    },
+    {
+      "index": 12,
+      "sourceId": "633e9767-af4d-4448-b641-e87ebddd77e5",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=633e9767-af4d-4448-b641-e87ebddd77e5",
+      "sourceTitle": "Sockeye Salmon",
+      "sourceCaption": "A spawning sockeye salmon finds itself exposed in shallow water.",
+      "sourceAlt": "A spawning sockeye salmon finds itself exposed in shallow water.",
+      "attribution": "NPS Photo / T. Quinn",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceFileInfo": {
+        "Original": {
+          "Kind": "Original",
+          "FileType": "jpg",
+          "Size": 446945,
+          "Width": 1600,
+          "Height": 1200
+        },
+        "ProxyHiRes": {
+          "Kind": "ProxyHiRes",
+          "FileType": "jpg",
+          "Size": 202630,
+          "Width": 1000,
+          "Height": 750
+        },
+        "ProxyLoRes": {
+          "Kind": "ProxyLoRes",
+          "FileType": "jpg",
+          "Size": 84086,
+          "Width": 500,
+          "Height": 375
+        },
+        "ThumbXLarge": {
+          "Kind": "ThumbXLarge",
+          "FileType": "png",
+          "Size": 109425,
+          "Width": 200,
+          "Height": 150
+        },
+        "ThumbLarge": {
+          "Kind": "ThumbLarge",
+          "FileType": "png",
+          "Size": 63414,
+          "Width": 135,
+          "Height": 101
+        },
+        "ThumbMedium": {
+          "Kind": "ThumbMedium",
+          "FileType": "png",
+          "Size": 46190,
+          "Width": 100,
+          "Height": 75
+        },
+        "ThumbSmall": {
+          "Kind": "ThumbSmall",
+          "FileType": "png",
+          "Size": 36827,
+          "Width": 75,
+          "Height": 56
+        }
+      },
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/633e9767-af4d-4448-b641-e87ebddd77e5",
+      "localPath": "/tmp/freed-aquatic-44/source-12.jpg",
+      "width": 1600,
+      "height": 1200,
+      "byteLength": 446945,
+      "sha1": "f326890d5227213a00e5ab355af16ebb65019668",
+      "sha256": "4e536e808860b510fe8fc1bf9b7676fae25010422358a6fa089573ee61e6dcda",
+      "visibleScene": "A spawning sockeye head fills the frame, with a gold-rimmed eye, green head, hooked open jaw, teeth and red shoulder refracted by shallow water.",
+      "alt": "A spawning sockeye head fills the frame, with a gold-rimmed eye, green head, hooked open jaw, teeth and red shoulder refracted by shallow water.",
+      "individuallyOpened": true,
+      "decision": "Avatar only for Silas. Hooked jaw is consistent with spawning male morphology; exact photographed sex is not recorded in the caption. No second Story.",
+      "originalDimensions": [
+        1600,
+        1200
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=D51B162C-1D0D-4FDA-9BE1-460442320D39&id=633e9767-af4d-4448-b641-e87ebddd77e5",
+      "dimensionsMeaning": "Exact source-published original bytes, verified with Pillow; no local resizing. Original is below 4 MB.",
+      "src": "https://www.nps.gov/npgallery/GetAsset/633e9767-af4d-4448-b641-e87ebddd77e5"
+    }
+  ],
+  "newExactOriginalsOpened": 12,
+  "proposedStories": 1,
+  "rightsMetadataCaches": [
+    "/tmp/freed-aquatic-44/otter.json",
+    "/tmp/freed-aquatic-44/otter2.json",
+    "/tmp/freed-aquatic-44/salmon.json"
+  ],
+  "leadReview": "Exact literal Story, sources11/12 and actual 220/48 avatar passed independent lead review. Integration pending."
+}

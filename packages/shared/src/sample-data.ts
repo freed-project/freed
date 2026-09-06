@@ -369,6 +369,7 @@ export const SAMPLE_DATA_GENERATOR_VERSION = 11;
 export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
+  scale: "showcase" | "stress";
   batchId: string;
   generatedAt: number;
   seed: number;
@@ -413,6 +414,7 @@ function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDa
     (scale === "stress" ? SAMPLE_STRESS_IDENTITIES_PER_FRIEND : SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND);
   const unlinkedIdentityRatio = Math.max(0, Math.min(1, options?.unlinkedIdentityRatio ?? 0.2));
   return {
+    scale,
     batchId,
     generatedAt: options?.generatedAt ?? Date.now(),
     seed: options?.seed ?? hashSeed(batchId),
@@ -623,7 +625,10 @@ function sampleSourceProvider(platform: FeedItem["platform"]): SampleSourceProvi
     : "rss";
 }
 
-function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
+function authorEntireSampleCorpus(
+  items: readonly FeedItem[],
+  scale: ResolvedSampleDataOptions["scale"],
+): FeedItem[] {
   const usedText = new Set<string>();
   const locatedAssets = SAMPLE_CORPUS_MEDIA.filter((asset) => asset.coordinates);
   const locatedItemIds = new Set(
@@ -652,9 +657,20 @@ function authorEntireSampleCorpus(items: readonly FeedItem[]): FeedItem[] {
     const platform = sampleNarrativePlatform(item);
     let variant = 0;
     let text = sampleCorpusGeneratedText(asset, platform, index, variant);
-    while (usedText.has(text)) {
+    // The template pool is finite. Exhaustion must never pin the renderer or
+    // a benchmark worker in a synchronous loop.
+    const maximumAttempts = 64;
+    while (usedText.has(text) && variant < maximumAttempts - 1) {
       variant += 1;
       text = sampleCorpusGeneratedText(asset, platform, index, variant);
+    }
+    if (usedText.has(text)) {
+      if (scale !== "stress") {
+        throw new Error("Sample showcase text pool exhausted; supply distinct authored content");
+      }
+      // Explicitly synthetic benchmark data, never a substitute for curated
+      // showcase prose. The item index is unique within this generated batch.
+      text = `${text}\n\n[Synthetic benchmark entry ${(index + 1).toLocaleString("en-US")}]`;
     }
     usedText.add(text);
     const displayName = sampleCorpusIdentityName(asset, index);
@@ -1572,7 +1588,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     graphItemIndex += 1;
   }
 
-  const authoredItems = authorEntireSampleCorpus(items).map((item) => ({
+  const authoredItems = authorEntireSampleCorpus(items, resolvedOptions.scale).map((item) => ({
     ...item,
     sampleDataFingerprint: fingerprint,
   }));

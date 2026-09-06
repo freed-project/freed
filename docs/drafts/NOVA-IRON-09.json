@@ -1,0 +1,25 @@
+{
+  "characterId": "nova-remains",
+  "episode": 5,
+  "title": "Iron leaves home",
+  "body": "I scattered iron into space. Somewhere ahead, a world will put it in blood and call the pulse its own.",
+  "protectedProse": true,
+  "localReviewPath": "/tmp/freed-nova-09/2017-main-large.jpg",
+  "media": {
+    "id": "nova-iron-nine-casa",
+    "subject": "supernova remnant NASA",
+    "category": "astronomy",
+    "identityNameBase": "Nova Remains",
+    "detail": "Cassiopeia A element map; purple maps iron emission",
+    "imageUrl": "https://chandra.harvard.edu/photo/2017/casa_life/casa_life_lg.jpg",
+    "sourceUrl": "https://chandra.harvard.edu/photo/2017/casa_life/",
+    "creator": "NASA/CXC/SAO",
+    "license": "Public domain",
+    "licenseEvidence": "https://chandra.harvard.edu/photo/image_use.html",
+    "width": 3600,
+    "height": 3600,
+    "sha1": "c447255ad8fe6aab3c24c59dde232234cce6c490",
+    "alt": "Cassiopeia A in assigned X-ray colors: purple marks iron among red, yellow and green filaments, with a jagged blue blast-wave rim."
+  },
+  "leadReview": "Approved exact image for Nova episode 5 with protected prose unchanged"
+}

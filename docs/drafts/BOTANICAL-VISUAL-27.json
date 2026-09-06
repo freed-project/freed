@@ -1,0 +1,513 @@
+{
+  "status": "proposal only; no runtime edits",
+  "counts": {
+    "exactOriginalsOpened": 22,
+    "newIdentities": 2,
+    "visualStoryCandidates": 10,
+    "recommended": 9,
+    "heldCandidates": 1
+  },
+  "characters": [
+    {
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "subject": "common milkweed",
+      "platform": "instagram",
+      "bio": "Raised them neatly. Equipped them to leave.",
+      "location": {
+        "name": "Sunny meadow edge in central Minnesota",
+        "coordinates": {
+          "lat": 46.0,
+          "lng": -94.3
+        }
+      }
+    },
+    {
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "subject": "giant sequoia",
+      "platform": "facebook",
+      "bio": "Very large. Accepting help awkwardly.",
+      "location": {
+        "name": "Mixed conifer grove on the western Sierra Nevada",
+        "coordinates": {
+          "lat": 36.6,
+          "lng": -118.7
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "27-01",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "5f9e5e15f4e0ad9f41900beed7824a8f59275249",
+        "theme": "social",
+        "title": "A private moment",
+        "body": "The butterfly had its whole face in my flowers. I was feeling rather special.\n\nThen I noticed the bee on the other side. I had been flirting in several directions without moving."
+      },
+      "sourceAssetId": "5f52a0e9-9e4a-48d0-80e0-03623a2322f5",
+      "localFile": "/tmp/botanical27/5f52a0e9-9e4a-48d0-80e0-03623a2322f5.jpg",
+      "localBytes": 3303833,
+      "visualReview": "A butterfly and a bee visibly contact opposite parts of the same pink common-milkweed flower cluster. Simultaneous contact is visible; discovery, exclusivity and flirting are fiction. Neither insect is claimed to be captured or to have completed pollination.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-02",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "9ef6d77aa80b5fab5d03d8b199584454b147b3fd",
+        "theme": "feeding",
+        "title": "A little more",
+        "body": "I had meant to give him a little nectar.\n\nHe put his mouth against my leaf. We apparently had very different ideas about how much of me was on offer."
+      },
+      "sourceAssetId": "fws-caterpillar",
+      "localFile": "/tmp/botanical27/fws-caterpillar.jpg",
+      "localBytes": 4911411,
+      "visualReview": "Striped monarch caterpillar mouth lies against the hairy common-milkweed leaf edge. Feeding is identified by the source context; a before-and-after bite or lost leaf is not claimed. The mismatch of intended generosity is fictional.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-03",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "b74ce7f1826b5c3d1a50ccf7e0c38066d81e6976",
+        "theme": "social",
+        "title": "Room between the bumps",
+        "body": "I was pleased with how forbidding my seed pod looked. All those bumps.\n\nThe aphids settled between them. Apparently I had made a very detailed welcome mat."
+      },
+      "sourceAssetId": "26bf0b03-de2a-429f-bd45-913e2b57662c",
+      "localFile": "/tmp/botanical27/26bf0b03-de2a-429f-bd45-913e2b57662c.jpg",
+      "localBytes": 2290935,
+      "visualReview": "Many orange-yellow aphids cluster on the green bumpy seed pod. They are on its exterior, not imaginary young inside. The pod bumps are not asserted to be an evolved aphid defense; Delphine mistakes appearance for deterrence.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-04",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "ca31302fd2a8d2f2efcaff6001a6ca9cb2dcf952",
+        "theme": "family",
+        "title": "Packed carefully",
+        "body": "Every seed tucked against the next. No wasted space.\n\nI would like this photograph kept for when they claim I raised them to scatter."
+      },
+      "sourceAssetId": "fws-seed-pod",
+      "localFile": "/tmp/botanical27/fws-seed-pod.jpg",
+      "localBytes": 19047546,
+      "visualReview": "Open common-milkweed pod exposes densely overlapping brown seeds in ordered rows, with pale silk still compact. A fictional parent asks for a record of the visibly ordered packing; no seed is shown flying in this image.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-05",
+      "characterId": "delphine-silkspill",
+      "identityNameBase": "Delphine Silkspill",
+      "episode": {
+        "subject": "common milkweed",
+        "platform": "instagram",
+        "contentType": "story",
+        "mediaSha1": "aec50bd3638ecf4244338472ee6aca4fdcd8c14f",
+        "theme": "family",
+        "title": "One at a time",
+        "body": "The pod opened. I had imagined a dignified departure, one seed at a time.\n\nNow the whole family is coming out in its underwear."
+      },
+      "sourceAssetId": "fws-common-seed",
+      "localFile": "/tmp/botanical27/fws-common-seed.jpg",
+      "localBytes": 18816106,
+      "visualReview": "Open brown pods on standing common-milkweed stems have loose white silky seed tufts protruding in masses. Underwear is a fictional metaphor for exposed silk, not an anatomical claim. The image shows emergence from pods, not proof of airborne dispersal at this instant.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-06",
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "episode": {
+        "subject": "giant sequoia",
+        "platform": "facebook",
+        "contentType": "story",
+        "mediaSha1": "1291433597a3b44976a8e51a4d3bf6cbc6a59a12",
+        "theme": "social",
+        "title": "Two cones",
+        "body": "They keep trying to get their arms around my trunk.\n\nToday someone held two of my cones in one palm. I had forgotten there was a part of me they could manage."
+      },
+      "sourceAssetId": "b9526d79-9393-47e2-a9bf-7508fe5da3e3",
+      "localFile": "/tmp/botanical27/b9526d79-9393-47e2-a9bf-7508fe5da3e3.jpg",
+      "localBytes": 186640,
+      "visualReview": "Two small green sequoia cones rest above a human palm while still attached to a twig. Trunk embraces are fictional remembered context. Original is only 480 by 640; hold for visual quality despite clear species and scene.",
+      "admission": "hold: small original; independent lead image decision required"
+    },
+    {
+      "candidateId": "27-07",
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "episode": {
+        "subject": "giant sequoia",
+        "platform": "facebook",
+        "contentType": "story",
+        "mediaSha1": "3b438f70e6849e9d370cb6082f393f42cb819bc8",
+        "theme": "social",
+        "title": "Hold still",
+        "body": "Six people fussed around my base, fitting a silver wrap over the old scars.\n\nI wanted to make it easier for them. After several centuries of practice, I was finally useful at holding still."
+      },
+      "sourceAssetId": "0c58fd17-f4fe-4f43-a4d0-83cae496f019",
+      "localFile": "/tmp/botanical27/0c58fd17-f4fe-4f43-a4d0-83cae496f019.jpg",
+      "localBytes": 432926,
+      "visualReview": "Multiple firefighters in yellow work around a massive orange sequoia trunk, applying silver fire-shelter material at its base. General Sherman is the real photographed tree. The fictional narrator does not claim that historical name or quote a firefighter.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-08",
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "episode": {
+        "subject": "giant sequoia",
+        "platform": "facebook",
+        "contentType": "story",
+        "mediaSha1": "d461ba2ddc0e8efef0b767ea774267bfffc5046c",
+        "theme": "weather",
+        "title": "Rain from below",
+        "body": "The rain arrived sideways, from a little thing on the ground.\n\nI had spent centuries being watered from above. It was embarrassing how quickly I became attached to the hose."
+      },
+      "sourceAssetId": "2575ffca-2801-480e-ba27-85f80ca84b5a",
+      "localFile": "/tmp/botanical27/2575ffca-2801-480e-ba27-85f80ca84b5a.jpg",
+      "localBytes": 588685,
+      "visualReview": "Visible sprinkler jets spray the General Grant Tree area beside hoses and protective material. Artificial watering is directly pictured; emotional attachment and long memory are fictional. No statement that the tree was otherwise untouched by fire.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-09",
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "episode": {
+        "subject": "giant sequoia",
+        "platform": "facebook",
+        "contentType": "story",
+        "mediaSha1": "343c35f050fc1350be999ea8510830fd9fc92055",
+        "theme": "danger",
+        "title": "The old opening",
+        "body": "A firefighter stopped at the black opening in my trunk.\n\nI was ready to be impressive about how long I had lived with it. Then he came closer, and I wanted him to be careful with me."
+      },
+      "sourceAssetId": "94ff40bb-86e0-471b-8318-9840e1422713",
+      "localFile": "/tmp/botanical27/94ff40bb-86e0-471b-8318-9840e1422713.jpg",
+      "localBytes": 5547806,
+      "visualReview": "A small yellow-shirted firefighter stands immediately before a huge fire-scarred trunk and dark opening. Approach and private change of feeling are fiction; source establishes post-fire hazard inspection, not medical treatment, a new wound or a spoken exchange.",
+      "admission": "propose; independent lead image and prose decisions required"
+    },
+    {
+      "candidateId": "27-10",
+      "characterId": "ambrose-armful",
+      "identityNameBase": "Ambrose Armful",
+      "episode": {
+        "subject": "saguaro cactus",
+        "platform": "facebook",
+        "contentType": "story",
+        "mediaSha1": "fc19350615d9b7218a7082d4507f048811c2d5d0",
+        "theme": "weather",
+        "title": "Before the arms",
+        "body": "Before I had arms, snow settled on every spine.\n\nI had spent all that time becoming difficult to touch. Each point was now holding a little more cold against me."
+      },
+      "sourceAssetId": "saguaro-snow",
+      "localFile": "/tmp/botanical27/saguaro-snow.jpg",
+      "localBytes": 700323,
+      "visualReview": "Foreground unbranched saguaro bears thick snow on its crown and along ribs/spines, surrounded by snowy desert vegetation. Explicit earlier-life framing preserves Ambrose\u2019s present branches. Emotional frustration is fiction; no damage, death, deliberate movement or claim of warmth from the snow.",
+      "admission": "propose; independent lead image and prose decisions required"
+    }
+  ],
+  "media": [
+    {
+      "id": "botanical27-5f52a0e9-9e4a-48d0-80e0-03623a2322f5",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "A private moment",
+      "alt": "Flower cluster and leaves with a butterfly feeding on it.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/5f52a0e9-9e4a-48d0-80e0-03623a2322f5/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5f52a0e9-9e4a-48d0-80e0-03623a2322f5",
+      "creator": "NPS",
+      "license": "Public domain",
+      "width": 4032,
+      "height": 3024,
+      "sha1": "5f9e5e15f4e0ad9f41900beed7824a8f59275249",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/5f52a0e9-9e4a-48d0-80e0-03623a2322f5.jpg",
+      "localBytes": 3303833
+    },
+    {
+      "id": "botanical27-fws-caterpillar",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "A little more",
+      "alt": "Striped monarch caterpillar mouth lies against the hairy common-milkweed leaf edge",
+      "imageUrl": "https://www.fws.gov/sites/default/files/2021-06/27755234462_65e5965217_o.jpg",
+      "sourceUrl": "https://www.fws.gov/media/monarch-caterpillar-common-milkweed",
+      "creator": "Joanna Gilkeson/USFWS",
+      "license": "Public domain",
+      "width": 3872,
+      "height": 2424,
+      "sha1": "9ef6d77aa80b5fab5d03d8b199584454b147b3fd",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/fws-caterpillar.jpg",
+      "localBytes": 4911411
+    },
+    {
+      "id": "botanical27-26bf0b03-de2a-429f-bd45-913e2b57662c",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "Room between the bumps",
+      "alt": "Common Milkweed seed pods are about 4 inches long, inflated looking and covered in little bumpy projections. They are green initially, turning brown as they mature. They split open revealing 50-100 seeds each with a white, fluffy coma (\"parachute\") that allows wind dispersal.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/26bf0b03-de2a-429f-bd45-913e2b57662c/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/26bf0b03-de2a-429f-bd45-913e2b57662c",
+      "creator": "NPS Photo",
+      "license": "Public domain",
+      "width": 3024,
+      "height": 4032,
+      "sha1": "b74ce7f1826b5c3d1a50ccf7e0c38066d81e6976",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/26bf0b03-de2a-429f-bd45-913e2b57662c.jpg",
+      "localBytes": 2290935
+    },
+    {
+      "id": "botanical27-fws-seed-pod",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "Packed carefully",
+      "alt": "Open common-milkweed pod exposes densely overlapping brown seeds in ordered rows, with pale silk still compact",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2014-10/16258.jpg",
+      "sourceUrl": "https://www.fws.gov/media/milkweed-seeds-pod",
+      "creator": "Ryan Hagerty/USFWS",
+      "license": "Public domain",
+      "width": 5760,
+      "height": 3840,
+      "sha1": "ca31302fd2a8d2f2efcaff6001a6ca9cb2dcf952",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/fws-seed-pod.jpg",
+      "localBytes": 19047546
+    },
+    {
+      "id": "botanical27-fws-common-seed",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "One at a time",
+      "alt": "Open brown pods on standing common-milkweed stems have loose white silky seed tufts protruding in masses",
+      "imageUrl": "https://www.fws.gov/sites/default/files/2021-06/49018093678_8725de4bc8_o.jpg",
+      "sourceUrl": "https://www.fws.gov/media/common-milkweed-gone-seed",
+      "creator": "Courtney Celley/USFWS",
+      "license": "Public domain",
+      "width": 6016,
+      "height": 4016,
+      "sha1": "aec50bd3638ecf4244338472ee6aca4fdcd8c14f",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/fws-common-seed.jpg",
+      "localBytes": 18816106
+    },
+    {
+      "id": "botanical27-b9526d79-9393-47e2-a9bf-7508fe5da3e3",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "Two cones",
+      "alt": "A hand lifts two small, green cones hanging on the end of a giant sequoia branche.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b9526d79-9393-47e2-a9bf-7508fe5da3e3/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b9526d79-9393-47e2-a9bf-7508fe5da3e3",
+      "creator": "NPS",
+      "license": "Public domain",
+      "width": 480,
+      "height": 640,
+      "sha1": "1291433597a3b44976a8e51a4d3bf6cbc6a59a12",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/b9526d79-9393-47e2-a9bf-7508fe5da3e3.jpg",
+      "localBytes": 186640
+    },
+    {
+      "id": "botanical27-0c58fd17-f4fe-4f43-a4d0-83cae496f019",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "Hold still",
+      "alt": "Six people wearing yellow and green Nomex fire clothes and hardhats wrap silver fire shelter material around the base of a very large giant sequoia tree.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/0c58fd17-f4fe-4f43-a4d0-83cae496f019/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0c58fd17-f4fe-4f43-a4d0-83cae496f019",
+      "creator": "Elizabeth Wu, National Park Service",
+      "license": "Public domain",
+      "width": 1280,
+      "height": 960,
+      "sha1": "3b438f70e6849e9d370cb6082f393f42cb819bc8",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/0c58fd17-f4fe-4f43-a4d0-83cae496f019.jpg",
+      "localBytes": 432926
+    },
+    {
+      "id": "botanical27-2575ffca-2801-480e-ba27-85f80ca84b5a",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "Rain from below",
+      "alt": "Several sprinklers attached to hoses around the General Grant Tree moisten the area to reduce the threat of burning in an approaching wildfire. Firefighter in background is dwarfed by the size of this tree!",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/2575ffca-2801-480e-ba27-85f80ca84b5a/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/2575ffca-2801-480e-ba27-85f80ca84b5a",
+      "creator": "Elizabeth Wu, National Park Service",
+      "license": "Public domain",
+      "width": 1280,
+      "height": 960,
+      "sha1": "d461ba2ddc0e8efef0b767ea774267bfffc5046c",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/2575ffca-2801-480e-ba27-85f80ca84b5a.jpg",
+      "localBytes": 588685
+    },
+    {
+      "id": "botanical27-94ff40bb-86e0-471b-8318-9840e1422713",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "The old opening",
+      "alt": "A fire fighter stands in the entrance of a large fire scar opening in a giant sequoia tree. This tree has scarring from centuries of fires.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/94ff40bb-86e0-471b-8318-9840e1422713/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/94ff40bb-86e0-471b-8318-9840e1422713",
+      "creator": "Joe Suarez, National Park Service",
+      "license": "Public domain",
+      "width": 4032,
+      "height": 3024,
+      "sha1": "343c35f050fc1350be999ea8510830fd9fc92055",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/94ff40bb-86e0-471b-8318-9840e1422713.jpg",
+      "localBytes": 5547806
+    },
+    {
+      "id": "botanical27-saguaro-snow",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "Before the arms",
+      "alt": "Foreground unbranched saguaro bears thick snow on its crown and along ribs/spines, surrounded by snowy desert vegetation",
+      "imageUrl": "https://www.nps.gov/sagu/planyourvisit/images/snow2-2023.jpg",
+      "sourceUrl": "https://www.nps.gov/sagu/planyourvisit/weather.htm",
+      "creator": "NPS / T. Wiewel",
+      "license": "Public domain",
+      "width": 1920,
+      "height": 2560,
+      "sha1": "fc19350615d9b7218a7082d4507f048811c2d5d0",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/saguaro-snow.jpg",
+      "localBytes": 700323
+    },
+    {
+      "id": "botanical27-1e8eabac-7c55-4d17-a650-a16238bc65f0",
+      "subject": "common milkweed",
+      "category": "wildlife",
+      "identityNameBase": "Delphine Silkspill",
+      "detail": "Adult portrait only",
+      "alt": "Four pods on the top end of the plant stalk.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/1e8eabac-7c55-4d17-a650-a16238bc65f0/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1e8eabac-7c55-4d17-a650-a16238bc65f0",
+      "creator": "NPS Photo",
+      "license": "Public domain",
+      "width": 4032,
+      "height": 3024,
+      "sha1": "2aaec551ec0bad047ddee09f7526b3d441821b92",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/1e8eabac-7c55-4d17-a650-a16238bc65f0.jpg",
+      "localBytes": 3180861
+    },
+    {
+      "id": "botanical27-f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "Adult portrait only",
+      "alt": "Looking through the charred trunks of numerous medium sized sequoias, a very large sequoia remains alive with its foliage still green, and limited charring on its bark. ",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "creator": "Daniel Jeffcoach, National Park Service",
+      "license": "Public domain",
+      "width": 3315,
+      "height": 4973,
+      "sha1": "b30da34182a7ce8951b10db8fc3a5956361091d2",
+      "aggregated": false,
+      "localFile": "/tmp/botanical27/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9.jpg",
+      "localBytes": 7794393
+    }
+  ],
+  "unusedSources": [
+    {
+      "sourceAssetId": "048539d4-998c-4b7c-a31f-1c8c0e37388d",
+      "localFile": "/tmp/botanical27/048539d4-998c-4b7c-a31f-1c8c0e37388d.jpg",
+      "sha1": "a7c146462bfa738e23dd28704a08feabcc8f1a76",
+      "reason": "Separate young sequoia survived in an unburned patch; not evidence of Edmund as a seedling or his offspring."
+    },
+    {
+      "sourceAssetId": "986c70f6-fd50-44e0-8135-affb9968c68b",
+      "localFile": "/tmp/botanical27/986c70f6-fd50-44e0-8135-affb9968c68b.jpg",
+      "sha1": "bef66f47dcd83a8a5ee5ff434d72796792ecb026",
+      "reason": "Beautiful cones but another seed-departure scene would repeat Delphine within this batch."
+    },
+    {
+      "sourceAssetId": "c47dd93c-605e-4364-aa64-13028b1721d3",
+      "localFile": "/tmp/botanical27/c47dd93c-605e-4364-aa64-13028b1721d3.jpg",
+      "sha1": "065c2b11e815aab0b87fb96a96e997a033921b64",
+      "reason": "Small original and single butterfly visit repeats stronger simultaneous two-insect scene."
+    },
+    {
+      "sourceAssetId": "83f35dc1-e93e-43fa-a0a5-5ba8ebd163cc",
+      "localFile": "/tmp/botanical27/83f35dc1-e93e-43fa-a0a5-5ba8ebd163cc.jpg",
+      "sha1": "669a88e7a443e2e0faccb0e3b4a771a842409871",
+      "reason": "Milkweed egg photograph does not identify the plant to A. syriaca."
+    },
+    {
+      "sourceAssetId": "saguaro-fruit",
+      "localFile": "/tmp/botanical27/saguaro-fruit.jpg",
+      "sha1": "8831d41cbe2e5edcff77583376500254c175f3d8",
+      "reason": "360 by 270 original falls below gorgeous visual-Story standard."
+    },
+    {
+      "sourceAssetId": "saguaro-pleats",
+      "localFile": "/tmp/botanical27/saguaro-pleats.jpg",
+      "sha1": "127cfb36994daee338f1d9489e04f0eb24ea8a13",
+      "reason": "231 by 347 original, generic surface close-up without visible weather consequence."
+    },
+    {
+      "sourceAssetId": "gila-cactus",
+      "localFile": "/tmp/botanical27/gila-cactus.jpg",
+      "sha1": "38f6bc17b650d39c6e63ceb852c8b7e141a026bf",
+      "reason": "Woodpecker is on dead wood, no living saguaro cavity encounter visible."
+    },
+    {
+      "sourceAssetId": "elf-cactus",
+      "localFile": "/tmp/botanical27/elf-cactus.jpg",
+      "sha1": "5e7c04e16ec43fe7f65c74a82b2ec01673b32e99",
+      "reason": "Owl sits on thin woody branch, no cactus encounter."
+    },
+    {
+      "sourceAssetId": "27a6993e-cbb9-445e-bc0d-87521ce7e08b",
+      "localFile": "/tmp/botanical27/27a6993e-cbb9-445e-bc0d-87521ce7e08b.jpg",
+      "sha1": "ad685d9c34d6ebedc2f3e0d11151801e2d09099c",
+      "reason": "Small flower portrait has no distinct event."
+    },
+    {
+      "sourceAssetId": "e043c028-5529-4969-9b7c-0116ad00f3be",
+      "localFile": "/tmp/botanical27/e043c028-5529-4969-9b7c-0116ad00f3be.jpg",
+      "sha1": "d03fdaf74305acecee44ef2fbde5255afd5582fa",
+      "reason": "Small full tree portrait, weaker avatar than large exact living trunk."
+    }
+  ],
+  "deliveryNote": "Two USFWS originals are 18.8MB and 19.0MB. Exact originals were reviewed and hashed; hotlink payload suitability needs product delivery review. No resized binary is substituted under an original hash."
+}

@@ -1,0 +1,213 @@
+{
+  "batch": "botanical-regular-38",
+  "status": "two proposals; zero newly admitted",
+  "sourceImagesOpened": 8,
+  "newOriginalDownloads": 6,
+  "cachedOriginalsReopened": 2,
+  "deliveryVariantsOpened": 1,
+  "entries": [
+    {
+      "id": "botanical38-01",
+      "characterId": "ambrose-armful",
+      "subject": "saguaro cactus",
+      "species": "Carnegiea gigantea",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "social",
+      "title": "Loose ends",
+      "body": "A stick lodged between my arms. Then another. I blamed the wind until the sticks began crossing one another in a rather deliberate way.\n\nBy the time the nest was finished, there was more dead wood between those arms than I had ever intended to hold. Loose ends stuck out on every side.\n\nThe wind came back.\n\nI had been waiting for it to clear the mess away. Now I wanted each badly placed twig to stay exactly where it was.",
+      "mediaSha1": "7d7f8371da22478535bbe2fd10f1c6fb82d95d8f",
+      "media": {
+        "id": "cbad1d05-4007-453b-aa9f-54e1d1b6c047",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/cbad1d05-4007-453b-aa9f-54e1d1b6c047/original.jpg?",
+        "localFile": "/tmp/botanical38/cbad1d05-4007-453b-aa9f-54e1d1b6c047.jpg",
+        "bytes": 1272041,
+        "sha1": "7d7f8371da22478535bbe2fd10f1c6fb82d95d8f",
+        "dimensions": [
+          900,
+          1200
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cbad1d05-4007-453b-aa9f-54e1d1b6c047",
+        "sourceLocal": "/tmp/botanical38/cbad1d05-4007-453b-aa9f-54e1d1b6c047.html",
+        "originalLabel": "1.2 MB, 900x1200",
+        "rights": "Public domain:Full Granting Rights",
+        "creator": "National Park Service/Alice Wondrak Biel",
+        "license": "Public domain",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/cbad1d05-4007-453b-aa9f-54e1d1b6c047",
+        "category": "wildlife",
+        "aggregated": false,
+        "sha256": "5dde02ff97d494869e6a3a8c47c91a3fdd6b9af96112bfbea519fd9f63f403b2",
+        "alt": "A branched adult saguaro supports a large stick nest wedged among its arms against a blue sky."
+      },
+      "verdict": "proposed; independent lead review required",
+      "visibleEvidence": "A substantial crossed-stick nest is visibly wedged between adult arms. No bird, egg or chick is visible.",
+      "fictionalContext": "Earlier stick accumulation and a subsequent wind are fictional remembered sequence; the completed nest is the pictured physical result. No occupant species or current occupancy is invented."
+    },
+    {
+      "id": "botanical38-02",
+      "characterId": "ambrose-armful",
+      "subject": "saguaro cactus",
+      "species": "Carnegiea gigantea",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "social",
+      "title": "Entirely my own",
+      "body": "The mesquite put a branch between my arms when there was still plenty of room. We both kept growing.\n\nNow her leaves are among my spines, and a woody twig lies across the ribs I had considered entirely my own. I have spent several seasons being offended by her poor sense of distance.\n\nA nub of mine has come up on the other side of the branch. Her leaves are caught around that, too.\n\nI was about to blame her for this arrangement. Then I reached the part where I had grown around her.",
+      "mediaSha1": "5bc260147aae101f4ee184712ad735599743a311",
+      "media": {
+        "id": "38a0095e-6821-44ce-b016-a839e120d941",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/38a0095e-6821-44ce-b016-a839e120d941/original.jpg?",
+        "localFile": "/tmp/botanical38/38a0095e-6821-44ce-b016-a839e120d941.jpg",
+        "bytes": 8328758,
+        "sha1": "5bc260147aae101f4ee184712ad735599743a311",
+        "dimensions": [
+          4032,
+          3024
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/38a0095e-6821-44ce-b016-a839e120d941",
+        "sourceLocal": "/tmp/botanical38/38a0095e-6821-44ce-b016-a839e120d941.html",
+        "originalLabel": "7.3 MB, 4032x3024",
+        "rights": "Public domain:Full Granting Rights",
+        "creator": "NPS/E. SCHNAUBELT",
+        "license": "Public domain",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/38a0095e-6821-44ce-b016-a839e120d941",
+        "category": "wildlife",
+        "aggregated": false,
+        "sha256": "ba260b2fcdbfb8ad86db045c77a2356035684dc0caf1d5ff009631503e9a8e3d",
+        "alt": "Mesquite branches and green compound leaves cross between the ribbed arms and nubs of a mature saguaro.",
+        "reviewedDeliveryVariant": {
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/38a0095e-6821-44ce-b016-a839e120d941/proxyhires.jpg?",
+          "localFile": "/tmp/botanical38/mesquite-hires.jpg",
+          "bytes": 1259955,
+          "sha1": "8c88cdf3e67ea0eaf9af4aaa660c2f45a9354a2c",
+          "sha256": "b2cc6529ba173e042cfb9ef3795b070b6118505f865816871b8a4ae5bded4684",
+          "dimensions": [
+            2000,
+            1500
+          ],
+          "status": 200,
+          "contentType": "image/jpeg",
+          "seconds": 3.051363874983508
+        }
+      },
+      "verdict": "proposed; independent lead review required",
+      "visibleEvidence": "Mesquite leaves and woody branches visibly intersect the cactus arms, ribs and nubs. No fused tissue or fresh injury is claimed.",
+      "fictionalContext": "The order and duration of intergrowth, territorial feelings and reassessment are fiction. Actual visible interleaving supports the conflict; no voluntary reaching or rapid growth is claimed."
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "id": "ba7e39e3-4dff-4491-8a1b-947453160ec2",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/ba7e39e3-4dff-4491-8a1b-947453160ec2/original.jpg?",
+        "localFile": "/tmp/botanical38/ba7e39e3-4dff-4491-8a1b-947453160ec2.jpg",
+        "bytes": 2830612,
+        "sha1": "85495920ca8c1271676f085b7cd66ceb7eaaeaa1",
+        "dimensions": [
+          2160,
+          3840
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ba7e39e3-4dff-4491-8a1b-947453160ec2",
+        "sourceLocal": "/tmp/botanical38/ba7e39e3-4dff-4491-8a1b-947453160ec2.html",
+        "originalLabel": "10.6 MB, 2160x3840",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Taxonomy hold. Exact record says milkweed, not Asclepias syriaca. The broad pale-backed leaf is compatible, but not sufficient for exact-species admission. Tiny eggs are visible with a human finger; any handling encounter would need distinct prose and verified plant identity."
+    },
+    {
+      "media": {
+        "id": "96e562a0-9c12-45e5-8991-e17cbe4548de",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/96e562a0-9c12-45e5-8991-e17cbe4548de/original.jpg?",
+        "localFile": "/tmp/botanical38/96e562a0-9c12-45e5-8991-e17cbe4548de.jpg",
+        "bytes": 5007774,
+        "sha1": "d502c2f4306fea363698ddac0e7b0a50b3a6ed1c",
+        "dimensions": [
+          2624,
+          3936
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/96e562a0-9c12-45e5-8991-e17cbe4548de",
+        "sourceLocal": "/tmp/botanical38/96e562a0-9c12-45e5-8991-e17cbe4548de.html",
+        "originalLabel": "6.6 MB, 2624x3936",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Taxonomy and scene hold. Record says milkweed without species and calls the insects bugs. Pixels show two red longhorn-like beetles on a chewed leaf edge with white droplets. No mating or sap identity is asserted from posture alone. Reusing leaf-eating cost would repeat Delphine27."
+    },
+    {
+      "media": {
+        "id": "69f11a58-155d-451f-6735-f963b035a6b5",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/69F11A58-155D-451F-6735F963B035A6B5/original.jpg?",
+        "localFile": "/tmp/botanical32/69f11a58-155d-451f-6735-f963b035a6b5.jpg",
+        "bytes": 3586903,
+        "sha1": "b031d59f6ea037da984393241665d30704b63f3d",
+        "dimensions": [
+          2832,
+          2128
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/69f11a58-155d-451f-6735-f963b035a6b5",
+        "sourceLocal": "/tmp/botanical38/69f11a58-155d-451f-6735-f963b035a6b5.html",
+        "originalLabel": "3.4 MB, 2832x2128",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Editorial hold. Sharp purple cones and green needle tufts are visible. A new cone-growth post currently amounts to a portrait and vanity quip; no developed incident clears the writing gate. Same exact image examined in botanical32; not a fresh admission."
+    },
+    {
+      "media": {
+        "id": "6367ef2c-155d-451f-678f-8b9e42024e5f",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/6367EF2C-155D-451F-678F8B9E42024E5F/original.jpg?",
+        "localFile": "/tmp/botanical32/6367ef2c-155d-451f-678f-8b9e42024e5f.jpg",
+        "bytes": 1726915,
+        "sha1": "3c0df7a812be281d129008d454912084d746923c",
+        "dimensions": [
+          1464,
+          1850
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/6367ef2c-155d-451f-678f-8b9e42024e5f",
+        "sourceLocal": "/tmp/botanical38/6367ef2c-155d-451f-678f-8b9e42024e5f.html",
+        "originalLabel": "1.6 MB, 1464x1850",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Embodiment hold retained from32. Snow coats a bare twisted foreground trunk; live needles belong visibly to other trees. The pictured foreground tree cannot establish current living Ansel. No damage/recovery or snow-clothing rewrite."
+    },
+    {
+      "media": {
+        "id": "998410a4-d5aa-4ceb-b9ad-77f31a42aa46",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/998410a4-d5aa-4ceb-b9ad-77f31a42aa46/original.jpg?",
+        "localFile": "/tmp/botanical38/998410a4-d5aa-4ceb-b9ad-77f31a42aa46.jpg",
+        "bytes": 1521101,
+        "sha1": "628958ed21b232f1c495357ba3d86eea1a62f667",
+        "dimensions": [
+          3094,
+          4640
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/998410a4-d5aa-4ceb-b9ad-77f31a42aa46",
+        "sourceLocal": "/tmp/botanical38/998410a4-d5aa-4ceb-b9ad-77f31a42aa46.html",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Scene hold. Exact file is a luminous green pitcher with red veins; the caption identifies an insect shadow but its form is too indistinct for a specific independent encounter. No species, struggle or successful capture narrative invented."
+    },
+    {
+      "media": {
+        "id": "f5a2dd47-2f93-4bdf-9127-56a22e03e714",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/f5a2dd47-2f93-4bdf-9127-56a22e03e714/original.jpg?",
+        "localFile": "/tmp/botanical38/f5a2dd47-2f93-4bdf-9127-56a22e03e714.jpg",
+        "bytes": 2007910,
+        "sha1": "fba342753d090f98a39a9051d571a72a48af8f95",
+        "dimensions": [
+          3024,
+          4032
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f5a2dd47-2f93-4bdf-9127-56a22e03e714",
+        "sourceLocal": "/tmp/botanical38/f5a2dd47-2f93-4bdf-9127-56a22e03e714.html",
+        "rights": "Public domain:Full Granting Rights"
+      },
+      "verdict": "hold",
+      "reason": "Editorial hold. Interior funnel and two ants visible; bottom remains dark and out of focus. Ants using or descending the trap repeats the held24 failed-capture mechanism. No meal outcome established."
+    }
+  ],
+  "articleDecision": "No article proposed. Neither admitted-candidate scene earns expansion beyond its complete short post; long copy would pad the encounter."
+}

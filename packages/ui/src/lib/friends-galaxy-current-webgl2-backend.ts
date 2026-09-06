@@ -107,6 +107,14 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     this.engine?.setCameraMotion(active);
   }
 
+  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
+    this.engine?.setAvatarImages(images);
+  }
+
+  hasActivePresentationTransition(): boolean {
+    return this.engine?.hasActivePresentationTransition ?? false;
+  }
+
   pickNode(viewportX: number, viewportY: number): string | null {
     if (!this.engine || !this.fixture) return null;
     return this.engine.pickNode(viewportX, viewportY, this.fixture.scene.nodeIds);
@@ -156,7 +164,7 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
         : undefined,
       drawCalls: null,
       labelCount: this.engine?.readyLabelCount ?? 0,
-      avatarCount: 0,
+      avatarCount: this.engine?.avatarCount ?? 0,
       labelLayoutCount: this.engine?.labelLayoutCount ?? 0,
       contextualEdgeCount: this.engine?.edgeCount ?? 0,
       bufferUploadCount: this.bufferUploadCount,

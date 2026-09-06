@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
 import { placeFriendsGalaxyLabelsAroundAvatars } from "../../src/lib/friends-galaxy-billboard-atlas.js";
-import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
+import { selectFriendsGalaxyLabels, selectFriendsGalaxyVisibleLabelSeeds } from "../../src/lib/friends-galaxy-presentation.js";
 import {
   createGalaxyLabFixture,
   galaxyLabNodePresentation,
@@ -255,10 +255,8 @@ describe("Friends Galaxy billboard label selection", () => {
     const cases = [
       { compact: false, detail: "overview" as const, cap: 13 },
       { compact: false, detail: "middle" as const, cap: 36 },
-      { compact: false, detail: "close" as const, cap: 64 },
       { compact: true, detail: "overview" as const, cap: 8 },
       { compact: true, detail: "middle" as const, cap: 20 },
-      { compact: true, detail: "close" as const, cap: 32 },
     ];
     for (const { compact, detail, cap } of cases) {
       const labels = selectFriendsGalaxyLabels(
@@ -340,6 +338,13 @@ describe("Friends Galaxy billboard label selection", () => {
     expect(placed).toHaveLength(1);
     expect(placed[0]!.nodeId).toBe(ownLabel.nodeId);
     expect(placed[0]!.gapY).toBeGreaterThanOrEqual(32);
+    const closePlaced = placeFriendsGalaxyLabelsAroundAvatars(
+      [ownLabel, nearbyLabel],
+      [{ nodeId: ownLabel.nodeId, anchorX: ownLabel.anchorX, anchorY: ownLabel.anchorY, size: 48 }],
+      true,
+    );
+    expect(closePlaced.map((label) => label.nodeId)).toEqual([ownLabel.nodeId, nearbyLabel.nodeId]);
+    expect(closePlaced[0]!.gapY).toBeGreaterThanOrEqual(32);
   });
 
   it("keeps the selected identity named outside the ordinary label sample", () => {
@@ -353,7 +358,7 @@ describe("Friends Galaxy billboard label selection", () => {
     );
 
     expect(labels.some((label) => label.nodeId === selectedNodeId)).toBe(true);
-    expect(labels.length).toBeLessThanOrEqual(64);
+    expect(new Set(labels.map((label) => label.nodeId)).size).toBe(labels.length);
   });
 
   it("rebuilds close labels from identities inside the settled viewport", () => {
@@ -389,6 +394,18 @@ describe("Friends Galaxy billboard label selection", () => {
       label.anchorZ,
       160,
     ))).toBe(true);
-    expect(labels.length).toBeLessThanOrEqual(64);
+    expect(new Set(labels.map((label) => label.nodeId)).size).toBe(labels.length);
+  });
+
+  it("keeps all close profile labels even beside a higher-priority identity", () => {
+    const seeds = Array.from({ length: 140 }, (_, index) => ({
+      id: `label:${index}`, nodeId: `account:${index}`, text: `Profile ${index}`,
+      anchorX: 0, anchorY: 0, anchorZ: 0, fontSize: 11, gapY: 2,
+      priority: 140 - index, provider: false,
+    }));
+    for (const compact of [true, false]) {
+      expect(selectFriendsGalaxyVisibleLabelSeeds(seeds, compact, "close")).toHaveLength(140);
+      expect(selectFriendsGalaxyVisibleLabelSeeds(seeds, compact, "middle")).toHaveLength(1);
+    }
   });
 });

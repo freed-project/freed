@@ -1,3 +1,5 @@
+import { galaxyNodeLabel, truncateGalaxyNodeLabel } from "./identity-graph-atlas.js";
+import { IdentityGalaxyNodeKindCode } from "./identity-galaxy-scene.js";
 import {
   createFriendsGalaxyAvatarAtlas,
   type FriendsGalaxyAvatarAtlas,
@@ -153,7 +155,8 @@ export function selectFriendsGalaxyAvatars(
       anchorX: scene.scene.positions[offset]!,
       anchorY: scene.scene.positions[offset + 1]!,
       anchorZ: scene.scene.positions[offset + 2]! + 7,
-      size: selected ? compact ? 42 : 48 : compact ? 34 : 40,
+      size: (compact ? 24 : 28) + Math.max(0, Math.min(4,
+        (scene.scene.radii[nodeIndex]! - 48) / 8)) * 6 + (selected ? 6 : 0),
       priority: presentation.priority + scene.scene.prominence[nodeIndex]! * 1_000,
       selected,
       color: friendsGalaxySemanticColor(scene.scene, palette, nodeIndex),
@@ -177,6 +180,7 @@ export function createFriendsGalaxyRendererAvatarAtlas(
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
   projection?: FriendsGalaxyViewportProjection,
   candidateSource: FriendsGalaxyAvatarCandidateSource = "scene",
+  loadedImagesOnly = false,
 ): FriendsGalaxyAvatarAtlas {
   const avatars = selectFriendsGalaxyAvatars(
     scene,
@@ -188,14 +192,11 @@ export function createFriendsGalaxyRendererAvatarAtlas(
     projection,
     candidateSource,
   );
-  return createFriendsGalaxyAvatarAtlas(avatars, palette, images, fontFamily);
+  return createFriendsGalaxyAvatarAtlas(loadedImagesOnly ? avatars.filter((avatar) => images.has(avatar.nodeId)) : avatars, palette, images, fontFamily);
 }
 
 function truncateLabel(value: string): string {
-  const characters = Array.from(value.trim());
-  return characters.length <= 28
-    ? value.trim()
-    : `${characters.slice(0, 27).join("")}...`;
+  return truncateGalaxyNodeLabel(value, 44);
 }
 
 export function friendsGalaxyLabelCap(
@@ -206,7 +207,7 @@ export function friendsGalaxyLabelCap(
     ? compact ? 8 : 13
     : detail === "middle"
       ? compact ? 20 : 36
-      : compact ? 32 : 64;
+      : Infinity;
 }
 
 export function friendsGalaxyLabelSourceKey(
@@ -257,11 +258,29 @@ export function selectFriendsGalaxyVisibleLabelSeeds<
       label.anchorZ,
       160,
     );
-  const providers = seeds.filter((label) => label.provider && labelIsVisible(label));
-  const semantic = seeds
+  const hovered = seeds.find(label => label.priority >= 2_000_000 && labelIsVisible(label));
+  const bounds = (label: Label) => {
+    const point = new Float32Array([label.anchorX, label.anchorY]);
+    if (projection) projectFriendsGalaxyWorldPoint(point, projection, label.anchorX, label.anchorY, label.anchorZ, 160);
+    const width = "width" in label ? Number(label.width) : label.text.length * label.fontSize * 0.65 + 16;
+    const height = "height" in label ? Number(label.height) : label.fontSize * 1.42 + 10;
+    return { x: point[0]!, y: point[1]! - (label.centered ? 0 : label.gapY + height / 2), width, height };
+  };
+  const hoverBounds = hovered ? bounds(hovered) : null;
+  const available = hovered && hoverBounds ? seeds.filter(label => {
+    if (label === hovered) return true;
+    const box = bounds(label);
+    return Math.abs(box.x - hoverBounds.x) >= (box.width + hoverBounds.width) / 2 + 8 ||
+      Math.abs(box.y - hoverBounds.y) >= (box.height + hoverBounds.height) / 2 + 8;
+  }) : seeds;
+  const providers = available.filter((label) => label.provider && labelIsVisible(label));
+  const semantic = available
     .filter((label) => !label.provider && labelIsVisible(label))
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
-  const semanticCap = Math.max(0, cap - providers.length);
+  // At close range a linked profile must not disappear behind its identity's
+  // priority or spacing budget. Admission and projection already bound this set.
+  if (detail === "close") return [...providers, ...semantic];
+  const semanticCap = Math.max(hovered ? 1 : 0, cap - providers.length);
   if (semanticCap === 0) return providers;
   const minimumDistance = (detail === "overview" ? 760 : detail === "middle" ? 280 : 90) *
     (compact ? 1.3 : 1);
@@ -315,6 +334,7 @@ function buildFriendsGalaxyLabelSeeds(
   projection?: FriendsGalaxyViewportProjection,
   candidateSource?: FriendsGalaxyPresentationCandidateSource,
   selectVisible = true,
+  hoveredNodeId: string | null = null,
 ): readonly FriendsGalaxyLabelSeed[] {
   const cap = friendsGalaxyLabelCap(compact, detail);
   const selectedPersonId = friendsGalaxySelectedPersonNodeId(scene, selectedNodeId);
@@ -327,41 +347,55 @@ function buildFriendsGalaxyLabelSeeds(
       label.nodeId,
     );
     const provider = label.kind === "provider_cluster";
-    const fontSize = provider ? compact ? 15 : 18 : compact ? 12 : 14;
+    const identity = label.kind === "friend_person" || label.kind === "connection_person";
+    const fontSize = provider ? compact ? 15 : 18 : identity ? compact ? 16 : 18 : compact ? 14 : 15;
     const pointSize = nodeIndex === null
       ? 8
       : Math.max(3.5, scene.scene.pointSizes[nodeIndex]! * 0.34);
     return {
       id: label.id,
       nodeId: label.nodeId,
-      text: truncateLabel(label.text),
+      text: nodeIndex !== null && scene.scene.linkedPersonIds[nodeIndex]
+        ? galaxyNodeLabel("", "account", scene.scene.providers[nodeIndex] ?? undefined).trim()
+        : truncateLabel(label.text),
       anchorX: nodeIndex === null ? label.x : scene.scene.positions[nodeIndex * 3]!,
       anchorY: nodeIndex === null ? -label.y : scene.scene.positions[nodeIndex * 3 + 1]!,
-      anchorZ: nodeIndex === null ? -72 : scene.scene.positions[nodeIndex * 3 + 2]! + 5,
+      anchorZ: nodeIndex === null ? -100 : scene.scene.positions[nodeIndex * 3 + 2]!,
       fontSize,
-      gapY: detail === "close" && !provider
-        ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
+      gapY: !provider && !identity ? 2 : detail === "close" && identity
+        ? pointSize * 0.5 + 2
         : pointSize * 0.5 + 2,
       priority: label.priority +
         (provider ? 100_000 : scene.scene.prominence[nodeIndex ?? 0]! * 1_000) +
         (label.nodeId === selectedPersonId ? 1_000_000 : 0),
       provider,
+      centered: label.centered,
     };
   };
   const seedForIdentityNode = (nodeIndex: number): FriendsGalaxyLabelSeed => {
     const presentation = resolvePresentation(scene, nodeIndex);
     const nodeId = scene.scene.nodeIds[nodeIndex]!;
     const pointSize = Math.max(3.5, scene.scene.pointSizes[nodeIndex]! * 0.34);
+    const identity = scene.scene.kinds[nodeIndex] === IdentityGalaxyNodeKindCode.FriendPerson ||
+      scene.scene.kinds[nodeIndex] === IdentityGalaxyNodeKindCode.ConnectionPerson;
     return {
       id: `label:visible:${nodeId}`,
       nodeId,
-      text: truncateLabel(presentation.label),
+      text: truncateLabel(galaxyNodeLabel(
+        scene.scene.linkedPersonIds[nodeIndex] ? "" : presentation.label,
+        scene.scene.kinds[nodeIndex] === IdentityGalaxyNodeKindCode.FriendPerson
+          ? "friend_person"
+          : scene.scene.kinds[nodeIndex] === IdentityGalaxyNodeKindCode.ConnectionPerson
+            ? "connection_person"
+            : scene.scene.kinds[nodeIndex] === IdentityGalaxyNodeKindCode.Feed ? "feed" : "account",
+        scene.scene.providers[nodeIndex] ?? undefined,
+      )),
       anchorX: scene.scene.positions[nodeIndex * 3]!,
       anchorY: scene.scene.positions[nodeIndex * 3 + 1]!,
-      anchorZ: scene.scene.positions[nodeIndex * 3 + 2]! + 5,
-      fontSize: compact ? 12 : 14,
-      gapY: detail === "close"
-        ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
+      anchorZ: scene.scene.positions[nodeIndex * 3 + 2]!,
+      fontSize: identity ? compact ? 16 : 18 : compact ? 14 : 15,
+      gapY: !identity ? 2 : detail === "close"
+        ? pointSize * 0.5 + 2
         : pointSize * 0.5 + 2,
       priority: presentation.priority + scene.scene.prominence[nodeIndex]! * 1_000 +
         (nodeId === selectedPersonId ? 1_000_000 : 0),
@@ -374,6 +408,19 @@ function buildFriendsGalaxyLabelSeeds(
   const seeds: FriendsGalaxyLabelSeed[] = projection && detail !== "overview"
     ? [...providerSeeds]
     : scene.atlas.labels.map(seedForAtlasLabel);
+
+  if (!projection && detail === "close") {
+    const seeded = new Set(seeds.map((seed) => seed.nodeId));
+    // Worker label LOD can lag the camera. Every admitted profile still has
+    // metadata, so retain its label in the pool for projection to decide.
+    for (const node of scene.atlas.nodes) {
+      if (node.kind === "provider_cluster" || seeded.has(node.id)) continue;
+      const nodeIndex = findFriendsGalaxySceneNodeIndex(scene.scene, scene.interactionIndex, node.id);
+      if (nodeIndex === null) continue;
+      seeds.push(seedForIdentityNode(nodeIndex));
+      seeded.add(node.id);
+    }
+  }
 
   if (projection && detail !== "overview") {
     const candidateCapacity = Math.max(1, (cap - providerSeeds.length) * 4);
@@ -392,6 +439,10 @@ function buildFriendsGalaxyLabelSeeds(
       )) return;
       const rank = scene.scene.prominence[nodeIndex]! +
         (scene.scene.nodeIds[nodeIndex] === selectedPersonId ? 10 : 0);
+      if (detail === "close") {
+        ranked.push({ nodeIndex, rank });
+        return;
+      }
       const last = ranked[ranked.length - 1];
       if (
         ranked.length >= candidateCapacity && last &&
@@ -434,6 +485,15 @@ function buildFriendsGalaxyLabelSeeds(
     );
     if (nodeIndex !== null) seeds.push(seedForIdentityNode(nodeIndex));
   }
+  if (hoveredNodeId) {
+    const nodeIndex = findFriendsGalaxySceneNodeIndex(scene.scene, scene.interactionIndex, hoveredNodeId);
+    if (nodeIndex !== null && (scene.presentationCandidateSource !== "atlas" || scene.atlas.nodes.some(node => node.id === hoveredNodeId))) {
+      const existing = seeds.findIndex(label => label.nodeId === hoveredNodeId);
+      const hovered = { ...(existing >= 0 ? seeds[existing]! : seedForIdentityNode(nodeIndex)), priority: 2_000_000 };
+      if (existing >= 0) seeds[existing] = hovered;
+      else seeds.push(hovered);
+    }
+  }
   return selectVisible
     ? selectFriendsGalaxyVisibleLabelSeeds(seeds, compact, detail, projection)
     : seeds;
@@ -468,6 +528,8 @@ export function createFriendsGalaxyRendererLabelPoolAtlas(
   detail: FriendsGalaxyViewDetail,
   selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
+  retainLabels?: (labels: readonly FriendsGalaxyLabelSeed[]) => readonly FriendsGalaxyLabelSeed[],
+  hoveredNodeId: string | null = null,
 ): FriendsGalaxyLabelAtlas {
   const avatars = selectFriendsGalaxyAvatars(
     scene,
@@ -489,8 +551,14 @@ export function createFriendsGalaxyRendererLabelPoolAtlas(
       undefined,
       scene.presentationCandidateSource,
       false,
+      hoveredNodeId,
     ),
     avatars,
+    detail === "close",
   );
-  return createFriendsGalaxyLabelAtlas(seeds, palette, fontFamily);
+  const tinted = seeds.map(label => {
+    const index = findFriendsGalaxySceneNodeIndex(scene.scene, scene.interactionIndex, label.nodeId);
+    return index === null ? label : { ...label, color: friendsGalaxySemanticColor(scene.scene, palette, index) };
+  });
+  return createFriendsGalaxyLabelAtlas(retainLabels ? retainLabels(tinted) : tinted, palette, fontFamily);
 }

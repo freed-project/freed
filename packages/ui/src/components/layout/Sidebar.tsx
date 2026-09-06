@@ -680,12 +680,6 @@ export function Sidebar({
   const [sidebarSearchInput, setSidebarSearchInput] = useState(searchQuery);
   const renameFeed = useAppStore((s) => s.renameFeed);
   const removeFeed = useAppStore((s) => s.removeFeed);
-  const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
-  const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
-  const totalItemCount = useAppStore((s) => s.totalItemCount);
-  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
-  const rssUnreadCount = unreadCountByPlatform.rss ?? 0;
-  const rssItemCount = itemCountByPlatform.rss ?? 0;
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
@@ -714,6 +708,12 @@ export function Sidebar({
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const totalUnreadCount = libraryFacets.unreadCount;
+  const totalItemCount = libraryFacets.totalCount;
+  const unreadCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.unreadCount]));
+  const itemCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.totalCount]));
+  const rssUnreadCount = unreadCountByPlatform.rss ?? 0;
+  const rssItemCount = itemCountByPlatform.rss ?? 0;
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
   const friendCount = libraryFacets.friendPersonCount;

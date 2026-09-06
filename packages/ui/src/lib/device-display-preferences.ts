@@ -36,6 +36,7 @@ const DEFAULT_DEVICE_DISPLAY_PREFERENCES: DeviceDisplayPreferences = {
   friendsSidebarWidth: 360,
   friendsSidebarOpen: true,
   friendsMode: "all_content",
+  mapMode: "all_content",
   debugPanelWidth: 320,
   mapTimeMode: "current",
   feedSignalModes: [],
@@ -93,7 +94,10 @@ function normalizeDeviceDisplayPreferences(
   const feedSignalModes = Array.isArray(value?.feedSignalModes)
     ? Array.from(new Set(value.feedSignalModes.filter(isFeedSignalMode).filter((mode) => mode !== "all")))
     : defaults.feedSignalModes;
-  const mapMode = isMapMode(value?.mapMode) ? value.mapMode : undefined;
+  // Preserve an explicit legacy Friends choice, then fall back to the old map
+  // choice. Both aliases now represent the same cross-view content preference.
+  const identityMode = isMapMode(value?.friendsMode) ? value.friendsMode
+    : isMapMode(value?.mapMode) ? value.mapMode : "all_content";
 
   return {
     sidebarWidth: finiteNumber(value?.sidebarWidth, defaults.sidebarWidth),
@@ -102,9 +106,9 @@ function normalizeDeviceDisplayPreferences(
     friendsSidebarOpen: typeof value?.friendsSidebarOpen === "boolean"
       ? value.friendsSidebarOpen
       : defaults.friendsSidebarOpen,
-    friendsMode: isMapMode(value?.friendsMode) ? value.friendsMode : defaults.friendsMode,
+    friendsMode: identityMode,
     debugPanelWidth: finiteNumber(value?.debugPanelWidth, defaults.debugPanelWidth),
-    ...(mapMode ? { mapMode } : {}),
+    mapMode: identityMode,
     mapTimeMode: isMapTimeMode(value?.mapTimeMode) ? value.mapTimeMode : defaults.mapTimeMode,
     feedSignalModes,
     savedContentSortMode: isSavedContentSortMode(value?.savedContentSortMode)
@@ -179,9 +183,12 @@ export function getDeviceDisplayPreferences(): DeviceDisplayPreferences {
 }
 
 export function setDeviceDisplayPreferences(update: Partial<DeviceDisplayPreferences>): boolean {
+  const identityMode = isMapMode(update.friendsMode) ? update.friendsMode
+    : isMapMode(update.mapMode) ? update.mapMode : undefined;
   const next = normalizeDeviceDisplayPreferences({
     ...getDeviceDisplayPreferences(),
     ...update,
+    ...(identityMode ? { friendsMode: identityMode, mapMode: identityMode } : {}),
   });
   if (!persistPreferences(next)) return false;
   current = next;

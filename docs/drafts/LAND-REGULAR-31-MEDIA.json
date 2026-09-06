@@ -1,0 +1,1699 @@
+{
+  "batch": "land-regular-31",
+  "candidateCount": 3,
+  "holdCount": 9,
+  "newExactOriginalsReviewed": 18,
+  "newExactOriginalCap": 30,
+  "cachedOriginalsReopened": [
+    "/tmp/freed-land20/7.jpg",
+    "/tmp/freed-land20/18.jpg",
+    "/tmp/freed-bird25/24.jpg",
+    "/tmp/freed-bird25/33.jpg"
+  ],
+  "records": [
+    {
+      "slot": "01",
+      "status": "candidate",
+      "characterId": "berta-bank",
+      "characterName": "Berta Bank",
+      "fullSpecies": "Castor canadensis",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "The hard surface",
+      "prose": "Came up where I had breathed yesterday and met ice. Pushed higher. It held.\n\nI put both forepaws against it and swam along underneath. Kept trying to lift my head before I had found the end. Each time I did, I stopped moving.\n\nHad to lower my face to go on. Then one paw reached into nothing. Turned toward it and came up breathing.\n\nThe opening was wider than I was. I swam around its edge before going under again.",
+      "visibleScene": "A beaver swims with its head and back above water beside a sharply visible curved ice edge.",
+      "fictionBoundary": "The visible animal, open water and ice anchor surfacing at a changing boundary. Prior surfacing location, obstructed attempt, tactile search and subsequent circuit are invented. No duration, drowning injury, trapped air bubble or universal navigation method claimed.",
+      "holdReason": null,
+      "sourceTitle": "Chilly ",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/92db9e05-f1ac-4211-a158-a4995bb641ca",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/92db9e05-f1ac-4211-a158-a4995bb641ca/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/8.jpg",
+      "sourceCachePath": "/tmp/freed-land31/8.html",
+      "creator": "National Park Service; individual photographer uncredited",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/92db9e05-f1ac-4211-a158-a4995bb641ca",
+      "originalWidth": 3315,
+      "originalHeight": 2212,
+      "originalSha1": "44099524fe01bdb1ce34abb5820e28e19c648ea2",
+      "originalSha256": "2e99ae032233f3c246f741c08c789977b4db6a1fd0ed1e8805ccf5b460bed943",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 8,
+      "sourceDescription": "A beaver in a partially frozen pond",
+      "sourceTaxonEvidence": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "02",
+      "status": "candidate",
+      "characterId": "berta-bank",
+      "characterName": "Berta Bank",
+      "fullSpecies": "Castor canadensis",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Before I went under",
+      "prose": "The bank rustled. I lowered my head until only my nose was out. My family was farther along the bank, still moving through the stems.\n\nI could have slipped under. Instead I lifted my tail and struck the water hard enough to throw it over my back.\n\nThey came splashing in. I stayed up until the last head disappeared, then dived toward the place where it had gone.",
+      "visibleScene": "A beaver swims with its head visible and its broad tail raised through a sheet of spray.",
+      "fictionBoundary": "The source explicitly records a tail slap. Unidentified disturbance, relatives on the bank, their entry and narrator waiting are fictional surrounding events. The photograph contains only the focal beaver. No predator species, offspring, kin sexes or documented rescue claimed.",
+      "holdReason": null,
+      "sourceTitle": "Slap!",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/9.jpg",
+      "sourceCachePath": "/tmp/freed-land31/9.html",
+      "creator": "National Park Service; individual photographer uncredited",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+      "originalWidth": 2923,
+      "originalHeight": 1741,
+      "originalSha1": "2c6f90bb0be6c2b9df2ab9c9b42c68d7be3c70da",
+      "originalSha256": "214dc9a8b28c841b0b097622c997a132e5a1477ac4ef62f53d69d87b22347cbe",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 9,
+      "sourceDescription": "A beaver slapping its tail in Horseshoe Lake",
+      "sourceTaxonEvidence": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "03",
+      "status": "candidate",
+      "characterId": "oswin-broadback",
+      "characterName": "Oswin Broadback",
+      "fullSpecies": "Bison bison",
+      "platform": "medium",
+      "contentType": "article",
+      "title": "Four places to stand",
+      "prose": "I remember pushing up against her before I could stand without her. My front legs went straight. My back legs folded. When I got those straight, the front ones had spread apart.\n\nShe was warm all along one side of me. I leaned harder and stopped falling. Then she turned her head. I went with it, though my feet stayed where they were, and sat down abruptly.\n\nGot up again. Put my shoulder against her leg this time. That held. I wanted to stay there, with all four feet settled, but she took a step and I was standing by myself.\n\nI did not know which foot I could spare. Lifted one, set it down almost where it had been. She was already farther away. Lifted it again and put it ahead of me. Then the next.\n\nReached her and leaned so hard that she shifted her weight. Had to take another step.",
+      "visibleScene": "A wet-looking reddish newborn bison calf stands beneath the neck of an adult cow on short grass; afterbirth remains visible behind the cow.",
+      "fictionBoundary": "Source explicitly identifies cow with wobbly newborn calf and retained afterbirth. The calf narrates a fictional earliest memory; detailed attempts, falls, leaning and steps are invented. Male calf is fiction, unrecorded by the image. Maternal relationship is source-supported. This is a conditional prequel, not a reset of the current adult body.",
+      "holdReason": null,
+      "sourceTitle": "Bison",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9babcf73-7de6-4037-869c-9bb64df4172c",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/9babcf73-7de6-4037-869c-9bb64df4172c/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/16.jpg",
+      "sourceCachePath": "/tmp/freed-land31/16.html",
+      "creator": "NPS/Neal Herbert\n",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/9babcf73-7de6-4037-869c-9bb64df4172c",
+      "originalWidth": 4773,
+      "originalHeight": 3182,
+      "originalSha1": "c29681ffde90bac11c4aa14c6ac8bc8d174f84ce",
+      "originalSha256": "bf4892875ae34dfb0e3dcdfa02336678722f3ac1e0f2f36106fcef8e8d368ac0",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 16,
+      "sourceDescription": "Newly born bison calf and mother;\nNeal Herbert;\nMay 2014;\nCatalog #19422d;\nOriginal #7602",
+      "sourceTaxonEvidence": [
+        "bison",
+        "bison bison",
+        "mammals",
+        "yellowstone national park",
+        "wildlife",
+        "19422d"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "04",
+      "status": "hold",
+      "characterId": "rufus-russet",
+      "characterName": "Rufus Russet",
+      "fullSpecies": "Vulpes vulpes",
+      "platform": "instagram",
+      "contentType": "post",
+      "title": "Across the pale log",
+      "prose": null,
+      "visibleScene": "An adult red fox walks on a bare fallen log in a conifer woodland.",
+      "fictionBoundary": "The image supports balance and movement on wood. Loose-bark play would add an absent central object; a bare crossing alone did not earn a payoff.",
+      "holdReason": "Prose hold: no new complete event without ordinary movement or invented central play object.",
+      "sourceTitle": "Red Fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ffaf0358-3501-4c8c-b41c-382588d2e06e",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/ffaf0358-3501-4c8c-b41c-382588d2e06e/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/14.jpg",
+      "sourceCachePath": "/tmp/freed-land31/14.html",
+      "creator": "NPS/Neal Herbert",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/ffaf0358-3501-4c8c-b41c-382588d2e06e",
+      "originalWidth": 4678,
+      "originalHeight": 3119,
+      "originalSha1": "0a7abeabfb10bfe59b3386f5547c3e46b74e9e85",
+      "originalSha256": "db068a63a8b752c08743eeedabf0093700e806290be3ad968115a41d8f1fc086",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 14,
+      "sourceDescription": "Red Fox, Madison Junction",
+      "sourceTaxonEvidence": [
+        "yellowstone national park",
+        "wildlife",
+        "mammals",
+        "red fox",
+        "vulpes vulpes",
+        "20150514_ndh-yell-6254"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "05",
+      "status": "hold",
+      "characterId": "rufus-russet",
+      "characterName": "Rufus Russet",
+      "fullSpecies": "Vulpes vulpes",
+      "platform": "instagram",
+      "contentType": "post",
+      "title": "Three heads at the rock",
+      "prose": null,
+      "visibleScene": "Three fox kits crowd their muzzles over a rock while an adult fox stands beside them.",
+      "fictionBoundary": "The visible family investigation is strong, but competition for one scent repeated the crowded-resource mechanism. No prey or food is identified.",
+      "holdReason": "Prose hold: scent investigation did not develop into a distinct event; no generic nose mishap offered.",
+      "sourceTitle": "Red fox and kits near Gibbon Falls",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/172d7ded-3c8c-4f48-bcb8-79c9b83ce396",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/172d7ded-3c8c-4f48-bcb8-79c9b83ce396/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/15.jpg",
+      "sourceCachePath": "/tmp/freed-land31/15.html",
+      "creator": "NPS/Eric Johnston",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/172d7ded-3c8c-4f48-bcb8-79c9b83ce396",
+      "originalWidth": 4015,
+      "originalHeight": 2548,
+      "originalSha1": "cec0bf29b648cd50745e7cd81d87cd77ef958911",
+      "originalSha256": "762bb3c4357718e817bed45520a2258b9f64375e54ba8b10609eb167fff04353",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 15,
+      "sourceDescription": "Red fox and kits near Gibbon Falls",
+      "sourceTaxonEvidence": [
+        "yellowstone national park",
+        "wildlife",
+        "mammals",
+        "red fox",
+        "vulpes vulpes",
+        "20150610_EJ_3539"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "06",
+      "status": "hold",
+      "characterId": "rufus-russet",
+      "characterName": "Rufus Russet",
+      "fullSpecies": "Vulpes vulpes",
+      "platform": "instagram",
+      "contentType": "post",
+      "title": "Running over the rise",
+      "prose": null,
+      "visibleScene": "A red fox runs away along a gravel road with feet raised, against blurred hills.",
+      "fictionBoundary": "The photograph genuinely shows running. Solitary running copy offered pleasure without a developed surprise, while an invented pursuer would carry too much of the scene.",
+      "holdReason": "Prose hold: motion and gorgeous light do not supply a payoff.",
+      "sourceTitle": "Red Fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/414e85f2-7160-4867-a251-60c1c4cdd4a5",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/414e85f2-7160-4867-a251-60c1c4cdd4a5/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/2.jpg",
+      "sourceCachePath": "/tmp/freed-land31/2.html",
+      "creator": "NPS Photo",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/414e85f2-7160-4867-a251-60c1c4cdd4a5",
+      "originalWidth": 4752,
+      "originalHeight": 3171,
+      "originalSha1": "4bdf8012f3474ff6ed0e128e05cb40fbb8d6ed89",
+      "originalSha256": "0502371e1054ed95b8783f7d1fa46f975f7623e39e903d14a9ff0e08074f4354",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 2,
+      "sourceDescription": "A fox on the Denali Park Road",
+      "sourceTaxonEvidence": [
+        "wildlife",
+        "fox",
+        "mammal",
+        "national park service",
+        "denali national park and preserve",
+        "nature",
+        "toklat",
+        "trip to toklat",
+        "west side"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "07",
+      "status": "hold",
+      "characterId": "berta-bank",
+      "characterName": "Berta Bank",
+      "fullSpecies": "Castor canadensis",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Down the steep bank",
+      "prose": null,
+      "visibleScene": "A wet beaver descends a steep muddy bank through vegetation; one forefoot and part of its tail are visible.",
+      "fictionBoundary": "Sliding or readjusting balance would be a plausible sequence, but the attempted account remained a routine descent.",
+      "holdReason": "Prose hold: physical adjustment remained an incident report.",
+      "sourceTitle": "Heading Downhill",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/02262c53-643a-4de0-9aa6-2d0b6767d8dd",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/02262c53-643a-4de0-9aa6-2d0b6767d8dd/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/6.jpg",
+      "sourceCachePath": "/tmp/freed-land31/6.html",
+      "creator": "National Park Service; individual photographer uncredited",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/02262c53-643a-4de0-9aa6-2d0b6767d8dd",
+      "originalWidth": 7360,
+      "originalHeight": 4912,
+      "originalSha1": "93e15c4f9dc0724a7e347d1c45ba13fba9ee7884",
+      "originalSha256": "67111bc15e9833a76bdd82bdb486dcc01bddd415b5f19de5236f098ce623b517",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 6,
+      "sourceDescription": "One side of Denali's Horseshoe Lake is a steep hillside, but that doesn't deter beavers from exploring",
+      "sourceTaxonEvidence": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "08",
+      "status": "hold",
+      "characterId": "maud-overhead",
+      "characterName": "Maud Overhead",
+      "fullSpecies": "Corvus corax",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Below the small bird",
+      "prose": null,
+      "visibleScene": "A raven flies low above grass and dead trees; a smaller black bird with a red wing patch flies above it.",
+      "fictionBoundary": "The small bird is visible although the source caption omits it. A new pursuit-and-turning premise approached the held hawk-loop mechanism. Neither territorial motivation nor physical contact is documented.",
+      "holdReason": "Prose hold: no distinct event beyond another aerial pursuit.",
+      "sourceTitle": "Raven flying low",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/dce21063-abe4-477e-a579-31d19e0d7031",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/dce21063-abe4-477e-a579-31d19e0d7031/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/13.jpg",
+      "sourceCachePath": "/tmp/freed-land31/13.html",
+      "creator": "NPS/Diane Renkin",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/dce21063-abe4-477e-a579-31d19e0d7031",
+      "originalWidth": 3129,
+      "originalHeight": 1982,
+      "originalSha1": "c85cd15c3e2013518e601f3d4ff192b3b06b9aaf",
+      "originalSha256": "f468c2a3d18e0678a0e34b2c0f84402e43aab5933944b24459093533146c7844",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 13,
+      "sourceDescription": "Raven flying low",
+      "sourceTaxonEvidence": [
+        "birds",
+        "raven",
+        "yellowstone national park",
+        "wildlife",
+        "corvus corax",
+        "passeriformes"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "09",
+      "status": "hold",
+      "characterId": "maud-overhead",
+      "characterName": "Maud Overhead",
+      "fullSpecies": "Corvus corax",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Frost behind the head",
+      "prose": null,
+      "visibleScene": "A raven stands on gravel with icy white frost behind its head and blue-black throat feathers.",
+      "fictionBoundary": "The frost is a real feature. Preening, warming or shaking it off was considered, but none developed beyond a body-weather caption.",
+      "holdReason": "Prose hold: visible frost did not justify a merely resting portrait.",
+      "sourceTitle": "Raven with frost on back at Roaring Mountain",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/33ada3f8-8332-4d09-95bd-92b25232aded",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/33ada3f8-8332-4d09-95bd-92b25232aded/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/12.jpg",
+      "sourceCachePath": "/tmp/freed-land31/12.html",
+      "creator": "NPS/Diane Renkin",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/33ada3f8-8332-4d09-95bd-92b25232aded",
+      "originalWidth": 3000,
+      "originalHeight": 4000,
+      "originalSha1": "f658cb0e994e25422daeba40eea6283907d9db5a",
+      "originalSha256": "bbc6b17845f8ec5ed0d47b8c6c62972717ed0f34da502681b2f61b7b8af34696",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 12,
+      "sourceDescription": "Raven with frost on back at Roaring Mountain;\nDiane Renkin;\nOctober 2012;\nCatalog #18976d;\nOriginal #DSCN8511",
+      "sourceTaxonEvidence": [
+        "yellowstone national park",
+        "wildlife",
+        "birds",
+        "common raven",
+        "corvus corax",
+        "passeriformes",
+        "18976d"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "10",
+      "status": "hold",
+      "characterId": "oswin-broadback",
+      "characterName": "Oswin Broadback",
+      "fullSpecies": "Bison bison",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Willows above the snow",
+      "prose": null,
+      "visibleScene": "An adult bull bison stands deep in snow with its head among willow stems.",
+      "fictionBoundary": "Source explicitly identifies a bull feeding on willows. Bent-branch recoil would repeat Mavis’s admitted tire manipulation. No version of the held snow-clearing meal is offered.",
+      "holdReason": "Prose hold: unused feeding mode did not produce an original event.",
+      "sourceTitle": "Bull bison browsing on willows near Pebble Creek;\nJim Peaco;\nMarch 2013;\nCatalog #19245d;\nOriginal #IMG_7569",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/18.jpg",
+      "sourceCachePath": "/tmp/freed-land31/18.html",
+      "creator": "NPS/Jim Peaco",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da",
+      "originalWidth": 4234,
+      "originalHeight": 2973,
+      "originalSha1": "738e7c0c55e5193e38d558a99bb7c1d2fd5cacc3",
+      "originalSha256": "6b9be95636d467c56d671ee5dfe264be37492a8d5ff64abb9b5747a53a9f41b2",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 18,
+      "sourceDescription": "Bull bison browsing on willows near Pebble Creek;\nJim Peaco;\nMarch 2013;\nCatalog #19245d;\nOriginal #IMG_7569",
+      "sourceTaxonEvidence": [
+        "bison",
+        "bison bison",
+        "mammals",
+        "yellowstone national park",
+        "wildlife",
+        "19245d"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "11",
+      "status": "hold",
+      "characterId": "oswin-broadback",
+      "characterName": "Oswin Broadback",
+      "fullSpecies": "Bison bison",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Two bodies in river fog",
+      "prose": null,
+      "visibleScene": "Two bison stand or walk in a river beneath dense gray fog.",
+      "fictionBoundary": "The pair and river are present. Subjects are soft, indistinct and heavily obscured; shared crossing also risks companion-following repetition.",
+      "holdReason": "Image hold: heavy haze and grain fail the visual bar.",
+      "sourceTitle": "Bison",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/47a8f795-00e3-4d24-9a1d-0a67d857f767",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/47a8f795-00e3-4d24-9a1d-0a67d857f767/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/17.jpg",
+      "sourceCachePath": "/tmp/freed-land31/17.html",
+      "creator": "NPS/Jim Peaco",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/47a8f795-00e3-4d24-9a1d-0a67d857f767",
+      "originalWidth": 2928,
+      "originalHeight": 1914,
+      "originalSha1": "fc5832f4cc3705b115e724b298d9df7f6312f02e",
+      "originalSha256": "82b87743d6844e0e1ea9372d1aca3c39771ad614aeb6ab6076c053f8d1e8ef1c",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 17,
+      "sourceDescription": "Bison crossing Gibbon River;\nJim Peaco;\nNovember 2013;\nCatalog #19080d;\nOriginal #IMG_9429",
+      "sourceTaxonEvidence": [
+        "bison",
+        "bison bison",
+        "gibbon river",
+        "mammals",
+        "yellowstone national park",
+        "fog",
+        "wildlife",
+        "19080d"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    },
+    {
+      "slot": "12",
+      "status": "hold",
+      "characterId": "otis-gulp",
+      "characterName": "Otis Gulp",
+      "fullSpecies": "Pelecanus erythrorhynchos",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Three birds on a snag",
+      "prose": null,
+      "visibleScene": "One American white pelican and two geese stand on a log beside a river.",
+      "fictionBoundary": "The source’s fanciful claim of bragging about fish is not documentary behavior and is not used. The photo supports shared perch only.",
+      "holdReason": "Image hold: distant small subjects and weak detail at only 1134 × 664; no social embarrassment manufactured.",
+      "sourceTitle": "American White Pelican and Canadian Geese_4-29-26_NPS-S.Bormann.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/e9813758-175c-42a4-84d7-69d49436c6d2",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/e9813758-175c-42a4-84d7-69d49436c6d2/original.jpg",
+      "localReviewPath": "/tmp/freed-land31/10.jpg",
+      "sourceCachePath": "/tmp/freed-land31/10.html",
+      "creator": "NPS-SBormann",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "rightsUrl": "https://npgallery.nps.gov/AssetDetail/e9813758-175c-42a4-84d7-69d49436c6d2",
+      "originalWidth": 1134,
+      "originalHeight": 664,
+      "originalSha1": "1801e19a7e2f372a8532ce78b296bc6faf413135",
+      "originalSha256": "8cc8c1c0ae0597e820036e5a5822c4b2bdd276ac9b9a92f153b57ffacff2b229",
+      "mimeType": "image/jpeg",
+      "reviewIndex": 10,
+      "sourceDescription": "This American White Pelican is bragging about fish catches to a pair of Canadian Geese on a snag in the Missouri River",
+      "sourceTaxonEvidence": [
+        "Missouri National Recreational River",
+        "MNRR",
+        "Wildlife",
+        "Birds",
+        "American White Pelican",
+        "Canadian Goose",
+        "Bird Migration"
+      ],
+      "sourceUnits": [
+        {
+          "Name": "Missouri National Recreational River",
+          "Type": "National Recreational River",
+          "Code": "MNRR"
+        }
+      ],
+      "identityLimits": "Sex unrecorded unless explicitly stated below; fictional established sex is not photographic identification. No precise age, subspecies or identity continuity between photographed individuals claimed.",
+      "imageReview": "Exact original opened individually before prose. No image alteration.",
+      "independentLeadReview": "pending"
+    }
+  ],
+  "discoveryAudit": [
+    {
+      "AltText": "A red fox, walking across a log",
+      "AssetBaseType": "File",
+      "AssetID": "1b1d95b5-fbfc-46b1-9b78-b2d3d7155bdf",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "Red fox (Vulpes vulpes)",
+      "ImageCreateDate": {
+        "Date": "01/15/2019"
+      },
+      "ImageCreateDateTime": "01/15/2019 01:08:03 PM",
+      "Keywords": [
+        "red fox",
+        "fox",
+        "big thicket",
+        "wildlife"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Big Thicket National Preserve",
+          "Type": "National Preserve",
+          "Code": "BITH"
+        }
+      ],
+      "PhotoCredit": "NPS Photo",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "SSharaga",
+      "SubType": "jpeg",
+      "Title": "Red Fox",
+      "reviewIndex": 1,
+      "query": "fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1b1d95b5-fbfc-46b1-9b78-b2d3d7155bdf",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/1b1d95b5-fbfc-46b1-9b78-b2d3d7155bdf/original.jpg",
+      "localPath": "/tmp/freed-land31/1.jpg",
+      "sourceCachePath": "/tmp/freed-land31/1.html",
+      "width": 3200,
+      "height": 2400,
+      "sha1": "772abecf7a2b65d71972acfe7bdf2dfc49d91530",
+      "reviewSha256": "71ef4999e66ee99ac798908738a0a7a108e92b15c386f08515bb791b7ed97319"
+    },
+    {
+      "AltText": "a red fox running along a dirt road",
+      "AssetBaseType": "File",
+      "AssetID": "414e85f2-7160-4867-a251-60c1c4cdd4a5",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Copyright": "NPS Photo / Claire Abendroth;",
+      "Description": "A fox on the Denali Park Road",
+      "ImageCreateDate": {
+        "Date": "05/29/2016"
+      },
+      "ImageCreateDateTime": "05/29/2016 04:05:46 PM",
+      "Keywords": [
+        "wildlife",
+        "fox",
+        "mammal",
+        "national park service",
+        "denali national park and preserve",
+        "nature",
+        "toklat",
+        "trip to toklat",
+        "west side"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "PhotoCredit": "NPS Photo",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "alindeman",
+      "SubType": "jpeg",
+      "Title": "Red Fox",
+      "reviewIndex": 2,
+      "query": "fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/414e85f2-7160-4867-a251-60c1c4cdd4a5",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/414e85f2-7160-4867-a251-60c1c4cdd4a5/original.jpg",
+      "localPath": "/tmp/freed-land31/2.jpg",
+      "sourceCachePath": "/tmp/freed-land31/2.html",
+      "width": 4752,
+      "height": 3171,
+      "sha1": "4bdf8012f3474ff6ed0e128e05cb40fbb8d6ed89",
+      "reviewSha256": "0502371e1054ed95b8783f7d1fa46f975f7623e39e903d14a9ff0e08074f4354"
+    },
+    {
+      "AltText": "A distant beaver with a leafy stick swimming in a river",
+      "AssetBaseType": "File",
+      "AssetID": "f3bd9fc8-9054-4dac-b2e1-8db6d9d00459",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2023-08-24T16:53:08-04:00"
+        }
+      ],
+      "Description": "A beaver with a large stick for building a dam in the East Branch of the Penobscot River",
+      "ImageCreateDate": {
+        "Date": "08/06/2023"
+      },
+      "ImageCreateDateTime": "08/06/2023 01:13:04 AM",
+      "Keywords": [
+        "katahdin woods and waters",
+        "katahdin",
+        "KAWW",
+        "Maine",
+        "Beaver",
+        "wildlife",
+        "animal",
+        "mammal",
+        "river",
+        "penobscot"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Katahdin Woods and Waters National Monument",
+          "Type": "National Monument",
+          "Code": "KAWW"
+        }
+      ],
+      "PhotoCredit": "NPS / Alyssa Mattei",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "amattei",
+      "SubType": "jpeg",
+      "Title": "20230805_KAWW_EastBranch_Beaver_AlyssaMattei.jpg",
+      "reviewIndex": 3,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f3bd9fc8-9054-4dac-b2e1-8db6d9d00459",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f3bd9fc8-9054-4dac-b2e1-8db6d9d00459/original.jpg",
+      "localPath": "/tmp/freed-land31/3.jpg",
+      "sourceCachePath": "/tmp/freed-land31/3.html",
+      "width": 5945,
+      "height": 3668,
+      "sha1": "d9e1521c95d5c4775482cc31494929936e138b0d",
+      "reviewSha256": "a1cf3252021f387d3e33827e9374b20d0c727c3d379fe2103bf2752f7c02b012"
+    },
+    {
+      "AltText": "A photo of a beaver from above with the beaver center image facing to the left, its tail turned towards the bottom of the image. Around the beaver is a mat of tall green plants and small twigs",
+      "AssetBaseType": "File",
+      "AssetID": "0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "A beaver in a bed of green grasses",
+      "ImageCreateDate": {
+        "Date": "11/15/2010"
+      },
+      "ImageCreateDateTime": "11/15/2010 09:24:39 PM",
+      "Keywords": [
+        "Beaver",
+        "Mammals",
+        "WHMI"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Whitman Mission National Historic Site",
+          "Type": "National Historic Site",
+          "Code": "WHMI"
+        }
+      ],
+      "PhotoCredit": "NPS Photo",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "mfanderson",
+      "SubType": "jpeg",
+      "Title": "Doan_Creek_Beaver.jpg",
+      "reviewIndex": 4,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1/original.jpg",
+      "localPath": "/tmp/freed-land31/4.jpg",
+      "sourceCachePath": "/tmp/freed-land31/4.html",
+      "width": 1280,
+      "height": 960,
+      "sha1": "98ba38fa3e9bf26caeddf7e1ddc13843d3c642b6",
+      "reviewSha256": "6983ab15660a7bfb039d5ea61d1f943f16d42d6f16b9713832e1d0d0cce4dbd3"
+    },
+    {
+      "AltText": "2 beavers walking in line through brush",
+      "AssetBaseType": "File",
+      "AssetID": "22281b96-a147-479a-ab66-75c03f755260",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Copyright": "Copyright 2002",
+      "Description": "North American beaver (Castor canadensis)",
+      "ImageCreateDate": {
+        "Date": "03/22/2019"
+      },
+      "ImageCreateDateTime": "03/22/2019 08:26:57 PM",
+      "Keywords": [
+        "beaver",
+        "animal",
+        "wildlife",
+        "big thicket"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Big Thicket National Preserve",
+          "Type": "National Preserve",
+          "Code": "BITH"
+        }
+      ],
+      "PhotoCredit": "NPS Photo",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "SSharaga",
+      "SubType": "jpeg",
+      "Title": "Beavers",
+      "reviewIndex": 5,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/22281b96-a147-479a-ab66-75c03f755260",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/22281b96-a147-479a-ab66-75c03f755260/original.jpg",
+      "localPath": "/tmp/freed-land31/5.jpg",
+      "sourceCachePath": "/tmp/freed-land31/5.html",
+      "width": 4000,
+      "height": 3000,
+      "sha1": "11c379e55522c7cd7e250d2d1ae2743b29c742ab",
+      "reviewSha256": "dd88a80dd289ee212831fffd3dd611c62e839fba9a62c52b2a49eebd2587a563"
+    },
+    {
+      "AltText": "a beaver walking down a muddy hillside",
+      "AssetBaseType": "File",
+      "AssetID": "02262c53-643a-4de0-9aa6-2d0b6767d8dd",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Copyright": "NPS Photo / Emily Brouwer;",
+      "Description": "One side of Denali's Horseshoe Lake is a steep hillside, but that doesn't deter beavers from exploring",
+      "ImageCreateDate": {
+        "Date": "07/30/2015"
+      },
+      "ImageCreateDateTime": "07/30/2015 01:50:38 PM",
+      "Keywords": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "alindeman",
+      "SubType": "jpeg",
+      "Title": "Heading Downhill",
+      "reviewIndex": 6,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/02262c53-643a-4de0-9aa6-2d0b6767d8dd",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/02262c53-643a-4de0-9aa6-2d0b6767d8dd/original.jpg",
+      "localPath": "/tmp/freed-land31/6.jpg",
+      "sourceCachePath": "/tmp/freed-land31/6.html",
+      "width": 7360,
+      "height": 4912,
+      "sha1": "93e15c4f9dc0724a7e347d1c45ba13fba9ee7884",
+      "reviewSha256": "67111bc15e9833a76bdd82bdb486dcc01bddd415b5f19de5236f098ce623b517"
+    },
+    {
+      "AltText": "A beaver slapping its tail in a lake",
+      "AssetBaseType": "File",
+      "AssetID": "9dc35f61-d264-4941-83c8-1c4db637b9b7",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "A beaver slapping its tail",
+      "ImageCreateDate": {
+        "Date": "05/23/2009"
+      },
+      "ImageCreateDateTime": "05/23/2009 08:46:27 PM",
+      "Keywords": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "alindeman",
+      "SubType": "jpeg",
+      "Title": "Slap!",
+      "reviewIndex": 7,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9dc35f61-d264-4941-83c8-1c4db637b9b7",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/9dc35f61-d264-4941-83c8-1c4db637b9b7/original.jpg",
+      "localPath": "/tmp/freed-land31/7.jpg",
+      "sourceCachePath": "/tmp/freed-land31/7.html",
+      "width": 4272,
+      "height": 2848,
+      "sha1": "7464cce016251dc01de9c135d0cfe0dadd51b37f",
+      "reviewSha256": "e38a20b544739a62c4fdf662949a9d7f5bc0557cfc49a1f216eb5d16d799085e"
+    },
+    {
+      "AltText": "A beaver in a partially frozen pond",
+      "AssetBaseType": "File",
+      "AssetID": "92db9e05-f1ac-4211-a158-a4995bb641ca",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "A beaver in a partially frozen pond",
+      "ImageCreateDate": {
+        "Date": "03/24/2015"
+      },
+      "ImageCreateDateTime": "03/24/2015 11:29:47 PM",
+      "Keywords": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "alindeman",
+      "SubType": "jpeg",
+      "Title": "Chilly ",
+      "reviewIndex": 8,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/92db9e05-f1ac-4211-a158-a4995bb641ca",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/92db9e05-f1ac-4211-a158-a4995bb641ca/original.jpg",
+      "localPath": "/tmp/freed-land31/8.jpg",
+      "sourceCachePath": "/tmp/freed-land31/8.html",
+      "width": 3315,
+      "height": 2212,
+      "sha1": "44099524fe01bdb1ce34abb5820e28e19c648ea2",
+      "reviewSha256": "2e99ae032233f3c246f741c08c789977b4db6a1fd0ed1e8805ccf5b460bed943"
+    },
+    {
+      "AltText": "A beaver slapping its tail in Horseshoe Lake",
+      "AssetBaseType": "File",
+      "AssetID": "8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "A beaver slapping its tail in Horseshoe Lake",
+      "ImageCreateDate": {
+        "Date": "05/23/2009"
+      },
+      "ImageCreateDateTime": "05/23/2009 08:46:26 PM",
+      "Keywords": [
+        "beaver",
+        "wildlife",
+        "mammal"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Denali National Park and Preserve",
+          "Type": "National Park and Preserve",
+          "Code": "DENA"
+        }
+      ],
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "alindeman",
+      "SubType": "jpeg",
+      "Title": "Slap!",
+      "reviewIndex": 9,
+      "query": "beaver",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d/original.jpg",
+      "localPath": "/tmp/freed-land31/9.jpg",
+      "sourceCachePath": "/tmp/freed-land31/9.html",
+      "width": 2923,
+      "height": 1741,
+      "sha1": "2c6f90bb0be6c2b9df2ab9c9b42c68d7be3c70da",
+      "reviewSha256": "214dc9a8b28c841b0b097622c997a132e5a1477ac4ef62f53d69d87b22347cbe"
+    },
+    {
+      "AltText": "A large white bird with a long, pointy, yellow beak and long neck is looking at a pair of brown birds with long black necks looking at each other. All three birds are sitting on a log in the water. The grassy shore rises up in the background. Water in the foreground.",
+      "AssetBaseType": "File",
+      "AssetID": "e9813758-175c-42a4-84d7-69d49436c6d2",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Description": "This American White Pelican is bragging about fish catches to a pair of Canadian Geese on a snag in the Missouri River",
+      "ImageCreateDate": {
+        "Date": "04/29/2026"
+      },
+      "ImageCreateDateTime": "04/29/2026 02:06:09 PM",
+      "Keywords": [
+        "Missouri National Recreational River",
+        "MNRR",
+        "Wildlife",
+        "Birds",
+        "American White Pelican",
+        "Canadian Goose",
+        "Bird Migration"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Missouri National Recreational River",
+          "Type": "National Recreational River",
+          "Code": "MNRR"
+        }
+      ],
+      "PhotoCredit": "NPS-SBormann",
+      "PrimaryType": "image",
+      "Rating": 5,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "sbormann",
+      "SubType": "jpeg",
+      "Title": "American White Pelican and Canadian Geese_4-29-26_NPS-S.Bormann.jpg",
+      "reviewIndex": 10,
+      "query": "pelican",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/e9813758-175c-42a4-84d7-69d49436c6d2",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/e9813758-175c-42a4-84d7-69d49436c6d2/original.jpg",
+      "localPath": "/tmp/freed-land31/10.jpg",
+      "sourceCachePath": "/tmp/freed-land31/10.html",
+      "width": 1134,
+      "height": 664,
+      "sha1": "1801e19a7e2f372a8532ce78b296bc6faf413135",
+      "reviewSha256": "8cc8c1c0ae0597e820036e5a5822c4b2bdd276ac9b9a92f153b57ffacff2b229"
+    },
+    {
+      "AltText": "A raven is swooping down on grouse which is running in snow.",
+      "AssetBaseType": "File",
+      "AssetID": "2ba9fb0d-fcfa-4f03-b49b-d636f97de707",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2019-03-26T16:57:46-06:00"
+        }
+      ],
+      "Description": "Raven & Grouse stand-off at Old Faithful;\nRobert Bower;\nJanuary 8, 1998",
+      "ImageCreateDate": {
+        "Date": "01/08/1998"
+      },
+      "ImageCreateDateTime": "01/08/1998 12:00:00 AM",
+      "Keywords": [
+        "yellowstone national park",
+        "wildlife",
+        "birds",
+        "common raven",
+        "corvus corax",
+        "passeriformes",
+        "15661"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Robert Bower",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Raven & Grouse stand-off at Old Faithful",
+      "reviewIndex": 11,
+      "query": "raven",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/2ba9fb0d-fcfa-4f03-b49b-d636f97de707",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/2ba9fb0d-fcfa-4f03-b49b-d636f97de707/original.jpg",
+      "localPath": "/tmp/freed-land31/11.jpg",
+      "sourceCachePath": "/tmp/freed-land31/11.html",
+      "width": 1816,
+      "height": 1258,
+      "sha1": "f37a1d2412b45608df660682b39ea7e0f86d6e57",
+      "reviewSha256": "e416ae2e0b96508b11980e4d17ab8ecd7c95a12b8984974df6cede9ad19fc520"
+    },
+    {
+      "AltText": "Raven with frost on the back of its head.",
+      "AssetBaseType": "File",
+      "AssetID": "33ada3f8-8332-4d09-95bd-92b25232aded",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2012-11-05T11:53:32-07:00"
+        }
+      ],
+      "Description": "Raven with frost on back at Roaring Mountain;\nDiane Renkin;\nOctober 2012;\nCatalog #18976d;\nOriginal #DSCN8511",
+      "ImageCreateDate": {
+        "Date": "10/05/2012"
+      },
+      "ImageCreateDateTime": "10/05/2012 08:51:06 AM",
+      "Keywords": [
+        "yellowstone national park",
+        "wildlife",
+        "birds",
+        "common raven",
+        "corvus corax",
+        "passeriformes",
+        "18976d"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Diane Renkin",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Raven with frost on back at Roaring Mountain",
+      "reviewIndex": 12,
+      "query": "raven",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/33ada3f8-8332-4d09-95bd-92b25232aded",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/33ada3f8-8332-4d09-95bd-92b25232aded/original.jpg",
+      "localPath": "/tmp/freed-land31/12.jpg",
+      "sourceCachePath": "/tmp/freed-land31/12.html",
+      "width": 3000,
+      "height": 4000,
+      "sha1": "f658cb0e994e25422daeba40eea6283907d9db5a",
+      "reviewSha256": "bbc6b17845f8ec5ed0d47b8c6c62972717ed0f34da502681b2f61b7b8af34696"
+    },
+    {
+      "AltText": "A side view of a raven flying low to the ground.",
+      "AssetBaseType": "File",
+      "AssetID": "dce21063-abe4-477e-a579-31d19e0d7031",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Contributors": [
+        {}
+      ],
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2017-11-30T16:29:50-07:00"
+        }
+      ],
+      "Description": "Raven flying low",
+      "ImageCreateDate": {
+        "Date": "07/16/2016"
+      },
+      "ImageCreateDateTime": "07/16/2016 02:41:39 PM",
+      "Keywords": [
+        "birds",
+        "raven",
+        "yellowstone national park",
+        "wildlife",
+        "corvus corax",
+        "passeriformes"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Diane Renkin",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Raven flying low",
+      "reviewIndex": 13,
+      "query": "raven",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/dce21063-abe4-477e-a579-31d19e0d7031",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/dce21063-abe4-477e-a579-31d19e0d7031/original.jpg",
+      "localPath": "/tmp/freed-land31/13.jpg",
+      "sourceCachePath": "/tmp/freed-land31/13.html",
+      "width": 3129,
+      "height": 1982,
+      "sha1": "c85cd15c3e2013518e601f3d4ff192b3b06b9aaf",
+      "reviewSha256": "f468c2a3d18e0678a0e34b2c0f84402e43aab5933944b24459093533146c7844"
+    },
+    {
+      "AltText": "Fox is walking on a log.",
+      "AssetBaseType": "File",
+      "AssetID": "ffaf0358-3501-4c8c-b41c-382588d2e06e",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Contributors": [
+        {}
+      ],
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2015-05-15T15:47:38-06:00"
+        }
+      ],
+      "Description": "Red Fox, Madison Junction",
+      "ImageCreateDate": {
+        "Date": "05/14/2015"
+      },
+      "ImageCreateDateTime": "05/14/2015 07:54:22 PM",
+      "Keywords": [
+        "yellowstone national park",
+        "wildlife",
+        "mammals",
+        "red fox",
+        "vulpes vulpes",
+        "20150514_ndh-yell-6254"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Neal Herbert",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Red Fox",
+      "reviewIndex": 14,
+      "query": "red fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ffaf0358-3501-4c8c-b41c-382588d2e06e",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/ffaf0358-3501-4c8c-b41c-382588d2e06e/original.jpg",
+      "localPath": "/tmp/freed-land31/14.jpg",
+      "sourceCachePath": "/tmp/freed-land31/14.html",
+      "width": 4678,
+      "height": 3119,
+      "sha1": "0a7abeabfb10bfe59b3386f5547c3e46b74e9e85",
+      "reviewSha256": "db068a63a8b752c08743eeedabf0093700e806290be3ad968115a41d8f1fc086"
+    },
+    {
+      "AltText": "Three fox kits and adult are sniffing something on a rock.",
+      "AssetBaseType": "File",
+      "AssetID": "172d7ded-3c8c-4f48-bcb8-79c9b83ce396",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "Contributors": [
+        {}
+      ],
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2017-02-06T15:25:17-07:00"
+        }
+      ],
+      "Description": "Red fox and kits near Gibbon Falls",
+      "ImageCreateDate": {
+        "Date": "06/10/2015"
+      },
+      "ImageCreateDateTime": "06/10/2015 07:28:50 PM",
+      "Keywords": [
+        "yellowstone national park",
+        "wildlife",
+        "mammals",
+        "red fox",
+        "vulpes vulpes",
+        "20150610_EJ_3539"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Eric Johnston",
+      "PrimaryType": "image",
+      "Rating": 3,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Red fox and kits near Gibbon Falls",
+      "reviewIndex": 15,
+      "query": "red fox",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/172d7ded-3c8c-4f48-bcb8-79c9b83ce396",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/172d7ded-3c8c-4f48-bcb8-79c9b83ce396/original.jpg",
+      "localPath": "/tmp/freed-land31/15.jpg",
+      "sourceCachePath": "/tmp/freed-land31/15.html",
+      "width": 4015,
+      "height": 2548,
+      "sha1": "cec0bf29b648cd50745e7cd81d87cd77ef958911",
+      "reviewSha256": "762bb3c4357718e817bed45520a2258b9f64375e54ba8b10609eb167fff04353"
+    },
+    {
+      "AltText": "Cow bison has calf standing but looking wobbly and has afterbirth still attached to her.",
+      "AssetBaseType": "File",
+      "AssetID": "9babcf73-7de6-4037-869c-9bb64df4172c",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2019-09-26T10:41:44-06:00"
+        }
+      ],
+      "Description": "Newly born bison calf and mother;\nNeal Herbert;\nMay 2014;\nCatalog #19422d;\nOriginal #7602",
+      "ImageCreateDate": {
+        "Date": "05/11/2014"
+      },
+      "ImageCreateDateTime": "05/11/2014 11:21:57 AM",
+      "Keywords": [
+        "bison",
+        "bison bison",
+        "mammals",
+        "yellowstone national park",
+        "wildlife",
+        "19422d"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Neal Herbert\n",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Bison",
+      "reviewIndex": 16,
+      "query": "bison bison",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9babcf73-7de6-4037-869c-9bb64df4172c",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/9babcf73-7de6-4037-869c-9bb64df4172c/original.jpg",
+      "localPath": "/tmp/freed-land31/16.jpg",
+      "sourceCachePath": "/tmp/freed-land31/16.html",
+      "width": 4773,
+      "height": 3182,
+      "sha1": "c29681ffde90bac11c4aa14c6ac8bc8d174f84ce",
+      "reviewSha256": "bf4892875ae34dfb0e3dcdfa02336678722f3ac1e0f2f36106fcef8e8d368ac0"
+    },
+    {
+      "AltText": "Two bison in the river in fog.",
+      "AssetBaseType": "File",
+      "AssetID": "47a8f795-00e3-4d24-9a1d-0a67d857f767",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2019-09-26T10:41:19-06:00"
+        }
+      ],
+      "Description": "Bison crossing Gibbon River;\nJim Peaco;\nNovember 2013;\nCatalog #19080d;\nOriginal #IMG_9429",
+      "ImageCreateDate": {
+        "Date": "11/22/2013"
+      },
+      "ImageCreateDateTime": "11/22/2013 09:41:35 AM",
+      "Keywords": [
+        "bison",
+        "bison bison",
+        "gibbon river",
+        "mammals",
+        "yellowstone national park",
+        "fog",
+        "wildlife",
+        "19080d"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Jim Peaco",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Bison",
+      "reviewIndex": 17,
+      "query": "bison bison",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/47a8f795-00e3-4d24-9a1d-0a67d857f767",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/47a8f795-00e3-4d24-9a1d-0a67d857f767/original.jpg",
+      "localPath": "/tmp/freed-land31/17.jpg",
+      "sourceCachePath": "/tmp/freed-land31/17.html",
+      "width": 2928,
+      "height": 1914,
+      "sha1": "fc5832f4cc3705b115e724b298d9df7f6312f02e",
+      "reviewSha256": "82b87743d6844e0e1ea9372d1aca3c39771ad614aeb6ab6076c053f8d1e8ef1c"
+    },
+    {
+      "AltText": "Bull is standing in snow while feeding on willow branches.",
+      "AssetBaseType": "File",
+      "AssetID": "7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da",
+      "AssetType": "Standard File",
+      "Brandings": [
+        {
+          "Name": "MAIN"
+        }
+      ],
+      "ConstraintsInformation": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "CustomTextFields": [
+        {
+          "Name": "XmpMetadataDate",
+          "Value": "2019-09-26T10:41-06:00"
+        }
+      ],
+      "Description": "Bull bison browsing on willows near Pebble Creek;\nJim Peaco;\nMarch 2013;\nCatalog #19245d;\nOriginal #IMG_7569",
+      "ImageCreateDate": {
+        "Date": "03/10/2013"
+      },
+      "ImageCreateDateTime": "03/10/2013 04:48:32 PM",
+      "Keywords": [
+        "bison",
+        "bison bison",
+        "mammals",
+        "yellowstone national park",
+        "wildlife",
+        "19245d"
+      ],
+      "NPSUnits": [
+        {
+          "Name": "Yellowstone National Park",
+          "Type": "National Park",
+          "Code": "YELL"
+        }
+      ],
+      "PhotoCredit": "NPS/Jim Peaco",
+      "PrimaryType": "image",
+      "Rating": 4,
+      "RelatedCollections": [
+        "NPS.gov Collection"
+      ],
+      "ResourceFormat": "jpg",
+      "ResourceType": "Image",
+      "Submitter": "dianerenkin",
+      "SubType": "jpeg",
+      "Title": "Bull bison browsing on willows near Pebble Creek;\nJim Peaco;\nMarch 2013;\nCatalog #19245d;\nOriginal #IMG_7569",
+      "reviewIndex": 18,
+      "query": "bison bison",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/7ecdb37e-f6c1-4572-bdf5-7c1a50a4e3da/original.jpg",
+      "localPath": "/tmp/freed-land31/18.jpg",
+      "sourceCachePath": "/tmp/freed-land31/18.html",
+      "width": 4234,
+      "height": 2973,
+      "sha1": "738e7c0c55e5193e38d558a99bb7c1d2fd5cacc3",
+      "reviewSha256": "6b9be95636d467c56d671ee5dfe264be37492a8d5ff64abb9b5747a53a9f41b2"
+    }
+  ],
+  "rightsExcludedBeforeDownload": [
+    "13050af4-f178-4712-a3cc-d8be893a5833",
+    "4429a969-0b85-44d5-b419-5e176027d688",
+    "c84ace94-3627-49b8-a6ca-64d1169134ab",
+    "4d581540-7bd2-404c-89ce-58a69c28b50a",
+    "0018019d-4e0b-4249-a6a6-af4ab94bac83",
+    "18a62b5b-093e-4c23-8139-1a3933c455a1"
+  ],
+  "networkNotes": "Normal sequential NPS discovery; six search rows excluded before downloading because rights were not Public domain/Full. No Commons requests, blocked-source retries or bypasses. One NPS biology URL returned an internal web-tool error and was not retried."
+}

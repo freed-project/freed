@@ -1,0 +1,199 @@
+{
+  "batch": "land-regular-42",
+  "avatars": [
+    {
+      "characterName": "Sylvie Stilt",
+      "characterId": "sylvie-stilt",
+      "fullSpecies": "Antigone canadensis",
+      "ageSexEvidence": "Adult female in fiction; sex and exact age not recorded. Adult red crown is visible.",
+      "source": {
+        "index": 4,
+        "query": "sandhill crane",
+        "item": 33,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/fde3dfe4-155d-451f-67bf-6b622767df25",
+        "sourceCachePath": "/tmp/freed-land42/4.html",
+        "record": {
+          "AltText": "Sandhill Crane head, closeup, red crest",
+          "AssetBaseType": "File",
+          "AssetID": "fde3dfe4-155d-451f-67bf-6b622767df25",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "Sandhill Crane head, closeup, red crest",
+          "ImageCreateDate": {
+            "Text": "7/16/2010 1:18:30 AM"
+          },
+          "Keywords": [
+            "bird,sandhill crane"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Grand Teton National Park",
+              "Type": "National Park",
+              "Code": "GRTE"
+            }
+          ],
+          "PrimaryType": "image",
+          "Publisher": "U.S. National Park Service",
+          "Rating": 3,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "amattson",
+          "SubType": "jpeg",
+          "Title": "Sandhill Crane"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/FDE3DFE4-155D-451F-67BF6B622767DF25/original.jpg?",
+          "publishedLabel": "279.5 KB, 528x779",
+          "localPath": "/tmp/freed-land42/4-original.jpg",
+          "bytes": 286217,
+          "width": 528,
+          "height": 779,
+          "sha1": "461d677d24ff810eba2fba4f0e1fb862f8c8fdfd",
+          "sha256": "51a4b7905f10b6e009f44c8affc8745fdaf7a5c9f4c1050b76e95b041028dde2"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/FDE3DFE4-155D-451F-67BF6B622767DF25/original.jpg?",
+          "publishedLabel": "279.5 KB, 528x779",
+          "localPath": "/tmp/freed-land42/4-delivery.jpg",
+          "bytes": 286217,
+          "width": 528,
+          "height": 779,
+          "sha1": "461d677d24ff810eba2fba4f0e1fb862f8c8fdfd",
+          "sha256": "51a4b7905f10b6e009f44c8affc8745fdaf7a5c9f4c1050b76e95b041028dde2"
+        }
+      },
+      "crop": {
+        "x": 0,
+        "y": 65,
+        "side": 528
+      },
+      "focal": {
+        "x": 0.5,
+        "y": 0.42233632862644416,
+        "zoom": 1.0
+      },
+      "status": "proposed; independent review required",
+      "review220Path": "/tmp/freed-land42/sylvie-stilt-220-circle.png",
+      "review220Sha256": "d54187c31d42533e8fc3a7725f4fc26e90d827d75f4dee42f0aa36f8d469a8a7",
+      "review48Path": "/tmp/freed-land42/sylvie-stilt-48-circle.png",
+      "review48Sha256": "b2c994f5c25db521faa6bc8543be799ed5148c0962a18b9efffdaf22c703d44e",
+      "visualReview": "Actual 220 and 48 circular PNGs individually opened. Sylvie retains both eyes, red crown and long bill. Tobias retains one face, small ear, eye, nose and whiskers. Both pass author review; independent lead review required."
+    },
+    {
+      "characterName": "Tobias Tumble",
+      "characterId": "tobias-tumble",
+      "fullSpecies": "Lontra canadensis",
+      "ageSexEvidence": "Adult-sized male in fiction; sex and exact age not recorded.",
+      "source": {
+        "index": 9,
+        "query": "river otter",
+        "item": 53,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/933f9e3f-53d7-4090-92ff-8de693f13300",
+        "sourceCachePath": "/tmp/freed-land42/9.html",
+        "record": {
+          "AltText": "Close up of otter face while its swimming.",
+          "AssetBaseType": "File",
+          "AssetID": "933f9e3f-53d7-4090-92ff-8de693f13300",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Contributors": [
+            {}
+          ],
+          "CustomTextFields": [
+            {
+              "Name": "XmpMetadataDate",
+              "Value": "2019-11-14T16:05:28-07:00"
+            }
+          ],
+          "Description": "River otter in water on Swan Lake Flat;\nNeal Herbert;\nAugust 2015;\nCatalog #20357d;\nOriginal #ndh-yell-2936",
+          "ImageCreateDate": {
+            "Date": "08/29/2015"
+          },
+          "ImageCreateDateTime": "08/29/2015 11:17:51 AM",
+          "Keywords": [
+            "yellowstone national park",
+            "wildlife",
+            "mammals",
+            "river otter",
+            "lontra canadensis",
+            "yellowstone",
+            "20357d"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Yellowstone National Park",
+              "Type": "National Park",
+              "Code": "YELL"
+            }
+          ],
+          "PhotoCredit": "NPS/Neal Herbert",
+          "PrimaryType": "image",
+          "Rating": 4,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "dianerenkin",
+          "SubType": "jpeg",
+          "Title": "River otter, Swan Lake area"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/933f9e3f-53d7-4090-92ff-8de693f13300/original.jpg?",
+          "publishedLabel": "946.3 KB, 4805x3203",
+          "localPath": "/tmp/freed-land42/9-original.jpg",
+          "bytes": 968997,
+          "width": 4805,
+          "height": 3203,
+          "sha1": "c67ca869059d7682db23024a1df8d7e1c05e40d3",
+          "sha256": "1f06c66622f665d1c8acff8c4c6f8a22e97ec8dbbe9069eae05ed430bb2d3841"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/933f9e3f-53d7-4090-92ff-8de693f13300/proxyhires.jpg?",
+          "publishedLabel": "648.3 KB, 2000x1333",
+          "localPath": "/tmp/freed-land42/9-delivery.jpg",
+          "bytes": 663813,
+          "width": 2000,
+          "height": 1333,
+          "sha1": "e40d66a42dcbe4db5ef57c83c1d9ced07b0aefd5",
+          "sha256": "e320e765f8b8f8c369f4d4f4cf8ba2fc995c906e204e3b1dc5a071220c88fc6f"
+        }
+      },
+      "crop": {
+        "x": 1650,
+        "y": 650,
+        "side": 2400
+      },
+      "focal": {
+        "x": 0.5931321540062435,
+        "y": 0.5775835154542617,
+        "zoom": 1.3345833333333332
+      },
+      "status": "proposed; independent review required",
+      "review220Path": "/tmp/freed-land42/tobias-tumble-220-circle.png",
+      "review220Sha256": "ebfb0542f79ba033495bcb0a5aded90e2e86ac9b0a7e5de95279ec000cfec5c2",
+      "review48Path": "/tmp/freed-land42/tobias-tumble-48-circle.png",
+      "review48Sha256": "65357a247519cc0a12908613fc4e8dd8a6ac8be8e8cf4585b098cdb5cc9a1613",
+      "visualReview": "Actual 220 and 48 circular PNGs individually opened. Sylvie retains both eyes, red crown and long bill. Tobias retains one face, small ear, eye, nose and whiskers. Both pass author review; independent lead review required."
+    }
+  ]
+}

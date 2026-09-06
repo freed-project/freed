@@ -1120,7 +1120,7 @@ export function MapSurface({
   emptyBody = "Posts with location data will show up here.",
   showFitAllControl = false,
 }: MapSurfaceProps) {
-  const { geographicMapMode = "online" } = usePlatform();
+  const { geographicMapMode = "online", resolveAvatarUrl } = usePlatform();
   const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -1135,6 +1135,7 @@ export function MapSurface({
   const appliedMapThemeRef = useRef<ThemeId | null>(null);
   const useDenseMarkersRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mapTilesReady, setMapTilesReady] = useState(false);
   const [mapGeneration, setMapGeneration] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [fallbackMoving, setFallbackMoving] = useState(false);
@@ -1160,7 +1161,6 @@ export function MapSurface({
     return getRenderedMapMarkers(stableMarkers, focusedMarkerKey);
   }, [focusedMarkerKey, stableMarkers]);
   const useDenseMarkers = stableMarkers.length > MAP_DOM_MARKER_LIMIT;
-  const showMarkerAvatars = !useDenseMarkers;
   const avatarPalette = useMemo(
     () => createFriendAvatarPalette(resolvedThemeId),
     [resolvedThemeId]
@@ -1362,6 +1362,7 @@ export function MapSurface({
     let cancelled = false;
     setShellMoving(false);
     setMapReady(false);
+    setMapTilesReady(false);
     setLoadFailed(false);
 
     if (geographicMapMode === "local-showcase" || shouldForceMapFallback()) {
@@ -1405,6 +1406,7 @@ export function MapSurface({
         mapRef.current = map;
         appliedMapThemeRef.current = initialThemeId;
         const setMoving = () => {
+          setMapTilesReady(false);
           clearNativeMarkerRestoreTimeout();
           syncNativeMarkerMotionLayer(true);
           setShellMoving(true);
@@ -1421,6 +1423,14 @@ export function MapSurface({
         map.on("zoomstart", setMoving);
         map.on("moveend", clearMoving);
         map.on("zoomend", clearMoving);
+        // Construction readiness permits marker placement, but does not prove
+        // the basemap has rendered. Capture callers need the settled tile state.
+        map.on("dataloading", () => {
+          if (!cancelled) setMapTilesReady(false);
+        });
+        map.on("idle", () => {
+          if (!cancelled) setMapTilesReady(map.loaded());
+        });
         setMapGeneration(lifecycleId);
         setMapReady(true);
         setTimeout(() => map.resize(), 0);
@@ -1487,8 +1497,11 @@ export function MapSurface({
         focusedMarkerKey,
       );
       const element = createMarkerElement(markerData, avatarPalette, {
-        showAvatar: showMarkerAvatars,
-        simplified: useDenseMarkers,
+        // Marker admission is already bounded. Density must not erase identity
+        // images or change their theme styling when switching audience filters.
+        showAvatar: true,
+        resolveAvatarUrl,
+        simplified: false,
       });
       element.dataset.mapMovingPriority = priority;
       const marker = new maplibre.Marker({ element }).setLngLat([
@@ -1578,8 +1591,8 @@ export function MapSurface({
     mapGeneration,
     mapReady,
     renderedMarkers,
+    resolveAvatarUrl,
     setShellMoving,
-    showMarkerAvatars,
     useDenseMarkers,
   ]);
 
@@ -1608,6 +1621,7 @@ export function MapSurface({
       data-map-total-markers={stableMarkers.length}
       data-map-dense={useDenseMarkers ? "true" : "false"}
       data-map-ready={mapReady && !loadFailed ? "true" : "false"}
+      data-map-tiles-ready={mapReady && mapTilesReady && !loadFailed ? "true" : "false"}
       data-map-moving="false"
       className="freed-map-shell relative h-full w-full overflow-hidden"
       onWheel={showFallback ? handleFallbackWheel : undefined}
@@ -1631,8 +1645,10 @@ export function MapSurface({
             className={`${CANVAS_CONTROL_BUTTON_CLASS} pointer-events-auto`}
             disabled={stableMarkers.length === 0}
             onClick={handleFitAll}
+            title="Fit All"
+            aria-label="Fit All"
           >
-            Fit all
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
           </button>
         </div>
       )}

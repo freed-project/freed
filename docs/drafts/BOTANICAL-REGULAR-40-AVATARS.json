@@ -1,0 +1,96 @@
+{
+  "avatars": [
+    {
+      "characterId": "lionel-fringe",
+      "mediaSha1": "b32628916e16633176a6b3e7fb25c00d2c65f8dd",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/proxymdres.jpg?",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+      "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a-proxymdres.jpg",
+      "bytes": 200590,
+      "dimensions": [
+        750,
+        1000
+      ],
+      "focal": {
+        "x": 0.5,
+        "y": 0.46,
+        "zoom": 1.2
+      },
+      "originalSha1": "37a72e7bdc563d4eea79566ede347b6892bfead2",
+      "creator": "NPS",
+      "license": "Public domain",
+      "review220": "PASS: actual runtime circle opened; full distinctive cap and attached stem visible.",
+      "review48": "PASS: single shaggy white cylinder and tan apex remain recognizable.",
+      "status": "proposal; lead independent review required"
+    },
+    {
+      "characterId": "sylvia-bead",
+      "mediaSha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+      "imageUrl": "https://www.nps.gov/articles/images/Rhodotus_palmatusE.jpg",
+      "sourceUrl": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+      "localFile": "/tmp/botanical40/Rhodotus_palmatusE.jpg",
+      "bytes": 2379232,
+      "dimensions": [
+        2313,
+        1735
+      ],
+      "focal": {
+        "x": 0.47,
+        "y": 0.47,
+        "zoom": 1.3
+      },
+      "originalSha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+      "creator": "NPS / Sarah Daugherty",
+      "license": "Public domain",
+      "review220": "PASS: actual runtime circle opened; full distinctive cap and attached stem visible.",
+      "review48": "PASS: bright pink ridged cap and amber-spotted stem remain distinct; fine individual droplets are not resolved at48.",
+      "status": "proposal; lead independent review required"
+    }
+  ],
+  "screenshot": "/tmp/botanical40/avatar-review.png",
+  "screenshotSha256": "73a67df672050324cc233249eb18c0e65113ed5916deaaf7e23974a19d021eaf",
+  "renderer": "Current runtime cropDecodedGalaxyAvatar; 256 canvas shown at220/48 in headless Chromium",
+  "avatarOnlyMedia": {
+    "id": "botanical40-lionel-avatar",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/proxymdres.jpg?",
+    "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a-proxymdres.jpg",
+    "sha1": "b32628916e16633176a6b3e7fb25c00d2c65f8dd",
+    "bytes": 200590,
+    "dimensions": [
+      750,
+      1000
+    ],
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+    "sha256": "7dc5bd4e792e2229f0d30f9732928d4fa0cd83cbd719817c76f9ca40daeb71aa",
+    "category": "wildlife",
+    "aggregated": false,
+    "rightsEvidence": "Public domain:Full Granting Rights",
+    "creator": "NPS",
+    "license": "Public domain",
+    "sourceLocal": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.html",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+    "status": 200,
+    "seconds": 1.1322026250127237,
+    "original": {
+      "id": "7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/original.jpg?",
+      "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.jpg",
+      "sha1": "37a72e7bdc563d4eea79566ede347b6892bfead2",
+      "bytes": 2740734,
+      "dimensions": [
+        3024,
+        4032
+      ],
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+      "sha256": "8ca716deb01eefd695ff36ce8d39230d09f132b0cae1a20c6e09e49bb516efae",
+      "category": "wildlife",
+      "aggregated": false,
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "creator": "NPS",
+      "license": "Public domain",
+      "sourceLocal": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.html",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a"
+    },
+    "alt": "A single young white shaggy mane mushroom rises from moss and green grass."
+  }
+}

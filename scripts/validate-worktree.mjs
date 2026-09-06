@@ -446,6 +446,7 @@ export function isPreparedReleaseArtifactPath(filePath) {
 
 export function isReleaseToolingPath(filePath) {
   return (
+    isLibraryCoreReleaseActivationPath(filePath) ||
     filePath.startsWith("release-notes/") ||
     RELEASE_TOOLING_PATHS.has(filePath) ||
     RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath) ||
@@ -454,7 +455,12 @@ export function isReleaseToolingPath(filePath) {
 }
 
 export function isLibraryCoreReleaseActivationPath(filePath) {
-  return LIBRARY_CORE_RELEASE_ACTIVATION_PATHS.has(filePath);
+  return (
+    LIBRARY_CORE_RELEASE_ACTIVATION_PATHS.has(filePath) ||
+    filePath.startsWith("docs/library-core-contract/") ||
+    filePath.startsWith(".agents/skills/freed-library-core/references/") ||
+    filePath.startsWith(".agents/skills/freed-ship-build/references/")
+  );
 }
 
 export function isSkillValidationPath(filePath) {
@@ -472,6 +478,12 @@ function isAgentInstructionFilePath(filePath) {
 export function isAgentInstructionValidationPath(filePath) {
   return (
     isAgentInstructionFilePath(filePath) ||
+    filePath.startsWith(".agents/skills/") ||
+    filePath.startsWith("docs/library-core-contract/") ||
+    filePath === "docs/LIBRARY-CORE-CONTRACT.md" ||
+    filePath === "docs/instruction-routing-fixtures.json" ||
+    filePath === "scripts/validate-instruction-routing.mjs" ||
+    filePath === "scripts/validate-instruction-routing.test.mjs" ||
     filePath === "docs/AGENT-INSTRUCTIONS.md" ||
     filePath === ".github/CODEOWNERS" ||
     filePath === "scripts/validate-agent-instructions.mjs" ||
@@ -1320,6 +1332,7 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("agent instruction validation tests", [
         "--test",
         path.join("scripts", "validate-agent-instructions.test.mjs"),
+        path.join("scripts", "validate-instruction-routing.test.mjs"),
       ]),
     );
     addCommand(
@@ -1327,6 +1340,20 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("agent instruction validation", [
         "run",
         "validate:agent-instructions",
+      ]),
+    );
+  }
+
+  if (
+    changedFiles.some((file) =>
+      /^scripts\/deploy-website(?:\.test)?\.mjs$/.test(file),
+    )
+  ) {
+    addCommand(
+      plan,
+      nodeCommand("website deployment contract tests", [
+        "--test",
+        "scripts/deploy-website.test.mjs",
       ]),
     );
   }

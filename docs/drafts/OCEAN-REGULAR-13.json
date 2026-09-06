@@ -1,0 +1,242 @@
+{
+  "status": "proposal-only",
+  "networkRequests": 0,
+  "proposals": [
+    {
+      "proposalId": "ocean-13-01",
+      "characterId": "ada-spine",
+      "platform": "facebook",
+      "contentType": "story",
+      "theme": "social",
+      "title": "A small hello",
+      "body": "An anemone brushed my arm. I touched it back, very carefully. Then the others reached across me. I had meant hello, not come over.",
+      "status": "prose-reviewable-media-metadata-hold",
+      "catalogId": "commons-0610",
+      "localReviewPath": "/tmp/freed-ocean-scenes-04.EIBZ95/14-commons-0610.jpg",
+      "media": {
+        "sha1": "e424873ed88757f40bea550f9c8d8c92fb893193",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-23%2C_DD_20.jpg",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/55/Estrella_espinosa_com%C3%BAn_%28Marthasterias_glacialis%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-23%2C_DD_20.jpg/1280px-Estrella_espinosa_com%C3%BAn_%28Marthasterias_glacialis%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-23%2C_DD_20.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "creator": "Diego Delso",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "width": null,
+        "height": null,
+        "reviewWidth": 1280,
+        "reviewHeight": 1280,
+        "originalDimensionsStatus": "not present in available cached evidence; never substitute thumbnail dimensions",
+        "alt": "A pale spiny starfish lies among long anemone tentacles that overlap several of its arms."
+      }
+    }
+  ],
+  "reviewedSources": [
+    {
+      "catalogId": "commons-0535",
+      "localReviewPath": "/tmp/freed-ocean-scenes-03.LKlLps/30-commons-0535.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "b642917bd9a50c3cb38e5c832b8d656917fa3850",
+      "localReviewFileSha256": "1b2a674b614bd0936cf8d69ee826626395d3e34e96840b2b3fe6548a9730514b",
+      "reviewDimensions": [
+        1280,
+        1920
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABashful_Seahorse_(2072308681).jpg",
+      "creator": "LASZLO ILYES from Cleveland, Ohio, USA",
+      "license": "CC BY 2.0",
+      "decision": "hold",
+      "reason": "Orange long-snouted seahorse grips a thick brown holdfast. Wrong morphology for red-tubercled Bargibant's pygmy seahorse Dot; no species substitution."
+    },
+    {
+      "catalogId": "commons-0541",
+      "localReviewPath": "/tmp/freed-ocean-scenes-03.LKlLps/31-commons-0541.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "8aad4dd097f0f915b1be0a0278e14c516c67e00c",
+      "localReviewFileSha256": "fd4e9e02f807419fd2c60f18e24ba99eabdb1cbfbbcc361def8ef718881a3c4a",
+      "reviewDimensions": [
+        1280,
+        1273
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)%2C_Madeira%2C_Portugal%2C_2019-05-30%2C_DD_03.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Sharp Marthasterias glacialis spread over pale rock. Correct Ada species but existing avatar and generic spread posture supply no new event."
+    },
+    {
+      "catalogId": "commons-0560",
+      "localReviewPath": "/tmp/freed-ocean-scenes-03.LKlLps/38-commons-0560.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "4fd79f9c674f7903067e697b26d8ec8dd3004ab0",
+      "localReviewFileSha256": "31db5a3eebf28c59d09200884f31be59165f948470440056895155d78489e163",
+      "reviewDimensions": [
+        1280,
+        1280
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABabosa_de_mar_(Flabellina_babai)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2022-07-20%2C_DD_61.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "White-blue aeolid with orange-tipped cerata on thin growth. Flabellina babai source is incompatible with Nudi's Nembrotha kubaryana canon."
+    },
+    {
+      "catalogId": "commons-0611",
+      "localReviewPath": "/tmp/freed-ocean-scenes-04.EIBZ95/15-commons-0611.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "f03aa440ba54da91c0e2529bda8521b839ecf7b7",
+      "localReviewFileSha256": "894bd4ce4718492560900b2dce10c035ab3812c9e226ceb1de5952b0914ef938",
+      "reviewDimensions": [
+        1280,
+        1934
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABabosa_de_mar_(Doriopsilla_pelseneeri)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2022-07-28%2C_DD_62-63_FS.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Orange tubercled Doriopsilla pelseneeri close-up. Wrong species for Nudi."
+    },
+    {
+      "catalogId": "commons-0610",
+      "localReviewPath": "/tmp/freed-ocean-scenes-04.EIBZ95/14-commons-0610.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "e424873ed88757f40bea550f9c8d8c92fb893193",
+      "localReviewFileSha256": "15f3d9f636af1e1ab07febc165f9ee43490f8fe4c849f1fc0214e7783251d748",
+      "reviewDimensions": [
+        1280,
+        1280
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-23%2C_DD_20.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "prose-reviewable-media-metadata-hold",
+      "reason": "Pale spiny Marthasterias glacialis spreads across rock among three prominent clusters of long purple-tipped anemone tentacles. Tentacles overlap several arms. Exact species and Arrábida source fit Ada. One draft below; original dimensions unresolved."
+    },
+    {
+      "catalogId": "commons-0624",
+      "localReviewPath": "/tmp/freed-ocean-scenes-04.EIBZ95/25-commons-0624.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "cf68862cbd4394960bd554fb3094a2185f67aec4",
+      "localReviewFileSha256": "cdb769239c4f4654cbb0cfa4ec4d97d7b0c5e6e109a9f82c77f7edbde93a6e77",
+      "reviewDimensions": [
+        1280,
+        720
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AHawksbill_turtle_at_Elphinstone_Reef%2C_Red_Sea%2C_Egypt_(35150034493).jpg",
+      "creator": "Derek Keats from Johannesburg, South Africa",
+      "license": "CC BY 2.0",
+      "decision": "hold",
+      "reason": "Hawksbill swims beside vivid pink and yellow reef in blue water. Correct Rhea species. New wonder prose kept converging on the previously held Going past and admitted descent/return; no new proposal."
+    },
+    {
+      "catalogId": "commons-0758",
+      "localReviewPath": "/tmp/freed-ocean-scenes.WkE99I/18-commons-0758.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "ba5a488eabe96e9f143be7d7af155744b53e49f2",
+      "localReviewFileSha256": "84fd60e5b2e7450b90caaf05010a15cec61d3357dc1233b247bf2f36ed44d69f",
+      "reviewDimensions": [
+        1280,
+        713
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AHuevas_de_sepia_com%C3%BAn_(Sepia_officinalis)%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2021-09-10%2C_DD_70.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Dense pale elongated egg capsules beneath a ledge. Source title labels common cuttlefish eggs, but the exact appearance raises an identification question. Do not create an Iris reproduction episode until primary species evidence resolves it. No alternative egg species asserted here."
+    },
+    {
+      "catalogId": "commons-0820",
+      "localReviewPath": "/tmp/freed-ocean-images.hpi0Iy/19-commons-0820.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "ae5b32b435be58b4e27e843d23aed65cfe7b189d",
+      "localReviewFileSha256": "1d67394f207a5e9dc5e1e37f1fa3db08282dedfdc9f658d0810a829e16fd6fca",
+      "reviewDimensions": [
+        1280,
+        853
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APulpo_com%C3%BAn_(Octopus_vulgaris)%2C_Cathedral_Cave%2C_Gozo%2C_Malta%2C_2021-08-23%2C_DD_27.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Common octopus spreads arm web across pale encrusted rock inside a cave. Correct Alma species. Reaching, gripping, folding and possession mechanisms are already heavily used. No new scene earned."
+    },
+    {
+      "catalogId": "commons-0864",
+      "localReviewPath": "/tmp/freed-ocean-replacement-images.HdWUMj/commons-0864.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "6fc37abc7fbebbd1c557614270404d6faf93e265",
+      "localReviewFileSha256": "21e0431e88691da2503bb2e1ec531ce72f9d7f588b3c9d5676cc83d46782451e",
+      "reviewDimensions": [
+        1280,
+        1280
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3APulpo_com%C3%BAn_(Octopus_vulgaris)%2C_Denia%2C_Espa%C3%B1a%2C_2022-09-10%2C_DD_24.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Common octopus curled inside a dark rock cavity, pale arm crossing the face region and one eye visible. Correct Alma species; another compact shelter or reluctant emergence repeats the arc."
+    },
+    {
+      "catalogId": "commons-0559",
+      "localReviewPath": "/tmp/freed-ocean-scenes-03.LKlLps/37-commons-0559.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "42cea3832726ad6c232ec35a4943054f5265afe5",
+      "localReviewFileSha256": "0437be091b2b55f6574333d3006adcfe69fa71177ecf14104db32bde92b8baab",
+      "reviewDimensions": [
+        1280,
+        1256
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3AEstrella_espinosa_com%C3%BAn_(Marthasterias_glacialis)%2C_Madeira%2C_Portugal%2C_2019-05-31%2C_DD_57.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Sharp green and orange Marthasterias glacialis on low algae. Correct Ada species, but a generic spread portrait supplies no distinct event."
+    },
+    {
+      "catalogId": "commons-0781",
+      "localReviewPath": "/tmp/freed-ocean-scenes.WkE99I/19-commons-0781.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "21fbb53bd2dba72443d90d1e3d9ffed975a7210a",
+      "localReviewFileSha256": "03a3b6f392d3e2a2bf39ceadd6f74c5e8e4ca6bc92267f55f8c83df8e366ebdd",
+      "reviewDimensions": [
+        1280,
+        1280
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ALirio_de_mar_(Colobometra_perspinosa)%2C_Anilao%2C_Filipinas%2C_2023-08-25%2C_DD_32.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Deep red Colobometra perspinosa feather star with curled arms. No recognizable Allogalathea elegans individual visible. Mina cannot silently become her host."
+    },
+    {
+      "catalogId": "commons-0851",
+      "localReviewPath": "/tmp/freed-ocean-scenes.WkE99I/27-commons-0851.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "eecca33b2524b915fd0b640b28d5c8ac1c71f840",
+      "localReviewFileSha256": "a610f97dc05129e6a4a2caeed0d63dcfb756c79066f436d10b7ecfe9c520eba0",
+      "reviewDimensions": [
+        1280,
+        1920
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ALirio_de_mar_(Phanogenia_sp.)%2C_Anilao%2C_Filipinas%2C_2023-08-21%2C_DD_71.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Thin blue Phanogenia feather-star arms curl among pale coral. No recognizable Allogalathea elegans individual visible. No Mina proposal."
+    },
+    {
+      "catalogId": "commons-0819",
+      "localReviewPath": "/tmp/freed-ocean-scenes.WkE99I/22-commons-0819.jpg",
+      "viewedIndividually": true,
+      "originalSha1FromCatalog": "4ed5ab29f8b3ebf4043be544dc7a09f5535a6623",
+      "localReviewFileSha256": "616aab7ee84a1a5512ede29d4e133b09867efa8e3d64bcf440e2d7385f5e9c3c",
+      "reviewDimensions": [
+        1280,
+        853
+      ],
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ABabosa_de_mar_(Costasiella_kuroshimae)%2C_Anilao%2C_Filipinas%2C_2023-08-23%2C_DD_111.jpg",
+      "creator": "Diego Delso",
+      "license": "CC BY-SA 4.0",
+      "decision": "hold",
+      "reason": "Tiny pale Costasiella kuroshimae with green cerata on an algal blade. Wrong species for Nudi. Already associated with separate existing work; not repurposed."
+    }
+  ]
+}

@@ -1,0 +1,626 @@
+{
+  "status": "Six root-approved replacements integrated into existing land episode slots; six candidates remain unadmitted. No aggregate media wiring or publication.",
+  "batchCount": 12,
+  "longStoryCount": 3,
+  "newCharacterCount": 0,
+  "netCorpusGrowthIfAllAccepted": 0,
+  "characters": [
+    {
+      "characterId": "nib-willow",
+      "identityNameBase": "Nib Willow",
+      "platform": "instagram",
+      "bio": "A red panda who has found the perfect sleeping branch and would like the sun to stop moving.",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      }
+    },
+    {
+      "characterId": "orla-reach",
+      "identityNameBase": "Orla Reach",
+      "platform": "facebook",
+      "bio": "A short-beaked echidna whose nose keeps making commitments her shoulders cannot honor.",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "strange-09-01",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "facebook",
+      "subject": "short-beaked echidna",
+      "title": "From underneath",
+      "body": "I'm soft once you get to know me. You'll have to get to know me from underneath.",
+      "theme": "social",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 2,
+        "oldTitle": "Backing out helped",
+        "oldBody": "Tried to turn around between two roots. There was room for one end of me or the other. After a long pause I backed out, bringing enough loose bark to imply I had been digging.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/70/Echidna_burningwell.jpg/960px-Echidna_burningwell.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/1.jpg",
+        "downloadedSha256": "38c1b2045ac2e0c3924a9301e33cd96841bcb32085c0dbb6b2affd208effe153",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Side view shows dense protective spines and the soft face and lower body; the intimacy joke depends on this contrast.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Echidna burningwell.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Echidna_burningwell.jpg",
+        "creator": "Allan Whittome (Whitto)",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 1808,
+        "height": 1356,
+        "sha1": "bcc73f07ce173acf2dcb230ed46ea7398fb3e315",
+        "sourceDescription": "Echidna <i>Tachyglossus aculeatus</i>",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Softness is available, but only from the anatomically inconvenient direction."
+    },
+    {
+      "id": "strange-09-02",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "facebook",
+      "subject": "short-beaked echidna",
+      "title": "The wrong end",
+      "body": "A fly landed on the end of my nose. I waited for it to finish looking around. It was taking a very personal interest in somewhere I could barely see.",
+      "theme": "social",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 3,
+        "oldTitle": "Too late for conversation",
+        "oldBody": "A heavy footstep. I dug down and presented my spines. It passed. When I came up, I was facing the opposite direction and had forgotten which ants I was after.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Echidna_short_beaked.jpg/960px-Echidna_short_beaked.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/2.jpg",
+        "downloadedSha256": "218add5bf45a248cf1a1aed38d1518278a031f36ab098d386e3738bbe8811cb1",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Frontal echidna portrait centers its long snout and small lateral eyes. The remembered fly is not pictured; no prey capture or precise visual-field claim.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Echidna short beaked.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Echidna_short_beaked.jpg",
+        "creator": "User:benjamint444",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 2133,
+        "height": 1600,
+        "sha1": "0e5274eacd0156ff4a608b8dd484b49a58d72cba",
+        "sourceDescription": "An Austraian short beaked Echidna",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An inquisitive nose receives an inspection it cannot easily return."
+    },
+    {
+      "id": "strange-09-03",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "rss",
+      "subject": "short-beaked echidna",
+      "title": "The first sharp bit",
+      "body": "The first spine caught me in the belly. Just a tiny prick. I shifted him and went back to sleep.\n\nThen he shifted himself.\n\nI had carried an egg, then a soft little mouth with feet. I was not ready for the mouth to start bringing equipment.\n\nI made him a place in the earth. Checked the walls with my nose. Pressed the floor. Went over it all again, though I knew perfectly well what dirt felt like.\n\nWhen I put him down, he curled against the warm place I had just left. A whole small echidna. I could see that now.\n\nI stayed until he slept. Then a little longer.\n\nWhen I finally lay down by myself, nothing poked me. I missed it. Not enough to put him back.",
+      "theme": "family",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 4,
+        "oldTitle": "Pause between mouthfuls",
+        "oldBody": "A sneeze interrupted my tongue halfway into the log. Everything withdrew at once. Stood with my nose lifted, waiting for another sneeze, while the ants continued organizing themselves into a meal I was not having.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/80/Short-beaked_Echidna_Tasmania.jpg/960px-Short-beaked_Echidna_Tasmania.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/3.jpg",
+        "downloadedSha256": "d4badf80065929d76e9aea6a085fa7699e5fd73c2a7d4ee49ffd0a2190db8262",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Tasmanian echidna portrait shows fur and emerging-looking exposed spines. It illustrates the adult mother's remembered experience, not a pictured puggle or pouch.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Short-beaked Echidna Tasmania.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Short-beaked_Echidna_Tasmania.jpg",
+        "creator": "KeresH",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 2322,
+        "height": 1519,
+        "sha1": "629f5fb174ec7dfc22a2f037db259d1470b0e06c",
+        "sourceDescription": "<p><i><a href=\"//commons.wikimedia.org/wiki/Tachyglossus_aculeatus\" title=\"Tachyglossus aculeatus\">Tachyglossus aculeatus</a></i>\n</p>\nShort-beaked Echidna, Tasmania.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A mother misses the discomfort that signaled her child's growth, without wanting it back."
+    },
+    {
+      "id": "strange-09-04",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "facebook",
+      "subject": "short-beaked echidna",
+      "title": "No teeth",
+      "body": "I have no teeth. I still wake from dreams in which they fall out. I would like to know whose worry this is.",
+      "theme": "wonder",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 6,
+        "oldTitle": "A log coming apart",
+        "oldBody": "The old log split under my claws today. Inside it was soft, warm, busy, and nothing like the hard thing I had been walking around. I stuck my whole nose in and forgot to be impressed.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Tachyglossus_aculeatus_side_on_%28cropped%29.jpg/960px-Tachyglossus_aculeatus_side_on_%28cropped%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/4.jpg",
+        "downloadedSha256": "0a17d3948519c9c4258f3762dfed5574be8249c41db1497014ea529a372af6cf",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Clear side profile centers the narrow beak; invented dream contrasts with actual adult toothlessness.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Tachyglossus aculeatus side on (cropped).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tachyglossus_aculeatus_side_on_(cropped).jpg",
+        "creator": "Tachyglossus_aculeatus_side_on.jpg: JJ Harrison (jjharrison89@facebook.com)\nderivative work: Kürschner (talk)",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 1898,
+        "height": 1117,
+        "sha1": "1696a9620b0a3ee82760855585ab65aff0428f7f",
+        "sourceDescription": "Short-beaked Echidna (Tachyglossus aculeatus), Mount Field National Park, Tasmania, Australia",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A toothless animal dreams a worry that apparently belongs to someone else."
+    },
+    {
+      "id": "strange-09-05",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "rss",
+      "subject": "short-beaked echidna",
+      "title": "The black ground",
+      "body": "The ground began roaring while I was halfway across it.\n\nI put my claws down. Nothing gave. I lowered my head. The noise stopped, but something enormous was still there.\n\nI waited. It waited.\n\nThere was grass only a little farther on. I could smell damp earth beneath it. I took one step toward that smell. Then another. Nobody touched me.\n\nAt the edge, my claws finally went into something. I dug until the noise came back and passed behind me.\n\nStayed there with my face in the earth for a while.\n\nI had crossed an entire piece of ground that could not be dug. I couldn't stop thinking about what a terrible thing that was to make.",
+      "theme": "danger",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 7,
+        "oldTitle": "Please stop following",
+        "oldBody": "Another echidna followed me around a stump. I stopped; he stopped. I reversed; he reversed. I finally climbed over a root. He went around it and was waiting, which felt unnecessarily competent.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Echidna_on_the_road.jpg/960px-Echidna_on_the_road.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/5.jpg",
+        "downloadedSha256": "7840fddb46a54a338d8c3b9154058f317fbe1d4cb19a16c9cab5987eafff3e72",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Actual echidna crossing a paved road, with reachable grass verge. Source photographer says they slowed after mutual panic; imagined inner account does not claim an impact.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Echidna on the road.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Echidna_on_the_road.jpg",
+        "creator": "Petite Trotamundos",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 1024,
+        "height": 768,
+        "sha1": "6d131b502b0ae586ea3ca0574c3a37345d21ee10",
+        "sourceDescription": "As I was driving an echidna crossed the road. We both panic, I slowed down, the echidna stop walking... Then the echidna sort of waddled to the end of the road. Drive carefully!",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Pavement appears as ground stripped of the animal's main refuge, not as neutral infrastructure."
+    },
+    {
+      "id": "strange-09-06",
+      "characterId": "orla-reach",
+      "characterName": "Orla Reach",
+      "platform": "facebook",
+      "subject": "short-beaked echidna",
+      "title": "Occupied",
+      "body": "I pushed my nose into the gap beside the rock. Something touched it from inside. I withdrew. Waited. Tried again. It touched me again. Very well. Introductions were complete.",
+      "theme": "social",
+      "location": {
+        "name": "Tasmanian dry woodland",
+        "coordinates": {
+          "lat": -42.5,
+          "lng": 147.1
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "orla-reach",
+        "episodeNumber": 8,
+        "oldTitle": "Across the wet bit",
+        "oldBody": "Swam across the narrow creek because the other bank smelled interesting. Climbed out heavy and dripping. It smelled interesting from there too, but mostly like a wet echidna.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8a/A_Portrait_of_An_Echidna.jpg/960px-A_Portrait_of_An_Echidna.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/6.jpg",
+        "downloadedSha256": "72d8e7d165d813072b22c9d498847b3155903105ae1787d4e21c353bc8572bb8",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Echidna probes a small actual gap among rock, bark and leaves. Unseen contact is fictional and not assigned a prey species.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:A Portrait of An Echidna.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:A_Portrait_of_An_Echidna.jpg",
+        "creator": "gabecollett",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 3264,
+        "height": 2448,
+        "sha1": "c683f72367522d751e585e9fa5e7a68b67a3a34c",
+        "sourceDescription": "An Echidna in Full Body",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Repeated contact in the dark becomes an unplanned introduction."
+    },
+    {
+      "id": "strange-09-07",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "rss",
+      "subject": "red panda",
+      "title": "The hand underneath",
+      "body": "Mother used to hold the bamboo while I ate. I would pull. She would hold. It was a very satisfactory arrangement.\n\nOne morning she let go.\n\nThe branch came with me. I fell backward with most of breakfast across my face. She waited until I had untangled myself, then put it between my paws.\n\nI dropped it. She put it back. I tried to bite a leaf and dropped it again.\n\nBy the end I was furious with the branch and she had not finished her own meal.\n\nThe next day I could hold it. Not elegantly, but well enough to eat.\n\nShe reached underneath once to help. I let my paw loosen a little. Just enough for her to keep holding.",
+      "theme": "family",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 2,
+        "oldTitle": "Tender selection",
+        "oldBody": "Held a bamboo spray in one paw and picked out the tender leaves. Dropped the spray while rejecting a leaf. Ate the rejected leaf on my way down to collect the rest.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Red_Panda_-_53009093280.jpg/960px-Red_Panda_-_53009093280.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/11.jpg",
+        "downloadedSha256": "b70ee3e309810632a08cbde9c8bd761aec812f68826e5e49bba0ab11766a1ad2",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Red panda grips bamboo in its paw. The present adult grip grounds a remembered lesson with its mother; no mother or cub is claimed in the photograph.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Red Panda - 53009093280.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Red_Panda_-_53009093280.jpg",
+        "creator": "Mathias Appel",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 5568,
+        "height": 3712,
+        "sha1": "f9259ce3a8be159eddd8bd0f9da75c48518be791",
+        "sourceDescription": "Red panda",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The child can manage the branch but quietly prolongs a needed touch."
+    },
+    {
+      "id": "strange-09-08",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "instagram",
+      "subject": "red panda",
+      "title": "Looking down",
+      "body": "I went to look at the ground. It was where I'd left it. So was the distance. Went back up with no useful news.",
+      "theme": "wonder",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 3,
+        "oldTitle": "Chasing the warm patch",
+        "oldBody": "The sun moved off my stomach. I shifted along the branch. It moved again. After three adjustments I was sleeping with my head lower than my feet, which apparently is what the sun wanted.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/RedPanda_SingalilaNationalPark_DFrame.jpg/960px-RedPanda_SingalilaNationalPark_DFrame.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/8.jpg",
+        "downloadedSha256": "a02c1c7f1cc36877582557c97b990dbb6be682c559d8f2f6f6559b9899aa90a3",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Wild Singalila red panda points headfirst down a branch. It does not repeat the existing failed descent or claim a fall.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:RedPanda SingalilaNationalPark DFrame.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:RedPanda_SingalilaNationalPark_DFrame.jpg",
+        "creator": "Ajit Hota",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 1121,
+        "height": 896,
+        "sha1": "9cb3ddddbdbe3ac7e4c958e9dbc5cd0489757495",
+        "sourceDescription": "Red Panda in wild at Singalila National Park",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The investigation establishes only that the familiar height remains high."
+    },
+    {
+      "id": "strange-09-09",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "instagram",
+      "subject": "red panda",
+      "title": "A little",
+      "body": "I wasn't being rude. There was bamboo stuck to my tongue. I was being rude a little.",
+      "theme": "social",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 4,
+        "oldTitle": "Already occupied",
+        "oldBody": "Marked the low branch, then noticed another red panda watching from above. Finished very thoroughly. Had to walk past him afterward with the same bottom I had just made so much of.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/%C3%84%C3%A4tsch%21_%2839876992263%29.jpg/960px-%C3%84%C3%A4tsch%21_%2839876992263%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/9.jpg",
+        "downloadedSha256": "80f0bdb03794c64e6c5c681e9624e25894628ef3d565992672035842eb429f32",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Close red panda portrait shows its tongue extended among bamboo leaves.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Äätsch! (39876992263).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:%C3%84%C3%A4tsch!_(39876992263).jpg",
+        "creator": "Rolf Dietrich Brecher from Germany",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 4588,
+        "height": 3373,
+        "sha1": "a9c4336dae7d943c09e94839e1fecbd01f559254",
+        "sourceDescription": "Äätsch!",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The food excuse is true but incomplete."
+    },
+    {
+      "id": "strange-09-10",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "instagram",
+      "subject": "red panda",
+      "title": "Nearly fierce",
+      "body": "I meant to growl. Yawned halfway through. He looked less afraid afterward. Frankly, so did I.",
+      "theme": "social",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 5,
+        "oldTitle": "Caught by the tail",
+        "oldBody": "Woke with my tail over my nose and an urgent feeling that somebody was too close. I pushed it away. Cold nose. Pulled it back. Whoever it was could stay.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Kleiner_Panda_%28Zoo_K%C3%B6ln%29.jpg/960px-Kleiner_Panda_%28Zoo_K%C3%B6ln%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/10.jpg",
+        "downloadedSha256": "b782a3b8c8ba2cf9d1d03b7119a51d9af415442d71c563ec95fe9170e849447b",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Red panda mouth open beside rocks and bamboo. The unseen observer and transition from growl to yawn are fiction, not a behavioral identification of this still frame.",
+        "reviewDecision": "root_approved_integrated_in_existing_slot"
+      },
+      "provenance": {
+        "title": "File:Kleiner Panda (Zoo Köln).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Kleiner_Panda_(Zoo_K%C3%B6ln).jpg",
+        "creator": "Fiver, der Hellseher",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 5152,
+        "height": 3864,
+        "sha1": "60287aa042569cd5889c0957847976739d3c0e2e",
+        "sourceDescription": "Kleiner Panda (Ailurus fulgens fulgens) im Zoo Köln",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An attempted threat is interrupted by tiredness and becomes reassuring."
+    },
+    {
+      "id": "strange-09-11",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "instagram",
+      "subject": "red panda",
+      "title": "Some assembly",
+      "body": "Someone has made a tree out of smaller trees and rope. I walked along it. Quite comfortable. I remain suspicious of how many trees were involved.",
+      "theme": "wonder",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 7,
+        "oldTitle": "A change of menu",
+        "oldBody": "Found a fallen berry and carried it up to my branch. It rolled off while I was arranging my paws. Watched it land beside the bamboo. Some meals are very determined to be bamboo.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Red_Panda.JPG/960px-Red_Panda.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/7.jpg",
+        "downloadedSha256": "de067428ef5685bbe3edf80f2a176db6f93e3fa62477dfd1fb83135009cec2bb",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Red panda stands on an actual rope-and-stick climbing ladder. The artificial construction is acknowledged rather than disguised as wild habitat.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Red Panda.JPG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Red_Panda.JPG",
+        "creator": "User Bernard Landgraf on de.wikipedia.org",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 1024,
+        "height": 683,
+        "sha1": "e4c7941cf3024ff1be9bbdf364ad14e1ca011e1e",
+        "sourceDescription": "<a href=\"https://en.wikipedia.org/wiki/Red_panda\" class=\"extiw\" title=\"en:Red panda\">Red panda</a> (<i><a href=\"//commons.wikimedia.org/wiki/Ailurus_fulgens\" title=\"Ailurus fulgens\">Ailurus fulgens</a></i>) in Munich Zoo",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A human climbing structure is assessed as an oddly assembled tree."
+    },
+    {
+      "id": "strange-09-12",
+      "characterId": "nib-willow",
+      "characterName": "Nib Willow",
+      "platform": "instagram",
+      "subject": "red panda",
+      "title": "The bad leaf",
+      "body": "There is a leaf in this mouthful I don't like. I don't know which one. I'm eating the lot out of spite.",
+      "theme": "feeding",
+      "location": {
+        "name": "Singalila montane forest",
+        "coordinates": {
+          "lat": 27.09,
+          "lng": 88.03
+        }
+      },
+      "replacement": {
+        "sourceFile": "packages/shared/src/sample-character-arcs-land.ts",
+        "characterId": "nib-willow",
+        "episodeNumber": 9,
+        "oldTitle": "The other smell",
+        "oldBody": "Somebody marked my tree while I was out. I sniffed the trunk, the fork, the low branch, the trunk again. By the time I finished being offended, I was late for my nap.",
+        "expectedOldMediaSha1": null,
+        "operation": "replace_existing_episode_not_append"
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Red_Panda_-_53008872719.jpg/960px-Red_Panda_-_53008872719.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange09-review.A2onVH/12.jpg",
+        "downloadedSha256": "065bc6e8217d01d1828be5be3947b537efb5f73679fbbd13dd1e238632d6d70e",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Red panda portrait beside bamboo; it does not show a mouthful or a held bamboo bundle. Rejected for image and prose mismatch.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Red Panda - 53008872719.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Red_Panda_-_53008872719.jpg",
+        "creator": "Mathias Appel",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 5568,
+        "height": 3712,
+        "sha1": "075e283b1f123314f9eef1d91347944b1b17b11a",
+        "sourceDescription": "Red panda",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Fussy selection turns into stubborn indiscriminate eating."
+    }
+  ],
+  "acceptedReplacementCount": 6
+}

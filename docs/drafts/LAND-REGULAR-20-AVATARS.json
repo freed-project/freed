@@ -1,0 +1,116 @@
+{
+  "batch": "land-regular-20",
+  "avatars": [
+    {
+      "characterId": "oswin-broadback",
+      "reviewIndex": 4,
+      "crop": {
+        "x": 900,
+        "y": 1000,
+        "side": 1900
+      },
+      "focal": {
+        "x": 0.3353879622915156,
+        "y": 0.5303236333967909,
+        "zoom": 1.9352631578947368
+      },
+      "characterName": "Oswin Broadback",
+      "fullSpecies": "Bison bison",
+      "ageSex": "Adult male; sex explicit in avatar source. Other selected adults are visually compatible but not sexed by their records.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d/original.jpg",
+      "sourceLocalPath": "/tmp/freed-land20/4.jpg",
+      "creator": "NPS/Neal Herbert",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 5516,
+      "originalHeight": 3677,
+      "originalSha1": "54adcdb3705671cac9a8e7331a45caa4ce3ddfcb",
+      "originalSha256": "75fe8c3e236db3213cc96d867809fae7caf637c5faffc0cf65332bbe6f61a452",
+      "review220Path": "/tmp/freed-land20/oswin-broadback-220-circle.png",
+      "review48Path": "/tmp/freed-land20/oswin-broadback-48-circle.png",
+      "cropPath": "/tmp/freed-land20/oswin-broadback-crop.png",
+      "visualReview": "PASS: actual circular files opened independently at both sizes. Face and species silhouette recognizable; no crop extrapolation.",
+      "status": "proposed; independent lead admission required",
+      "review220Sha256": "fed0c8837ef18ef899ed8c340dc15b2121441b614b7615efa9b5baa96066ded0",
+      "review48Sha256": "4ae2d6fa64d61bf2f5b1b6117251baea0896628653ba2f934cb156c9be917f64"
+    },
+    {
+      "characterId": "mavis-spade",
+      "reviewIndex": 17,
+      "crop": {
+        "x": 1100,
+        "y": 810,
+        "side": 650
+      },
+      "focal": {
+        "x": 0.556640625,
+        "y": 0.5911458333333334,
+        "zoom": 2.953846153846154
+      },
+      "characterName": "Mavis Spade",
+      "fullSpecies": "Taxidea taxus",
+      "ageSex": "Adult female in fiction. Avatar source gives species but no sex or precise age; adult-sized appearance is compatible, not female identification.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f54eeb32-1dd8-b71b-0b9b-01eb33c6c4ec",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f54eeb32-1dd8-b71b-0b9b-01eb33c6c4ec/original.jpg",
+      "sourceLocalPath": "/tmp/freed-land20/17.jpg",
+      "creator": "U.S. National Park Service; individual photographer uncredited",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 2560,
+      "originalHeight": 1920,
+      "originalSha1": "4be2cf255c005a07d899b8bb1522dd58a2120c72",
+      "originalSha256": "b5dd678becb44b7eedc7a60a4b6d0baea68b14ce66b4041aea6418072998a631",
+      "review220Path": "/tmp/freed-land20/mavis-spade-220-circle.png",
+      "review48Path": "/tmp/freed-land20/mavis-spade-48-circle.png",
+      "cropPath": "/tmp/freed-land20/mavis-spade-crop.png",
+      "visualReview": "PASS: actual circular files opened independently at both sizes. Face and species silhouette recognizable; no crop extrapolation.",
+      "status": "proposed; independent lead admission required",
+      "review220Sha256": "53a48d8b6664e30fbe4be32a0b98eff7bb76d0bae7072a0d7f83d38e3d0e416f",
+      "review48Sha256": "d7ff6e3b5a2720838b3e14ceb78b9616d3d2ac4a14118e2ff5cbd257b261402a"
+    },
+    {
+      "characterId": "cedric-crown",
+      "reviewIndex": 20,
+      "crop": {
+        "x": 180,
+        "y": 0,
+        "side": 650
+      },
+      "focal": {
+        "x": 0.4931640625,
+        "y": 0.47653958944281527,
+        "zoom": 1.0492307692307692
+      },
+      "characterName": "Cedric Crown",
+      "fullSpecies": "Cervus canadensis",
+      "ageSex": "Male, from calf memory to adult. Avatar and antlered adults are male; calf sex unrecorded.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f/original.jpg",
+      "sourceLocalPath": "/tmp/freed-land20/20.jpg",
+      "creator": "NPS",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "originalWidth": 1024,
+      "originalHeight": 682,
+      "originalSha1": "1a61554e085786fbe8c13855106d68fede60dcd3",
+      "originalSha256": "61843ebe0a4bbf36003484ab76d809a4ab0874c19a81b1dbe2438ecc09941343",
+      "review220Path": "/tmp/freed-land20/cedric-crown-220-circle.png",
+      "review48Path": "/tmp/freed-land20/cedric-crown-48-circle.png",
+      "cropPath": "/tmp/freed-land20/cedric-crown-crop.png",
+      "visualReview": "PASS: actual circular files opened independently at both sizes. Face and species silhouette recognizable; no crop extrapolation.",
+      "status": "proposed; independent lead admission required",
+      "review220Sha256": "ef664ffc87dc116038a2eb7855d57f39eb2fa19baa827acabc0cc250b827ad4a",
+      "review48Sha256": "856cf7f4b01ee5ad625428923745e0b7ac279cc94b22a7012a3f4f66e026a860"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import type {
   Person,
 } from "@freed/shared";
 import { ChannelAvatar } from "../ChannelAvatar.js";
+import { MiniFriendMapCard } from "../map/MiniFriendMapCard.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestion.js";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
@@ -32,15 +33,11 @@ interface AccountDetailPanelProps {
   onDismissFriendSuggestion?: (suggestionId: string) => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
+  onOpenMap: (personId: string) => void;
+  locationItems: readonly FeedItem[];
   readOnly?: boolean;
 }
 
-function itemSnippet(item: FeedItem): string {
-  const text = item.content.text?.trim();
-  if (text) return text.length > 120 ? `${text.slice(0, 120)}...` : text;
-  if (item.content.linkPreview?.title) return item.content.linkPreview.title;
-  return "No text preview";
-}
 
 function evidenceIdLabel(itemId: string): string {
   return `...${itemId.slice(-8)}`;
@@ -76,13 +73,14 @@ export function AccountDetailPanel({
   sourceVersion,
   feedItems,
   timelineLoading,
-  timelineTotalCount,
   onBack,
   onPromoteToFriend,
   onPromoteToFam,
   onDismissFriendSuggestion,
   onLinkToPerson,
   onOpenPerson,
+  onOpenMap,
+  locationItems,
   readOnly = false,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,10 +93,6 @@ export function AccountDetailPanel({
   });
   const confirmedLinkedPerson =
     linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
-  const provisionalLinkedPerson =
-    linkedPerson && linkedPerson.relationshipStatus !== "friend"
-      ? linkedPerson
-      : null;
 
   const suggestionIds = useMemo(
     () => new Set(suggestions.map((suggestion) => suggestion.personId)),
@@ -110,20 +104,19 @@ export function AccountDetailPanel({
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
-      <div className="theme-dialog-divider flex items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            onClick={onBack}
-            className="btn-secondary rounded-lg p-1.5"
-            aria-label="Back to all friends"
+            onClick={() => linkedPerson ? onOpenPerson(linkedPerson.id) : onBack()}
+            className="theme-dialog-divider group flex w-full shrink-0 items-center gap-3 border-b px-4 py-4 text-left transition-colors duration-200 hover:bg-[color:var(--theme-bg-card-hover)] active:bg-[color:var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--theme-accent-primary)] motion-reduce:transition-none"
+            aria-label={linkedPerson ? `Back to ${personName(linkedPerson)}` : "Back to all identities"}
+            title={linkedPerson ? `Back to ${personName(linkedPerson)}` : "Back to all identities"}
           >
             <svg
               viewBox="0 0 20 20"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.75"
-              className="h-4 w-4"
+              className="h-5 w-5 shrink-0 text-[color:var(--theme-accent-primary)] transition-transform duration-200 group-hover:-translate-x-0.5 group-active:scale-90 motion-reduce:transform-none motion-reduce:transition-none"
               aria-hidden
             >
               <path
@@ -132,18 +125,17 @@ export function AccountDetailPanel({
                 strokeLinejoin="round"
               />
             </svg>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {linkedPerson ? `Back to ${personName(linkedPerson)}` : "All identities"}
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--theme-text-muted)]">
+              {linkedPerson ? "View identity and linked profiles" : "Return to Friends overview"}
+            </span>
+          </span>
           </button>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              {accountTitle(account)}
-            </h2>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {providerLabel(account.provider)}
-            </p>
-          </div>
-        </div>
         {!confirmedLinkedPerson && !readOnly ? (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="theme-dialog-divider flex flex-wrap gap-2 border-b px-4 py-3">
             <button
               type="button"
               onClick={onPromoteToFriend}
@@ -159,16 +151,7 @@ export function AccountDetailPanel({
               Promote to Fam
             </button>
           </div>
-        ) : confirmedLinkedPerson ? (
-          <button
-            type="button"
-            onClick={() => onOpenPerson(confirmedLinkedPerson.id)}
-            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
-          >
-            Open identity
-          </button>
         ) : null}
-      </div>
 
       <div className="theme-dialog-divider border-b px-4 py-4">
         <div className="flex items-start gap-3">
@@ -190,15 +173,11 @@ export function AccountDetailPanel({
             <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
               {accountSubtitle(account)}
             </p>
-            {confirmedLinkedPerson ? (
-              <p className="mt-2 text-xs text-[color:var(--theme-accent-secondary)]">
-                Linked to {personName(confirmedLinkedPerson)}
-              </p>
-            ) : provisionalLinkedPerson ? (
-              <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                Linked to provisional identity{" "}
-                {personName(provisionalLinkedPerson)}
-              </p>
+            {linkedPerson ? (
+              <button type="button" onClick={() => onOpenPerson(linkedPerson.id)}
+                className="mt-2 rounded text-xs text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-current">
+                Identity: {personName(linkedPerson)}
+              </button>
             ) : (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                 This account is still unlinked.
@@ -215,11 +194,6 @@ export function AccountDetailPanel({
           <span>
             Last seen{" "}
             {formatDistanceToNow(account.lastSeenAt, { addSuffix: true })}
-          </span>
-          <span>
-            {timelineLoading
-              ? "Loading captured posts..."
-              : `${timelineTotalCount.toLocaleString()} captured post${timelineTotalCount === 1 ? "" : "s"}`}
           </span>
         </div>
       </div>
@@ -417,26 +391,13 @@ export function AccountDetailPanel({
         ) : (
           <div className="mt-3 space-y-2">
             {feedItems.slice(0, 8).map((item) => (
-              <div
-                key={item.globalId}
-                className="theme-card-soft rounded-2xl px-3 py-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
-                    {providerLabel(item.platform)}
-                  </span>
-                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                    {formatDistanceToNow(item.publishedAt, { addSuffix: true })}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
-                  {itemSnippet(item)}
-                </p>
-              </div>
+              <RecentActivityCard key={item.globalId} item={item} />
             ))}
           </div>
         )}
       </div>
+      {linkedPerson ? <MiniFriendMapCard friend={linkedPerson} feedItems={locationItems.length ? locationItems : feedItems} onOpenMap={() => onOpenMap(linkedPerson.id)} /> : null}
     </div>
   );
 }
+import { RecentActivityCard } from "./RecentActivityCard.js";

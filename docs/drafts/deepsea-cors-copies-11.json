@@ -1,0 +1,72 @@
+{
+  "purpose": "Exact Wikimedia Commons copy check for the three current deepseaNext avatar images whose NOAA originals lack CORS headers.",
+  "checkedAt": "2026-09-05",
+  "method": {
+    "service": "Wikimedia Commons MediaWiki API",
+    "namespace": 6,
+    "acceptedIdentityEvidence": [
+      "Commons imageinfo SHA-1 exactly matches the catalog SHA-1",
+      "Commons media-page provenance explicitly identifies the exact NOAA original URL"
+    ],
+    "notAccepted": [
+      "same genus",
+      "same expedition",
+      "similar-looking animal",
+      "different frame from the same dive"
+    ]
+  },
+  "records": [
+    {
+      "catalogId": "deepsea-07-05",
+      "identityNameBase": "Tess Near",
+      "originalImageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-octopus.jpg",
+      "originalSourceUrl": "https://oceanexplorer.noaa.gov/multimedia/octopus/",
+      "catalogSha1": "a61f8b0466c8304c7468eeb54c7c81dddf5c49d4",
+      "sourceTaxon": "octopus, exact species not stated",
+      "sourceContext": "NOAA describes the octopus as in close proximity to a brittle star during the eleventh Papahānaumokuākea ROV and Mapping expedition dive.",
+      "status": "noExactCommonsCopyVerified",
+      "commonsMatch": null,
+      "completedExactQueries": [
+        "intitle:\"dive11-octopus\"",
+        "\"dive11-octopus.jpg\"",
+        "\"oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-octopus.jpg\""
+      ],
+      "verification": "All completed exact filename and original-URL queries returned zero Commons File namespace results. No candidate was available for SHA-1 or source-provenance comparison."
+    },
+    {
+      "catalogId": "deepsea-07-09",
+      "identityNameBase": "Miri Faint",
+      "originalImageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/03/20210319-hires.jpg",
+      "originalSourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210319/",
+      "catalogSha1": "f4ea6b19e7b17e7a2447496e97792e3b88bc30fc",
+      "sourceTaxon": "Atolla, genus level",
+      "sourceContext": "NOAA identifies an Atolla jellyfish photographed at 880 meters during Windows to the Deep 2018.",
+      "status": "noExactCommonsCopyVerified",
+      "commonsMatch": null,
+      "completedExactQueries": [
+        "intitle:\"20210319-hires\"",
+        "\"20210319-hires.jpg\"",
+        "\"oceanexplorer.noaa.gov/wp-content/uploads/2021/03/20210319-hires.jpg\""
+      ],
+      "verification": "All completed exact filename and original-URL queries returned zero Commons File namespace results. No candidate was available for SHA-1 or source-provenance comparison."
+    },
+    {
+      "catalogId": "deepsea-07-10",
+      "identityNameBase": "Iona Rouge",
+      "originalImageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/01/20210117-hires.jpg",
+      "originalSourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210117/",
+      "catalogSha1": "a0efe5c0a717ba17cbc504f3d1aef64143346262",
+      "sourceTaxon": "Atolla sp.",
+      "sourceContext": "NOAA identifies an Atolla specimen collected from at least 1,500 meters in the Celebes Sea during the 2007 exploration.",
+      "status": "noExactCommonsCopyVerified",
+      "commonsMatch": null,
+      "completedExactQueries": [
+        "intitle:\"20210117-hires\"",
+        "\"20210117-hires.jpg\"",
+        "\"oceanexplorer.noaa.gov/wp-content/uploads/2021/01/20210117-hires.jpg\""
+      ],
+      "verification": "All completed exact filename and original-URL queries returned zero Commons File namespace results. No candidate was available for SHA-1 or source-provenance comparison."
+    }
+  ],
+  "limitation": "After the exact queries, one broader attribution query received the Commons API response 'You are making too many requests to the API.' No further Commons requests were made. The records therefore report no exact copy verified from the completed queries, not a claim that Commons globally contains no copy."
+}

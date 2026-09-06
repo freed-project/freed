@@ -38,6 +38,40 @@ function presentationRequest(): FriendsGalaxyProductWorkerPresentationRequest {
 }
 
 describe("Friends Galaxy product presentation", () => {
+  it("admits a distant hovered identity without displacing selection or exceeding metadata budgets", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    const source = buildSource(service);
+    const initial = service.handle(presentationRequest());
+    if (initial.kind !== "presentation-ready") throw new Error("Expected presentation.");
+    const admitted = new Set(initial.atlas.nodes.map(node => node.id));
+    const hoveredNodeId = source.rendererScene.scene.nodeIds.find(id => !admitted.has(id));
+    expect(hoveredNodeId).toBeDefined();
+    const request = presentationRequest();
+    request.viewport.hoveredNodeId = hoveredNodeId;
+    const hovered = service.handle(request);
+    if (hovered.kind !== "presentation-ready") throw new Error(JSON.stringify(hovered));
+    expect(hovered.atlas.nodes.map(node => node.id)).toEqual(expect.arrayContaining([
+      hoveredNodeId, "account:product-account-2", "person:product-person-2",
+    ]));
+    expect(hovered.atlas.nodes.length).toBeLessThanOrEqual(192);
+    expect(hovered.atlas.labels.length).toBeLessThanOrEqual(120);
+    expect(hovered.atlas.labels[0]).toMatchObject({
+      id: `label:${hoveredNodeId}`, nodeId: hoveredNodeId, priority: 2_000_000,
+    });
+    expect(hovered.atlas.labels[0].text.length).toBeGreaterThan(0);
+
+    request.viewport.hoveredNodeId = null;
+    const cleared = service.handle(request);
+    if (cleared.kind !== "presentation-ready") throw new Error("Expected presentation.");
+    expect(cleared.atlas.nodes).toEqual(initial.atlas.nodes);
+    expect(cleared.atlas.labels).toEqual(initial.atlas.labels);
+    request.viewport.hoveredNodeId = "person:nonexistent";
+    const unknown = service.handle(request);
+    if (unknown.kind !== "presentation-ready") throw new Error("Expected presentation.");
+    expect(unknown.atlas.nodes).toEqual(initial.atlas.nodes);
+    expect(unknown.atlas.labels).toEqual(initial.atlas.labels);
+  });
+
   it("retains a selected linked channel and its parent identity", () => {
     const service = new FriendsGalaxyProductWorkerService();
     const source = buildSource(service);

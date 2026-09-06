@@ -1,0 +1,34 @@
+[
+  {
+    "id": "land45-post",
+    "subject": "Ursus americanus",
+    "identityNameBase": "Beatrice Bark",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/a63a31a5-2c5c-44db-bc8c-342fd24ac19a/original.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+    "sha1": "b74267db4425c3179ac3b6e7e7bf6d629bf8d5be",
+    "creator": "NPS / Betty Blanton",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/a63a31a5-2c5c-44db-bc8c-342fd24ac19a",
+    "width": 909,
+    "height": 954,
+    "alt": "A black bear clings around a leafy tree trunk, head tilted sideways, with its tongue extended beneath a dark cherry.",
+    "detail": "A black bear clings around a leafy tree trunk, head tilted sideways, with its tongue extended beneath a dark cherry."
+  },
+  {
+    "id": "land45-avatar",
+    "subject": "Ursus americanus",
+    "identityNameBase": "Beatrice Bark",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/5a12c90d-24e8-4a98-ae10-63173fd47ed6/original.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+    "sha1": "2fdcc7f0e69f5a4bf8ead5a2f6933700eec7c5d8",
+    "creator": "NPS / Betty Blanton",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/5a12c90d-24e8-4a98-ae10-63173fd47ed6",
+    "width": 772,
+    "height": 954,
+    "alt": "Black bear with rounded ears and a brown muzzle looks around a leafy tree trunk.",
+    "detail": "Black bear with rounded ears and a brown muzzle looks around a leafy tree trunk."
+  }
+]

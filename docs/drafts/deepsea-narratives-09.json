@@ -1,0 +1,593 @@
+{
+  "targetCount": 24,
+  "completedCount": 24,
+  "status": "12 root-approved entries prepared in isolated runtime artifacts; remaining entries are held or unadmitted",
+  "entries": [
+    {
+      "id": "deepsea-09-01",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "rss",
+      "title": "Hold your claws still",
+      "body": "The shrimp wanted to help. He offered to remove something from one of my branches.\n\nI asked which thing.\n\nHe pointed with a claw. I could feel the point touching me, so I asked him not to close it while we discussed this.\n\nHe said the little pale bits looked untidy. There were so many of them. Perhaps I hadn't noticed.\n\nI opened the nearest polyp.\n\nHe drew his claw back. I opened another. He backed into a third. I let that one stay closed until he'd stopped apologizing.\n\nHe has offered to bring me something instead. I told him to describe it before putting it down.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/08/dive10-shrimp-hires.jpg",
+        "sceneMatch": "Visible shrimp is among the pale polyps with claws extended. Fictional mistaken tidying concerns the actual living structures around him, not unseen prey.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 12630
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-gallery-media-dive10-shrimp/",
+        "creator": "NOAA Ocean Exploration, Voyage to the Ridge 2022",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A shrimp peeks out from the branches of an <i>Iridogorgia</i> coral observed at a depth of 1,680 meters (5,512 feet) during Dive 10 of the second Voyage to the Ridge 2022 expedition.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-02",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "facebook",
+      "title": "Come one, come several",
+      "body": "I told one crinoid he could stay. Apparently I said it in a very welcoming shape.\n\nThere are now crinoids on the branch I use to gesture about the crinoids.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/iridogorgia-hires.jpg",
+        "sceneMatch": "Many feather stars visibly occupy the spiral coral. Gesturing is fictional personification of branch posture, not deliberate coral locomotion.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 9865
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive19-media-iridogorgia/",
+        "creator": "NOAA Ocean Exploration, 2021 North Atlantic Stepping Stones",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This spiral <em>Iridogorgia</em> coral, seen during Dive 19 of the 2021 North Atlantic Stepping Stones expedition, was covered in crinoids, an unusual observation. Throughout the dive, we observed 29 different species of coral, including corals belonging to the genera <em>Metallogorgia</em>, <em>Paramuricea</em>, <em>Acanella</em>, <em>Paramuricea</em>, <em>Hemicorallium</em>, <em>Acanthogorgia</em>, <em>Clavularia</em>, <em>Anthomastus</em>, <em>Iridogorgia</em>, <em>Paragorgia</em>, <em>Isidella</em>, <em>Swiftia</em>, <em>Candidella</em>, and <em>Chrysogorgia</em>.</p>\n<p><a class=\"cbp-l-inline-view\" href=\"/ex2104-dive19/\">Learn more</a></p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-03",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "linkedin",
+      "title": "The hungry section",
+      "body": "I attempted to think about the whole ocean. A small piece of it brushed one of my mouths, and I ate it.\n\nI am still thinking about the ocean, but that piece was excellent.",
+      "theme": "feeding",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/10/20211013-hires.jpg",
+        "sceneMatch": "Close-up shows numerous open polyps reaching into water. Suspension feeding supplies the interruption, with no visible captured animal claimed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 12027
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20211013/",
+        "creator": "NOAA Ocean Exploration, Deepwater Wonders of Wake",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A close look at the beautiful central spiral of an octocoral in the genus <em>Iridogorgia</em>, observed during a dive on an unnamed seamount as part of the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1606/welcome.html\" target=\"_blank\" rel=\"noopener\">Deepwater Wonders of Wake: Exploring the Pacific Remote Islands Marine National Monument</a> expedition.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-04",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "instagram",
+      "title": "A little uneven",
+      "body": "The new end has grown in a direction I wasn't planning. I've spent so long being beautiful that I resent how much I like this part.",
+      "theme": "transformation",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/02/spiraling-coral-hires.jpg",
+        "sceneMatch": "Whole spiral coral shows an irregular upward-growing end; the response is fictional vanity directed at its actual asymmetry.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 14441
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2201-gallery-media-spiraling-coral/",
+        "creator": "Image courtesy of NOAA Ocean Exploration, 2022 ROV and Mapping Shakedown.",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This spiraling coral (<i>Iridogorgia magnispiralis</i>), reaching several meters tall, was seen during Dive 04 of the 2022 ROV and Mapping Shakedown.</p>\n"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-05",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "rss",
+      "title": "The little grip",
+      "body": "I can tell when he arrives. A small weight on a branch, then another, then the peculiar stop while he decides where to put the rest of his legs.\n\nI used to wait for that stop so I could suggest a better place. There was always a better place. Higher, where the current was stronger. Lower, where he wouldn't pull. He would go where I suggested. I was pleased with how well we understood each other.\n\nThen one day he arrived and did not stop. He climbed straight past the place he used to choose.\n\nI felt proud for a moment. Then I wished he were slower.\n\nToday he has settled on the awkward branch again. I can feel him gripping it. I have thought of three better places and said nothing.\n\nHe's taking his time.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/11/20201123-hires.jpg",
+        "sceneMatch": "Multiple squat lobsters perched on branches; imagined remembered tactile arrival is carried by visible grips. No known species lifespan or long migration claimed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 11761
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20201123/",
+        "creator": "NOAA Ocean Exploration, Gulf of Mexico 2012",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This chrysogorgid octocoral, with its characteristic spiral form, belongs to the genus <em>Iridogorgia</em>. This stunning example was seen in the northwestern Gulf of Mexico during a <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1202/welcome.html\" target=\"_blank\" rel=\"noopener\"><strong>2012 expedition</strong></a>. Note the squat lobsters delicately perched atop its branches. Characteristics that can help scientists identify the type of <em>Iridogorgia</em> include the distance between parts of the coil along the main axis and the shape of the polyps.</p>\n<p>This image won the Explorer’s Choice Photo Contest for the ‘Exploring the Seafloor’ category as part of our <a href=\"https://archive.oceanexplorer.noaa.gov/multimedia/celebrating-ocean-planet/welcome.html\" target=\"_blank\" rel=\"noopener\"><strong>Celebrating Our Ocean Planet campaign</strong></a>.</p>\n<p>From: <a title=\"Open - Explorer’s Choice Photo Contest Archive\" href=\"https://archive.oceanexplorer.noaa.gov/multimedia/celebrating-ocean-planet/photo-contest/archive/welcome.html\" target=\"read-more\"><strong>Explorer’s Choice Photo Contest Archive</strong></a>.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-06",
+      "characterId": "oswald-cup",
+      "identityName": "Oswald Cup",
+      "platform": "linkedin",
+      "title": "Long neck, short answer",
+      "body": "Someone at the bottom asked what I could see from up here. I said I hadn't got eyes.\n\nHe asked why I'd gone to all that trouble.",
+      "theme": "wonder",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive13-caulophacus.jpg",
+        "sceneMatch": "Long stalk and cup tower over seafloor. Sponge has no eyes; dialogue is fiction. Joke does not grant sponge sight.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 19504
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/caulophacus-sponge/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A large <em>Caulophacus</em> sponge towers more than 2 meters (6.5 feet) off the seafloor. We saw many of these tall sponges along the slope and on the summit flats of the seamount explored during Dive 13 of the Papahānaumokuākea ROV and Mapping expedition.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-07",
+      "characterId": "oswald-cup",
+      "identityName": "Oswald Cup",
+      "platform": "rss",
+      "title": "I didn't feel it",
+      "body": "He found the little fold before I did. Tucked himself into it with all those legs and announced that it was a fine place.\n\nI said there wasn't a fold there.\n\nHe said he was in it.\n\nI tried to account for him. I knew where the water passed, where I held against the current, where something brushed my surface. I couldn't turn any of that into a picture of the place he meant.\n\nHe described it again. Patiently this time. There was a narrow opening, a curve, a darker bit. He said it would look obvious if I could see it.\n\nI couldn't. He stayed anyway.\n\nNow when something small moves there, I don't have to know what I look like to know who it is.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/11/20211206-hires.jpg",
+        "sceneMatch": "Squat lobster actually nestled in a deep fold of the sponge. Narrator lacks visual sense; guest provides exterior account. No new shell or house-moving plot.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 11972
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20211206/",
+        "creator": "NOAA Ocean Exploration, 2015 Hohonu Moana",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A squat lobster hides within the crevice of a large stalked glass sponge in the genus <em>Caulophacus</em>. Seen during a dive to explore a sharp ridge that extended west from East Salmon Bank as part of the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1504/welcome.html\" target=\"_blank\" rel=\"noopener\">2015 Hohonu Moana: Exploring Deep Waters off Hawaii</a> expedition.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-08",
+      "characterId": "oswald-cup",
+      "identityName": "Oswald Cup",
+      "platform": "x",
+      "title": "How we stand",
+      "body": "The other two lean the same way I do. We have never discussed it. I was beginning to feel understood until the current changed and they both abandoned my position.",
+      "theme": "weather",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/02/20210222-hires.jpg",
+        "sceneMatch": "Three Caulophacus sponge heads visibly aligned; current-responsive posture is literal. Keep separate from Pip's leadership claim: Oswald seeks agreement, not followers.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 10021
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210222/",
+        "creator": "NOAA Ocean Exploration, Hohonu Moana 2016",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This glass sponge of the genus <em>Caulophacus</em> was seen while exploring on a ridge extending to the southeast of Castellano Seamount, south of the Midway Islands, as part of the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1603/welcome.html\" target=\"_blank\" rel=\"noopener\">2016 Hohonu Moana: Exploring Deep Waters off Hawaiʻi</a> expedition. These sponges, which belong to the Class Hexactinellida, get their common name of “<a href=\"/ocean-fact/glass-sponges/\" target=\"_blank\" rel=\"noopener\">glass sponge</a>” because their skeletons are made of silica, which is the same material used to make glass&#8230;but glass sponges are not glass, per se.</p>\n"
+      },
+      "status": "held for lead: current-driven agreement reversal too close to Pip"
+    },
+    {
+      "id": "deepsea-09-09",
+      "characterId": "severin-quiet",
+      "identityName": "Severin Quiet",
+      "platform": "facebook",
+      "title": "The softer face",
+      "body": "I've been keeping my mouth closed when she comes by. It seems to help.\n\nToday she came closer and asked if I was ill.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/12/20210107-hires.jpg",
+        "sceneMatch": "Pale lizardfish has closed mouth and conspicuous yellow eye. No prey suffering; misunderstanding arises from his effort not to look threatening.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 12014
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210107/",
+        "creator": "NOAA Ocean Exploration, Mountains in the Deep: Exploring the Central Pacific Basin",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This deep-sea lizardfish (<em>Bathysaurus mollis</em>) was seen on Dive 08 of the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1705/welcome.html\" target=\"_blank\" rel=\"noopener\">Mountains in the Deep: Exploring the Central Pacific Basin</a> expedition. <em>Bathysaurus</em> have beautiful, yellow eyes and a mouth full of impressive teeth. They are apex predators in the abyss and are known to strike at other large fishes. These lizardfish are widely observed on abyssal plains. Scientists were able to identify this one down to species (<em>Bathysaurus mollis</em>) due to its pale coloration.</p>\n<p>From: <a title=\"A Dive Into the Abyss\" href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1705/logs/may10/welcome.html\" target=\"read-more\">A Dive Into the Abyss</a>.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-10",
+      "characterId": "severin-quiet",
+      "identityName": "Severin Quiet",
+      "platform": "rss",
+      "title": "A proper apology",
+      "body": "I frightened him. I didn't mean to, which I kept trying to explain while he got farther away.\n\nThe farther away he went, the wider I opened my mouth to make myself clear.\n\nEventually I noticed the difficulty.\n\nI stayed on the bottom and let him put a comfortable amount of ocean between us. There was plenty. I had no objection to his using it.\n\nWhen he stopped, I closed my mouth.\n\nWe sat like that for a while. I wanted to say I was sorry. I wanted him to know I had noticed. But every version of that involved opening my mouth again.\n\nHe moved a little closer before leaving. I have decided to count that.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/ex2503-bathysauridae.jpg",
+        "sceneMatch": "Close-up of pale lizardfish's many exposed teeth supports frightening appearance and failed reassurance. Stranger is fictional, no predation portrayed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 19324
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/bathysauridae/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A close look at the impressive teeth on a deep-sea lizardfish (Bathysauridae) encountered during Dive 02 of the Papahānaumokuākea ROV and Mapping expedition at a depth of 4,855 meters (15,928 feet).</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-11",
+      "characterId": "dorian-sulk",
+      "identityName": "Dorian Sulk",
+      "platform": "x",
+      "title": "Resting opinion",
+      "body": "I was enjoying myself. Someone came over to ask what was wrong, so now there is an answer.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive10-sea-toad.jpg",
+        "sceneMatch": "Front-facing sea toad's downturned mouth and resting body carry the discrepancy between expression and private enjoyment.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 19457
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/sea-toad/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>While we saw few fish during Dive 10 of the Papahānaumokuākea ROV and Mapping expedition, we were lucky enough to catch a glimpse of this sea toad (<i>Chaunacops</i> sp.).</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-12",
+      "characterId": "dorian-sulk",
+      "identityName": "Dorian Sulk",
+      "platform": "instagram",
+      "title": "Red all over",
+      "body": "She said she liked a little color. I may have overdone the rest of me.",
+      "theme": "courtship",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/12/20201225-hires.jpg",
+        "sceneMatch": "Brilliant red sea toad fills the frame. Natural pigment, not a claim of voluntary instantaneous color change. Light innuendo or vanity, not documented courtship display.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 11236
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20201225/",
+        "creator": "NOAA Ocean Exploration, Deep-Sea Symphony: Exploring the Musicians Seamounts",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>On September 8, 2017, during the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1708/welcome.html\" target=\"_blank\" rel=\"noopener\">Deep-Sea Symphony: Exploring the Musicians Seamounts</a> expedition, this bright-red sea toad or coffinfish (<em>Chaunacops</em> species) was seen at a depth of 3,148 meters (1.96 miles) during a remotely operated vehicle dive at a seamount ridge dubbed “Beach Ridge” in the Musicians Seamount group northeast of Oʼahu, Hawaiian Islands. The fish’s identity is a mystery.</p>\n<p>From: <a title=\"Open - The Mysterious Identity of the Bright-Red Sea Toad\" href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1708/logs/sept12/welcome.html\" target=\"read-more\">The Mysterious Identity of the Bright-Red Sea Toad</a>.</p>\n"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-13",
+      "characterId": "beatrix-lift",
+      "identityName": "Beatrix Lift",
+      "platform": "facebook",
+      "title": "Something light",
+      "body": "I said I'd only had a little mud. He looked through me.\n\nI wish that phrase were less exact.",
+      "theme": "feeding",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/04/20210501-hires.jpg",
+        "sceneMatch": "Transparent Enypniastes shows its internal sediment-filled intestine. Literal transparency makes her understatement untenable.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 15987
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210501/",
+        "creator": "NOAA Ocean Exploration, Exploring Deep-sea Habitats off Puerto Rico and the U.S. Virgin Islands",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>The swimming sea cucumber, <em>Enypniastes eximia</em>, sometimes referred to as the “<strong><a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1711/logs/photolog/welcome.html#cbpi=/okeanos/explorations/ex1711/dailyupdates/media/video/dive11-chickenmonster/chickenmonster.html\" target=\"_blank\" rel=\"noopener\">headless chicken monster</a></strong>,” is a widespread species present in the abyss. It is encountered widely around the world with records from the Gulf of Mexico, Tropical Atlantic, East Atlantic, New Zealand, and the Southern Ocean (Antarctica). This one was seen off <strong><a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1811/welcome.html\" target=\"_blank\" rel=\"noopener\">Puerto Rico in 2018</a></strong>.</p>\n<p>Swimming sea cucumbers have a special &#8216;flap&#8217; which they use to &#8216;lift&#8217; themselves off the seafloor. The transparent body reveals the sediment-filled intestine looping around from the mouth (top) to the anus (bottom).</p>\n<p>From: <a title=\"Open - Holothurian Hill\" href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1811/logs/nov7/welcome.html\" target=\"_blank\" rel=\"noopener\"><strong>Holothurian Hill</strong></a>.</p>\n"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-14",
+      "characterId": "beatrix-lift",
+      "identityName": "Beatrix Lift",
+      "platform": "rss",
+      "title": "The view from dinner",
+      "body": "I left the bottom because I wanted to do something that wasn't eating mud.\n\nUp I went. The flap caught the water. The ground moved away, which was an excellent start. I let myself rise until there was room beneath me, room I wasn't about to put in my mouth.\n\nFor a while I felt wonderfully unlike myself.\n\nThen I felt the weight of dinner inside me. A little piece of the place I'd left, coming along. I had carried it up here without asking whether it wanted a better view.\n\nSomebody else had been feeding beside me before I rose. She was probably still there, working through the soft patch I had found.\n\nI hoped she would wonder where I'd gone. Then I remembered the patch.\n\nI may have left too soon.",
+      "theme": "wonder",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/08/20200808-hires.jpg",
+        "sceneMatch": "Enypniastes suspended above bottom with conspicuous intestine. Flight and carried sediment are literal; philosophical adventure collapses into remembered appetite rather than an appended moral.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 12976
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20200808/",
+        "creator": "NOAA Ocean Exploration",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This image won the Explorer’s Choice Photo Contest for the ‘Exploring the Deep Ocean World and Its Biodiversity’ category as part of our <a href=\"https://archive.oceanexplorer.noaa.gov/multimedia/celebrating-ocean-planet/welcome.html\" target=\"_blank\" rel=\"noopener\">Celebrating Our Ocean Planet</a> campaign. Common names for this bizarre sea cucumber (<em>Enypniastes eximia</em>) seen during the Gulf of Mexico 2017 expedition include Spanish dancer and headless chicken monster. These animals spend most of their time on the seafloor, feeding off surface sediments, but they can swim if they want to get somewhere more quickly or to evade a predator.</p>\n<p>From: <a title=\"Explorer’s Choice Photo Contest Archive page\" href=\"https://archive.oceanexplorer.noaa.gov/multimedia/celebrating-ocean-planet/photo-contest/archive/welcome.html\" target=\"read-more\">Explorer’s Choice Photo Contest Archive</a>.</p>\n"
+      },
+      "status": "held for lead: carried-dinner mechanism resembles existing unillustrated Vera Veil arc"
+    },
+    {
+      "id": "deepsea-09-15",
+      "characterId": "severin-quiet",
+      "identityName": "Severin Quiet",
+      "platform": "x",
+      "title": "A small adjustment",
+      "body": "I've spent so long waiting for something to come past that moving six inches feels like abandoning my principles. The new view contains a rock. I am excited about the rock.",
+      "theme": "movement",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Bathysaurus_mollis.jpg",
+        "sceneMatch": "Full body lies along open sediment near a dark rock. Six-inch move and private excitement are imagined, with the visible rock central rather than unseen prey.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sha1": "739a9051fd64ed6527cb8c2039ef9ce3098e20c0",
+        "width": 2048,
+        "height": 1536
+      },
+      "provenance": {
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bathysaurus_mollis.jpg",
+        "creator": "NOAA/MBARI",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://commons.wikimedia.org/wiki/File:Bathysaurus_mollis.jpg",
+        "sourceCaptionHtml": "Bathysaur or highfin lizardfish (<i><a href=\"//commons.wikimedia.org/wiki/Category:Bathysaurus_mollis\" title=\"Category:Bathysaurus mollis\">Bathysaurus mollis</a></i>) at the Davidson Seamount (2375 meters depth). This is one of three Pacific coast species. This fish is often found very still on the bottom; lying-in-wait as an ambush predator on unsuspecting prey items."
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-16",
+      "characterId": "oswald-cup",
+      "identityName": "Oswald Cup",
+      "platform": "facebook",
+      "title": "You missed a bit",
+      "body": "The lobster described my outside to me again. He was doing very well until he said I looked clean.\n\nI've got him to start over and include the holes.",
+      "theme": "social",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/72/Caulophacus-_NOAA_Expl0816.jpg",
+        "sceneMatch": "White sponge exterior has many clear pores, essential to Oswald's demand for an account that does not erase how his body works. Guest is remembered, not claimed pictured.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sha1": "c6e737c6945c83e60c9528939d0f0ad96468efca",
+        "width": 2048,
+        "height": 1536
+      },
+      "provenance": {
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Caulophacus-_NOAA_Expl0816.jpg",
+        "creator": "NOAA/Monterey Bay Aquarium Research Institute",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://commons.wikimedia.org/wiki/File:Caulophacus-_NOAA_Expl0816.jpg",
+        "sourceCaptionHtml": "Caption: White mushroom sponge (Caulophacus sp.)\n<ul><li>Image ID: expl0816, Voyage To Inner Space - Exploring the Seas With NOAA Collection</li>\n<li>Location: California, Davidson Seamount</li></ul>"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-17",
+      "characterId": "dorian-sulk",
+      "identityName": "Dorian Sulk",
+      "platform": "rss",
+      "title": "Passing through",
+      "body": "I took one step and stopped. There was a better place for the other fin, but getting it there required admitting the first step had been poorly chosen.\n\nA fish went past. Then back. He asked whether I needed help.\n\nI said I was looking at something.\n\nHe settled beside me to see it too. We stayed there for a while, both looking at a patch of bare rock. Every so often he edged closer. I thought he might be about to leave, but he was only trying to work out what he'd missed.\n\nEventually I took the second step.\n\nHe gasped. I have no idea what he thinks happened.",
+      "theme": "movement",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/b/b4/Sea_toad_%28Chaunacops_cf._melanostomus%29.jpg",
+        "sceneMatch": "Sea toad's walking fins are planted on uneven pale rock, with body poised above them. Remembered awkward movement and companion are fictional; no claim of a photographed struggle.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sha1": "cc533c43dd73c2c9da559a6655f155de286a3c4f",
+        "width": 1920,
+        "height": 1080
+      },
+      "provenance": {
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sea_toad_(Chaunacops_cf._melanostomus).jpg",
+        "creator": "NOAA Photo Library",
+        "license": "CC BY 2.0",
+        "licenseEvidenceUrl": "https://commons.wikimedia.org/wiki/File:Sea_toad_(Chaunacops_cf._melanostomus).jpg",
+        "sourceCaptionHtml": "<p>A sea toad (Chaunacops cf. melanostomus).\n</p>\n<pre>   Image ID: expn5851, Voyage To Inner Space - Exploring the Seas With NOAA Collect\n   Location: Hutchinson Seamount area, Southernmost Cone\n   Photo Date: 20150920T224543Z\n</pre>\n    Credit: NOAA Office of Ocean Exploration and Research, 2015 Hohonu Moana"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-18",
+      "characterId": "beatrix-lift",
+      "identityName": "Beatrix Lift",
+      "platform": "instagram",
+      "title": "Answer the question",
+      "body": "It's difficult to maintain a private appetite when everyone can see the last one. I've begun asking the fish what they've eaten. They change the subject remarkably fast.",
+      "theme": "social",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/2/2c/Enypniastes_sp_Indonesia.jpg",
+        "sceneMatch": "Transparent body exposes the intestine. The fictional social confrontation concerns this visible lack of privacy, not an attempt to hide the gut by turning sideways.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sha1": "3ec48de6b27d940b8a37d4eeb774b6b0ddc4bb5e",
+        "width": 800,
+        "height": 800
+      },
+      "provenance": {
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_sp_Indonesia.jpg",
+        "creator": "NOAA Okeanos Explorer",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_sp_Indonesia.jpg",
+        "sourceCaptionHtml": "A spectacular image of a benthopelagic sea cucumber swimming in the near freezing waters of the abyss.Image captured by the Little Hercules ROV at 3205 meters depth on \"Site K,\" explored July 27, 2010 during the INDEX SATAL 2010 Expedition. Image courtesy of NOAA Okeanos Explorer Program, INDEX-SATAL 2010."
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-19",
+      "characterId": "beatrix-lift",
+      "identityName": "Beatrix Lift",
+      "platform": "linkedin",
+      "title": "The evidence inside",
+      "body": "A fish asked what I believed in. I began quite well, I thought. He interrupted to ask about the loop of mud.\n\nI told him that was a separate argument. He said it seemed to be the one I was carrying.",
+      "theme": "wonder",
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/6/67/Enypniastes_eximia_Puerto_Rico.jpg",
+        "sceneMatch": "Whole suspended body displays its looped sediment-filled intestine. Philosophical vanity meets plainly visible appetite.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sha1": "6863cb85d6ef2bdba5e093efc6f3900e93a68977",
+        "width": 1920,
+        "height": 1080
+      },
+      "provenance": {
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_eximia_Puerto_Rico.jpg",
+        "creator": "NOAA Okeanos Explorer",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://commons.wikimedia.org/wiki/File:Enypniastes_eximia_Puerto_Rico.jpg",
+        "sourceCaptionHtml": "<i><a href=\"//commons.wikimedia.org/wiki/Category:Enypniastes_eximia\" title=\"Category:Enypniastes eximia\">Enypniastes eximia</a></i> observed in the abyss off Puerto Rico by the NOAA Okeanos Explorer mission."
+      },
+      "status": "held: exact image already bound to Vera Veil in runtime; do not admit"
+    },
+    {
+      "id": "deepsea-09-20",
+      "characterId": "cato-many",
+      "identityName": "Cato Many",
+      "platform": "instagram",
+      "title": "The unhelpful close-up",
+      "body": "She said I had lovely arms. I spread them a little so she could admire the arrangement.\n\nMy mouth was right in the middle. I was chewing. There was nowhere else to put it.",
+      "theme": "courtship",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/crinoid-hires-5.jpg",
+        "sceneMatch": "Close-up shows arms radiating around the mouth; no alternative facial pose possible. Fictional flirtation arises from this actual bodily arrangement.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 15197
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive06-media-crinoid/",
+        "creator": "NOAA Ocean Exploration, 2021 North Atlantic Stepping Stones",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>A close look at a yellow stalked crinoid. All crinoids are suspension feeders, subsisting on the smorgasbord of small plankton and detritus that drift past their outstretched arms. Most crinoids array their arms in a bowl or dish shape with the arm tips flexed back into the current and the top of the stalk bent so that the central mouth, visible in this image, faces away from the current. In addition to yellow crinoids, we also saw red and white (both stalked and unstalked) crinoids during Dive 06 of the 2021 North Atlantic Stepping Stones expedition.</p>\n<p><a class=\"cbp-l-inline-view\" href=\"/ex2104-dive06/\">Learn more</a></p>\n"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-21",
+      "characterId": "cato-many",
+      "identityName": "Cato Many",
+      "platform": "rss",
+      "title": "One bright place",
+      "body": "A little one grew below us. At first I mistook the thin pale line for something caught on the rock. Then there were arms.\n\nHe kept them so close together that I wanted to explain how much water he was missing. I had an explanation ready. It involved opening out, being less afraid, several things that are easy to say when you already reach over the rock.\n\nThen a small current found the hollow where he was. His arms opened into it.\n\nHe ate before I did.\n\nI felt pleased for him. There was something else in there too. I will not be discussing that with the little one.",
+      "theme": "social",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/pillow-lava-crinoids-hires.jpg",
+        "sceneMatch": "Field of yellow stalked crinoids includes small individuals lower on rough lava beside taller ones. Fictional growth and feeding competition use visible size and topographic differences. No parentage claimed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 15572
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive06-media-pillow-lava-crinoids/",
+        "creator": "NOAA Ocean Exploration, 2021 North Atlantic Stepping Stones",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>Pillow lava formations with sediment ponds were abundant on Dive 06 of the 2021 North Atlantic Stepping Stones expedition, and they were often covered in fields of stalked crinoids, as shown in this scene from a depth of 2,126 meters (6,975 feet).</p>\n<p><a class=\"cbp-l-inline-view\" href=\"/ex2104-dive06/\">Learn more</a></p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-22",
+      "characterId": "cato-many",
+      "identityName": "Cato Many",
+      "platform": "x",
+      "title": "Worth the stretch",
+      "body": "A grain touched the tip of an arm. I brought it all the way in. It was a grain. I tried the next one anyway. It was food.\n\nNobody saw either of these enormous events.",
+      "theme": "feeding",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/crinoid-hires-1.jpg",
+        "sceneMatch": "Open arms against particle-filled water support tiny feeding encounters. Comic scale belongs to a suspension feeder, with no suffering or false grasping anatomy.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 12656
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex1907-dailyupdates-nov18-media-crinoid/",
+        "creator": "NOAA Ocean Exploration, 2019 Southeastern U.S. Deep-sea Exploration",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>We saw both stalked and unstalked crinoids during Dive 11 of the 2019 Southeastern U.S. Deep-sea Exploration. The sea lily shown here is a stalked crinoid.</p>\n<p><a class=\"cbp-l-inline-view\" href=\"/ex1907-dailyupdates-nov18/\">Learn more</a></p>\n"
+      },
+      "status": "draft, not admission"
+    },
+    {
+      "id": "deepsea-09-23",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "linkedin",
+      "title": "Almost a circle",
+      "body": "Someone said I had come full circle. I asked him to follow the branch and check.\n\nHe's still going. It was an unkind way to make a point, but he started it.",
+      "theme": "wonder",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/ex2503-iridogorgia.jpg",
+        "sceneMatch": "Top-down spiral makes almost-circular mistaken geometry immediate. Fictional small guest traverses actual spiral rather than a closed ring.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 19296
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/iridogorgia-coral/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>This beautifully spiraling <em>Iridogorgia</em> coral was observed at a depth of 1,695 meters (5,561 feet) during Papahānaumokuākea ROV and Mapping expedition Dive 01. <em>Iridogorgia</em>, along with <em>Paragorgia</em>, <em>Metallogorgia</em>, and <em>Paramercidae</em>, were the dominant coral fauna present during the dive.</p>\n"
+      },
+      "status": "root-approved for isolated runtime integration"
+    },
+    {
+      "id": "deepsea-09-24",
+      "characterId": "romy-helix",
+      "identityName": "Romy Helix",
+      "platform": "rss",
+      "title": "The upper end",
+      "body": "There is a part of me that wasn't here when the shrimp first arrived.\n\nHe climbed past it today without stopping. It bothered me. I had grown it through a great deal of unremarkable water. There had been lean days. There had been little catches that didn't seem worth mentioning. Somehow they had become this.\n\nI asked if he noticed anything different.\n\nHe turned around. Examined the nearest branch. Moved a few legs. I began to regret the question.\n\nThen he climbed onto the new bit and stayed there.\n\nI had wanted him to say something. His weight was better.",
+      "theme": "transformation",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/08/20210825-hires.jpg",
+        "sceneMatch": "Whole coral shows pale growing branches above a long stalk. Arrival and touch are fictional remembered interactions; growth is not claimed to occur within the photographed instant.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sourceMediaId": 10779
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20210825/",
+        "creator": "NOAA Ocean Exploration, Discovering the Deep: Exploring Remote Pacific MPAs",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceCaptionHtml": "<p>The beautiful curly-cue shape shown here is a characteristic of this chrysogorgid octocoral, called <em>Iridogorgia</em>. We imaged this one while exploring on an unnamed seamount west of Winslow Reef complex, within the U.S. Exclusive Economic Zone, as part of the <a href=\"https://archive.oceanexplorer.noaa.gov/okeanos/explorations/ex1703/welcome.html\" target=\"_blank\" rel=\"noopener\">Discovering the Deep: Exploring Remote Pacific Marine Protected Areas</a> expedition.</p>\n"
+      },
+      "status": "draft, not admission"
+    }
+  ]
+}

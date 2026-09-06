@@ -77,9 +77,6 @@ export interface CompileIdentityGalaxySceneOptions {
 
 export type IdentityGalaxySceneSource = Pick<IdentityGraphAtlas, "nodes" | "edges">;
 
-const GALAXY_FAR_DEPTH = -220;
-const GALAXY_DEPTH_SPAN = 440;
-const LINKED_ACCOUNT_DEPTH_GAP = 44;
 const DAY_MS = 86_400_000;
 
 function clamp(value: number, min: number, max: number): number {
@@ -120,12 +117,9 @@ function activitySignal(activityCount: number): number {
 
 function semanticProminence(node: IdentityGraphAtlasNode): number {
   const activity = activitySignal(node.activityCount);
-  if (node.kind === "friend_person") {
+  if (node.kind === "friend_person" || node.kind === "connection_person") {
     const careLevel = node.careLevel ?? clamp(Math.round((node.priority - 900) / 40), 1, 5);
     return clamp(0.62 + (careLevel - 1) * 0.085 + activity * 0.035, 0, 1);
-  }
-  if (node.kind === "connection_person") {
-    return clamp(0.34 + activity * 0.07, 0, 0.5);
   }
   if (node.kind === "provider_cluster") {
     return clamp(0.22 + Math.log2((node.aggregateCount ?? 0) + 1) * 0.018, 0, 0.38);
@@ -159,7 +153,12 @@ function pointSize(
       : kind === IdentityGalaxyNodeKindCode.ProviderCluster
         ? 0.55
         : 0.36;
-  const size = roleSize + radius * radiusScale + (selected ? 18 : hovered ? 10 : 0);
+  // Friend radii encode care levels 1..5 as 48..80. Keep their visual
+  // importance legible instead of burying it beneath a large constant size.
+  const baseSize = (kind === IdentityGalaxyNodeKindCode.FriendPerson || kind === IdentityGalaxyNodeKindCode.ConnectionPerson)
+    ? 28 + clamp((radius - 48) / 8, 0, 4) * 10
+    : roleSize + radius * radiusScale;
+  const size = baseSize + (selected ? 18 : hovered ? 10 : 0);
   return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
 }
 
@@ -299,14 +298,14 @@ export function compileIdentityGalaxyScene(
   const prominence = new Float32Array(nodeCount);
   const brightness = new Float32Array(nodeCount);
   const emphasis = new Float32Array(nodeCount);
-  const personDepthById = new Map<string, number>();
+  const personIndexById = new Map<string, number>();
   const now = options.now ?? Date.now();
 
   for (let index = 0; index < nodeCount; index += 1) {
     const node = source.nodes[index]!;
     const nodeProminence = semanticProminence(node);
-    const jitter = (seededUnit(`${node.id}:galaxy-depth`) - 0.5) * 8;
-    const depth = GALAXY_FAR_DEPTH + nodeProminence * GALAXY_DEPTH_SPAN + jitter;
+    // Stable shallow parallax, independent of rating and activity.
+    const depth = -100 + (seededUnit(`${node.id}:galaxy-depth`) - 0.5) * 130;
     nodeIds[index] = node.id;
     personIds[index] = node.personId ?? null;
     accountIds[index] = node.accountId ?? null;
@@ -320,19 +319,28 @@ export function compileIdentityGalaxyScene(
     positions[index * 3 + 2] = depth;
     radii[index] = node.radius;
     prominence[index] = nodeProminence;
-    if (node.personId) personDepthById.set(node.personId, depth);
+    if (node.personId) personIndexById.set(node.personId, index);
   }
 
   for (let index = 0; index < nodeCount; index += 1) {
     const node = source.nodes[index]!;
     if (!node.linkedPersonId) continue;
-    const personDepth = personDepthById.get(node.linkedPersonId);
-    if (personDepth === undefined) continue;
-    const orbitOffset = seededUnit(`${node.id}:orbit-depth`) * 22;
-    positions[index * 3 + 2] = Math.min(
-      positions[index * 3 + 2]!,
-      personDepth - LINKED_ACCOUNT_DEPTH_GAP - orbitOffset,
-    );
+    const personIndex = personIndexById.get(node.linkedPersonId);
+    if (personIndex === undefined) continue;
+    const personDepth = positions[personIndex * 3 + 2]!;
+    // Atlas orbits are world-space, while avatars remain bounded on screen.
+    // Tighten automatic shells without changing their stable angular slots or
+    // moving a profile away from the position the user explicitly pinned.
+    if (!node.graphPinned) {
+      for (const axis of [0, 1]) {
+        const parentCoordinate = positions[personIndex * 3 + axis]!;
+        positions[index * 3 + axis] = parentCoordinate +
+          (positions[index * 3 + axis]! - parentCoordinate) * 0.3;
+      }
+    }
+    // A linked profile belongs to the same compact system as its identity.
+    // Large depth separation made even tiny XY orbits project far apart.
+    positions[index * 3 + 2] = personDepth;
   }
 
   for (let index = 0; index < nodeCount; index += 1) {
