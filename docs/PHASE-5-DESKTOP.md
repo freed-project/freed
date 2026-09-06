@@ -9,6 +9,12 @@ timeouts remain responsible for the final result. The native Drive observer
 allows the renderer's two-hour maximum publication budget plus one minute to
 report its terminal result. Social-provider observation stays at ten minutes.
 
+Capture normalization keeps media URLs and types positionally paired before
+the closed Library mutation validator runs. Synthetic Desktop regressions
+cover X link cards and unavailable video variants, LinkedIn and Facebook video
+markers without media, and Instagram's existing empty-media guard. This does
+not relax native persistence validation or change provider cadence.
+
 > **Architecture:** Freed Desktop is a bounded SQLite client and a host
 > for the shared native Library Core. Every view calls a named typed query.
 > Every durable product edit calls a registered mutation. React retains only

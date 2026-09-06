@@ -18,11 +18,9 @@ import type {
 // Media Extraction
 // =============================================================================
 
-/**
- * Extract media URLs from a tweet
- */
-export function extractMediaUrls(tweet: XTweetResult): string[] {
-  const urls: string[] = [];
+/** Keep each media classification attached to the URL that actually exists. */
+function extractMedia(tweet: XTweetResult): { url: string; type: MediaType }[] {
+  const entries: { url: string; type: MediaType }[] = [];
 
   // Check extended_entities first (has full media info)
   const media =
@@ -32,7 +30,7 @@ export function extractMediaUrls(tweet: XTweetResult): string[] {
     for (const item of media) {
       if (item.type === "photo") {
         // Get highest quality image
-        urls.push(item.media_url_https + ":large");
+        entries.push({ url: item.media_url_https + ":large", type: "image" });
       } else if (item.type === "video" || item.type === "animated_gif") {
         // Get highest bitrate video variant
         if (item.video_info?.variants) {
@@ -41,46 +39,29 @@ export function extractMediaUrls(tweet: XTweetResult): string[] {
             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
           if (mp4Variants.length > 0) {
-            urls.push(mp4Variants[0].url);
+            entries.push({ url: mp4Variants[0].url, type: "video" });
           }
         }
       }
     }
   }
 
-  return urls;
+  return entries;
 }
 
 /**
- * Extract media types from a tweet
+ * Extract media URLs from a tweet using the existing highest-quality selection.
+ */
+export function extractMediaUrls(tweet: XTweetResult): string[] {
+  return extractMedia(tweet).map((entry) => entry.url);
+}
+
+/**
+ * Match the media URL positions exactly. Cards belong in linkPreview, not in
+ * a type-only media entry that the normalized Library cannot persist.
  */
 export function extractMediaTypes(tweet: XTweetResult): MediaType[] {
-  const types: MediaType[] = [];
-
-  const media =
-    tweet.legacy.extended_entities?.media || tweet.legacy.entities.media;
-
-  if (media) {
-    for (const item of media) {
-      if (item.type === "photo") {
-        types.push("image");
-      } else if (item.type === "video" || item.type === "animated_gif") {
-        types.push("video");
-      }
-    }
-  }
-
-  // Check for link cards
-  if (
-    tweet.card ||
-    (tweet.legacy.entities.urls && tweet.legacy.entities.urls.length > 0)
-  ) {
-    if (!types.includes("link")) {
-      types.push("link");
-    }
-  }
-
-  return types;
+  return extractMedia(tweet).map((entry) => entry.type);
 }
 
 // =============================================================================

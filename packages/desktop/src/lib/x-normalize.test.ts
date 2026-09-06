@@ -7,7 +7,9 @@
 
 import { describe, it, expect } from "vitest";
 import { tweetToFeedItem, extractLinkPreview } from "@freed/capture-x/browser";
-import type { XTweetResult } from "@freed/capture-x/browser";
+import type { XMediaEntity, XTweetResult, XVideoVariant } from "@freed/capture-x/browser";
+import { sanitizeFeedItemCaptureWrite } from "@freed/shared";
+import { FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 
 // =============================================================================
 // Fixtures
@@ -135,6 +137,53 @@ function hasNoUndefined(obj: unknown): boolean {
 // =============================================================================
 
 describe("tweetToFeedItem", () => {
+  it.each([{ hasCard: true }, { hasUrlEntities: true }])(
+    "keeps link previews out of the paired media arrays: %j",
+    (options) => {
+      const item = tweetToFeedItem(makeTweet(options));
+      expect(item.content.linkPreview?.url).toBeTruthy();
+      expect(item.content.mediaUrls).toEqual([]);
+      expect(item.content.mediaTypes).toEqual([]);
+      expect(FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+        item: sanitizeFeedItemCaptureWrite(item),
+      })).toMatchObject({ ok: true });
+    },
+  );
+
+  it.each<{ variants: XVideoVariant[] }>([
+    { variants: [] },
+    { variants: [{ content_type: "application/x-mpegURL", url: "https://cdn.example/video.m3u8" }] },
+    { variants: [{ content_type: "video/mp4", url: "https://cdn.example/no-bitrate.mp4" }] },
+  ])("omits a video type when existing URL selection finds no playable variant: $variants", ({ variants }) => {
+    const tweet = makeTweet();
+    tweet.legacy.extended_entities = { media: [makeMedia("video", variants)] };
+    const item = tweetToFeedItem(tweet);
+    expect(item.content.mediaUrls).toEqual([]);
+    expect(item.content.mediaTypes).toEqual([]);
+    expect(FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+      item: sanitizeFeedItemCaptureWrite(item),
+    })).toMatchObject({ ok: true });
+  });
+
+  it("preserves URL order and highest-bitrate selection across missing media and links", () => {
+    const tweet = makeTweet({ hasCard: true });
+    tweet.legacy.extended_entities = { media: [
+      makeMedia("photo"),
+      makeMedia("animated_gif"),
+      makeMedia("video", [
+        { bitrate: 100, content_type: "video/mp4", url: "https://cdn.example/low.mp4" },
+        { bitrate: 200, content_type: "video/mp4", url: "https://cdn.example/high.mp4" },
+      ]),
+    ] };
+    const item = tweetToFeedItem(tweet);
+    expect(item.content.mediaUrls).toEqual(["https://cdn.example/photo.jpg:large", "https://cdn.example/high.mp4"]);
+    expect(item.content.mediaTypes).toEqual(["image", "video"]);
+    expect(item.content.linkPreview?.url).toBe("https://example.com");
+    expect(FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+      item: sanitizeFeedItemCaptureWrite(item),
+    })).toMatchObject({ ok: true });
+  });
+
   it("produces no undefined values for a plain tweet without views or card", () => {
     const item = tweetToFeedItem(makeTweet());
     expect(hasNoUndefined(item)).toBe(true);
@@ -187,6 +236,16 @@ describe("tweetToFeedItem", () => {
     expect(item.author.avatarUrl).toContain("_bigger");
   });
 });
+
+function makeMedia(type: XMediaEntity["type"], variants: XVideoVariant[] = []): XMediaEntity {
+  const size = { w: 640, h: 480, resize: "fit" as const };
+  return {
+    id_str: "media-1", type, media_url_https: "https://cdn.example/photo.jpg",
+    url: "https://t.co/media", expanded_url: "https://x.com/testuser/status/9876543210/photo/1",
+    sizes: { thumb: size, small: size, medium: size, large: size },
+    video_info: { duration_millis: 1_000, variants },
+  };
+}
 
 describe("extractLinkPreview", () => {
   it("returns undefined when there are no URLs and no card", () => {
