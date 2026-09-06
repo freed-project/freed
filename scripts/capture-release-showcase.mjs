@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import aquaticMedia from "../packages/shared/src/sample-corpus-aquatic-forty-four-media.json" with { type: "json" };
 
 const baseUrl = process.env.FREED_SHOWCASE_URL ?? "http://127.0.0.1:4173";
 const outputDirectory = path.resolve(
@@ -10,6 +11,9 @@ const outputDirectory = path.resolve(
 const releaseTag = process.env.GITHUB_REF_NAME ?? "local-preview";
 const releaseSha = process.env.GITHUB_SHA ?? "local-preview";
 const baseOrigin = new URL(baseUrl).origin;
+// NPS delivers this reviewed sockeye pair without filename extensions. Keep
+// the exception bound to the catalog's exact URLs, not arbitrary NPS assets.
+const reviewedExtensionlessMediaUrls = new Set(aquaticMedia.map((item) => item.imageUrl));
 const useMemorySqlite = process.env.FREED_SHOWCASE_SQLITE_MEMORY === "1";
 const reviewedMediaHosts = new Set([
   "thumb.wikimedia.org",
@@ -158,7 +162,8 @@ page.on("request", (request) => {
     const existingPublicMapAsset = url.protocol === "https:" && url.hostname === "tiles.openfreemap.org";
     if (!existingPublicMapAsset && (url.protocol !== "https:" || !reviewedMediaHosts.has(url.hostname) ||
         !["image", "fetch"].includes(request.resourceType()) ||
-        !/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname))) {
+        (!/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname) &&
+          !reviewedExtensionlessMediaUrls.has(url.href)))) {
       unexpectedRequestUrls.add(url.href);
     }
   }
@@ -171,7 +176,14 @@ try {
     captureUrl.searchParams.set("freed-demo", "1");
     await page.goto(captureUrl.href, { waitUntil: "domcontentloaded" });
     await waitForShowcase(page);
-    await page.getByRole("button", { name: "Explore Freed Demo", exact: true }).click();
+    if (index === 0) {
+      await page.getByRole("button", { name: "Explore Freed Demo", exact: true }).click();
+    } else {
+      // The same visitor has already dismissed the welcome card. Reloads
+      // preserve the banner state, so waiting for the original CTA would hang.
+      await page.getByRole("button", { name: "Minimize demo banner", exact: true })
+        .waitFor({ state: "visible" });
+    }
     await selectTheme(page, capture.theme);
     checkpointDurationsMs.push(
       await page.evaluate(
