@@ -73,8 +73,9 @@ function FirstLookWelcome({
   return (
     <div
       data-testid="demo-welcome-desktop"
-      className={`fixed inset-0 z-[150] flex items-center justify-center bg-black/55 p-5 backdrop-blur-md ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
+      className={`demo-welcome-overlay fixed inset-0 z-[150] isolate flex items-center justify-center p-5 ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
     >
+      <div aria-hidden="true" className="demo-welcome-shade pointer-events-none absolute -z-10 bg-black/55 backdrop-blur-md" />
       <div
         className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}
         style={{ background: "var(--theme-bg-elevated)", border: "4px solid var(--theme-border-strong)", borderRadius: "2rem" }}
@@ -324,7 +325,7 @@ function FieldGuideWelcome({
         }}
       >
         <svg aria-hidden="true" viewBox="0 0 352 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
-          style={{ filter: "drop-shadow(0 8px 20px rgb(0 0 0 / 0.25)) drop-shadow(0 24px 64px rgb(0 0 0 / 0.6))" }}>
+          style={{ filter: mobileTab ? "none" : "drop-shadow(0 4px 12px rgb(0 0 0 / 0.18))" }}>
           <path d="M0 72 C30 72 30 58 36 36 C42 12 54 4 82 4 H270 C298 4 310 12 316 36 C322 58 322 72 352 72"
             fill="var(--theme-bg-elevated)" stroke="var(--theme-border-strong)" strokeWidth="4" vectorEffect="non-scaling-stroke" />
         </svg>

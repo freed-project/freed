@@ -81,8 +81,8 @@ describe("PwaFeedEmptyState", () => {
 
     const { container, root } = renderWithPlatform(createElement(PwaFeedEmptyState));
 
-    expect(container.querySelector("[aria-label='Populating demo']")).toBeTruthy();
-    expect(container.textContent).toBe("Populating your demo40% complete");
+    expect(container.querySelector("[role='status']")?.textContent).toBe("Loading · 40%");
+    expect(container.textContent).toBe("Loading · 40%");
     expect(container.textContent).not.toContain("No content yet");
     expect(container.textContent).not.toContain("Connect");
     expect(container.textContent).not.toContain("sample data");
@@ -156,7 +156,7 @@ describe("PwaFeedEmptyState", () => {
 
     const { container, root } = renderWithPlatform(createElement(PwaFeedEmptyState));
 
-    expect(container.querySelector("[aria-label='Syncing']")).toBeTruthy();
+    expect(container.querySelector("[role='status']")?.textContent).toBe("Syncing");
     expect(container.textContent).toContain("Waiting for content...");
     expect(container.textContent).toContain("Checking Google Drive for remote changes. Running for 30s.");
     expect(container.textContent).not.toContain("Sync is blocked");

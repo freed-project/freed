@@ -808,6 +808,11 @@ permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
 and fails on policy violations rather than relying on localhost-only behavior.
 
+Demo startup and routed feed, reader, Friends, and Map views share a compact,
+theme-aware loading spinner with an optional inline message. Map initialization
+does not render fallback markers before native map markers are ready; fallback
+presentation is reserved for unavailable maps.
+
 Demo reloads generate unread replacement items rather than inheriting sample
 templates' read timestamps. The previous-first-item session-storage memory is
 removed. Demo presentation preferences except theme and welcome display state use document-local storage

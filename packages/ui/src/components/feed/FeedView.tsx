@@ -1204,7 +1204,7 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      <FeedList
+      {!selectedItem && <FeedList
         items={visibleItems}
         onItemClick={openItemDirect}
         focusedIndex={focusedIndex}
@@ -1230,11 +1230,12 @@ export function FeedView() {
         hasPrevious={boundedFeedReadyIsCurrent && boundedFeed.hasPrevious}
         boundedWindowStartIndex={boundedFeed.windowStartIndex}
         markItemsAsReadOverride={markBoundedItemsAsRead}
-      />
+      />}
 
       {selectedItem && (
         <ReaderView
           item={selectedItem}
+          inline
           onClose={closeItem}
           onOpenUrl={handleOpenCommentUrl}
           onOpenAuthorInFriends={openAuthorInFriends}

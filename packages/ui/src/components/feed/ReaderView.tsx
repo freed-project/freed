@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
+import { LoadingState } from "../LoadingState.js";
 import { parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
 import {
   useAppStore,
@@ -791,12 +792,12 @@ export function ReaderView({
       className={
         inline
           ? "flex-1 min-w-0 overflow-auto bg-transparent"
-          : "theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
+          : "reader-overlay theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
       {!inline && (
         <header
-          className="theme-topbar sticky top-0 z-10 border-b"
+          className="theme-topbar sticky top-0 z-10 hidden border-b md:block"
           {...getPassiveDragRegionProps(headerDragRegion)}
         >
           <div
@@ -1089,9 +1090,7 @@ export function ReaderView({
             </p>
           ) : null
         ) : isLoading || pendingSavedUrlDetails ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
-          </div>
+          <LoadingState message="Loading article" className="py-16" />
         ) : focusOptions.enabled ? (
           <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             <FocusText text={plainText ?? ""} options={focusOptions} />
