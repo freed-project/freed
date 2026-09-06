@@ -13620,8 +13620,7 @@ test("a new exact-token release finishes completed acquisition cleanup after res
         nowMs: nowMs + 1_000,
       }),
     (error) =>
-      isAutomationControlError(error) &&
-      error.code === "lease_token_mismatch",
+      isAutomationControlError(error) && error.code === "lease_token_mismatch",
   );
   assert.equal(existsSync(acquirePaths.active), false);
   assert.equal(existsSync(acquirePaths.receipt), true);
@@ -22030,6 +22029,7 @@ test("stranded event history witness repair records durable authority before exa
   assert.equal(plan.action, EVENT_HISTORY_WITNESS_REPAIR_ACTION);
   assert.equal(plan.parameters.canonical.recordCount, 3);
   assert.equal(plan.parameters.witness.recordCount, 2);
+  assert.equal(plan.parameters.taskManifest.witness, null);
   assert.equal(plan.parameters.lineage.eventType, "lease_released");
   assert.equal(
     plan.parameters.kernelGuard.receipt.filePath,
@@ -22132,10 +22132,7 @@ test("stranded event history witness repair records durable authority before exa
     (event) => event.eventId === plan.parameters.eventId,
   );
   assert.equal(repairEvents.length, 1);
-  assert.equal(
-    repairEvents[0].type,
-    "event_history_witness_repair_authorized",
-  );
+  assert.equal(repairEvents[0].type, "event_history_witness_repair_authorized");
   assert.equal(repairEvents[0].data.ownerIntentDigest, plan.intentDigest);
   assert.equal(
     readdirSync(
@@ -22143,10 +22140,159 @@ test("stranded event history witness repair records durable authority before exa
     ).filter((entry) => entry.startsWith("events.jsonl.")).length,
     1,
   );
-  assert.equal(
-    readdirSync(fixture.paths.eventHistoryWitnessRepairs).length,
-    1,
+  assert.equal(readdirSync(fixture.paths.eventHistoryWitnessRepairs).length, 1);
+});
+
+function simultaneousStrandedAuthorityWitnessFixture(label) {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
+  const controller = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs,
+  });
+  const taskId = `paired-witness-${label}`;
+  createTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    observerAuthority: "plan-only",
+    providerAuthority: "forbidden",
+    details: { behavioral: false },
+    nowMs: nowMs + 1,
+  });
+  transitionTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    toState: "triaged",
+    expectedRevision: 1,
+    nowMs: nowMs + 2,
+  });
+  releaseLease({
+    stateRoot,
+    name: controller.leaseName,
+    token: controller.leaseToken,
+    nowMs: nowMs + 3,
+  });
+  const paths = automationControlPaths(stateRoot);
+  const taskPrefix = `.${path.basename(paths.taskManifest)}.authority.`;
+  const taskWitnesses = readdirSync(paths.controlRoot).filter((entry) =>
+    entry.startsWith(taskPrefix),
   );
+  assert.equal(taskWitnesses.length, 1, JSON.stringify(taskWitnesses));
+  const taskWitnessPath = path.join(paths.controlRoot, taskWitnesses[0]);
+  const eventPrefix = `.${path.basename(paths.events)}.authority.`;
+  const eventWitnesses = readdirSync(paths.controlRoot).filter((entry) =>
+    entry.startsWith(eventPrefix),
+  );
+  assert.equal(eventWitnesses.length, 1, JSON.stringify(eventWitnesses));
+  const witnessPath = path.join(paths.controlRoot, eventWitnesses[0]);
+  const canonicalBytes = readFileSync(paths.events);
+  const taskCanonicalBytes = readFileSync(paths.taskManifest);
+  const displacedPath = path.join(
+    stateRoot,
+    `${taskId}-task-manifest-pre-drift.json`,
+  );
+  renameSync(paths.taskManifest, displacedPath);
+  writeFileSync(paths.taskManifest, taskCanonicalBytes, {
+    mode: 0o600,
+  });
+  rmSync(displacedPath);
+  const displacedEventsPath = path.join(
+    stateRoot,
+    `${taskId}-events-pre-drift.jsonl`,
+  );
+  renameSync(paths.events, displacedEventsPath);
+  writeFileSync(paths.events, canonicalBytes, { mode: 0o600 });
+  rmSync(displacedEventsPath);
+  return {
+    stateRoot,
+    paths,
+    taskId,
+    witnessPath,
+    canonicalBytes,
+    taskCanonicalBytes,
+    taskWitnessPath,
+  };
+}
+
+test("event history witness repair admits one exact stranded task manifest witness", () => {
+  const fixture = simultaneousStrandedAuthorityWitnessFixture("paired");
+  const beforePlan = snapshotFilesystemEntry(fixture.stateRoot);
+  const plan = planEventHistoryAuthorityWitnessRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: "github-issue-1836",
+  });
+  assert.deepEqual(snapshotFilesystemEntry(fixture.stateRoot), beforePlan);
+  assert.equal(
+    plan.parameters.taskManifest.witness.snapshot.filePath,
+    fixture.taskWitnessPath,
+  );
+  assert.equal(
+    plan.parameters.taskManifest.witness.predecessorRevision + 1,
+    plan.parameters.taskManifest.revision,
+  );
+
+  const repairNowMs = Date.now();
+  const owner = writeOwnerConfirmation(
+    fixture.stateRoot,
+    plan.taskId,
+    plan.intent,
+    { nowMs: repairNowMs },
+  );
+  const result = repairEventHistoryAuthorityWitness(
+    {
+      stateRoot: fixture.stateRoot,
+      taskId: plan.taskId,
+      plan,
+      ownerConfirmationFile: owner.confirmationPath,
+    },
+    { now: () => repairNowMs + 1 },
+  );
+  assert.equal(result.retired, true);
+  assert.equal(existsSync(fixture.witnessPath), false);
+  assert.equal(existsSync(fixture.taskWitnessPath), true);
+  assert.deepEqual(
+    readFileSync(fixture.paths.taskManifest),
+    fixture.taskCanonicalBytes,
+  );
+
+  const taskPlan = planTaskManifestAuthorityWitnessRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: "github-issue-1836",
+  });
+  assert.equal(
+    taskPlan.parameters.witness.snapshot.filePath,
+    fixture.taskWitnessPath,
+  );
+});
+
+test("event history witness repair rejects task witness drift after planning", () => {
+  const fixture = simultaneousStrandedAuthorityWitnessFixture("paired-drift");
+  const plan = planEventHistoryAuthorityWitnessRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: "github-issue-1836",
+  });
+  const owner = writeOwnerConfirmation(
+    fixture.stateRoot,
+    plan.taskId,
+    plan.intent,
+    { nowMs: Date.now() },
+  );
+  appendFileSync(fixture.taskWitnessPath, "\n", { mode: 0o600 });
+  assert.throws(
+    () =>
+      repairEventHistoryAuthorityWitness({
+        stateRoot: fixture.stateRoot,
+        taskId: plan.taskId,
+        plan,
+        ownerConfirmationFile: owner.confirmationPath,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict",
+  );
+  assert.equal(existsSync(fixture.witnessPath), true);
+  assert.equal(existsSync(plan.parameters.authorizationFile), false);
 });
 
 test("stranded event history witness repair fails closed on changed durable authorization", () => {
